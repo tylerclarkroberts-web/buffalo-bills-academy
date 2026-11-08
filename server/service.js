@@ -124,10 +124,13 @@ export class PokerService {
       if (!this.store.getTable(c)) return c;
     }
   }
-  createTable(player, { name, settings, bots }) {
+  createTable(player, { name, settings, bots, visibility = 'private' }) {
+    if (!['private', 'public'].includes(visibility)) throw new G.GameError('Choose Public or Private for table visibility.');
+    if (bots && visibility === 'public') throw new G.GameError('Bot practice tables cannot be public.');
     const code = this.newCode();
     if (bots) return this.createBotTable(player, { code, name, settings, bots });
     const t = G.createTable({ id: crypto.randomUUID(), code, name, host: { id: player.id, name: player.name }, settings }, this.ctx());
+    t.visibility = visibility;
     // Tables made after the economy launched are paid for from bankrolls (1 chip = $1).
     // Older tables have no `econ` and keep working exactly as before.
     t.econ = { debited: {}, credited: {} };
@@ -148,6 +151,7 @@ export class PokerService {
     s.maxPlayers = Math.max(count + (bots?.friends ? 2 : 1), Math.min(9, Number(s.maxPlayers) || 0));
     const ctx = this.ctx();
     const t = G.createTable({ id: crypto.randomUUID(), code, name: name || 'Bot practice', host: { id: player.id, name: player.name }, settings: s }, ctx);
+    t.visibility = 'private';
     t.bots = { count, friends: !!bots?.friends };
     this.bots.seat(t, count, ctx);
     G.startGame(t, player.id, ctx);
@@ -165,7 +169,7 @@ export class PokerService {
     const avatars = {};
     for (const s of t.seats) if (s?.playerId) avatars[s.playerId] = s.bot ? botAvatar(t, s.playerId) : this.avatars ? this.avatars.info(this.store.players[s.playerId]) : null;
     for (const l of t.lastHand?.allInLosers || []) if (!(l.playerId in avatars) && this.store.players[l.playerId]) avatars[l.playerId] = this.avatars ? this.avatars.info(this.store.players[l.playerId]) : null;
-    const v = { ...G.viewFor(t, player?.id ?? null, this.now()), econ: !!t.econ, avatars };
+    const v = { ...G.viewFor(t, player?.id ?? null, this.now()), visibility: t.visibility === 'public' ? 'public' : 'private', econ: !!t.econ, avatars };
     if (t.bots) { v.bots = { count: t.bots.count, friends: t.bots.friends }; for (const st of v.seats) if (st && t.seats[st.seat]?.bot) st.bot = true; }
     if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id));
     if (v.fight && this.avatars && !(v.fight.playerId in avatars) && this.store.players[v.fight.playerId]) avatars[v.fight.playerId] = this.avatars.info(this.store.players[v.fight.playerId]);
@@ -177,7 +181,7 @@ export class PokerService {
       .map((t) => {
         const seat = t.seats.findIndex((s) => s && s.playerId === player.id);
         return {
-          code: t.code, name: t.name, status: t.status, players: t.seats.filter(Boolean).length, maxPlayers: t.settings.maxPlayers,
+          code: t.code, name: t.name, status: t.status, visibility: t.visibility === 'public' ? 'public' : 'private', players: t.seats.filter(Boolean).length, maxPlayers: t.settings.maxPlayers,
           seated: seat >= 0, myTurn: !!t.hand && t.hand.toAct === seat && seat >= 0, deadline: t.hand && t.hand.toAct === seat ? t.hand.deadline : null,
           handNumber: t.handNumber, isHost: t.hostId === player.id, createdAt: t.createdAt, bots: !!t.bots,
           ready: t.seats.filter((_, i) => G.eligibleForHand(t, i)).length, // players who could be dealt in (2+ to start)
@@ -185,6 +189,20 @@ export class PokerService {
         };
       })
       .sort((a, b) => (b.myTurn - a.myTurn) || (a.status === 'closed') - (b.status === 'closed') || b.createdAt - a.createdAt);
+  }
+
+  publicTables(player) {
+    return this.store.allTables()
+      .filter((t) => t.visibility === 'public' && !t.bots && t.status !== 'closed'
+        && (t.status !== 'lobby' || this.getPlayer(t.hostId))
+        && t.seats.some((s) => !s) && !t.seats.some((s) => s?.playerId === player.id))
+      .map((t) => ({
+        code: t.code, name: t.name, hostName: this.getPlayer(t.hostId)?.name || t.ledger[t.hostId]?.name || 'Host',
+        players: t.seats.filter(Boolean).length, maxPlayers: t.settings.maxPlayers,
+        buyIn: t.settings.buyIn, smallBlind: t.settings.smallBlind, bigBlind: t.settings.bigBlind,
+        turnSeconds: t.settings.turnSeconds, status: t.status, createdAt: t.createdAt,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
   }
 
   ctx() {

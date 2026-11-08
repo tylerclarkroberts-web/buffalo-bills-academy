@@ -45,7 +45,7 @@ export function Profile({ id }) {
   const stats = [
     ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables`],
     ['Bankroll', money(w.bankroll), 'Spendable play money'],
-    ['Poker, lifetime', money(pk.lifetimeNet, { sign: true }), `${pk.games.length} game${pk.games.length === 1 ? '' : 's'}`, cls(pk.lifetimeNet)],
+    ['Poker, lifetime', money(pk.lifetimeNet, { sign: true }), `${pk.gamesPlayed ?? pk.games.length} game${(pk.gamesPlayed ?? pk.games.length) === 1 ? '' : 's'}`, cls(pk.lifetimeNet)],
     ['Hands played', chips(pk.handsPlayed), `${chips(pk.handsWon)} won`],
     ['Win rate', pk.handsPlayed ? pct(pk.winRate) : '—', 'Hands won ÷ played'],
     ['Biggest pot', money(pk.biggestPot), 'Largest pot you won'],
@@ -85,7 +85,7 @@ export function Profile({ id }) {
         )}
         {tab === 'games' && (
           <Paged items={pk.games} rowH={48} className="dt"
-            empty={<p className="muted">No games yet. <Link to="/?tab=new">Open a table →</Link></p>}
+            empty={<p className="muted">{self ? <>No games yet. <Link to="/?tab=new">Open a table →</Link></> : 'No public games to show.'}</p>}
             header={<div className="dt-row dt-head g"><span>Table</span><span className="hide-s">Status</span><span className="r">Hands</span><span className="r hide-s">In</span><span className="r hide-s">Out</span><span className="r">Net</span></div>}
             render={(g) => (
               <button className="dt-row g click" onClick={() => navigate(`/t/${g.code}`)}>
