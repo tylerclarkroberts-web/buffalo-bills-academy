@@ -1,0 +1,49 @@
+/* Neon Bill: glass tubes on a night sky. */
+.neonbill { display: block; max-width: 100%; max-height: 100%; height: 100%; width: auto; overflow: visible; margin: 0 auto; }
+.neonbill path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.neonbill .nb-backing { fill: #0b0c12; stroke: #1a1c26; stroke-width: 2; opacity: .85; }
+.neonbill .nt-glow { opacity: .55; filter: var(--glow); }
+.neonbill .nt-glass { opacity: .96; }
+.neonbill .nt-core { stroke: #fffaf0; opacity: .78; }
+.neonbill .nb-sparkle path { stroke: #fff1dc; stroke-width: 1.6; opacity: .0; animation: nb-twinkle 2.6s ease-in-out infinite; }
+@keyframes nb-twinkle { 0%, 100% { opacity: 0; } 50% { opacity: .55; } }
+
+/* light-up sequence when the sign first appears */
+.neonbill .nb-part { animation: nb-on 1.1s steps(1, end) both; }
+.neonbill .p1 { animation-delay: .1s; } .neonbill .p2 { animation-delay: .35s; } .neonbill .p3 { animation-delay: .6s; }
+.neonbill .p4 { animation-delay: .8s; } .neonbill .p5 { animation-delay: 1s; }
+@keyframes nb-on { 0% { opacity: .06; } 20% { opacity: 1; } 28% { opacity: .2; } 40% { opacity: 1; } 46% { opacity: .35; } 60%, 100% { opacity: 1; } }
+
+/* the wave: two frames, like a real animated sign */
+.neonbill .nb-wave.a { animation: nb-frame 1.8s steps(1, end) infinite; }
+.neonbill .nb-wave.b { animation: nb-frame-b 1.8s steps(1, end) infinite; }
+@keyframes nb-frame { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes nb-frame-b { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
+
+/* a tired tube that buzzes now and then, and a slow wink */
+.neonbill .nb-flicker { animation: nb-buzz 7s linear infinite; }
+@keyframes nb-buzz { 0%, 61%, 63.5%, 66%, 100% { opacity: 1; } 62%, 65% { opacity: .25; } 64% { opacity: .7; } }
+.neonbill .nb-blink { animation: nb-blink 6s steps(1, end) infinite; }
+@keyframes nb-blink { 0%, 93%, 100% { opacity: 1; } 94%, 96% { opacity: .1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .neonbill .nb-part, .neonbill .nb-flicker, .neonbill .nb-blink, .neonbill .nb-sparkle path { animation: none; opacity: 1; }
+  .neonbill .nb-sparkle path { opacity: .4; }
+  .neonbill .nb-wave.a { animation: none; opacity: 1; } .neonbill .nb-wave.b { animation: none; opacity: 0; }
+}
+
+.night {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: radial-gradient(120% 70% at 50% 110%, #2a1622 0%, #0d0f1d 45%, #05060b 100%);
+}
+.night::before { /* faint stars */
+  content: ''; position: absolute; inset: 0; z-index: -1; opacity: .7;
+  background-image: radial-gradient(1px 1px at 12% 18%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 78% 12%, #fff 50%, transparent 51%),
+    radial-gradient(1.4px 1.4px at 44% 8%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 88% 36%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 52%, #fff 50%, transparent 51%), radial-gradient(1.2px 1.2px at 64% 26%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 30% 34%, #ddd 50%, transparent 51%), radial-gradient(1px 1px at 94% 64%, #ddd 50%, transparent 51%);
+}
+.night::after { /* distant mountain ridge */
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 14%; z-index: -1;
+  background: #06070c; clip-path: polygon(0 60%, 9% 40%, 18% 55%, 30% 22%, 41% 48%, 52% 30%, 63% 52%, 74% 28%, 86% 50%, 100% 34%, 100% 100%, 0 100%);
+}

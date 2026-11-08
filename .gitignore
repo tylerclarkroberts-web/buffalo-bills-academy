@@ -1,0 +1,17 @@
+node_modules/
+dist/
+data/
+private/
+.scratch/
+.env*
+!.env.example
+screenshots*/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+*.db-*
+*.sqlite-*
+*.log
+*.tmp
+.DS_Store

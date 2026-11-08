@@ -1,0 +1,67 @@
+/* v49 cinematic showdown: one fixed layer over the whole screen (never scrolls), minimal editorial type. */
+.sd { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 14px; cursor: pointer;
+  background: radial-gradient(ellipse at 50% 38%, rgba(44, 9, 28, .95), rgba(5, 1, 4, .985) 72%); backdrop-filter: blur(2px);
+  animation: sd-dim .6s var(--ease) both; overflow: hidden; color: var(--paper); }
+@keyframes sd-dim { from { opacity: 0; } to { opacity: 1; } }
+.sd-col { width: min(520px, 100%); max-height: 100%; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.8vh, 16px); }
+.sd-top { width: 100%; display: flex; justify-content: space-between; border-bottom: 1px solid var(--line-2, rgba(251, 244, 234, .2)); padding-bottom: 6px; }
+.sd-kick { font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--mute); margin: 0; }
+.sd-board { display: flex; gap: 6px; }
+.sd .sd-board .card.sm, .sd .sd-best .card.sm { --w: clamp(34px, 10vw, 50px); }
+.sd-bc { transition: opacity .4s, transform .4s var(--ease); }
+.sd-bc.dim { opacity: .32; transform: translateY(3px) scale(.96); }
+.sd .card.hl { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242, 198, 90, .55); }
+.sd-stage { min-height: clamp(120px, 24vh, 190px); display: grid; place-items: center; width: 100%; }
+.sd-big { font-size: clamp(26px, 8vw, 46px); line-height: 1.05; margin: 0; text-align: center; overflow-wrap: anywhere; }
+.sd-pulse { animation: sd-pulse .78s ease-in-out infinite; color: var(--gold); }
+@keyframes sd-pulse { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.07); } 30% { transform: scale(1); } 45% { transform: scale(1.04); } }
+.sd-cur { display: flex; align-items: center; gap: 14px; animation: sd-in .45s var(--ease) both; }
+@keyframes sd-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.sd-curtxt { display: grid; gap: 6px; }
+.sd-name { font: 700 clamp(17px, 5vw, 22px) var(--sans); margin: 0; }
+.sd-ord { font: 500 11px var(--mono); color: var(--mute); margin-left: 6px; }
+.sd-hole { display: flex; gap: 6px; perspective: 600px; }
+.sd .sd-hole .card.sm { --w: clamp(44px, 13vw, 60px); }
+.sd-hole.flip .sd-hc { animation: sd-flip .7s var(--ease) both; transform-style: preserve-3d; }
+.sd-hole.flip .sd-hc + .sd-hc { animation-delay: .18s; }
+@keyframes sd-flip { 0% { transform: rotateY(180deg) scale(.9); filter: brightness(.2); } 55% { filter: brightness(.2); } 100% { transform: none; filter: none; } }
+.sd-hand { font: 600 clamp(14px, 4.2vw, 18px) var(--sans); color: var(--gold); margin: 0; animation: sd-in .4s .75s var(--ease) both; }
+.sd-hand.big { font-size: clamp(16px, 5vw, 22px); animation-delay: .2s; text-align: center; }
+.sd-list { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 4px; }
+.sd-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr); align-items: center; gap: 8px; padding: 2px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.sd-list li.won { color: var(--gold); }
+.sd-ln { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.sd-lc { display: flex; gap: 3px; } .sd .sd-lc .card.sm { --w: 20px; }
+.sd-lh { color: var(--mute); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-list li.won .sd-lh { color: var(--gold); }
+.sd-win { display: grid; justify-items: center; gap: clamp(4px, 1.2vh, 10px); width: 100%; animation: sd-in .5s var(--ease) both; }
+.sd-win .sd-big { color: var(--gold); text-shadow: 0 0 24px rgba(242, 198, 90, .35); }
+.sd-amt { font: 700 clamp(15px, 4.5vw, 20px) var(--mono); margin: 0; text-align: center; }
+.sd-best { display: flex; gap: 5px; }
+.sd-pots { list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--paper-2); display: grid; gap: 2px; text-align: center; }
+.sd-pots i { color: var(--mute); font-style: normal; }
+.sd-foot { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.sd-hint { font: 500 11px var(--mono); color: var(--mute); letter-spacing: .08em; text-transform: uppercase; }
+.sd-note { color: var(--mute); margin: 0; font-size: 13px; }
+.sd-fold .sd-col { gap: 8px; text-align: center; }
+/* the dance: torso rocks back while the hips pump forward, ~0.42 s a thrust, 8 thrusts (3.4 s), cartoon squash */
+.sd-dancers { display: flex; gap: 14px; justify-content: center; align-items: flex-end; }
+.sd-dancer { display: grid; justify-items: center; width: calc(var(--sz) * 1.2); }
+.sd-torso { transform-origin: 50% 100%; position: relative; z-index: 1; margin-bottom: calc(var(--sz) * -.16); }
+.sd-hips { width: calc(var(--sz) * .95); height: calc(var(--sz) * .76); overflow: visible; }
+.sd-pelvis, .sd-leg { transform-box: fill-box; transform-origin: 50% 0; }
+.sd-dname { font: 600 11px var(--mono); color: var(--paper-2); margin-top: 2px; white-space: nowrap; }
+.sd-dancer.go .sd-torso { animation: sd-lean .42s ease-in-out 8; }
+.sd-dancer.go .sd-pelvis { animation: sd-thrust .42s ease-in-out 8; }
+.sd-dancer.go .sd-leg.l { animation: sd-knee-l .42s ease-in-out 8; }
+.sd-dancer.go .sd-leg.r { animation: sd-knee-r .42s ease-in-out 8; }
+@keyframes sd-lean { 0%, 100% { transform: rotate(0) translateY(0); } 45% { transform: rotate(-11deg) translate(-4px, 2px) scaleY(.96); } }
+@keyframes sd-thrust { 0%, 100% { transform: translateX(0) rotate(0); } 45% { transform: translateX(9px) rotate(-8deg) scaleX(1.06); } }
+@keyframes sd-knee-l { 0%, 100% { transform: rotate(0); } 45% { transform: rotate(-9deg) translateX(3px); } }
+@keyframes sd-knee-r { 0%, 100% { transform: rotate(0); } 45% { transform: rotate(-4deg) translateX(5px); } }
+@media (prefers-reduced-motion: reduce) { .sd, .sd * { animation: none !important; } }
+@media (max-height: 560px) { .sd-stage { min-height: 96px; } .sd-list li { padding: 1px 0; } }
+/* everyone folded: a short toast, no scrim, the table stays usable */
+.sd.sd-fold { inset: auto; top: 14%; left: 50%; transform: translateX(-50%); width: min(340px, 92vw); padding: 14px 18px; border-radius: 14px;
+  background: rgba(20, 6, 14, .92); border: 1px solid rgba(242, 198, 90, .35); backdrop-filter: none; box-shadow: 0 12px 40px rgba(0, 0, 0, .5); }
+.sd.sd-fold .sd-big { font-size: clamp(20px, 6vw, 28px); color: var(--gold); }

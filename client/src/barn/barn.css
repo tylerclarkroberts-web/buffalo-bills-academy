@@ -1,0 +1,114 @@
+/* The Barn (v30): one screen, no scrolling. Wide: creature left, care right. Narrow: creature on top. */
+.screen.barn { align-items: center; justify-content: center; }
+.barn-wrap { width: min(980px, 100%); height: 100%; max-height: 620px; min-height: 0; border-radius: 18px; padding: 12px 16px; display: grid; grid-template-rows: auto 1fr auto; gap: 6px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(74, 36, 20, .92), rgba(40, 18, 12, .95)), repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 2px, transparent 2px 46px); border-color: #7a4a2a; }
+.barn-head { display: flex; align-items: center; justify-content: space-between; }
+.barn-head h1 { font-size: clamp(22px, 3vw, 32px); margin: 0; }
+.barn-body { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; min-height: 0; }
+.barn-stage { position: relative; min-height: 0; border-radius: 14px; overflow: hidden; cursor: pointer;
+  background: radial-gradient(90% 70% at 50% 40%, #6a4a2a, #2a160c 80%), #2a160c; box-shadow: inset 0 0 40px rgba(0,0,0,.6); }
+.barn-stage::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 16%; background: repeating-linear-gradient(170deg, #c8a04a 0 3px, #a8802a 3px 7px); opacity: .5; pointer-events: none; }
+.barn-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+.barn-mood { position: absolute; top: 8px; left: 8px; z-index: 2; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.45); color: #d8ffb8; }
+.barn-mood.m-sulking, .barn-mood.m-peckish, .barn-mood.m-bored, .barn-mood.m-grubby { color: #ffb08a; }
+.barn-side { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+.barn-name { margin: 0; font-family: var(--display); color: var(--gold); font-size: clamp(20px, 2.6vw, 30px); line-height: 1.05; }
+.barn-kind { margin: 0; color: var(--paper-2); }
+.barn-blurb { margin: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.barn-needs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.barn-need { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 6px; }
+.barn-bar { height: 9px; border-radius: 999px; background: rgba(0,0,0,.45); overflow: hidden; border: 1px solid rgba(255,255,255,.12); }
+.barn-bar i { display: block; height: 100%; background: linear-gradient(90deg, #6ac040, #b6ff7a); transition: width .4s; }
+.barn-bar.low i { background: linear-gradient(90deg, #c04a2a, #ff8a5a); }
+.barn-bar.xp i { background: linear-gradient(90deg, #c8902a, #f2c65a); }
+.barn-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.barn-acts .btn { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 0; min-height: 44px; padding: 4px 10px; }
+.barn-acts .btn small { font: 500 10px var(--mono); opacity: .75; }
+.barn-abil { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.barn-abil li { opacity: .55; } .barn-abil li.on { opacity: 1; color: #ffe9a0; }
+.barn-hatch { display: flex; align-items: baseline; gap: 10px; } .barn-hatch b { font-size: 26px; color: var(--gold); }
+.barn-msg { min-height: 1.4em; text-align: center; } .barn-msg .err { color: #ff9a8a; }
+.barn-none { display: grid; place-items: center; align-content: center; gap: 12px; text-align: center; min-height: 0; }
+.barn-stall { width: min(260px, 60vw); aspect-ratio: 4/3; border-radius: 12px; display: grid; place-items: center; background: repeating-linear-gradient(90deg, #5a3a1e 0 22px, #4a2e16 22px 24px); box-shadow: inset 0 0 30px rgba(0,0,0,.6); }
+.barn-stall span { font: 700 14px var(--mono); letter-spacing: .2em; color: #e6c86a; transform: rotate(-6deg); border: 2px solid #e6c86a; padding: 4px 10px; }
+.barn-empty { margin: auto; padding: 24px; text-align: center; border-radius: 16px; }
+@media (max-width: 760px) {
+  .barn-wrap { padding: 8px 10px; max-height: none; border-radius: 14px; }
+  .barn-body { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 44%) 1fr; gap: 8px; }
+  .barn-blurb { -webkit-line-clamp: 2; font-size: 12px; }
+  .barn-abil { flex-direction: row; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; }
+  .barn-acts .btn { min-height: 40px; }
+}
+@media (max-width: 760px) and (max-height: 500px) { /* phone sideways: back to two columns */
+  .barn-body { grid-template-columns: 1fr 1.2fr; grid-template-rows: 1fr; }
+  .barn-blurb { -webkit-line-clamp: 1; }
+  .barn-head h1 { font-size: 18px; }
+}
+@media (max-height: 500px) and (max-width: 940px) { .barn-blurb { -webkit-line-clamp: 1; } .barn-abil { flex-direction: row; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; } }
+
+.barn-arena { margin: 0; }
+
+/* Barn bouts (v31): an overlay over the barn body, same no-scroll box. */
+.barn-wrap { position: relative; }
+.bout { position: absolute; inset: 0; z-index: 5; display: grid; grid-template-rows: auto 1fr auto auto; gap: 6px; padding: 12px 16px; border-radius: inherit;
+  background: radial-gradient(120% 80% at 50% 30%, #5a2e14, #1e0c06 85%); }
+.bout-top { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.bout-side { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; }
+.bout-side b { font-family: var(--display); color: var(--gold); font-size: clamp(15px, 2vw, 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bout-side .barn-bar { grid-column: 1 / -1; height: 12px; }
+.bout-side.s1 { text-align: right; } .bout-side.s1 .barn-bar { transform: scaleX(-1); }
+.barn-bar.hp i { background: linear-gradient(90deg, #d04030, #ffb050); transition: width .35s; }
+.bout-ring { position: relative; min-height: 0; border-radius: 12px; overflow: hidden; background: repeating-linear-gradient(0deg, transparent 0 82%, rgba(200,160,74,.35) 82% 100%), radial-gradient(80% 60% at 50% 45%, #6a4a2a, #2a160c 80%); }
+.bout-line { margin: 0; min-height: 2.6em; text-align: center; font-size: 14px; }
+.bout-acts { display: flex; justify-content: center; }
+.barn-bouts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.barn-bouts .btn { min-height: 40px; flex-direction: column; gap: 0; padding: 4px 16px; } .barn-bouts .btn small { font: 500 10px var(--mono); opacity: .75; }
+@media (max-width: 760px) { .bout { padding: 8px 10px; } .bout-line { font-size: 12.5px; } }
+
+/* v33: bugs, field notes, warnings, gravestone. All fixed-size pages, never a scrollbar. */
+.barn-canvas { image-rendering: pixelated; }
+.barn-tabs { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.15); }
+.barn-tabs button { background: none; border: 0; color: var(--paper-2); font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 6px 10px; min-height: 32px; cursor: pointer; border-bottom: 2px solid transparent; }
+.barn-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
+.barn-notes { display: grid; grid-template-rows: auto 1fr auto; gap: 4px; min-height: 0; flex: 1 1 0; }
+.barn-sci { margin: 0; color: var(--paper-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.barn-page { min-height: 0; overflow: hidden; font-size: 13px; line-height: 1.35; }
+.barn-page dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
+.barn-page dt { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--gold); padding-top: 2px; }
+.barn-page dd { margin: 0; }
+.barn-page ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
+.barn-src { margin: 6px 0 0; font-size: 11px; } .barn-src a { color: var(--paper-2); margin-right: 8px; }
+.barn-pager { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.barn-pager .btn { min-width: 40px; min-height: 32px; }
+.barn-warn { margin: 0; padding: 4px 8px; border-radius: 8px; background: rgba(200,120,40,.25); border: 1px solid #c8782a; color: #ffd8a0; }
+.barn-warn.w3 { background: rgba(200,40,30,.3); border-color: #d04030; color: #ffc0b0; }
+.barn-stage.grave { cursor: default; background: radial-gradient(90% 70% at 50% 40%, #3a4048, #14161a 80%), #14161a; }
+.barn-rip { justify-content: center; }
+@media (max-width: 760px) { .barn-page { font-size: 12px; } .barn-page ol { gap: 3px; } .barn-tabs button { min-height: 30px; padding: 4px 8px; } }
+@media (max-height: 500px) { .barn-page { font-size: 11.5px; line-height: 1.25; } .barn-page dl { gap: 1px 8px; } .barn-tabs button { min-height: 28px; padding: 3px 8px; } }
+/* v33: short landscape screens (phones sideways at 800+ px wide): the tabs row pushed the bout button out, so tighten */
+@media (max-height: 500px) {
+  .barn-head h1 { font-size: 20px; }
+  .barn-name { font-size: 20px; }
+  .barn-kind { font-size: 12.5px; }
+  .barn-acts { gap: 6px; }
+  .barn-acts .btn { min-height: 34px; padding: 2px 8px; }
+  .barn-wrap { gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+  .barn-tabs button { min-height: 26px; padding: 2px 8px; }
+}
+@media (max-height: 500px) {
+  .barn-acts .btn, .barn-bouts .btn { flex-direction: row; gap: 6px; min-height: 32px; }
+  .barn-bouts .btn { padding: 2px 12px; }
+  .barn-abil { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  .barn-side { gap: 4px; }
+}
+.barn-feeder { color: #b8e6a0; white-space: nowrap; }
+/* v34: measured Field notes pages: each row/fact is its own block, a hidden copy is measured to pack pages */
+.barn-page { position: relative; display: flex; flex-direction: column; gap: 5px; }
+.barn-page ol { padding-left: 1.6em; }
+.barn-page .barn-src { margin: 0; }
+.barn-notes { position: relative; }
+.barn-measure-wrap { position: absolute; left: 0; right: 0; top: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+.barn-measure { overflow: visible; }
+.barn-page dl { grid-template-columns: 7.2em 1fr; }
+@media (max-height: 500px) { .barn-abil li { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }

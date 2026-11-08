@@ -1,0 +1,21 @@
+/* v45 the Foreman cutscene: full-screen, never scrolls. Stage on top, a tight dialogue card below. */
+.fm { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: radial-gradient(120% 80% at 50% 30%, #3b2a18 0%, #120c07 70%); color: #f2ead8; overflow: hidden; font-family: inherit; }
+.fm-stage { flex: 1 1 auto; min-height: 0; width: 100%; display: block; image-rendering: pixelated; cursor: pointer; }
+.fm-box { flex: 0 0 auto; margin: 0 auto 12px; width: min(680px, calc(100% - 20px)); box-sizing: border-box; background: #0d0a07; border: 2px solid #e8b81e; padding: 10px 14px 12px; }
+.fm-who { font-size: 12px; letter-spacing: .14em; color: #e8b81e; display: flex; justify-content: space-between; }
+.fm-count { color: #8a7d64; }
+.fm-line { margin: 6px 0 8px; font-size: clamp(15px, 2.4vw, 19px); line-height: 1.3; min-height: 2.6em; }
+.fm-ghost { visibility: hidden; }
+.fm-next { float: right; }
+.fm-math { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fm-q { font-size: clamp(16px, 2.6vw, 20px); color: #e8b81e; letter-spacing: .04em; }
+.fm-math input { width: 6.5em; font: inherit; font-size: 18px; padding: 6px 8px; background: #1b150e; color: #fff; border: 1px solid #8a7d64; }
+.fm-math .m-btn { margin-left: auto; }
+.fm.shaking { animation: fm-shake .42s linear; }
+@keyframes fm-shake { 0%,100% { transform: none } 15% { transform: translate(-9px, 4px) } 30% { transform: translate(8px, -5px) } 45% { transform: translate(-6px, -3px) } 60% { transform: translate(5px, 4px) } 75% { transform: translate(-3px, 2px) } }
+@media (prefers-reduced-motion: reduce) { .fm.shaking { animation: none; } }
+@media (max-height: 420px) { .fm { flex-direction: row; } .fm-stage { flex: 1 1 0; min-width: 0; width: auto; height: 100%; } .fm-box { align-self: center; flex: 1.2 1 0; min-width: 0; margin: 0 10px 0 0; } .fm-line { min-height: 0; } }
+/* v48: longer lines and word problems wrap inside the box, never overflow */
+.fm-line { min-height: 3.9em; overflow-wrap: anywhere; }
+.fm-q.word { flex: 1 1 100%; font-size: clamp(13px, 2.2vw, 17px); line-height: 1.3; letter-spacing: 0; overflow-wrap: anywhere; }
+@media (max-height: 420px) { .fm-line { min-height: 2.6em; font-size: 14px; } .fm-q.word { font-size: 13px; } }

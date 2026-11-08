@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Behind the door · Acid Mines</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="play.css?v=32">
+</head>
+<body>
+<div id="load" class="load" data-test="doom-loading"><p id="load-t">LOADING 0%</p><div class="bar"><div id="load-b"></div></div><button id="retry" class="btn" hidden>TRY AGAIN</button></div>
+<div id="stage" class="stage" hidden>
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <aside id="keys" class="keys" data-test="doom-keys" aria-label="Controls">
+    <h2>Controls</h2>
+    <dl>
+      <div class="k-fire"><dt>Fire</dt><dd><kbd>Ctrl</kbd><kbd>F</kbd><kbd class="m">Click</kbd></dd></div>
+      <div><dt>Use / open</dt><dd><kbd class="w">Space</kbd></dd></div>
+      <div><dt>Move / turn</dt><dd><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dd></div>
+      <div><dt>Strafe</dt><dd><kbd>A</kbd><kbd>D</kbd></dd></div>
+      <div><dt>Run</dt><dd><kbd class="w">Shift</kbd></dd></div>
+      <div><dt>Weapon</dt><dd><kbd class="w">1–7</kbd></dd></div>
+      <div><dt>Map</dt><dd><kbd>Tab</kbd></dd></div>
+      <div><dt>Menu</dt><dd><kbd>Esc</kbd></dd></div>
+    </dl>
+  </aside>
+</div>
+<div id="pad" class="pad" hidden aria-label="Touch controls">
+  <div class="dpad">
+    <button data-k="ArrowUp" class="u" aria-label="Forward">▲</button>
+    <button data-k="ArrowLeft" class="l" aria-label="Turn left">◄</button>
+    <button data-k="ArrowRight" class="r" aria-label="Turn right">►</button>
+    <button data-k="ArrowDown" class="d" aria-label="Back">▼</button>
+  </div>
+  <div class="tops">
+    <button data-k="Tab">MAP</button><button data-wpn="1">WPN</button>
+  </div>
+  <div class="acts">
+    <button data-k="ShiftLeft" data-toggle="1" class="run">RUN</button>
+    <button data-k="Space" class="use">USE</button>
+    <button data-k="ControlLeft" class="fire">FIRE</button>
+  </div>
+</div>
+<button id="credits-open" class="credits-link" data-test="doom-credits">Credits &amp; licences</button>
+<div id="credits" class="credits" role="dialog" aria-label="Credits and licences" hidden>
+  <p>Chocolate Doom (WebAssembly port by Cloudflare), GPL-2.0: <a href="COPYING-GPL2.txt" target="_blank">licence</a> · <a href="source/index.html" target="_blank">source</a> · <a href="NOTICE.txt" target="_blank">notice</a>.</p>
+  <p>Freedoom: Phase 1 v0.13.0 © Contributors to the Freedoom project, BSD licence: <a href="FREEDOOM-COPYING.txt" target="_blank">licence</a> · <a href="FREEDOOM-CREDITS.txt" target="_blank">credits</a>. No id Software game data is hosted here.</p>
+  <p>DOOM is a trademark of id Software; not affiliated with or endorsed by id Software.</p>
+  <p class="keys-line">Arrows move and turn · A / D strafe · Ctrl, F or click fire · Space use and open · Shift run · 1–7 weapons · Tab map · Esc menu</p>
+  <button id="credits-close" class="btn">CLOSE</button>
+</div>
+<script src="play.js?v=32"></script>
+</body>
+</html>

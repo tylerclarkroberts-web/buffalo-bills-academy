@@ -1,0 +1,17 @@
+/* v36: the accessory fit editor (store counter and the Profile dialog) */
+.fit-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 4px; }
+.fit-pad { display: grid; grid-template-columns: repeat(4, 30px); gap: 3px; }
+.fit-pad .btn, .fit-size .btn { padding: 2px 0; min-width: 28px; justify-content: center; }
+.fit-size { display: flex; align-items: center; gap: 4px; flex: 1 1 180px; min-width: 0; }
+.fit-size input[type=range] { flex: 1 1 auto; min-width: 60px; accent-color: var(--amber, #f2c65a); }
+.fit-size b { min-width: 38px; text-align: right; }
+.fit-dialog { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.fit-dialog .panel { padding: 14px 16px; border-radius: 14px; width: min(560px, 94vw); max-height: 94vh; display: flex; flex-direction: column; gap: 8px; }
+.fd-head { display: flex; justify-content: space-between; align-items: center; } .fd-head h2 { margin: 0; font-size: 18px; color: var(--gold); font-family: var(--display); }
+.fd-body { display: flex; gap: 14px; align-items: center; }
+.fd-pic { flex: none; display: grid; place-items: center; padding: 26px 8px 4px; }
+.fd-side { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.fd-items { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 520px) { .fd-body { flex-direction: column; gap: 6px; } .fd-pic { padding-top: 22px; } }
+@media (max-height: 460px) { .fd-pic .bust { transform: scale(.8); } .fd-pic { padding: 10px 0 0; } }
+.fit-pad .btn { border: 1px solid var(--line-2, rgba(255,255,255,.2)); }

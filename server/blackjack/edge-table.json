@@ -1,0 +1,108 @@
+{
+ "note": "v46 main-game house edge (fraction of initial bet). Real engine, 1 deck, reshuffle <18 cards, bots basic strategy, flat bets. edge = base + sum of effects for each rule that differs from GUNTRAD_RULES.",
+ "generated": "2026-11-04T23:26:16.293Z",
+ "roundsPerChunk": 1000000,
+ "baseChunks": 64,
+ "effectChunks": 24,
+ "baseRules": {
+  "s17": true,
+  "bjPays": 1.5,
+  "das": true,
+  "doubleOn": "any",
+  "maxHands": 4,
+  "resplitAces": false,
+  "hitSplitAces": false,
+  "surrender": false,
+  "insurance": true
+ },
+ "base": 0.001714,
+ "baseSe": 0.000142,
+ "effects": {
+  "s17=false": {
+   "effect": 0.001959,
+   "se": 0.000084
+  },
+  "bjPays=1.2": {
+   "effect": 0.013831,
+   "se": 0.000013
+  },
+  "das=false": {
+   "effect": 0.001425,
+   "se": 0.000039
+  },
+  "doubleOn=9-11": {
+   "effect": 0.001386,
+   "se": 0.00006
+  },
+  "doubleOn=10-11": {
+   "effect": 0.002829,
+   "se": 0.000078
+  },
+  "maxHands=1": {
+   "effect": 0.005413,
+   "se": 0.00011
+  },
+  "maxHands=2": {
+   "effect": 0.000396,
+   "se": 0.000075
+  },
+  "maxHands=3": {
+   "effect": 0.0001,
+   "se": 0.000067
+  },
+  "resplitAces=true": {
+   "effect": -0.000294,
+   "se": 0.000015
+  },
+  "hitSplitAces=true": {
+   "effect": -0.001214,
+   "se": 0.000033
+  },
+  "surrender=true": {
+   "effect": 0.000206,
+   "se": 0.000119
+  },
+  "insurance=false": {
+   "effect": 0,
+   "se": 0
+  }
+ },
+ "checks": {
+  "H17+6:5": {
+   "direct": 0.015796,
+   "additive": 0.01579,
+   "diff": 0.000006,
+   "se": 0.000085
+  },
+  "H17+noDAS+10-11": {
+   "direct": 0.006028,
+   "additive": 0.006213,
+   "diff": -0.000185,
+   "se": 0.000113
+  },
+  "surr+RSA+hitSA": {
+   "direct": -0.00134,
+   "additive": -0.001302,
+   "diff": -0.000038,
+   "se": 0.000118
+  },
+  "noSplit+noDAS+RSA": {
+   "direct": 0.005413,
+   "additive": 0.005413,
+   "diff": 0,
+   "se": 0.00011
+  },
+  "RSA+3hands": {
+   "direct": -0.00018,
+   "additive": -0.000194,
+   "diff": 0.000014,
+   "se": 0.000067
+  },
+  "worst": {
+   "direct": 0.023847,
+   "additive": 0.024032,
+   "diff": -0.000185,
+   "se": 0.000122
+  }
+ }
+}

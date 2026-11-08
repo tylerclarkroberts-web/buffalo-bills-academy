@@ -1,0 +1,32 @@
+Behind the door in the Acid Mines (Buffalo Bill's Academy, v27b)
+================================================================
+
+Game engine
+  Chocolate Doom, WebAssembly port by Cloudflare ("doom-wasm"),
+  https://github.com/cloudflare/doom-wasm at commit 65e0d3a.
+  Copyright (C) 1993-1996 Id Software, Inc.; (C) 2005-2021 Simon Howard and
+  the Chocolate Doom authors; (C) Cloudflare. Licensed under the GNU General
+  Public License, version 2: see COPYING-GPL2.txt.
+
+  websockets-doom.js and websockets-doom.wasm were compiled unmodified from
+  that commit with Emscripten 3.1.74. The only build-side additions are a
+  hand-written config.h and a direct emcc build script (this host had no
+  autotools); both are in source/, with the full upstream source tarball
+  (source/doom-wasm-65e0d3a.tar.gz). That is the complete corresponding source.
+
+Game data
+  freedoom1.wad: Freedoom: Phase 1, version 0.13.0, unmodified
+  (md5 b93be13d05148dd01614bc205a03648e, 28,795,076 bytes), from the official
+  release https://github.com/freedoom/freedoom/releases/tag/v0.13.0.
+  Copyright (C) 2001-2024 Contributors to the Freedoom project, BSD-style
+  licence: see FREEDOOM-COPYING.txt; contributors in FREEDOOM-CREDITS.txt.
+  Freedoom is original art, sound and levels; it contains no id Software data.
+
+  No id Software game data is hosted on this site. Access is always free; it
+  is never sold or gated behind chips or payment.
+
+DOOM is a registered trademark of id Software LLC, a ZeniMax Media company.
+This site is not affiliated with or endorsed by id Software.
+
+Settings: bba.cfg is the port's default.cfg with arrow-key movement,
+Ctrl to fire, Space to use, mouse look off.
