@@ -1,0 +1,101 @@
+# Development and troubleshooting
+
+## Install and run
+
+Run from the repository root with Node.js 20+:
+
+```sh
+npm ci
+npm run build
+npm run server
+```
+
+Open http://localhost:3000. Stop a foreground server with Ctrl+C. On Windows, `npm.cmd` avoids PowerShell execution-policy problems with `npm.ps1`.
+
+| Command | Behavior |
+| --- | --- |
+| `npm ci` | Installs the committed lockfile’s dependencies. |
+| `npm run build` | Builds `client/` into `dist/`. |
+| `npm run server` | Starts Express and serves the existing `dist/` build on port 3000 by default. It does not build the frontend. |
+| `npm start` | Installs packages if Vite is missing, builds if the built index is missing or `client/` is newer, then starts the server. Explicitly rebuild after dependency or build-configuration changes. |
+| `npm run dev` | Starts the watched API server on 3000 and Vite hot reload on 5173. See the authentication limitation below. |
+| `npm test` | Runs the checked-in `test/*.test.js` files with Node’s native test runner. |
+
+Many historical `e2e:*` aliases reference scripts omitted from the public source snapshot. Check that a script exists before relying on it. There is no separate lint command configured.
+
+### Development authentication on port 5173
+
+`vite.config.js` currently proxies `/api` to port 3000, but the browser also uses `/auth/*` for login, registration, logout, and password changes. Those routes are not proxied. A local check found `/api/health` working on 5173 while `POST /auth/login` returned 404.
+
+Use the built frontend on port 3000 for a complete local flow until this proxy issue is fixed. A working health check alone does not verify login. This is a documented existing issue; the public-table feature does not change Vite configuration.
+
+## Environment configuration
+
+The app reads process environment variables. It does not load `.env` files automatically. [.env.example](../.env.example) lists the optional integration names without credentials.
+
+| Variable | Purpose / default |
+| --- | --- |
+| `PORT` | HTTP port; defaults to `3000`. |
+| `DATA_DIR` | Local data directory; defaults to repository `data/`. |
+| `STATIC_DIR` | Built frontend directory; defaults to repository `dist/`. |
+| `PUBLIC_URL` | Public origin used for canonical redirects and OAuth URLs. Leave unset for ordinary local testing. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` | Enable optional Google login when all three are configured. Supply your own random session secret and configure the public callback URL. |
+| `SLACK_BOT_TOKEN` | Enables optional Slack integration; leave unset when testing without Slack. |
+| `DEV_LOGIN` | `1` enables development sign-in and test hooks. Leave unset outside local testing. |
+| `ALLOW_GUEST` | `0` disables guest-player creation. Username accounts do not require Google setup. |
+
+For a local alternate port in PowerShell:
+
+```powershell
+$env:PORT = '3001'
+npm.cmd run server
+```
+
+Unset inherited integration credentials for isolated local testing. Never commit credentials, personal photos, session data, or production game state. The [.gitignore](../.gitignore) excludes local data, environment files, dependencies, and builds.
+
+## Code map
+
+| Area | Entry points |
+| --- | --- |
+| React startup and routing | `client/src/main.jsx`, `App.jsx`, `Shell.jsx` |
+| Lobby and table creation | `client/src/Home.jsx` |
+| Browser HTTP/session helpers | `client/src/api.js` |
+| Poker screen | `client/src/TablePage.jsx`, `client/src/table/` |
+| Express startup, routes, feature wiring | `server/index.js`, `server/app.js` |
+| Poker orchestration and timers | `server/service.js` |
+| Poker rules, cards, evaluation, pots | `server/engine/` |
+| Blackjack | `server/blackjack/`, `client/src/bj/` |
+| Other games | Matching slots, mines, barn, store, and avatar modules under `server/` and `client/src/` |
+| Shared play-money bankroll | `server/accounts.js` |
+| Accounts and sessions | `server/auth.js`, `server/passwords.js` |
+| Persistence | `server/store.js` |
+
+The frontend uses browser-history routing. Poker table updates use Server-Sent Events to trigger a refetch of each player’s view; the public lobby instead polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
+
+## Local persistence
+
+`server/store.js` loads state into process memory and writes JSON files, including `players.json`, per-table files under `tables/`, and additional feature/session documents. Avatars also live under the data directory. Writes use a temporary file followed by a rename.
+
+Keep the data directory to preserve local state. Stop the server before manually inspecting or changing saved state, and keep a copy before intentional maintenance. Atomic file replacement does not provide a transaction spanning multiple files, and separate server processes do not share an in-memory store. Do not assume this design supports multiple concurrent replicas against one data directory.
+
+## Validation and known baseline
+
+Build the frontend and run tests appropriate to the change. For public-table discovery and account deletion:
+
+```sh
+node --test test/public-tables.test.js test/delete-account.test.js
+```
+
+For UI changes, check both desktop and mobile, including a short/narrow viewport, loading and empty states, and the primary interaction. For API or persistence changes, exercise the actual HTTP boundary, invalid input, and existing saved records where relevant.
+
+At feature commit `1e87236` on November 8, 2026, using Node 24.19.0/npm 11.17.0 on Windows:
+
+- `npm run build` passed.
+- Public-table and account-deletion tests: 6 passed.
+- Full suite: 190 tests, 185 passed, 5 failed.
+- Four Doom tests failed before their assertions because their URL-to-path conversion produced `C:\C:\...` paths on Windows.
+- The Slack stale-alert test failed its existing assertion and also failed in isolation.
+
+These are recorded observations, not permanent expected failures. Report the current result on every relevant PR, investigate new failures, and update this section when the baseline changes. Do not describe the full suite as passing while failures remain.
+
+The public source snapshot does not contain the live deployment setup. Building, pushing, or merging here does not deploy the production site. See [Contributing](../CONTRIBUTING.md) for the review and documentation workflow.

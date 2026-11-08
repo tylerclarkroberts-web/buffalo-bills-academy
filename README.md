@@ -1,30 +1,49 @@
 # Buffalo Bill’s Academy
 
-An asynchronous Hold’em and blackjack game with a small arcade, built with Node.js, Express, React, and Vite.
+An asynchronous Texas Hold’em and blackjack game with a small arcade, built with Node.js, Express, React, and Vite. Poker supports two to nine players and configurable turn limits.
 
 ## Run locally
 
-Requires Node.js 20+.
+Requires Node.js 20+ and npm. From the repository root:
 
 ```sh
-npm install
-npm run dev
+npm ci
+npm run build
+npm run server
 ```
 
-Open http://localhost:5173. Local data is created in `data/`. Username accounts work without Google setup.
+Open http://localhost:3000. Local data is created in `data/`. Username accounts work without Google setup. On Windows PowerShell, use `npm.cmd` if the shell blocks the `npm.ps1` wrapper.
 
-Optional environment variables: `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `SESSION_SECRET` (generate your own random value). Google OAuth redirects to `<PUBLIC_URL>/auth/google/callback`. See `.env.example` for names; export values in your shell before starting (the app does not automatically load `.env` files). Never reuse production credentials. Slack integration is off unless `SLACK_BOT_TOKEN` is set. Leave `DEV_LOGIN` unset outside local testing.
-
-This is a standalone source snapshot: no production database, credentials, deployment settings, historical commits, reference photos, or live-site maintenance scripts are included. Some historical npm e2e aliases refer to omitted private maintenance scripts; use `npm run dev`, `npm run build`, and `npm test` for this snapshot. Publishing or changing this repository does not deploy the live site.
+`npm run server` serves the existing build; rerun `npm run build` after frontend changes. `npm start` also provides first-run setup and conditional building. The hot-reload command, `npm run dev`, currently has a known authentication proxy limitation on port 5173; see [Development and troubleshooting](docs/development.md).
 
 ## Poker table visibility
 
-New tables default to **Private · invite link**: they are not listed in the public lobby, but anyone with the invite link can open the table and join when a seat is available. This is link-based access, not host approval or a password-protected room.
+New tables default to **Private · invite link**. They are unlisted, but anyone with the invite link can open the table and join when a seat is available. Private does not mean host approval or password protection.
 
-Choose **Public** when creating a table to list it under **Public tables** for signed-in players. Listings show the host, available seats, buy-in, blinds, turn limit, and game status. Opening a listing does not buy a seat; use the table's existing join action. Joining during a hand takes effect on the next hand. Full tables, closed tables, and bot practice tables are not listed.
+Choose **Public** at creation to appear in **Public tables** on desktop and mobile. Listings show the host, seats, buy-in, blinds, turn limit, and game status. Opening a listing previews the table; taking a seat uses the existing buy-in action. A player joining during a hand plays from the next hand.
 
-Existing tables remain private. Your profile retains your full table history; other players' profile views omit private table names and links while keeping aggregate poker totals. Visibility is selected at creation; host approval and changing visibility later are not included.
+Existing tables remain private. Other players’ profile histories hide private table names and links while aggregate results remain intact. Full details, listing rules, API examples, and verification are in [Public and private poker tables](docs/public-tables.md).
+
+## Configuration and data
+
+Optional settings are listed in [.env.example](.env.example). Export values in your shell before starting; the app does not automatically load `.env` files. Google OAuth needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and your own `SESSION_SECRET`. Set `PUBLIC_URL` to configure the public origin and callback; otherwise the server uses the request origin. The callback path is `/auth/google/callback`. Slack integration is disabled unless `SLACK_BOT_TOKEN` is set. Leave `DEV_LOGIN` unset outside local testing, and never reuse production credentials.
+
+Game state is stored locally as JSON and avatar files under `data/`; no separate database service is required. Keep that directory when local state matters. See [Development and troubleshooting](docs/development.md) for paths, environment variables, and storage limitations.
+
+## Documentation and contributing
+
+- [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
+- [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
+- [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.
+
+User-visible behavior, API, setup, and persistence changes should include the corresponding documentation update in the same pull request. The [pull request template](.github/pull_request_template.md) prompts authors to record documentation and validation; [agent guidance](AGENTS.md) carries this requirement into coding-agent work.
+
+## Public source snapshot
+
+This is a standalone source snapshot. Production databases, credentials, deployment settings, historical commits, reference photos, and live-site maintenance scripts are not included. Many historical `e2e:*` aliases refer to omitted private scripts; use the supported commands documented here.
+
+Publishing or merging this repository does not deploy the live site. A live release requires the maintainer’s separate deployment process. Local validation is described in the development guide and each pull request; do not assume that GitHub CI is configured.
 
 ## License
 
-Original application code is MIT licensed; see LICENSE. Included character art accompanies this project. Third-party components retain their own licenses: the embedded Doom engine is GPL-2.0 and Freedoom game data has its own BSD-style license. Their license, credits, notices, and corresponding source are preserved under `client/public/doom/`.
+Original application code is MIT licensed; see [LICENSE](LICENSE). Included character art accompanies this project. Third-party components retain their own licenses: the embedded Doom engine is GPL-2.0 and Freedoom game data has its own BSD-style license. Their license, credits, notices, and corresponding source are preserved under `client/public/doom/`.
