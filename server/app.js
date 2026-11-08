@@ -146,6 +146,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     return meView(req.player);
   }));
   api.get('/my-tables', needPlayer, wrap((req) => service.tablesFor(req.player)));
+  api.get('/public-tables', needPlayer, wrap((req) => service.publicTables(req.player)));
   api.post('/tables', needPlayer, wrap((req) => {
     const t = service.createTable(req.player, req.body || {});
     return { code: t.code };
@@ -188,7 +189,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     req.on('close', () => { clearInterval(ping); unsub(); });
   });
   // ----- profile & leaderboard -----
-  const gamesFor = (pid) => service.store.allTables().filter((t) => t.ledger[pid]).map((t) => {
+  const gamesFor = (pid, publicOnly = false) => service.store.allTables().filter((t) => t.ledger[pid] && (!publicOnly || t.visibility === 'public')).map((t) => {
     const l = t.ledger[pid];
     const i = t.seats.findIndex((s) => s && s.playerId === pid);
     const onTable = i >= 0 ? t.seats[i].stack + (t.hand?.players?.[i]?.total || 0) : 0;
@@ -204,7 +205,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), kind: p.kind || 'guest', since: p.createdAt,
       ...(self ? { email: p.login?.email || p.google?.email || null, username: p.login?.username || null, txns: (p.txns || []).slice(-40).reverse() } : {}),
       worth: netWorth(p),
-      poker: { lifetimeNet: games.reduce((a, g) => a + g.net, 0), games, handsPlayed: st.handsPlayed, handsWon: st.handsWon,
+      poker: { lifetimeNet: games.reduce((a, g) => a + g.net, 0), gamesPlayed: games.length, games: self ? games : gamesFor(p.id, true), handsPlayed: st.handsPlayed, handsWon: st.handsWon,
         winRate: st.handsPlayed ? st.handsWon / st.handsPlayed : 0, biggestPot: st.biggestPot },
       mining: { shifts: p.mining.shifts, earned: p.mining.earned, best: p.mining.best, jackpots: p.mining.jackpots, history: p.mining.history.slice(-12).reverse().map(({ t, outcome, amount }) => ({ t, outcome, amount })) }, // v38: shift times are stored, not shown
       invest: { ...port, unrealized: cents(unrealized), pnl: cents(unrealized + port.realized) },

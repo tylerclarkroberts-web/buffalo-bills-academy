@@ -67,17 +67,20 @@ function GoogleG() {
 }
 
 
-function useMyTables(me) {
-  const [tables, setTables] = useState([]);
+function useTables(me, path) {
+  const [state, setState] = useState({ tables: [], loading: true, error: '' });
   useEffect(() => {
     if (!me) return undefined;
     let stop = false;
-    const load = () => api('GET', '/my-tables').then((t) => !stop && setTables(t)).catch(() => {});
+    setState({ tables: [], loading: true, error: '' });
+    const load = () => api('GET', path)
+      .then((tables) => !stop && setState({ tables, loading: false, error: '' }))
+      .catch(() => !stop && setState((s) => ({ ...s, loading: false, error: 'Could not load tables. Retrying shortly.' })));
     load();
     const id = setInterval(load, 15000);
     return () => { stop = true; clearInterval(id); };
-  }, [me?.id]);
-  return tables;
+  }, [me?.id, path]);
+  return state;
 }
 
 function useBrokeNudge(me) {
@@ -98,7 +101,9 @@ function Facts({ me, open, myTurn }) {
 export default function Home({ tab: tabProp }) {
   const { me, loading } = useSession();
   const wide = useWide();
-  const tables = useMyTables(me);
+  const { tables } = useTables(me, '/my-tables');
+  const publicTables = useTables(me, '/public-tables');
+  const [visibility, setVisibility] = useState('private');
   const [, setAfkTick] = useState(0); // re-render after dismissing the moved-out banner
   const [err, setErr] = useState(new URLSearchParams(window.location.search).get('signin') === 'failed' ? 'Google sign-in did not finish. Please try again.' : '');
   useEffect(() => { document.title = `${VENUE.name} · Texas Hold'em with friends`; }, []);
@@ -106,7 +111,10 @@ export default function Home({ tab: tabProp }) {
   const open = tables.filter((t) => t.status !== 'closed');
   const myTurn = tables.filter((t) => t.myTurn).length;
   const tab = tabProp || (me && tables.length ? 'tables' : 'new');
-  const setTab = (k) => navigate(`/?tab=${k}`, { replace: true });
+  const setTab = (k) => {
+    navigate(`/?tab=${k}`, { replace: true });
+    if (wide && k === 'new') document.getElementById('nt-name')?.focus();
+  };
   const errBox = err && <div className="error" onClick={() => setErr('')} role="alert">{err}</div>;
   const out = !loading && !me;
   const hostOn = !!me && tables.some((t) => t.isHost && t.status === 'lobby');
@@ -114,6 +122,8 @@ export default function Home({ tab: tabProp }) {
   const hb = hostOn || afkT ? 'has-banner' : '';
 
   const [vs, setVs] = useState('friends'); // v38: Friends / Play bots (in the card header on wide screens)
+  const startPublic = () => { setVisibility('public'); setVs('friends'); setTab('new'); };
+  const lobby = <LobbyPanel me={me} tables={tables} publicTables={publicTables} tab={tab} setTab={setTab} setErr={setErr} wide={wide} visibility={visibility} setVisibility={setVisibility} startPublic={startPublic} />;
   const sign = <Marquee aside={wide ? <Facts me={me} open={open.length} myTurn={myTurn} /> : null} />;
   if (!wide) {
     return (
@@ -121,7 +131,7 @@ export default function Home({ tab: tabProp }) {
         {sign}{errBox}
         {loading ? null : out ? (
           <div className="panel"><div className="panel-head"><span className="western">Pull up a chair</span></div><div className="panel-body"><SignIn compact next="/" /></div></div>
-        ) : <><AfkBanner t={afkT} setErr={setErr} onHide={() => setAfkTick((x) => x + 1)} /><HostBanner tables={tables} setErr={setErr} /><LobbyPanel me={me} tables={tables} tab={tab} setTab={setTab} setErr={setErr} /></>}
+        ) : <><AfkBanner t={afkT} setErr={setErr} onHide={() => setAfkTick((x) => x + 1)} /><HostBanner tables={tables} setErr={setErr} />{lobby}</>}
       </div>
     );
   }
@@ -133,9 +143,9 @@ export default function Home({ tab: tabProp }) {
         {out ? (
           <Card title="Pull up a chair" sub="Sign in to take a seat"><SignIn compact next="/" /></Card>
         ) : (
-          <Card title="Your tables" sub={myTurn ? `${myTurn} waiting on you` : `${open.length} open`}><TableList me={me} tables={tables} setTab={() => document.getElementById('nt-name')?.focus()} /></Card>
+          lobby
         )}
-        {me ? <Card title="Start a table" sub={<VsSwitch vs={vs} setVs={setVs} />}><NewTable setErr={setErr} vs={vs} setVs={setVs} /></Card> : <Card title="How it plays" sub="House rules"><HouseRules /></Card>}
+        {me ? <Card title="Start a table" sub={<VsSwitch vs={vs} setVs={setVs} />}><NewTable setErr={setErr} vs={vs} setVs={setVs} visibility={visibility} setVisibility={setVisibility} /></Card> : <Card title="How it plays" sub="House rules"><HouseRules /></Card>}
         {me ? (
           <div className="lb-col lb-games-col">
             <div className="lb-games"><BlackjackCard /><SlotsCard /></div>
@@ -233,17 +243,36 @@ function TableList({ me, tables, setTab }) {
   );
 }
 
-function LobbyPanel({ me, tables, tab, setTab, setErr }) {
+function PublicTableList({ tables, loading, error, startPublic }) {
+  if (loading) return <p className="small muted" role="status">Loading public tables…</p>;
+  if (error) return <p className="error" role="alert">{error}</p>;
+  return (
+    <Paged items={tables} rowH={128} gap={6} className="tables public-tables"
+      empty={<div className="empty"><p>No public tables with open seats.</p><button className="btn primary small" onClick={startPublic}>Start a public table</button></div>}
+      render={(t) => (
+        <button className="trow public-trow" aria-label={`View table ${t.name}`} onClick={() => { rememberTable(t.code); navigate(`/t/${t.code}`); }}>
+          <span className="t-name">{t.name}</span>
+          <span className="t-meta">{t.players}/{t.maxPlayers} seats · Hosted by {t.hostName}</span>
+          <span className="t-meta">{money(t.buyIn)} buy-in · {t.smallBlind}/{t.bigBlind} blinds</span>
+          <span className="t-meta">{turnShort(t.turnSeconds)} per turn · {t.status === 'lobby' ? 'Waiting to start' : 'In progress'}</span>
+          <span className="public-table-action">View table →</span>
+        </button>
+      )} />
+  );
+}
+
+function LobbyPanel({ me, tables, publicTables, tab, setTab, setErr, wide, visibility, setVisibility, startPublic }) {
   const mine = tables.length;
   // v51: Join-by-code gone; Games tab holds blackjack + slots.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
   // clipped to a pink sliver with an empty gap (pager 1/N, no tappable rows).
-  const tabKey = tab === 'join' ? 'tables' : tab;
+  const tabKey = wide ? (tab === 'public' ? 'public' : 'tables') : tab === 'join' ? 'tables' : tab;
   return (
-    <div className="panel lobby-panel" data-test="lobby-panel">
-      <Tabs label="Lobby" value={tabKey} onChange={setTab} tabs={[['tables', 'Your tables', mine || null], ['new', 'Start a table'], ['games', 'Games']]} />
-      <div className={`panel-body ${tabKey === 'tables' ? 'tables-tab' : ''}`}>
-        {tabKey === 'new' ? <NewTable setErr={setErr} />
+    <div className={`panel lobby-panel${wide ? ' lb-card' : ''}`} data-test="lobby-panel">
+      <Tabs label="Lobby" value={tabKey} onChange={setTab} tabs={[['tables', 'Your tables', mine || null], ['public', 'Public tables'], ...(!wide ? [['new', 'Start a table'], ['games', 'Games']] : [])]} />
+      <div className={`panel-body ${['tables', 'public'].includes(tabKey) ? 'tables-tab' : ''}`}>
+        {tabKey === 'public' ? <PublicTableList {...publicTables} startPublic={startPublic} />
+          : tabKey === 'new' ? <NewTable setErr={setErr} visibility={visibility} setVisibility={setVisibility} />
           : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /></div>
           : <TableList me={me} tables={tables} setTab={setTab} />}
       </div>
@@ -275,7 +304,7 @@ function VsSwitch({ vs, setVs }) {
   );
 }
 
-function NewTable({ setErr, vs: vsProp, setVs: setVsProp }) {
+function NewTable({ setErr, vs: vsProp, setVs: setVsProp, visibility, setVisibility }) {
   const [vsLocal, setVsLocal] = useState('friends');
   const vs = vsProp ?? vsLocal; const setVs = setVsProp ?? setVsLocal; const inHeader = !!setVsProp;
   const [busy, setBusy] = useState(false);
@@ -292,6 +321,7 @@ function NewTable({ setErr, vs: vsProp, setVs: setVsProp }) {
       const [smallBlind, bigBlind] = BLINDS[form.blinds];
       const r = await api('POST', '/tables', {
         name: form.name || (bots ? 'Bot practice' : suggest[0]),
+        visibility: bots ? 'private' : visibility,
         settings: { maxPlayers: bots ? +form.bots + (form.friends ? 3 : 1) : +form.maxPlayers, buyIn: +form.buyIn, smallBlind, bigBlind, turnSeconds: +form.turnSeconds, maxRebuys: bots ? -1 : +form.maxRebuys, skipPreflop: !!form.skipPreflop, autoCheck: !!form.autoCheck },
         ...(bots ? { bots: { count: +form.bots, friends: !!form.friends } } : {}),
       });
@@ -303,7 +333,7 @@ function NewTable({ setErr, vs: vsProp, setVs: setVsProp }) {
   const speedTag = [form.skipPreflop && 'flop start', form.autoCheck && 'auto-check'].filter(Boolean).join(' · ');
   const summary = bots
     ? `${form.bots} bot${+form.bots === 1 ? '' : 's'} · $${(+form.buyIn).toLocaleString()} practice · ${turnShort(+form.turnSeconds)} turns${form.friends ? ' · friends ok' : ''}${speedTag ? ' · ' + speedTag : ''}`
-    : `${form.maxPlayers} seats · ${turnShort(+form.turnSeconds)} turns · ${rebuyWord === 'none' ? 'no' : rebuyWord} rebuys${speedTag ? ' · ' + speedTag : ''}`;
+    : `${visibility === 'public' ? 'Public' : 'Private'} · ${form.maxPlayers} seats · ${turnShort(+form.turnSeconds)} turns · ${rebuyWord === 'none' ? 'no' : rebuyWord} rebuys${speedTag ? ' · ' + speedTag : ''}`;
   const nameField = (
     <div className="field nt-namefield">
       <div className="nt-label">
@@ -333,6 +363,10 @@ function NewTable({ setErr, vs: vsProp, setVs: setVsProp }) {
             <Seg label="Bots · always strong" value={form.bots} onChange={set('bots')} options={[1, 2, 3, 4, 5].map((n) => [n, String(n)])} />
           </> : <>
             <div className="pills">{suggest.map((n) => <button type="button" key={n} className={`pill ${form.name === n ? 'on' : ''}`} onClick={() => setForm({ ...form, name: n })}>{n}</button>)}</div>
+            <div className="nt-visibility">
+              <Seg label="Visibility" value={visibility} onChange={setVisibility} options={[['private', 'Private · invite link'], ['public', 'Public']]} />
+              <p className="small muted">{visibility === 'public' ? 'Listed in Public tables. Other players can join.' : 'Unlisted. Anyone with the invite link can join.'}</p>
+            </div>
             <Seg label="Buy-in" value={form.buyIn} onChange={set('buyIn')} options={BUYINS.map((v) => [v, `$${v.toLocaleString()}`])} />
           </>}
           <Seg label="Blinds" value={form.blinds} onChange={set('blinds')} options={BLINDS.map(([s, b], i) => [i, `${s}/${b}`])} />

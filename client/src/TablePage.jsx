@@ -173,6 +173,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
       <div className="tp-title">
         <p className="kicker"><Link to="/?tab=tables">← Tables</Link> / <span className="mono">{code}</span>{view.bots ? <span className="tp-botlabel"> · 🤖 Bot table · practice chips</span> : view.econ === false ? ' · practice chips' : ''}{(view.settings.skipPreflop || view.settings.autoCheck) && <span className="rule-badges" data-test="rule-badges">{view.settings.skipPreflop && <span className="rule-badge" title="Skip first betting round: blinds go in as dead money and every hand starts at the flop" data-test="badge-skip">Flop start</span>}{view.settings.autoCheck && <span className="rule-badge" title="Auto-check: free checks are taken for you (you can turn it off for yourself)" data-test="badge-autocheck">Auto-check</span>}</span>}</p>
         <h1 className="display">{view.name}</h1>
+        {!view.bots && <p className="small muted">{view.visibility === 'public' ? 'Public · listed in the lobby' : 'Private · anyone with the invite link can join'}</p>}
       </div>
       <p className="meta hide-s">Blinds {chips(view.settings.smallBlind)}/{chips(view.settings.bigBlind)} · Buy-in {money(view.settings.buyIn)} · {formatDuration(view.settings.turnSeconds)} a turn</p>
       {seated && view.status !== 'closed' && (

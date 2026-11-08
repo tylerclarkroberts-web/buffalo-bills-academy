@@ -1308,15 +1308,23 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 /* Keep each table row fully visible when the pager fits even one */
 .lobby5.narrow .tables .paged-row { min-height: 58px; }
 .lobby5.narrow .tables .trow { min-height: 54px; }
+.public-trow { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 4px; }
+.public-table-action { justify-self: end; font-size: 12px; font-weight: 600; color: var(--teal); }
+.nt-visibility { display: grid; gap: 4px; min-width: 0; }
+.nt-visibility p { margin: 0; }
+.lobby5.narrow .lobby-panel .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 /* v51d: on Your tables, shrink the marquee so the pager can fit several full rows */
 @media (max-width: 899px) {
-  .lobby5.narrow.tab-tables .marquee5 { flex: 0 0 auto; max-height: 110px; }
-  .lobby5.narrow.tab-tables .marquee5 .mq-welcome,
-  .lobby5.narrow.tab-tables .marquee5 .mq-tagline { display: none; }
+  .lobby5.narrow:is(.tab-tables, .tab-public) .marquee5 { flex: 0 0 auto; max-height: 110px; }
+  .lobby5.narrow:is(.tab-tables, .tab-public) .marquee5 .mq-welcome,
+  .lobby5.narrow:is(.tab-tables, .tab-public) .marquee5 .mq-tagline { display: none; }
 }
 @media (max-width: 899px) and (max-height: 720px) {
-  .lobby5.narrow.tab-tables .marquee5 { max-height: 72px; }
+  .lobby5.narrow:is(.tab-tables, .tab-public) .marquee5 { max-height: 72px; }
+}
+@media (max-width: 899px) and (max-height: 520px) {
+  .lobby5.narrow.tab-public .marquee5 { display: none; }
 }
 
 /* username handle editor (Settings + Account) */
