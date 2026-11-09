@@ -53,6 +53,8 @@ Unresolved bets block unlinking and account deletion, including the existing ope
 
 The production Academy origin is `https://buffalobillsacademy.com`. Set `PUBLIC_URL` to that origin and configure ConquestK's fixed callback as `https://buffalobillsacademy.com/auth/conquest/callback`. For local integration testing, use a separate localhost origin and callback in both applications. Linking, polling, existing admission recovery, and settlement remain active with the service credential configured even when new bets are disabled. The browser uses Academy's own origin and cookie; no cross-origin browser credentials or shared sessions are needed.
 
+An unconfigured link request returns 503 before writing a pending link nonce, so it does not block otherwise eligible account deletion.
+
 Release both applications with new betting disabled, verify linked-account and market reads, then use a small pilot allowlist before enabling everyone. Preserve a fresh copy of Academy's data directory and a ConquestK backup before rollout. Stopping new betting is a kill switch, not a refund or settlement shutdown. Publishing or merging the public Academy repository does not deploy the live site; its maintainer must perform and verify that release separately.
 
 ## Persistence and recovery
@@ -60,6 +62,8 @@ Release both applications with new betting disabled, verify linked-account and m
 Durable Academy data lives only on each player record's `conquest` field in `players.json`: the link/cache, session-bound link request/receipt, and immutable wager terms, admissions, and terminal receipts. Existing player files require no destructive migration. Do not delete the ledger or use the capped transaction-display history as an idempotency record.
 
 Every financial change stages a complete player-file snapshot, flushes the temporary file, atomically renames it, and only then publishes the changed bankroll/transaction/ConquestK fields in memory. Existing player and holdings object references survive the commit. A failed write disables further wagering until the process is recovered; it never publishes a phantom stake or credit. Malformed stored Risk state also fails wagering closed while unrelated account/game routes remain available.
+
+ConquestK startup validation requires the `players.json` root to be a player dictionary. Arrays and scalar JSON values disable the integration without replacing the file; an empty dictionary remains valid.
 
 Admission order is: persist stake hold and pending intent → ask ConquestK to durably accept/reject under its game-start lock → persist acceptance or a refund. The quote UUID is the stable intent ID. Retries use the identical terms. A lost response remains pending; only a durable rejection permits a refund. A lookup returning "not found" is not sufficient because an earlier request may still arrive.
 

@@ -83,6 +83,7 @@ export class Conquest {
       const target = new URL(this.url);
       if (target.pathname !== '/' || target.search || target.hash || target.username || target.password
         || (target.protocol !== 'https:' && !(target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)))) throw new Error('Invalid ConquestK origin');
+      if (!this.store.players || typeof this.store.players !== 'object' || Array.isArray(this.store.players)) throw new Error('Invalid stored player dictionary');
       for (const p of Object.values(this.store.players)) if (!validConquest(p)) throw new Error('Invalid stored ConquestK ledger');
     } catch (e) { this.fault = e.message; console.error('ConquestK integration disabled:', e.message); }
     if (this.token && pollMs > 0) {
@@ -158,7 +159,7 @@ export class Conquest {
   }
   async startLink(p, sessionId) {
     return this.changeLink(p, async () => {
-      if (!this.publicUrl) throw unavailable();
+      if (!this.configured() || !this.publicUrl) throw unavailable();
       if (this.hasPending(p)) throw fail('Wait for your existing Risk bets to settle before changing the account link.', 409);
       if (this.data(p).link?.active) throw fail('Unlink your current ConquestK account before linking another.', 409);
       const state = crypto.randomBytes(32).toString('hex');
