@@ -55,6 +55,10 @@ function validConquest(p) {
         : b.terminal.kind === 'winner' && b.market.participants.some((x) => x.userId === b.terminal.winnerUserId)
           && (b.state === 'won') === (b.terminal.winnerUserId === b.terms.outcomeUserId)))));
 }
+function validPlayerRecord(id, p) {
+  return !!p && typeof p === 'object' && !Array.isArray(p) && text(p.id) && p.id === id
+    && (Number.isFinite(p.bankroll) || (p.bankroll === undefined && p.conquest === undefined));
+}
 
 export function riskOdds(market) {
   const highest = Math.max(...market.participants.map((p) => p.rating));
@@ -85,8 +89,7 @@ export class Conquest {
         || (target.protocol !== 'https:' && !(target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)))) throw new Error('Invalid ConquestK origin');
       if (!this.store.players || typeof this.store.players !== 'object' || Array.isArray(this.store.players)) throw new Error('Invalid stored player dictionary');
       for (const [id, p] of Object.entries(this.store.players)) {
-        if (!p || typeof p !== 'object' || Array.isArray(p) || !text(p.id) || p.id !== id
-          || (!Number.isFinite(p.bankroll) && !(p.bankroll === undefined && p.conquest === undefined))) throw new Error('Invalid stored player record');
+        if (!validPlayerRecord(id, p)) throw new Error('Invalid stored player record');
         if (!validConquest(p)) throw new Error('Invalid stored ConquestK ledger');
       }
     } catch (e) { this.fault = e.message; console.error('ConquestK integration disabled:', e.message); }
@@ -108,7 +111,12 @@ export class Conquest {
   draft(p) { return { ...p, txns: [...(p.txns || [])], conquest: structuredClone(this.data(p)) }; }
   commit(drafts) {
     this.checkStorage();
-    try { this.store.commitPlayerDrafts(drafts); }
+    for (const draft of drafts) this.balanceCents(draft);
+    try {
+      const staged = { ...this.store.players, ...Object.fromEntries(drafts.map((p) => [p.id, p])) };
+      for (const [id, p] of Object.entries(staged)) if (!validPlayerRecord(id, p) || !validConquest(p)) throw new Error('Invalid staged player record');
+      this.store.commitPlayerDrafts(drafts);
+    }
     catch (e) { this.fault = 'Risk ledger write failed'; console.error('ConquestK ledger write failed:', e.message); throw unavailable(); }
   }
   balanceCents(p) {
@@ -118,8 +126,10 @@ export class Conquest {
   }
   move(draft, amountCents, type, note) {
     const balance = this.balanceCents(draft);
-    if (!integer(balance) || !Number.isSafeInteger(balance + amountCents) || balance + amountCents < 0) throw fail('There is not enough spendable play money for this bet.', 402);
-    draft.bankroll = (balance + amountCents) / 100;
+    const next = balance + amountCents;
+    if (!Number.isSafeInteger(next)) { this.fault = 'Invalid player bankroll total'; throw unavailable(); }
+    if (amountCents < 0 && next < 0) throw fail('There is not enough spendable play money for this bet.', 402);
+    draft.bankroll = next / 100;
     this.accounts.log(draft, type, amountCents / 100, note);
   }
   async request(method, path, body) {

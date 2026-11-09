@@ -153,6 +153,54 @@ test('corrupt live wallets fail quote and reservation closed without persisting 
   assert.equal(f.ck.admissions.size, 0);
 });
 
+test('corruption while admission is in flight preserves the valid hold for restart recovery', async (t) => {
+  const f = await fixture(t); await f.link(); const q = await f.quote();
+  const player = f.s.service.store.players[f.id];
+  f.s.service.conquest.fetchImpl = async (url, options) => {
+    const response = await f.ck.fetch(url, options);
+    if (url.includes('/admissions/')) player.bankroll = NaN;
+    return response;
+  };
+  assert.equal((await f.place(q)).body.bet.state, 'pending');
+  assert.equal(f.s.service.conquest.configured(), false);
+  const stored = JSON.parse(fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8'))[f.id];
+  assert.equal(stored.bankroll, 900);
+  assert.equal(stored.conquest.bets[q.body.quote.id].state, 'pending');
+  await f.restart(); await f.s.service.conquest.reconcile();
+  assert.equal(f.s.service.store.players[f.id].bankroll, 900);
+  assert.equal(f.s.service.store.players[f.id].conquest.bets[q.body.quote.id].state, 'accepted');
+});
+
+test('a corrupt peer wallet blocks the full-file commit without persisting a stake', async (t) => {
+  const f = await fixture(t); await f.link();
+  const peer = await f.s.call(null, 'POST', '/api/players', { name: 'Other player' });
+  const q = await f.quote();
+  const before = fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8');
+  f.s.service.store.players[peer.body.id].bankroll = NaN;
+  assert.equal((await f.place(q)).status, 503);
+  assert.equal(f.s.service.conquest.configured(), false);
+  assert.equal(f.s.service.store.players[f.id].bankroll, 1000);
+  assert.deepEqual(f.s.service.store.players[f.id].conquest.bets, {});
+  assert.equal(f.ck.admissions.size, 0);
+  assert.equal(fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8'), before);
+});
+
+test('void refunds and wins credit valid negative wallets exactly once', async (t) => {
+  for (const kind of ['void', 'winner']) {
+    const f = await fixture(t); await f.link(); const q = await f.quote(); await f.place(q);
+    const player = f.s.service.store.players[f.id];
+    f.s.service.accounts.change(player, -1100, 'test', 'Forced existing-game accounting', { force: true });
+    assert.equal(player.bankroll, -200);
+    f.ck.market.status = kind === 'void' ? 'void' : 'settled';
+    f.ck.market.terminal = { kind, winnerUserId: kind === 'void' ? null : 'u1', reason: 'completed', finalizedAt: stamp(epoch + 500000) };
+    await f.restart(); await f.s.service.conquest.reconcile(); await f.s.service.conquest.reconcile();
+    const updated = f.s.service.store.players[f.id];
+    assert.equal(updated.bankroll, kind === 'void' ? -100 : -10, 'positive credit may leave a legitimate wallet negative');
+    assert.equal(updated.conquest.bets[q.body.quote.id].state, kind === 'void' ? 'void' : 'won');
+    assert.equal(f.s.service.conquest.configured(), true);
+  }
+});
+
 test('unconfigured linking returns unavailable without creating a nonce or blocking deletion', async (t) => {
   const f = await fixture(t, { CONQUESTK_SERVICE_TOKEN: '' });
   const before = fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8');
