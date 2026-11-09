@@ -42,12 +42,13 @@ export class Shop {
     this.gagLog = new Map();
   }
   /** v36: pranks became one-time-use gags. Old prank ids are renamed (rubber chicken -> spaghetti noodle) and
-   *  capped at one of each; the old opt-out carries over. Idempotent; runs on every boot. */
+   *  capped at one of each; the old opt-out carries over. Also repairs faun cigarettes stored under the bare id
+   *  'filtered' (unusable) as 'tob-filtered'. Idempotent; runs on every boot. */
   migrate() {
     let dirty = false;
     for (const iv of Object.values(this.doc.inv)) {
       iv.own ||= {}; iv.eq ||= {}; iv.used ||= {}; iv.fit ||= {};
-      for (const [old, id] of Object.entries(GAG_RENAME)) if (iv.own[old]) { iv.own[id] = Math.max(iv.own[id] || 0, iv.own[old]); delete iv.own[old]; dirty = true; }
+      for (const [old, id] of Object.entries({ ...GAG_RENAME, filtered: 'tob-filtered' })) if (iv.own[old]) { iv.own[id] = Math.max(iv.own[id] || 0, iv.own[old]); delete iv.own[old]; dirty = true; }
       for (const id of Object.keys(iv.own)) if (ONCE(ITEM[id]) && iv.own[id] > 1) { iv.own[id] = 1; dirty = true; }
       if ('noPranks' in iv) { iv.noGags = !!iv.noPranks; delete iv.noPranks; dirty = true; }
     }
