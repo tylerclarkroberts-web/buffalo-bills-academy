@@ -221,7 +221,7 @@ function DeleteAccount({ me }) {
       e.preventDefault(); setErr('');
       try { await api('DELETE', '/me', { confirm: word.trim().toUpperCase(), password: pw }); await signOut(); window.location.assign('/'); } catch (e2) { setErr(e2.message); }
     }}>
-      <p className="small">This removes your player, bankroll and avatar for good. Leave your tables first. Type <b>DELETE</b> to confirm.</p>
+      <p className="small">This removes your player, bankroll and avatar for good. Leave your tables first. Accounts with Risk link or bet history require operator-assisted anonymization to retain their ledger. Type <b>DELETE</b> to confirm.</p>
       <label className="field"><span>Type DELETE</span><input value={word} onChange={(e) => setWord(e.target.value)} autoCapitalize="characters" required /></label>
       {me.hasPassword && <label className="field"><span>Password</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required /></label>}
       <button className="btn small danger" disabled={word.trim().toUpperCase() !== 'DELETE'}>Delete account</button>

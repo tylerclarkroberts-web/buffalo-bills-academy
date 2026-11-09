@@ -29,7 +29,7 @@ export const PRIVACY_HTML = page('Privacy', `
 <h2>What we don't do</h2>
 <p>We don't sell or share your data, show ads, or use it for anything except running the game. Other players can see your display name, avatar and game stats (for example on the leaderboard). Your email is shown only to you.</p>
 <h2>Deleting your data</h2>
-<p>You can retake or replace your avatar from your profile at any time. To have your account and data removed, ask the person who invited you to the game and it will be deleted.</p>
+<p>You can retake or replace your avatar from your profile at any time. For account removal, contact the person who invited you. Accounts with ConquestK link or Risk bet history require operator-assisted anonymization after outstanding bets settle; linked IDs and wager receipts must be retained to preserve account bindings and prevent duplicate payments.</p>
 <h2>No real money</h2>
 <p>Everything in the game is play money with no cash value. Not affiliated with any casino, resort or golf course.</p>`);
 

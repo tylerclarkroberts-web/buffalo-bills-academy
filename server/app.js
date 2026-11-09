@@ -263,6 +263,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   function deletePlayer(p) {
     if (conquest.hasPending(p)) throw new GameError('Wait for your Risk bets to settle before deleting your account.', 409);
     if (conquest.data(p).link?.active) throw new GameError('Unlink ConquestK on the Risk bets page before deleting your account.', 409);
+    if (conquest.data(p).pendingLink || conquest.linkChanges.has(p.id)) throw new GameError('Finish or unlink your pending ConquestK account link before deleting your account.', 409);
+    if (conquest.hasRetainedHistory(p)) throw new GameError('Risk account history must be retained. Contact the Academy operator to anonymize your account.', 409);
     const seated = service.store.allTables().some((t) => t.status !== 'closed' && t.seats.some((x) => x && x.playerId === p.id)) || bj.seatedOpen(p.id);
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }

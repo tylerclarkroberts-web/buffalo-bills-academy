@@ -13,7 +13,7 @@ function remote(clock) {
     participants: [{ userId: 'u1', name: 'Alice', rating: 850 }, { userId: 'u2', name: 'Bob', rating: 850 }],
     openedAt: stamp(epoch), closesAt: stamp(epoch + 120000), startedAt: null, expiresAt: stamp(epoch + 30 * 86400000), terminal: null };
   const links = new Map(), admissions = new Map();
-  const state = { market, links, admissions, fail: false, loseAdmissionResponse: false, reject: false, requests: [], nextUserId: 'u1' };
+  const state = { market, links, admissions, historicalMarkets: new Map(), fail: false, loseAdmissionResponse: false, reject: false, requests: [], nextUserId: 'u1' };
   const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   state.fetch = async (url, options) => {
     assert.equal(options.headers.authorization, 'Bearer test-only-token-012345678901234567890');
@@ -24,6 +24,7 @@ function remote(clock) {
     state.requests.push({ route, method: options.method, body });
     if (route === '/markets') return response({ markets: [state.market] });
     if (route === `/markets/${state.market.id}`) return response({ market: state.market });
+    if (route.startsWith('/markets/') && state.historicalMarkets.has(route.slice('/markets/'.length))) return response({ market: state.historicalMarkets.get(route.slice('/markets/'.length)) });
     if (route === '/link-requests') return response({ requestId: 'request-1', authorizeUrl: 'https://conquest.test/academy/link/request-1', expiresAt: stamp(clock.t + 600000) });
     if (route === '/link-redemptions') {
       if (body.code !== 'valid-code') return response({ error: 'Bad code' }, 400);
@@ -54,7 +55,7 @@ async function fixture(t, extra = {}) {
     const base = `http://127.0.0.1:${server.address().port}`;
     const call = async (cookie, method, route, body, origin = env.PUBLIC_URL) => {
       const r = await fetch(base + route, { method, redirect: 'manual', headers: { ...(cookie ? { cookie } : {}), ...(origin ? { origin } : {}), 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-      return { status: r.status, body: await r.json().catch(() => null), cookie: r.headers.get('set-cookie')?.split(';')[0], location: r.headers.get('location') };
+      return { status: r.status, body: await r.json().catch(() => null), cookie: r.headers.get('set-cookie')?.split(';')[0], location: r.headers.get('location'), cacheControl: r.headers.get('cache-control'), referrerPolicy: r.headers.get('referrer-policy') };
     };
     active = { ...app, call, stop: async () => { app.shutdown(); server.closeAllConnections(); await new Promise((r) => server.close(r)); } };
     return active;
@@ -92,18 +93,51 @@ test('rating odds are normalized winner estimates, use the haircut and cap gross
 
 test('linking proves both sessions, is origin protected, and guests cannot wager', async (t) => {
   const f = await fixture(t);
-  assert.equal((await f.s.call(null, 'POST', '/api/conquest/link', {})).status, 401);
+  const guestAttempt = await f.s.call(null, 'POST', '/api/conquest/link', {});
+  assert.equal(guestAttempt.status, 401); assert.equal(guestAttempt.cacheControl, 'no-store');
   assert.equal((await f.s.call(f.cookie, 'POST', '/api/conquest/link', {}, 'https://evil.test')).status, 403);
   assert.equal((await f.s.call(f.cookie, 'POST', '/api/conquest/link', {}, null)).status, 403);
   await f.s.call(f.cookie, 'POST', '/api/conquest/link', {});
   const state = f.s.service.store.players[f.id].conquest.pendingLink.state;
-  assert.equal((await f.s.call(null, 'GET', `/auth/conquest/callback?code=valid-code&state=${state}`)).location, '/conquest?linkError=1');
+  const invalidCallback = await f.s.call(null, 'GET', `/auth/conquest/callback?code=valid-code&state=${state}`);
+  assert.equal(invalidCallback.location, '/conquest?linkError=1');
+  assert.equal(invalidCallback.cacheControl, 'no-store'); assert.equal(invalidCallback.referrerPolicy, 'no-referrer');
   assert.equal(f.ck.links.size, 0);
   await f.link();
-  assert.equal((await f.s.call(f.cookie, 'GET', '/api/conquest')).body.link.conquestUserId, 'u1');
+  const privateOverview = await f.s.call(f.cookie, 'GET', '/api/conquest');
+  assert.equal(privateOverview.body.link.conquestUserId, 'u1'); assert.equal(privateOverview.cacheControl, 'no-store');
   const lastState = f.ck.requests.filter((r) => r.route === '/link-requests').at(-1).body.state;
-  assert.equal((await f.s.call(f.cookie, 'GET', `/auth/conquest/callback?code=valid-code&state=${lastState}`)).location, '/conquest?linked=1', 'lost redirect may replay the completed callback');
+  const replay = await f.s.call(f.cookie, 'GET', `/auth/conquest/callback?code=valid-code&state=${lastState}`);
+  assert.equal(replay.location, '/conquest?linked=1', 'lost redirect may replay the completed callback');
+  assert.equal(replay.cacheControl, 'no-store'); assert.equal(replay.referrerPolicy, 'no-referrer');
   assert.equal((await f.s.call(null, 'GET', '/api/conquest')).body.link, null);
+});
+
+test('in-flight and lost link redemption retain identity through deletion, unlink, and retry races', async (t) => {
+  const f = await fixture(t);
+  await f.s.call(f.cookie, 'POST', '/api/conquest/link', {});
+  const state = f.s.service.store.players[f.id].conquest.pendingLink.state;
+  const callback = `/auth/conquest/callback?code=valid-code&state=${state}`;
+  let release, entered;
+  const held = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  f.s.service.conquest.fetchImpl = async (url, options) => {
+    const response = await f.ck.fetch(url, options);
+    if (url.endsWith('/link-redemptions')) { entered(); await held; throw new Error('lost redemption response after remote commit'); }
+    return response;
+  };
+  const completing = f.s.call(f.cookie, 'GET', callback);
+  await started;
+  assert.equal((await f.s.call(f.cookie, 'POST', '/api/conquest/unlink', {})).status, 409);
+  assert.equal((await f.s.call(f.cookie, 'POST', '/api/conquest/link', {})).status, 409);
+  assert.equal((await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' })).status, 409);
+  release(); assert.equal((await completing).location, '/conquest?linkError=1');
+  assert.equal(f.ck.links.get(f.id).active, true, 'remote link committed although its response was lost');
+  assert.equal(f.s.service.store.players[f.id].conquest.retainLinkHistory, true);
+  await f.restart();
+  assert.equal((await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' })).status, 409);
+  assert.equal((await f.s.call(f.cookie, 'GET', callback)).location, '/conquest?linked=1');
+  assert.equal(f.s.service.store.players[f.id].conquest.link.conquestUserId, 'u1');
 });
 
 test('a fixed quote debits once, conserves escrow worth, hides history and pays once after restart', async (t) => {
@@ -191,6 +225,42 @@ test('invalid/expired quotes and return caps never debit a bankroll', async (t) 
   assert.equal(f.s.service.store.players[f.id].bankroll, 1000);
 });
 
+test('pending payouts recover before a bounded rotating historical name refresh', async (t) => {
+  const f = await fixture(t); await f.link();
+  const original = structuredClone(f.ck.market);
+  for (let i = 1; i <= 3; i++) {
+    f.ck.market = { ...structuredClone(original), id: `market-${i}`, gameId: `game-${i}` };
+    await f.place(await f.quote('u1', 100));
+    f.ck.market.status = 'settled'; f.ck.market.startedAt = stamp(epoch + 120000);
+    f.ck.market.terminal = { kind: 'winner', winnerUserId: 'u1', reason: 'completed', finalizedAt: stamp(epoch + 500000) };
+    await f.s.service.conquest.reconcile();
+    f.ck.historicalMarkets.set(f.ck.market.id, structuredClone(f.ck.market));
+  }
+  f.ck.market = { ...structuredClone(original), id: 'market-active', gameId: 'game-active' };
+  f.ck.loseAdmissionResponse = true;
+  const q = await f.quote('u1', 100); assert.equal((await f.place(q)).body.bet.state, 'pending');
+  f.ck.market.status = 'settled'; f.ck.market.startedAt = stamp(epoch + 120000);
+  f.ck.market.terminal = { kind: 'winner', winnerUserId: 'u1', reason: 'completed', finalizedAt: stamp(epoch + 500000) };
+  const service = f.s.service.conquest, calls = [];
+  service.fetchImpl = async (url, options) => {
+    const route = new URL(url).pathname.replace('/api/integrations/academy/v1', '');
+    calls.push(route);
+    if (route.startsWith('/markets/') && !route.endsWith('/market-active')) {
+      assert.equal(f.s.service.store.players[f.id].bankroll, 1003.6, 'held money settled before history is contacted');
+      throw new Error('historical request unavailable');
+    }
+    return f.ck.fetch(url, options);
+  };
+  await service.reconcile();
+  assert.equal(f.s.service.store.players[f.id].conquest.bets[q.body.quote.id].state, 'won');
+  assert.equal(calls.filter((r) => r.startsWith('/markets/')).length, 2, 'one active and at most one historical read');
+  assert.ok(calls.findIndex((r) => r.startsWith('/admissions/')) < calls.indexOf('/markets/market-active'));
+  const firstHistory = calls.at(-1); calls.length = 0;
+  await service.reconcile();
+  assert.equal(calls.filter((r) => r.startsWith('/markets/')).length, 1);
+  assert.notEqual(calls.at(-1), firstHistory, 'a failed old record does not pin the history cursor');
+});
+
 test('failed staged write leaves live references and money untouched and fails wagering closed', async (t) => {
   const f = await fixture(t); await f.link(); const q = await f.quote();
   const player = f.s.service.store.players[f.id], holdings = player.holdings;
@@ -242,7 +312,7 @@ test('pilot limits affect new bets but not account linking; original player and 
   assert.equal(player.conquest.link.active, false);
 });
 
-test('link history is not discarded by claiming a legacy guest, and linked accounts must unlink before deletion', async (t) => {
+test('link history survives revocation and refresh, blocking deletion and legacy claiming', async (t) => {
   const f = await fixture(t); await f.link();
   const guest = await f.s.call(null, 'POST', '/api/players', { name: 'Old guest' });
   const result = await f.s.call(f.cookie, 'POST', '/api/auth/claim-legacy', { token: guest.body.token });
@@ -250,5 +320,29 @@ test('link history is not discarded by claiming a legacy guest, and linked accou
   assert.equal(f.s.service.store.players[f.id].conquest.link.active, true);
   assert.equal((await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' })).status, 409);
   await f.s.call(f.cookie, 'POST', '/api/conquest/unlink', {});
-  assert.equal((await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' })).status, 200);
+  f.ck.links.delete(f.id);
+  await f.s.service.conquest.refreshLink(f.s.service.store.players[f.id]);
+  assert.equal(f.s.service.store.players[f.id].conquest.link, null);
+  assert.equal(f.s.service.store.players[f.id].conquest.retainLinkHistory, true);
+  await f.restart();
+  assert.equal((await f.s.call(f.cookie, 'POST', '/api/auth/claim-legacy', { token: guest.body.token })).body.merged, false);
+  const deletion = await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' });
+  assert.equal(deletion.status, 409); assert.match(deletion.body.error, /operator to anonymize/);
+  assert.ok(f.s.service.store.players[f.id].conquest.linkReceipt);
+});
+
+test('settled and unlinked wager history cannot be discarded by user or operator deletion', async (t) => {
+  const f = await fixture(t); await f.link(); const q = await f.quote(); await f.place(q);
+  f.ck.market.status = 'void'; f.ck.market.terminal = { kind: 'void', winnerUserId: null, reason: 'cancelled', finalizedAt: stamp(epoch + 30000) };
+  await f.s.service.conquest.reconcile();
+  await f.s.call(f.cookie, 'POST', '/api/conquest/unlink', {});
+  const before = structuredClone(f.s.service.store.players[f.id].conquest);
+  assert.equal((await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' })).status, 409);
+  const guest = await f.s.call(null, 'POST', '/api/players', { name: 'Old guest' });
+  assert.equal((await f.s.call(f.cookie, 'POST', '/api/auth/claim-legacy', { token: guest.body.token })).body.merged, false);
+  fs.writeFileSync(path.join(f.dir, 'admin-delete.json'), JSON.stringify([f.id]));
+  await f.restart();
+  assert.deepEqual(f.s.service.store.players[f.id].conquest, before);
+  assert.equal(f.s.service.store.players[f.id].bankroll, 1000);
+  assert.match(fs.readFileSync(path.join(f.dir, 'admin-delete.json.done'), 'utf8'), /operator to anonymize/);
 });

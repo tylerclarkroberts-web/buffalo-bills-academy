@@ -83,7 +83,7 @@ export default function Conquest() {
       <section className="risk-account" aria-label="Your betting account">
         {!loading && !me?.signedIn ? <><p>Sign in with an Academy account, then link your ConquestK account to place bets.</p><SignIn next="/conquest" /></>
           : me ? <><div><b>{me.name}</b><p>{money(data.bankroll ?? me.bankroll)} spendable · {money(data.escrow)} in unsettled Risk stakes</p><p>{data.link?.active ? `Linked to ${data.link.conquestName}` : 'Your game accounts stay separate; linking proves they both belong to you.'}</p></div>
-            <button className="btn" disabled={busy || !data.connected} onClick={data.link?.active ? unlink : link}>{data.link?.active ? 'Unlink accounts' : 'Link ConquestK account'}</button></> : null}
+            <button className="btn" disabled={busy || !data.connected} onClick={data.link?.active ? unlink : link}>{data.link?.active ? 'Unlink accounts' : 'Link ConquestK account'}</button><p className="small muted">Link and bet history is retained. Account removal afterward requires operator-assisted anonymization.</p></> : null}
         {me?.signedIn && !data.canBet && data.connected && <p className="small muted">New bets are not available for this account right now. Existing bets will still settle.</p>}
       </section>
       {quote && <section ref={reviewBox} className="risk-confirm" aria-label="Review your bet" tabIndex={-1}>

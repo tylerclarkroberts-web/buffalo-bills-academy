@@ -42,6 +42,7 @@ function validConquest(p) {
   if (!c || typeof c !== 'object' || Array.isArray(c) || !c.bets || typeof c.bets !== 'object' || Array.isArray(c.bets)) return false;
   if (c.link !== null && (!validLink(c.link) || c.link.academyPlayerId !== p.id)) return false;
   if (c.pendingLink !== null && (!c.pendingLink || !text(c.pendingLink.state) || !text(c.pendingLink.sessionHash) || !date(c.pendingLink.expiresAt))) return false;
+  if (c.retainLinkHistory !== undefined && c.retainLinkHistory !== true) return false;
   if (c.linkReceipt && (!text(c.linkReceipt.stateHash) || !text(c.linkReceipt.codeHash) || !text(c.linkReceipt.sessionHash))) return false;
   return Object.entries(c.bets).every(([id, b]) => text(id) && b.id === id && STATES.has(b.state) && date(b.createdAt)
     && validTerms(b.terms) && b.terms.academyPlayerId === p.id && validMarket(b.market)
@@ -68,7 +69,7 @@ export function riskOdds(market) {
 }
 
 export class Conquest {
-  constructor({ service, sessions, env, fetchImpl = globalThis.fetch, pollMs = 10000 }) {
+  constructor({ service, sessions, env, fetchImpl = globalThis.fetch, pollMs = 5000 }) {
     this.service = service; this.store = service.store; this.accounts = service.accounts; this.sessions = sessions;
     this.now = service.now; this.fetchImpl = fetchImpl;
     this.url = (env.CONQUESTK_URL || 'https://conquestk.com').replace(/\/$/, '');
@@ -76,7 +77,7 @@ export class Conquest {
     this.token = env.CONQUESTK_SERVICE_TOKEN || '';
     this.enabled = ['true', '1'].includes(env.CONQUESTK_BETTING_ENABLED);
     this.pilot = new Set((env.CONQUESTK_PILOT_PLAYER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean));
-    this.quotes = new Map(); this.linkChanges = new Set(); this.failures = new Map(); this.markets = []; this.connected = false; this.lastRefresh = 0; this.fault = null;
+    this.quotes = new Map(); this.linkChanges = new Set(); this.failures = new Map(); this.markets = []; this.connected = false; this.lastRefresh = 0; this.historyCursor = 0; this.fault = null;
     try {
       if (this.token && this.token.length < 32) throw new Error('ConquestK service token must contain at least 32 characters');
       const target = new URL(this.url);
@@ -96,7 +97,8 @@ export class Conquest {
   data(p) { return p.conquest || { link: null, pendingLink: null, bets: {} }; }
   allBets() { return Object.values(this.store.players).flatMap((p) => Object.values(this.data(p).bets).map((bet) => ({ p, bet }))); }
   hasPending(p) { return !validConquest(p) || Object.values(this.data(p).bets).some((b) => ACTIVE.has(b.state)); }
-  hasHistory(p) { return !!p.conquest && (!!p.conquest.link || !!p.conquest.pendingLink || Object.keys(p.conquest.bets || {}).length > 0); }
+  hasRetainedHistory(p) { return !!p.conquest && (!!p.conquest.retainLinkHistory || !!p.conquest.link || !!p.conquest.linkReceipt || Object.keys(p.conquest.bets || {}).length > 0); }
+  hasHistory(p) { return this.hasRetainedHistory(p) || !!p.conquest?.pendingLink; }
   escrow(p) { return validConquest(p) ? Object.values(this.data(p).bets).filter((b) => ACTIVE.has(b.state)).reduce((sum, b) => sum + b.terms.stakeCents, 0) / 100 : 0; }
   draft(p) { return { ...p, txns: [...(p.txns || [])], conquest: structuredClone(this.data(p)) }; }
   commit(drafts) {
@@ -116,7 +118,7 @@ export class Conquest {
     try {
       response = await this.fetchImpl(`${this.url}/api/integrations/academy/v1${path}`, { method, redirect: 'error', signal: AbortSignal.timeout(10000),
         headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    } catch { this.connected = false; throw unavailable(); }
+    } catch { this.connected = false; const e = unavailable(); e.transportFailure = true; throw e; }
     let data;
     try { data = await response.json(); } catch { throw unavailable(); }
     if (!response.ok) throw fail(typeof data?.error === 'string' ? data.error : 'ConquestK could not complete that request.', response.status === 404 ? 404 : 503, data?.code || 'risk_remote');
@@ -141,48 +143,60 @@ export class Conquest {
     const r = await this.request('GET', `/links/${encodeURIComponent(p.id)}`);
     if (r.link !== null && (!validLink(r.link) || r.link.academyPlayerId !== p.id)) throw unavailable();
     const current = this.store.players[p.id]; if (!current) throw fail('Sign in again.', 401);
-    if (JSON.stringify(this.data(current).link) !== JSON.stringify(r.link)) { const d = this.draft(current); d.conquest.link = r.link; this.commit([d]); }
+    if (JSON.stringify(this.data(current).link) !== JSON.stringify(r.link)) {
+      const d = this.draft(current);
+      if (d.conquest.link || r.link) d.conquest.retainLinkHistory = true;
+      d.conquest.link = r.link; this.commit([d]);
+    }
     return r.link;
   }
-  async startLink(p, sessionId) {
-    this.checkStorage();
-    if (!this.publicUrl) throw unavailable();
-    if (this.hasPending(p)) throw fail('Wait for your existing Risk bets to settle before changing the account link.', 409);
-    if (this.data(p).link?.active) throw fail('Unlink your current ConquestK account before linking another.', 409);
-    const state = crypto.randomBytes(32).toString('hex');
-    const d = this.draft(p);
-    d.conquest.pendingLink = { state, sessionHash: hash(sessionId), expiresAt: iso(this.now() + 10 * 60000) };
-    this.commit([d]);
-    const r = await this.request('POST', '/link-requests', { academyPlayerId: p.id, academyName: p.name, state });
-    if (!text(r.requestId) || !date(r.expiresAt) || !text(r.authorizeUrl) || new URL(r.authorizeUrl).origin !== new URL(this.url).origin) throw unavailable();
-    return { authorizeUrl: r.authorizeUrl };
-  }
-  async finishLink(p, sessionId, { code, state }) {
-    const pending = this.data(p).pendingLink;
-    const receipt = this.data(p).linkReceipt;
-    if (!pending && receipt && text(code) && text(state) && receipt.stateHash === hash(state) && receipt.codeHash === hash(code)
-      && receipt.sessionHash === hash(sessionId) && this.data(p).link?.active) return;
-    if (!pending || !text(code) || pending.state !== state || pending.sessionHash !== hash(sessionId) || Date.parse(pending.expiresAt) <= this.now()) throw fail('That link request expired. Start again from Risk bets.', 400);
-    const r = await this.request('POST', '/link-redemptions', { academyPlayerId: p.id, state, code });
-    if (!validLink(r.link) || r.link.academyPlayerId !== p.id || !r.link.active) throw unavailable();
-    const current = this.store.players[p.id];
-    if (!current || this.data(current).pendingLink?.state !== state || !this.sessions.lookup(sessionId)) throw fail('Sign in and start the link again.', 401);
-    if (this.hasPending(current)) throw fail('Wait for your Risk bets to settle before changing the account link.', 409);
-    const d = this.draft(current); d.conquest.link = r.link; d.conquest.pendingLink = null;
-    d.conquest.linkReceipt = { stateHash: hash(state), codeHash: hash(code), sessionHash: hash(sessionId) }; this.commit([d]);
-  }
-  async unlink(p) {
+  async changeLink(p, operation) {
     this.checkStorage();
     if (this.linkChanges.has(p.id)) throw fail('Your account link is being updated. Try again shortly.', 409);
-    if (this.hasPending(p)) throw fail('Your Risk bets must settle before you unlink this account.', 409);
     this.linkChanges.add(p.id);
-    try {
+    try { return await operation(); } finally { this.linkChanges.delete(p.id); }
+  }
+  async startLink(p, sessionId) {
+    return this.changeLink(p, async () => {
+      if (!this.publicUrl) throw unavailable();
+      if (this.hasPending(p)) throw fail('Wait for your existing Risk bets to settle before changing the account link.', 409);
+      if (this.data(p).link?.active) throw fail('Unlink your current ConquestK account before linking another.', 409);
+      const state = crypto.randomBytes(32).toString('hex');
+      const d = this.draft(p);
+      d.conquest.pendingLink = { state, sessionHash: hash(sessionId), expiresAt: iso(this.now() + 10 * 60000) };
+      this.commit([d]);
+      const r = await this.request('POST', '/link-requests', { academyPlayerId: p.id, academyName: p.name, state });
+      if (!text(r.requestId) || !date(r.expiresAt) || !text(r.authorizeUrl) || new URL(r.authorizeUrl).origin !== new URL(this.url).origin) throw unavailable();
+      return { authorizeUrl: r.authorizeUrl };
+    });
+  }
+  async finishLink(p, sessionId, { code, state }) {
+    return this.changeLink(p, async () => {
+      const pending = this.data(p).pendingLink;
+      const receipt = this.data(p).linkReceipt;
+      if (!pending && receipt && text(code) && text(state) && receipt.stateHash === hash(state) && receipt.codeHash === hash(code)
+        && receipt.sessionHash === hash(sessionId) && this.data(p).link?.active) return;
+      if (!pending || !text(code) || pending.state !== state || pending.sessionHash !== hash(sessionId) || Date.parse(pending.expiresAt) <= this.now()) throw fail('That link request expired. Start again from Risk bets.', 400);
+      // Keep identity evidence even if redemption commits remotely and its response is lost.
+      if (!this.data(p).retainLinkHistory) { const d = this.draft(p); d.conquest.retainLinkHistory = true; this.commit([d]); }
+      const r = await this.request('POST', '/link-redemptions', { academyPlayerId: p.id, state, code });
+      if (!validLink(r.link) || r.link.academyPlayerId !== p.id || !r.link.active) throw unavailable();
+      const current = this.store.players[p.id];
+      if (!current || this.data(current).pendingLink?.state !== state || !this.sessions.lookup(sessionId)) throw fail('Sign in and start the link again.', 401);
+      if (this.hasPending(current)) throw fail('Wait for your Risk bets to settle before changing the account link.', 409);
+      const d = this.draft(current); d.conquest.link = r.link; d.conquest.pendingLink = null; d.conquest.retainLinkHistory = true;
+      d.conquest.linkReceipt = { stateHash: hash(state), codeHash: hash(code), sessionHash: hash(sessionId) }; this.commit([d]);
+    });
+  }
+  async unlink(p) {
+    return this.changeLink(p, async () => {
+      if (this.hasPending(p)) throw fail('Your Risk bets must settle before you unlink this account.', 409);
       const link = await this.refreshLink(p);
       if (link?.active) await this.request('POST', `/links/${encodeURIComponent(link.id)}/revoke`, { academyPlayerId: p.id, linkVersion: link.version });
       const current = this.store.players[p.id]; const d = this.draft(current);
       if (d.conquest.link) d.conquest.link.active = false;
       d.conquest.pendingLink = null; this.commit([d]);
-    } finally { this.linkChanges.delete(p.id); }
+    });
   }
   async overview(p) {
     if (this.configured() && this.now() - this.lastRefresh > 5000) { try { await this.refreshMarkets(); } catch { this.connected = false; } }
@@ -315,23 +329,34 @@ export class Conquest {
   async reconcile() {
     if (!this.configured() || this.reconciling) return this.reconciling;
     this.reconciling = (async () => {
-      try { await this.refreshMarkets(); } catch { /* existing wagers still recover by exact market ID */ }
-      for (const { p, bet } of this.allBets()) if (bet.state === 'pending') {
-        try { await this.decide(p.id, bet.id); this.failures.delete(`admission:${bet.id}`); }
-        catch (e) { this.recordFailure('admission', bet.id, e); }
-      }
-      const ids = new Set(this.allBets().map(({ bet }) => bet.market.id));
-      for (const id of ids) {
-        try { const market = await this.market(id); this.refreshNames(market); this.settle(market); this.failures.delete(`settlement:${id}`); }
-        catch (e) { this.recordFailure('settlement', id, e); }
-      }
-      this.report();
+      try {
+        try { await this.refreshMarkets(); } catch { /* existing wagers still recover by exact market ID */ }
+        for (const { p, bet } of this.allBets()) if (bet.state === 'pending') {
+          try { await this.decide(p.id, bet.id); this.failures.delete(`admission:${bet.id}`); }
+          catch (e) { this.recordFailure('admission', bet.id, e); if (e.transportFailure) return; }
+        }
+        const bets = this.allBets().map(({ bet }) => bet);
+        const activeIds = new Set(bets.filter((b) => ACTIVE.has(b.state)).map((b) => b.market.id));
+        for (const id of activeIds) {
+          try { const market = await this.market(id); this.refreshNames(market); this.settle(market); this.failures.delete(`settlement:${id}`); }
+          catch (e) { this.recordFailure('settlement', id, e); if (e.transportFailure) return; }
+        }
+        // Name anonymization is eventual; old receipts must never queue ahead of held money.
+        const historyIds = [...new Set(bets.map((b) => b.market.id))].filter((id) => !activeIds.has(id));
+        if (historyIds.length) {
+          const id = historyIds[this.historyCursor++ % historyIds.length];
+          try { this.refreshNames(await this.market(id)); this.failures.delete(`history:${id}`); }
+          catch (e) { this.recordFailure('history', id, e); }
+        }
+      } finally { this.report(); }
     })();
     try { await this.reconciling; } finally { this.reconciling = null; }
   }
 }
 
 export function mountConquest({ app, api, conquest, auth, wrap }) {
+  api.use('/conquest', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  app.use('/auth/conquest/callback', (_req, res, next) => { res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); next(); });
   const registered = (req, _res, next) => {
     if (!req.sessionId || !(req.player?.google || req.player?.login)) return next(fail('Sign in with an account to use Risk betting.', 401));
     next();
