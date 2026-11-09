@@ -13,7 +13,7 @@ import { replayEnabled, setReplayEnabled } from './table/replay.js';
 import * as music from './table/music.js';
 
 const OUTCOME = { motherlode: 'Motherlode', aliens: 'Alien skeletons', diamonds: 'Diamond well', dud: 'Mostly mud', normal: 'Shift' };
-const TX = { start: 'Start', buyin: 'Buy-in', cashout: 'Cash-out', mine: 'Mines', 'invest-buy': 'Bought', 'invest-sell': 'Sold' };
+const TX = { start: 'Start', buyin: 'Buy-in', cashout: 'Cash-out', mine: 'Mines', 'invest-buy': 'Bought', 'invest-sell': 'Sold', risk_stake: 'Risk stake', risk_win: 'Risk win', risk_refund: 'Risk refund' };
 const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -43,7 +43,7 @@ export function Profile({ id }) {
   if (p.txns) tabs.push(['money', 'Money']);
   if (self && me) tabs.push(['alerts', 'Settings'], ['account', 'Account']);
   const stats = [
-    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables`],
+    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables${w.riskEscrow ? ` · ${money(w.riskEscrow)} Risk stakes` : ''}`],
     ['Bankroll', money(w.bankroll), 'Spendable play money'],
     ['Poker, lifetime', money(pk.lifetimeNet, { sign: true }), `${pk.gamesPlayed ?? pk.games.length} game${(pk.gamesPlayed ?? pk.games.length) === 1 ? '' : 's'}`, cls(pk.lifetimeNet)],
     ['Hands played', chips(pk.handsPlayed), `${chips(pk.handsWon)} won`],
@@ -128,7 +128,7 @@ export function Leaderboard() {
     <div className="screen board">
       <div className="page-head">
         <h1 className="display h2">Leader<span className="script neon-pink">board</span></h1>
-        <p className="kicker">Net worth = cash + coins at today's price + chips on tables</p>
+        <p className="kicker">Net worth = cash + coins + chips on tables + unsettled Risk stakes</p>
       </div>
       {err && <div className="error">{err}</div>}
       {!d ? <p className="muted">Loading…</p> : (
@@ -221,7 +221,7 @@ function DeleteAccount({ me }) {
       e.preventDefault(); setErr('');
       try { await api('DELETE', '/me', { confirm: word.trim().toUpperCase(), password: pw }); await signOut(); window.location.assign('/'); } catch (e2) { setErr(e2.message); }
     }}>
-      <p className="small">This removes your player, bankroll and avatar for good. Leave your tables first. Type <b>DELETE</b> to confirm.</p>
+      <p className="small">This removes your player, bankroll and avatar for good. Leave your tables first. Accounts with Risk link or bet history require operator-assisted anonymization to retain their ledger. Type <b>DELETE</b> to confirm.</p>
       <label className="field"><span>Type DELETE</span><input value={word} onChange={(e) => setWord(e.target.value)} autoCapitalize="characters" required /></label>
       {me.hasPassword && <label className="field"><span>Password</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required /></label>}
       <button className="btn small danger" disabled={word.trim().toUpperCase() !== 'DELETE'}>Delete account</button>

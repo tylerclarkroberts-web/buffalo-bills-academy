@@ -53,6 +53,7 @@ function AccountMenu({ me }) {
           <button role="menuitem" onClick={() => go('/profile')}><Ico k="profile" />Profile</button>
           <button role="menuitem" onClick={() => go('/leaderboard')}><Ico k="board" />Leaderboard</button>
           <button role="menuitem" onClick={() => go('/invest')}><Ico k="invest" />Invest</button>
+          <button role="menuitem" onClick={() => go('/conquest')}><Ico k="board" />Risk bets</button>
           <button role="menuitem" className="am-out" onClick={async () => { setOpen(false); await signOut(); navigate('/'); }}><Ico k="out" />Sign out</button>
         </div>
       )}
@@ -68,6 +69,7 @@ export function Shell({ path, children }) {
       <header className="topbar">
         <Link to="/" className="wordmark" aria-label={`${VENUE.name}, the card room`}><Mark size={24} /><b className="script">{VENUE.short}</b><span className="hide-xs">Academy</span></Link>
         <div className="tb-right">
+          <Link to="/conquest" className="barn-btn" title="ConquestK and play-money Risk bets"><Ico k="board" /><span>Risk bets</span></Link>
           <button className="mines-btn" onClick={goToMines} title="Work a shift in the Acid Mines"><Ico k="pick" /><span>Acid Mines</span></button>
           {me && <Link to="/barn" className="barn-btn" title="Your barn" data-test="barn-btn"><Ico k="barn" /><span>Barn</span></Link>}
           {me && <Link to="/store" className="barn-btn store-btn" title="The General Store (play money)" aria-label="General Store" data-test="store-btn"><Ico k="store" /><span>General Store</span></Link>}

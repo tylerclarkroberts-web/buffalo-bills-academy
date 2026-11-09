@@ -1,0 +1,27 @@
+.risk-page { overflow-y: auto; display: block; padding-bottom: 32px; }
+.risk-heading, .risk-account, .risk-market-head, .risk-history article { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.risk-heading { margin-bottom: 20px; }
+.risk-heading h1 { margin: 4px 0; }
+.risk-page section { margin: 20px 0; }
+.risk-page h2 { font-size: 18px; margin: 0 0 12px; }
+.risk-page p { margin: 7px 0; }
+.risk-account, .risk-market, .risk-confirm, .risk-rules { border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 18px; background: rgba(0,0,0,.16); }
+.risk-account { flex-wrap: wrap; }
+.risk-markets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 16px; }
+.risk-clock { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 13px; }
+.risk-outcomes { margin: 16px 0; }
+.risk-outcomes > div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+.risk-outcomes small { display: block; opacity: .65; }
+.risk-slip { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.risk-slip label { display: grid; gap: 6px; flex: 1 1 120px; }
+.risk-slip select, .risk-slip input { width: 100%; min-height: 42px; }
+.risk-slip p { flex-basis: 100%; }
+.risk-notice { padding: 12px; border-left: 3px solid #eebd70; background: rgba(238,189,112,.08); }
+.risk-confirm { border-color: #eebd70; }
+.risk-confirm dl { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.risk-confirm dl div { padding: 10px; background: rgba(0,0,0,.15); }
+.risk-confirm dd { margin: 5px 0 0; font-size: 22px; font-variant-numeric: tabular-nums; }
+.risk-history article { padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,.12); align-items: start; }
+.risk-history article > div:last-child { text-align: right; }
+.risk-rules summary { cursor: pointer; }
+@media (max-width: 600px) { .risk-heading { align-items: start; flex-direction: column; } .risk-market-head { align-items: start; flex-wrap: wrap; } .risk-account, .risk-market, .risk-confirm { padding: 13px; } .risk-history article { flex-direction: column; gap: 4px; } .risk-history article > div:last-child { text-align: left; } }

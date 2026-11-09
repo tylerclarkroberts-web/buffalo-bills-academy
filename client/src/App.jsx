@@ -14,6 +14,7 @@ const Barn = lazy(() => import('./barn/Barn.jsx'));
 const Store = lazy(() => import('./store/Store.jsx'));
 const Slots = lazy(() => import('./slots/SlotsPage.jsx'));
 const Blackjack = lazy(() => import('./bj/BlackjackPage.jsx'));
+const Conquest = lazy(() => import('./Conquest.jsx'));
 
 export function navigate(path, { replace = false } = {}) {
   if (path === window.location.pathname + window.location.search) return;
@@ -58,6 +59,7 @@ export default function App() {
     page = <Suspense fallback={<div className="screen" />}><AvatarMaker next={next} retake={path.startsWith('/profile')} /></Suspense>;
   } else if (t) page = <TablePage code={t[1].toUpperCase()} />;
   else if (path.startsWith('/multi')) page = <Suspense fallback={<div className="screen" />}><Multi wanted={(query.get('t') || '').split(',').filter(Boolean)} /></Suspense>;
+  else if (path.startsWith('/conquest')) page = <Suspense fallback={<div className="screen muted">Loading Risk bets…</div>}><Conquest /></Suspense>;
   else if (path.startsWith('/profile')) page = <Profile />;
   else if (p) page = <Profile id={p[1]} />;
   else if (path.startsWith('/leaderboard')) page = <Leaderboard />;
