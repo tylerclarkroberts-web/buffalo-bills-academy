@@ -115,7 +115,7 @@ Build the frontend and run tests appropriate to the change. For public-table dis
 node --test test/public-tables.test.js test/delete-account.test.js
 ```
 
-For UI changes, check both desktop and mobile, including a short/narrow viewport, loading and empty states, and the primary interaction. For API or persistence changes, exercise the actual HTTP boundary, invalid input, and existing saved records where relevant.
+For UI changes, check both desktop and mobile, including a short/narrow viewport, loading and empty states, and the primary interaction. For the poker and blackjack tables, also check a large window (2560×1440 and 3840×2160 at 100% scaling). Above the 1080p felt size, poker seats, cards and table labels grow with the felt (`tableScale` in `client/src/ui.jsx`). The top bar, footer, poker header, side panel and action bar, and the whole blackjack card, step up by window size (`--ui` at the end of `client/src/styles.css`). At 1080p and below nothing changes; the multi-table view keeps its normal chrome size. For API or persistence changes, exercise the actual HTTP boundary, invalid input, and existing saved records where relevant.
 
 For host settings, `node --test test/host-settings.test.js test/v42.test.js test/game.test.js` covers the new update path alongside existing auto-check and poker rules. See [Host options and room history](table-options-and-history.md) for the host controls and lobby filter checks.
 
