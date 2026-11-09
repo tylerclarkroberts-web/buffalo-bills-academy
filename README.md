@@ -43,6 +43,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 - [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
 - [Host options and room history](docs/table-options-and-history.md): change defaults for future hands and filter open or finished rooms.
+- [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.
 - [ConquestK integration](docs/conquest-integration.md): account links, Risk bets, fixed odds, persistence, and rollout.
 
