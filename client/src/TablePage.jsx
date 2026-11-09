@@ -171,7 +171,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const head = (
     <div className="tp-head">
       <div className="tp-title">
-        <p className="kicker"><Link to="/?tab=tables">← Tables</Link> / <span className="mono">{code}</span>{view.bots ? <span className="tp-botlabel"> · 🤖 Bot table · practice chips</span> : view.econ === false ? ' · practice chips' : ''}{(view.settings.skipPreflop || view.settings.autoCheck) && <span className="rule-badges" data-test="rule-badges">{view.settings.skipPreflop && <span className="rule-badge" title="Skip first betting round: blinds go in as dead money and every hand starts at the flop" data-test="badge-skip">Flop start</span>}{view.settings.autoCheck && <span className="rule-badge" title="Auto-check: free checks are taken for you (you can turn it off for yourself)" data-test="badge-autocheck">Auto-check</span>}</span>}</p>
+        <p className="kicker"><Link to="/?tab=tables">← Tables</Link> / <span className="mono">{code}</span>{view.bots ? <span className="tp-botlabel"> · 🤖 Bot table · practice chips</span> : view.econ === false ? ' · practice chips' : ''}{(view.settings.skipPreflop || view.settings.autoCheck) && <span className="rule-badges" data-test="rule-badges"><span>Defaults:</span>{view.settings.skipPreflop && <span className="rule-badge" title="Future hands start at the flop; changing this default leaves the current hand unchanged" data-test="badge-skip">Flop start</span>}{view.settings.autoCheck && <span className="rule-badge" title="Future hands default to checking when free; players can override their own setting" data-test="badge-autocheck">Auto-check</span>}</span>}</p>
         <h1 className="display">{view.name}</h1>
         {!view.bots && <p className="small muted">{view.visibility === 'public' ? 'Public · listed in the lobby' : 'Private · anyone with the invite link can join'}</p>}
       </div>
@@ -621,6 +621,12 @@ function ActionBar({ view, onAct }) {
 
 function Info({ view, post, seated, code }) {
   const s = seated ? view.seats[view.me.seat] : null;
+  const [saving, setSaving] = useState(false);
+  async function changeSetting(key, on) {
+    setSaving(true);
+    try { await post('settings', { [key]: on }); }
+    finally { setSaving(false); }
+  }
   return (
     <div className="info-pane">
       {s && view.status !== 'closed' && (
@@ -641,6 +647,13 @@ function Info({ view, post, seated, code }) {
         <h3>Table</h3>
         <p className="small">Room <b className="mono">{code}</b> · Blinds {chips(view.settings.smallBlind)}/{chips(view.settings.bigBlind)} · Buy-in {money(view.settings.buyIn)} · {formatDuration(view.settings.turnSeconds)} a turn</p>
         <p className="small muted info-rules">Rebuys {view.settings.maxRebuys < 0 ? 'unlimited' : view.settings.maxRebuys === 0 ? 'off' : `${view.settings.maxRebuys} each`}. If your time runs out you check when you can, otherwise fold. Miss 3 turns in a row and your seat opens up (rejoin any time).</p>
+        {view.me.isHost && view.status !== 'closed' && <fieldset className="host-settings" disabled={saving}>
+          <legend>Host settings</legend>
+          <label className="nt-check"><input type="checkbox" checked={!!view.settings.autoCheck} onChange={(e) => changeSetting('autoCheck', e.target.checked)} /> Automatically check when free</label>
+          <label className="nt-check"><input type="checkbox" checked={!!view.settings.skipPreflop} onChange={(e) => changeSetting('skipPreflop', e.target.checked)} /> Skip first betting round</label>
+          <p className="small muted">Applies next hand; players can override their own Check if free.</p>
+          <p className="small muted" role="status">{saving ? 'Saving…' : 'Changes save automatically.'}</p>
+        </fieldset>}
         <div className="row wrap">
           {'Notification' in window && Notification.permission === 'default' && <button className="btn small" onClick={() => Notification.requestPermission()}>Notify me on my turn</button>}
           {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('gags', { off: !view.gagsOff })} data-test="host-gags">{view.gagsOff ? 'Allow gags (host)' : 'Turn gags off (host)'}</button>}

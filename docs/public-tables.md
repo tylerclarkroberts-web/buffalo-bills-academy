@@ -15,6 +15,8 @@ The public browser is available beside **Your tables** on desktop and mobile. Ea
 
 The lobby reloads its lists every 15 seconds. A table can fill between refresh and joining; a listing does not reserve a seat. When no eligible tables remain, **Start a public table** opens creation with Public selected.
 
+**Your tables** has separate Open / Closed / All filters for your own room history, with Open selected initially. These filters do not change which rooms qualify for public discovery. Hosts can also change two defaults for future hands; see [Host options and room history](table-options-and-history.md).
+
 ## What private means
 
 | Visibility | Public lobby | Access through an invite link |

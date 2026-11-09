@@ -104,6 +104,7 @@ export default function Home({ tab: tabProp }) {
   const { tables } = useTables(me, '/my-tables');
   const publicTables = useTables(me, '/public-tables');
   const [visibility, setVisibility] = useState('private');
+  const [tableFilter, setTableFilter] = useState('open');
   const [, setAfkTick] = useState(0); // re-render after dismissing the moved-out banner
   const [err, setErr] = useState(new URLSearchParams(window.location.search).get('signin') === 'failed' ? 'Google sign-in did not finish. Please try again.' : '');
   useEffect(() => { document.title = `${VENUE.name} · Texas Hold'em with friends`; }, []);
@@ -123,7 +124,7 @@ export default function Home({ tab: tabProp }) {
 
   const [vs, setVs] = useState('friends'); // v38: Friends / Play bots (in the card header on wide screens)
   const startPublic = () => { setVisibility('public'); setVs('friends'); setTab('new'); };
-  const lobby = <LobbyPanel me={me} tables={tables} publicTables={publicTables} tab={tab} setTab={setTab} setErr={setErr} wide={wide} visibility={visibility} setVisibility={setVisibility} startPublic={startPublic} />;
+  const lobby = <LobbyPanel me={me} tables={tables} publicTables={publicTables} tab={tab} setTab={setTab} setErr={setErr} wide={wide} visibility={visibility} setVisibility={setVisibility} startPublic={startPublic} tableFilter={tableFilter} setTableFilter={setTableFilter} />;
   const sign = <Marquee aside={wide ? <Facts me={me} open={open.length} myTurn={myTurn} /> : null} />;
   if (!wide) {
     return (
@@ -220,16 +221,33 @@ function HouseRules() {
   );
 }
 
-function TableList({ me, tables, setTab }) {
-  const seated = tables.filter((t) => t.seated && t.status !== 'closed');
+function TableList({ me, tables, setTab, filter, setFilter }) {
+  const open = tables.filter((t) => t.status !== 'closed');
+  const closed = tables.filter((t) => t.status === 'closed');
+  const shown = filter === 'open' ? open : filter === 'closed' ? closed : tables;
+  const seated = open.filter((t) => t.seated);
   const multi = seated.length >= 2 ? (
     <button className="btn small multi-btn" onClick={() => navigate(`/multi?t=${seated.slice(0, 4).map((t) => t.code).join(',')}`)}>
       ▦ Play {Math.min(4, seated.length)} tables at once{seated.filter((t) => t.myTurn).length ? ` · ${seated.filter((t) => t.myTurn).length} waiting` : ''}
     </button>
   ) : null;
+  const header = <>
+    <div className="seg table-filters" role="group" aria-label="Filter your tables">
+      {[['open', 'Open', open.length], ['closed', 'Closed', closed.length], ['all', 'All', tables.length]].map(([value, label, count]) => (
+        <button key={value} type="button" className={filter === value ? 'on' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label} ({count})</button>
+      ))}
+    </div>
+    {filter !== 'closed' && multi}
+  </>;
   return (
-    <Paged items={tables} rowH={58} gap={6} className="tables" header={multi}
-      empty={<div className="empty"><p>No tables yet. Start one, or open a friend's invite link.</p>{setTab && <button className="btn primary small" onClick={() => setTab('new')}>Start a table</button>}</div>}
+    <Paged items={shown} rowH={58} gap={6} className="tables" header={header} resetKey={filter}
+      empty={<div className="empty">
+        <p>{filter === 'open' ? 'No open tables.' : filter === 'closed' ? 'No closed tables yet.' : "No tables yet. Start one, or open a friend's invite link."}</p>
+        <div className="row wrap">
+          {filter === 'open' && <button className="btn small" onClick={() => setFilter('closed')}>View closed tables</button>}
+          {filter !== 'closed' && setTab && <button className="btn primary small" onClick={() => setTab('new')}>Start a table</button>}
+        </div>
+      </div>}
       render={(t) => (
         <button className={`trow ${t.myTurn ? 'myturn' : ''}`} onClick={() => { rememberTable(t.code); navigate(`/t/${t.code}`); }}>
           <span className="t-name">{t.name}</span>
@@ -261,7 +279,7 @@ function PublicTableList({ tables, loading, error, startPublic }) {
   );
 }
 
-function LobbyPanel({ me, tables, publicTables, tab, setTab, setErr, wide, visibility, setVisibility, startPublic }) {
+function LobbyPanel({ me, tables, publicTables, tab, setTab, setErr, wide, visibility, setVisibility, startPublic, tableFilter, setTableFilter }) {
   const mine = tables.length;
   // v51: Join-by-code gone; Games tab holds blackjack + slots.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
@@ -274,7 +292,7 @@ function LobbyPanel({ me, tables, publicTables, tab, setTab, setErr, wide, visib
         {tabKey === 'public' ? <PublicTableList {...publicTables} startPublic={startPublic} />
           : tabKey === 'new' ? <NewTable setErr={setErr} visibility={visibility} setVisibility={setVisibility} />
           : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /></div>
-          : <TableList me={me} tables={tables} setTab={setTab} />}
+          : <TableList me={me} tables={tables} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />}
       </div>
     </div>
   );

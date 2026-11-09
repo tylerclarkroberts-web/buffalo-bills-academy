@@ -24,6 +24,10 @@ Choose **Public** at creation to appear in **Public tables** on desktop and mobi
 
 Existing tables remain private. Other players’ profile histories hide private table names and links while aggregate results remain intact. Full details, listing rules, API examples, and verification are in [Public and private poker tables](docs/public-tables.md).
 
+## Host options and room history
+
+Hosts can change the automatic-free-check and skip-first-betting-round defaults after a table starts. Changes apply next hand and preserve current actions and personal checkbox choices. **Your tables** offers **Open** (the default), **Closed**, and **All** filters; finished rooms remain available for results and history. See [Host options and room history](docs/table-options-and-history.md) for usage, timing, and the settings API.
+
 ## Configuration and data
 
 Optional settings are listed in [.env.example](.env.example). Export values in your shell before starting; the app does not automatically load `.env` files. Google OAuth needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and your own `SESSION_SECRET`. Set `PUBLIC_URL` to configure the public origin and callback; otherwise the server uses the request origin. The callback path is `/auth/google/callback`. Slack integration is disabled unless `SLACK_BOT_TOKEN` is set. Leave `DEV_LOGIN` unset outside local testing, and never reuse production credentials.
@@ -34,6 +38,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 
 - [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
+- [Host options and room history](docs/table-options-and-history.md): change defaults for future hands and filter open or finished rooms.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.
 
 User-visible behavior, API, setup, and persistence changes should include the corresponding documentation update in the same pull request. The [pull request template](.github/pull_request_template.md) prompts authors to record documentation and validation; [agent guidance](AGENTS.md) carries this requirement into coding-agent work.
