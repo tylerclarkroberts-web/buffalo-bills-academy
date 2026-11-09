@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { riskOdds, RISK_LIMITS } from '../server/conquest.js';
+import { Conquest, riskOdds, RISK_LIMITS } from '../server/conquest.js';
+import { Store } from '../server/store.js';
 
 const epoch = Date.parse('2026-11-09T12:00:00Z');
 const stamp = (ms) => new Date(ms).toISOString();
@@ -89,6 +90,35 @@ test('rating odds are normalized winner estimates, use the haircut and cap gross
   assert.equal(odds[1].oddsHundredths, 2000);
   assert.equal(odds[1].maxStakeCents, 5000);
   assert.equal(odds.reduce((n, p) => n + p.probability, 0), 1);
+});
+
+test('valid JSON with an invalid players-file root disables wagering without replacing the file', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-conquest-root-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'players.json');
+  const env = { CONQUESTK_SERVICE_TOKEN: 'test-only-token-012345678901234567890', CONQUESTK_BETTING_ENABLED: 'true' };
+  for (const root of [[], [1], 0, true, 'invalid', null]) {
+    const bytes = JSON.stringify(root); fs.writeFileSync(file, bytes);
+    const store = new Store(dir);
+    const conquest = new Conquest({ service: { store, now: () => epoch }, env, pollMs: 0 });
+    assert.equal(conquest.configured(), false, `invalid root ${bytes} must fail closed`);
+    assert.equal(conquest.canPlace({ id: 'player' }), false);
+    assert.equal(fs.readFileSync(file, 'utf8'), bytes, 'validation must not discard evidence');
+  }
+  fs.writeFileSync(file, '{}');
+  const conquest = new Conquest({ service: { store: new Store(dir), now: () => epoch }, env, pollMs: 0 });
+  assert.equal(conquest.configured(), true, 'an empty player dictionary is valid');
+});
+
+test('unconfigured linking returns unavailable without creating a nonce or blocking deletion', async (t) => {
+  const f = await fixture(t, { CONQUESTK_SERVICE_TOKEN: '' });
+  const before = fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8');
+  const result = await f.s.call(f.cookie, 'POST', '/api/conquest/link', {});
+  assert.equal(result.status, 503);
+  assert.equal(f.s.service.store.players[f.id].conquest, undefined);
+  assert.equal(fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8'), before);
+  assert.equal(f.ck.requests.length, 0);
+  assert.equal((await f.s.call(f.cookie, 'DELETE', '/api/me', { confirm: 'DELETE', password: 'riverstone market 27' })).status, 200);
 });
 
 test('linking proves both sessions, is origin protected, and guests cannot wager', async (t) => {
