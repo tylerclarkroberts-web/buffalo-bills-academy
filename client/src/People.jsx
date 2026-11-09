@@ -110,7 +110,7 @@ export function Profile({ id }) {
       <Tabs label="Profile" value={tab} onChange={setTab} tabs={tabs} />
       <div className="pf-body">
         {tab === 'account' && me && <Account me={me} />}
-        {tab === 'alerts' && me && <div className="pf-settings"><UsernameHandle me={me} /><TableFun /><SlackAlerts me={me} /></div>}
+        {tab === 'alerts' && me && <div className="pf-settings"><TableFun /><SlackAlerts me={me} /></div>}
         {tab === 'overview' && (
           <Paged items={stats} rowH={wide ? 92 : 64} gap={8} cols={wide ? 4 : 2} className={`stats ${wide ? 'grid4' : 'grid2'}`}
             render={([label, value, sub, c]) => <div className="stat"><div className="label">{label}</div><div className={`value ${c || ''}`}>{value}</div><div className="sub">{sub}</div></div>} />
@@ -220,7 +220,7 @@ function Account({ me }) {
   const [cur, setCur] = useState(''); const [nxt, setNxt] = useState('');
   const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
   return (
-    <div className="account">
+    <div className="account pf-account">
       {linkMsg && <p className="notice">{linkMsg}</p>}
       <UsernameHandle me={me} />
       <div className="acct-rows">
