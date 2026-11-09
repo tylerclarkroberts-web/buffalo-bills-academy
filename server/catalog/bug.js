@@ -14,9 +14,11 @@ const FOOD = [
   ['dung', 'Premium Dung Ball', 450, '🟤', 70, 'Hand-rolled. For connoisseurs only.'],
   ['moss', 'Artisan Moss', 600, '🌿', 75, 'Grown in a terrarium by a man named Gil.'],
   ['banquet', 'Bug Banquet', 2500, '🍱', 100, 'A full spread. Your bug will be insufferable about it.'],
-  ['ambrosia', 'Golden Ambrosia', 20000, '✨', 100, 'Exactly as filling as a leaf, but golden.'],
+  ['ambrosia', 'Golden Ambrosia', 20000, '✨', 100, 'A lavish, golden meal.'],
 ];
-for (const [id, name, price, emoji, food, desc] of FOOD) add({ id: `food-${id}`, name, price, emoji, desc, cat: 'food', slot: null, use: 'food', food });
+for (const [id, name, price, emoji, food, desc] of FOOD) add({ id: `food-${id}`, name, price, emoji,
+  desc: `Single use: press Use for +${food} Fed now (max 100), a fresh starvation clock and up to 12 care XP within the shared 120 XP/day cap. Wait 15 minutes between store foods. Fed normally falls 0.6/hour. ${desc}`,
+  cat: 'food', slot: null, use: 'food', food });
 
 // toys: owned and equipped in the bug's toy slot; Play then lifts mood a little more (capped)
 const TOYS = [
@@ -24,7 +26,9 @@ const TOYS = [
   ['maze', 'Leaf Maze', 300, '🌀', 8], ['mirror', 'Little Mirror', 450, '🪞', 10], ['wheel', 'Bug Wheel', 900, '🎡', 12],
   ['castle', 'Bark Castle', 2500, '🏰', 15], ['disco', 'Disco Ball (tiny)', 6000, '🪩', 15],
 ];
-for (const [id, name, price, emoji, mood] of TOYS) add({ id: `toy-${id}`, name, price, emoji, desc: `Your bug plays with it. Play gives +${mood} extra mood while it's equipped.`, cat: 'toys', slot: 'toy', mood });
+for (const [id, name, price, emoji, mood] of TOYS) add({ id: `toy-${id}`, name, price, emoji,
+  desc: `Reusable: equip one toy at a time. Each free Play action adds +${mood} extra Mood to the usual +30 (max 100). Play has a 20-minute cooldown; Mood then falls 1.6/hour. Keep the toy and swap it whenever you like.`,
+  cat: 'toys', slot: 'toy', mood });
 
 // skins: recolour the sprite (cosmetic)
 const SKINS = [
@@ -34,7 +38,7 @@ const SKINS = [
   ['neon', 'Neon Sign', ['#0a0010', '#3a0060', '#a020c0', '#ff40e0', '#ffd0ff'], 1500], ['candy', 'Candy Stripe', ['#2a0010', '#d03060', '#f0f0f0', '#ff90b0', '#ffffff'], 900],
   ['camo', 'Desert Camo', ['#1a1408', '#5a4a2a', '#8a7a4a', '#c0a870', '#e8dcb0'], 150], ['rainbow', 'Prism', ['#100818', '#3040c0', '#20b080', '#f0c020', '#ff5050'], 20000],
 ];
-for (const [id, name, pal, price] of SKINS) add({ id: `bugskin-${id}`, name, price, desc: 'A new colour for your bug. Purely cosmetic; it\'s still the same species underneath.', cat: 'bugstyle', slot: 'bugskin', pal });
+for (const [id, name, pal, price] of SKINS) add({ id: `bugskin-${id}`, name, price, desc: 'Permanent cosmetic: change your bug\'s colour until you swap it or take it off. One shell colour at a time, alongside a hat and accessory. No change to species, needs, XP or battle strength.', cat: 'bugstyle', slot: 'bugskin', pal });
 
 // clothes and accessories: tiny pixel overlays (cosmetic)
 const WEAR = [
@@ -42,13 +46,15 @@ const WEAR = [
   ['bow', 'Bow', 60, 'bugacc'], ['monocle', 'Monocle', 450, 'bugacc'], ['shades', 'Sunglasses', 90, 'bugacc'], ['bandana', 'Bandana', 60, 'bugacc'],
   ['cape', 'Superhero Cape', 600, 'bugacc'], ['scarf', 'Scarf', 90, 'bugacc'],
 ];
-for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, price, desc: 'Fits a bug perfectly. Nobody knows how.', cat: 'bugstyle', slot, shape: id });
+for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, price,
+  desc: `Permanent cosmetic: equip one ${slot === 'bughat' ? 'hat' : 'accessory'} at a time, alongside a shell colour and ${slot === 'bughat' ? 'accessory' : 'hat'}. Stays on until swapped or taken off. No change to needs, XP or battle strength.`,
+  cat: 'bugstyle', slot, shape: id });
 
 // the automatic feeder: consumable, each one keeps the bowl full and pauses the starvation clock for 14 days
 add({ id: 'feeder', name: 'Automatic Feeder (14 days)', price: 2500, emoji: '🥣', cat: 'bugcare', slot: null, use: 'feeder', days: 14,
-  desc: 'Keeps your bug fed for 14 days, even if you forget. Buy more to add 14 days each (up to 60 days ahead).' });
-add({ id: 'mister', name: 'Auto-Mister', price: 900, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', desc: 'Tops up cleanliness right now. Your bug glistens.' });
-add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 450, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', desc: 'Lifts your bug\'s mood right now. It basks.' });
+  desc: 'Single use: press Use to fill Fed to 100 and keep it full for 14 days, with the starvation clock paused. Use another to add 14 days to the remaining time, up to 60 days ahead. Mood and Clean still fall normally. Check the Barn for the end date.' });
+add({ id: 'mister', name: 'Auto-Mister', price: 900, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', desc: 'Single use: press Use for +40 Clean now (max 100). Clean then falls 1.4/hour; a full 40-point boost takes about 28 hours 34 minutes to decay. One instant mist, with a 30-minute cooldown between misters.' });
+add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 450, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', desc: 'Single use: press Use for +40 Mood now (max 100). Mood then falls 1.6/hour; a full 40-point boost takes 25 hours to decay. One instant boost, with a 30-minute cooldown between lamps.' });
 
 // battle gear: one gear slot; bouts get +1% to +6% damage (GEAR_CAP). Bouts never wager anything.
 const GEAR = [
@@ -56,6 +62,6 @@ const GEAR = [
   ['helmet', 'Acorn Helmet', 1500, 0.03], ['shield', 'Leaf Shield', 2500, 0.04], ['mandibles', 'Gilded Mandibles', 6000, 0.05],
   ['armor', 'Beetle Plate Armour', 20000, 0.06], ['bandage', 'Lucky Bandage', 60, 0.01],
 ];
-for (const [id, name, price, gear] of GEAR) add({ id: `gear-${id}`, name, price, emoji: '🛡️', desc: `Barn bouts only: +${Math.round(gear * 100)}% damage while equipped (the cap is +6%). No effect on poker.`, cat: 'gear', slot: 'gear', gear });
+for (const [id, name, price, gear] of GEAR) add({ id: `gear-${id}`, name, price, emoji: '🛡️', desc: `Reusable: equip one battle item at a time for +${Math.round(gear * 100)}% damage in Barn bouts (max +6%). Stays equipped until swapped or taken off. Bouts unlock at level 5, once an hour, with no money or XP at stake. No effect on poker.`, cat: 'gear', slot: 'gear', gear });
 
 export const BUG_ITEMS = items;
