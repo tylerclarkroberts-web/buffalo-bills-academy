@@ -1,7 +1,8 @@
 /* v44 blackjack: one screen, never scrolls; pixel/minimal felt like the poker room. */
 .screen.bj { align-items: center; justify-content: center; }
 .bj-empty { padding: 24px; margin: auto; text-align: center; display: grid; gap: 10px; }
-.bj-lobby, .bj-felt { width: min(1100px, 100%); height: 100%; max-height: 780px; min-height: 0; box-sizing: border-box; overflow: hidden; border-radius: 18px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.bj-lobby, .bj-felt { width: min(1100px, 100%); height: 100%; max-height: 780px; min-height: 0; box-sizing: border-box; overflow: hidden; border-radius: 18px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px;
+  zoom: var(--ui, 1); /* v51: the whole fixed-size card steps up on 1440p/4K windows (--ui: big-screens block at the end of styles.css) */ }
 .bj-felt { background: radial-gradient(120% 80% at 50% 0%, rgba(30, 120, 70, .45), transparent 65%), linear-gradient(180deg, #0f3a26, #0a2418); border-color: #2f7a4f; position: relative; }
 .bj-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex: none; }
 .bj-head h1 { margin: 0; font-size: clamp(17px, 3vw, 28px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

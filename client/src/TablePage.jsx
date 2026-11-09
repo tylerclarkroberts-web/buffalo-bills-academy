@@ -20,7 +20,7 @@ import { Showdown } from './table/Showdown.jsx';
 import { useReplay, ReplayLayer, useReplayActive } from './table/Replay.jsx';
 import { bitEnabled, bitQueue, claimBit } from './table/fx.js';
 import * as music from './table/music.js';
-import { Paged, Tabs, useShortLand, useSize, useWide } from './ui.jsx';
+import { Paged, Tabs, tableScale, useShortLand, useSize, useWide } from './ui.jsx';
 import { showBroke, showBrokeOnce, clearBrokeSeen } from './Broke.jsx';
 import { FightScreen, useFightWatchPill } from './fight/FightScreen.jsx';
 import { FightOffer } from './fight/FightOffer.jsx';
@@ -400,8 +400,9 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
   const tall = w && h ? w / h < 1.25 : false;
   // v50: crowded tables (7+ seats) get smaller busts and tighter pills so neighbouring seats never touch
   const crowd = N > 6;
-  const bust = Math.round(Math.max(24, Math.min(62, w / (tall ? (crowd ? 12 : 9) : (crowd ? 18 : 15)), h / (crowd ? (tall ? 10.5 : 9.5) : 7.2))));
-  const cw = Math.round(Math.max(24, Math.min(54, w / (tall ? 12.5 : 15), h / 6.4))); // v50: a bit smaller on phones so side seats clear the board
+  const k = tableScale(w, h); // v51: big screens grow the 1080p caps with the felt
+  const bust = Math.round(Math.max(24, Math.min(62 * k, w / (tall ? (crowd ? 12 : 9) : (crowd ? 18 : 15)), h / (crowd ? (tall ? 10.5 : 9.5) : 7.2))));
+  const cw = Math.round(Math.max(24, Math.min(54 * k, w / (tall ? 12.5 : 15), h / 6.4))); // v50: a bit smaller on phones so side seats clear the board
   const geo = tall ? (N > 6 ? { cx: 50, cy: 58, rx: 42, ry: 38, frx: 38, fry: 31 } : { cx: 50, cy: 57, rx: 41, ry: 32, frx: 40, fry: 30 }) : { cx: 50, cy: 57, rx: 43, ry: 31, frx: 39, fry: 29 };
   // the all-in-loser bit: once per losing all-in, for everyone at the table, unless switched off in Profile
   const [bit, setBit] = useState(null);
@@ -433,7 +434,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
   }, [theme, handNo, code]);
   const lastLine = !hand && view.lastHand ? view.lastHand.winners.map((x) => `${x.name} won ${chips(x.amount)}${x.hand ? ` with ${x.hand}` : ''}`).join(' · ') : '';
   return (
-    <div className={`felt-box ${tall ? 'tall' : ''} ${crowd ? 'crowd' : ''}`} ref={box} style={{ '--bust': `${bust}px`, '--cw': `${cw}px` }}>
+    <div className={`felt-box ${tall ? 'tall' : ''} ${crowd ? 'crowd' : ''}`} ref={box} style={{ '--bust': `${bust}px`, '--cw': `${cw}px`, '--tscale': k.toFixed(3) }}>
       {w > 0 && <>
         {theme === 'arcade' && <FeltConsoles size={Math.max(30, Math.round(bust * 0.95))} />}
         <div className={`dealer-spot ${rp.on && rp.step.k === 'deal' && !rp.reduced ? 'dealing' : ''}`} style={{ height: `${tall ? 30 : 34}%` }}><Dealer /></div>
