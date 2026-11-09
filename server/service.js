@@ -295,6 +295,7 @@ export class PokerService {
     return this.mutate(code, (tb, ctx) => G.joinTable(tb, { id: player.id, name: player.name }, seat, ctx), player.id);
   }
   start(code, player) { return this.mutate(code, (t, ctx) => G.startGame(t, player.id, ctx), player.id); }
+  updateSettings(code, player, input) { return this.mutate(code, (t, ctx) => G.updateSettings(t, player.id, input, ctx), player.id); }
   act(code, player, action) { return this.mutate(code, (t, ctx) => G.act(t, player.id, action, ctx), player.id); }
   rebuy(code, player) { this.requireBuyIn(code, player, 'a rebuy'); return this.mutate(code, (t, ctx) => G.rebuy(t, player.id, ctx), player.id); }
   autoCheck(code, player, on) { return this.mutate(code, (t, ctx) => G.setAutoCheck(t, player.id, on, ctx), player.id); }

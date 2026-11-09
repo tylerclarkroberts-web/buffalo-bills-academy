@@ -140,6 +140,22 @@ export function joinTable(t, player, wantSeat, ctx) {
   return seat;
 }
 
+export function updateSettings(t, playerId, input, ctx) {
+  if (playerId !== t.hostId) throw new GameError('Only the host can change table options', 403);
+  if (t.status === 'closed') throw new GameError('This table is closed');
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new GameError('Send table options as an object');
+  const keys = Object.keys(input);
+  if (!keys.length || keys.some((k) => !['autoCheck', 'skipPreflop'].includes(k) || typeof input[k] !== 'boolean')) {
+    throw new GameError('Only autoCheck and skipPreflop boolean options can be changed');
+  }
+  const changed = keys.filter((k) => !!t.settings[k] !== input[k]);
+  if (!changed.length) return false;
+  for (const k of changed) t.settings[k] = input[k];
+  const labels = { autoCheck: 'auto-check when free', skipPreflop: 'skip first betting round' };
+  log(t, ctx, `The host changed table options: ${changed.map((k) => `${labels[k]} ${input[k] ? 'on' : 'off'}`).join('; ')} (applies next hand)`);
+  return true;
+}
+
 export function startGame(t, playerId, ctx) {
   if (playerId !== t.hostId) throw new GameError('Only the host can start the game', 403);
   if (t.status !== 'lobby') throw new GameError('The game has already started');

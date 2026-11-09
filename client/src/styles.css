@@ -313,7 +313,9 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .log-row .time { color: var(--mute); font: 10px var(--mono); padding-top: 2px; white-space: nowrap; }
 .log-row .log-text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .log-row.sep { color: var(--amber); font-weight: 600; }
-.info-pane { display: grid; gap: 12px; align-content: start; overflow: hidden; font-size: 13px; }
+.info-pane { display: grid; gap: 12px; align-content: start; min-height: 0; overflow-y: auto; font-size: 13px; }
+.host-settings { min-width: 0; padding: 8px 0; border: 0; margin: 8px 0; }
+.host-settings legend { font: 500 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--teal); }
 .block h3 { font: 500 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--teal); margin: 0 0 6px; }
 .block p { margin-bottom: 6px; }
 .lasthand h3 { font: 500 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--teal); margin: 0 0 6px; }
@@ -1310,6 +1312,8 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 .lobby5.narrow .tables .trow { min-height: 54px; }
 .public-trow { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 4px; }
 .public-table-action { justify-self: end; font-size: 12px; font-weight: 600; color: var(--teal); }
+.table-filters { flex: none; margin-bottom: 6px; }
+.rule-badges { flex-wrap: wrap; max-width: 100%; }
 .nt-visibility { display: grid; gap: 4px; min-width: 0; }
 .nt-visibility p { margin: 0; }
 .lobby5.narrow .lobby-panel .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -158,6 +158,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   }));
   tableAction('join', (c, p, b) => service.join(c, accounts.ensure(p), b.seat));
   tableAction('start', (c, p) => service.start(c, p));
+  tableAction('settings', (c, p, b) => service.updateSettings(c, p, b));
   tableAction('action', (c, p, b) => service.act(c, p, { type: b.type, amount: b.amount === undefined ? undefined : Number(b.amount), handNumber: b.handNumber }));
   tableAction('rebuy', (c, p) => service.rebuy(c, accounts.ensure(p)));
   tableAction('sitout', (c, p, b) => service.sitOut(c, p, b.sitOut !== false));

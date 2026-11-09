@@ -88,11 +88,14 @@ node --test test/public-tables.test.js test/delete-account.test.js
 
 For UI changes, check both desktop and mobile, including a short/narrow viewport, loading and empty states, and the primary interaction. For API or persistence changes, exercise the actual HTTP boundary, invalid input, and existing saved records where relevant.
 
-At feature commit `1e87236` on November 8, 2026, using Node 24.19.0/npm 11.17.0 on Windows:
+For host settings, `node --test test/host-settings.test.js test/v42.test.js test/game.test.js` covers the new update path alongside existing auto-check and poker rules. See [Host options and room history](table-options-and-history.md) for the host controls and lobby filter checks.
+
+During verification of host options and room filters on November 8, 2026, using Node 24.19.0/npm 11.17.0 on Windows:
 
 - `npm run build` passed.
 - Public-table and account-deletion tests: 6 passed.
-- Full suite: 190 tests, 185 passed, 5 failed.
+- Host-settings, existing speed-option, and poker-engine tests: 30 passed.
+- Full suite: 194 tests, 189 passed, 5 failed.
 - Four Doom tests failed before their assertions because their URL-to-path conversion produced `C:\C:\...` paths on Windows.
 - The Slack stale-alert test failed its existing assertion and also failed in isolation.
 
