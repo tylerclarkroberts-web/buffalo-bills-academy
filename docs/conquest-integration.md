@@ -6,9 +6,9 @@ The **Risk bets** navigation opens `/conquest`, with a link to play ConquestK, a
 
 Sign in to an Academy account and choose **Link ConquestK account**. Sign in to ConquestK and approve the link there. The callback confirms that you still control the original Academy session. Existing names, passwords, avatars, bankrolls, and game histories are retained. Guest browser-token accounts must sign in to a registered account before linking or wagering.
 
-Eligible public Classic free-for-all matches open a visible two-minute betting window when the human roster fills. ConquestK owns that window, game-start rules, and the roster snapshot. Participants can only back themselves; spectators can back any quoted player. Place one bet per market generation, with no top-ups, changes, or user cancellation. A voided generation must refund before another active wager on the same match can be placed.
+Eligible public Classic free-for-all matches open betting when the human roster fills. Games with 5- or 10-minute turns keep the two-minute betting window. Games with 24-hour turns open betting for up to 24 hours: the host can start immediately or at any point before the deadline, and the match otherwise starts automatically at the deadline regardless of its old auto-start toggle. Academy labels that countdown as the latest automatic start and warns that betting can close early. ConquestK owns the window, game-start rules, and roster snapshot. Participants can only back themselves; spectators can back any quoted player. Place one bet per market generation, with no top-ups, changes, or user cancellation. A voided generation must refund before another active wager on the same match can be placed.
 
-Choose a player and a stake, then **Review bet**. The confirmation shows the stake, decimal multiplier, total return including the original stake, and net profit. Quotes expire after at most 60 seconds, and always by the market cutoff. A quote does not reserve house capacity. An expired quote, unavailable capacity, or insufficient balance never silently changes the accepted price or stake.
+Choose a player and a stake, then **Review bet**. The confirmation shows the stake, decimal multiplier, total return including the original stake, and net profit. Quotes expire after at most 60 seconds, and always by the scheduled market cutoff; an early host start can close betting sooner. Academy disables a reviewed quote when polling observes closure. If a placement races with the host's start, only ConquestK's durable admission decision determines acceptance or refund. A quote does not reserve house capacity. An expired quote, unavailable capacity, or insufficient balance never silently changes the accepted price or stake.
 
 While acceptance is being confirmed, the stake is held and the bet says **Confirming — stake held**. A connection timeout is not a rejected bet. Keep the existing bet and let it recover; no second wager is needed. The history updates after ConquestK provides its durable decision and result.
 
@@ -87,6 +87,8 @@ Browser routes are same-origin JSON. Mutations require a registered session and 
 | `GET /auth/conquest/callback` | One-use `code` and session-bound `state`; redirects to the Risk page. |
 
 The server uses `Authorization: Bearer <credential>` at `/api/integrations/academy/v1` on ConquestK. All timestamps are RFC3339 UTC strings. It reads `/markets`, `/markets/:id`, `/links/:academy_player_id`, posts `/link-requests`, `/link-redemptions`, `/links/:id/revoke`, and posts stable intent IDs to `/admissions/:intent_id`.
+
+The additive market field `startPolicy` is `host_or_deadline` for 24-hour-turn markets and `after_betting` for quick games. Missing fields on legacy markets use the existing `after_betting` display. `closesAt` is the latest betting deadline; market status and the locked admission decision remain authoritative if the host starts earlier.
 
 Admission terms are exactly:
 

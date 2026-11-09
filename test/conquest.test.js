@@ -318,6 +318,26 @@ test('a timeout before admission is not a refund; only durable rejection refunds
   assert.equal((await f.quote()).status, 200, 'a definitive non-admission does not consume the one accepted wager');
 });
 
+test('an early host start closes a day-long market and stale placement refunds only on durable rejection', async (t) => {
+  const f = await fixture(t); await f.link();
+  f.ck.market.startPolicy = 'host_or_deadline';
+  f.ck.market.closesAt = stamp(epoch + 86400000);
+  const overview = await f.s.call(f.cookie, 'GET', '/api/conquest');
+  assert.equal(overview.body.markets[0].startPolicy, 'host_or_deadline');
+  const q = await f.quote(); assert.equal(q.status, 200);
+  assert.equal(q.body.quote.expiresAt, stamp(epoch + 60000), 'a long market still uses a short quote');
+  f.clock.t += 10000;
+  f.ck.market.status = 'started'; f.ck.market.startedAt = stamp(f.clock.t);
+  assert.equal((await f.quote()).status, 409, 'host start closes betting before closesAt');
+  f.ck.loseAdmissionResponse = true;
+  assert.equal((await f.place(q)).body.bet.state, 'pending');
+  assert.equal(f.s.service.store.players[f.id].bankroll, 900, 'response loss keeps the stake held');
+  assert.equal(f.ck.admissions.get(q.body.quote.id).status, 'rejected');
+  await f.restart(); await f.s.service.conquest.reconcile(); await f.s.service.conquest.reconcile();
+  assert.equal(f.s.service.store.players[f.id].bankroll, 1000);
+  assert.equal(f.s.service.store.players[f.id].conquest.bets[q.body.quote.id].state, 'rejected');
+});
+
 test('void returns only the stake, loss returns nothing, and placement checks current spendable funds', async (t) => {
   const f = await fixture(t); await f.link('spectator');
   const q = await f.quote('u2'); assert.equal(q.status, 200, 'spectator may choose either participant');
