@@ -4,18 +4,18 @@ Poker hosts choose whether a new table appears in the lobby's **Public tables** 
 
 ## Create and join a table
 
-1. Open **Start a table** and choose **Friends**.
+1. Use **Tables** in the app header, open **Start a table** and choose **Friends**.
 2. Choose **Private · invite link** or **Public** under Visibility. Private is the default.
-3. Select the buy-in, blinds, and any other table options, then open the table.
+3. Set the name, buy-in, blinds, seats, per-turn time, rebuys and optional speed-ups in the same form, then choose **Open the table**. Scroll within the form on smaller screens; there is no separate **Options** step.
 4. For a private table, share its existing invite link. For a public table, other players can find it under **Public tables**.
 
 The public browser is available beside **Your tables** on desktop and mobile. Each listing shows the table name, host, occupied and total seats, buy-in, blinds, turn limit, and **Waiting to start** or **In progress**. These are game states, not indicators that everyone is online.
 
 **View table** opens the existing table screen without buying a seat. The player can review the buy-in and then use **Deal me in** or select an open seat. The server checks funds and capacity again when joining. If a hand is already running, the new player participates from the next hand.
 
-The lobby reloads its lists every 15 seconds. A table can fill between refresh and joining; a listing does not reserve a seat. When no eligible tables remain, **Start a public table** opens creation with Public selected.
+The lobby reloads its lists every 15 seconds and requests a refresh when the window regains focus or the page becomes visible. A table can fill between refresh and joining; a listing does not reserve a seat. When no eligible tables remain, **Start a public table** opens creation with Public selected.
 
-**Your tables** has separate Open / Closed / All filters for your own room history, with Open selected initially. These filters do not change which rooms qualify for public discovery. Hosts can also change two defaults for future hands; see [Host options and room history](table-options-and-history.md).
+**Your tables** has separate Open / Closed / All filters for your own room history, with Open selected initially. Its rows also show the current actor and your position in the current betting round. These filters and personal summaries do not change which rooms qualify for public discovery or add turn details to public listings. Hosts can also change two defaults for future hands; see [Host options and room history](table-options-and-history.md) for creation, turn-count limits and personal-list load recovery.
 
 ## What private means
 

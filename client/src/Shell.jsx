@@ -6,6 +6,7 @@ import { Mark, VENUE, TOANA } from './theme.jsx';
 import { Bust } from './avatar/Bust.jsx';
 import { BrokeHost } from './Broke.jsx';
 import { money } from './util.js';
+import { useMedia } from './ui.jsx';
 
 export function Link({ to, className = '', children, ...rest }) {
   return <a href={to} className={className} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); navigate(to); }} {...rest}>{children}</a>;
@@ -51,6 +52,7 @@ function AccountMenu({ me }) {
           </div>
           <button role="menuitem" onClick={() => go('/?tab=tables')}><Ico k="tables" />Your tables</button>
           <button role="menuitem" onClick={() => go('/profile')}><Ico k="profile" />Profile</button>
+          <button role="menuitem" onClick={() => go('/profile/face')}><Ico k="profile" />Change avatar</button>
           <button role="menuitem" onClick={() => go('/leaderboard')}><Ico k="board" />Leaderboard</button>
           <button role="menuitem" onClick={() => go('/invest')}><Ico k="invest" />Invest</button>
           <button role="menuitem" onClick={() => go('/conquest')}><Ico k="board" />Risk bets</button>
@@ -61,19 +63,61 @@ function AccountMenu({ me }) {
   );
 }
 
+function GamesMenu({ me }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  const trigger = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = () => setOpen(false);
+    const outside = (e) => { if (!box.current?.contains(e.target)) close(); };
+    const key = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); close(); trigger.current?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    window.addEventListener('keydown', key);
+    window.addEventListener('popstate', close);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('popstate', close);
+    };
+  }, [open]);
+  return (
+    <div className="games-nav" ref={box} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+      <button type="button" ref={trigger} className="btn small games-toggle" aria-expanded={open} aria-controls="games-navigation" onClick={() => setOpen(!open)}>
+        Games <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <nav id="games-navigation" className="acct-menu games-menu" aria-label="Games" onClick={() => setOpen(false)}>
+          <Link to="/conquest"><Ico k="board" />Risk bets</Link>
+          <button type="button" onClick={goToMines}><Ico k="pick" />Acid Mines</button>
+          {me && <Link to="/barn" data-test="barn-btn"><Ico k="barn" />Barn</Link>}
+          {me && <Link to="/store" data-test="store-btn"><Ico k="store" />General Store</Link>}
+        </nav>
+      )}
+    </div>
+  );
+}
+
 export function Shell({ path, children }) {
   const { me, config } = useSession();
+  const compactNav = !useMedia('(min-width: 1100px)');
   return (
     <div className="app">
       <a href="#main" className="sr-only">Skip to content</a>
       <header className="topbar">
-        <Link to="/" className="wordmark" aria-label={`${VENUE.name}, the card room`}><Mark size={24} /><b className="script">{VENUE.short}</b><span className="hide-xs">Academy</span></Link>
+        {!compactNav && <Link to="/" className="wordmark" aria-label={`${VENUE.name}, the card room`}><Mark size={24} /><b className="script">{VENUE.short}</b><span className="hide-xs">Academy</span></Link>}
+        <Link to="/?tab=tables" className="btn small tables-link"><Ico k="tables" />Tables</Link>
         <div className="tb-right">
+          {compactNav ? <GamesMenu me={me} /> : <>
           <Link to="/conquest" className="barn-btn" title="ConquestK and play-money Risk bets"><Ico k="board" /><span>Risk bets</span></Link>
           <button className="mines-btn" onClick={goToMines} title="Work a shift in the Acid Mines"><Ico k="pick" /><span>Acid Mines</span></button>
           {me && <Link to="/barn" className="barn-btn" title="Your barn" data-test="barn-btn"><Ico k="barn" /><span>Barn</span></Link>}
           {me && <Link to="/store" className="barn-btn store-btn" title="The General Store (play money)" aria-label="General Store" data-test="store-btn"><Ico k="store" /><span>General Store</span></Link>}
-          {me ? <AccountMenu me={me} /> : (config.google ? <a className="btn small light" href={signInUrl()}>Sign in</a> : null)}
+          </>}
+          {me ? <AccountMenu me={me} /> : (config.google ? <a className="btn small light" href={signInUrl()}>Sign in</a> : <Link to="/" className="btn small light">Sign in</Link>)}
         </div>
       </header>
       <main id="main" className="stage">{children}<Fawn /></main>

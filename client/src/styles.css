@@ -990,16 +990,14 @@ input, select { background: rgba(0, 0, 0, .28); }
 .bit-quip { position: absolute; transform: translateX(-50%); z-index: 4; max-width: min(86%, 380px); text-align: center; background: #fff4e6; color: #2a0a1d; border-radius: 12px; padding: 5px 11px; font-size: 13px; line-height: 1.3; box-shadow: 0 3px 12px rgba(0,0,0,.4); animation: fadein .4s ease .5s both; }
 .bit-quip b { color: #c2185b; }
 
-/* ---- start-a-table: two short pages, the Open button pinned in a footer (v18: it used to fall off short screens) ---- */
-.newtable { flex: 1; min-height: 0; gap: 8px; }
-.nt-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* Keep creation content-sized, with a reachable action when the fields need to scroll. */
+.lb-grid > .create-card { align-self: start; max-height: 100%; }
+.create-card .panel-body { flex: 0 1 auto; }
+.newtable { flex: 0 1 auto; min-height: 0; gap: 8px; }
+.nt-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.nt-body > * { flex-shrink: 0; }
 .nt-foot { flex: none; display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .nt-foot .nt-create { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
-.nt-more { flex: 1 1 0; min-width: 0; display: grid; gap: 1px; text-align: left; background: none; border: 0; padding: 2px 0; cursor: pointer; color: var(--paper-2); }
-.nt-more .nt-sum { font: 500 11px var(--mono); color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nt-more .nt-change { font-size: 13px; color: var(--teal); font-weight: 600; }
-.nt-more:hover .nt-change { text-decoration: underline; }
-.nt-back { flex: none; }
 
 /* ---- host banner: your table is waiting for you to deal ---- */
 .host-banner { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: 12px; border: 1.5px solid var(--gold);
@@ -1193,9 +1191,9 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 /* v39: Start a table seg labels ("25/50", "$1,000") no longer clip in the middle card on short, mid-width screens */
 .lb-grid .seg:not(.mini) button { min-width: 0; padding-left: 2px; padding-right: 2px; }
 @media (min-width: 900px) and (max-width: 1180px) { .lb-grid .seg:not(.mini) button { font-size: 11.5px; letter-spacing: -.02em; } }
-@media (orientation: landscape) and (max-height: 520px) and (min-width: 900px) {
-  /* the middle card is narrow here: give the last row (Blinds on step 1) the full width so "25/50" fits */
-  .lobby5.wide .newtable .nt-body > .field:last-child { grid-column: 1 / -1; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .lobby5.wide .newtable .nt-body { display: flex; }
+  .newtable .nt-body > :is(.nt-namefield, .nt-visibility, .nt-speed) { grid-column: 1 / -1; }
 }
 /* v42: speed-ups on the new-table form + table badges */
 .nt-speed { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 0; }
@@ -1304,8 +1302,19 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 .lobby5.narrow .lobby-panel .panel-body.tables-tab > .paged.tables { flex: 1; min-height: 0; }
 .lobby5.narrow .lobby-panel .multi-btn { width: 100%; margin-bottom: 6px; flex: none; }
 /* Keep each table row fully visible when the pager fits even one */
-.lobby5.narrow .tables .paged-row { min-height: 58px; }
-.lobby5.narrow .tables .trow { min-height: 54px; }
+.personal-tables { overflow-y: auto; overscroll-behavior: contain; }
+.personal-tables > .paged-box { min-height: 88px; overflow: visible; }
+.lobby5.narrow .personal-tables .paged-row { min-height: 88px; }
+.personal-tables .trow { height: 88px; grid-template-columns: minmax(0, 1fr) minmax(0, auto); grid-template-rows: auto auto auto; gap: 2px 8px; }
+.personal-tables .trow .badge { max-width: 180px; white-space: normal; text-align: right; font-size: 10px; }
+.personal-tables .t-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-actor { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 12px; }
+.t-actor > :last-child { flex: none; }
+.turn-help { margin: 0 0 6px; flex: none; }
+.tables-loading { min-height: 0; overflow-y: auto; }
+.table-load-error { display: flex; flex: none; gap: 8px; align-items: center; margin-bottom: 6px; }
+.table-load-error p { margin: 0; font-size: 12.5px; }
+.table-load-error .btn { flex: none; }
 .public-trow { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 4px; }
 .public-table-action { justify-self: end; font-size: 12px; font-weight: 600; color: var(--teal); }
 .table-filters { flex: none; margin-bottom: 6px; }
@@ -1351,3 +1360,21 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 .topbar, .legal, .tp-wide :is(.tp-head, .tp-bottom, .tp-side) { zoom: var(--ui, 1); }
 /* the side panel's column has to widen with it, or its zoomed contents overflow (21vw is past 310px here) */
 @media (min-width: 2400px) and (min-height: 1200px) { .tp-wide { grid-template-columns: minmax(0, 1fr) calc(310px * var(--ui)); } }
+
+.pf-avatar { flex: none; flex-direction: column; gap: 4px; padding: 4px 8px; border-radius: 12px; min-width: 44px; min-height: 44px; font-size: 12.5px; }
+.pf-rename { display: grid; gap: 6px; }
+.pf-rename input { min-width: 0; width: min(100%, 240px); flex: 1 1 140px; }
+.topbar .tables-link, .topbar .games-toggle { flex: none; min-height: 44px; padding: 0 9px; gap: 6px; }
+.games-nav { flex: none; }
+.acct-menu { max-height: calc(100dvh - 78px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain; }
+.games-menu { right: var(--pad); width: min(236px, calc(100vw - 24px)); }
+.games-menu a { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 10px; border-radius: 9px; color: var(--paper); font-size: 14px; text-decoration: none; }
+.games-menu button { min-height: 44px; }
+.games-menu a:hover, .games-menu a:focus-visible { background: rgba(242, 198, 90, .12); }
+.games-menu a .ico { color: var(--gold); }
+@media (width < 1100px) {
+  .topbar, .tb-right { gap: 8px; }
+  .tb-right, .acct { min-width: 0; flex: 0 1 auto; }
+  .acct-chip { max-width: 100%; }
+  .acct-chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

@@ -183,6 +183,7 @@ export class PokerService {
         return {
           code: t.code, name: t.name, status: t.status, visibility: t.visibility === 'public' ? 'public' : 'private', players: t.seats.filter(Boolean).length, maxPlayers: t.settings.maxPlayers,
           seated: seat >= 0, myTurn: !!t.hand && t.hand.toAct === seat && seat >= 0, deadline: t.hand && t.hand.toAct === seat ? t.hand.deadline : null,
+          turn: G.turnSummary(t, player.id),
           handNumber: t.handNumber, isHost: t.hostId === player.id, createdAt: t.createdAt, bots: !!t.bots,
           ready: t.seats.filter((_, i) => G.eligibleForHand(t, i)).length, // players who could be dealt in (2+ to start)
           afkMoved: seat < 0 && t.status !== 'closed' ? t.afkMoved?.[player.id] || null : null, // moved out after missed turns
