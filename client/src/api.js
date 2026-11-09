@@ -79,5 +79,9 @@ export async function guestSignIn(name) {
   await refreshSession();
   return p;
 }
-export async function rename(name) { await api('PATCH', '/me', { name }); await refreshSession(); }
+export async function rename(name) {
+  const saved = await api('PATCH', '/me', { name });
+  if (saved.id === state.me?.id) { state = { ...state, me: saved }; emit(); }
+  return saved;
+}
 export async function changeUsername(username) { await api('PATCH', '/me', { username }); await refreshSession(); }

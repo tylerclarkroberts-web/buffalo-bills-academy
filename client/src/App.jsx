@@ -60,14 +60,14 @@ export default function App() {
   } else if (t) page = <TablePage code={t[1].toUpperCase()} />;
   else if (path.startsWith('/multi')) page = <Suspense fallback={<div className="screen" />}><Multi wanted={(query.get('t') || '').split(',').filter(Boolean)} /></Suspense>;
   else if (path.startsWith('/conquest')) page = <Suspense fallback={<div className="screen muted">Loading Risk bets…</div>}><Conquest /></Suspense>;
-  else if (path.startsWith('/profile')) page = <Profile />;
-  else if (p) page = <Profile id={p[1]} />;
+  else if (path.startsWith('/profile')) page = <Profile key={`${me?.id || 'signed-out'}.self`} />;
+  else if (p) page = <Profile key={`${me?.id || 'signed-out'}.${p[1]}`} id={p[1]} />;
   else if (path.startsWith('/leaderboard')) page = <Leaderboard />;
   else if (path.startsWith('/invest')) page = <Invest />;
   else if (path.startsWith('/store')) page = <Suspense fallback={<div className="screen" />}><Store /></Suspense>;
   else if (path === '/bj' || path.startsWith('/bj/')) page = <Suspense fallback={<div className="screen" />}><Blackjack code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;
   else if (path.startsWith('/slots')) page = <Suspense fallback={<div className="screen" />}><Slots /></Suspense>;
   else if (path.startsWith('/barn')) page = <Suspense fallback={<div className="screen" />}><Barn /></Suspense>;
-  else page = <Home tab={query.get('tab') || undefined} />; // '/' and old '/lobby' links: the card room lobby
+  else page = <Home key={me?.id || 'signed-out'} tab={query.get('tab') || undefined} />; // '/' and old '/lobby' links: the card room lobby
   return <Shell path={path}>{page}</Shell>;
 }

@@ -265,6 +265,32 @@ function needsAction(t, i) {
   return !p.acted;
 }
 
+export function turnSummary(t, playerId) {
+  const turn = { actorName: null, deadline: null, ahead: null, state: null };
+  if (t.status !== 'playing') return turn;
+  const h = t.hand; const seat = seatOf(t, playerId); const s = t.seats[seat]; const p = h?.players[seat];
+  const current = Number.isInteger(h?.toAct) ? t.seats[h.toAct] : null;
+  const actor = current && !current.sittingOut && !current.leaving && needsAction(t, h.toAct) ? current : null;
+  if (actor) { turn.actorName = actor.name; turn.deadline = h.deadline; }
+  if (!s) turn.state = 'not-seated';
+  else if (s.leaving) turn.state = 'leaving';
+  else if (s.sittingOut) turn.state = 'sitting-out';
+  else if (p?.folded) turn.state = 'folded';
+  else if (p?.allIn) turn.state = 'all-in';
+  else if (s.stack === 0) turn.state = 'out-of-chips';
+  else if (!h) turn.state = 'between-hands';
+  else if (!p) turn.state = 'next-hand';
+  else turn.state = needsAction(t, seat) ? 'pending' : 'acted';
+  if (turn.state === 'pending' && actor) {
+    turn.ahead = 0;
+    // Count this round's public pending actions, never another player's private auto-check choice.
+    for (let i = h.toAct; i !== seat; i = (i + 1) % n(t)) {
+      if (needsAction(t, i) && !t.seats[i]?.sittingOut && !t.seats[i]?.leaving) turn.ahead++;
+    }
+  }
+  return turn;
+}
+
 /** Move the turn to the next player after `from`, or end the street / hand. */
 function advance(t, from, ctx) {
   const h = t.hand;

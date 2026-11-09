@@ -1,5 +1,5 @@
 import { voiceOn, setVoiceOn } from './table/Smoke.jsx';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useSession, rename, signOut, changePassword, changeUsername, linkGoogleUrl, refreshSession } from './api.js';
 import { navigate, goToMines } from './App.jsx';
 import { SignIn } from './Home.jsx';
@@ -23,6 +23,10 @@ export function Profile({ id }) {
   const [p, setP] = useState(null);
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameStatus, setRenameStatus] = useState('');
+  const renamePending = useRef(false), renameInput = useRef(null), renameButton = useRef(null), restoreRenameFocus = useRef(false);
   const [fitShop, setFitShop] = useState(null); // v36: the accessory fit editor (needs the shop view)
   const [name, setName] = useState('');
   const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('link') ? 'account' : 'overview'));
@@ -33,6 +37,26 @@ export function Profile({ id }) {
     api('GET', self ? '/profile' : `/players/${id}/profile`).then(setP).catch((e) => setErr(e.message));
   }, [id, me?.id, me?.bankroll, me?.avatar?.v, loading]);
   useEffect(() => { document.title = `${p?.name || 'Profile'} · Buffalo Bill's Academy`; }, [p?.name]);
+  useLayoutEffect(() => {
+    if (editing && !renaming) renameInput.current?.focus();
+    else if (!editing && restoreRenameFocus.current) { renameButton.current?.focus(); restoreRenameFocus.current = false; }
+  }, [editing, renaming, renameError]);
+  function cancelRename() {
+    if (renamePending.current) return;
+    setRenameError(''); setName(p.name); restoreRenameFocus.current = true; setEditing(false);
+  }
+  async function saveName(e) {
+    e.preventDefault();
+    if (renamePending.current) return;
+    if (!name.trim()) { setRenameError('Please enter a name.'); renameInput.current?.focus(); return; }
+    renamePending.current = true; setRenaming(true); setRenameError('');
+    try {
+      const saved = await rename(name);
+      setP((current) => ({ ...current, name: saved.name }));
+      setRenameStatus('Display name saved.'); restoreRenameFocus.current = true; setEditing(false);
+    } catch (error) { setRenameError(error.message); }
+    finally { renamePending.current = false; setRenaming(false); }
+  }
 
   if (!loading && self && !me) return <div className="screen center-screen"><h1 className="display h2">Sign in</h1><p className="lede">Sign in to see your bankroll, results and stats.</p><SignIn next="/profile" /></div>;
   if (err) return <div className="screen center-screen"><div className="error">{err}</div></div>;
@@ -55,21 +79,29 @@ export function Profile({ id }) {
   return (
     <div className="screen profile">
       <div className="pf-head">
-        <Bust id={p.id} avatar={p.avatar} size={wide ? 84 : 58} />
+        {self && me ? <button type="button" className="btn ghost pf-avatar" aria-label="Change avatar" onClick={() => navigate('/profile/face')}>
+          <span aria-hidden="true"><Bust id={p.id} avatar={p.avatar} size={wide ? 84 : 58} /></span>
+          <span>Change avatar</span>
+        </button> : <Bust id={p.id} avatar={p.avatar} size={wide ? 84 : 58} />}
         <div className="pf-id">
           <p className="kicker">{self ? 'Your profile' : 'Player'} · since {new Date(p.since).toLocaleDateString([], { month: 'short', year: 'numeric' })}</p>
           {editing ? (
-            <form className="row" onSubmit={async (e) => { e.preventDefault(); try { await rename(name); setEditing(false); setP({ ...p, name }); } catch (e2) { setErr(e2.message); } }}>
-              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} autoFocus aria-label="Display name" /><button className="btn small light">Save</button>
+            <form className="pf-rename" onSubmit={saveName} aria-busy={renaming} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancelRename(); } }}>
+              <div className="row wrap">
+                <input ref={renameInput} value={name} onChange={(e) => { setName(e.target.value); setRenameError(''); }} maxLength={20} readOnly={renaming} aria-label="Display name" aria-invalid={!!renameError} aria-describedby={renameError ? 'rename-error' : undefined} />
+                <button className="btn small light" disabled={renaming}>{renaming ? 'Saving…' : 'Save'}</button>
+                <button type="button" className="btn small ghost" disabled={renaming} onClick={cancelRename}>Cancel</button>
+              </div>
+              {renameError && <p className="error small" id="rename-error" role="alert">{renameError}</p>}
             </form>
           ) : <h1 className="display pf-name">{p.name}</h1>}
+          <p className="small ok" role="status">{renameStatus}</p>
           {self && p.email && <p className="small muted hide-s">{p.email}</p>}
         </div>
         {self && !editing && (
           <div className="pf-actions">
-            <button className="btn small" onClick={() => navigate('/profile/face')}>Retake photo</button>
             {me?.avatar?.wear && <button className="btn small" onClick={() => api('GET', '/shop').then(setFitShop).catch((e) => setErr(e.message))} data-test="profile-fit">Fit accessories</button>}
-            <button className="btn small" onClick={() => { setName(p.name); setEditing(true); }}>Rename</button>
+            <button ref={renameButton} className="btn small" onClick={() => { setName(p.name); setRenameError(''); setRenameStatus(''); setEditing(true); }}>Rename</button>
             <button className="btn small ghost" onClick={() => signOut().then(() => navigate('/'))}>Sign out</button>
           </div>
         )}
