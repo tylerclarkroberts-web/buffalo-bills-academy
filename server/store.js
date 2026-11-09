@@ -25,6 +25,33 @@ export class Store {
     fs.renameSync(tmp, file);
   }
   savePlayers() { Store.writeAtomic(this.playersFile, this.players); }
+  // Persist first; existing investment requests retain player/holding references across awaits.
+  commitPlayerDrafts(drafts) {
+    const players = { ...this.players };
+    for (const p of drafts) {
+      if (!this.players[p.id]) throw new Error('Player no longer exists');
+      players[p.id] = p;
+    }
+    const tmp = `${this.playersFile}.${process.pid}.risk.tmp`;
+    let fd;
+    try {
+      fd = fs.openSync(tmp, 'w');
+      fs.writeFileSync(fd, JSON.stringify(players));
+      fs.fsyncSync(fd);
+      fs.closeSync(fd); fd = undefined;
+      fs.renameSync(tmp, this.playersFile);
+    } catch (error) {
+      if (fd !== undefined) fs.closeSync(fd);
+      try { fs.unlinkSync(tmp); } catch { /* no staged file */ }
+      throw error;
+    }
+    for (const draft of drafts) {
+      const p = this.players[draft.id];
+      p.bankroll = draft.bankroll;
+      p.txns = draft.txns;
+      p.conquest = draft.conquest;
+    }
+  }
   /** Extra JSON documents (sessions, mines, prices) live next to players.json on the same volume. */
   loadDoc(name, fallback) {
     const f = path.join(this.dir, `${name}.json`);

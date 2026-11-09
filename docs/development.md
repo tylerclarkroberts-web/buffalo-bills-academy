@@ -43,6 +43,8 @@ The app reads process environment variables. It does not load `.env` files autom
 | `SLACK_BOT_TOKEN` | Enables optional Slack integration; leave unset when testing without Slack. |
 | `DEV_LOGIN` | `1` enables development sign-in and test hooks. Leave unset outside local testing. |
 | `ALLOW_GUEST` | `0` disables guest-player creation. Username accounts do not require Google setup. |
+| `CONQUESTK_URL`, `CONQUESTK_SERVICE_TOKEN` | Optional ConquestK service origin and dedicated integration credential; see [ConquestK integration](conquest-integration.md). |
+| `CONQUESTK_BETTING_ENABLED`, `CONQUESTK_PILOT_PLAYER_IDS` | New-bet rollout switch (default disabled) and optional Academy player allowlist. Existing-bet recovery stays enabled. |
 
 For a local alternate port in PowerShell:
 
@@ -69,6 +71,7 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | Shared play-money bankroll | `server/accounts.js` |
 | Accounts and sessions | `server/auth.js`, `server/passwords.js` |
 | Persistence | `server/store.js` |
+| ConquestK account links and Risk bets | `server/conquest.js`, `client/src/Conquest.jsx`, `test/conquest.test.js` |
 
 The frontend uses browser-history routing. Poker table updates use Server-Sent Events to trigger a refetch of each player’s view; the public lobby instead polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
 

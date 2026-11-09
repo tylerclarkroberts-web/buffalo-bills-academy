@@ -13,7 +13,7 @@ import { replayEnabled, setReplayEnabled } from './table/replay.js';
 import * as music from './table/music.js';
 
 const OUTCOME = { motherlode: 'Motherlode', aliens: 'Alien skeletons', diamonds: 'Diamond well', dud: 'Mostly mud', normal: 'Shift' };
-const TX = { start: 'Start', buyin: 'Buy-in', cashout: 'Cash-out', mine: 'Mines', 'invest-buy': 'Bought', 'invest-sell': 'Sold' };
+const TX = { start: 'Start', buyin: 'Buy-in', cashout: 'Cash-out', mine: 'Mines', 'invest-buy': 'Bought', 'invest-sell': 'Sold', risk_stake: 'Risk stake', risk_win: 'Risk win', risk_refund: 'Risk refund' };
 const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -43,7 +43,7 @@ export function Profile({ id }) {
   if (p.txns) tabs.push(['money', 'Money']);
   if (self && me) tabs.push(['alerts', 'Settings'], ['account', 'Account']);
   const stats = [
-    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables`],
+    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables${w.riskEscrow ? ` · ${money(w.riskEscrow)} Risk stakes` : ''}`],
     ['Bankroll', money(w.bankroll), 'Spendable play money'],
     ['Poker, lifetime', money(pk.lifetimeNet, { sign: true }), `${pk.gamesPlayed ?? pk.games.length} game${(pk.gamesPlayed ?? pk.games.length) === 1 ? '' : 's'}`, cls(pk.lifetimeNet)],
     ['Hands played', chips(pk.handsPlayed), `${chips(pk.handsWon)} won`],
@@ -128,7 +128,7 @@ export function Leaderboard() {
     <div className="screen board">
       <div className="page-head">
         <h1 className="display h2">Leader<span className="script neon-pink">board</span></h1>
-        <p className="kicker">Net worth = cash + coins at today's price + chips on tables</p>
+        <p className="kicker">Net worth = cash + coins + chips on tables + unsettled Risk stakes</p>
       </div>
       {err && <div className="error">{err}</div>}
       {!d ? <p className="muted">Loading…</p> : (

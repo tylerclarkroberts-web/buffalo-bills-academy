@@ -23,8 +23,9 @@ import { canonicalRedirect } from './canonical.js';
 import { verifyPassword } from './passwords.js';
 import { SlackClient, SlackAlerts } from './slack.js';
 import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js';
+import { Conquest, mountConquest } from './conquest.js';
 
-export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale } = {}) {
+export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
   const service = new PokerService({ dataDir, now });
   const config = authConfig(env);
   if (devLogin !== undefined) config.devLogin = devLogin;
@@ -39,6 +40,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
 
   const sessions = new Sessions({ store: service.store, now: service.now });
   const { middleware: auth, googleOn } = setupAuth(app, { service, sessions, config, fetchImpl, limits: authLimits });
+  const conquest = new Conquest({ service, sessions, env, fetchImpl: conquestFetch || fetchImpl, pollMs: conquestPollMs });
+  service.conquest = conquest;
   const accounts = service.accounts;
   // test hooks (local dev server only, never with DEV_LOGIN off): a short incubation and an egg in every shift, for the e2e
   const barnTest = !!config.devLogin;
@@ -88,7 +91,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     accounts.ensure(p);
     const holdings = market.holdingsValue(p);
     const chips = service.chipsInPlay(p.id);
-    return { bankroll: p.bankroll, holdings, chips, total: cents(p.bankroll + holdings + chips) };
+    const riskEscrow = conquest.escrow(p);
+    return { bankroll: p.bankroll, holdings, chips, riskEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow) };
   };
   const meView = (p) => {
     accounts.ensure(p);
@@ -126,7 +130,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (!legacy || legacy.id === me.id) return { merged: false, me: meView(me) };
     if (legacy.google || legacy.login) throw new GameError('That player already belongs to another account.', 409);
     if (!req.sessionId || !(me.google || me.login)) throw new GameError('Sign in first.', 401);
-    const fresh = !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
+    const fresh = !conquest.hasHistory(me) && !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
     if (!fresh) return { merged: false, me: meView(me), reason: 'Your signed-in account already has history, so the old player was left as is.' };
     if (me.google) legacy.google = me.google;
     if (me.login) legacy.login = me.login;
@@ -202,10 +206,12 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const st = p.stats;
     const port = market.portfolio(p);
     const unrealized = Object.values(port.holdings).reduce((a, h) => a + (h.unrealized || 0), 0);
+    const worth = netWorth(p);
+    if (!self) delete worth.riskEscrow;
     return {
       id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), kind: p.kind || 'guest', since: p.createdAt,
       ...(self ? { email: p.login?.email || p.google?.email || null, username: p.login?.username || null, txns: (p.txns || []).slice(-40).reverse() } : {}),
-      worth: netWorth(p),
+      worth,
       poker: { lifetimeNet: games.reduce((a, g) => a + g.net, 0), gamesPlayed: games.length, games: self ? games : gamesFor(p.id, true), handsPlayed: st.handsPlayed, handsWon: st.handsWon,
         winRate: st.handsPlayed ? st.handsWon / st.handsPlayed : 0, biggestPot: st.biggestPot },
       mining: { shifts: p.mining.shifts, earned: p.mining.earned, best: p.mining.best, jackpots: p.mining.jackpots, history: p.mining.history.slice(-12).reverse().map(({ t, outcome, amount }) => ({ t, outcome, amount })) }, // v38: shift times are stored, not shown
@@ -222,7 +228,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     await market.quotes().catch(() => null); // refresh prices (cached 60s)
     const rows = Object.values(service.store.players)
       .filter((p) => !p.hidden && typeof p.bankroll === 'number' && (googleOn ? (p.google || p.login) : true))
-      .map((p) => ({ id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...netWorth(p), hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 }))
+      .map((p) => {
+        const { riskEscrow: _privateRiskEscrow, ...worth } = netWorth(p);
+        return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...worth, hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 };
+      })
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
     return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn };
   }));
@@ -252,6 +261,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // Refused while seated at an open table (chips there are real bankroll money). Removes the player record,
   // their sessions, avatar file and any mine shift. Table ledgers keep the name for past results.
   function deletePlayer(p) {
+    if (conquest.hasPending(p)) throw new GameError('Wait for your Risk bets to settle before deleting your account.', 409);
+    if (conquest.data(p).link?.active) throw new GameError('Unlink ConquestK on the Risk bets page before deleting your account.', 409);
     const seated = service.store.allTables().some((t) => t.status !== 'closed' && t.seats.some((x) => x && x.playerId === p.id)) || bj.seatedOpen(p.id);
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
@@ -366,6 +377,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const dealerPath = dealerFile || path.join(path.dirname(new URL(import.meta.url).pathname), 'assets', 'dealer.png');
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
 
+  mountConquest({ app, api, conquest, auth, wrap });
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
 
@@ -397,6 +409,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { service.shutdown(); market.shutdown(); slack.shutdown(); };
+  const shutdown = () => { conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
   return { app, service, shutdown, bj };
 }
