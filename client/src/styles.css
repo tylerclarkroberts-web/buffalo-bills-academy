@@ -447,7 +447,17 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .wl-frame { position: relative; height: min(56vh, 420px); max-height: 100%; aspect-ratio: 4 / 5; border-radius: 16px; overflow: hidden; background: #000; touch-action: none; cursor: grab; flex: 0 1 auto; min-height: 0; }
 .wl-frame video, .wl-frame canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mirror { transform: scaleX(-1); }
-.wl-guide { position: absolute; inset: 8% 16% 12%; border-radius: 50%; border: 2px dashed rgba(46, 230, 214, .9); box-shadow: 0 0 0 999px rgba(23, 8, 18, .45); pointer-events: none; }
+.wl-guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.wl-guide-shade { fill: rgba(23, 8, 18, .55); }
+.wl-guide-outline { fill: none; stroke: rgba(46, 230, 214, .9); stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.wl-frame:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.wl-cutout { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 0; max-height: 100%; overflow: auto; padding: 3px; }
+.wl-cutout > * { flex-shrink: 0; }
+.wl-cutout-status { margin: 0; max-width: 46ch; line-height: 1.35; }
+.wl-edit-actions { justify-content: center; flex: none; }
+.welcome.st-cutout .wl-stage { align-items: flex-start; overflow: auto; }
+.welcome.st-preview .wl-stage { overflow: auto; }
+.welcome.st-preview .wl-preview { max-height: 100%; padding: 3px; }
 .wl-hint { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font: 500 10.5px var(--mono); color: var(--paper); }
 .wl-zoom { width: min(100%, 300px); }
 .wl-preview { display: grid; justify-items: center; gap: 12px; }
@@ -1336,3 +1346,6 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 .handle-card .sl-title { margin: 0; font-size: 18px; }
 .handle-card .field { margin: 0; }
 .handle-card input { font-family: var(--mono); letter-spacing: .02em; }
+
+/* Keep framing usable on phones held sideways. */
+.welcome.st-crop .wl-zoom { display: flex; }

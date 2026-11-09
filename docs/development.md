@@ -62,6 +62,7 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | React startup and routing | `client/src/main.jsx`, `App.jsx`, `Shell.jsx` |
 | Lobby and table creation | `client/src/Home.jsx` |
 | Browser HTTP/session helpers | `client/src/api.js` |
+| Selfie framing, segmentation worker and correction | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`; see [Selfie avatars](selfie-avatars.md). |
 | Poker screen | `client/src/TablePage.jsx`, `client/src/table/` |
 | Express startup, routes, feature wiring | `server/index.js`, `server/app.js` |
 | Poker orchestration and timers | `server/service.js` |
@@ -74,6 +75,31 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | ConquestK account links and Risk bets | `server/conquest.js`, `client/src/Conquest.jsx`, `test/conquest.test.js` |
 
 The frontend uses browser-history routing. Poker table updates use Server-Sent Events to trigger a refetch of each player’s view; the public lobby instead polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
+
+## Selfie avatar checks
+
+The selfie feature uses the existing build and server commands. The pinned model is in `client/public/avatar-model/`; Vite emits the matching MediaPipe module loader and WASM binary from the lockfile's package. Serve all of them from the application origin. No API key, external image service or new server setting is required.
+
+Run the focused checks and build:
+
+```sh
+node --test test/avatar-mask.test.js test/selfie-framing.test.js test/cutout-brush.test.js test/head-segmenter.test.js test/avatar-upload.test.js test/facegate.test.js
+npm run build
+```
+
+These checks cover framing bounds, shared head masks, semantic labels, transparent holes and boundaries, preservation of masked face detail, brush behavior and avatar routing. They do not prove model accuracy or camera behavior on physical devices. Add the avatar upload/API tests to this command when extending the persistence boundary.
+
+| Browser check | Verify |
+| --- | --- |
+| Desktop, narrow phone and short landscape | Framing outline matches the cutout; status, brushes and action buttons remain reachable. |
+| Camera and upload | Camera permission failure has an upload fallback; sources stay local; repositioning and zoom are usable. |
+| Automatic removal | Worker, model, loader and WASM load only after choosing Remove background, using same-origin requests. Record the actual inference outcome, not just a model download. |
+| Manual fallback | Cancel a loading attempt with Use manual cutout; exercise download failure, unavailable Worker/OffscreenCanvas/SIMD and timeout. The editor must explain that background still needs manual erasing. |
+| Corrections and preview | Keep/Erase, brush size, reset, removed-area toggle and keyboard controls work; Edit cutout retains edits; Adjust framing reuses the photo. Both previews use the edited mask. |
+| Save, cancel and leave | Save sends only the finished PNG; failed save allows retry; successful save, cancel/retake and page exit clear editing canvases and stop pending workers. Existing saved avatars stay unchanged. |
+| Network privacy | Inspect request destinations and upload bodies throughout load, inference and save. Confirm that original photo pixels, masks and metrics are not sent to another origin. |
+
+Use synthetic or explicitly authorized test photos; do not commit personal images or session data. Include actual test totals, desktop/mobile evidence, fallback results and untested devices in the PR. Preserve model notices and verify its SHA-256 when replacing assets. [Selfie avatars](selfie-avatars.md) records the pinned version, model hash, privacy behavior and player controls.
 
 ## Local persistence
 
@@ -105,3 +131,5 @@ During verification of host options and room filters on November 8, 2026, using 
 These are recorded observations, not permanent expected failures. Report the current result on every relevant PR, investigate new failures, and update this section when the baseline changes. Do not describe the full suite as passing while failures remain.
 
 The public source snapshot does not contain the live deployment setup. Building, pushing, or merging here does not deploy the production site. See [Contributing](../CONTRIBUTING.md) for the review and documentation workflow.
+
+During verification of selfie cutouts on November 9, 2026, the focused avatar checks passed all 20 tests and the frontend build passed. The full suite ran 251 tests: 247 passed and four Doom tests failed with the existing Windows URL-to-path issue. The previously failing Slack stale-alert test passed in that run; this change does not fix or establish the reliability of that unrelated test.

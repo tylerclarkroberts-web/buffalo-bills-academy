@@ -1,0 +1,19 @@
+.cutout-editor { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0; width: min(100%, 340px); }
+.cutout-canvas { display: block; width: min(240px, 32vh); max-width: 100%; height: auto; border: 1px solid var(--teal); border-radius: 12px; cursor: crosshair; touch-action: none; background-color: #2b2030; background-image: conic-gradient(#413445 25%, transparent 0 50%, #413445 0 75%, transparent 0); background-size: 16px 16px; }
+.cutout-canvas:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.cutout-tools { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
+.cutout-tools .row { justify-content: center; gap: 6px; }
+.cutout-tools .btn { min-height: 44px; }
+.cutout-size { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.cutout-size input { flex: 1; min-width: 40px; accent-color: var(--teal); }
+.cutout-size output { min-width: 2ch; text-align: right; }
+.cutout-ghost { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; }
+.cutout-ghost input { width: 18px; height: 18px; margin: 0; }
+.cutout-help { margin: 0; max-width: 40ch; line-height: 1.35; }
+@media (max-height: 500px) {
+  .cutout-editor { display: grid; grid-template-columns: auto minmax(150px, 240px); gap: 6px 10px; width: auto; max-width: 100%; }
+  .cutout-canvas { grid-column: 1; grid-row: 1 / 3; }
+  .cutout-tools, .cutout-help { grid-column: 2; }
+  .cutout-tools .btn { padding: 4px 8px; }
+  .cutout-help { font-size: 11px; }
+}
