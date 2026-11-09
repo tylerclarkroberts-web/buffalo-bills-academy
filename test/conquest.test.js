@@ -110,6 +110,49 @@ test('valid JSON with an invalid players-file root disables wagering without rep
   assert.equal(conquest.configured(), true, 'an empty player dictionary is valid');
 });
 
+test('stored player entries require matching IDs and finite wallets while preserving legacy shapes', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-conquest-players-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'players.json');
+  const env = { CONQUESTK_SERVICE_TOKEN: 'test-only-token-012345678901234567890', CONQUESTK_BETTING_ENABLED: 'true' };
+  const load = (bytes) => {
+    fs.writeFileSync(file, bytes);
+    return new Conquest({ service: { store: new Store(dir), now: () => epoch }, env, pollMs: 0 });
+  };
+  const invalid = [1, [], null, {}, { id: 'other', bankroll: 10 }, { id: 'bad', bankroll: '10' },
+    { id: 'bad', bankroll: null }, { id: 'bad', conquest: { link: null, pendingLink: null, bets: {} } }];
+  for (const bytes of [...invalid.map((p) => JSON.stringify({ bad: p })), '{"bad":{"id":"bad","bankroll":1e400}}']) {
+    const conquest = load(bytes);
+    assert.equal(conquest.configured(), false, `malformed entry ${bytes} must fail closed`);
+    assert.equal(conquest.canPlace({ id: 'player' }), false);
+    assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+  }
+  for (const wallet of [{}, { bankroll: 0 }, { bankroll: -10.25 }, { bankroll: 1000 }]) {
+    const legacy = { id: 'legacy', name: 'Legacy guest', tokenHash: 'legacy-token-hash', createdAt: epoch, ...wallet };
+    const bytes = JSON.stringify({ legacy });
+    assert.equal(load(bytes).configured(), true, 'valid legacy objects and existing balances remain supported');
+    assert.equal(fs.readFileSync(file, 'utf8'), bytes, 'validation does not initialize or convert money');
+  }
+});
+
+test('corrupt live wallets fail quote and reservation closed without persisting money or receipts', async (t) => {
+  const f = await fixture(t); await f.link();
+  for (const operation of ['quote', 'place']) for (const bankroll of [NaN, Infinity, -Infinity, '1000', null, undefined, 1e20]) {
+    await f.restart();
+    const q = operation === 'place' ? await f.quote() : null;
+    const player = f.s.service.store.players[f.id];
+    const before = fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8');
+    player.bankroll = bankroll;
+    const result = operation === 'place' ? await f.place(q) : await f.quote();
+    assert.equal(result.status, 503, `${operation} rejects invalid bankroll ${String(bankroll)}`);
+    assert.equal(f.s.service.conquest.configured(), false, 'corruption disables further financial work until recovery');
+    assert.equal(player.bankroll, bankroll);
+    assert.deepEqual(player.conquest.bets, {});
+    assert.equal(fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8'), before);
+  }
+  assert.equal(f.ck.admissions.size, 0);
+});
+
 test('unconfigured linking returns unavailable without creating a nonce or blocking deletion', async (t) => {
   const f = await fixture(t, { CONQUESTK_SERVICE_TOKEN: '' });
   const before = fs.readFileSync(path.join(f.dir, 'players.json'), 'utf8');

@@ -84,7 +84,11 @@ export class Conquest {
       if (target.pathname !== '/' || target.search || target.hash || target.username || target.password
         || (target.protocol !== 'https:' && !(target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)))) throw new Error('Invalid ConquestK origin');
       if (!this.store.players || typeof this.store.players !== 'object' || Array.isArray(this.store.players)) throw new Error('Invalid stored player dictionary');
-      for (const p of Object.values(this.store.players)) if (!validConquest(p)) throw new Error('Invalid stored ConquestK ledger');
+      for (const [id, p] of Object.entries(this.store.players)) {
+        if (!p || typeof p !== 'object' || Array.isArray(p) || !text(p.id) || p.id !== id
+          || (!Number.isFinite(p.bankroll) && !(p.bankroll === undefined && p.conquest === undefined))) throw new Error('Invalid stored player record');
+        if (!validConquest(p)) throw new Error('Invalid stored ConquestK ledger');
+      }
     } catch (e) { this.fault = e.message; console.error('ConquestK integration disabled:', e.message); }
     if (this.token && pollMs > 0) {
       this.timer = setInterval(() => { void this.reconcile(); }, pollMs); this.timer.unref?.();
@@ -107,8 +111,13 @@ export class Conquest {
     try { this.store.commitPlayerDrafts(drafts); }
     catch (e) { this.fault = 'Risk ledger write failed'; console.error('ConquestK ledger write failed:', e.message); throw unavailable(); }
   }
+  balanceCents(p) {
+    const balance = Number.isFinite(p.bankroll) ? Math.round(p.bankroll * 100) : NaN;
+    if (!Number.isSafeInteger(balance)) { this.fault = 'Invalid player bankroll'; throw unavailable(); }
+    return balance;
+  }
   move(draft, amountCents, type, note) {
-    const balance = Math.round(draft.bankroll * 100);
+    const balance = this.balanceCents(draft);
     if (!integer(balance) || !Number.isSafeInteger(balance + amountCents) || balance + amountCents < 0) throw fail('There is not enough spendable play money for this bet.', 402);
     draft.bankroll = (balance + amountCents) / 100;
     this.accounts.log(draft, type, amountCents / 100, note);
@@ -221,6 +230,7 @@ export class Conquest {
   }
   async quote(p, { marketId, outcomeUserId, stakeCents }) {
     if (!this.canPlace(p)) throw unavailable();
+    this.balanceCents(p);
     if (this.linkChanges.has(p.id)) throw fail('Your account link is being updated. Try again shortly.', 409);
     if (!text(marketId) || !text(outcomeUserId) || !integer(stakeCents) || stakeCents < RISK_LIMITS.minStakeCents || stakeCents > RISK_LIMITS.maxStakeCents) throw fail('Choose a stake between $1 and $100.');
     const [m, link] = await Promise.all([this.market(marketId), this.refreshLink(p)]);
@@ -229,7 +239,7 @@ export class Conquest {
     this.checkSelection(p, m, link, outcomeUserId);
     const outcome = riskOdds(m).find((x) => x.userId === outcomeUserId);
     if (!outcome.oddsHundredths || stakeCents > outcome.maxStakeCents) throw fail('This stake exceeds the available return limit. Choose a smaller stake.', 400);
-    if (Math.round(p.bankroll * 100) < stakeCents) throw fail('There is not enough spendable play money for this bet.', 402);
+    if (this.balanceCents(p) < stakeCents) throw fail('There is not enough spendable play money for this bet.', 402);
     const terms = { academyPlayerId: p.id, conquestUserId: link.conquestUserId, linkId: link.id, linkVersion: link.version,
       marketId: m.id, marketVersion: m.version, outcomeUserId, stakeCents, oddsHundredths: outcome.oddsHundredths,
       grossCents: Math.floor(stakeCents * outcome.oddsHundredths / 100), modelVersion: MODEL };
