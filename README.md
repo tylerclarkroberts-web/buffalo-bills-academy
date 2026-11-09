@@ -32,6 +32,10 @@ Hosts can change the automatic-free-check and skip-first-betting-round defaults 
 
 **Risk bets** links to ConquestK and offers optional account linking and fixed-odds play-money bets on eligible public Classic matches. Accounts and games remain separate. New betting is disabled by default; existing bets continue recovering and settling when the integration is connected. See [ConquestK integration](docs/conquest-integration.md) for the player flow, odds, limits, deployment configuration, privacy, and recovery guarantees.
 
+## Selfie avatars
+
+Frame a selfie or uploaded photo, remove its background on your device, and correct the cutout before making a low-poly head. The saved picture and 3D preview share that cutout. Manual brushes remain available when automatic removal cannot run; only the finished drawing is uploaded when you save. See [Selfie avatars](docs/selfie-avatars.md) for the flow, local-photo lifetime, download size and limitations.
+
 ## Configuration and data
 
 Optional settings are listed in [.env.example](.env.example). Export values in your shell before starting; the app does not automatically load `.env` files. Google OAuth needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and your own `SESSION_SECRET`. Set `PUBLIC_URL` to configure the public origin and callback; otherwise the server uses the request origin. The callback path is `/auth/google/callback`. Slack integration is disabled unless `SLACK_BOT_TOKEN` is set. Leave `DEV_LOGIN` unset outside local testing, and never reuse production credentials.
@@ -44,6 +48,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
 - [Host options and room history](docs/table-options-and-history.md): change defaults for future hands and filter open or finished rooms.
 - [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
+- [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.
 - [ConquestK integration](docs/conquest-integration.md): account links, Risk bets, fixed odds, persistence, and rollout.
 
@@ -58,3 +63,5 @@ Publishing or merging this repository does not deploy the live site. A live rele
 ## License
 
 Original application code is MIT licensed; see [LICENSE](LICENSE). Included character art accompanies this project. Third-party components retain their own licenses: the embedded Doom engine is GPL-2.0 and Freedoom game data has its own BSD-style license. Their license, credits, notices, and corresponding source are preserved under `client/public/doom/`.
+
+Selfie background removal uses the Apache-2.0 licensed MediaPipe Tasks Vision library and SelfieMulticlass model. Their [license](client/public/avatar-model/LICENSE.txt), [attribution and model hash](client/public/avatar-model/NOTICE.txt) are included with the public model assets.
