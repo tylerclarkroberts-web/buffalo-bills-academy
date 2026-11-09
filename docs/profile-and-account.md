@@ -18,6 +18,15 @@ The editor keeps your draft and shows an error beside it if the name is empty or
 
 ## Sign-in and preferences
 
-The **Account** tab contains your login username, password controls when available, Google-link status and account deletion. The **Settings** tab contains table preferences and Slack alerts, and currently also shows the username editor. This UI update does not move those controls or change their storage.
+Use the two profile tabs for these controls:
 
-The avatar upload and `PATCH /api/me` request/response contracts are unchanged. No saved-player migration is required.
+| Tab | Controls |
+| --- | --- |
+| **Account** | Login username, password controls when available, Google-link status and account deletion. |
+| **Settings** | Table preferences and Slack alerts. |
+
+The username editor appears once, under **Account**. **Settings** includes Table replay, table effects, gag and Smoke Shop preferences, Guntrad's voice, and Slack alert controls when configured. Existing availability and save behavior still apply.
+
+Each tab has one scrollable content pane. Its cards take the height their contents need, and scrolling the pane reaches the remaining forms and actions on a small or short screen. This layout applies to the profile's Account and Settings panes; other profile tabs and game screens keep their existing layouts.
+
+The avatar upload, account and preference request/response contracts are unchanged, including `PATCH /api/me`. Existing browser and server preference storage is preserved. No saved-player migration is required.
