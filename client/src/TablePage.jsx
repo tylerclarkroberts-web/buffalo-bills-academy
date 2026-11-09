@@ -323,9 +323,7 @@ function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyI
     ));
   }
   const show = view.me.canShow;
-  const [hidden, setHidden] = useState(() => new Set());
-  const showKey = show ? `${code}.${show.number}` : '';
-  const offerShow = show && !myTurn && !hidden.has(showKey);
+  const offerShow = show && !myTurn;
   if (offerShow) {
     // Won without a showdown: optionally show the table. Takes the turnbar's place, so the layout never grows.
     const left2 = [0, 1].filter((i) => !show.shown.includes(i));
@@ -333,9 +331,9 @@ function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyI
       <div key="s" className="bar showbar" role="group" aria-label="Show your cards">
         <span className="sb-text">You took hand #{show.number} without a showdown. <span className="hide-xs">Show the table?</span></span>
         <div className="sb-btns">
-          {left2.length === 2 && <button className="btn small primary" onClick={() => post('show', { which: 'both' })}>Show both</button>}
-          {left2.map((i) => <button key={i} className="btn small" onClick={() => post('show', { which: i })} aria-label={`Show ${cardText(show.cards[i])} only`}>Show {cardText(show.cards[i])}</button>)}
-          <button className="btn small ghost" onClick={() => setHidden(new Set([...hidden, showKey]))}>{show.shown.length ? 'Done' : 'Keep hidden'}</button>
+          {left2.length === 2 && <button className="btn small primary" onClick={() => post('show', { which: 'both', handNumber: show.number })}>Show both</button>}
+          {left2.map((i) => <button key={i} className="btn small" onClick={() => post('show', { which: i, handNumber: show.number })} aria-label={`Show ${cardText(show.cards[i])} only`}>Show {cardText(show.cards[i])}</button>)}
+          <button className="btn small ghost" onClick={() => post('show', { which: 'none', handNumber: show.number })}>{show.shown.length ? 'Done' : 'Keep hidden'}</button>
         </div>
       </div>,
     );

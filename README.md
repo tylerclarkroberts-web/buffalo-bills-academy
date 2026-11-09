@@ -26,7 +26,7 @@ Existing tables remain private. Other players’ profile histories hide private 
 
 ## Host options and room history
 
-Hosts can change the automatic-free-check and skip-first-betting-round defaults after a table starts. Changes apply next hand and preserve current actions and personal checkbox choices. **Your tables** offers **Open** (the default), **Closed**, and **All** filters; finished rooms remain available for results and history. See [Host options and room history](docs/table-options-and-history.md) for usage, timing, and the settings API.
+Hosts can change the automatic-free-check and skip-first-betting-round defaults after a table starts. Changes apply next hand and preserve current actions and personal checkbox choices. **Your tables** offers **Open** (the default), **Closed**, and **All** filters; finished rooms remain available for results and history. Card-reveal choices such as **Keep hidden** and **Done** are saved per winning hand, so the same prompt stays dismissed after reopening the table. See [Host options and room history](docs/table-options-and-history.md) for usage, timing, and the APIs.
 
 ## ConquestK and Risk bets
 

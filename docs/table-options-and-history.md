@@ -27,6 +27,16 @@ Counts describe the corresponding groups in your table history. Changing the fil
 
 The filter applies on desktop and mobile. It does not change ownership or access to any room. **Public tables** remains a separate directory of joinable public rooms and continues to exclude closed or full rooms. See [Public and private poker tables](public-tables.md) for its rules.
 
+## Show cards once per winning hand
+
+After everyone else folds, the winner may show both cards, show one at a time, or choose **Keep hidden**. After showing one card, **Done** keeps the other hidden. These choices belong to that finished hand; a later uncontested win gets a new choice.
+
+**Keep hidden** and **Done** are saved on the server. The same prompt stays closed after refreshing, leaving and reopening the table, changing between desktop/mobile or multi-table layouts, using another device, or restarting the server. A failed save leaves the choice available so it can be retried. Cards already shown remain public; unrevealed cards stay private. These choices do not change chips, bets, or the next hand.
+
+The existing authenticated `POST /api/tables/:code/show` accepts `{ "which": "none", "handNumber": 2 }` to finish that hand's choice without revealing more cards. Only the winner can do this. `which` still accepts `"both"`, `0`, or `1` to reveal cards. The current UI includes `handNumber` for every choice; a stale request is rejected before it can affect a later hand. Older clients that omit it retain the existing show-card behavior.
+
+Run `node --test test/showcards.test.js test/showdown.test.js test/game.test.js` and check dismissal across refresh/navigation, a layout change, and a separate browser session. There is no migration: the existing saved reveal opportunity is removed when the choice is finished. An old prompt that was dismissed only in browser memory before this fix may appear once more until the choice is saved.
+
 ## HTTP contract and persistence
 
 `POST /api/tables/:code/settings` uses the existing table-action authentication and returns the refreshed table view. Send one or both supported booleans:
