@@ -28,6 +28,8 @@ Existing tables remain private. Other players’ profile histories hide private 
 
 Hosts can change the automatic-free-check and skip-first-betting-round defaults after a table starts. Changes apply next hand and preserve current actions and personal checkbox choices. **Your tables** offers **Open** (the default), **Closed**, and **All** filters; finished rooms remain available for results and history. Card-reveal choices such as **Keep hidden** and **Done** are saved per winning hand, so the same prompt stays dismissed after reopening the table. See [Host options and room history](docs/table-options-and-history.md) for usage, timing, and the APIs.
 
+Returning to a table plays a skippable recap of missed public actions, smokes, gags, and speech across hands. The table saves its latest 300 public events, and this browser remembers completed replay steps separately for each player and table. See [Catch up when you return](docs/table-options-and-history.md#catch-up-when-you-return) for controls, privacy, and retention limits.
+
 ## ConquestK and Risk bets
 
 **Risk bets** links to ConquestK and offers optional account linking and fixed-odds play-money bets on eligible public Classic matches. Accounts and games remain separate. New betting is disabled by default; existing bets continue recovering and settling when the integration is connected. See [ConquestK integration](docs/conquest-integration.md) for the player flow, odds, limits, deployment configuration, privacy, and recovery guarantees.
@@ -46,7 +48,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 
 - [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
-- [Host options and room history](docs/table-options-and-history.md): change defaults for future hands and filter open or finished rooms.
+- [Host options and room history](docs/table-options-and-history.md): change defaults for future hands, filter rooms, and replay missed public activity.
 - [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
 - [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.

@@ -57,7 +57,7 @@ export default function App() {
   if (path.startsWith('/welcome') || path.startsWith('/profile/face')) {
     const next = safeNext(query.get('next') || (path.startsWith('/profile') ? '/profile' : '/'));
     page = <Suspense fallback={<div className="screen" />}><AvatarMaker next={next} retake={path.startsWith('/profile')} /></Suspense>;
-  } else if (t) page = <TablePage code={t[1].toUpperCase()} />;
+  } else if (t) page = <TablePage key={`${t[1].toUpperCase()}.${me?.id || 'spectator'}`} code={t[1].toUpperCase()} />;
   else if (path.startsWith('/multi')) page = <Suspense fallback={<div className="screen" />}><Multi wanted={(query.get('t') || '').split(',').filter(Boolean)} /></Suspense>;
   else if (path.startsWith('/conquest')) page = <Suspense fallback={<div className="screen muted">Loading Risk bets…</div>}><Conquest /></Suspense>;
   else if (path.startsWith('/profile')) page = <Profile />;

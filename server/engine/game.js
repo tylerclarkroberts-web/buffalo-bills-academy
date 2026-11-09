@@ -65,6 +65,22 @@ function log(t, ctx, text, ev) {
   t.log.push(e);
   if (t.log.length > MAX_LOG) t.log.splice(0, t.log.length - MAX_LOG);
 }
+/** Keep successful cosmetic uses beside public poker actions, without copying inventory or private cards. */
+export function recordTableMoment(t, kind, moment, ctx) {
+  if (kind !== 'gag' && kind !== 'smoke') throw new GameError('Unknown table moment');
+  const seat = seatOf(t, moment.from);
+  const fromName = t.seats[seat]?.name || moment.fromName;
+  const ev = { k: kind, id: moment.id, from: moment.from, fromName, seat, item: moment.item, name: moment.name, emoji: moment.emoji };
+  if (kind === 'gag') {
+    const targetSeat = seatOf(t, moment.to);
+    const toName = t.seats[targetSeat]?.name || t.ledger[moment.to]?.name || 'a player';
+    Object.assign(ev, { to: moment.to, toName, targetSeat, effect: moment.effect, pix: moment.pix });
+    log(t, ctx, `${fromName} used ${moment.name} on ${toName}`, ev);
+  } else {
+    Object.assign(ev, { art: moment.art, at: moment.at });
+    log(t, ctx, `${fromName} lit up a ${moment.name}`, ev);
+  }
+}
 function seatOf(t, playerId) { return t.seats.findIndex((s) => s && s.playerId === playerId); }
 function requireSeat(t, playerId) {
   const i = seatOf(t, playerId);
@@ -651,6 +667,7 @@ export function setSay(t, playerId, text, ctx) {
   const i = seatOf(t, playerId);
   if (i < 0) throw new GameError('Take a seat to talk at this table', 403);
   const clean = cleanSay(text);
+  if (clean && clean !== t.seats[i].say?.text) log(t, ctx, `${t.seats[i].name}: ${clean}`, { k: 'say', from: playerId, fromName: t.seats[i].name, seat: i, text: clean });
   if (clean) t.seats[i].say = { text: clean, at: ctx.now };
   else delete t.seats[i].say;
   return t.seats[i].say || null;
@@ -708,7 +725,7 @@ export function viewFor(t, playerId, now) {
     seats, hand, legal: mySeat >= 0 ? legalActions(t, mySeat) : null,
     lastHand: t.lastHand, standings,
     // v49: last finished hand's showdown (hand is over, so its cards are public); per-player 'seen' for the auto-play
-    showdown: t.lastShowdown || null, showdownSeen: !!t.lastShowdown && (t.showdownSeen?.[playerId] ?? -1) >= t.lastShowdown.number, log: t.log.slice(-120), serverNow: now,
+    showdown: t.lastShowdown || null, showdownSeen: !!t.lastShowdown && (t.showdownSeen?.[playerId] ?? -1) >= t.lastShowdown.number, log: t.log.slice(-MAX_LOG), serverNow: now,
   };
 }
 

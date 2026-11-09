@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { GameError } from './engine/game.js';
+import { GameError, recordTableMoment } from './engine/game.js';
 import { BUGS } from './engine/bugs.js';
 import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
@@ -12,6 +12,7 @@ import { Mines } from './mines.js';
 import { Foreman } from './foreman.js';
 import { Barn } from './barn.js';
 import { Shop, SMOKE } from './shop.js';
+import { ITEM } from './catalog/index.js';
 import { Fawn } from './fawn.js';
 import { Slots, SLOTS } from './slots/index.js';
 import { Blackjack } from './blackjack/index.js';
@@ -335,6 +336,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const fireGag = wrap((req) => {
     const t = service.getTable(req.params.code);
     const ev = shop.gag(t, req.player, { item: String(req.body?.item || ''), target: String(req.body?.target || '') });
+    service.mutate(t.code, (tb, ctx) => recordTableMoment(tb, 'gag', { ...ev, name: ITEM[ev.item].name }, ctx), req.player.id);
     service.push(t.code, { gag: ev });
     return { ok: true, gag: ev };
   });
@@ -349,6 +351,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/tables/:code/smoke', needPlayer, wrap((req) => {
     const t = service.getTable(req.params.code);
     const ev = shop.smoke(t, req.player, { item: String(req.body?.item || '') });
+    service.mutate(t.code, (tb, ctx) => recordTableMoment(tb, 'smoke', ev, ctx), req.player.id);
     service.push(t.code, { smoke: ev });
     return { ok: true, smoke: ev };
   }));

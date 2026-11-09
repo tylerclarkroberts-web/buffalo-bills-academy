@@ -27,6 +27,20 @@ Counts describe the corresponding groups in your table history. Changing the fil
 
 The filter applies on desktop and mobile. It does not change ownership or access to any room. **Public tables** remains a separate directory of joinable public rooms and continues to exclude closed or full rooms. See [Public and private poker tables](public-tables.md) for its rules.
 
+## Catch up when you return
+
+Opening a table plays the public activity you have not watched yet in chronological order, including earlier hands, bets, folds, board cards, results, table updates, smokes, gags, and public speech. Social moments use short illustrations and captions in the same sequence as poker actions. The recap records when an item was used; it does not wait a minute between smoking moments.
+
+Use **Pause** / **Resume** to read at your own pace, or **Skip replay** to finish the queued recap immediately. **Table replay** in Settings turns automatic playback on or off. Smoking preferences, gag preferences, muted gag senders, and Guntrad's voice setting are respected. Reduced motion uses still captions instead of movement. Playback waits while the browser tab is hidden, another multi-table pane is focused, or the table itself is not visible. Turn deadlines continue running; skip the recap when you need to act immediately.
+
+Progress is saved in this browser separately for each player and table after each completed step, or when you explicitly skip. Leaving during a step keeps that unfinished step for the next visit. Another browser or device has its own progress, and clearing browser storage resets it.
+
+The first visit after this update may replay retained history once: the old progress key was shared across players, so it is not reused for the new player-specific progress.
+
+The table retains its latest **300 public log entries**. Returning players can catch up across hands within that history; entries older than the retention limit are unavailable. This is a recent-history recap, not an unlimited archive. Smokes, gags, and speech recorded after this change survive server restarts with the table. Previously expired gags and earlier speech cannot be recovered, and old Smoke Shop history is not backfilled into the new replay.
+
+Public speech and cosmetic activity now remain in the table log until older entries are trimmed. Access to the table is unchanged, including invite-link access for private tables. The replay contains public information only; unrevealed hole cards are not added to the log.
+
 ## Show cards once per winning hand
 
 After everyone else folds, the winner may show both cards, show one at a time, or choose **Keep hidden**. After showing one card, **Done** keeps the other hidden. These choices belong to that finished hand; a later uncontested win gets a new choice.
@@ -54,6 +68,10 @@ The defaults are saved in the existing table settings and survive restart. The a
 
 Room filters operate on the existing **Your tables** history. They do not remove saved tables or introduce a new public history endpoint.
 
+`GET /api/tables/:code` now returns up to 300 entries in `log`, matching the saved table history rather than the previous 120-entry response window. Entries retain their increasing `seq`, timestamp `t`, hand number, and public `text`. Successful gag and smoke uses add structured `ev` records with `k: "gag"` or `k: "smoke"`, public sender/target details, and the item's display fields. Changed, nonempty public speech adds `k: "say"` records. These share the same sequence as poker actions, so playback does not depend on which live notification arrived first. Rejected uses do not add an entry.
+
+The existing gag/smoke POST responses and live event shapes remain compatible. Smoke queue limits and scheduled timestamps remain available to older clients; the quick recap orders the use itself alongside other table activity. The replay setting continues to use `bba.fx.replay`. Replay progress stays in browser storage; it is not an account-level acknowledgment API. No new database, environment variable, dependency, or data migration is required. Existing shop and table saves remain separate file writes; see the persistence limitations in [Development and troubleshooting](development.md#local-persistence).
+
 ## Source and verification
 
 | Area | Source |
@@ -63,16 +81,25 @@ Room filters operate on the existing **Your tables** history. They do not remove
 | Authenticated settings action | [server/app.js](../server/app.js) |
 | Host controls and personal checkbox | [client/src/TablePage.jsx](../client/src/TablePage.jsx) |
 | Room filters, counts, empty states, pager reset | [client/src/Home.jsx](../client/src/Home.jsx) |
+| Catch-up selection, progress, and playback | [client/src/table/replay.js](../client/src/table/replay.js), [client/src/table/Replay.jsx](../client/src/table/Replay.jsx) |
 | Regression tests | [test/host-settings.test.js](../test/host-settings.test.js) |
+| Catch-up and saved social activity tests | [test/replay.test.js](../test/replay.test.js), [test/table-activity.test.js](../test/table-activity.test.js) |
 
 Run the relevant tests and build from the repository root:
 
 ```sh
 node --test test/host-settings.test.js test/v42.test.js test/game.test.js
+node --test test/replay.test.js test/v43.test.js test/table-activity.test.js
 npm run build
 ```
 
 Verify that nonhosts and closed tables cannot update settings, invalid patches do not partially apply, and current-hand state and money remain unchanged. Check that new hands use the new defaults, personal overrides survive, and updates persist and notify other clients.
+
+For catch-up, leave a table, create poker and social activity, and return after the former six-second gag and 24-hour smoke windows. Check chronological playback, reload after completion, leaving midway through a step, Skip, hidden tabs, multi-table focus, reduced motion, preferences, and player/table changes. Verify persistence after restart, the 300-entry boundary, and that no unrevealed cards enter public history. Test narrow mobile and large desktop layouts, including long names and speech, and confirm replay and other table animations do not overlap.
+
+On November 9, 2026, the focused replay, public-log, speech, poker, showdown, and show-card checks passed all 51 tests, and the frontend build passed with the existing duplicate-attribute warnings in the blackjack screen. The latest full run passed 254 of 260 tests: four Doom tests failed on the documented Windows path issue, the Slack stale-alert assertion failed, and a Fawn test failed after a Windows file-rename `EPERM`. The Fawn test passed in the focused rerun; these unrelated failures remain unresolved.
+
+An isolated browser check with synthetic players passed ordered speech/gag/smoke playback, Pause/Resume, mid-step refresh, completed-history suppression, simulated hidden-tab changes, narrow detail tabs, reduced motion, new events during playback, multi-table focus, visible turn deadlines, and serialized showdown playback. Screenshots were inspected at 390×844, 844×390, desktop, and 3840×2160; controls were also checked at 2560×1440. This used desktop Edge, not physical phones or a production deployment.
 
 For the lobby, check Open / Closed / All counts and rows, full but active rooms, closed-result navigation, each empty state, and switching filters from a later pager page. Check both desktop and mobile, including a narrow phone. [Development and troubleshooting](development.md) describes the local setup and dated baseline failures.
 
