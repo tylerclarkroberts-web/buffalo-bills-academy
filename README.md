@@ -42,7 +42,7 @@ Returning to a table plays a skippable recap of missed public actions, smokes, g
 
 ## Selfie avatars
 
-Choose **Change avatar** on your profile picture or from the account menu. [Profile and account](docs/profile-and-account.md) covers avatar access, display-name changes and save recovery.
+Choose **Change avatar** on your profile picture or from the account menu. In Profile, **Account** holds sign-in and deletion controls; **Settings** holds table preferences and Slack alerts. Each tab scrolls as one pane. [Profile and account](docs/profile-and-account.md) covers these controls, avatar access, display-name changes and save recovery.
 
 Frame a selfie or uploaded photo, remove its background on your device, and correct the cutout before making a low-poly head. The saved picture and 3D preview share that cutout. Manual brushes remain available when automatic removal cannot run; only the finished drawing is uploaded when you save. See [Selfie avatars](docs/selfie-avatars.md) for the flow, local-photo lifetime, download size and limitations.
 
@@ -57,7 +57,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 - [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
 - [Host options and room history](docs/table-options-and-history.md): create tables, read turn positions, recover failed list loads, change defaults for future hands, filter rooms, and replay missed public activity.
-- [Profile and account](docs/profile-and-account.md): change your avatar or display name and find account controls.
+- [Profile and account](docs/profile-and-account.md): change your avatar or display name, manage sign-in in Account, and find table preferences and alerts in Settings.
 - [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
 - [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.

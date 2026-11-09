@@ -950,11 +950,12 @@ input, select { background: rgba(0, 0, 0, .28); }
 .bit-loser.shake { animation: bit-shake .5s steps(6) 2; }
 @keyframes bit-shake { 0%, 100% { translate: 0 0; } 20% { translate: -6px 1px; } 40% { translate: 5px -1px; } 60% { translate: -4px 0; } 80% { translate: 3px 1px; } }
 @media (max-width: 420px) { .bit-caption .muted { display: none; } }
-.pf-settings { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.pf-settings { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.pf-settings > .account { display: flex; flex-direction: column; flex: none; min-height: auto; overflow: visible; }
+.pf-account > .handle-card { min-height: auto; overflow: visible; }
 .fun-card { display: flex; flex-direction: column; gap: 6px; }
 .fun-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; cursor: pointer; min-height: 32px; }
 .fun-row input { width: 18px; height: 18px; accent-color: var(--amber); flex: none; }
-@media (orientation: landscape) and (max-height: 520px) { .pf-settings { flex-direction: row; } .pf-settings > * { flex: 1; min-width: 0; } }
 @media (max-height: 520px), (max-width: 380px) { .info-rules { display: none; } }
 
 /* ---------- speech bubbles (one per seated player, until their next turn) ---------- */
@@ -1336,7 +1337,7 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
   .lobby5.narrow.tab-public .marquee5 { display: none; }
 }
 
-/* username handle editor (Settings + Account) */
+/* username handle editor (Account) */
 .handle-card { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,.18); margin-bottom: 10px; }
 .handle-card .sl-title { margin: 0; font-size: 18px; }
 .handle-card .field { margin: 0; }
