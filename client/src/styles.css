@@ -1215,41 +1215,27 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 }
 @media (max-height: 400px) { .nt-speed legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .nt-speed .nt-check { min-height: 24px; } }
 
-/* ---------- v43: visual turn replay ---------- */
-.replay { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
-.rp-skip { position: absolute; inset: 0; background: transparent; border: 0; padding: 0; cursor: pointer; pointer-events: auto; display: flex; justify-content: center; align-items: flex-start; }
-.rp-pill { margin-top: 4px; font: 600 11px var(--mono); letter-spacing: .06em; color: #ffe9a0; background: rgba(20,8,14,.78); border: 1px solid rgba(242,198,90,.45); border-radius: 999px; padding: 3px 10px; }
-.rp-tag { position: absolute; transform: translate(-50%, -160%); font: 700 12px var(--mono); color: #1b0d12; background: #ffe9a0; border-radius: 6px; padding: 2px 7px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.4); animation: rp-tag .28s ease-out both; }
-.rp-tag.fold { background: #c9b9bf; } .rp-tag.check { background: #9fe7d8; } .rp-tag.allin { background: #ff6b6b; color: #fff; font-size: 14px; }
-.rp-tag.auto { background: rgba(159,231,216,.55); font-size: 10px; font-weight: 600; }
-.rp-tag.still { animation: none; }
-@keyframes rp-tag { from { opacity: 0; transform: translate(-50%, -110%) scale(.8); } to { opacity: 1; transform: translate(-50%, -160%) scale(1); } }
-.rp-chips, .rp-muck, .rp-card.rp-burn, .rp-card.rp-deal { position: absolute; left: var(--x0); top: var(--y0); transform: translate(-50%, -50%); animation: rp-slide var(--d, 500ms) cubic-bezier(.3,.7,.3,1) forwards; }
-@keyframes rp-slide { from { left: var(--x0); top: var(--y0); } to { left: var(--x1); top: var(--y1); } }
-.rp-chips { display: flex; flex-direction: column-reverse; align-items: center; }
-.rp-chips i { display: block; width: 18px; height: 5px; margin-top: -1px; border-radius: 50%; background: #e94b4b; border: 1px solid #ffd27a; }
-.rp-chips i:nth-child(2n) { background: #2d6bd8; }
-.rp-chips b { font: 800 13px var(--mono); color: #ffe9a0; text-shadow: 0 1px 2px #000; margin-bottom: 2px; animation: rp-float var(--d, 500ms) ease-out forwards; }
-@keyframes rp-float { from { transform: translateY(0); } to { transform: translateY(-10px); } }
-.rp-chips.big i { width: 26px; height: 7px; } .rp-chips.big { animation-timing-function: cubic-bezier(.6,0,.2,1.3); }
-.rp-chips.big b { font-size: 16px; color: #fff; }
-.rp-chips.still { animation: none; left: var(--x1); top: var(--y1); }
-.rp-card { display: block; width: calc(var(--cw, 36px) * .7); aspect-ratio: 5 / 7; border-radius: 4px; background: repeating-linear-gradient(45deg, #7a1730 0 4px, #5b1023 4px 8px); border: 1.5px solid #f2c65a; }
-.rp-muck { display: flex; animation: rp-slide var(--d) ease-in forwards, rp-fade var(--d) ease-in forwards; }
-.rp-muck .rp-card { transform: rotate(-18deg); } .rp-muck .rp-card + .rp-card { margin-left: -60%; transform: rotate(14deg); }
-@keyframes rp-fade { 60% { opacity: 1; } to { opacity: 0; } }
-.rp-card.rp-burn { animation: rp-slide var(--d) ease-out forwards, rp-fade var(--d) ease-in forwards; }
-.rp-card.rp-deal { opacity: 0; animation: rp-slide var(--d) ease-out forwards, rp-show 1ms linear forwards; animation-delay: inherit; }
-@keyframes rp-show { to { opacity: 1; } }
-.rp-street { position: absolute; transform: translate(-50%, -50%); font: 700 13px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: #ffe9a0; text-shadow: 0 1px 3px #000; animation: rp-tag .3s ease-out both; }
-.rp-knock { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid #9fe7d8; animation: rp-knock .45s ease-out 2 both; }
-@keyframes rp-knock { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
-.seat.rp-on .seat-top { filter: drop-shadow(0 0 10px rgba(255,233,160,.9)); }
-.rp-in { display: inline-block; animation: rp-flip .32s ease-out both; }
-@keyframes rp-flip { from { opacity: 0; transform: translateY(-14px) rotateY(90deg); } to { opacity: 1; transform: none; } }
-.dealer-spot.dealing .dealer-fig { animation: rp-deal-bob .32s ease-in-out 3 alternate; }
-@keyframes rp-deal-bob { from { transform: translateY(0) rotate(0); } to { transform: translateY(4%) rotate(-2.5deg); } }
-@media (prefers-reduced-motion: reduce) { .rp-tag, .rp-chips, .rp-muck, .rp-in, .rp-street, .rp-knock, .rp-card { animation: none !important; } .rp-chips { left: var(--x1); top: var(--y1); } }
+/* Public activity recap: history is separate from the live cards and pot. */
+.replay { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 8px; background: rgba(15,7,12,.5); }
+.rp-recap { width: min(calc(380px * var(--ui, 1)), 100%); max-height: 100%; overflow: auto; padding: clamp(10px, 2vw, calc(20px * var(--ui, 1))); font-size: calc(14px * var(--ui, 1)); text-align: center; background: #23151e; color: #fff3dd; box-shadow: 0 8px 40px #0009; }
+.rp-heading { display: flex; justify-content: space-between; gap: 12px; font-size: .86em; color: #f2c65a; }
+.rp-heading span { white-space: nowrap; font-family: var(--mono); }
+.rp-beat { padding: 12px 0; }
+.rp-beat p { margin: 8px 0; line-height: 1.45; overflow-wrap: anywhere; }
+.rp-art { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; height: calc(64px * var(--ui, 1)); --cw: calc(38px * var(--ui, 1)); }
+.rp-art > img { width: calc(64px * var(--ui, 1)); height: calc(64px * var(--ui, 1)); }
+.rp-symbol { font-size: 2.7em; color: #f2c65a; }
+.rp-gag .rp-art > * { animation: rp-toss .6s ease-out both; }
+.rp-puff { position: absolute; left: calc(50% + 18px); color: #ddd; font-size: 32px; animation: rp-puff 1.4s ease-out infinite; }
+.rp-controls { display: flex; justify-content: center; gap: 8px; margin-top: 4px; }
+.rp-controls button { min-height: calc(36px * var(--ui, 1)); font-size: .92em; }
+.rp-beat .small { font-size: .86em; }
+@keyframes rp-toss { from { transform: translateX(-40px) rotate(-20deg); } to { transform: none; } }
+@keyframes rp-puff { from { opacity: .8; transform: translateY(0) scale(.5); } to { opacity: 0; transform: translateY(-30px) scale(1.4); } }
+.replay.reduced *, .replay.reduced *::before, .replay.reduced *::after { animation: none !important; }
+.replay.paused * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .rp-beat, .rp-gag .rp-art > *, .rp-puff { animation: none; } }
+@media (max-height: 520px) { .rp-recap { padding: 8px 12px; } .rp-beat { padding: 4px 0; } .rp-art { height: 42px; } .rp-art > img { width: 40px; height: 40px; } .rp-art .card { max-height: 42px; } }
 /* v43: per-hand "Check if free" box in the turn bar, right above the action buttons */
 .turnbar .pre-check { margin-left: auto; min-height: 0; font-size: 12.5px; white-space: nowrap; align-self: center; }
 .turnbar .clock + .pre-check, .turnbar .pre-check { flex: none; }
