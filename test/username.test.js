@@ -78,3 +78,22 @@ test('same username is a no-op; display name rename still works', async (t) => {
   assert.equal(r.body.name, 'Carol');
   assert.equal(r.body.username, 'carol_x');
 });
+
+test('rejected display name keeps the old name; retry returns the canonical saved name', async (t) => {
+  const s = await boot(); t.after(s.stop);
+  const a = client(s.base);
+  let r = await a.post('/auth/register', { username: 'dana_x', password: 'salsa on the porch', name: 'Dana' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  for (const name of ['', '   ', '<>']) {
+    r = await a.patch('/api/me', { name });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'Please enter a name');
+    assert.equal((await a.get('/api/me')).body.name, 'Dana');
+  }
+  r = await a.patch('/api/me', { name: '  <Dana New>  ' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.name, 'Dana New');
+  const saved = (await a.get('/api/me')).body;
+  assert.equal(saved.name, r.body.name);
+  assert.equal(saved.username, 'dana_x');
+});

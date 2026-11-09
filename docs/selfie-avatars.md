@@ -1,6 +1,6 @@
 # Selfie avatars
 
-Take a selfie or upload a photo to make a low-poly head for the card table. You can also choose **No photo, make me one** for a generated avatar. Existing avatars stay unchanged; use the retake option in your profile to replace one.
+Take a selfie or upload a photo to make a low-poly head for the card table. You can also choose **No photo, make me one** for a generated avatar. To replace an existing avatar, choose **Change avatar** on your profile picture or in the account menu. The editor supports both photos and generated avatars; your current avatar stays unchanged until you save.
 
 ## Make and review your head
 

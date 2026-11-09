@@ -133,3 +133,32 @@ These are recorded observations, not permanent expected failures. Report the cur
 The public source snapshot does not contain the live deployment setup. Building, pushing, or merging here does not deploy the production site. See [Contributing](../CONTRIBUTING.md) for the review and documentation workflow.
 
 During verification of selfie cutouts on November 9, 2026, the focused avatar checks passed all 20 tests and the frontend build passed. The full suite ran 251 tests: 247 passed and four Doom tests failed with the existing Windows URL-to-path issue. The previously failing Slack stale-alert test passed in that run; this change does not fix or establish the reliability of that unrelated test.
+
+### UI and UX verification — November 9, 2026
+
+The table-creation, personal-turn summaries, navigation, avatar-entry and display-name changes were checked locally on Windows:
+
+| Check | Result |
+| --- | --- |
+| `node --test test/table-turn-summary.test.js test/game.test.js test/v42.test.js test/afk.test.js test/public-tables.test.js test/host-settings.test.js` | 53 passed, 0 failed. |
+| `node --test test/username.test.js test/avatar-upload.test.js test/facegate.test.js` | 8 passed, 0 failed. |
+| `npm run build` | Passed; existing duplicate `data-test` attribute warnings in `client/src/bj/BlackjackPage.jsx` remain. |
+| `npm test` | 272 tests: 267 passed, 5 failed. |
+
+Four full-suite failures were the existing Doom Windows URL-to-path issue (`C:\C:\...`). The fifth was a Slack test whose setup hit Windows `EPERM` while renaming `players.json`; its isolated rerun passed 1/1. An earlier full run also hit the fight integration test's random-seed assumption. That failure was reproduced separately with unchanged fight code using fight seed `1` and bot configuration `{ reaction: 1, seed: 5 }`; the fight tests passed in the final full run. These observations do not establish that either intermittent failure is fixed, and the full suite is not passing.
+
+Browser checks used 320×640, 390×844, 844×390, 1366×768, 2560×1440 and 3840×2160 viewports, plus the 1099/1100px navigation breakpoint. They covered:
+
+- Continuous Friends/bot forms, draft retention across layout changes, public/private/bot request settings, and one submission after a delayed double-click.
+- Personal-row pagination, long names, countdowns and changing actors; full-row scrolling on short screens; initial-load and refresh failures with Retry.
+- Avatar entry from profile/account, generated avatars, Back to profile, and read-only other-player profiles.
+- Rename validation, server failure, pending controls, Cancel/Escape and programmatic focus restoration.
+- Games destinations while signed in/out, Enter/Space opening, Tab traversal and focus-exit dismissal, Escape with trigger focus restoration, navigation/outside-click dismissal, and closing at the desktop breakpoint. The 320px header also fits a large bankroll, with the full amount kept accessible.
+
+Physical devices, camera capture, background-removal accuracy and production deployment were not checked in this UI pass. The daily faun encounter and dealer chatter were left unchanged.
+
+Personal-table actor/position data remains a 15-second polling snapshot, with additional refreshes on focus/visibility return. The one-second countdown is calculated locally from the last response and does not make the actor or queue live. See [Host options and room history](table-options-and-history.md) and [Profile and account](profile-and-account.md) for the resulting behavior and recovery paths.
+
+### Deferred profile organization
+
+The planned follow-up is to keep login credentials in **Account**, keep preferences and alerts in **Settings**, remove the duplicate username editor from Settings, and make those controls reachable in one scrolling pane. This organization work is not implemented in this UI pass; the current [profile guide](profile-and-account.md#sign-in-and-preferences) describes the existing locations.

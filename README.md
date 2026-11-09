@@ -16,6 +16,12 @@ Open http://localhost:3000. Local data is created in `data/`. Username accounts 
 
 `npm run server` serves the existing build; rerun `npm run build` after frontend changes. `npm start` also provides first-run setup and conditional building. The hot-reload command, `npm run dev`, currently has a known authentication proxy limitation on port 5173; see [Development and troubleshooting](docs/development.md).
 
+## Find and start a game
+
+- **Tables** stays visible in the app header. Below 1100px, **Games** groups Risk bets, Acid Mines, Barn and General Store; larger windows retain their individual shortcuts. Barn and General Store require sign-in.
+- **Start a table** puts seats, turn time, rebuys and speed-ups in the same form as name, visibility, buy-in and blinds. Scroll within the form on smaller screens; there is no separate Options step.
+- **Your tables** shows who is acting and your position in the current betting round. Failed refreshes keep the last loaded tables visible and offer Retry. See [Host options and room history](docs/table-options-and-history.md) for counting rules and refresh limits.
+
 ## Poker table visibility
 
 New tables default to **Private · invite link**. They are unlisted, but anyone with the invite link can open the table and join when a seat is available. Private does not mean host approval or password protection.
@@ -36,6 +42,8 @@ Returning to a table plays a skippable recap of missed public actions, smokes, g
 
 ## Selfie avatars
 
+Choose **Change avatar** on your profile picture or from the account menu. [Profile and account](docs/profile-and-account.md) covers avatar access, display-name changes and save recovery.
+
 Frame a selfie or uploaded photo, remove its background on your device, and correct the cutout before making a low-poly head. The saved picture and 3D preview share that cutout. Manual brushes remain available when automatic removal cannot run; only the finished drawing is uploaded when you save. See [Selfie avatars](docs/selfie-avatars.md) for the flow, local-photo lifetime, download size and limitations.
 
 ## Configuration and data
@@ -48,7 +56,8 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 
 - [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
-- [Host options and room history](docs/table-options-and-history.md): change defaults for future hands, filter rooms, and replay missed public activity.
+- [Host options and room history](docs/table-options-and-history.md): create tables, read turn positions, recover failed list loads, change defaults for future hands, filter rooms, and replay missed public activity.
+- [Profile and account](docs/profile-and-account.md): change your avatar or display name and find account controls.
 - [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
 - [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.

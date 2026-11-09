@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { KingRat } from './slots/art.jsx';
 import { Paged, Tabs, useWide } from './ui.jsx';
 import { showBrokeOnce, clearBrokeSeen } from './Broke.jsx';
-import { api, useSession, signInUrl, guestSignIn, devSignIn, passwordSignIn, register } from './api.js';
+import { api, useSession, currentSession, signInUrl, guestSignIn, devSignIn, passwordSignIn, register } from './api.js';
 import { navigate, rememberTable } from './App.jsx';
 import { formatLeft, money } from './util.js';
 import { Marquee, TABLE_NAMES, VENUE } from './theme.jsx';
@@ -67,20 +67,39 @@ function GoogleG() {
 }
 
 
+const EMPTY_TABLES = { tables: [], loading: true, loaded: false, pending: false, error: '' };
 function useTables(me, path) {
-  const [state, setState] = useState({ tables: [], loading: true, error: '' });
+  const owner = me?.id;
+  const [state, setState] = useState(EMPTY_TABLES);
+  const reload = useRef(null);
   useEffect(() => {
-    if (!me) return undefined;
-    let stop = false;
-    setState({ tables: [], loading: true, error: '' });
-    const load = () => api('GET', path)
-      .then((tables) => !stop && setState({ tables, loading: false, error: '' }))
-      .catch(() => !stop && setState((s) => ({ ...s, loading: false, error: 'Could not load tables. Retrying shortly.' })));
+    if (!owner) return undefined;
+    let stop = false, inFlight = false;
+    setState({ ...EMPTY_TABLES, owner, path });
+    const load = async () => {
+      if (stop || inFlight) return;
+      inFlight = true;
+      setState((s) => ({ ...s, pending: true }));
+      try {
+        const tables = await api('GET', path);
+        if (!stop) setState({ owner, path, tables, loading: false, loaded: true, pending: false, error: '' });
+      } catch {
+        if (!stop) setState((s) => ({ ...s, loading: false, pending: false, error: 'Could not load tables. Retrying shortly.' }));
+      } finally { inFlight = false; }
+    };
+    const resume = () => { if (!document.hidden) load(); };
+    reload.current = load;
     load();
     const id = setInterval(load, 15000);
-    return () => { stop = true; clearInterval(id); };
-  }, [me?.id, path]);
-  return state;
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      stop = true; reload.current = null; clearInterval(id);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [owner, path]);
+  return { ...(owner && state.owner === owner && state.path === path ? state : EMPTY_TABLES), retry: () => reload.current?.() };
 }
 
 function useBrokeNudge(me) {
@@ -93,7 +112,7 @@ function useBrokeNudge(me) {
 
 function Facts({ me, open, myTurn }) {
   const items = me
-    ? [[money(me.bankroll), 'Bankroll'], [String(open), 'Open tables'], [String(myTurn), 'Your turn']]
+    ? [[money(me.bankroll), 'Bankroll'], [String(open ?? '—'), 'Open tables'], [String(myTurn ?? '—'), 'Your turn']]
     : [['24h', 'Per turn'], ['$1,000', 'To start'], ['2–9', 'Players']];
   return <div className="mq-facts">{items.map(([b, l]) => <div key={l}><b className="num">{b}</b><span>{l}</span></div>)}</div>;
 }
@@ -101,7 +120,8 @@ function Facts({ me, open, myTurn }) {
 export default function Home({ tab: tabProp }) {
   const { me, loading } = useSession();
   const wide = useWide();
-  const { tables } = useTables(me, '/my-tables');
+  const personalTables = useTables(me, '/my-tables');
+  const { tables } = personalTables;
   const publicTables = useTables(me, '/public-tables');
   const [visibility, setVisibility] = useState('private');
   const [tableFilter, setTableFilter] = useState('open');
@@ -111,7 +131,7 @@ export default function Home({ tab: tabProp }) {
   useBrokeNudge(me);
   const open = tables.filter((t) => t.status !== 'closed');
   const myTurn = tables.filter((t) => t.myTurn).length;
-  const tab = tabProp || (me && tables.length ? 'tables' : 'new');
+  const tab = tabProp || (me && (!personalTables.loaded || tables.length) ? 'tables' : 'new');
   const setTab = (k) => {
     navigate(`/?tab=${k}`, { replace: true });
     if (wide && k === 'new') document.getElementById('nt-name')?.focus();
@@ -123,9 +143,19 @@ export default function Home({ tab: tabProp }) {
   const hb = hostOn || afkT ? 'has-banner' : '';
 
   const [vs, setVs] = useState('friends'); // v38: Friends / Play bots (in the card header on wide screens)
-  const startPublic = () => { setVisibility('public'); setVs('friends'); setTab('new'); };
-  const lobby = <LobbyPanel me={me} tables={tables} publicTables={publicTables} tab={tab} setTab={setTab} setErr={setErr} wide={wide} visibility={visibility} setVisibility={setVisibility} startPublic={startPublic} tableFilter={tableFilter} setTableFilter={setTableFilter} />;
-  const sign = <Marquee aside={wide ? <Facts me={me} open={open.length} myTurn={myTurn} /> : null} />;
+  const [form, setForm] = useState({ name: '', maxPlayers: 6, buyIn: 200, blinds: 0, turnSeconds: 86400, maxRebuys: -1, bots: 3, friends: false, skipPreflop: false, autoCheck: false });
+  const [suggest] = useState(() => [...TABLE_NAMES].sort(() => Math.random() - 0.5).slice(0, 3));
+  const [creating, setCreating] = useState(false);
+  const createPending = useRef(false);
+  const setOpponent = (value) => {
+    if (value === vs) return;
+    setVs(value);
+    setForm((f) => ({ ...f, turnSeconds: value === 'bots' && +f.turnSeconds === 86400 ? 300 : value === 'friends' && +f.turnSeconds === 300 ? 86400 : f.turnSeconds }));
+  };
+  const newTable = <NewTable setErr={setErr} vs={vs} setVs={setOpponent} inHeader={wide} visibility={visibility} setVisibility={setVisibility} form={form} setForm={setForm} suggest={suggest} busy={creating} setBusy={setCreating} pending={createPending} />;
+  const startPublic = () => { setVisibility('public'); setOpponent('friends'); setTab('new'); };
+  const lobby = <LobbyPanel personalTables={personalTables} publicTables={publicTables} tab={tab} setTab={setTab} wide={wide} newTable={newTable} startPublic={startPublic} tableFilter={tableFilter} setTableFilter={setTableFilter} />;
+  const sign = <Marquee aside={wide ? <Facts me={me} open={personalTables.loaded ? open.length : null} myTurn={personalTables.loaded ? myTurn : null} /> : null} />;
   if (!wide) {
     return (
       <div className={`screen lobby5 narrow ${out ? 'out' : `tab-${tab}`} ${hb}`}>
@@ -146,7 +176,7 @@ export default function Home({ tab: tabProp }) {
         ) : (
           lobby
         )}
-        {me ? <Card title="Start a table" sub={<VsSwitch vs={vs} setVs={setVs} />}><NewTable setErr={setErr} vs={vs} setVs={setVs} visibility={visibility} setVisibility={setVisibility} /></Card> : <Card title="How it plays" sub="House rules"><HouseRules /></Card>}
+        {me ? <Card title="Start a table" className="create-card" sub={<VsSwitch vs={vs} setVs={setOpponent} />}>{newTable}</Card> : <Card title="How it plays" sub="House rules"><HouseRules /></Card>}
         {me ? (
           <div className="lb-col lb-games-col">
             <div className="lb-games"><BlackjackCard /><SlotsCard /></div>
@@ -157,9 +187,9 @@ export default function Home({ tab: tabProp }) {
   );
 }
 
-function Card({ title, sub, children }) {
+function Card({ title, sub, children, className = '' }) {
   return (
-    <section className="panel lb-card">
+    <section className={`panel lb-card ${className}`}>
       <div className="panel-head"><span className="western">{title}</span>{sub && <span className="ph-sub">{sub}</span>}</div>
       <div className="panel-body">{children}</div>
     </section>
@@ -221,7 +251,18 @@ function HouseRules() {
   );
 }
 
-function TableList({ me, tables, setTab, filter, setFilter }) {
+const TURN_STATES = {
+  acted: 'Waiting on this betting round', folded: 'Folded · waiting for next hand',
+  'all-in': 'All-in · waiting for result', 'sitting-out': 'Sitting out',
+  leaving: 'Leaving after this hand', 'next-hand': 'Joining next hand',
+  'not-seated': 'Not seated', 'out-of-chips': 'Out of chips', 'between-hands': 'Between hands',
+};
+function TableList({ tables, loaded, loading, error, pending, retry, setTab, filter, setFilter }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const open = tables.filter((t) => t.status !== 'closed');
   const closed = tables.filter((t) => t.status === 'closed');
   const shown = filter === 'open' ? open : filter === 'closed' ? closed : tables;
@@ -234,13 +275,19 @@ function TableList({ me, tables, setTab, filter, setFilter }) {
   const header = <>
     <div className="seg table-filters" role="group" aria-label="Filter your tables">
       {[['open', 'Open', open.length], ['closed', 'Closed', closed.length], ['all', 'All', tables.length]].map(([value, label, count]) => (
-        <button key={value} type="button" className={filter === value ? 'on' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label} ({count})</button>
+        <button key={value} type="button" className={filter === value ? 'on' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label} ({loaded ? count : '—'})</button>
       ))}
     </div>
     {filter !== 'closed' && multi}
+    {error && <div className="table-load-error">
+      <p role="alert">{loaded ? 'Couldn’t refresh. Showing last loaded tables.' : 'Couldn’t load your tables.'}</p>
+      <button className="btn small" onClick={retry} disabled={pending}>{pending ? 'Retrying…' : 'Retry'}</button>
+    </div>}
+    {loaded && shown.some((t) => t.status === 'playing') && <p className="small muted turn-help">Position is for this betting round. Raises, folds, and automatic actions can change it.</p>}
   </>;
+  if (!loaded) return <div className="tables-loading">{header}{loading && <p className="small muted" role="status">Loading your tables…</p>}</div>;
   return (
-    <Paged items={shown} rowH={58} gap={6} className="tables" header={header} resetKey={filter}
+    <Paged items={shown} rowH={88} gap={6} className="tables personal-tables" header={header} resetKey={filter}
       empty={<div className="empty">
         <p>{filter === 'open' ? 'No open tables.' : filter === 'closed' ? 'No closed tables yet.' : "No tables yet. Start one, or open a friend's invite link."}</p>
         <div className="row wrap">
@@ -248,16 +295,22 @@ function TableList({ me, tables, setTab, filter, setFilter }) {
           {filter !== 'closed' && setTab && <button className="btn primary small" onClick={() => setTab('new')}>Start a table</button>}
         </div>
       </div>}
-      render={(t) => (
+      render={(t) => {
+        const turn = t.turn;
+        const left = (deadline) => `${formatLeft(deadline - now)} left`;
+        const status = t.status === 'closed' ? 'Closed'
+          : t.myTurn ? `Your turn${t.deadline ? ` · ${left(t.deadline)}` : ''}`
+          : t.status === 'lobby' ? t.isHost && readyOf(t) >= 2 ? 'Ready to start' : 'Not started'
+          : turn?.state === 'pending' && turn.ahead > 0 ? turn.ahead === 1 ? 'You’re next' : `${turn.ahead} players ahead`
+          : TURN_STATES[turn?.state] || 'Waiting on this betting round';
+        return (
         <button className={`trow ${t.myTurn ? 'myturn' : ''}`} onClick={() => { rememberTable(t.code); navigate(`/t/${t.code}`); }}>
           <span className="t-name">{t.name}</span>
-          <span className="t-meta mono">{t.bots ? '🤖 Bots · ' : ''}{t.code} · {t.players}/{t.maxPlayers}{t.isHost ? ' · host' : ''}</span>
-          {t.status === 'closed' ? <span className="badge dim">Closed</span>
-            : t.myTurn ? <span className="badge hot">Your turn{t.deadline ? ` · ${formatLeft(t.deadline - Date.now())}` : ''}</span>
-            : t.status === 'lobby' ? <span className={`badge ${t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{t.isHost && readyOf(t) >= 2 ? 'Ready to start' : 'Not started'}</span>
-            : <span className="badge">Hand {t.handNumber}</span>}
+          <span className="t-meta mono">{t.bots ? '🤖 Bots · ' : ''}{t.code} · {t.players}/{t.maxPlayers}{t.isHost ? ' · host' : ''}{t.handNumber ? ` · Hand ${t.handNumber}` : ''}</span>
+          <span className={`badge ${t.status === 'closed' ? 'dim' : t.myTurn ? 'hot' : t.status === 'lobby' && t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{status}</span>
+          {!t.myTurn && turn?.actorName && <span className="t-actor"><span className="ell">{turn.actorName}</span><span>to act{turn.deadline ? ` · ${left(turn.deadline)}` : ''}</span></span>}
         </button>
-      )} />
+      ); }} />
   );
 }
 
@@ -279,20 +332,20 @@ function PublicTableList({ tables, loading, error, startPublic }) {
   );
 }
 
-function LobbyPanel({ me, tables, publicTables, tab, setTab, setErr, wide, visibility, setVisibility, startPublic, tableFilter, setTableFilter }) {
-  const mine = tables.length;
+function LobbyPanel({ personalTables, publicTables, tab, setTab, wide, newTable, startPublic, tableFilter, setTableFilter }) {
+  const mine = personalTables.loaded ? personalTables.tables.length || null : '—';
   // v51: Join-by-code gone; Games tab holds blackjack + slots.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
   // clipped to a pink sliver with an empty gap (pager 1/N, no tappable rows).
   const tabKey = wide ? (tab === 'public' ? 'public' : 'tables') : tab === 'join' ? 'tables' : tab;
   return (
     <div className={`panel lobby-panel${wide ? ' lb-card' : ''}`} data-test="lobby-panel">
-      <Tabs label="Lobby" value={tabKey} onChange={setTab} tabs={[['tables', 'Your tables', mine || null], ['public', 'Public tables'], ...(!wide ? [['new', 'Start a table'], ['games', 'Games']] : [])]} />
+      <Tabs label="Lobby" value={tabKey} onChange={setTab} tabs={[['tables', 'Your tables', mine], ['public', 'Public tables'], ...(!wide ? [['new', 'Start a table'], ['games', 'Games']] : [])]} />
       <div className={`panel-body ${['tables', 'public'].includes(tabKey) ? 'tables-tab' : ''}`}>
         {tabKey === 'public' ? <PublicTableList {...publicTables} startPublic={startPublic} />
-          : tabKey === 'new' ? <NewTable setErr={setErr} visibility={visibility} setVisibility={setVisibility} />
+          : tabKey === 'new' ? newTable
           : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /></div>
-          : <TableList me={me} tables={tables} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />}
+          : <TableList {...personalTables} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />}
       </div>
     </div>
   );
@@ -311,9 +364,6 @@ function Seg({ value, options, onChange, label }) {
 const REBUYS = [[-1, 'Unlimited'], [0, 'None'], [1, '1 each'], [3, '3 each']];
 const turnShort = (sec) => (sec < 60 ? `${sec}s` : sec < 3600 ? `${sec / 60} min` : `${sec / 3600}h`);
 
-// Two short pages so nothing ever falls off the bottom: 1) name, buy-in, blinds; 2) seats, turn clock, rebuys.
-// "Open the table" sits in a footer pinned under both pages (the defaults are fine, so step 1 alone can open it).
-// If a screen is somehow still too short, only the fields above the footer scroll; the button never moves.
 function VsSwitch({ vs, setVs }) {
   return (
     <span className="seg mini nt-vs" role="radiogroup" aria-label="Play against">
@@ -322,19 +372,14 @@ function VsSwitch({ vs, setVs }) {
   );
 }
 
-function NewTable({ setErr, vs: vsProp, setVs: setVsProp, visibility, setVisibility }) {
-  const [vsLocal, setVsLocal] = useState('friends');
-  const vs = vsProp ?? vsLocal; const setVs = setVsProp ?? setVsLocal; const inHeader = !!setVsProp;
-  const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState(1);
-  const [suggest] = useState(() => [...TABLE_NAMES].sort(() => Math.random() - 0.5).slice(0, 3));
-  const [form, setForm] = useState({ name: '', maxPlayers: 6, buyIn: 200, blinds: 0, turnSeconds: 86400, maxRebuys: -1, bots: 3, friends: false, skipPreflop: false, autoCheck: false });
+function NewTable({ setErr, vs, setVs, inHeader, visibility, setVisibility, form, setForm, suggest, busy, setBusy, pending }) {
   const set = (k) => (v) => setForm({ ...form, [k]: v?.target ? v.target.value : v });
   const bots = vs === 'bots';
-  // v38: against bots the turn clock defaults to 5 minutes (they answer in a second or two; you can step away)
-  useEffect(() => { setForm((f) => ({ ...f, turnSeconds: bots && +f.turnSeconds === 86400 ? 300 : !bots && +f.turnSeconds === 300 ? 86400 : f.turnSeconds })); }, [bots]);
   async function create(e) {
-    e.preventDefault(); setErr(''); setBusy(true);
+    e.preventDefault();
+    if (pending.current) return;
+    const owner = currentSession().me?.id;
+    pending.current = true; setErr(''); setBusy(true);
     try {
       const [smallBlind, bigBlind] = BLINDS[form.blinds];
       const r = await api('POST', '/tables', {
@@ -343,15 +388,11 @@ function NewTable({ setErr, vs: vsProp, setVs: setVsProp, visibility, setVisibil
         settings: { maxPlayers: bots ? +form.bots + (form.friends ? 3 : 1) : +form.maxPlayers, buyIn: +form.buyIn, smallBlind, bigBlind, turnSeconds: +form.turnSeconds, maxRebuys: bots ? -1 : +form.maxRebuys, skipPreflop: !!form.skipPreflop, autoCheck: !!form.autoCheck },
         ...(bots ? { bots: { count: +form.bots, friends: !!form.friends } } : {}),
       });
+      if (currentSession().me?.id !== owner) return;
       rememberTable(r.code);
       navigate(`/t/${r.code}`);
-    } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
+    } catch (e2) { setErr(e2.message); } finally { pending.current = false; setBusy(false); }
   }
-  const rebuyWord = REBUYS.find(([v]) => String(v) === String(form.maxRebuys))?.[1].toLowerCase();
-  const speedTag = [form.skipPreflop && 'flop start', form.autoCheck && 'auto-check'].filter(Boolean).join(' · ');
-  const summary = bots
-    ? `${form.bots} bot${+form.bots === 1 ? '' : 's'} · $${(+form.buyIn).toLocaleString()} practice · ${turnShort(+form.turnSeconds)} turns${form.friends ? ' · friends ok' : ''}${speedTag ? ' · ' + speedTag : ''}`
-    : `${visibility === 'public' ? 'Public' : 'Private'} · ${form.maxPlayers} seats · ${turnShort(+form.turnSeconds)} turns · ${rebuyWord === 'none' ? 'no' : rebuyWord} rebuys${speedTag ? ' · ' + speedTag : ''}`;
   const nameField = (
     <div className="field nt-namefield">
       <div className="nt-label">
@@ -373,30 +414,28 @@ function NewTable({ setErr, vs: vsProp, setVs: setVsProp, visibility, setVisibil
     </label>
   );
   return (
-    <form onSubmit={create} className={`newtable step-${step}${bots ? ' vs-bots' : ''}`}>
+    <form onSubmit={create} className={`newtable${bots ? ' vs-bots' : ''}`}>
       <div className="nt-body">
-        {step === 1 ? <>
-          {nameField}
-          {bots ? <>
-            <Seg label="Bots · always strong" value={form.bots} onChange={set('bots')} options={[1, 2, 3, 4, 5].map((n) => [n, String(n)])} />
-          </> : <>
-            <div className="pills">{suggest.map((n) => <button type="button" key={n} className={`pill ${form.name === n ? 'on' : ''}`} onClick={() => setForm({ ...form, name: n })}>{n}</button>)}</div>
-            <div className="nt-visibility">
-              <Seg label="Visibility" value={visibility} onChange={setVisibility} options={[['private', 'Private · invite link'], ['public', 'Public']]} />
-              <p className="small muted">{visibility === 'public' ? 'Listed in Public tables. Other players can join.' : 'Unlisted. Anyone with the invite link can join.'}</p>
-            </div>
-            <Seg label="Buy-in" value={form.buyIn} onChange={set('buyIn')} options={BUYINS.map((v) => [v, `$${v.toLocaleString()}`])} />
-          </>}
-          <Seg label="Blinds" value={form.blinds} onChange={set('blinds')} options={BLINDS.map(([s, b], i) => [i, `${s}/${b}`])} />
-        </> : bots ? <>
+        {nameField}
+        {bots ? <>
+          <Seg label="Bots · always strong" value={form.bots} onChange={set('bots')} options={[1, 2, 3, 4, 5].map((n) => [n, String(n)])} />
           <Seg label="Practice stack (not your bankroll)" value={form.buyIn} onChange={set('buyIn')} options={BUYINS.map((v) => [v, `$${v.toLocaleString()}`])} />
+        </> : <>
+          <div className="pills">{suggest.map((n) => <button type="button" key={n} className={`pill ${form.name === n ? 'on' : ''}`} onClick={() => setForm({ ...form, name: n })}>{n}</button>)}</div>
+          <div className="nt-visibility">
+            <Seg label="Visibility" value={visibility} onChange={setVisibility} options={[['private', 'Private · invite link'], ['public', 'Public']]} />
+            <p className="small muted">{visibility === 'public' ? 'Listed in Public tables. Other players can join.' : 'Unlisted. Anyone with the invite link can join.'}</p>
+          </div>
+          <Seg label="Buy-in" value={form.buyIn} onChange={set('buyIn')} options={BUYINS.map((v) => [v, `$${v.toLocaleString()}`])} />
+        </>}
+        <Seg label="Blinds" value={form.blinds} onChange={set('blinds')} options={BLINDS.map(([s, b], i) => [i, `${s}/${b}`])} />
+        {bots ? <>
           <div className="form-grid">
             {turnField}
             <label className="field nt-friends"><span>Friends</span>
               <span className="nt-check"><input type="checkbox" checked={form.friends} onChange={(e) => setForm({ ...form, friends: e.target.checked })} /> Let friends join too</span>
             </label>
           </div>
-          {speedField}
         </> : <>
           <div className="form-grid">
             <label className="field"><span>Seats</span>
@@ -405,13 +444,10 @@ function NewTable({ setErr, vs: vsProp, setVs: setVsProp, visibility, setVisibil
             {turnField}
           </div>
           <Seg label="Rebuys" value={form.maxRebuys} onChange={set('maxRebuys')} options={REBUYS} />
-          {speedField}
         </>}
+        {speedField}
       </div>
       <div className="nt-foot">
-        {step === 1
-          ? <button type="button" className="nt-more nt-next" onClick={() => setStep(2)} aria-label={`More options: ${summary}`}><span className="nt-sum">{summary}</span><span className="nt-change">Options →</span></button>
-          : <button type="button" className="btn small ghost nt-back" onClick={() => setStep(1)}>← Back</button>}
         <button className="btn primary nt-create" disabled={busy}>{busy ? 'Shuffling…' : bots ? 'Deal the bots in' : 'Open the table'} <span className="arrow">→</span></button>
       </div>
     </form>
