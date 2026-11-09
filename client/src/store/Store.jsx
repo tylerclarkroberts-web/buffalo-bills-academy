@@ -1,5 +1,5 @@
-// v34: the General Store. Play money only. One screen, no scrolling: tabs down the side, a page of items sized to
-// fit the screen (pager, never a scrollbar), and a counter on the right with a try-on and the buy button.
+// v34: the General Store. Play money only. Item pages fit the shelf; the counter scrolls when its description,
+// try-on and buttons need more space.
 // The server decides everything (prices, what you own, what you can afford); this page only shows it.
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
