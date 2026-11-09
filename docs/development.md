@@ -62,6 +62,7 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | React startup and routing | `client/src/main.jsx`, `App.jsx`, `Shell.jsx` |
 | Lobby and table creation | `client/src/Home.jsx` |
 | Browser HTTP/session helpers | `client/src/api.js` |
+| Selfie framing, segmentation worker and correction | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`; see [Selfie avatars](selfie-avatars.md). |
 | Poker screen | `client/src/TablePage.jsx`, `client/src/table/` |
 | Express startup, routes, feature wiring | `server/index.js`, `server/app.js` |
 | Poker orchestration and timers | `server/service.js` |
