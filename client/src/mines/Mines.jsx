@@ -12,6 +12,7 @@ import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
 import DoomRoom from './DoomRoom.jsx';
 import Foreman from './Foreman.jsx';
+import { paidFarewell } from './paidFarewell.js';
 import './mines.css';
 
 const LINES = [
@@ -73,8 +74,9 @@ export default function Mines() {
   const [shift, setShift] = useState(null);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
+  const [starting, setStarting] = useState(false);
   const [sound, setSound] = useState(false);
-  const [lecture, setLecture] = useState(null); // v45: the foreman's pending rant + problem (server-held)
+  const [lecture, setLecture] = useState(null); // server-held quiz, or a local paid-shift farewell
   const audio = useRef(null);
   if (!audio.current) audio.current = new MineAudio();
 
@@ -88,9 +90,18 @@ export default function Mines() {
     const id = shift?.shiftId; setPhase('intro');
     try { const v = await api('POST', '/mines/quit', { shiftId: id }); if (v?.pending) setLecture(v.pending); } catch (e) { setErr(e.message); }
   }
+  function leave() {
+    if (lecture || starting) return;
+    if (phase === 'play' && shift) return quit();
+    const farewell = phase === 'result' ? paidFarewell(result) : null;
+    if (farewell) setLecture(farewell);
+    else navigate('/');
+  }
   const toggleSound = () => { if (sound) { audio.current.stop(); setSound(false); } else if (audio.current.start()) setSound(true); };
 
   async function start() {
+    if (lecture || starting) return;
+    setStarting(true);
     setErr('');
     try {
       const s = await api('POST', '/mines/start');
@@ -99,7 +110,7 @@ export default function Mines() {
     } catch (e) {
       if (e.code === 'foreman') { const v = await api('GET', '/mines/foreman').catch(() => null); if (v?.pending) { setLecture(v.pending); return; } }
       setErr(e.message);
-    }
+    } finally { setStarting(false); }
   }
   async function finish() {
     try {
@@ -113,26 +124,28 @@ export default function Mines() {
   }
 
   return (
-    <div className="mines">
+    <div className={`mines${lecture ? ' has-foreman' : ''}`}>
       <div className="crt" aria-hidden="true" />
-      <header className="m-top">
-        <button className="m-link" onClick={() => (phase === 'play' && shift ? quit() : navigate('/'))}>◄ SURFACE</button>
-        <span className="m-brand">ACID MINE CO.<span className="m-dim m-shaft"> · SHAFT 7</span></span>
-        <span className="m-right">
-          {me && <span className="m-bank">${me.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>}
-          <button className="m-link" onClick={toggleSound} aria-pressed={sound}>{sound ? '♪ ON' : '♪ OFF'}<span className="sr-only"> sound</span></button>
-        </span>
-      </header>
-      {err && <div className="m-err" role="alert" onClick={() => setErr('')}>! {err}</div>}
-      {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} />}
-      {phase === 'play' && shift && <Shift shift={shift} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} />}
-      {phase === 'result' && result && <Result r={result} onAgain={start} />}
+      <div inert={lecture ? '' : undefined} aria-hidden={!!lecture || undefined}>
+        <header className="m-top">
+          <button className="m-link" disabled={starting} onClick={leave}>◄ SURFACE</button>
+          <span className="m-brand">ACID MINE CO.<span className="m-dim m-shaft"> · SHAFT 7</span></span>
+          <span className="m-right">
+            {me && <span className="m-bank">${me.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>}
+            <button className="m-link" onClick={toggleSound} aria-pressed={sound}>{sound ? '♪ ON' : '♪ OFF'}<span className="sr-only"> sound</span></button>
+          </span>
+        </header>
+        {err && <div className="m-err" role="alert" onClick={() => setErr('')}>! {err}</div>}
+        {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} starting={starting} />}
+        {phase === 'play' && shift && <Shift shift={shift} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} />}
+        {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} />}
+      </div>
       {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); navigate('/'); }} />}
     </div>
   );
 }
 
-function Intro({ me, loading, onStart }) {
+function Intro({ me, loading, onStart, starting }) {
   // Signed out: the sign-in form takes the place of the orientation, so the page still fits one screen.
   const [signing, setSigning] = useState(false);
   if (signing && !me) {
@@ -163,7 +176,7 @@ function Intro({ me, loading, onStart }) {
             <li>Get paid. Clock in again. Repeat for weeks.</li>
           </ol>
           <p className="m-dim">Shifts last at least 20 seconds. Some last a lot longer. One shift at a time. Pay goes straight into your bankroll.</p>
-          {loading ? null : me ? <button className="m-btn" onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
+          {loading ? null : me ? <button className="m-btn" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
         </section>
         <section className="m-box">
           <h2>&gt; WHAT'S DOWN THERE</h2>
@@ -453,7 +466,7 @@ function MovePad({ apply }) {
   );
 }
 
-function Result({ r, onAgain }) {
+function Result({ r, onAgain, onLeave, starting }) {
   const big = r.amount >= 10000;
   return (
     <main className={`m-result o-${r.outcome} ${big ? 'jackpot' : ''}`}>
@@ -465,8 +478,8 @@ function Result({ r, onAgain }) {
       <div className="m-pay">+${r.amount.toLocaleString()}</div>
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">
-        <button className="m-btn" onClick={onAgain}>[ ANOTHER SHIFT ]</button>
-        <button className="m-btn ghost" onClick={() => navigate('/')}>[ BACK TO THE CARD ROOM ]</button>
+        <button className="m-btn" disabled={starting} onClick={onAgain}>[ ANOTHER SHIFT ]</button>
+        <button className="m-btn ghost" disabled={starting} onClick={onLeave}>[ BACK TO THE CARD ROOM ]</button>
       </div>
     </main>
   );
