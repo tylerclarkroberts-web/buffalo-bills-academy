@@ -53,7 +53,7 @@ for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, pri
 
 // the automatic feeder: consumable, each one keeps the bowl full and pauses the starvation clock for 14 days
 add({ id: 'feeder', name: 'Automatic Feeder (14 days)', price: 2500, emoji: '🥣', cat: 'bugcare', slot: null, use: 'feeder', days: 14,
-  desc: 'Single use: press Use to fill Fed to 100 and keep it full for 14 days, with the starvation clock paused. Your bug earns 12 XP for each full day the feeder runs. Use another to add 14 days to the remaining time, up to 60 days ahead. Mood and Clean still fall normally. Check the Barn for the end date.' });
+  desc: 'Single use: press Use to fill Fed to 100 and keep it full for 14 days, with the starvation clock paused. Adds 12 XP at each daily checkpoint while active (every 24 hours since hatching), outside the care XP cap; no immediate XP on use. Use another to add 14 days to the remaining time, up to 60 days ahead. Mood and Clean still fall normally. Check the Barn for the end date.' });
 add({ id: 'mister', name: 'Auto-Mister', price: 150, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', desc: 'Single use: press Use for +40 Clean now (max 100) and up to 6 care XP within the shared 120 XP/day cap. Clean then falls 1.4/hour; a full 40-point boost takes about 28 hours 34 minutes to decay. One instant mist, with a 30-minute cooldown between misters.' });
 add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 90, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', desc: 'Single use: press Use for +40 Mood now (max 100) and up to 6 care XP within the shared 120 XP/day cap. Mood then falls 1.6/hour; a full 40-point boost takes 25 hours to decay. One instant boost, with a 30-minute cooldown between lamps.' });
 

@@ -1,5 +1,5 @@
 // The Barn (v30): your one egg or bug. Everything shown here comes from the server (GET /api/barn);
-// the page only draws it and asks the server to feed, play or clean. Fits one screen, no scrolling.
+// the page only draws it and asks the server to feed, play or clean. Care scrolls on small screens.
 // v33: residents are real bugs drawn as pixel sprites, with a paged "Field notes" sheet; neglect warnings; a gravestone.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useSession } from '../api.js';
@@ -173,9 +173,9 @@ export default function Barn() {
         {pen?.stage === 'creature' && (
           <div className="barn-body" data-test="barn-creature" data-species={pen.species}>
             <div className="barn-stage" onClick={() => { setPoke((n) => n + 1); voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}><Stage pen={pen} poke={poke} reduced={reduced} /><span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span></div>
-            <div className="barn-side">
+            <div className={`barn-side${tab === 'care' ? ' barn-care' : ''}`}>
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
-              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="The automatic feeder keeps the bowl full and the hunger clock paused"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
+              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active, outside the care XP cap"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
               <div className="barn-tabs" role="tablist">
                 <button role="tab" aria-selected={tab === 'care'} className={tab === 'care' ? 'on' : ''} onClick={() => setTab('care')} data-test="tab-care">Care</button>
@@ -186,6 +186,7 @@ export default function Barn() {
                   {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
                   <div className="barn-need"><span className="small">XP</span><div className="barn-bar xp"><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div></div>
                 </div>
+                <p className="small muted barn-xp-limit">Care XP: max 120/day, shared with store care. Resets at midnight UTC; daily and feeder bonuses are extra.</p>
                 <div className="barn-acts">
                   {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
                 </div>
