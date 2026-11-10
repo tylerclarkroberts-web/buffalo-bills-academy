@@ -24,6 +24,7 @@ import { verifyPassword } from './passwords.js';
 import { SlackClient, SlackAlerts } from './slack.js';
 import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js';
 import { Conquest, mountConquest } from './conquest.js';
+import { Rooms } from './rooms.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
   const service = new PokerService({ dataDir, now });
@@ -94,6 +95,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const riskEscrow = conquest.escrow(p);
     return { bankroll: p.bankroll, holdings, chips, riskEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow) };
   };
+  const rooms = new Rooms({ store: service.store, shop, barn, avatars, netWorth });
+  service.rooms = rooms;
   const meView = (p) => {
     accounts.ensure(p);
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
@@ -132,6 +135,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (!req.sessionId || !(me.google || me.login)) throw new GameError('Sign in first.', 401);
     const fresh = !conquest.hasHistory(me) && !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
     if (!fresh) return { merged: false, me: meView(me), reason: 'Your signed-in account already has history, so the old player was left as is.' };
+    rooms.forget(me.id);
     if (me.google) legacy.google = me.google;
     if (me.login) legacy.login = me.login;
     legacy.kind = me.kind;
@@ -222,7 +226,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/players/:id/profile', wrap((req) => {
     const p = service.getPlayer(req.params.id);
     if (!p || p.hidden) throw new GameError('No such player', 404);
-    return profile(p, { self: req.player?.id === p.id });
+    return { ...profile(p, { self: req.player?.id === p.id }), roomVisitAvailable: !!((req.player?.google || req.player?.login) && rooms.isOpen(p.id)) };
   }));
   api.get('/leaderboard', wrap(async (req) => {
     await market.quotes().catch(() => null); // refresh prices (cached 60s)
@@ -235,6 +239,13 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
     return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn };
   }));
+
+  // Room views are permission-checked snapshots, never reusable public profile/store responses.
+  api.use('/room', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  api.get('/room', needPlayer, wrap((req) => rooms.owner(req.player)));
+  api.patch('/room/layout', needPlayer, wrap((req) => rooms.saveLayout(req.player, req.body)));
+  api.get('/players/:id/room', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); }, needPlayer,
+    wrap((req) => rooms.visit(req.player, service.getPlayer(req.params.id))));
 
   // ----- Acid Mines -----
   api.get('/fawn', needPlayer, wrap((req) => fawn.status(accounts.ensure(req.player))));
@@ -267,6 +278,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (conquest.hasRetainedHistory(p)) throw new GameError('Risk account history must be retained. Contact the Academy operator to anonymize your account.', 409);
     const seated = service.store.allTables().some((t) => t.status !== 'closed' && t.seats.some((x) => x && x.playerId === p.id)) || bj.seatedOpen(p.id);
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
+    rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
     if (mines.doc.active[p.id]) { delete mines.doc.active[p.id]; mines.save(); }
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id);

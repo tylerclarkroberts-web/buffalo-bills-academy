@@ -15,9 +15,11 @@ const Store = lazy(() => import('./store/Store.jsx'));
 const Slots = lazy(() => import('./slots/SlotsPage.jsx'));
 const Blackjack = lazy(() => import('./bj/BlackjackPage.jsx'));
 const Conquest = lazy(() => import('./Conquest.jsx'));
+const Room = lazy(() => import('./room/Room.jsx'));
 
 export function navigate(path, { replace = false } = {}) {
   if (path === window.location.pathname + window.location.search) return;
+  if (!window.dispatchEvent(new CustomEvent('bba:navigate', { detail: { path }, cancelable: true }))) return;
   window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
@@ -53,6 +55,7 @@ export default function App() {
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);
+  const room = path.match(/^\/rooms\/([\w-]+)\/?$/);
   let page;
   if (path.startsWith('/welcome') || path.startsWith('/profile/face')) {
     const next = safeNext(query.get('next') || (path.startsWith('/profile') ? '/profile' : '/'));
@@ -60,6 +63,7 @@ export default function App() {
   } else if (t) page = <TablePage code={t[1].toUpperCase()} />;
   else if (path.startsWith('/multi')) page = <Suspense fallback={<div className="screen" />}><Multi wanted={(query.get('t') || '').split(',').filter(Boolean)} /></Suspense>;
   else if (path.startsWith('/conquest')) page = <Suspense fallback={<div className="screen muted">Loading Risk bets…</div>}><Conquest /></Suspense>;
+  else if (path === '/room' || room) page = <Suspense fallback={<div className="screen muted">Opening the bunkhouse…</div>}><Room key={`${room?.[1] || 'mine'}.${me?.id || 'visitor'}`} id={room?.[1]} /></Suspense>;
   else if (path.startsWith('/profile')) page = <Profile />;
   else if (p) page = <Profile id={p[1]} />;
   else if (path.startsWith('/leaderboard')) page = <Leaderboard />;
