@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { ROOM_SHELF_SPOTS, roomShelves } from '../../../server/catalog/room.js';
 
-export const ROOM_BOUNDS = { min: [-4.35, -0.2, -3.35], max: [7.4, 3.65, 3.35] };
+export const ROOM_BOUNDS = { min: [-4.35, -0.2, -3.35], max: [8.6, 3.65, 3.35] };
 
 export const ROOM_POSITIONS = {
   'wall-left': [-2.9, 2.55, -2.81], 'wall-right': [-1.25, 2.55, -2.81],
   'shelf-left': [-3.25, 1.22, -1.7], 'shelf-right': [-3.25, 1.22, -0.4],
-  floor: [-0.55, 0.08, -0.65], desk: [-0.55, 0.97, -1.9], window: [5.75, 0.02, -0.3],
+  floor: [-0.55, 0.08, -0.65], desk: [-0.55, 0.97, -1.9], window: [6.2, 0.02, -0.3],
 };
 
 export function roomPositions(shelves) {

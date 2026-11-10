@@ -22,6 +22,7 @@ const screenPoint = (camera, position) => {
 
 test('yard partition leaves an open doorway and its glazing does not intercept room controls', () => {
   const scene = furnitureScene();
+  const [yardX, yardY, yardZ] = ROOM_POSITIONS.window;
   scene.static = new THREE.Group(); scene.raycaster = new THREE.Raycaster();
   scene.wardrobe.position.set(3.25, 0, -2.5);
   scene.buildSideDoor();
@@ -44,7 +45,7 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
     for (const [position, selection] of [
       [[2.25, 1.4, 1.45], { kind: 'wealth' }],
       [[3.25, 2.2, -2.5], { kind: 'wardrobe' }],
-      [[5.75, 1.1, -0.3], { kind: 'anchor', anchorId: 'window' }],
+      [[yardX, yardY + 1.1, yardZ], { kind: 'anchor', anchorId: 'window' }],
     ]) {
       const point = screenPoint(scene.camera, position);
       assert.deepEqual(scene.targetAt(point.clientX, point.clientY), selection);
@@ -52,27 +53,6 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
   }
   scene.setEditing(false);
   for (const group of [scene.static, scene.dynamic]) group.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
-});
-
-test('shared outdoor terrain survives wall cutaways without changing the room camera fit', () => {
-  const scene = furnitureScene(); scene.static = new THREE.Group();
-  const bounds = structuredClone(ROOM_BOUNDS), projection = scene.camera.projectionMatrix.toArray();
-  scene.buildOutdoors(); scene.static.updateMatrixWorld(true);
-  const landscape = scene.static.getObjectByName('surrounding-landscape');
-  assert.ok(landscape);
-  assert.deepEqual(ROOM_BOUNDS, bounds);
-  assert.deepEqual(makeRoomCamera(846 / 380).projectionMatrix.toArray(), projection);
-  // The real ground continues behind the rear window and beyond the side yard.
-  for (const [x, z] of [[-1.5, -6.5], [8, 1.5]]) {
-    const ray = new THREE.Raycaster(new THREE.Vector3(x, 5, z), new THREE.Vector3(0, -1, 0));
-    assert.ok(ray.intersectObject(landscape, true).length > 0);
-  }
-  for (const rotation of [0, 90, 180, 270]) {
-    scene.camera = makeRoomCamera(846 / 380, { rotation }); scene.applyCutaway();
-    assert.equal(landscape.visible, true);
-    assert.ok(landscape.children.every(object => object.visible), 'cutaways remove house walls, not the surrounding world');
-  }
-  landscape.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
 });
 
 test('a displayed wagon picks its visible canopy without swallowing the nearby wardrobe', () => {

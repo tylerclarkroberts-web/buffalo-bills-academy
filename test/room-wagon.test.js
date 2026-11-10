@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { coveredWagon } from '../client/src/room/wagon.js';
+import { ROOM_POSITIONS, makeRoomCamera } from '../client/src/room/scene-model.js';
 
 test('the covered wagon stays inside its yard footprint with four grounded spoked wheels', () => {
   const wagon = coveredWagon(), bounds = new THREE.Box3().setFromObject(wagon);
@@ -17,9 +18,16 @@ test('the covered wagon stays inside its yard footprint with four grounded spoke
     const ray = new THREE.Raycaster(new THREE.Vector3(wheel.position.x + 0.07, wheel.position.y + 0.15, 1), new THREE.Vector3(0, 0, -1));
     assert.equal(ray.intersectObject(wheel, true).length, 0, 'there is open space between the spokes');
   }
-  wagon.scale.setScalar(1.65); wagon.rotation.y = -0.16; wagon.position.set(5.75, 0.02, -0.3);
+  wagon.scale.setScalar(1.65); wagon.rotation.y = -0.16; wagon.position.set(...ROOM_POSITIONS.window);
   const placed = new THREE.Box3().setFromObject(wagon);
-  assert.ok(placed.min.x > 4.25 && placed.max.x < 7.4, 'the actual scaled and rotated model stays outside the cabin');
+  assert.ok(placed.min.x > 4.25 && placed.max.x < 8.45 && placed.min.z > -3 && placed.max.z < 3, 'the actual scaled and rotated model stays on the enlarged side yard');
+  for (const aspect of [320 / 280, 390 / 280, 846 / 380, 844 / 300]) for (const rotation of [0, 90, 180, 270]) {
+    const camera = makeRoomCamera(aspect, { rotation });
+    for (const x of [placed.min.x, placed.max.x]) for (const y of [placed.min.y, placed.max.y]) for (const z of [placed.min.z, placed.max.z]) {
+      const p = new THREE.Vector3(x, y, z).project(camera);
+      assert.ok(Math.abs(p.x) < 1 && Math.abs(p.y) < 1 && Math.abs(p.z) < 1, 'the complete wagon remains framed through a full turn');
+    }
+  }
 });
 
 test('the canopy is open at both ends, shaded on both sides, and bounded in rendering cost', () => {
