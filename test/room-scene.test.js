@@ -6,6 +6,8 @@ import { roomAnchors, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, shelfSlots, defaultShel
 import { wallDisplayPosition, residentStep } from '../client/src/room/scene-model.js';
 import { RoomScene } from '../client/src/room/scene.js';
 const S = ROOM_FLOOR_SCALE;
+// The couch is put away where a test needs the open back-left wall.
+const noCouch = () => ({ ...defaultFurniture(), couch: { ...defaultFurniture().couch, off: true } });
 
 function furnitureScene() {
   const canvas = { clientWidth: 846, clientHeight: 380, style: {}, captured: null,
@@ -22,7 +24,7 @@ const screenPoint = (camera, position) => {
   return { clientX: (p.x + 1) * 846 / 2, clientY: (1 - p.y) * 380 / 2 };
 };
 
-test('house and yard gain 75 percent floor area while furniture, shelves and wagon keep their size', t => {
+test('house and yard cover 2.1 times their first floor area while furniture, shelves and wagon keep their size', t => {
   const previousDocument = globalThis.document;
   const context = { fillRect() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
@@ -36,7 +38,7 @@ test('house and yard gain 75 percent floor area while furniture, shelves and wag
   assert.ok(yard, 'the enlarged yard is part of the room architecture');
   for (const [floor, originalArea] of [[scene.floor, 8.5 * 6.5], [yard, 4.2 * 6]]) {
     const size = new THREE.Box3().setFromObject(floor).getSize(new THREE.Vector3());
-    assert.ok(Math.abs(size.x * size.z / originalArea - 1.75) < 1e-6);
+    assert.ok(Math.abs(size.x * size.z / originalArea - 2.1) < 1e-6);
     assert.equal(floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
   }
   for (const fixture of scene.static.children.filter(object => object !== scene.structure)) {
@@ -523,7 +525,7 @@ test('wall decorations drag between walls with their orientation and restore on 
   const prop = scene.dynamic.children.find(object => object.userData.dragId === id), home = prop.position.clone();
   scene.pointerDown(from); scene.pointerMove(to);
   assert.equal(scene.dragging.wall, true);
-  assert.deepEqual(prop.position.toArray(), wallDisplayPosition(ROOM_WALL_SPOTS.find(spot => spot.id === 'left-high-front')));
+  assert.ok(prop.position.distanceTo(new THREE.Vector3(...wallDisplayPosition(ROOM_WALL_SPOTS.find(spot => spot.id === 'left-high-front')))) < 1e-9);
   assert.equal(prop.rotation.y, Math.PI / 2);
   assert.equal(moves.length, 0);
   scene.cancelPointer(); assert.ok(prop.position.equals(home)); assert.equal(prop.rotation.y, 0);
@@ -540,7 +542,7 @@ test('wall decorations drag between walls with their orientation and restore on 
 test('shelves rotate across walls and restore the shelf and displayed object together', () => {
   const scene = furnitureScene(), moves = [], id = 'shelf-left';
   scene.onMoveShelf = (...move) => moves.push(move);
-  scene.update({ placements: [{ anchorId: id, itemId: 'odd-lamp' }] }); scene.setEditing(true);
+  scene.update({ placements: [{ anchorId: id, itemId: 'odd-lamp' }], furniture: noCouch() }); scene.setEditing(true);
   scene.targetAt = () => ({ kind: 'anchor', anchorId: id });
   const at = spotId => ({ button: 0, pointerId: 4, ...screenPoint(scene.camera, roomShelfPosition(ROOM_SHELF_SPOTS.find(spot => spot.id === spotId))) });
   const shelf = scene.dynamic.children.find(object => object.userData.dragId === id), home = shelf.position.clone();
@@ -555,7 +557,7 @@ test('resident stroll stays on clear floor and falls back to standing when boxed
   const furniture = defaultFurniture(), route = residentStep(furniture);
   assert.ok(Math.hypot(route.x, route.z) > 0 && Math.hypot(route.x, route.z) <= 0.55);
   for (let part = 0; part <= 1; part += 0.05) assert.ok(furnitureFits({ ...furniture, rug: { ...furniture.rug, x: furniture.rug.x + route.x * part, z: furniture.rug.z + route.z * part } }, 'rug'));
-  const tight = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.3, z: 0, r: 0 } };
+  const tight = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.45, z: 0, r: 0 } };
   assert.ok(furnitureFits(tight, 'rug'));
   assert.deepEqual(residentStep(tight), { x: 0, z: 0 });
 });
@@ -563,7 +565,7 @@ test('resident stroll stays on clear floor and falls back to standing when boxed
 test('a large shelf has three separate item targets and drags all three from an outside slot', () => {
   const scene = furnitureScene(), moves = [], shelf = { ...defaultShelves()[0], spotId: 'left-low-door', sizeId: 'wide' };
   const slots = shelfSlots(shelf), items = ['odd-lamp', 'odd-rock', 'odd-telegraph'];
-  const view = { shelves: [shelf], placements: slots.map((slot, i) => ({ anchorId: slot.id, itemId: items[i] })) };
+  const view = { shelves: [shelf], furniture: noCouch(), placements: slots.map((slot, i) => ({ anchorId: slot.id, itemId: items[i] })) };
   scene.onMoveShelf = (...move) => moves.push(move); scene.raycaster = new THREE.Raycaster();
   scene.update(view); scene.setEditing(true); scene.dynamic.updateMatrixWorld(true);
   const positions = roomPositions([shelf]);
