@@ -2,7 +2,7 @@
 
 Open **My Room** from your account menu or profile. Your free, furnished bunkhouse brings together your real bug, equipped outfit and purchased oddities. It uses a slightly elevated 3D cutaway with the Academy's chunky low-poly look. Click a furnishing or use the named **Pet**, **Wardrobe**, **Collection** and **Chips & cash** buttons. The resident is part of the scene; there is no character movement or camera-control requirement.
 
-The room's resident is an approximate low-poly representation, including the saved avatar face where available. Select **Wardrobe** to see the existing avatar display with its actual equipped cosmetics and fit. The pet uses its existing pixel artwork inside the 3D terrarium. Empty, egg, live-bug and memorial states reflect the same Barn resident, not a second pet.
+The room's resident is an approximate low-poly representation, including the saved avatar face where available. Select **Wardrobe** to see the existing avatar display with its actual equipped cosmetics and fit. The pet uses its existing pixel artwork inside the 3D terrarium, growing slightly at each level through level 10 with the same [visual growth as the Barn](bug-combat.md#leveling-and-moves). Empty, egg, live-bug and memorial states reflect the same Barn resident, not a second pet.
 
 ## Look around
 

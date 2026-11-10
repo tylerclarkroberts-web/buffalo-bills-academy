@@ -8,8 +8,9 @@
 // stall is empty and a new egg can turn up in the mines.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, ABILITY_LEVELS, levelFor, xpFor } from './engine/creatures.js';
+import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
 import { simulateBout } from './engine/bout.js';
+import { movesFor, battleFor, combatStats, STANCES } from './engine/bug-combat.js';
 
 export const EGG_CHANCE = 6000; // out of 100,000 shifts (6%), for players with an empty barn
 export const DEFAULT_INCUBATE_MS = 3 * 24 * 3600e3;
@@ -26,11 +27,12 @@ export const CARE = {
   clean: { stat: 'clean', gain: 45, cooldownMs: 40 * 60e3, word: 'hosed down' },
 };
 export const CARE_XP = 12;   // per care action...
-export const CARE_XP_PER_DAY = 120; // ...up to this much a day (UTC), so a week of steady care reaches level 5
+export const CARE_XP_PER_DAY = 120; // ...shared with store care, per UTC day
 export const DAY_XP = 10;    // per full day since hatching, while it's not neglected
 export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action, inside the same daily cap
 export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
-export const BOUT_LEVEL = 5;
+export const BOUT_LEVEL = 3;
+export const BOUT_XP = 20;
 export const BOUT_COOLDOWN_MS = 60 * 60e3; // one bout an hour
 const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
@@ -52,6 +54,10 @@ export class Barn {
   migrate() {
     let n = 0; const now = this.now();
     for (const [id, pen] of Object.entries(this.doc.pens)) {
+      if (pen.stage === 'creature' && !pen.combatVersion) {
+        pen.legacyAbilities = [1, 3, 5].filter((level) => levelFor(pen.xp) >= level).length;
+        pen.combatVersion = 1; n++;
+      }
       if (BY_ID[pen.species]) continue;
       const bug = ROSTER[this.eggInt(ROSTER.length)];
       pen.oldSpecies = pen.species; pen.species = bug.id; pen.migratedAt = now; n++;
@@ -82,6 +88,11 @@ export class Barn {
     return WARN_MS.filter((w) => since >= w * this.k).length;
   }
   save() { this.store.saveDoc('barn', this.doc); }
+  commitPen(playerId, pen) {
+    const next = { ...this.doc, pens: { ...this.doc.pens, [playerId]: pen } };
+    this.store.saveDoc('barn', next);
+    this.doc = next;
+  }
   has(playerId) { return !!this.doc.pens[playerId]; }
 
   /** At clock-in: does this shift have an egg in it? Only ever for a player whose barn is empty. */
@@ -112,7 +123,7 @@ export class Barn {
     if (pen.stage !== 'egg' || now < pen.hatchAt) return false;
     const at = pen.hatchAt;
     const name = this.newName(playerId, BY_ID[pen.species]);
-    Object.assign(pen, { stage: 'creature', name, bornAt: at, fedAt: at, xp: this.startXp, dayXpAt: at, cool: {},
+    Object.assign(pen, { stage: 'creature', name, bornAt: at, fedAt: at, xp: this.startXp, dayXpAt: at, cool: {}, combatVersion: 1,
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 80, at }])) });
     return true;
   }
@@ -155,8 +166,10 @@ export class Barn {
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, style: this.looksOf(playerId) || null, gearBonus: this.styleOf?.(playerId).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= 10 ? null : xpFor(level + 1),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
-      abilities: c.abilities.map((name, i) => ({ name, level: ABILITY_LEVELS[i], unlocked: level >= ABILITY_LEVELS[i] })),
-      arena: level >= BOUT_LEVEL, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
+      abilities: movesFor(c.id, level, pen.legacyAbilities || 0),
+      battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
+      combat: { ...combatStats(level), stats: c.stats },
+      arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
       boutCoolMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now), lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -190,11 +203,22 @@ export class Barn {
     return this.view(playerId);
   }
 
-  /**
-   * A bout: the server picks the opponent (another rancher's level-5+ creature at random, or a travelling stray when
-   * there isn't one), rolls a seed, runs the deterministic sim and stores the log so it replays the same everywhere.
-   * Cosmetic: no money, no XP. Only the challenger's record changes; the other rancher is never notified.
-   */
+  /** Save an owned bug's unlocked moves; settings and fight rewards persist before becoming visible. */
+  setBattle(playerId, settings) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)
+      || Object.keys(settings).some((key) => !['stance', 'specials'].includes(key))
+      || typeof settings.stance !== 'string' || !Object.hasOwn(STANCES, settings.stance)
+      || !Array.isArray(settings.specials) || settings.specials.length > 2
+      || new Set(settings.specials).size !== settings.specials.length) throw new GameError('Choose a fighting style and up to two different unlocked specials.', 400);
+    const pen = this.refresh(playerId);
+    if (!pen || pen.stage !== 'creature') throw new GameError('You need a hatched bug for that.', 409);
+    const unlocked = movesFor(pen.species, levelFor(pen.xp), pen.legacyAbilities || 0).filter((move) => move.unlocked && move.id !== 'basic');
+    if (settings.specials.some((id) => !unlocked.some((move) => move.id === id))) throw new GameError('Choose only special moves your bug has learned.', 400);
+    this.commitPen(playerId, { ...pen, battle: { stance: settings.stance, specials: [...settings.specials] } });
+    return this.view(playerId);
+  }
+
+  /** Server-decided fight against a nearby level: only the challenger earns XP and a record entry. */
   bout(playerId) {
     const pen = this.refresh(playerId);
     if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
@@ -205,23 +229,29 @@ export class Barn {
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
     if (now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
     const low = (n) => Math.round(Math.min(n.hunger, n.mood, n.clean));
-    const rivals = Object.entries(this.doc.pens).filter(([id, p]) => id !== playerId && p.stage === 'creature' && now < this.deathAt(p) && levelFor(p.xp) >= BOUT_LEVEL);
+    const rivals = Object.entries(this.doc.pens).filter(([id, p]) => id !== playerId && p.stage === 'creature' && now < this.deathAt(p))
+      .map(([id, p]) => { const current = structuredClone(p); this.accrue(current, now); return [id, current]; })
+      .filter(([, p]) => levelFor(p.xp) >= BOUT_LEVEL && Math.abs(levelFor(p.xp) - level) <= 1);
     let them;
     if (rivals.length) {
       const [id, p] = rivals[this.eggInt(rivals.length)];
-      them = { species: p.species, name: p.name, level: levelFor(p.xp), mood: low(this.needs(p, now)), stray: false, gear: this.styleOf?.(id).gearBonus || 0, style: this.looksOf(id) };
+      them = { species: p.species, name: p.name, level: levelFor(p.xp), mood: low(this.needs(p, now)), stray: false, gear: this.styleOf?.(id).gearBonus || 0, style: this.looksOf(id),
+        legacyAbilities: p.legacyAbilities || 0, battle: battleFor(p.species, levelFor(p.xp), p.legacyAbilities || 0, p.battle) };
     } else {
       const k = ROSTER[this.eggInt(ROSTER.length)];
-      them = { species: k.id, name: `Stray ${k.name}`, level: BOUT_LEVEL, mood: 60, stray: true };
+      them = { species: k.id, name: `Stray ${k.name}`, level, mood: 60, stray: true, battle: battleFor(k.id, level) };
     }
-    const you = { species: pen.species, name: pen.name, level, mood: low(this.needs(pen, now)), gear: this.styleOf?.(playerId).gearBonus || 0, style: this.looksOf(playerId) };
+    const you = { species: pen.species, name: pen.name, level, mood: low(this.needs(pen, now)), gear: this.styleOf?.(playerId).gearBonus || 0, style: this.looksOf(playerId),
+      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
     const seed = `${now}:${this.eggInt(1e9)}`;
-    const { rounds, winner } = simulateBout(you, them, seed);
-    pen.record ||= { w: 0, l: 0, d: 0 };
-    pen.record[winner === 0 ? 'w' : winner === 1 ? 'l' : 'd'] += 1;
-    pen.boutAt = now;
-    pen.lastBout = { at: now, seed, you, them, rounds, result: winner === 0 ? 'won' : winner === 1 ? 'lost' : 'draw' };
-    this.save();
+    const { rounds, winner, maxHp } = simulateBout(you, them, seed);
+    const next = structuredClone(pen);
+    next.record ||= { w: 0, l: 0, d: 0 };
+    next.record[winner === 0 ? 'w' : winner === 1 ? 'l' : 'd'] += 1;
+    next.boutAt = now;
+    next.xp += BOUT_XP;
+    next.lastBout = { version: 2, at: now, seed, you, them, rounds, maxHp, xpEarned: BOUT_XP, levelBefore: level, levelAfter: levelFor(next.xp), result: winner === 0 ? 'won' : winner === 1 ? 'lost' : 'draw' };
+    this.commitPen(playerId, next);
     return this.view(playerId);
   }
 

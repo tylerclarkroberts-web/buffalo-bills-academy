@@ -69,6 +69,7 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | Poker rules, cards, evaluation, pots | `server/engine/` |
 | Blackjack | `server/blackjack/`, `client/src/bj/` |
 | Other games | Matching slots, mines, barn, store, and avatar modules under `server/` and `client/src/` |
+| Bug combat and progression | `server/barn.js`, `server/engine/bug-combat.js`, `server/engine/bout.js`, `client/src/barn/`; see [Bug combat](bug-combat.md). |
 | Personal rooms | `server/rooms.js`, `server/catalog/room.js`, `client/src/room/`; see [Personal rooms](personal-rooms.md). |
 | Shared play-money bankroll | `server/accounts.js` |
 | Accounts and sessions | `server/auth.js`, `server/passwords.js` |
@@ -219,3 +220,21 @@ Owners can move, turn and (for the desk and wardrobe) put away room furniture wi
 A browser check against an isolated local server and a development account at 1280×800 and 320×740 covered the move arrows (including after turning the view), a refused turn against the wall, putting the wardrobe away and back, saving, and reloading the saved arrangement, with no horizontal overflow. Dragging was exercised with scripted pointer events and a stubbed pointer capture, not a real held mouse or finger. A sequential full-suite run after the change, `node --test --test-concurrency=1 "test/*.test.js"`, ran 334 tests: 329 passed and five failed. Four were the existing Doom Windows URL-to-path errors and one was the previously observed Slack stale-alert assertion; all room tests passed. This is not a passing full suite. A second-account visit, physical phones and Safari were not rechecked for this change.
 
 A follow-up the same day makes the resident stand at the centre of the rug wherever it is moved, with the keep-clear spot following it. The focused room tests (52) and the build passed again, and a browser check confirmed the resident moving with the rug; the full suite was not repeated for this follow-up.
+
+### Bug combat and progression — November 10, 2026
+
+The [combat guide](bug-combat.md) documents level-3 entry, moves through level 10, saved setups, separate participation XP, replay compatibility and the API/persistence additions. No new dependency, environment setting or setup command is needed.
+
+- `node --test test/bug-store-items.test.js test/bout.test.js test/barn-combat-api.test.js test/bug-combat-engine.test.js`: 24 passed. Coverage includes actual authenticated requests, strict setup validation, every fight outcome, rewards beyond the care cap and at level 10, no replay/cooldown rewards, failed-save rollback, opponent isolation, legacy records, deterministic effects and bounded replays.
+- `npm run build`: passed; the two existing duplicate `data-test` warnings in `BlackjackPage.jsx` remain.
+- `node --test --test-concurrency=1 test/*.test.js` with workspace-local `TEMP`/`TMP`: 354 tests, 349 passed, five failed. Four were the existing Doom Windows URL-to-path errors and one the Slack stale-alert assertion. The new combat tests all passed. This is not a passing full suite.
+- Local browser checks at 1280×800, 390×844, 320×740 and 844×390 covered locked moves, the two-special limit, failed-save draft retention, save/reload, level-up and maximum-level XP, replay reward wording, proportional HP bars, tab keyboard navigation and modal focus/escape/return. No horizontal overflow was observed. Legacy replay rendering also passed a separate server-rendered assertion check.
+- All 100 local documentation links resolved, and the combat guide's JSON example was accepted by the actual setup-save method.
+
+A deterministic balance sample ran 377,000 simulated bouts: 435 species pairs × 200 seeds at levels 3, 4, 6 and 10, 27,000 same-species stance comparisons, and 2,000 same/adjacent-level comparisons. With equal condition, no gear and the default available specials, species-average scores ranged from 47–52% at level 3 and 42–59% at level 10 (draws count as half a win). Particular default matchups ranged about 27–74%. Stance pair averages were near 50%, and each stance pairing favored different species. This supports an initial tuning pass, not exhaustive balance across all selected moves, conditions or equipment.
+
+Physical phones, Safari and live player behavior were not checked. Production deployment was not performed; pushing or merging this public snapshot does not deploy it.
+
+The same-day visual growth follow-up adds small size gains through level 10, species-appropriate larval artwork at levels 1–2 and adult artwork at level 3, alongside smaller nymph-like forms and the Railroad Worm's retained larviform body. The Barn, room, store previews and recorded bouts share the same rendering rules; no API, persistence or combat-stat changes are involved. `node --test test/bug-growth.test.js test/room-scene.test.js test/bug-store-items.test.js test/bout.test.js test/barn-combat-api.test.js test/bug-combat-engine.test.js` passed all 48 tests, and the build passed with the same existing blackjack warnings. The five growth tests cover all 30 species, stage-specific sprite caches, pixel bounds, cosmetics, every level's size and stable floor positioning, including room textures and unchanged egg/memorial sizes.
+
+Browser checks covered the 390px Barn, an immediate level-2 larva to level-3 adult change, level-3 to level-4 growth with reduced motion, desktop terrarium scaling, and a desktop preview of each new body type, caddisfly metamorphosis and retained nymph/larviform bodies. All 101 local documentation links resolved. The full suite was not repeated for this visual-only follow-up; the preceding 354-test result remains the latest full-suite observation. The life-stage guide documents the compressed pupal interval and family-level stylization; physical-device/Safari checks remain unverified.

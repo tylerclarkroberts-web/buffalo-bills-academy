@@ -2,7 +2,23 @@
 // GBA-era style: a 64x64 grid, a small palette per bug (outline, dark, base, light, accent + eye/glint), a dark
 // one-pixel outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
+import { MAX_LEVEL } from '../../../server/engine/creatures.js';
 export const SPRITE = 64;
+
+// Missing levels keep the existing adult presentation for older callers and replays.
+export function bugScale(level = MAX_LEVEL) {
+  const bounded = Number.isFinite(level) ? Math.max(1, Math.min(MAX_LEVEL, Math.floor(level))) : MAX_LEVEL;
+  return 1 - (MAX_LEVEL - bounded) * 0.025;
+}
+
+// Development follows species, not adult silhouette: Mantispa is a lacewing; the Picasso bug is not a beetle.
+const YOUNG_FORMS = {
+  ceroplophana: 'grub', trachelophorus: 'legless-grub', eupholus: 'legless-grub', pachyrhynchus: 'legless-grub',
+  chrysochroa: 'borer', lamprima: 'grub', onymacris: 'crawler', brachinus: 'crawler', macrodontia: 'borer',
+  sagra: 'grub', manticora: 'crawler', polyphylla: 'grub', phanaeus: 'grub',
+  mantispa: 'jawed-larva', nemoptera: 'jawed-larva', helicopsyche: 'caddis',
+};
+export const youngForm = (bug, level) => Number.isFinite(level) && level < 3 ? YOUNG_FORMS[bug.id] : undefined;
 
 const hex = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
 const toHex = (r, g, b) => '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
@@ -82,8 +98,9 @@ const KINDS = {
 };
 
 /** Builds the sprite grid for one bug: rows of hex colours (or null for transparent). */
-export function spriteGrid(bug) {
-  const L = bug.look || {}; const R = ramps(L.pal || ['#111111', '#333333', '#666666', '#999999', '#cc3333']);
+export function spriteGrid(bug, level) {
+  const L = { ...(bug.look || {}), kind: youngForm(bug, level) || (bug.id === 'helicopsyche' ? 'caddisfly' : bug.look?.kind) };
+  const R = ramps(L.pal || ['#111111', '#333333', '#666666', '#999999', '#cc3333']);
   const c = canvas();
   draw(c, L);
   return shade(c.g, R);
@@ -91,7 +108,23 @@ export function spriteGrid(bug) {
 
 function draw(c, L) {
   const k = L.kind;
-  if (['chafer', 'jewel', 'darkling', 'ground', 'dung', 'shield', 'frogleg'].includes(k)) {
+  if (k === 'grub' || k === 'legless-grub') {
+    if (k === 'grub') for (let i = 0; i < 3; i++) c.line(29 + i * 5, 28 + i * 2, 28 + i * 4, 35 + i * 2, 'D', 2, false);
+    [[37, 48], [44, 42], [46, 33], [41, 25], [32, 23], [25, 28]].forEach(([x, y]) => c.ell(x, y, 7, 7, 'W', false));
+    c.ell(24, 35, 7, 6, 'D', false); c.ell(21, 34, 1.5, 1.5, 'E', false); c.put(20, 33, 'G');
+    c.line(21, 40, 18, 44, 'D', 2, false); c.line(26, 40, 23, 44, 'D', 2, false);
+  } else if (k === 'borer' || k === 'crawler' || k === 'jawed-larva') {
+    const wideHead = k === 'jawed-larva' || (k === 'crawler' && L.jaws);
+    if (k !== 'borer') for (let i = 0; i < 3; i++) { c.line(27, 25 + i * 5, 21, 27 + i * 5, 'D', 1); c.line(21, 27 + i * 5, 19, 30 + i * 5, 'D', 1); }
+    for (let i = 7; i >= 0; i--) c.ell(32, 25 + i * 4, Math.max(3, 7 - Math.max(0, i - 4)), 3.5, i % 2 ? 'W' : 'L');
+    c.ell(32, 21, k === 'borer' ? 9 : 6, 5, 'L'); c.ell(32, 15, wideHead ? 8 : 5, 5, 'D'); eyes(c, wideHead ? 26 : 28, 14, 1);
+    c.line(29, 11, 26, wideHead ? 4 : 8, 'D', 2); c.line(26, wideHead ? 4 : 8, 29, wideHead ? 2 : 6, 'D', 1);
+  } else if (k === 'caddisfly') {
+    legs(c, { y: 35, spread: 0.65, long: 0.75 }); c.ell(32, 40, 4, 14, 'D');
+    c.poly([[31, 24], [23, 28], [17, 54], [30, 57]], 'B'); c.line(28, 29, 22, 51, 'L', 1);
+    for (let y = 34; y <= 51; y += 4) c.line(22 - (y - 34) * 0.15, y, 19 - (y - 34) * 0.15, y + 1, 'L', 1);
+    c.ell(32, 22, 5, 5, 'D'); eyes(c, 28, 21, 1); antennae(c, { y: 18, len: 15, bend: 6 });
+  } else if (['chafer', 'jewel', 'darkling', 'ground', 'dung', 'shield', 'frogleg'].includes(k)) {
     if (L.spray) { for (let i = 0; i < 7; i++) c.ell(32 + (i % 2 ? 6 : -6), 58 - i * 0.5, 3 + (i % 3), 2, 'W'); }
     const opt = k === 'jewel' ? { rx: 11, ry: 17, cy: 38 } : k === 'ground' ? { rx: 10, ry: 13, cy: 40, headY: 19 } : k === 'shield' ? { rx: 16, ry: 15, cy: 38, pron: 8 }
       : k === 'darkling' ? { rx: 13, ry: 15, cy: 39 } : k === 'frogleg' ? { rx: 10, ry: 13, cy: 34, headY: 15 } : {};
@@ -243,12 +276,12 @@ function overlay(ctx, grid, shape) {
   x = Math.max(0, Math.min(SPRITE - pw, x)); y = Math.max(0, Math.min(SPRITE - ph, y));
   w.p.forEach((row, r) => [...row].forEach((ch, c) => { if (ch !== '.') { ctx.fillStyle = w.k[ch]; ctx.fillRect(x + c, y + r, 1, 1); } }));
 }
-/** The bug's 64x64 sprite as an offscreen canvas (made once per species and look, then just scaled). */
-export function spriteCanvas(bug, style) {
-  const key = `${bug.id}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}`;
+/** The bug's 64x64 sprite, cached by species, life stage and look, then scaled with its accessories. */
+export function spriteCanvas(bug, style, level) {
+  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}`;
   if (cache.has(key)) return cache.get(key);
   const b = style?.bugskin?.pal ? { ...bug, look: { ...(bug.look || {}), pal: style.bugskin.pal } } : bug;
-  const grid = spriteGrid(b);
+  const grid = spriteGrid(b, level);
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(SPRITE, SPRITE) : Object.assign(document.createElement('canvas'), { width: SPRITE, height: SPRITE });
   const x = c.getContext('2d');
   paintSprite(x, grid, 0, 0, SPRITE);
@@ -257,18 +290,19 @@ export function spriteCanvas(bug, style) {
   cache.set(key, c);
   return c;
 }
-/** Draws a bug centred in a w x h box: whole-pixel scale only (crisp), a little idle bob, a hop when poked. */
-export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip = false, fill = 0.82, style = null }) {
-  const px = Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)); const s = px * SPRITE;
+/** Draws a growing bug with nearest-neighbour pixels, a little idle bob and a hop when poked. */
+export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip = false, fill = 0.82, style = null, level }) {
+  const adultSize = Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)) * SPRITE;
+  const s = Math.round(adultSize * bugScale(level)), px = s / SPRITE;
   const bob = still ? 0 : Math.round(Math.sin(t / 420) * px * 1.2);
   const hop = Math.round(Math.sin(Math.min(1, poke) * Math.PI) * px * 6);
-  const ox = Math.round((w - s) / 2), oy = Math.round((h - s) / 2 + h * 0.03) + bob - hop;
+  const ox = Math.round((w - s) / 2), oy = Math.round((h - adultSize) / 2 + h * 0.03) + adultSize - s + bob - hop;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(w / 2, (h + s) / 2 + h * 0.02, s * 0.36 * (1 - hop / (s || 1)), s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w / 2, (h + adultSize) / 2 + h * 0.02, s * 0.36 * (1 - hop / (s || 1)), s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
   if (flip) { ctx.translate(w, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(spriteCanvas(bug, style), ox, oy, s, s);
+  ctx.drawImage(spriteCanvas(bug, style, level), ox, oy, s, s);
   ctx.restore();
   return { px, s, ox, oy };
 }
