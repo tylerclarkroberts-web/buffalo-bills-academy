@@ -8,6 +8,8 @@ body.in-mines { background: #020402; }
   animation: m-on .7s steps(6) both;
 }
 @keyframes m-on { from { filter: brightness(3) blur(3px); opacity: 0; } to { filter: none; opacity: 1; } }
+/* Keep the fixed dialogue in the viewport even when the shift report was scrolled. */
+.mines.has-foreman { animation: none; overflow: hidden; }
 .mines * { box-sizing: border-box; }
 .crt { pointer-events: none; position: fixed; inset: 0; z-index: 50;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75) 100%);
