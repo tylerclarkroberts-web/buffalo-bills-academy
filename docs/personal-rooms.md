@@ -14,7 +14,7 @@ My Room displays the owner's existing pet, outfit, oddities and in-game wealth i
 
 **Save room** commits layout choices together; **Cancel** restores them. Failed saves retain the draft, revision conflicts require reloading, and leaving with unsaved changes offers to continue or discard. **Visitor view** shows the saved layout.
 
-Pet care and clothing changes save immediately, even during layout editing, and are not undone by Cancel. They use the existing Barn care rules. Visiting never feeds the pet or pauses neglect.
+Pet care and clothing changes save immediately, even during layout editing, and are not undone by Cancel. They use the existing [Barn care rules](bug-combat.md#xp-and-the-daily-care-limit). Visiting never feeds the pet, pauses neglect or awards care XP.
 
 Each owned oddity can appear once in a compatible spot. Seasonal oddities are sold during one calendar month (October, November or December, Mountain time) and stay owned afterwards. Removing a display, shrinking/removing a shelf or putting away the desk returns its displayed items to storage without changing ownership. Storing the wardrobe leaves the outfit intact; the couch can be put away too. **Add** brings stored pieces back. Four oddities are one of a kind (the store's **One of a kind** tab): the first buyer owns it, the store names that owner to everyone unless the account is hidden, and it returns to the shelf only if the account is deleted. There is no resale or transfer. Displaying the Deed to the Moon also ties the Moon to the yard fence, for the owner and visitors. Oddities are cosmetic; `odd-sheriffbadge` is still the legacy ID for the Expired Fishing Licence, and `window` remains the yard/wagon position ID.
 

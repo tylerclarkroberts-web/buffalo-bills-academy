@@ -1,13 +1,14 @@
 // The Barn (v30): your one egg or bug. Everything shown here comes from the server (GET /api/barn);
-// the page only draws it and asks the server to feed, play or clean. Fits one screen, no scrolling.
+// the page only draws it and asks the server to feed, play or clean. Care scrolls on small screens.
 // v33: residents are real bugs drawn as pixel sprites, with a paged "Field notes" sheet; neglect warnings; a gravestone.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useSession } from '../api.js';
 import { SignIn } from '../Home.jsx';
 import { goToMines } from '../App.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
+import { STANCES } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
-import { drawBug, drawGrave } from './sprite.js';
+import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout from './Bout.jsx';
 import './barn.css';
@@ -16,6 +17,7 @@ const SOUND_KEY = 'bba.barnSound';
 const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; };
 const NEED = { hunger: 'Fed', mood: 'Mood', clean: 'Clean' };
 const ACT = { feed: ['Feed', 'free'], play: ['Play', 'free'], clean: ['Mist', 'free'] };
+const TABS = ['care', 'combat', 'notes'];
 const WARN = ['', 'is hungry. It has not been fed in a week.', 'is getting weak from hunger. Feed it soon.', 'is close to starving. Feed it today.'];
 const SHEET = [['range', 'Where'], ['size', 'Size'], ['diet', 'Eats'], ['life', 'Life cycle'], ['conservation', 'Status']];
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -45,7 +47,7 @@ function Notes({ bug }) {
     : it.t === 'f' ? <ol key={key} start={it.i + 1}><li>{it.f}</li></ol>
     : <p key={key} className="barn-src muted">Sources: {bug.sources.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer">{host(u)}</a>)}</p>;
   return (
-    <div className="barn-notes" data-test="barn-notes">
+    <div className="barn-notes" id="barn-panel-notes" role="tabpanel" aria-labelledby="barn-tab-notes" data-test="barn-notes">
       <p className="barn-sci small"><i>{bug.sci}</i>{bug.genus ? ' (genus)' : ''} · {bug.order}</p>
       <div className="barn-page" ref={box} data-test="notes-page">
         {cur.map((i) => one(items[i], i))}
@@ -79,13 +81,13 @@ function Stage({ pen, poke, reduced }) {
       const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
       if (pen.stage === 'egg') drawEgg(x, { w: W, h: H, t: now, p: Math.min(1, (Date.now() - pen.eggAt) / Math.max(1, pen.hatchAt - pen.eggAt)), still: reduced, poke: pk });
       else if (pen.stage === 'dead') drawGrave(x, { w: W, h: H });
-      else if (BY_ID[pen.species]) drawBug(x, BY_ID[pen.species], { w: W, h: H, t: now, still: reduced, poke: pk, style: pen.style });
+      else if (BY_ID[pen.species]) drawBug(x, BY_ID[pen.species], { w: W, h: H, t: now, still: reduced, poke: pk, style: pen.style, level: pen.level });
       id = requestAnimationFrame(draw);
     };
     if (ref.current) delete ref.current.dataset.drawn;
     id = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(id);
-  }, [pen.stage, pen.species, reduced, poke, JSON.stringify(pen.style || null)]);
+  }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
   return <canvas ref={ref} className="barn-canvas" data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
 }
 
@@ -96,6 +98,12 @@ export default function Barn() {
   const [msg, setMsg] = useState('');
   const [poke, setPoke] = useState(0);
   const [bout, setBout] = useState(null);
+  const [replay, setReplay] = useState(false);
+  const replayButton = useRef(null);
+  const [battleDraft, setBattleDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const mutation = useRef(0);
   const [tab, setTab] = useState('care');
   const [sound, setSnd] = useState(() => { try { return localStorage.getItem(SOUND_KEY) === '1'; } catch { return false; } });
   const [, tick] = useState(0);
@@ -104,31 +112,43 @@ export default function Barn() {
   const wasEgg = useRef(null);
   useEffect(() => { setSound(sound); try { localStorage.setItem(SOUND_KEY, sound ? '1' : '0'); } catch { /* private */ } }, [sound]);
   const take = (r) => { skew.current = r.serverNow - Date.now(); setB(r); };
-  const load = () => api('GET', '/barn').then(take).catch((e) => setErr(e.message));
+  const load = () => {
+    if (pending.current) return;
+    const before = mutation.current;
+    api('GET', '/barn').then((r) => { if (before === mutation.current) take(r); }).catch((e) => { if (before === mutation.current) setErr(e.message); });
+  };
   useEffect(() => { document.title = "The Barn · Buffalo Bill's Academy"; if (me) load(); const id = setInterval(() => me && load(), 60000); const t = setInterval(() => tick((n) => n + 1), 1000); return () => { clearInterval(id); clearInterval(t); }; }, [me?.id]);
   const pen = b?.pen;
+  const battle = battleDraft || pen?.battle;
   // hatch moment: the egg's countdown ran out on this screen, so ask the server (it decides)
   useEffect(() => { if (pen?.stage === 'egg' && Date.now() + skew.current >= pen.hatchAt) load(); });
   useEffect(() => { if (wasEgg.current && pen?.stage === 'creature') { sfx.hatch(); setMsg(`It hatched! Meet ${pen.name}.`); setTimeout(() => voice(BY_ID[pen.species]?.voice), 900); } wasEgg.current = pen?.stage === 'egg'; }, [pen?.stage]);
-  const care = async (action) => {
+  const act = async (work) => {
+    if (pending.current || bout) return;
+    pending.current = true; mutation.current += 1; setBusy(true);
     setErr(''); setMsg('');
-    try {
+    try { await work(); } catch (e) { sfx.nope(); setErr(e.message); }
+    finally { pending.current = false; setBusy(false); }
+  };
+  const care = (action) => act(async () => {
       const r = await api('POST', '/barn/care', { action }); take(r); setPoke((n) => n + 1);
       if (r.pen.stage === 'egg') { sfx.warm(); setMsg('You keep the egg warm. Something inside kicks back.'); }
       else { sfx[action](); setTimeout(() => voice(BY_ID[r.pen.species]?.voice, r.pen.needs.mood / 100), 700); setMsg({ feed: `${r.pen.name} tucks in.`, play: `${r.pen.name} explores the twig you offered, end to end.`, clean: `A fine mist. ${r.pen.name} grooms its antennae.` }[action]); }
-    } catch (e) { sfx.nope(); setErr(e.message); }
+  });
+  const bury = () => act(async () => {
+    take(await api('POST', '/barn/bury')); setBattleDraft(null); setMsg('Laid to rest under the old cottonwood. The mines may turn up another egg one day.');
+  });
+  const fight = () => {
+    if (battleDraft) return;
+    act(async () => { const r = await api('POST', '/barn/bout'); take(r); sfx.bell(); setReplay(false); setBout(r.pen.lastBout); });
   };
-  const bury = async () => {
-    setErr(''); setMsg('');
-    try { take(await api('POST', '/barn/bury')); setMsg('Laid to rest under the old cottonwood. The mines may turn up another egg one day.'); } catch (e) { setErr(e.message); }
-  };
-  const fight = async () => {
-    setErr(''); setMsg('');
-    try { const r = await api('POST', '/barn/bout'); take(r); sfx.bell(); setBout(r.pen.lastBout); } catch (e) { sfx.nope(); setErr(e.message); }
-  };
+  const saveBattle = () => act(async () => {
+    take(await api('PATCH', '/barn/battle', battleDraft)); setBattleDraft(null); setMsg('Combat setup saved. Your next bout will use it.');
+  });
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
   if (!b) return <div className="screen barn"><div className="barn-empty muted">Opening the barn doors…</div></div>;
   const now = Date.now() + skew.current;
+  const nextAbility = pen?.abilities?.find((a) => !a.unlocked);
   return (
     <div className="screen barn" data-test="barn">
       <div className="barn-wrap panel">
@@ -152,7 +172,7 @@ export default function Barn() {
               <div className="barn-hatch"><span className="small muted">Hatches in</span><b className="num" data-test="hatch-left">{left(pen.hatchAt - now)}</b></div>
               <div className="barn-bar"><i style={{ width: `${Math.min(100, ((now - pen.eggAt) / (pen.hatchAt - pen.eggAt)) * 100)}%` }} /></div>
               <div className="barn-acts">
-                <button className="btn" onClick={() => care('play')} disabled={pen.warmCoolMs > 0 && now < b.serverNow + pen.warmCoolMs} data-test="act-warm">Keep it warm</button>
+                <button className="btn" onClick={() => care('play')} disabled={busy || pen.warmCoolMs > 0 && now < b.serverNow + pen.warmCoolMs} data-test="act-warm">Keep it warm</button>
                 <button className="btn ghost" onClick={() => { sfx.egg(); setPoke((n) => n + 1); setMsg('Knock knock. Knock knock knock. It knows a joke you don\'t.'); }}>Knock</button>
               </div>
             </div>
@@ -166,45 +186,80 @@ export default function Barn() {
               <p className="small barn-kind">{pen.speciesName} · Level {pen.level} · {pen.record.w}W {pen.record.l}L</p>
               <p className="small">It went without food for three weeks and quietly passed on {new Date(pen.diedAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.</p>
               <p className="small muted">Bugs live fast. When you are ready, lay it to rest; another egg may turn up in the mines.</p>
-              <div className="barn-acts"><button className="btn" onClick={bury} data-test="bury">Lay to rest</button></div>
+              <div className="barn-acts"><button className="btn" onClick={bury} disabled={busy} data-test="bury">Lay to rest</button></div>
             </div>
           </div>
         )}
         {pen?.stage === 'creature' && (
           <div className="barn-body" data-test="barn-creature" data-species={pen.species}>
             <div className="barn-stage" onClick={() => { setPoke((n) => n + 1); voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}><Stage pen={pen} poke={poke} reduced={reduced} /><span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span></div>
-            <div className="barn-side">
+            <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
-              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="The automatic feeder keeps the bowl full and the hunger clock paused"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
+              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active, outside the care XP cap"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
-              <div className="barn-tabs" role="tablist">
-                <button role="tab" aria-selected={tab === 'care'} className={tab === 'care' ? 'on' : ''} onClick={() => setTab('care')} data-test="tab-care">Care</button>
-                <button role="tab" aria-selected={tab === 'notes'} className={tab === 'notes' ? 'on' : ''} onClick={() => setTab('notes')} data-test="tab-notes">Field notes</button>
+              {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
+              <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={(e) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+                e.preventDefault();
+                const index = e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
+                setTab(TABS[index]); e.currentTarget.querySelectorAll('[role="tab"]')[index].focus();
+              }}>
+                {TABS.map((name) => <button key={name} id={`barn-tab-${name}`} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`barn-panel-${name}`} className={tab === name ? 'on' : ''} onClick={() => setTab(name)} data-test={`tab-${name}`}>{name === 'notes' ? 'Field notes' : name === 'combat' ? 'Combat' : 'Care'}</button>)}
               </div>
               {tab === 'notes' ? <Notes key={pen.species} bug={BY_ID[pen.species]} /> : (<>
+                <div className="barn-progress" data-test="barn-progress">
+                  <span className="small num">{pen.xp.toLocaleString()} XP · {pen.xpNext ? `${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : 'Maximum level 10'}</span>
+                  <div className="barn-bar xp" role="progressbar" aria-label={`Level ${pen.level} progress`} aria-valuemin={0} aria-valuemax={pen.xpNext ? pen.xpNext - pen.xpThis : 1} aria-valuenow={pen.xpNext ? pen.xp - pen.xpThis : 1}><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div>
+                  {nextAbility && <span className="small muted">Next move: {nextAbility.name} at level {nextAbility.level}.</span>}
+                </div>
+                {tab === 'care' ? <div className="barn-tab-content" id="barn-panel-care" role="tabpanel" aria-labelledby="barn-tab-care">
                 <div className="barn-needs">
                   {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
-                  <div className="barn-need"><span className="small">XP</span><div className="barn-bar xp"><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div></div>
                 </div>
+                <p className="small muted barn-xp-limit">Care XP: max 120/day, shared with store care. Resets at midnight UTC; daily, feeder and battle XP are extra.</p>
                 <div className="barn-acts">
-                  {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
+                  {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
                 </div>
-                <ul className="barn-abil">
-                  {pen.abilities.map((a) => <li key={a.name} className={a.unlocked ? 'on' : ''}>{a.unlocked ? '★' : '🔒'} {a.name}{!a.unlocked && <span className="muted"> · Lv {a.level}</span>}</li>)}
-                </ul>
+                <p className="small muted barn-xp-limit">Keep all three needs up for stronger bouts. Visit Combat to choose a stance and special moves.</p>
+                </div> : <div className="barn-tab-content" id="barn-panel-combat" role="tabpanel" aria-labelledby="barn-tab-combat">
+                  <dl className="barn-combat-stats">
+                    <div><dt>Health</dt><dd>{pen.combat.maxHp} HP</dd></div>
+                    <div><dt>Level damage</dt><dd>+{Math.round((pen.combat.damageMultiplier - 1) * 100)}%</dd></div>
+                    <div><dt>Attack</dt><dd>{pen.combat.stats.atk}/5</dd></div>
+                    <div><dt>Defense</dt><dd>{pen.combat.stats.def}/5</dd></div>
+                    <div><dt>Speed</dt><dd>{pen.combat.stats.spd}/5</dd></div>
+                  </dl>
+                  <p className="small muted">Attack increases damage; defense softens hits; speed helps with initiative and dodging. Each level from 3 to 10 adds health and damage.</p>
+                  <fieldset className="barn-setup" disabled={busy}>
+                    <legend>Combat setup</legend>
+                    <label className="barn-stance">Stance<select value={battle.stance} onChange={(e) => setBattleDraft({ ...battle, stance: e.target.value })} data-test="battle-stance">{Object.values(STANCES).map((stance) => <option key={stance.id} value={stance.id}>{stance.name}</option>)}</select></label>
+                    <p className="small muted">{STANCES[battle.stance].description}</p>
+                    <p className="small">Choose up to two specials. Your basic move fills the gaps while specials recover.</p>
+                    <ul className="barn-moves">
+                      {pen.abilities.map((a) => <li key={a.id} className={!a.unlocked ? 'locked' : ''}>
+                        <label>{a.id !== 'basic' && <input type="checkbox" checked={battle.specials.includes(a.id)} disabled={!a.unlocked || !battle.specials.includes(a.id) && battle.specials.length >= 2} onChange={(e) => setBattleDraft({ ...battle, specials: e.target.checked ? [...battle.specials, a.id] : battle.specials.filter((id) => id !== a.id) })} />}<b>{a.name}</b><span className="small muted">{battle.specials.includes(a.id) && `Selected ${battle.specials.indexOf(a.id) + 1} · `}{!a.unlocked ? `Unlocks at level ${a.level}` : a.level > pen.level ? 'Previously learned' : a.id === 'basic' ? 'Basic · always available' : `Level ${a.level} special`}</span></label>
+                        <p className="small muted">{a.heal ? `Base healing: ${a.heal} HP` : `Power ${a.power} · Base accuracy ${Math.round(a.accuracy * 100)}%`}{a.venom ? ` · Venom: ${a.venom} base damage × ${a.duration} turns` : ''}</p>
+                        <p className="small">{a.description}{a.cooldown > 0 ? ` Cooldown: ${a.cooldown} own turns.` : ''}</p>
+                      </li>)}
+                    </ul>
+                    <div className="barn-setup-actions"><button className="btn small" onClick={saveBattle} disabled={!battleDraft} data-test="battle-save">{busy ? 'Please wait…' : 'Save setup'}</button>{battleDraft && <button className="btn small ghost" onClick={() => setBattleDraft(null)}>Discard changes</button>}</div>
+                  </fieldset>
+                </div>}
+                {battleDraft && <p className="small barn-warn" role="status">Save or discard your changes in Combat before starting a bout.</p>}
                 {pen.arena ? (
                   <div className="barn-bouts" data-test="barn-bouts">
-                    <button className="btn" onClick={fight} disabled={b.serverNow + pen.boutCoolMs > now} data-test="bout-start">Barn bout<small>{b.serverNow + pen.boutCoolMs > now ? left(b.serverNow + pen.boutCoolMs - now) : 'just for show'}</small></button>
+                    <button className="btn" onClick={fight} disabled={busy || !!battleDraft || b.serverNow + pen.boutCoolMs > now} data-test="bout-start">Barn bout<small>{b.serverNow + pen.boutCoolMs > now ? left(b.serverNow + pen.boutCoolMs - now) : `+${pen.boutXp} XP`}</small></button>
                     <span className="small" data-test="bout-record">{pen.record.w}W · {pen.record.l}L{pen.record.d ? ` · ${pen.record.d}D` : ''}</span>
-                    {pen.lastBout && <button className="btn ghost small" onClick={() => setBout(pen.lastBout)} data-test="bout-replay">Replay last</button>}
+                    {pen.lastBout && <button ref={replayButton} className="btn ghost small" disabled={busy} onClick={() => { setReplay(true); setBout(pen.lastBout); }} data-test="bout-replay">Replay last</button>}
                   </div>
-                ) : <p className="small muted barn-arena">At level 5 it can enter barn bouts (just for show).</p>}
+                ) : <p className="small muted barn-arena">Barn bouts unlock at level {pen.arenaLevel}.</p>}
+                <p className="small muted barn-xp-limit">Bouts give {pen.boutXp} XP for a win, loss or draw, outside the care cap. One bout per hour; no daily battle XP cap.</p>
               </>)}
             </div>
           </div>
         )}
-        {bout && <Bout key={bout.at} bout={bout} reduced={reduced} onClose={() => setBout(null)} />}
-        <div className="barn-msg small" aria-live="polite">{err ? <span className="err">{err}</span> : msg}</div>
+        {bout && <Bout key={bout.at} bout={bout} replay={replay} reduced={reduced} onClose={() => { setBout(null); requestAnimationFrame(() => replayButton.current?.focus()); }} />}
+        <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>
   );
