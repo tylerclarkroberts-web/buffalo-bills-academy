@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_FIXTURES, roomShelfPosition } from '../client/src/room/scene-model.js';
-import { roomAnchors, ROOM_SHELF_SPOTS, defaultShelves, roomFinishes } from '../server/catalog/room.js';
+import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes } from '../client/src/room/scene-model.js';
+import { roomAnchors, ROOM_SHELF_SPOTS, defaultShelves, roomFinishes, defaultFurniture } from '../server/catalog/room.js';
 import { RoomScene } from '../client/src/room/scene.js';
 const S = ROOM_FLOOR_SCALE;
 
@@ -251,7 +251,7 @@ test('edit highlights include empty display spots and survive scene updates, the
   assert.deepEqual(targets.filter(target => target.kind === 'anchor').map(target => target.anchorId).sort(), roomAnchors().map(anchor => anchor.id).sort());
   assert.ok(targets.some(target => target.kind === 'wardrobe'));
   assert.ok(targets.some(target => target.kind === 'pet'));
-  assert.ok(!targets.some(target => target.kind === 'wealth'), 'money is inspectable, not editable');
+  assert.ok(targets.some(target => target.kind === 'wealth'), 'the cash table can be selected to move it');
   const desk = scene.highlights.children.find(glow => glow.userData.selection.anchorId === 'desk');
   const shelf = scene.highlights.children.find(glow => glow.userData.selection.anchorId === 'shelf-left');
   assert.ok(desk.children[1].material.opacity > shelf.children[1].material.opacity, 'selected spot has a stronger outline');
@@ -397,4 +397,40 @@ test('room rendering stays sharp at ordinary sizes and bounds high-DPI drawing b
     }
   }
   assert.deepEqual(roomRenderSize(0, NaN, NaN), { width: 1, height: 1 });
+});
+
+test('held furniture previews a snapped floor spot and moves only on release where it fits', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const scene = furnitureScene(), moves = [], home = defaultFurniture();
+  scene.raycaster = new THREE.Raycaster(); scene.onMoveFurniture = (...move) => moves.push(move); scene.onSelect = () => {};
+  scene.update({ placements: [], finishes: roomFinishes() }); scene.dynamic.updateMatrixWorld(true); scene.setEditing(true);
+  const at = (x, z) => ({ button: 0, pointerId: 3, pointerType: 'mouse', ...screenPoint(scene.camera, [x, 0, z]) });
+  const grab = { button: 0, pointerId: 3, pointerType: 'mouse', ...screenPoint(scene.camera, [home.wardrobe.x, 1.3, home.wardrobe.z]) };
+  assert.deepEqual(floorPoint(scene.camera, scene.canvas.getBoundingClientRect(), at(1.1, -0.9).clientX, at(1.1, -0.9).clientY), { x: 1, z: -1 });
+  scene.pointerDown(grab); t.mock.timers.tick(450);
+  assert.equal(scene.dragging.furniture, 'wardrobe');
+  scene.pointerMove(at(2, -1)); assert.equal(moves.length, 0, 'preview does not change the layout');
+  assert.equal(scene.dragPreview.children.length, 2);
+  scene.pointerUp(at(2, -1)); assert.deepEqual(moves, [['wardrobe', { x: 2, z: -1 }]]);
+  assert.equal(scene.dragPreview.children.length, 0);
+  for (const [x, z] of [[home.pet.x, home.pet.z], [20, 0]]) {
+    scene.pointerDown(grab); t.mock.timers.tick(450); scene.pointerUp(at(x, z));
+  }
+  assert.equal(moves.length, 1, 'occupied and out-of-room releases are ignored');
+  scene.update({ placements: [], finishes: roomFinishes(), furniture: { ...home, wardrobe: { x: 2, z: -1, r: 1 }, desk: { ...home.desk, off: true } } });
+  assert.equal(scene.wardrobe.position.x, 2); assert.equal(scene.wardrobe.rotation.y, Math.PI / 2);
+  assert.equal(scene.picks.some(pick => pick.userData.selection.anchorId === 'desk'), false, 'a stored desk has no display spot');
+  assert.equal(Object.hasOwn(roomPositions([], { ...home, desk: { ...home.desk, off: true } }), 'desk'), false);
+  scene.setEditing(false);
+  scene.dynamic.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+});
+
+test('move arrows follow the view through a full turn', () => {
+  assert.deepEqual(nudgeAxes(0), { right: [1, 0], away: [0, -1] });
+  for (let rotation = -180; rotation < 180; rotation += 15) {
+    const { right, away } = nudgeAxes(rotation), camera = makeRoomCamera(1, { rotation });
+    const shift = ([x, z]) => new THREE.Vector3(x, 0, z).project(camera).sub(new THREE.Vector3(0, 0, 0).project(camera));
+    assert.ok(shift(right).x > 0 && shift(away).y > 0, `rotation ${rotation}`);
+    assert.ok(right[0] * away[0] + right[1] * away[1] === 0);
+  }
 });

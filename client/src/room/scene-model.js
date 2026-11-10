@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import { ROOM_SHELF_SPOTS, roomShelves } from '../../../server/catalog/room.js';
+import { ROOM_SHELF_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, roomShelves, defaultFurniture } from '../../../server/catalog/room.js';
 
-export const ROOM_FLOOR_SCALE = Math.sqrt(1.75);
-const S = ROOM_FLOOR_SCALE;
+export { ROOM_FLOOR_SCALE };
+const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
+/** Heights of the display spots that ride on movable furniture. */
+const SPOT_HEIGHT = { desk: 0.97, floor: 0.08, window: 0.02 };
 export const ROOM_BOUNDS = { min: [-4.35 * S, -0.2, -3.35 * S], max: [8.6 * S, 3.65, 3.35 * S] };
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
@@ -11,16 +13,16 @@ export const roomShelfPosition = spot => [-4 * S + 0.75, spot.position[1], spot.
 export const ROOM_POSITIONS = {
   'wall-left': [-2.9 * S, 2.55, -3 * S + 0.19], 'wall-right': [-1.25 * S, 2.55, -3 * S + 0.19],
   'shelf-left': [-4 * S + 0.75, 1.22, -1.7 * S], 'shelf-right': [-4 * S + 0.75, 1.22, -0.4 * S],
-  floor: [-0.55 * S, 0.08, -0.65 * S], desk: [-0.55 * S, 0.97, -3 * S + 1.1], window: [6.2 * S, 0.02, -0.3 * S],
+  floor: home('floor', SPOT_HEIGHT.floor), desk: home('desk', SPOT_HEIGHT.desk), window: home('window', SPOT_HEIGHT.window),
 };
 
 export const ROOM_FIXTURES = {
-  pet: [-2.15 * S, 0, 1.25 * S], wardrobe: [4 * S - 0.75, 0, -3 * S + 0.5],
-  wealth: [2.25 * S, 0, 1.45 * S], rug: [0.2 * S, 0.03, 1.3 * S], resident: [0.2 * S, 0.05, 1.25 * S],
+  pet: home('pet'), wardrobe: home('wardrobe'), wealth: home('wealth'), rug: home('rug', 0.03), resident: [0.2 * S, 0.05, 1.25 * S],
 };
 
-export function roomPositions(shelves) {
-  const positions = Object.fromEntries(Object.entries(ROOM_POSITIONS).filter(([id]) => !id.startsWith('shelf-')));
+export function roomPositions(shelves, furniture = defaultFurniture()) {
+  const positions = Object.fromEntries(Object.entries(ROOM_POSITIONS).filter(([id]) => !id.startsWith('shelf-') && !furniture[id]?.off)
+    .map(([id, position]) => [id, furniture[id] ? [furniture[id].x, SPOT_HEIGHT[id], furniture[id].z] : position]));
   for (const shelf of roomShelves(shelves)) {
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
     if (spot) positions[shelf.id] = roomShelfPosition(spot);
@@ -39,6 +41,24 @@ export function nearestShelfSpot(camera, rect, x, y, shelves, shelfId) {
     if (d < distance) { closest = spot; distance = d; }
   }
   return closest;
+}
+
+/** Where a screen point meets the floor, snapped to quarter units; null outside the canvas or above the horizon. */
+export function floorPoint(camera, rect, x, y) {
+  if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width || y < rect.top || y > rect.top + rect.height) return null;
+  const from = new THREE.Vector3((x - rect.left) / rect.width * 2 - 1, 1 - (y - rect.top) / rect.height * 2, -1).unproject(camera);
+  const direction = camera.getWorldDirection(new THREE.Vector3());
+  if (direction.y >= -1e-6) return null;
+  const hit = from.addScaledVector(direction, -from.y / direction.y);
+  return { x: Math.round(hit.x * 4) / 4, z: Math.round(hit.z * 4) / 4 };
+}
+
+/** Floor steps for on-screen "right" and "away" at the current view angle, each along one room axis. */
+export function nudgeAxes(rotation = 0) {
+  const direction = makeRoomCamera(1, { rotation }).getWorldDirection(new THREE.Vector3());
+  const alongX = Math.abs(direction.z) >= Math.abs(direction.x);
+  return alongX ? { right: [-Math.sign(direction.z), 0], away: [0, Math.sign(direction.z)] }
+    : { right: [0, Math.sign(direction.x)], away: [Math.sign(direction.x), 0] };
 }
 
 export const ROOM_VIEW_LIMITS = { minZoom: 0.75, maxZoom: 2.5, minRotation: -180, maxRotation: 180 };

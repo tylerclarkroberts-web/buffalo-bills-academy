@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Rooms } from '../server/rooms.js';
 import { Barn, DAY_XP } from '../server/barn.js';
-import { ROOM_ANCHORS, ROOM_ITEMS, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES, defaultShelves, roomFinishes, roomAnchors, wealthStage } from '../server/catalog/room.js';
+import { ROOM_ANCHORS, ROOM_ITEMS, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES, defaultShelves, roomFinishes, roomAnchors, wealthStage, defaultFurniture, furnitureFits } from '../server/catalog/room.js';
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-rooms-'));
@@ -54,7 +54,7 @@ test('visitors see displayed things, appearance and exact current worth without 
   const { rooms, owner, visitor } = fixture(t);
   rooms.saveLayout(owner, layout());
   const shown = rooms.visit(visitor, owner);
-  assert.deepEqual(Object.keys(shown).sort(), ['finishes', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wealthStage', 'worth']);
+  assert.deepEqual(Object.keys(shown).sort(), ['finishes', 'furniture', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wealthStage', 'worth']);
   assert.deepEqual(shown.owner, { id: 'owner', name: 'Room Owner', avatar: { kind: 'gen', seed: 'owner' } });
   assert.deepEqual(shown.placements, [{ anchorId: 'wall-left', itemId: 'odd-deed' }]);
   assert.deepEqual(shown.pet, { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 4,
@@ -253,7 +253,7 @@ test('legacy private flags do not block visits or exact worth and disappear on t
   assert.equal(shown.worth.bankroll, 142.87);
   rooms.saveLayout(owner, layout(3));
   const saved = new Store(store.dir).loadDoc('rooms').rooms.owner;
-  assert.deepEqual(Object.keys(saved).sort(), ['finishes', 'layoutRevision', 'placements', 'shelves', 'themeId']);
+  assert.deepEqual(Object.keys(saved).sort(), ['finishes', 'furniture', 'layoutRevision', 'placements', 'shelves', 'themeId']);
   assert.equal(new Rooms({ ...options, store: new Store(store.dir) }).visit(visitor, owner).wealthStage, 3);
 });
 
@@ -326,4 +326,28 @@ test('room visits reconcile the real pet clock without feeding or awarding care 
   const after = structuredClone(pen);
   rooms.visit(visitor, owner);
   assert.deepEqual(pen, after);
+});
+
+test('furniture saves within the floor plan, rejects impossible spots atomically and falls back to defaults when stored data is bad', t => {
+  const { rooms, owner, visitor, store, options } = fixture(t);
+  const home = defaultFurniture();
+  assert.deepEqual(rooms.owner(owner).furniture, home);
+  Object.keys(home).forEach(id => assert.ok(furnitureFits(home, id), `${id} starts somewhere valid`));
+  const moved = { wardrobe: { x: 1.5, z: 0, r: 1 }, desk: { ...home.desk, off: true } };
+  const saved = rooms.saveLayout(owner, { ...layout(0, []), furniture: moved });
+  assert.deepEqual(saved.furniture, { ...home, ...moved });
+  assert.deepEqual(rooms.visit(visitor, owner).furniture, saved.furniture);
+  assert.equal(roomAnchors(saved.shelves, saved.furniture).some(anchor => anchor.id === 'desk'), false);
+  assert.deepEqual(rooms.saveLayout(owner, layout(1, [])).furniture, saved.furniture, 'older clients keep the saved furniture');
+  const bad = [null, [], { sofa: home.desk }, { desk: { ...home.desk, y: 2 } }, { desk: { x: '0', z: 0, r: 0 } }, { desk: { ...home.desk, r: 4 } },
+    { desk: { ...home.desk, off: 'yes' } }, { pet: { ...home.pet, off: true } }, { wardrobe: { x: 50, z: 0, r: 0 } },
+    { wardrobe: { x: home.pet.x, z: home.pet.z, r: 0 } }, { wardrobe: { x: home.window.x, z: 0, r: 0 } }, { window: { x: 0, z: 0, r: 0 } },
+    { wardrobe: { x: 0.2 * Math.sqrt(1.75), z: 1.25 * Math.sqrt(1.75), r: 0 } }];
+  for (const furniture of bad) assert.throws(() => rooms.saveLayout(owner, { ...layout(2, []), furniture }), status(400), JSON.stringify(furniture));
+  assert.throws(() => rooms.saveLayout(owner, { ...layout(2, [{ anchorId: 'desk', itemId: 'odd-telegraph' }]), furniture: moved }), status(400), 'a stored desk displays nothing');
+  assert.equal(rooms.owner(owner).layoutRevision, 2);
+  const restarted = new Rooms({ ...options, store: new Store(store.dir) });
+  assert.deepEqual(restarted.owner(owner).furniture, saved.furniture);
+  restarted.doc.rooms.owner.furniture.wardrobe.x = 999;
+  assert.deepEqual(restarted.owner(owner).furniture, home);
 });

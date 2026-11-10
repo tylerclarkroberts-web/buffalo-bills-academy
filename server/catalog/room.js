@@ -64,7 +64,63 @@ export function roomShelves(value) {
   });
 }
 export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe'].map(kind => [kind, finishOf(kind, value?.[kind])]));
-export const roomAnchors = (shelves = defaultShelves()) => ROOM_ANCHORS.filter(anchor => anchor.type !== 'shelf' || shelves.some(shelf => shelf.id === anchor.id));
+
+/** The room and yard keep their original furniture sizes on floors scaled to 1.75x their first area. */
+export const ROOM_FLOOR_SCALE = Math.sqrt(1.75);
+const S = ROOM_FLOOR_SCALE, cm = n => Math.round(n * 100) / 100;
+/**
+ * Movable furniture in scene units: footprint [width, depth] and default centre [x, z].
+ * `floor`, `window` and `desk` share their display-spot IDs. Flat pieces may sit under others.
+ */
+export const ROOM_FURNITURE = {
+  desk: { label: 'Writing desk', size: [1.8, 0.9], home: [cm(-0.55 * S), cm(-3 * S + 1.1)], removable: true },
+  pet: { label: 'Terrarium', size: [1.6, 1.15], home: [cm(-2.15 * S), cm(1.25 * S)] },
+  wardrobe: { label: 'Wardrobe', size: [1.5, 0.85], home: [cm(4 * S - 0.75), cm(-3 * S + 0.5)], removable: true },
+  wealth: { label: 'Cash table', size: [2.2, 1.3], home: [cm(2.25 * S), cm(1.45 * S)] },
+  rug: { label: 'Rug', size: [3.5, 2.1], home: [cm(0.2 * S), cm(1.3 * S)], flat: true },
+  floor: { label: 'Floor display', size: [1.3, 0.9], home: [cm(-0.55 * S), cm(-0.65 * S)] },
+  window: { label: 'Yard display', size: [2.8, 2.05], home: [cm(6.2 * S), cm(-0.3 * S)], yard: true },
+};
+// Rectangles are [minX, minZ, maxX, maxZ]. The yard area stops short of the fence and the stepping-stone path.
+const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S];
+const KEEP_CLEAR = [
+  [-4 * S, -1.7 * S - 0.45, -4 * S + 1.4, -0.4 * S + 0.45], // under the shelf mounts
+  [0.2 * S - 0.45, 1.25 * S - 0.35, 0.2 * S + 0.45, 1.25 * S + 0.35], // the resident
+  [4 * S - 0.8, 0.8 * S, 4 * S, 2.25 * S], // the yard doorway
+];
+const SLACK = 0.011;
+const overlaps = (a, b) => a[0] < b[2] - SLACK && b[0] < a[2] - SLACK && a[1] < b[3] - SLACK && b[1] < a[3] - SLACK;
+export function furnitureRect(id, place) {
+  const [w, d] = ROOM_FURNITURE[id].size, hw = (place.r % 2 ? d : w) / 2, hd = (place.r % 2 ? w : d) / 2;
+  return [place.x - hw, place.z - hd, place.x + hw, place.z + hd];
+}
+/** Whether one piece stays inside its floor, clear of reserved space and of every other solid piece. */
+export function furnitureFits(furniture, id) {
+  const piece = ROOM_FURNITURE[id], place = furniture[id];
+  if (place.off) return true;
+  const rect = furnitureRect(id, place), area = piece.yard ? YARD : INDOORS;
+  if (rect[0] < area[0] - SLACK || rect[1] < area[1] - SLACK || rect[2] > area[2] + SLACK || rect[3] > area[3] + SLACK) return false;
+  if (piece.flat || piece.yard) return true;
+  return !KEEP_CLEAR.some(zone => overlaps(rect, zone)) && !Object.entries(ROOM_FURNITURE).some(([other, { flat, yard }]) =>
+    other !== id && !flat && !yard && !furniture[other].off && overlaps(rect, furnitureRect(other, furniture[other])));
+}
+export const defaultFurniture = () => Object.fromEntries(Object.entries(ROOM_FURNITURE).map(([id, piece]) => [id, { x: piece.home[0], z: piece.home[1], r: 0 }]));
+/** A complete, valid furniture map with defaults for omitted pieces, or null when anything supplied is unusable. */
+export function furnitureValid(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const out = defaultFurniture();
+  for (const id of Object.keys(out)) {
+    const place = value[id];
+    if (place === undefined) continue;
+    if (!place || !Number.isFinite(place.x) || !Number.isFinite(place.z) || ![0, 1, 2, 3].includes(place.r)
+      || !['undefined', 'boolean'].includes(typeof place.off) || (place.off && !ROOM_FURNITURE[id].removable)) return null;
+    out[id] = { x: cm(place.x), z: cm(place.z), r: place.r, ...(place.off ? { off: true } : {}) };
+  }
+  return Object.keys(out).every(id => furnitureFits(out, id)) ? out : null;
+}
+export const roomFurniture = value => furnitureValid(value) || defaultFurniture();
+export const roomAnchors = (shelves = defaultShelves(), furniture) => ROOM_ANCHORS.filter(anchor =>
+  (anchor.type !== 'shelf' || shelves.some(shelf => shelf.id === anchor.id)) && !furniture?.[anchor.id]?.off);
 const TYPES = {
   lamp: 'shelf', wagon: 'outdoor', vaccine: 'shelf', anvil: 'floor', deed: 'wall', spittoon: 'floor',
   rock: 'shelf', telegraph: 'desk', snakeoil: 'shelf', piano: 'shelf', horseshoe: 'wall', sheriffbadge: 'wall',

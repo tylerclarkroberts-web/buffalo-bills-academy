@@ -69,7 +69,7 @@ test('visitors receive displayed possessions and exact worth without unrelated p
   const visit = await visitor.api('GET', `/api/players/${owner.id}/room`);
   assert.equal(visit.status, 200);
   assert.equal(visit.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(Object.keys(visit.body).sort(), ['finishes', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wealthStage', 'worth']);
+  assert.deepEqual(Object.keys(visit.body).sort(), ['finishes', 'furniture', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wealthStage', 'worth']);
   assert.deepEqual(Object.keys(visit.body.owner).sort(), ['avatar', 'id', 'name']);
   assert.deepEqual(visit.body.placements, layout.placements);
   assert.ok(!JSON.stringify(visit.body).includes('odd-vaccine'), 'undisplayed collection stays private');

@@ -1,12 +1,13 @@
 import { GameError } from './engine/game.js';
 import { ROOM_ANCHORS, ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES,
-  defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage } from './catalog/room.js';
+  ROOM_FURNITURE,
+  defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture } from './catalog/room.js';
 
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const signedIn = player => !!(player?.google || player?.login);
 const knownTheme = id => ROOM_THEMES.some(theme => theme.id === id);
 const allowedBody = (body, fields) => record(body) && Object.keys(body).every(key => fields.includes(key));
-const defaults = () => ({ layoutRevision: 0, themeId: ROOM_THEMES[0].id, placements: [], shelves: defaultShelves(), finishes: roomFinishes() });
+const defaults = () => ({ layoutRevision: 0, themeId: ROOM_THEMES[0].id, placements: [], shelves: defaultShelves(), finishes: roomFinishes(), furniture: defaultFurniture() });
 const validFinish = (kind, value) => allowedBody(value, ['typeId', 'colorId'])
   && ROOM_FINISHES[kind].types.some(type => type.id === value.typeId)
   && ROOM_FINISHES[kind].colors.some(color => color.id === value.colorId);
@@ -18,6 +19,8 @@ const validShelves = value => Array.isArray(value) && value.length <= ROOM_SHELF
     && validFinish('shelf', { typeId: shelf.typeId, colorId: shelf.colorId }));
 const validFinishes = value => allowedBody(value, ['floor', 'rug', 'wardrobe'])
   && ['floor', 'rug', 'wardrobe'].every(kind => validFinish(kind, value[kind]));
+const validFurniture = value => allowedBody(value, Object.keys(ROOM_FURNITURE))
+  && Object.values(value).every(place => allowedBody(place, ['x', 'z', 'r', 'off'])) && !!furnitureValid(value);
 
 export class Rooms {
   constructor({ store, shop, barn, avatars, netWorth }) {
@@ -35,7 +38,7 @@ export class Rooms {
   saved(pid) {
     const value = Object.hasOwn(this.doc.rooms, pid) ? this.doc.rooms[pid] : null;
     if (!record(value)) return defaults();
-    const shelves = roomShelves(value.shelves), availableAnchors = roomAnchors(shelves);
+    const shelves = roomShelves(value.shelves), furniture = roomFurniture(value.furniture), availableAnchors = roomAnchors(shelves, furniture);
     const owned = new Set(this.owned(pid)), anchors = new Set(), items = new Set();
     const placements = [];
     for (const place of Array.isArray(value.placements) ? value.placements : []) {
@@ -48,7 +51,7 @@ export class Rooms {
     return {
       layoutRevision: Number.isSafeInteger(value.layoutRevision) && value.layoutRevision >= 0 ? value.layoutRevision : 0,
       themeId: knownTheme(value.themeId) ? value.themeId : ROOM_THEMES[0].id,
-      placements, shelves, finishes: roomFinishes(value.finishes),
+      placements, shelves, finishes: roomFinishes(value.finishes), furniture,
     };
   }
   isOpen(pid) {
@@ -79,7 +82,7 @@ export class Rooms {
     const out = {
       owner: { id: player.id, name: player.name, avatar: this.avatars.info(player) },
       layoutRevision: saved.layoutRevision, themeId: saved.themeId,
-      placements: saved.placements, shelves: saved.shelves, finishes: saved.finishes, pet: this.pet(player.id), worth,
+      placements: saved.placements, shelves: saved.shelves, finishes: saved.finishes, furniture: saved.furniture, pet: this.pet(player.id), worth,
     };
     const stage = wealthStage(worth.total);
     if (stage !== null) out.wealthStage = stage;
@@ -100,17 +103,19 @@ export class Rooms {
   }
   saveLayout(player, body) {
     this.requirePlayer(player);
-    if (!allowedBody(body, ['expectedRevision', 'themeId', 'placements', 'shelves', 'finishes'])
+    if (!allowedBody(body, ['expectedRevision', 'themeId', 'placements', 'shelves', 'finishes', 'furniture'])
       || !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0 || body.expectedRevision >= Number.MAX_SAFE_INTEGER
       || !knownTheme(body.themeId) || !Array.isArray(body.placements) || body.placements.length > ROOM_ANCHORS.length
-      || ('shelves' in body && !validShelves(body.shelves)) || ('finishes' in body && !validFinishes(body.finishes))) {
+      || ('shelves' in body && !validShelves(body.shelves)) || ('finishes' in body && !validFinishes(body.finishes))
+      || ('furniture' in body && !validFurniture(body.furniture))) {
       throw new GameError('Choose a valid room theme and arrangement.', 400);
     }
     const current = this.saved(player.id);
     if (body.expectedRevision !== current.layoutRevision) throw new GameError('Your room changed in another tab. Reload before saving.', 409);
     const shelves = 'shelves' in body ? roomShelves(body.shelves) : current.shelves;
     const finishes = 'finishes' in body ? roomFinishes(body.finishes) : current.finishes;
-    const availableAnchors = roomAnchors(shelves);
+    const furniture = 'furniture' in body ? furnitureValid(body.furniture) : current.furniture;
+    const availableAnchors = roomAnchors(shelves, furniture);
     const owned = new Set(this.owned(player.id)), anchors = new Set(), items = new Set();
     for (const place of body.placements) {
       if (!allowedBody(place, ['anchorId', 'itemId']) || !owned.has(place.itemId)
@@ -120,7 +125,7 @@ export class Rooms {
       anchors.add(place.anchorId); items.add(place.itemId);
     }
     this.commit(player.id, { ...current, layoutRevision: current.layoutRevision + 1, themeId: body.themeId,
-      placements: body.placements.map(place => ({ anchorId: place.anchorId, itemId: place.itemId })), shelves, finishes });
+      placements: body.placements.map(place => ({ anchorId: place.anchorId, itemId: place.itemId })), shelves, finishes, furniture });
     return this.owner(player);
   }
   forget(pid) {

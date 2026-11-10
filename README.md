@@ -52,7 +52,7 @@ Frame a selfie or uploaded photo, remove its background on your device, and corr
 
 ## Personal rooms
 
-**My Room** is a furnished 3D bunkhouse for your bug, wardrobe and owned oddities. Zoom in or out, turn the view, or reset it. Select **Edit room**, then click glowing objects to change displays, paint, floor, rug and furniture styles. Add, remove or move shelves with their displayed items; Save/Cancel covers the room layout together. Use existing pet care and clothing actions, and see a chip-and-cash pile sized by total in-game wealth. Any signed-in player can visit another account's room and see its wealth. Hover over the money for exact cash and chips, or select it for the full breakdown. See [Personal rooms](docs/personal-rooms.md) for controls, visits, API examples, storage and rendering limits.
+**My Room** is a furnished 3D bunkhouse for your bug, wardrobe and owned oddities. Zoom in or out, turn the view, or reset it. Select **Edit room**, then click glowing objects to change displays, paint, floor, rug and furniture styles. Move, turn or put away furniture within the floor plan, and add, remove or move shelves with their displayed items; Save/Cancel covers the room layout together. Use existing pet care and clothing actions, and see a chip-and-cash pile sized by total in-game wealth. Any signed-in player can visit another account's room and see its wealth. Hover over the money for exact cash and chips, or select it for the full breakdown. See [Personal rooms](docs/personal-rooms.md) for controls, visits, API examples, storage and rendering limits.
 
 ## Configuration and data
 

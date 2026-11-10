@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { ROOM_ITEM, ROOM_FINISHES, ROOM_SHELF_SPOTS, roomShelves, roomFinishes } from '../../../server/catalog/room.js';
+import { ROOM_ITEM, ROOM_FINISHES, ROOM_SHELF_SPOTS, ROOM_FURNITURE, roomShelves, roomFinishes, roomFurniture, furnitureFits } from '../../../server/catalog/room.js';
+import { furnitureOf } from './layout.js';
 import { coveredWagon } from './wagon.js';
 import { pixGrid } from '../store/pixart.js';
 import { spriteCanvas, drawGrave } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_FIXTURES, ROOM_POSITIONS, roomShelfPosition } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, floorPoint, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_FIXTURES, roomShelfPosition } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#8c6243', 'bunkhouse-sage': '#6d785b', 'bunkhouse-clay': '#9a6650' };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -126,8 +127,8 @@ function oddity(id) {
 
 /** A stationary, clickable cutaway. React owns the controls and all game actions. */
 export class RoomScene {
-  constructor(canvas, { onSelect, onMoveShelf, onWealthHover, onError } = {}) {
-    this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
+  constructor(canvas, { onSelect, onMoveShelf, onMoveFurniture, onWealthHover, onError } = {}) {
+    this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onMoveFurniture = onMoveFurniture; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
     this.scene = new THREE.Scene();
@@ -177,9 +178,38 @@ export class RoomScene {
       this.canvas.style.cursor = 'grabbing';
       this.onSelect?.(target); this.showDragSpot(shelf.spotId);
     }, 450);
+    const piece = !shelf && this.editing && this.onMoveFurniture && furnitureOf(target);
+    if (piece) this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (!this.editing || !this.pointerStart || this.disposed || this.failed) return;
+      this.dragging = { furniture: piece };
+      try { this.canvas.setPointerCapture?.(e.pointerId); } catch { this.cancelPointer(); return; }
+      this.canvas.style.cursor = 'grabbing';
+      this.onSelect?.(target); this.showDragPlace(this.furniture[piece], true);
+    }, 450);
+  }
+  /** The snapped floor spot under a pointer for the held piece, and whether the piece fits there. */
+  dragPlace(e) {
+    const id = this.dragging.furniture, point = floorPoint(this.camera, this.canvas.getBoundingClientRect(), e.clientX, e.clientY);
+    return point && { ...point, fits: furnitureFits({ ...this.furniture, [id]: { ...this.furniture[id], ...point } }, id) };
+  }
+  showDragPlace(place, fits) {
+    const key = place ? `${place.x},${place.z},${fits}` : '';
+    if (this.dragging.key === key) return;
+    this.dragging.key = key;
+    disposeObjects(this.dragPreview); this.dragPreview.clear();
+    if (place) {
+      const id = this.dragging.furniture, [w, d] = ROOM_FURNITURE[id].size, geometry = new THREE.BoxGeometry(w, 0.1, d);
+      const marker = mesh(this.dragPreview, geometry, new THREE.MeshBasicMaterial({ color: fits ? '#b9df83' : '#d8604f', transparent: true, opacity: 0.4, depthWrite: false }), place.x, 0.08, place.z);
+      marker.rotation.y = this.furniture[id].r * Math.PI / 2; marker.renderOrder = 5;
+      const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: fits ? '#ffdc83' : '#d8604f', transparent: true, opacity: 0.75 }));
+      outline.position.copy(marker.position); outline.rotation.copy(marker.rotation); this.dragPreview.add(outline);
+    }
+    this.render();
   }
   pointerMove(e) {
     if (this.pointerId !== undefined && e.pointerId !== this.pointerId) return;
+    if (this.dragging?.furniture) { const place = this.dragPlace(e); this.showDragPlace(place, !!place?.fits); return; }
     if (this.dragging) {
       const spot = nearestShelfSpot(this.camera, this.canvas.getBoundingClientRect(), e.clientX, e.clientY, this.shelves, this.dragging.id);
       this.showDragSpot(spot?.id || null); return;
@@ -194,7 +224,14 @@ export class RoomScene {
   pointerUp(e) {
     if (this.pointerId !== undefined && e.pointerId !== this.pointerId) return;
     const start = this.pointerStart, dragging = this.dragging;
-    const spot = dragging && this.editing && !this.failed && !this.disposed && nearestShelfSpot(this.camera, this.canvas.getBoundingClientRect(), e.clientX, e.clientY, this.shelves, dragging.id);
+    const live = dragging && this.editing && !this.failed && !this.disposed;
+    if (live && dragging.furniture) {
+      const place = this.dragPlace(e), current = this.furniture[dragging.furniture];
+      this.cancelPointer();
+      if (place?.fits && (place.x !== current.x || place.z !== current.z)) this.onMoveFurniture?.(dragging.furniture, { x: place.x, z: place.z });
+      return;
+    }
+    const spot = live && !dragging.furniture && nearestShelfSpot(this.camera, this.canvas.getBoundingClientRect(), e.clientX, e.clientY, this.shelves, dragging.id);
     this.cancelPointer();
     if (dragging) {
       if (spot && spot.id !== dragging.originalSpotId) this.onMoveShelf?.(dragging.id, spot.id);
@@ -257,7 +294,7 @@ export class RoomScene {
     this.wallMaterial.emissiveIntensity = this.editing ? (selection?.kind === 'finish' ? 0.35 : 0.12) : 0;
     if (this.editing) for (const target of this.picks) {
       const chosen = target.userData.selection;
-      if (!['anchor', 'wardrobe', 'pet', 'surface'].includes(chosen.kind)) continue;
+      if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface'].includes(chosen.kind)) continue;
       const selected = chosen.kind === selection?.kind && (chosen.kind !== 'anchor' || chosen.anchorId === selection.anchorId) && (chosen.kind !== 'surface' || chosen.surface === selection.surface);
       const glow = new THREE.Group(); glow.position.copy(target.position); glow.rotation.copy(target.rotation); glow.scale.copy(target.scale);
       glow.userData.selection = chosen; glow.userData.wallSide = target.userData.wallSide;
@@ -351,20 +388,21 @@ export class RoomScene {
     for (const y of [0.28, 0.58]) box(p, 0.09, 0.1, 1.45, '#a58656', 8.35, y, -2.175);
     this.buildSideDoor();
     // Furnishings keep their original size while their origins spread across the larger floor.
-    const desk = this.fixture([ROOM_POSITIONS.desk[0], 0, ROOM_POSITIONS.desk[2]]);
+    const desk = this.fixture();
     this.table(desk, 0, 0, 1.8, 0.9, 0.9);
     box(desk, 1.5, 0.3, 0.07, '#65462e', 0, 0.67, 0.41);
     cylinder(desk, 0.035, 0.035, 0.06, '#c4a05d', 0, 0.67, 0.47).rotation.x = Math.PI / 2;
-    const terrarium = this.fixture(ROOM_FIXTURES.pet);
+    const terrarium = this.fixture();
     this.table(terrarium, 0, 0, 1.5, 1.05, 0.85);
     box(terrarium, 1.55, 0.07, 1.1, '#a5a16d', 0, 0.97);
     const glass = material('#b3d2b7', { transparent: true, opacity: 0.13, depthWrite: false });
     mesh(terrarium, new THREE.BoxGeometry(1.5, 1.05, 1.05), glass, 0, 1.55);
     for (const x of [-0.75, 0.75]) for (const z of [-0.525, 0.525]) box(terrarium, 0.045, 1.08, 0.045, '#c7a66b', x, 1.55, z);
     box(terrarium, 1.6, 0.12, 1.15, '#5c5537', 0, 2.12);
-    this.wardrobe = this.fixture(ROOM_FIXTURES.wardrobe);
-    this.rug = this.fixture(ROOM_FIXTURES.rug);
-    const moneyTable = this.fixture(ROOM_FIXTURES.wealth);
+    this.wardrobe = this.fixture();
+    this.rug = this.fixture();
+    const moneyTable = this.fixture();
+    this.fixtures = { desk, pet: terrarium, wealth: moneyTable };
     this.table(moneyTable, 0, 0, 2.2, 1.3, 0.95);
     box(moneyTable, 2.05, 0.08, 1.13, '#4a3526', 0, 1.04);
     for (const z of [-0.58, 0.58]) box(moneyTable, 2.12, 0.08, 0.04, '#b08b4d', 0, 1.12, z);
@@ -372,8 +410,9 @@ export class RoomScene {
     const light = new THREE.PointLight('#ffd28c', 6, 7 * ROOM_FLOOR_SCALE, 2); light.position.set(-2.6 * ROOM_FLOOR_SCALE, 2.7, 0.9 * ROOM_FLOOR_SCALE); this.scene.add(light);
     cylinder(this.leftWall, 0.22, 0.22, 0.14, '#c39b58', -3.62, 2.7, 1.9);
   }
-  fixture(position) {
-    const group = new THREE.Group(); group.position.set(...position); this.static.add(group); return group;
+  /** Furniture is built around its own origin; update() places it from the saved layout. */
+  fixture() {
+    const group = new THREE.Group(); this.static.add(group); return group;
   }
   buildSideDoor() {
     const side = new THREE.Group(); side.name = 'yard-partition'; (this.structure || this.static).add(side);
@@ -452,8 +491,9 @@ export class RoomScene {
     }
     return group;
   }
-  pick(position, size, selection) {
+  pick(position, size, selection, turn = 0) {
     const target = mesh(this.dynamic, new THREE.BoxGeometry(...size), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), ...position);
+    target.rotation.y = turn;
     if (selection.kind === 'anchor' && selection.anchorId.startsWith('wall-')) target.userData.wallSide = 'back';
     target.userData.selection = selection; this.picks.push(target);
   }
@@ -463,31 +503,37 @@ export class RoomScene {
     const generation = ++this.generation;
     disposeObjects(this.dynamic); this.dynamic.clear(); this.picks = []; this.wagon = null;
     this.shelves = roomShelves(view.shelves);
+    const furniture = this.furniture = roomFurniture(view.furniture), turn = id => furniture[id].r * Math.PI / 2;
+    for (const [id, group] of Object.entries({ ...this.fixtures, wardrobe: this.wardrobe, rug: this.rug })) {
+      if (!group) continue;
+      group.position.set(furniture[id].x, id === 'rug' ? ROOM_FIXTURES.rug[1] : 0, furniture[id].z);
+      group.rotation.y = turn(id); group.visible = !furniture[id].off;
+    }
     this.furnishings(roomFinishes(view.finishes));
     this.wallMaterial.color.set(PAINT[view.themeId] || PAINT['bunkhouse-timber']);
-    for (const [anchorId, position] of Object.entries(roomPositions(this.shelves))) {
+    for (const [anchorId, position] of Object.entries(roomPositions(this.shelves, furniture))) {
       const shelf = this.shelves.find(shelf => shelf.id === anchorId);
       const holder = shelf ? this.shelf(shelf, position) : null;
       const itemId = view.placements?.find(p => p.anchorId === anchorId)?.itemId;
       if (ROOM_ITEM[itemId]) {
-        const prop = oddity(itemId); if (!holder) prop.position.set(...position);
+        const prop = oddity(itemId); if (!holder) { prop.position.set(...position); if (furniture[anchorId]) prop.rotation.y = turn(anchorId); }
         if (anchorId.startsWith('wall-')) prop.userData.wallSide = 'back';
-        if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y = -0.16; this.wagon = prop; }
+        if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y -= 0.16; this.wagon = prop; }
         (holder || this.dynamic).add(prop);
       }
       const wall = anchorId.startsWith('wall');
       const height = anchorId === 'window' ? 1.125 : wall ? 0.4 : 0.3;
       const size = anchorId === 'window' ? [2.8, 2.25, 2.05] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : [1.25, 0.9, 0.9];
-      this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId });
+      this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId }, furniture[anchorId] ? turn(anchorId) : 0);
     }
     this.pet(view.pet);
     this.resident(view.owner, generation);
     this.wealth(view.wealthStage);
-    this.pick([ROOM_FIXTURES.pet[0], 1.5, ROOM_FIXTURES.pet[2]], [1.65, 1.35, 1.2], { kind: 'pet' });
-    this.pick([this.wardrobe.position.x, 1.3, this.wardrobe.position.z], [1.7, 2.6, 1], { kind: 'wardrobe' });
-    this.pick([ROOM_FIXTURES.wealth[0], 1.4, ROOM_FIXTURES.wealth[2]], [2.1, 1, 1.25], { kind: 'wealth' });
+    this.pick([furniture.pet.x, 1.5, furniture.pet.z], [1.65, 1.35, 1.2], { kind: 'pet' }, turn('pet'));
+    if (!furniture.wardrobe.off) this.pick([furniture.wardrobe.x, 1.3, furniture.wardrobe.z], [1.7, 2.6, 1], { kind: 'wardrobe' }, turn('wardrobe'));
+    this.pick([furniture.wealth.x, 1.4, furniture.wealth.z], [2.1, 1, 1.25], { kind: 'wealth' }, turn('wealth'));
     this.pick([0, -0.08, 0], [8.5 * ROOM_FLOOR_SCALE, 0.14, 6.5 * ROOM_FLOOR_SCALE], { kind: 'surface', surface: 'floor' });
-    this.pick([ROOM_FIXTURES.rug[0], 0.045, ROOM_FIXTURES.rug[2]], [3.5, 0.02, 2.1], { kind: 'surface', surface: 'rug' });
+    this.pick([furniture.rug.x, 0.045, furniture.rug.z], [3.5, 0.02, 2.1], { kind: 'surface', surface: 'rug' }, turn('rug'));
     this.setEditing(this.editing, this.selection);
   }
   pet(pet) {
@@ -499,7 +545,7 @@ export class RoomScene {
     });
     if (map) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-      sprite.position.set(ROOM_FIXTURES.pet[0], 1.56, ROOM_FIXTURES.pet[2]); sprite.scale.set(0.95, 0.95, 1); this.dynamic.add(sprite);
+      sprite.position.set(this.furniture.pet.x, 1.56, this.furniture.pet.z); sprite.scale.set(0.95, 0.95, 1); this.dynamic.add(sprite);
     }
   }
   resident(owner, generation) {
@@ -534,7 +580,8 @@ export class RoomScene {
     }
   }
   wealth(stage) {
-    const group = new THREE.Group(); group.position.set(ROOM_FIXTURES.wealth[0] - 0.15, 1.1, ROOM_FIXTURES.wealth[2]); this.dynamic.add(group);
+    const table = new THREE.Group(), group = new THREE.Group(); group.position.x = -0.15; table.add(group); this.dynamic.add(table);
+    table.position.set(this.furniture.wealth.x, 1.1, this.furniture.wealth.z); table.rotation.y = this.furniture.wealth.r * Math.PI / 2;
     const layout = wealthLayout(stage);
     if (layout.neutral) { box(group, 1.3, 0.22, 0.8, '#805636', 0.1, 0.12); box(group, 0.13, 0.12, 0.03, '#c5a25b', 0.1, 0.12, 0.42); return; }
     const chipGeometry = new THREE.CylinderGeometry(0.13, 0.13, 0.038, 16);

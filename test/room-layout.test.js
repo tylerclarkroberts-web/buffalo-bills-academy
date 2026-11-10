@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultShelves, roomFinishes, ROOM_SHELF_SPOTS } from '../server/catalog/room.js';
-import { layoutOf, layoutKey, addShelf, moveShelf, removeShelf, changeStyle } from '../client/src/room/layout.js';
+import { defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, defaultFurniture, furnitureFits } from '../server/catalog/room.js';
+import { layoutOf, layoutKey, addShelf, moveShelf, removeShelf, changeStyle, placeFurniture, furnitureOf } from '../client/src/room/layout.js';
 
 const room = () => ({ layoutRevision: 3, themeId: 'bunkhouse-sage', shelves: defaultShelves(), finishes: roomFinishes(),
   placements: [{ anchorId: 'shelf-left', itemId: 'odd-lamp' }] });
@@ -39,4 +39,27 @@ test('adding shelves uses bounded free identities and positions; invalid style c
   assert.equal(changeStyle(layout, 'floor', 'typeId', 'arbitrary'), layout);
   assert.equal(changeStyle(layout, 'unknown', 'colorId', 'sage'), layout);
   assert.equal(changeStyle(layout, 'rug', 'html', 'sage'), layout);
+});
+test('furniture moves, turns and is stored only where it fits; a stored desk returns its display and comes back to a free spot', () => {
+  const saved = { ...layoutOf(room()), placements: [{ anchorId: 'desk', itemId: 'odd-telegraph' }] }, home = defaultFurniture();
+  assert.deepEqual(saved.furniture, home);
+  const moved = placeFurniture(saved, 'wardrobe', { x: 1.5, z: 0 });
+  assert.notEqual(layoutKey(moved), layoutKey(saved));
+  assert.deepEqual(moved.furniture.wardrobe, { x: 1.5, z: 0, r: 0 });
+  assert.equal(placeFurniture(placeFurniture(moved, 'wardrobe', { r: 1 }), 'wardrobe', { r: 2 }).furniture.wardrobe.r, 2);
+  for (const [id, change] of [['wardrobe', { x: 99 }], ['wardrobe', { x: home.pet.x, z: home.pet.z }], ['wardrobe', { r: 1 }], ['pet', { off: true }], ['sofa', { x: 0 }], ['window', { x: 0, z: 0 }]]) {
+    assert.equal(placeFurniture(saved, id, change), saved, `${id} ${JSON.stringify(change)}`);
+  }
+  assert.notEqual(placeFurniture(saved, 'rug', { x: home.pet.x, z: home.pet.z }), saved, 'a rug may lie under furniture');
+  const stored = placeFurniture(saved, 'desk', { off: true });
+  assert.deepEqual(stored.placements, []); assert.equal(stored.furniture.desk.off, true);
+  const blocked = placeFurniture(stored, 'wardrobe', { x: home.desk.x, z: home.desk.z });
+  const back = placeFurniture(blocked, 'desk', { off: false });
+  assert.equal('off' in back.furniture.desk, false);
+  assert.notDeepEqual([back.furniture.desk.x, back.furniture.desk.z], [home.desk.x, home.desk.z]);
+  Object.keys(home).forEach(id => assert.ok(furnitureFits(back.furniture, id)));
+  for (const [selection, id] of [[{ kind: 'anchor', anchorId: 'desk' }, 'desk'], [{ kind: 'anchor', anchorId: 'floor' }, 'floor'], [{ kind: 'surface', surface: 'rug' }, 'rug'],
+    [{ kind: 'surface', surface: 'floor' }, null], [{ kind: 'wealth' }, 'wealth'], [{ kind: 'anchor', anchorId: 'wall-left' }, null], [{ kind: 'edit' }, null], [null, null]]) {
+    assert.equal(furnitureOf(selection), id);
+  }
 });

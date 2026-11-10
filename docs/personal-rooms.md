@@ -16,11 +16,11 @@ Zoom and angle survive window resizing, scene refreshes, editing and visitor pre
 
 ## Arrange and use your room
 
-Select **Edit room**. Display spots, including empty ones, the floor, rug, wardrobe and terrarium gain gentle gold outlines, and the walls receive a warm tint. Click a glowing object to open its choices directly: walls show paint, floor/rug show finishes, display spots show compatible owned oddities plus **Leave empty**, and shelves also offer location, style and removal. The wardrobe offers furniture styles alongside its existing clothing controls. The selected object has a stronger outline. Equivalent labeled buttons below the scene work with a keyboard or when 3D is unavailable; there is no need to open a collection menu first.
+Select **Edit room**. Display spots, including empty ones, the floor, rug, wardrobe, terrarium and cash table gain gentle gold outlines, and the walls receive a warm tint. Click a glowing object to open its choices directly: walls show paint, floor/rug show finishes, display spots show compatible owned oddities plus **Leave empty**, and shelves also offer location, style and removal. The wardrobe offers furniture styles alongside its existing clothing controls. The selected object has a stronger outline. Equivalent labeled buttons below the scene work with a keyboard or when 3D is unavailable; there is no need to open a collection menu first.
 
 Choose an oddity by pressing its item button. Choosing an item already displayed elsewhere moves it and identifies its current spot; each owned oddity can appear once. **Leave empty** returns it to storage without selling, consuming or removing ownership. Existing purchases count immediately.
 
-**Save room** saves furniture, styles, arrangement and paint together; **Cancel edits** restores all those room-layout choices. When there are no layout changes, **Done editing** exits edit mode. Visitors and **Preview as visitor** see the saved arrangement, without edit outlines or editing controls. Failed saves keep the draft available; a conflicting save from another tab asks you to reload rather than silently overwrite newer work. Leaving with unsaved changes offers to keep editing or discard them.
+**Save room** saves furniture positions, styles, arrangement and paint together; **Cancel edits** restores all those room-layout choices. When there are no layout changes, **Done editing** exits edit mode. Visitors and **Preview as visitor** see the saved arrangement, without edit outlines or editing controls. Failed saves keep the draft available; a conflicting save from another tab asks you to reload rather than silently overwrite newer work. Leaving with unsaved changes offers to keep editing or discard them.
 
 Free wall finishes are **Warm timber** (`bunkhouse-timber`), **Sage wash** (`bunkhouse-sage`) and **Clay walls** (`bunkhouse-clay`). Five fixed display spots plus up to four shelves give possessions a suitable place:
 
@@ -28,13 +28,25 @@ Free wall finishes are **Warm timber** (`bunkhouse-timber`), **Sage wash** (`bun
 | --- | --- |
 | `wall-left`, `wall-right` | Deed to the Moon, Lucky Horseshoe, Expired Fishing Licence. |
 | `shelf-left`, `shelf-right`, `shelf-3`, `shelf-4` (when that shelf exists) | Oil Lamp, Smallpox Vaccine, A Rock, Telegraph Key, Snake Oil Tonic, Player Piano Roll. |
-| `desk` | Telegraph Key, Oil Lamp, Player Piano Roll, on a separate writing desk. |
+| `desk` | Telegraph Key, Oil Lamp, Player Piano Roll, on a separate writing desk (while the desk is in the room). |
 | `floor` | Anvil, Brass Spittoon. |
 | `window` | Covered Wagon, parked in the yard beside the room. |
 
 The yard is separated from the cutaway room by low timber siding, lightly glazed frames and an open door leading onto stepping stones. The side yard is wider to give the wagon more breathing room, with the fence and path following its outer edge. The scene uses the original plain dark backdrop; the rear window retains its framed painted view. The boundary and door are scenery, not additional editable furniture. The wagon has an open bowed canvas cover, wooden bed, seat, hoops and four spoked wheels resting on outdoor ground. Its saved position ID remains `window`, so existing wagon placements continue working. The writing desk is separate from the chips-and-cash tray. A Telegraph Key belongs naturally on the desk; previously saved shelf placements remain supported. Lamps and piano rolls can also sit on either a shelf or the desk. Indoor furniture never accepts the wagon. These additions preserve the existing saved-room format and ownership.
 
 The room and side yard each have 75% more floor area than the earlier layout (about 32% wider and deeper). Furniture, shelves, decorations and the wagon keep their original sizes, leaving more open space. Shelf mounts stay against the expanded wall, and the camera fits the larger footprint. Existing saved arrangements use the new positions automatically without changing their IDs or stored layout.
+
+## Move, turn and put away furniture
+
+In **Edit room**, seven pieces can be rearranged: the writing desk, terrarium, wardrobe, cash table, rug, the floor display spot and the yard display spot (with whatever is displayed on them). Select a piece in the scene or by its button and use **Move the …** at the top of its panel:
+
+- The four arrows move it a quarter unit at a time. They follow the current view angle, so **→** always moves the piece toward the right of the screen.
+- **Turn** rotates it a quarter turn.
+- **Put away** is offered for the writing desk and wardrobe. A stored desk returns anything displayed on it to storage, and its display spot disappears until the desk comes back. Storing the wardrobe changes nothing about owned or worn clothing; the **Wardrobe** button still opens the outfit controls. The **Edit room** panel and the piece's own panel offer **Put the … back**, which uses its last position or, if that is now occupied, the nearest free spot to its original place. The rug is removed with its existing **No rug** style; the terrarium and cash table always stay in the room.
+
+You can also press and hold a piece for about half a second and drag it across the floor. A footprint follows the pointer on a quarter-unit grid: green where the piece fits, red where it does not. Releasing on red, off the floor or outside the scene leaves the piece where it was. The same cancellation rules as shelf dragging apply.
+
+Placement is deliberately limited. Indoor pieces stay on the room floor and may not overlap each other, the strip under the shelf mounts, the resident's spot or the yard doorway. A turn that would push a piece into a wall or neighbor is refused, so move it clear first. The rug only has to stay on the floor and may lie under other furniture. The yard display stays in the yard, clear of the fence and stepping stones. The server applies the same rules on save. Furniture changes are part of the layout draft: they do nothing until **Save room** and are undone by **Cancel edits**. Shelves keep their four wall mounts. Furniture cannot be resized, stacked, placed diagonally or moved between the room and the yard, and nothing new can be added.
 
 All 12 oddities are decorations. They grant no luck, XP, income, crafting, healing or battle bonus. Stable IDs and compatibility live in `server/catalog/room.js`; `odd-sheriffbadge` remains the legacy ID for the Expired Fishing Licence.
 
@@ -55,7 +67,7 @@ You can also press and hold a shelf for about half a second, then drag toward a 
 | Wardrobe | Classic wardrobe, Paneled wardrobe | Walnut, Honey pine, Sage, Clay |
 | Shelf | Plain shelf, Braced shelf | Honey pine, Walnut, Sage, Clay |
 
-Select **Floor finish**, **Rug**, **Wardrobe** or a shelf, then choose a type and color. A removed rug still has an editable floor spot and **Rug** button so it can be added back. Wardrobe furniture styling is separate from the outfit worn by the resident. Choosing styles changes no balances, pet rules or gameplay bonuses. Other furnishings still occupy fixed positions; arbitrary placement and dragging other furniture are not implemented.
+Select **Floor finish**, **Rug**, **Wardrobe** or a shelf, then choose a type and color. A removed rug still has an editable floor spot and **Rug** button so it can be added back. Wardrobe furniture styling is separate from the outfit worn by the resident. Choosing styles changes no balances, pet rules or gameplay bonuses. See [Move, turn and put away furniture](#move-turn-and-put-away-furniture) for positions.
 
 ## Visits
 
@@ -87,10 +99,10 @@ Geometry is bounded even for extreme amounts. Missing or nonfinite data uses a n
 | Endpoint | Contract |
 | --- | --- |
 | `GET /api/room` | Current player's owner view, with layout, curated pet/appearance, exact worth and owned oddity IDs. |
-| `PATCH /api/room/layout` | Owner-only layout replacement with expected revision, theme, placements and optional shelves/finishes. |
+| `PATCH /api/room/layout` | Owner-only layout replacement with expected revision, theme, placements and optional shelves/finishes/furniture. |
 | `GET /api/players/:id/room` | Signed-in visitor view of an available account's room, including exact worth. |
 
-Room endpoints set `Cache-Control: no-store`, including authentication and unavailable-room responses. No authenticated player yields 401; a legacy guest attempting a visit yields 403; a hidden, deleted, missing or legacy guest target yields 404. Malformed fields, unknown catalog IDs, incompatible/unowned items, duplicate items/positions, placements on absent shelves, more than nine placements or more than four shelves yield 400. A stale layout revision yields 409. The former sharing endpoint has been removed.
+Room endpoints set `Cache-Control: no-store`, including authentication and unavailable-room responses. No authenticated player yields 401; a legacy guest attempting a visit yields 403; a hidden, deleted, missing or legacy guest target yields 404. Malformed fields, unknown catalog IDs, incompatible/unowned items, duplicate items/positions, placements on absent shelves or a stored desk, furniture that is unknown, out of bounds, overlapping or not removable, more than nine placements or more than four shelves yield 400. A stale layout revision yields 409. The former sharing endpoint has been removed.
 
 Example layout request, assuming the player owns the deed and revision 0 is current:
 
@@ -104,15 +116,16 @@ Example layout request, assuming the player owns the deed and revision 0 is curr
     "floor": { "typeId": "stone", "colorId": "slate" },
     "rug": { "typeId": "striped", "colorId": "indigo" },
     "wardrobe": { "typeId": "paneled", "colorId": "honey" }
-  }
+  },
+  "furniture": { "wardrobe": { "x": 1.5, "z": 0, "r": 1 }, "desk": { "x": -0.73, "z": -2.87, "r": 0, "off": true } }
 }
 ```
 
-The response is the updated owner view with `layoutRevision` incremented. Do not include an owner ID, sharing fields, coordinates, image URLs or HTML in this body. To remove all displays, send an empty `placements` array with the current revision and selected theme. To remove all shelves, send `shelves:[]` and omit any shelf placements from the replacement `placements` array. When supplied, `shelves` replaces the whole shelf list; each entry has exactly `id`, `spotId`, `typeId` and `colorId`. `finishes` supplies all three objects, each with exactly `typeId` and `colorId`. Omitting either new field preserves its current saved value for older clients. Shelf IDs and catalog choices are stable and checked server-side; each mounting spot accepts only one shelf.
+The response is the updated owner view with `layoutRevision` incremented. Do not include an owner ID, sharing fields, image URLs or HTML in this body; coordinates belong only in `furniture`. To remove all displays, send an empty `placements` array with the current revision and selected theme. To remove all shelves, send `shelves:[]` and omit any shelf placements from the replacement `placements` array. When supplied, `shelves` replaces the whole shelf list; each entry has exactly `id`, `spotId`, `typeId` and `colorId`. `finishes` supplies all three objects, each with exactly `typeId` and `colorId`. `furniture` maps any of `desk`, `pet`, `wardrobe`, `wealth`, `rug`, `floor` and `window` to exactly `x`, `z` (finite scene units, stored to two decimals), `r` (quarter turns, 0 to 3) and optionally `off` (boolean; `true` only for `desk` and `wardrobe`). Omitted pieces return to their default spots, and the resulting arrangement must satisfy the placement rules above. Omitting `shelves`, `finishes` or `furniture` preserves its current saved value for older clients. Shelf IDs and catalog choices are stable and checked server-side; each mounting spot accepts only one shelf.
 
-Visitor JSON contains `owner` (`id`, `name`, display `avatar`), `layoutRevision`, `themeId`, validated `placements`, `shelves`, `finishes`, a curated `pet` or null and `worth` (`bankroll`, `chips`, `holdings`, `riskEscrow`, `total`). Nonfinite or missing worth fields are omitted. `wealthStage` is included when a finite total is available. Owner JSON additionally includes `owned`. The profile's `roomVisitAvailable` boolean is a navigation hint; the room endpoint always checks that the viewer is signed in and the target account is available.
+Visitor JSON contains `owner` (`id`, `name`, display `avatar`), `layoutRevision`, `themeId`, validated `placements`, `shelves`, `finishes`, `furniture` (all seven pieces), a curated `pet` or null and `worth` (`bankroll`, `chips`, `holdings`, `riskEscrow`, `total`). Nonfinite or missing worth fields are omitted. `wealthStage` is included when a finite total is available. Owner JSON additionally includes `owned`. The profile's `roomVisitAvailable` boolean is a navigation hint; the room endpoint always checks that the viewer is signed in and the target account is available.
 
-Room metadata lives in `<DATA_DIR>/rooms.json` as `{schemaVersion:1, rooms:{[playerId]:{layoutRevision,themeId,placements,shelves,finishes}}}`. Shelves and finishes extend schema version 1 with optional fields: old records retain their two lower shelves, original finishes and existing placements without a write or destructive migration; an explicit empty shelf list remains empty. Invalid stored furniture references are filtered and invalid finishes fall back to catalog defaults. Previously stored `visibility` and `showWealthPile` flags are ignored and dropped on the next save. Money, ownership and pet state remain in their existing systems. Reading defaults creates no room file. Saves validate against current ownership, write through the existing atomic-file replacement, then replace the in-memory room document; a failed room-file write keeps the last committed room. Unsupported document schema versions stop room initialization rather than being overwritten. Older server builds do not understand added shelf identities/styles; keep a backup before a rollback that may rewrite these records.
+Room metadata lives in `<DATA_DIR>/rooms.json` as `{schemaVersion:1, rooms:{[playerId]:{layoutRevision,themeId,placements,shelves,finishes,furniture}}}`. Shelves, finishes and furniture extend schema version 1 with optional fields: old records retain their two lower shelves, original finishes, default furniture positions and existing placements without a write or destructive migration; an explicit empty shelf list remains empty. Invalid stored furniture references are filtered and invalid finishes fall back to catalog defaults. If stored furniture positions are malformed or no longer fit the floor plan, every piece is shown at its default spot until the next save. Previously stored `visibility` and `showWealthPile` flags are ignored and dropped on the next save. Money, ownership and pet state remain in their existing systems. Reading defaults creates no room file. Saves validate against current ownership, write through the existing atomic-file replacement, then replace the in-memory room document; a failed room-file write keeps the last committed room. Unsupported document schema versions stop room initialization rather than being overwritten. Older server builds do not understand added shelf identities/styles or furniture positions; keep a backup before a rollback that may rewrite these records.
 
 Account deletion removes room metadata after existing deletion guards pass. Legacy-account claiming removes a discarded fresh account's room and retains the legacy player's room. Whole-account cleanup is not transactional across feature files. The JSON store remains single-process; multiple server replicas cannot safely share it. See [Development and troubleshooting](development.md) before maintaining local data.
 
@@ -124,7 +137,7 @@ npm run build
 npm test
 ```
 
-Domain/API checks cover permissions, data projection, ownership, revisions, failures, deletion and wealth behavior. Scene tests cover fitted camera bounds, view limits, picking and bounded wealth geometry; they do not prove actual GPU rendering or mobile performance. Follow the [development guide](development.md#validation-and-known-baseline) when recording current full-suite results and existing failures.
+Domain/API checks cover permissions, data projection, ownership, revisions, failures, deletion and wealth behavior. Scene tests cover fitted camera bounds, view limits, picking, furniture dragging and bounded wealth geometry; they do not prove actual GPU rendering or mobile performance. Follow the [development guide](development.md#validation-and-known-baseline) when recording current full-suite results and existing failures.
 
 The room renders on demand with antialiased edges, slightly finer prop geometry and wood grain, and no required camera motion or automatic sound. The drawing buffer follows the display up to 1.5× density, capped at 1600×1000 pixels; larger screens may render below native resolution. Bug and avatar pixel art retain their existing style. The back-wall window has a recessed painted view, four glass panes, a full frame and a projecting sill; the wardrobe sits clear of it in the back corner. Camera fitting includes the wider yard at every rotation. The larger wagon uses its visible model for clicking, allowing nearby furniture to remain reachable through empty space around the canopy and wheels.
 
