@@ -4,7 +4,7 @@ import { ROOM_ITEM, ROOM_FINISHES, ROOM_SHELF_SPOTS, ROOM_FURNITURE, roomShelves
 import { furnitureOf } from './layout.js';
 import { coveredWagon } from './wagon.js';
 import { pixGrid } from '../store/pixart.js';
-import { spriteCanvas, drawGrave } from '../barn/sprite.js';
+import { spriteCanvas, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks } from '../avatar/genbust.js';
 import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, floorPoint, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_FIXTURES, roomShelfPosition } from './scene-model.js';
@@ -544,13 +544,14 @@ export class RoomScene {
   pet(pet) {
     if (!pet) return;
     let map;
-    if (pet.stage === 'creature' && BY_ID[pet.species]) map = canvasTexture(spriteCanvas(BY_ID[pet.species], pet.style));
+    if (pet.stage === 'creature' && BY_ID[pet.species]) map = canvasTexture(spriteCanvas(BY_ID[pet.species], pet.style, pet.level));
     else if (pet.stage === 'egg' || pet.stage === 'dead') map = paintedTexture(128, 128, ctx => {
       if (pet.stage === 'egg') drawEgg(ctx, { w: 128, h: 128, still: true }); else drawGrave(ctx, { w: 128, h: 128 });
     });
     if (map) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-      sprite.position.set(this.furniture.pet.x, 1.56, this.furniture.pet.z); sprite.scale.set(0.95, 0.95, 1); this.dynamic.add(sprite);
+      const size = 0.95 * (pet.stage === 'creature' ? bugScale(pet.level) : 1);
+      sprite.position.set(this.furniture.pet.x, 1.56 - (0.95 - size) / 2, this.furniture.pet.z); sprite.scale.set(size, size, 1); this.dynamic.add(sprite);
     }
   }
   resident(owner, generation) {

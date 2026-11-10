@@ -52,7 +52,7 @@ export default function Bout({ bout, replay = false, reduced, onClose }) {
         x.save(); x.globalAlpha = alpha;
         if (s === 0) x.translate(dx, by + (loser ? bh * 0.08 : 0)); else { x.translate(W - dx, by + (loser ? bh * 0.08 : 0)); x.scale(-1, 1); }
         if (loser) { x.translate(bw / 2, bh * 0.86); x.rotate(-0.25); x.translate(-bw / 2, -bh * 0.86); }
-        if (BY_ID[who.species]) drawBug(x, BY_ID[who.species], { w: bw, h: bh, t: now + s * 700, still: reduced, fill: 0.7, style: who.style });
+        if (BY_ID[who.species]) drawBug(x, BY_ID[who.species], { w: bw, h: bh, t: now + s * 700, still: reduced, fill: 0.7, style: who.style, level: who.level });
         x.restore();
       });
       if (cur?.dmg > 0 && k > 0 && !reduced) { // a cartoon impact star where the move lands

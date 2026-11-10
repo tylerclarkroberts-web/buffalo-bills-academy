@@ -8,7 +8,7 @@ import { goToMines } from '../App.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { STANCES } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
-import { drawBug, drawGrave } from './sprite.js';
+import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout from './Bout.jsx';
 import './barn.css';
@@ -81,13 +81,13 @@ function Stage({ pen, poke, reduced }) {
       const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H);
       if (pen.stage === 'egg') drawEgg(x, { w: W, h: H, t: now, p: Math.min(1, (Date.now() - pen.eggAt) / Math.max(1, pen.hatchAt - pen.eggAt)), still: reduced, poke: pk });
       else if (pen.stage === 'dead') drawGrave(x, { w: W, h: H });
-      else if (BY_ID[pen.species]) drawBug(x, BY_ID[pen.species], { w: W, h: H, t: now, still: reduced, poke: pk, style: pen.style });
+      else if (BY_ID[pen.species]) drawBug(x, BY_ID[pen.species], { w: W, h: H, t: now, still: reduced, poke: pk, style: pen.style, level: pen.level });
       id = requestAnimationFrame(draw);
     };
     if (ref.current) delete ref.current.dataset.drawn;
     id = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(id);
-  }, [pen.stage, pen.species, reduced, poke, JSON.stringify(pen.style || null)]);
+  }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
   return <canvas ref={ref} className="barn-canvas" data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
 }
 
@@ -197,6 +197,7 @@ export default function Barn() {
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
               <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active, outside the care XP cap"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
+              {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
               <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={(e) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
                 e.preventDefault();

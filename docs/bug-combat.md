@@ -20,6 +20,17 @@ From level 3 onward, each level adds three maximum HP and 2% base attack damage.
 
 The XP curve is unchanged: total XP for a level is `40 * (level - 1)^2`. Each next level costs 80 XP more than the preceding step: 3→4 needs 200 XP, and 9→10 needs 680 XP. Level and combat growth stop at **10**; earned XP continues accumulating and is shown at the cap. XP from a bout affects subsequent fights, not the fight that awarded it.
 
+Bugs also grow a little at every level: a level-1 hatchling uses 77.5% of the full-size drawing scale, gaining 2.5 percentage points per level until full size at level 10. Equipped accessories grow with the body in the Barn, room terrarium, store previews and bouts. Replay size and form follow the level recorded when that fight happened. This visual growth adds no extra combat bonus beyond the level stats above and needs no new saved data.
+
+Young forms follow the species' development:
+
+- Thirteen beetles start as curled grubs, legless weevil grubs, elongated wood-borers or segmented crawlers; the two lacewings start as wingless, jawed larvae. They change to their adult artwork at level 3.
+- The Snail-case Caddisfly starts in its coiled larval case and becomes a winged caddisfly at level 3.
+- True bugs, mantises and the Jungle Nymph use smaller versions of their existing artwork, reflecting nymph development.
+- The Railroad Worm retains its glowing segmented form: adult females are larviform.
+
+These are stylized life stages, not exact species/instar reconstructions. The level-3 change compresses the pupal interval; growth after that represents game progression. The shapes use broad family characteristics, with palette and equipped cosmetics retained. The distinction follows [Australian Museum's metamorphosis guide](https://australian.museum/learn/animals/insects/metamorphosis-a-remarkable-change/); larval shapes follow [University of Kentucky's identification guide](https://entomology.mgcafe.uky.edu/ef017). The caddisfly's adult wings and the Railroad Worm exception follow [NC State](https://genent.cals.ncsu.edu/insect-identification/order-trichoptera/) and [University of Florida](https://ask.ifas.ufl.edu/publication/in609). Sagra's grub shape is a family-level inference from [Sagrinae larval research](https://www.biotaxa.org/Zootaxa/article/view/zootaxa.4686.4.5/57084), not a verified reconstruction of that species.
+
 ## Species strengths and move effects
 
 Species have different attack, defense and speed ratings, plus different move combinations. Attack changes direct damage, defense reduces ordinary hits, and speed affects the opening turn and evasion. All three care needs contribute to condition; the lowest need sets that small combat bonus. Equipped bug gear adds at most 6% attack damage.
