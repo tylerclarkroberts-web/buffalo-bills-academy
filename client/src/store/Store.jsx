@@ -134,6 +134,7 @@ export default function Store() {
                 </div>
                 {cur.kind === 'tobacco' && <p className="small sd-warn" data-test="store-tobacco-item-notice"><b>18+</b> {v.tobaccoNotice}</p>}
                 {cur.kind === 'tobacco' && <p className="small muted tob" data-test="store-once">{owned ? 'In your pocket. ' : ''}One-time use: at a table, tap Light up and Guntrad brings the lighter. Everyone watching sees it once. It never changes a hand.</p>}
+                {cur.kind === 'spectacle' && <p className="small muted" data-test="store-once">{owned ? 'In your pocket. ' : ''}One-time use: at a table, tap Spectacle and everyone there watches it once, now or when they come back. Hosts and players who turn gags off won't see it. It never changes a hand.</p>}
                 {cur.kind === 'gag' && <p className="small muted" data-test="store-once">{owned ? 'In your pocket. ' : ''}One-time use: fire it at a table (Gag button), then buy another. You can hold one of each. Harmless; it never changes a hand.</p>}
               </div>
             </>

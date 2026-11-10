@@ -153,6 +153,7 @@ test('money: a loss puts 5% of the bankroll in the pot as dead money (once); a w
 test('money: broke edges, a reused winning replay, the clock, and a loss after the hand ended', () => {
   assert.equal(G.fightStake(0.5), 0); assert.equal(G.fightStake(1), 1); assert.equal(G.fightStake(10), 1);
   assert.equal(G.fightStake(30), 2); assert.equal(G.fightStake(1000), 50); assert.equal(G.fightStake(19.99), 1);
+  assert.equal(G.fightStake(20000, 20), 200, 'capped at 10 big blinds'); assert.equal(G.fightStake(1000, 20), 50); assert.equal(G.fightStake(5, 20), 1);
   const poor = econTable({ p0: 0.5, p1: 0.5, p2: 0.5 });
   assert.equal(G.viewFor(poor.t, bbId(poor.t), 0).fightOffer, null, 'no offer when you could not pay $1');
   // a winning log for one seed is worthless against another fight's seed

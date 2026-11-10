@@ -6,6 +6,7 @@
 import { GameError } from './engine/game.js';
 import { CATALOG, ITEM, TABS, AVATAR_SLOTS, BUG_SLOTS, GAG_RENAME, TOBACCO_NOTICE } from './catalog/index.js';
 import { GEAR_CAP } from './engine/bout.js';
+import { BOOST_XP } from './barn.js';
 
 export const CONFIRM_OVER = 1000;          // purchases above this need { confirm: true }
 export const MAX_STACK = 20;               // consumables you can hold of one kind
@@ -16,6 +17,8 @@ export const GAG = { senderGapMs: 15e3, pairGapMs: 45e3, targetPerMin: 4, showMs
 /** v37 tobacco moments: one per table per minute; extra ones queue (up to 5 ahead); kept 24h so a first-time
  *  viewer still sees each one once. showMs is how long the cartoon plays. */
 export const SMOKE = { gapMs: 60e3, keepMs: 24 * 3600e3, maxAhead: 5, showMs: 9000 };
+/** v52 spectacles: one per table per minute (no queue: a refused one is kept), and how long the overlay plays. */
+export const SHOW = { gapMs: 60e3, showMs: 6000 };
 export const FIT = { min: 0.4, max: 2.5, move: 24 };   // fit editor: size 40%..250%, nudge +-24 head units
 const FIT_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'acc']; // not 'skin' (a shirt colour has nothing to place)
 const CONSUMABLE = (x) => !!x.use;
@@ -40,6 +43,7 @@ export class Shop {
     this.migrate();
     this.gags = new Map(); // table code -> recent gag events (memory only; they're gone in seconds anyway)
     this.gagLog = new Map();
+    this.showAt = new Map(); // table code -> when its last spectacle played (memory only, like the gag rate limits)
   }
   /** v36: pranks became one-time-use gags. Old prank ids are renamed (rubber chicken -> spaghetti noodle) and
    *  capped at one of each; the old opt-out carries over. Also repairs faun cigarettes stored under the bare id
@@ -103,11 +107,10 @@ export class Shop {
     if (!this.hatched(p.id)) throw new GameError('You need a hatched bug for that.', 409);
     const now = this.now(); const cd = USE_COOLDOWN_MS[x.use] || 0;
     if (cd && now - (iv.used[x.use] || 0) < cd) throw new GameError('Your bug needs a little while before the next one.', 429);
-    if (x.use === 'feeder') {
-      const pen = this.barn.view(p.id).pen;
-      if (Math.max(now, pen.feederUntil || 0) + x.days * DAY - now > FEEDER_MAX_AHEAD_MS) throw new GameError('The feeder is already stocked for the next two months.', 409);
-      this.barn.addFeeder(p.id, x.days * DAY);
-    } else this.barn.boost(p.id, x.use === 'food' ? { stat: 'hunger', gain: x.food, fed: true } : { stat: x.use === 'clean' ? 'clean' : 'mood', gain: 40 });
+    // `days` (the feeder, and Golden Ambrosia) keeps the bowl full that long; checked before anything is spent
+    if (x.days && Math.max(now, this.barn.view(p.id).pen.feederUntil || 0) + x.days * DAY - now > FEEDER_MAX_AHEAD_MS) throw new GameError('The feeder is already stocked for the next two months.', 409);
+    if (x.use !== 'feeder') this.barn.boost(p.id, x.use === 'food' ? { stat: 'hunger', gain: x.food, fed: true } : { stat: x.use === 'clean' ? 'clean' : 'mood', gain: 40, xp: BOOST_XP });
+    if (x.days) this.barn.addFeeder(p.id, x.days * DAY);
     iv.own[id] -= 1; if (!iv.own[id]) delete iv.own[id];
     iv.used[x.use] = now; this.save();
     return this.view(p);
@@ -141,7 +144,7 @@ export class Shop {
     const out = {}; for (const s of BUG_SLOTS) if (iv.eq[s] && iv.own[iv.eq[s]]) out[s] = iv.eq[s];
     for (const s of ['bugskin', 'bughat', 'bugacc']) if (out[s]) out[s] = lookOf(out[s]);
     out.gearBonus = Math.min(GEAR_CAP, ITEM[out.gear]?.gear || 0);
-    out.toyMood = Math.min(15, ITEM[out.toy]?.mood || 0);
+    out.toyMood = Math.min(20, ITEM[out.toy]?.mood || 0);
     return out;
   }
   forget(pid) { delete this.doc.inv[pid]; this.save(); }
@@ -155,6 +158,7 @@ export class Shop {
     const mine = (kind, f) => (viewerId ? CATALOG.filter((x) => x.kind === kind && iv?.own[x.id]).map(f) : []);
     return {
       gagsOff: !!this.doc.tablesOff[code], gags: list, myGags: mine('gag', (x) => ({ id: x.id, name: x.name, emoji: x.emoji, pix: x.pix })), noGags: !!iv?.noGags,
+      myShows: mine('spectacle', (x) => ({ id: x.id, name: x.name, emoji: x.emoji, fx: x.fx, price: x.price })),
       smokeOff: !!this.doc.smokeOff[code], smokes: this.smokesAt(code), mySmokes: mine('tobacco', (x) => ({ id: x.id, name: x.name, emoji: x.emoji, art: x.art })), noSmoke: !!iv?.noSmoke, smokeGapMs: SMOKE.gapMs,
     };
   }
@@ -190,6 +194,23 @@ export class Shop {
     this.doc.smokes[t.code] = [...list, ev].slice(-40);
     this.save();
     return ev;
+  }
+  /** v52: put on a spectacle at a table you're seated at. It is used up and everyone at the table sees it once.
+   *  It follows the gag switches: the host's per-table switch, and it is hidden (not refused) for players who opted
+   *  out. One per table per minute. Every check runs first, so a refused one is kept. Touches nothing else. */
+  spectacle(t, p, { item }) {
+    const x = ITEM[item];
+    if (!x || x.kind !== 'spectacle') throw new GameError('That isn\'t a spectacle.', 400);
+    const iv = this.doc.inv[p.id];
+    if (!iv?.own[item]) throw new GameError('Buy one in the Spectacles department of the General Store first. It\'s one-time use.', 403);
+    if (this.doc.tablesOff[t.code]) throw new GameError('The host has turned gags and spectacles off at this table.', 403);
+    if (!t.seats.some((s) => s && s.playerId === p.id)) throw new GameError('Take a seat first.', 403);
+    if (t.status === 'closed') throw new GameError('This table is closed.', 409);
+    const now = this.now(); const last = this.showAt.get(t.code) || -Infinity;
+    if (now - last < SHOW.gapMs) throw new GameError(`One spectacle at a time. The crew needs ${Math.ceil((SHOW.gapMs - (now - last)) / 1000)} more seconds to sweep up.`, 429);
+    this.showAt.set(t.code, now);
+    delete iv.own[item]; this.save(); // one-time use
+    return { id: `v${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`, at: now, from: p.id, fromName: p.name, item: x.id, name: x.name, emoji: x.emoji, fx: x.fx, line: x.line };
   }
   setTableOff(t, p, off) {
     if (t.hostId !== p.id) throw new GameError('Only the host can change that.', 403);

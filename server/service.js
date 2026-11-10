@@ -182,7 +182,7 @@ export class PokerService {
     for (const l of t.lastHand?.allInLosers || []) if (!(l.playerId in avatars) && this.store.players[l.playerId]) avatars[l.playerId] = this.avatars ? this.avatars.info(this.store.players[l.playerId]) : null;
     const v = { ...G.viewFor(t, player?.id ?? null, this.now()), visibility: t.visibility === 'public' ? 'public' : 'private', econ: !!t.econ, avatars };
     if (t.bots) { v.bots = { count: t.bots.count, friends: t.bots.friends }; for (const st of v.seats) if (st && t.seats[st.seat]?.bot) st.bot = true; }
-    if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id));
+    if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id), t.settings.bigBlind);
     if (v.fight && this.avatars && !(v.fight.playerId in avatars) && this.store.players[v.fight.playerId]) avatars[v.fight.playerId] = this.avatars.info(this.store.players[v.fight.playerId]);
     return v;
   }

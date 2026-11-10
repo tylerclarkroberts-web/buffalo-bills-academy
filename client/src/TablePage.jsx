@@ -14,6 +14,7 @@ import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
 import { GagButton } from './table/Gags.jsx';
 import { SmokeButton } from './table/Smoke.jsx';
+import { ShowButton } from './table/Spectacle.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { Showdown } from './table/Showdown.jsx';
@@ -71,7 +72,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     let es;
     try {
       es = new EventSource(`/api/tables/${code}/events`);
-      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke) load(); } catch { /* ignore */ } };
+      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke || d.show) load(); } catch { /* ignore */ } };
     } catch { /* no SSE */ }
     const poll = setInterval(load, 20000);
     const vis = () => { if (!document.hidden) load(); };
@@ -188,6 +189,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     )}
     {open && <GagButton code={code} view={view} myId={myId} onUsed={() => { closeMenu(); load(); }} />}
     {open && <SmokeButton code={code} view={view} onDone={() => { closeMenu(); load(); }} />}
+    {open && <ShowButton code={code} view={view} onDone={() => { closeMenu(); load(); }} />}
     {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => { closeMenu(); setSdPlay({ ...view.showdown, _k: Date.now() }); }} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
     <MusicButton />
     {(!view.bots || view.bots.friends) && <button className="btn small invite-btn" onClick={() => { closeMenu(); copyInvite(); }}><span className="menu-ico" aria-hidden="true">＋</span>Invite<span className="menu-label"> players</span></button>}
@@ -747,7 +749,7 @@ function Info({ view, post, seated, code }) {
         </fieldset>}
         <div className="row wrap">
           {'Notification' in window && Notification.permission === 'default' && <button className="btn small" onClick={() => Notification.requestPermission()}>Notify me on my turn</button>}
-          {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('gags', { off: !view.gagsOff })} data-test="host-gags">{view.gagsOff ? 'Allow gags (host)' : 'Turn gags off (host)'}</button>}
+          {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('gags', { off: !view.gagsOff })} data-test="host-gags">{view.gagsOff ? 'Allow gags & spectacles (host)' : 'Turn gags & spectacles off (host)'}</button>}
           {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('tobacco', { off: !view.smokeOff })} data-test="host-smoke">{view.smokeOff ? 'Allow Smoke Shop (host)' : 'Turn Smoke Shop off (host)'}</button>}
           {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => window.confirm('Close this table for everyone? Any hand in progress is cancelled and bets are returned.') && post('close')}>Close table (host)</button>}
         </div>

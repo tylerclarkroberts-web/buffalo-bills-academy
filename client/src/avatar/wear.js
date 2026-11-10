@@ -30,6 +30,12 @@ const HAT = {
   bucket: (c, c2) => [e('path', { d: 'M4 18 L14 10 L46 10 L56 18 Q30 22 4 18Z', fill: S(c, -0.15) }), e('path', { d: 'M14 11 Q14 -2 30 -2 Q46 -2 46 11Z', fill: c }), e('rect', { x: 14, y: 8, width: 32, height: 2.5, fill: c2 })],
   wizard: (c, c2) => [e('ellipse', { cx: 30, cy: 15, rx: 25, ry: 4, fill: c }), e('path', { d: 'M14 15 L34 -20 L46 15Z', fill: c }), e('text', { x: 31, y: 6, fontSize: 8, textAnchor: 'middle', fill: c2 }, '★'), e('text', { x: 36, y: -6, fontSize: 5, textAnchor: 'middle', fill: c2 }, '✦')],
   crownflowers: (c, c2) => [e('path', { d: 'M8 14 Q30 4 52 14', stroke: c2, strokeWidth: 2.5, fill: 'none' }), ...[10, 18, 26, 34, 42, 50].map((x, i) => e('circle', { key: i, cx: x, cy: 13 - Math.sin((x - 8) / 44 * Math.PI) * 5, r: 3.2, fill: i % 2 ? '#fff' : c }))],
+  diving: (c, c2) => [e('circle', { cx: 30, cy: 34, r: 28, fill: '#bfe8ff', fillOpacity: 0.16, stroke: c, strokeWidth: 5 }), e('path', { d: 'M8 14 Q30 -18 52 14 Q30 4 8 14Z', fill: c }), e('circle', { cx: 30, cy: 36, r: 14, fill: 'none', stroke: c2, strokeWidth: 2 }),
+    ...[[30, 20], [44, 36], [30, 52], [16, 36]].map(([x, y], i) => e('circle', { key: i, cx: x, cy: y, r: 1.4, fill: c2 })), e('path', { d: 'M16 -2 Q24 -6 30 -6', stroke: S(c, 0.5), strokeWidth: 1.5, fill: 'none' })],
+  jackalope: (c, c2) => [e('rect', { x: 14, y: 12, width: 32, height: 5, rx: 1, fill: '#7a4a22' }), e('ellipse', { cx: 28, cy: 6, rx: 12, ry: 7, fill: c }), e('circle', { cx: 40, cy: -1, r: 5, fill: c }), e('ellipse', { cx: 18, cy: 4, rx: 3, ry: 2.5, fill: c2 }),
+    e('path', { d: 'M38 -5 L34 -15 M36 -10 L31 -11 M42 -5 L46 -15 M44 -10 L49 -11', stroke: c2, strokeWidth: 1.6, strokeLinecap: 'round', fill: 'none' }), e('circle', { cx: 41.5, cy: -1.5, r: 0.9, fill: '#111' })],
+  judgewig: (c, c2) => [e('path', { d: 'M8 22 Q8 -4 30 -4 Q52 -4 52 22 L46 14 Q30 6 14 14Z', fill: c }),
+    ...[6, 54].flatMap((x) => [22, 31, 40, 49].map((y) => e('circle', { key: `${x}-${y}`, cx: x, cy: y, r: 5, fill: c, stroke: c2, strokeWidth: 0.8 }))), ...[16, 24, 36, 44].map((x, i) => e('circle', { key: `t${i}`, cx: x, cy: 2, r: 3.6, fill: c, stroke: c2, strokeWidth: 0.6 }))],
   hardhat: (c, c2) => [e('ellipse', { cx: 30, cy: 16, rx: 24, ry: 3.5, fill: S(c, -0.15) }), e('path', { d: 'M10 16 Q10 -3 30 -3 Q50 -3 50 16Z', fill: c }), e('rect', { x: 25, y: 2, width: 10, height: 8, rx: 2, fill: c2, stroke: '#888', strokeWidth: 0.6 })],
 };
 // ---------- eyes ----------
@@ -47,6 +53,8 @@ const EYES = {
   goggles: (c, c2) => [e('rect', { x: 6, y: Y - 2, width: 48, height: 4, fill: c }), ...pair((x) => e('circle', { cx: x, cy: Y, r: 6, fill: c2, stroke: c, strokeWidth: 2.2 }))],
   shades: (c, c2) => [e('rect', { x: L - 7, y: Y - 4.5, width: R - L + 14, height: 9, rx: 2, fill: c }), ...[0, 1, 2, 3].map((i) => e('rect', { key: i, x: L - 6, y: Y - 3 + i * 2, width: R - L + 12, height: 0.9, fill: c2 }))],
   nerd: (c, c2) => [...pair((x) => e('rect', { x: x - 5.5, y: Y - 4, width: 11, height: 8, rx: 1.5, fill: 'none', stroke: c, strokeWidth: 2 })), e('rect', { x: 28, y: Y - 2.5, width: 4, height: 4, fill: c2 })],
+  diamond: (c, c2) => [e('circle', { cx: R, cy: Y, r: 5.5, fill: c2, fillOpacity: 0.3, stroke: c, strokeWidth: 1.8 }), ...[0, 1, 2, 3, 4, 5].map((i) => e('circle', { key: i, cx: R + Math.cos(i * 1.047) * 5.5, cy: Y + Math.sin(i * 1.047) * 5.5, r: 0.9, fill: '#fff' })),
+    e('path', { d: `M${R + 4} ${Y + 4} Q${R + 8} ${Y + 14} ${R + 3} ${Y + 22}`, stroke: c, strokeWidth: 0.7, fill: 'none' }), e('text', { x: R + 8, y: Y - 5, fontSize: 6, fill: '#fff', className: 'w-twinkle' }, '✦')],
   visor: (c, c2) => [e('path', { d: `M4 ${Y - 10} Q30 ${Y - 18} 56 ${Y - 10} L60 ${Y - 4} Q30 ${Y - 12} 0 ${Y - 4}Z`, fill: c2, fillOpacity: 0.7, stroke: c, strokeWidth: 1 })],
 };
 // ---------- face ----------
@@ -58,6 +66,7 @@ const FACE = {
   clown: (c) => [e('circle', { cx: 30, cy: 42, r: 4.5, fill: c }), e('circle', { cx: 28.5, cy: 40.5, r: 1.2, fill: '#fff', opacity: 0.7 })],
   beardfake: (c) => [e('path', { d: 'M10 40 Q12 64 30 68 Q48 64 50 40 Q44 50 30 51 Q16 50 10 40Z', fill: c }), e('path', { d: 'M10 40 L6 32 M50 40 L54 32', stroke: '#eee', strokeWidth: 0.6 })],
   blush: (c) => [e('ellipse', { cx: 18, cy: 43, rx: 4, ry: 2.4, fill: c, opacity: 0.55 }), e('ellipse', { cx: 42, cy: 43, rx: 4, ry: 2.4, fill: c, opacity: 0.55 })],
+  goldtooth: (c) => [e('path', { d: 'M21 51 Q30 58 39 51 Q30 54.5 21 51Z', fill: '#3a1a1a' }), e('rect', { x: 31, y: 51.6, width: 3, height: 2.4, rx: 0.4, fill: c }), e('text', { x: 37, y: 50, fontSize: 5, fill: '#fff8c0', className: 'w-twinkle' }, '✦')],
   pipe: (c) => [e('path', { d: 'M34 50 L46 54', stroke: '#5a3a1a', strokeWidth: 1.6 }), e('rect', { x: 44, y: 46, width: 6, height: 9, rx: 1.5, fill: c })],
 };
 // ---------- body (body coords) ----------
@@ -83,6 +92,11 @@ const BODY = {
   duster: (c, c2) => [e('path', { d: 'M4 110 L14 86 L30 78 L44 80 L46 110Z M96 110 L86 86 L70 78 L56 80 L54 110Z', fill: c }), e('path', { d: 'M30 78 L40 90 L44 80 M70 78 L60 90 L56 80', fill: c2 })],
   armor: (c, c2) => [e('path', { d: 'M10 110 L18 86 L32 79 L50 82 L68 79 L82 86 L90 110Z', fill: c, stroke: c2, strokeWidth: 1 }), e('path', { d: 'M50 82 V110 M24 96 Q50 90 76 96', stroke: c2, strokeWidth: 1 }), ...[[22, 90], [78, 90]].map(([x, y], i) => e('circle', { key: i, cx: x, cy: y, r: 1.2, fill: c2 }))],
   cape: (c, c2) => [e('path', { d: 'M2 110 Q8 80 30 78 L36 80 Q30 96 24 110Z M98 110 Q92 80 70 78 L64 80 Q70 96 76 110Z', fill: c }), e('path', { d: 'M30 78 Q50 86 70 78', stroke: c2, strokeWidth: 2.5, fill: 'none' })],
+  bearskin: (c, c2) => [e('path', { d: 'M4 110 L12 86 L30 77 L44 80 L48 110Z M96 110 L88 86 L70 77 L56 80 L52 110Z', fill: c }), e('path', { d: 'M10 96 l3 -3 l2 3 M80 98 l3 -3 l2 3 M20 104 l3 -3 l2 3 M88 106 l2 -3 l2 3', stroke: S(c, 0.25), strokeWidth: 1, fill: 'none' }),
+    e('circle', { cx: 19, cy: 72, r: 3.2, fill: S(c, -0.2) }), e('circle', { cx: 33, cy: 72, r: 3.2, fill: S(c, -0.2) }), e('circle', { cx: 26, cy: 79, r: 9, fill: S(c, -0.1) }), e('ellipse', { cx: 26, cy: 83, rx: 4, ry: 3, fill: c2 }), e('circle', { cx: 26, cy: 82, r: 1.2, fill: '#111' }),
+    e('circle', { cx: 22.5, cy: 77, r: 1, fill: '#111' }), e('circle', { cx: 29.5, cy: 77, r: 1, fill: '#111' }), e('path', { d: 'M21 74.5 L24 75.5 M31 74.5 L28 75.5', stroke: '#111', strokeWidth: 0.8 })],
+  cards: (c, c2) => [e('path', { d: 'M8 110 L16 88 L30 79 L50 84 L70 79 L84 88 L92 110Z', fill: '#f2ecdc' }), ...[[18, 90, '♠', -12], [33, 97, '♥', 8], [46, 88, '♣', -4], [60, 98, '♦', 10], [74, 91, '♠', -8], [24, 103, '♦', 14], [66, 104, '♣', -10], [48, 102, '♥', 4]].map(([x, y, s, r], i) =>
+    e('g', { key: i, transform: `rotate(${r} ${x} ${y})` }, e('rect', { x: x - 4.5, y: y - 6, width: 9, height: 12, rx: 1, fill: '#fff', stroke: '#999', strokeWidth: 0.4 }), e('text', { x, y: y + 2.5, fontSize: 7, textAnchor: 'middle', fill: s === '♥' || s === '♦' ? c2 : c }, s)))],
   sequin: (c, c2) => [e('path', { d: 'M8 110 L16 88 L30 79 L44 80 L48 110Z M92 110 L84 88 L70 79 L56 80 L52 110Z', fill: c }), ...Array.from({ length: 22 }, (_, i) => e('circle', { key: i, cx: (i < 11 ? 16 : 56) + (i % 11) * 2.8 + ((i * 7) % 3), cy: 88 + ((i * 13) % 20), r: 0.9, fill: i % 3 ? c2 : '#fff' }))],
 };
 const ACC = {
@@ -93,6 +107,10 @@ const ACC = {
   cigar: (c) => [e('rect', { x: 60, y: 70, width: 16, height: 3.4, rx: 1.4, fill: c, transform: 'rotate(12 60 70)' }), e('rect', { x: 73, y: 72, width: 3, height: 3.4, fill: '#f0a020', transform: 'rotate(12 60 70)' })],
   bee: (c) => [e('g', { className: 'w-buzz' }, e('ellipse', { cx: 86, cy: 60, rx: 5, ry: 3.6, fill: c }), e('path', { d: 'M84 57 V63 M87 57 V63', stroke: '#111', strokeWidth: 1.2 }), e('ellipse', { cx: 85, cy: 55, rx: 3, ry: 2, fill: '#dff', opacity: 0.8 }))],
   star: (c) => [e('text', { x: 66, y: 96, fontSize: 9, textAnchor: 'middle', fill: c }, '★')],
+  vulture: (c) => [e('ellipse', { cx: 82, cy: 80, rx: 7, ry: 10, fill: c }), e('path', { d: 'M76 84 L74 96 L80 88Z', fill: S(c, -0.3) }), e('ellipse', { cx: 82, cy: 70, rx: 6, ry: 3, fill: '#f0e8d8' }),
+    e('path', { d: 'M82 70 Q81 62 86 59', stroke: '#e8a0a0', strokeWidth: 2.6, fill: 'none', strokeLinecap: 'round' }), e('circle', { cx: 87, cy: 57.5, r: 3, fill: '#e8a0a0' }), e('path', { d: 'M89 56.5 L94 58.5 L89 59.5Z', fill: '#d8c070' }), e('circle', { cx: 88, cy: 56.5, r: 0.7, fill: '#111' })],
+  storm: (c) => [e('g', { className: 'w-buzz' }, e('circle', { cx: 79, cy: 42, r: 7, fill: c }), e('circle', { cx: 87, cy: 37, r: 8, fill: S(c, 0.12) }), e('circle', { cx: 94, cy: 43, r: 6, fill: c }), e('rect', { x: 76, y: 42, width: 21, height: 6, rx: 3, fill: c }),
+    e('path', { d: 'M86 48 L83 55 L87 55 L84 62', stroke: '#ffe040', strokeWidth: 1.4, fill: 'none' }), e('path', { d: 'M79 50 V57 M92 50 V58 M96 50 V55', stroke: '#7ab8f0', strokeWidth: 1, strokeDasharray: '2 2' }))],
   balloon: (c) => [e('path', { d: 'M88 110 Q84 80 90 46', stroke: '#777', strokeWidth: 0.6, fill: 'none' }), e('ellipse', { cx: 90, cy: 36, rx: 8, ry: 10, fill: c }), e('ellipse', { cx: 87, cy: 32, rx: 2, ry: 3, fill: '#fff', opacity: 0.5 })],
 };
 // ---------- shirt skins: a colour for the shoulders, plus an optional pattern ----------
@@ -113,7 +131,7 @@ const draw = (tab, it) => { const f = it && tab[it.shape]; return f ? f(it.c || 
 // ---------- fit ----------
 // v36: where each slot's art is anchored (its "centre" for nudging and sizing), in its own coordinates.
 const ANCHOR = { hat: [30, 17], eyes: [30, 36], face: [30, 47], neck: [50, 82], body: [50, 95] };
-const ACC_ANCHOR = { parrot: [82, 78], flower: [32, 90], badge: [66, 92], feather: [80, 70], cigar: [68, 72], bee: [86, 60], star: [66, 93], balloon: [90, 50] };
+const ACC_ANCHOR = { parrot: [82, 78], flower: [32, 90], badge: [66, 92], feather: [80, 70], cigar: [68, 72], bee: [86, 60], star: [66, 93], balloon: [90, 50], vulture: [83, 76], storm: [87, 46] };
 // Photo avatars (the low-poly selfie, 240x300 with the face filling the maker's oval) have a bigger face, set higher,
 // than the generated heads the art was drawn on: crown near y -11, eye line near y 24, face about 1.35x wider.
 // So head items get a default re-fit on photos: [scale, where the anchor lands].

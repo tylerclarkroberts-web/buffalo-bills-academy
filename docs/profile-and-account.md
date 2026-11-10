@@ -38,7 +38,7 @@ Use the two profile tabs for these controls:
 | **Account** | Login username, password controls when available, Google-link status and account deletion. |
 | **Settings** | Table preferences and Slack alerts. |
 
-The username editor appears once, under **Account**. **Settings** includes Table replay, table effects, gag and Smoke Shop preferences, Guntrad's voice, and Slack alert controls when configured. Existing availability and save behavior still apply.
+The username editor appears once, under **Account**. **Settings** includes Table replay, table effects, gag and Smoke Shop preferences (**Allow Gags?** also covers [table spectacles](spectacles.md)), Guntrad's voice, and Slack alert controls when configured. Existing availability and save behavior still apply.
 
 Each tab has one scrollable content pane. Its cards take the height their contents need, and scrolling the pane reaches the remaining forms and actions on a small or short screen. This layout applies to the profile's Account and Settings panes; other profile tabs and game screens keep their existing layouts.
 

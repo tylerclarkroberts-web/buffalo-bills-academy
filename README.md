@@ -40,6 +40,10 @@ Hosts can change the automatic-free-check and skip-first-betting-round defaults 
 
 Returning to a table plays a skippable recap of missed public actions, smokes, gags, and speech across hands. The table saves its latest 300 public events, and this browser remembers completed replay steps separately for each player and table. See [Catch up when you return](docs/table-options-and-history.md#catch-up-when-you-return) for controls, privacy, and retention limits.
 
+## Table spectacles
+
+The General Store's **Spectacles** department sells $2,500–$50,000 one-time-use shows the whole table watches: balloons, fireworks, a blimp towing your name, a buffalo stampede, a saucer and a gold rush. They play through the table replay, never touch the cards, and follow the host's and each player's gag switches. See [Table spectacles](docs/spectacles.md).
+
 ## ConquestK and Risk bets
 
 **Risk bets** links to ConquestK and offers optional account linking and fixed-odds play-money bets on eligible public Classic matches. Accounts and games remain separate. New betting is disabled by default; existing bets continue recovering and settling when the integration is connected. See [ConquestK integration](docs/conquest-integration.md) for the player flow, odds, limits, deployment configuration, privacy, and recovery guarantees.

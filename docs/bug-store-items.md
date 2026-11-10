@@ -8,11 +8,11 @@ Buying a consumable puts it in your inventory. Its effect starts when you press 
 
 | Item | What happens when used | How long / limits |
 | --- | --- | --- |
-| Automatic Feeder | Sets Fed to 100 and keeps it full; pauses the starvation clock. | 14 days per use. Another use adds 14 days to the remaining time, with no more than 60 days ahead. No use cooldown. The Barn shows the end date. Mood and Clean still decay. |
-| Auto-Mister | Adds 40 Clean immediately. | Single use, one instant mist. Clean falls 1.4 points/hour, so a full 40-point boost takes about 28 hours 34 minutes to decay. Wait 30 minutes between misters. |
-| Cosy Heat Lamp | Adds 40 Mood immediately. | Single use, one instant boost. Mood falls 1.6 points/hour, so a full 40-point boost takes 25 hours to decay. Wait 30 minutes between lamps. |
+| Automatic Feeder | Sets Fed to 100 and keeps it full; pauses the starvation clock. The bug earns 12 XP for each full day the feeder covers, on top of the usual day XP. | 14 days per use. Another use adds 14 days to the remaining time, with no more than 60 days ahead. No use cooldown. The Barn shows the end date. Mood and Clean still decay. |
+| Auto-Mister | Adds 40 Clean immediately, with up to 6 care XP. | Single use, one instant mist. Clean falls 1.4 points/hour, so a full 40-point boost takes about 28 hours 34 minutes to decay. Wait 30 minutes between misters. |
+| Cosy Heat Lamp | Adds 40 Mood immediately, with up to 6 care XP. | Single use, one instant boost. Mood falls 1.6 points/hour, so a full 40-point boost takes 25 hours to decay. Wait 30 minutes between lamps. |
 
-The lamp and mister do not stay equipped or run automatically. Their cooldowns are separate. Their boosts do not reset the feeding clock or grant care XP. Food and the feeder protect against starvation; mood and cleanliness do not.
+The lamp and mister do not stay equipped or run automatically. Their cooldowns are separate. Their boosts do not reset the feeding clock. Each gives up to 6 care XP, half a free care action, inside the shared limit of 120 care XP per UTC day. Food and the feeder protect against starvation; mood and cleanliness do not.
 
 ## Your bug in My Room
 
@@ -35,9 +35,9 @@ Food increases Fed by the amount below and resets the starvation clock. All stor
 | Premium Dung Ball | 70 |
 | Artisan Moss | 75 |
 | Bug Banquet | 100 |
-| Golden Ambrosia | 100 |
+| Golden Ambrosia | 100, then kept full for 7 days |
 
-Fed normally falls 0.6 points/hour. Food has no timed protection; the feeding clock restarts when used. A bug can die after 21 days without feeding, or 21 days after its feeder runs out. A low Fed meter alone does not determine death.
+Fed normally falls 0.6 points/hour. Food has no timed protection, except Golden Ambrosia: it also works as a 7-day automatic feeder (same 60-days-ahead limit, same 12 XP per covered day). The feeding clock restarts when food is used. A bug can die after 21 days without feeding, or 21 days after its feeder runs out. A low Fed meter alone does not determine death.
 
 ## Bug toys
 
@@ -52,12 +52,12 @@ Toys are permanent purchases. Equip one toy at a time; each free **Play** action
 | Little Mirror | 10 |
 | Bug Wheel | 12 |
 | Bark Castle | 15 |
-| Disco Ball (tiny) | 15 |
+| Disco Ball (tiny) | 20 |
 
 ## Bug style and battle gear
 
 Style items are permanent cosmetics. Equip one shell colour, one hat and one accessory together. They stay until swapped or taken off, and do not alter species, needs, XP or battle strength. The first purchase in an empty equipment slot is equipped automatically; later purchases can be worn from the detail panel.
 
-Battle gear is also permanent, with one gear slot. It adds the listed 1–6% damage while equipped in Barn bouts, capped at 6%. Gear bonuses do not stack. Bouts unlock at level 5 and have a one-hour cooldown, with no money or XP at stake. Store items do not change poker cards or odds.
+Battle gear is also permanent, with one gear slot. It adds the listed 1–6% damage (Six Tiny Boots: 2.5%) while equipped in Barn bouts, capped at 6%. Gear bonuses do not stack. Bouts unlock at level 5 and have a one-hour cooldown, with no money or XP at stake. Store items do not change poker cards or odds.
 
 These explanations reflect `server/catalog/bug.js`, `server/shop.js`, `server/barn.js` and `server/engine/bout.js`. Prices, effects, caps and cooldowns are enforced on the server; changing this wording does not change the game rules.

@@ -367,6 +367,14 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     service.push(t.code, { smoke: ev });
     return { ok: true, smoke: ev };
   }));
+  // v52: spectacles (one-time use, the whole table watches; follows the gag switches).
+  api.post('/tables/:code/spectacle', needPlayer, wrap((req) => { // (not /show: that one shows your cards)
+    const t = service.getTable(req.params.code);
+    const ev = shop.spectacle(t, req.player, { item: String(req.body?.item || '') });
+    service.mutate(t.code, (tb, ctx) => recordTableMoment(tb, 'show', ev, ctx), req.player.id);
+    service.push(t.code, { show: ev });
+    return { ok: true, show: ev };
+  }));
   api.post('/tables/:code/tobacco', needPlayer, wrap((req) => {
     const t = service.getTable(req.params.code);
     shop.setSmokeOff(t, req.player, req.body?.off === true);

@@ -61,6 +61,7 @@ function oddity(id) {
   switch (id) {
     case 'odd-deed': frame(group, 'deed'); break;
     case 'odd-sheriffbadge': frame(group, 'sheriffbadge', 0.9, 0.65); break;
+    case 'odd-railroad': frame(group, 'railroad', 0.9, 0.7); break;
     case 'odd-horseshoe': {
       const arc = mesh(group, new THREE.TorusGeometry(0.24, 0.055, 6, 16, Math.PI), material('#b5a77f'), 0, 0.35, 0);
       arc.rotation.z = Math.PI;
@@ -98,6 +99,10 @@ function oddity(id) {
     }
     case 'odd-rock': {
       const rock = mesh(group, new THREE.DodecahedronGeometry(0.28, 0), material('#858080'), 0, 0.23); rock.scale.set(1.1, 0.8, 0.8);
+      break;
+    }
+    case 'odd-bigrock': { // the floor-sized sibling of odd-rock
+      const rock = mesh(group, new THREE.DodecahedronGeometry(0.5, 0), material('#7a7a82'), 0, 0.38); rock.scale.set(1.15, 0.8, 0.9);
       break;
     }
     case 'odd-telegraph': {
