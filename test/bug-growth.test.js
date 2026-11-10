@@ -121,7 +121,7 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
   for (let level = 1; level <= 10; level++) {
     RoomScene.prototype.pet.call(scene, { stage: 'creature', species: ROSTER[0].id, level });
     const sprite = scene.dynamic.children.at(-1);
-    assert.ok(Math.abs(sprite.scale.x - 0.95 * bugScale(level)) < 1e-12);
+    assert.ok(Math.abs(sprite.scale.x - 1.05 * bugScale(level)) < 1e-12);
     assert.equal(sprite.scale.x, sprite.scale.y);
     assert.equal(sprite.position.x, 2); assert.equal(sprite.position.z, -1);
     const bottom = sprite.position.y - sprite.scale.y / 2;
@@ -132,8 +132,8 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
   for (const stage of ['egg', 'dead']) {
     RoomScene.prototype.pet.call(scene, { stage, level: 1 });
     const sprite = scene.dynamic.children.at(-1);
-    assert.deepEqual(sprite.scale.toArray(), [0.95, 0.95, 1]);
-    assert.deepEqual(sprite.position.toArray(), [2, 1.56, -1]);
+    assert.deepEqual(sprite.scale.toArray(), [1.05, 1.05, 1]);
+    assert.deepEqual(sprite.position.toArray(), [2, 0.74 + 1.05 / 2, -1]);
   }
   scene.dynamic.children.forEach(sprite => { sprite.material.map.dispose(); sprite.material.dispose(); });
 });

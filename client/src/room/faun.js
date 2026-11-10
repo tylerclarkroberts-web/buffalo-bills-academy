@@ -6,7 +6,7 @@ export function roomFaun() {
   const group = new THREE.Group(); group.name = 'room-faun';
   const mat = color => new THREE.MeshLambertMaterial({ color, flatShading: true });
   const skin = mat('#c69b76'), hair = mat('#493326'), fur = mat('#69513c'), darkFur = mat('#513d2e');
-  const hoof = mat('#302c29'), horn = mat('#bdac84'), scarf = mat('#a12c32'), eye = mat('#241f1a');
+  const hoof = mat('#3b332e'), horn = mat('#bdac84'), scarf = mat('#a12c32'), eye = mat('#241f1a');
   const cloth = mat('#655c50'), snow = mat('#dddcd2'), paper = mat('#987a54'), string = mat('#d4c2a0');
   const innerEar = mat('#a97c63'), iris = mat('#5c735e'), stitch = mat('#bc4648');
   const add = (parent, geometry, material, x = 0, y = 0, z = 0) => {
@@ -24,21 +24,25 @@ export function roomFaun() {
   for (const side of [-1, 1]) {
     const leg = new THREE.Group(); leg.name = 'faun-goat-leg'; group.add(leg);
     const x = side * 0.14;
-    limb(leg, [x, 1.02, 0], [x * 1.12, 0.58, 0.09], 0.16, fur);
-    limb(leg, [x * 1.12, 0.6, 0.09], [x, 0.25, -0.07], 0.105, darkFur);
-    limb(leg, [x, 0.3, -0.07], [x, 0.18, 0.06], 0.065, fur);
+    // Shaggy haunches over a backward-bending shank, ending in a split hoof.
+    limb(leg, [x, 1.02, 0], [x * 1.15, 0.58, 0.1], 0.21, fur);
+    limb(leg, [x * 1.15, 0.6, 0.1], [x, 0.26, -0.07], 0.14, darkFur);
+    limb(leg, [x, 0.3, -0.07], [x, 0.18, 0.06], 0.09, fur);
     for (const toe of [-1, 1]) {
-      const foot = box(leg, 0.075, 0.24, 0.24, hoof, x + toe * 0.043, 0.12, 0.09); foot.name = 'faun-hoof';
+      const foot = box(leg, 0.085, 0.2, 0.27, hoof, x + toe * 0.05, 0.1, 0.1); foot.name = 'faun-hoof';
     }
-    for (const y of [0.63, 0.76, 0.89]) {
-      const tuft = add(leg, new THREE.ConeGeometry(0.095, 0.18, 5), darkFur, x + side * 0.08, y, 0.08);
-      tuft.rotation.z = Math.PI + side * 0.2;
+    for (const [y, out] of [[0.5, 0.06], [0.66, 0.11], [0.82, 0.13], [0.96, 0.12]]) {
+      const tuft = add(leg, new THREE.ConeGeometry(0.12, 0.24, 5), darkFur, x + side * out, y, 0.06);
+      tuft.rotation.z = Math.PI + side * 0.25;
     }
     // Hip pivots keep the short entrance/retreat steps attached to his torso.
     leg.position.y = 1.02; for (const part of leg.children) part.position.y -= 1.02;
   }
-  const torso = add(group, new THREE.CylinderGeometry(0.265, 0.2, 0.52, 8), skin, 0, 1.24);
+  const hips = add(group, new THREE.CylinderGeometry(0.24, 0.31, 0.3, 7), fur, 0, 1.0); hips.scale.z = 0.8;
+  add(group, new THREE.ConeGeometry(0.07, 0.2, 5), darkFur, 0, 1.0, -0.21).rotation.x = -2.2;
+  const torso = add(group, new THREE.CylinderGeometry(0.275, 0.2, 0.52, 8), skin, 0, 1.24);
   torso.scale.z = 0.7;
+  for (const side of [-1, 1]) add(group, new THREE.IcosahedronGeometry(0.105, 0), skin, side * 0.25, 1.44, 0);
   limb(group, [-0.25, 1.43, 0], [-0.37, 1.1, 0.12], 0.09, skin);
   limb(group, [-0.37, 1.1, 0.12], [-0.49, 1.25, 0.21], 0.07, skin);
   limb(group, [0.25, 1.43, 0], [0.36, 1.13, 0.1], 0.09, skin);
@@ -100,15 +104,20 @@ export function roomFaun() {
   const folds = [-1, 1].map(side => new THREE.BoxGeometry(0.16, 0.006, 0.004).rotateZ(-side * 0.45).translate(side * 0.11, 0.075, 0.118));
   add(parcel, mergeGeometries(folds), cloth); folds.forEach(geometry => geometry.dispose());
 
-  const umbrella = new THREE.Group(); umbrella.name = 'faun-umbrella'; umbrella.position.set(-0.51, 1.23, 0.18); umbrella.rotation.z = 0.35; group.add(umbrella);
-  add(umbrella, new THREE.CylinderGeometry(0.015, 0.015, 1.42, 6), hair, 0, 0.3);
-  add(umbrella, new THREE.ConeGeometry(0.3, 0.88, 8), cloth, 0, 0.52);
+  // An open umbrella over one shoulder, still carrying snow from wherever he came from.
+  const umbrella = new THREE.Group(); umbrella.name = 'faun-umbrella'; umbrella.position.set(-0.51, 1.23, 0.18); umbrella.rotation.z = 0.28; group.add(umbrella);
+  add(umbrella, new THREE.CylinderGeometry(0.016, 0.016, 1.2, 6), hair, 0, 0.36);
+  const hook = add(umbrella, new THREE.TorusGeometry(0.05, 0.016, 5, 8, Math.PI), hair, 0.05, -0.24); hook.rotation.z = Math.PI;
+  add(umbrella, new THREE.ConeGeometry(0.4, 0.22, 8, 1, true), new THREE.MeshLambertMaterial({ color: '#566a63', flatShading: true, side: THREE.DoubleSide }), 0, 0.84);
+  add(umbrella, new THREE.ConeGeometry(0.22, 0.12, 8), snow, 0, 0.9);
+  add(umbrella, new THREE.ConeGeometry(0.025, 0.1, 5), hair, 0, 1.0);
+  const ribs = [], drifts = [];
   for (let i = 0; i < 8; i++) {
-    const angle = i * Math.PI / 4;
-    limb(umbrella, [0, 0.96, 0], [Math.cos(angle) * 0.3, 0.08, Math.sin(angle) * 0.3], 0.009, hair);
-    const y = i % 2 ? 0.4 : 0.62, radius = 0.3 * (0.96 - y) / 0.88;
-    const dust = add(umbrella, new THREE.IcosahedronGeometry(0.065, 0), snow, Math.cos(angle) * radius, y, Math.sin(angle) * radius);
-    dust.scale.set(0.8, 2.2, 0.8);
+    const angle = i * Math.PI / 4, x = Math.cos(angle), z = Math.sin(angle);
+    ribs.push(new THREE.BoxGeometry(0.012, 0.012, 0.45).rotateX(0.5).rotateY(Math.PI / 2 - angle).translate(x * 0.2, 0.835, z * 0.2));
+    if (i % 2) drifts.push(new THREE.IcosahedronGeometry(0.05, 0).scale(1.5, 0.6, 1.5).translate(x * 0.29, 0.8, z * 0.29));
   }
+  add(umbrella, mergeGeometries(ribs), hair); ribs.forEach(geometry => geometry.dispose());
+  add(umbrella, mergeGeometries(drifts), snow); drifts.forEach(geometry => geometry.dispose());
   return group;
 }

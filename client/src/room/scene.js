@@ -10,7 +10,7 @@ import { pixGrid } from '../store/pixart.js';
 import { spriteCanvas, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, wallDisplayPosition, residentStep, faunVisitRoute } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#8c6243', 'bunkhouse-sage': '#6d785b', 'bunkhouse-clay': '#9a6650' };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -97,6 +97,7 @@ function oddity(id) {
     case 'odd-sheriffbadge': frame(group, 'sheriffbadge', 0.9, 0.65); break;
     case 'odd-railroad': frame(group, 'railroad', 0.9, 0.7); break;
     case 'odd-horseshoe': {
+      box(group, 0.8, 0.86, 0.04, '#5c4028', 0, 0.42, -0.03); box(group, 0.7, 0.76, 0.045, '#7d5a38', 0, 0.42, -0.028);
       const arc = mesh(group, new THREE.TorusGeometry(0.24, 0.055, 6, 16, Math.PI), material('#b5a77f'), 0, 0.35, 0);
       arc.rotation.z = Math.PI;
       box(group, 0.11, 0.3, 0.1, '#b5a77f', -0.24, 0.5); box(group, 0.11, 0.3, 0.1, '#b5a77f', 0.24, 0.5);
@@ -127,6 +128,9 @@ function oddity(id) {
         for (let i = 0; i < 8; i++) ctx.fillRect(15, 22 + i * 29, i % 2 ? 28 : 52, 5);
       });
       mesh(syringe, new THREE.PlaneGeometry(0.12, 0.34), new THREE.MeshBasicMaterial({ map: scale, transparent: true, depthWrite: false }), 0, 0.3, 0.074);
+      // A velvet-lined cradle, because it is extra prepared.
+      box(group, 0.62, 0.05, 0.26, '#6b4a30', 0.1, 0.025); box(group, 0.5, 0.02, 0.16, '#7c3a3a', 0.1, 0.055);
+      syringe.position.set(-0.02, 0.05, 0);
       break;
     }
     case 'odd-anvil': {
@@ -135,6 +139,7 @@ function oddity(id) {
       box(group, 0.9, 0.2, 0.38, '#7b7f83', 0, 0.66);
       const horn = mesh(group, new THREE.ConeGeometry(0.2, 0.48, 4), material('#7b7f83'), 0.64, 0.66); horn.rotation.z = -Math.PI / 2;
       const hardy = mesh(group, new THREE.PlaneGeometry(0.08, 0.08), material('#33363a'), -0.27, 0.761, 0.06); hardy.rotation.x = -Math.PI / 2;
+      box(group, 0.5, 0.045, 0.05, '#8a623c', 0.02, 0.785, -0.06).rotation.y = 0.5; box(group, 0.1, 0.1, 0.2, '#35383c', 0.22, 0.81, -0.17).rotation.y = 0.5;
       // Center the horn and heel inside the floor display's 1.3-unit footprint.
       group.children.forEach(part => { part.position.x -= 0.215; }); group.scale.setScalar(0.95);
       break;
@@ -153,7 +158,12 @@ function oddity(id) {
         colors.push(color.r, color.g, color.b);
       }
       geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      const rock = mesh(group, geometry, material('#ffffff', { vertexColors: true }), 0, big ? 0.38 : 0.23); rock.scale.set(big ? 1.15 : 1.1, 0.8, big ? 0.9 : 0.8);
+      const rock = mesh(group, geometry, material('#ffffff', { vertexColors: true }), 0, big ? 0.38 : 0.29); rock.scale.set(big ? 1.05 : 1.1, 0.8, big ? 0.8 : 0.8);
+      if (big) {
+        // The sibling gets a museum rope. The museum has no other funding.
+        for (const x of [-0.6, 0.6]) { cylinder(group, 0.025, 0.035, 0.62, '#c4a05d', x, 0.31, 0.4, 8); mesh(group, new THREE.IcosahedronGeometry(0.045, 0), material('#d9bd7c'), x, 0.64, 0.4); }
+        box(group, 1.16, 0.035, 0.035, '#7c3a3a', 0, 0.5, 0.4);
+      } else { box(group, 0.62, 0.06, 0.5, '#5c4028', 0, 0.03); box(group, 0.2, 0.05, 0.012, '#d9bd7c', 0, 0.035, 0.251); }
       break;
     }
     case 'odd-telegraph': {
@@ -196,9 +206,9 @@ function oddity(id) {
 
 /** A clickable cutaway. React owns the controls; room activity is cosmetic. */
 export class RoomScene {
-  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onError } = {}) {
+  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onZoom, onError } = {}) {
     this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onMoveFurniture = onMoveFurniture; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
-    this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition;
+    this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition; this.onZoom = onZoom; this.pan = [0, 0];
     this.onSpeech = onSpeech; this.activity = new RoomActivity();
     this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
@@ -221,6 +231,15 @@ export class RoomScene {
       else if (e.target === this.canvas && this.editing && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); this.moveSelected(e.key); }
     };
     this.lost = e => { e.preventDefault(); this.cancelPointer(); this.failed = true; this.stopActivity(); this.onError?.(new Error('The 3D view is unavailable. Use the room controls below.')); };
+    // The wheel zooms only where it cannot be mistaken for scrolling the page.
+    this.wheel = e => {
+      const page = this.canvas.closest?.('.room-page'), step = e.deltaY < 0 ? 0.25 : -0.25, zoom = this.view.zoom + step;
+      if (this.failed || e.ctrlKey || zoom < 1 || zoom > ROOM_VIEW_LIMITS.maxZoom || (this.view.zoom <= 1 && page && page.scrollHeight > page.clientHeight + 1)) return;
+      e.preventDefault();
+      this.wheelSum = (this.wheelSum || 0) + e.deltaY;
+      if (Math.abs(this.wheelSum) >= 60) { this.wheelSum = 0; this.onZoom?.(step); }
+    };
+    canvas.addEventListener('wheel', this.wheel, { passive: false });
     this.visible = () => this.visibilityChanged();
     this.motionChange = () => this.render();
     this.motion.addEventListener('change', this.motionChange);
@@ -243,14 +262,19 @@ export class RoomScene {
     const w = Math.max(1, this.canvas.clientWidth), h = Math.max(1, this.canvas.clientHeight);
     const size = roomRenderSize(w, h, window.devicePixelRatio);
     this.renderer.setSize(size.width, size.height, false);
-    this.camera = makeRoomCamera(w / h, this.view); this.applyCutaway(); this.render();
+    this.camera = makeRoomCamera(w / h, this.view, this.pan); this.applyCutaway(); this.render();
   }
   setView(view) {
     if (this.disposed) return;
     this.view = roomView(view);
+    if (this.view.zoom <= 1) this.pan = [0, 0];
+    this.touchMode();
     this.hovered = false; this.onWealthHover?.(false);
     this.resize();
   }
+  /** Dragging pans a zoomed view and moves furniture while editing; otherwise touches scroll the page. */
+  touchMode() { if (this.canvas?.style) this.canvas.style.touchAction = this.editing || this.view?.zoom > 1 ? 'none' : 'pan-y'; }
+  movable() { return { ...this.fixtures, wardrobe: this.wardrobe, rug: this.rug, couch: this.couch }; }
   pointerDown(e) {
     if (e.isPrimary === false || e.button !== 0 || this.disposed || this.failed) return;
     this.cancelPointer();
@@ -275,6 +299,7 @@ export class RoomScene {
       const rect = this.canvas.getBoundingClientRect();
       this.dragCandidate.grab = { x: e.clientX - rect.left - (point.x + 1) * rect.width / 2, y: e.clientY - rect.top - (1 - point.y) * rect.height / 2 };
     }
+    if (!this.dragCandidate && this.view?.zoom > 1) this.panFrom = [e.clientX, e.clientY];
   }
   /** Keep the grabbed point under the pointer, even when picking the top of tall furniture. */
   dragPlace(e) {
@@ -306,12 +331,20 @@ export class RoomScene {
   }
   pointerMove(e) {
     if (this.pointerId !== undefined && e.pointerId !== this.pointerId) return;
+    if (this.panFrom && (this.panning || Math.hypot(e.clientX - this.pointerStart[0], e.clientY - this.pointerStart[1]) > 6)) {
+      const rect = this.canvas.getBoundingClientRect(), slack = this.view.zoom - 1, side = value => Math.max(-1, Math.min(1, value));
+      if (!this.panning) { this.panning = true; try { this.canvas.setPointerCapture?.(e.pointerId); } catch { /* panning works without capture */ } this.canvas.style.cursor = 'grabbing'; }
+      this.pan = [side(this.pan[0] - (e.clientX - this.panFrom[0]) * 2 / (slack * rect.width)), side(this.pan[1] + (e.clientY - this.panFrom[1]) * 2 / (slack * rect.height))];
+      this.panFrom = [e.clientX, e.clientY];
+      this.camera = makeRoomCamera(rect.width / rect.height, this.view, this.pan); this.render();
+      return;
+    }
     if (this.dragCandidate && this.pointerStart && Math.hypot(e.clientX - this.pointerStart[0], e.clientY - this.pointerStart[1]) > 6) {
       if (!this.editing || this.disposed || this.failed) { this.cancelPointer(); return; }
       this.dragging = this.dragCandidate; this.dragCandidate = null;
       try { this.canvas.setPointerCapture?.(e.pointerId); } catch { this.cancelPointer(); return; }
       const id = this.dragging.furniture || this.dragging.id;
-      const fixture = { ...this.fixtures, wardrobe: this.wardrobe, rug: this.rug }[id];
+      const fixture = this.movable()[id];
       this.dragging.objects = [fixture, ...this.dynamic.children.filter(object => object.userData.dragId === id)].filter(Boolean)
         .map(object => ({ object, position: object.position.clone(), rotation: object.rotation.clone() }));
       this.highlights.visible = false;
@@ -330,6 +363,7 @@ export class RoomScene {
   }
   pointerUp(e) {
     if (this.pointerId !== undefined && e.pointerId !== this.pointerId) return;
+    if (this.panning) { this.cancelPointer(); return; }
     const start = this.pointerStart, dragging = this.dragging;
     const live = dragging && this.editing && !this.failed && !this.disposed;
     if (live && dragging.furniture) {
@@ -352,7 +386,7 @@ export class RoomScene {
     this.moveDragObjects();
     if (this.highlights) this.highlights.visible = true;
     if (this.pointerId !== undefined && this.canvas?.hasPointerCapture?.(this.pointerId)) this.canvas.releasePointerCapture(this.pointerId);
-    this.pointerStart = null; this.pointerId = undefined; this.dragging = null; this.dragCandidate = null;
+    this.pointerStart = null; this.pointerId = undefined; this.dragging = null; this.dragCandidate = null; this.panFrom = null; this.panning = false;
     if (this.canvas?.style) this.canvas.style.cursor = '';
     if (this.dragPreview?.children.length) { disposeObjects(this.dragPreview); this.dragPreview.clear(); this.render(); }
     this.hovered = false; this.onWealthHover?.(false);
@@ -419,7 +453,7 @@ export class RoomScene {
     const r = this.canvas.getBoundingClientRect(); if (!r.width || !r.height) return null;
     this.raycaster.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, 1 - (y - r.top) / r.height * 2), this.camera);
     const picks = [...this.picks, ...(this.shelfItemPicks || [])];
-    const targets = this.editing ? [...picks, ...this.walls] : picks.filter(target => target.userData.selection.kind !== 'surface');
+    const targets = this.editing ? [...picks, ...this.walls] : picks.filter(target => !['surface', 'couch'].includes(target.userData.selection.kind));
     const hit = this.raycaster.intersectObjects(targets.filter(target => shown(target) && !(this.wagon && target.userData.selection.anchorId === 'window')), false)[0];
     const wagonHit = this.wagon && this.raycaster.intersectObject(this.wagon, true)[0];
     if (wagonHit && (!hit || wagonHit.distance < hit.distance)) return { kind: 'anchor', anchorId: 'window' };
@@ -441,13 +475,13 @@ export class RoomScene {
     if (active && !this.editing) this.stopActivity();
     this.editing = !!active; this.selection = selection;
     if (!this.editing) this.cancelPointer();
-    if (this.canvas?.style) this.canvas.style.touchAction = this.editing ? 'none' : 'pan-y';
+    this.touchMode();
     disposeObjects(this.highlights); this.highlights.clear();
     this.wallMaterial.emissive.set(this.editing ? '#8b6529' : '#000000');
     this.wallMaterial.emissiveIntensity = this.editing ? (selection?.kind === 'finish' ? 0.35 : 0.12) : 0;
     if (this.editing) for (const target of this.picks) {
       const chosen = target.userData.selection;
-      if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface'].includes(chosen.kind)) continue;
+      if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface', 'couch'].includes(chosen.kind)) continue;
       const selected = chosen.kind === selection?.kind && (chosen.kind !== 'anchor' || chosen.anchorId === selection.anchorId) && (chosen.kind !== 'surface' || chosen.surface === selection.surface);
       const glow = new THREE.Group(); glow.position.copy(target.position); glow.rotation.copy(target.rotation); glow.scale.copy(target.scale);
       glow.userData.selection = chosen; glow.userData.wallSide = target.userData.wallSide;
@@ -545,15 +579,26 @@ export class RoomScene {
     this.table(desk, 0, 0, 1.8, 0.9, 0.9);
     box(desk, 1.5, 0.3, 0.07, '#65462e', 0, 0.67, 0.41);
     cylinder(desk, 0.035, 0.035, 0.06, '#c4a05d', 0, 0.67, 0.47).rotation.x = Math.PI / 2;
+    // A tall glass case on a low stand: brass frame, glass lid and a little landscaping for the resident.
     const terrarium = this.fixture();
-    this.table(terrarium, 0, 0, 1.5, 1.05, 0.85);
-    box(terrarium, 1.55, 0.07, 1.1, '#a5a16d', 0, 0.97);
-    const glass = material('#b3d2b7', { transparent: true, opacity: 0.13, depthWrite: false });
-    mesh(terrarium, new THREE.BoxGeometry(1.5, 1.05, 1.05), glass, 0, 1.55);
-    for (const x of [-0.75, 0.75]) for (const z of [-0.525, 0.525]) box(terrarium, 0.045, 1.08, 0.045, '#c7a66b', x, 1.55, z);
-    box(terrarium, 1.6, 0.12, 1.15, '#5c5537', 0, 2.12);
+    this.table(terrarium, 0, 0, 1.5, 1.05, 0.5);
+    box(terrarium, 1.58, 0.08, 1.12, '#6b6a45', 0, 0.61);
+    box(terrarium, 1.5, 0.1, 1.04, '#7a5c3c', 0, 0.7);
+    const glass = material('#b3d2b7', { transparent: true, opacity: 0.15, depthWrite: false });
+    mesh(terrarium, new THREE.BoxGeometry(1.54, 1.4, 1.08), glass, 0, 1.35);
+    mesh(terrarium, new THREE.BoxGeometry(1.54, 0.02, 1.08), material('#dcefe6', { transparent: true, opacity: 0.3, depthWrite: false }), 0, 2.06);
+    for (const x of [-0.77, 0.77]) for (const z of [-0.54, 0.54]) box(terrarium, 0.05, 1.44, 0.05, '#c7a66b', x, 1.35, z);
+    for (const y of [0.67, 2.07]) {
+      for (const z of [-0.54, 0.54]) box(terrarium, 1.59, 0.05, 0.05, '#c7a66b', 0, y, z);
+      for (const x of [-0.77, 0.77]) box(terrarium, 0.05, 0.05, 1.13, '#c7a66b', x, y, 0);
+    }
+    cylinder(terrarium, 0.05, 0.07, 0.06, '#d9bd7c', 0, 2.11);
+    mesh(terrarium, new THREE.DodecahedronGeometry(0.17, 0), material('#8a8780'), -0.48, 0.85, -0.26).scale.y = 0.7;
+    cylinder(terrarium, 0.15, 0.13, 0.05, '#8fb4b0', 0.42, 0.775, 0.3);
+    cylinder(terrarium, 0.035, 0.05, 0.75, '#5d432c', 0.5, 1.02, -0.3, 6).rotation.z = 0.5;
+    for (const [x, y, z, lean] of [[0.3, 1.2, -0.3, 0.9], [0.52, 1.32, -0.24, -0.5], [0.62, 1.05, -0.36, -1.1]]) mesh(terrarium, new THREE.ConeGeometry(0.1, 0.34, 5), material('#5f7d4a'), x, y, z).rotation.z = lean;
     this.wardrobe = this.fixture();
-    this.rug = this.fixture();
+    this.rug = this.fixture(); this.couch = this.fixture();
     const moneyTable = this.fixture();
     this.fixtures = { desk, pet: terrarium, wealth: moneyTable };
     this.table(moneyTable, 0, 0, 2.2, 1.3, 0.95);
@@ -577,8 +622,8 @@ export class RoomScene {
       box(side, 0.24, 0.09, length, trim, 4.08, 0.63, z);
       for (let y = 0.18; y < 0.55; y += 0.18) box(side, 0.16, 0.018, length, dark, 4.08, y, z);
     }
-    const glass = new THREE.MeshBasicMaterial({ color: '#c1d5cb', transparent: true, opacity: 0.075, depthWrite: false, side: THREE.DoubleSide });
-    for (const [from, to] of [[-2.98, -1.15], [-1.15, 0.78]]) {
+    const glass = new THREE.MeshBasicMaterial({ color: '#c1d5cb', transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide });
+    for (const [from, to] of [[-2.98, -1.15], [-1.15, 0.78], [2.27, 2.98]]) {
       const z = (from + to) / 2, length = to - from;
       mesh(side, new THREE.BoxGeometry(0.02, doorTop - 0.72, length - 0.12), glass, 4.08, (doorTop + 0.72) / 2, z);
       for (const y of [0.72, (doorTop + 0.72) / 2, doorTop]) box(side, 0.1, 0.06, length, trim, 4.08, y, z);
@@ -628,6 +673,23 @@ export class RoomScene {
       if (finishes.wardrobe.typeId === 'classic') box(this.wardrobe, 0.54, 0.85, 0.025, '#a8b5a2', -0.35, 1.65, 0.53);
       else { box(this.wardrobe, 1.65, 0.12, 0.96, color, 0, 2.52); box(this.wardrobe, 1.6, 0.1, 0.93, color, 0, 0.04); }
     }
+    const couchKey = JSON.stringify(finishes.couch);
+    if (this.couch && finishes.couch && this.couch.userData.finishKey !== couchKey) {
+      disposeObjects(this.couch); this.couch.clear(); this.couch.userData.finishKey = couchKey;
+      const c = this.couch, color = finishColor('couch', finishes.couch), bench = finishes.couch.typeId === 'bench', wood = '#6b4a30', frame = bench ? wood : shade(color, 0.7);
+      for (const x of [-1.05, 1.05]) for (const z of [-0.38, 0.38]) box(c, 0.1, 0.16, 0.1, '#49321f', x, 0.08, z);
+      box(c, 2.3, 0.26, 0.92, frame, 0, 0.29, 0);
+      for (const x of [-0.52, 0.52]) box(c, 1.02, 0.18, 0.74, color, x, 0.51, 0.08);
+      box(c, bench ? 2.3 : 2.08, 0.62, 0.16, bench ? wood : color, 0, 0.82, -0.4).rotation.x = -0.1;
+      for (const side of [-1, 1]) {
+        box(c, 0.16, bench ? 0.52 : 0.4, 0.92, frame, side * 1.12, bench ? 0.66 : 0.6, 0);
+        if (bench) box(c, 0.2, 0.05, 0.96, shade(wood, 1.25), side * 1.12, 0.94, 0);
+        else cylinder(c, 0.13, 0.13, 0.94, color, side * 1.12, 0.82, 0, 10).rotation.x = Math.PI / 2;
+      }
+      if (bench) box(c, 1.96, 0.36, 0.07, color, 0, 0.84, -0.3).rotation.x = -0.1;
+      else for (const x of [-0.72, -0.24, 0.24, 0.72]) for (const y of [0.72, 0.96]) box(c, 0.05, 0.05, 0.02, shade(color, 0.55), x, y, -0.31 - (y - 0.82) * 0.1);
+      box(c, 0.42, 0.34, 0.12, '#d2b56f', 0.76, 0.78, -0.22).rotation.set(-0.3, 0, 0.22);
+    }
     const rugKey = JSON.stringify(finishes.rug);
     if (this.rug && this.rug.userData.finishKey !== rugKey) {
       disposeObjects(this.rug); this.rug.clear(); this.rug.userData.finishKey = rugKey;
@@ -669,7 +731,7 @@ export class RoomScene {
     this.shelves = roomShelves(view.shelves);
     this.wallDisplays = roomWallDisplays(view.wallDisplays, this.shelves);
     const furniture = this.furniture = roomFurniture(view.furniture), turn = id => furniture[id].r * Math.PI / 2;
-    for (const [id, group] of Object.entries({ ...this.fixtures, wardrobe: this.wardrobe, rug: this.rug })) {
+    for (const [id, group] of Object.entries(this.movable())) {
       if (!group) continue;
       group.position.set(furniture[id].x, id === 'rug' ? ROOM_FIXTURES.rug[1] : 0, furniture[id].z);
       group.rotation.y = turn(id); group.visible = !furniture[id].off;
@@ -702,7 +764,8 @@ export class RoomScene {
     this.pet(view.pet);
     this.resident(view.owner, generation);
     this.wealth(view.wealthStage);
-    this.pick([furniture.pet.x, 1.5, furniture.pet.z], [1.65, 1.35, 1.2], { kind: 'pet' }, turn('pet'));
+    this.pick([furniture.pet.x, 1.36, furniture.pet.z], [1.65, 1.55, 1.2], { kind: 'pet' }, turn('pet'));
+    if (!furniture.couch.off) this.pick([furniture.couch.x, 0.58, furniture.couch.z], [2.4, 1.1, 1], { kind: 'couch' }, turn('couch'));
     if (!furniture.wardrobe.off) this.pick([furniture.wardrobe.x, 1.3, furniture.wardrobe.z], [1.7, 2.6, 1], { kind: 'wardrobe' }, turn('wardrobe'));
     this.pick([furniture.wealth.x, 1.4, furniture.wealth.z], [2.1, 1, 1.25], { kind: 'wealth' }, turn('wealth'));
     this.pick([0, -0.08, 0], [8.5 * ROOM_FLOOR_SCALE, 0.14, 6.5 * ROOM_FLOOR_SCALE], { kind: 'surface', surface: 'floor' });
@@ -719,21 +782,24 @@ export class RoomScene {
     }, true);
     if (map) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-      const size = 0.95 * (pet.stage === 'creature' ? bugScale(pet.level) : 1);
-      sprite.position.set(this.furniture.pet.x, 1.56 - (0.95 - size) / 2, this.furniture.pet.z); sprite.scale.set(size, size, 1); this.dynamic.add(sprite);
+      const size = 1.05 * (pet.stage === 'creature' ? bugScale(pet.level) : 1);
+      sprite.position.set(this.furniture.pet.x, 0.74 + size / 2, this.furniture.pet.z); sprite.scale.set(size, size, 1); this.dynamic.add(sprite);
       sprite.userData.dragId = 'pet';
     }
   }
   resident(owner, generation) {
-    const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.y = 0.35; this.dynamic.add(group);
+    const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.order = 'YXZ'; group.rotation.y = 0.35; this.dynamic.add(group);
     group.userData.dragId = 'rug';
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
+    this.errands = residentErrands(this.furniture); this.residentYaw = 0.35;
     const avatar = owner?.avatar, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
     this.residentLegs = [-0.14, 0.14].map(x => {
       const leg = new THREE.Group(); leg.position.set(x, 0.73, 0); group.add(leg);
-      box(leg, 0.2, 0.58, 0.24, '#3f4552', 0, -0.29); box(leg, 0.23, 0.14, 0.38, '#30231e', 0, -0.63, 0.07);
-      box(leg, 0.235, 0.035, 0.39, '#1c1c1d', 0, -0.69, 0.07); return leg;
+      box(leg, 0.2, 0.32, 0.24, '#3f4552', 0, -0.15);
+      const shin = leg.userData.knee = new THREE.Group(); shin.position.y = -0.3; leg.add(shin);
+      box(shin, 0.2, 0.3, 0.24, '#3f4552', 0, -0.14); box(shin, 0.23, 0.14, 0.38, '#30231e', 0, -0.33, 0.07);
+      box(shin, 0.235, 0.035, 0.39, '#1c1c1d', 0, -0.39, 0.07); return leg;
     });
     const body = cylinder(group, 0.33, 0.28, 0.67, shirt, 0, 1.02); body.scale.z = 0.72;
     this.residentArms = [-1, 1].map(side => {
@@ -742,6 +808,7 @@ export class RoomScene {
       cylinder(arm, 0.089, 0.085, 0.05, shade(shirt, 0.75), side * 0.03, -0.49);
       mesh(arm, new THREE.IcosahedronGeometry(0.1, 1), material(look.skin), side * 0.03, -0.58); return arm;
     });
+    this.residentNote = box(this.residentArms[1], 0.22, 0.012, 0.12, '#b3b48a', 0.03, -0.68, 0.04); this.residentNote.visible = false;
     box(group, 0.52, 0.075, 0.41, '#493526', 0, 0.75); box(group, 0.1, 0.075, 0.025, '#bda475', 0, 0.75, 0.22);
     for (const y of [0.9, 1.04, 1.18]) box(group, 0.025, 0.025, 0.02, '#d9c8a7', 0, y, 0.235);
     for (const side of [-1, 1]) { const collar = box(group, 0.13, 0.13, 0.03, shade(shirt, 1.2), side * 0.07, 1.3, 0.19); collar.rotation.z = side * 0.45; }
@@ -815,14 +882,37 @@ export class RoomScene {
     const state = active ? this.activity.state() : { text: null, faun: false };
     const t = active && !this.motion.matches ? this.activity.time / 1000 : 0;
     if (this.residentGroup) {
-      const pose = residentPose(t), route = this.residentRoute || { x: 0, z: 0 }, walking = !!(route.x || route.z);
-      if (this.residentHome && !this.dragging) this.residentGroup.position.set(this.residentHome.x + route.x * pose.offset, this.residentHome.y, this.residentHome.z + route.z * pose.offset);
+      const pose = residentPose(t), home = this.residentHome, route = this.residentRoute || { x: 0, z: 0 };
+      const errands = this.errands?.length ? this.errands : home && (route.x || route.z) ? [{ kind: 'stroll', path: [[home.x + route.x, home.z + route.z]], facing: 0.35 }] : [];
+      const errand = errands.length ? errands[pose.errand % errands.length] : null, walking = !!errand && pose.facing !== 0;
+      const sit = errand?.kind === 'sit' ? pose.act : 0, look = errand?.kind === 'inspect' ? pose.act : 0, cash = errand?.kind === 'cash', grab = cash ? pose.act : 0;
+      let aim = 0.35;
+      if (home && errand) {
+        const points = [[home.x, home.z], ...errand.path], lengths = points.slice(1).map((point, i) => Math.hypot(point[0] - points[i][0], point[1] - points[i][1]));
+        let along = pose.offset * lengths.reduce((sum, length) => sum + length, 0), leg = 0;
+        while (leg < lengths.length - 1 && along > lengths[leg]) along -= lengths[leg++];
+        const from = points[leg], to = points[leg + 1], part = lengths[leg] ? along / lengths[leg] : 0;
+        const x = from[0] + (to[0] - from[0]) * part, z = from[1] + (to[1] - from[1]) * part, heading = Math.atan2(to[0] - from[0], to[1] - from[1]);
+        if (!this.dragging) this.residentGroup.position.set(sit ? x + (errand.seat[0] - x) * sit : x, home.y - 0.4 * sit, sit ? z + (errand.seat[1] - z) * sit : z);
+        aim = pose.facing > 0 ? heading : pose.facing < 0 ? heading + Math.PI : pose.offset > 0.5 ? errand.facing : 0.35;
+      } else if (home && !this.dragging) this.residentGroup.position.copy(home);
+      // Turn toward where they are going rather than snapping round.
+      const yaw = this.residentYaw ?? 0.35;
+      this.residentYaw = t ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
       this.residentGroup.scale.y = RESIDENT_HEIGHT_SCALE * (1 + Math.sin(t * 1.5) * 0.008);
-      this.residentGroup.rotation.set(0, 0.35 + Math.sin(t * 0.35) * 0.06 + (walking ? pose.facing * 0.65 : 0), Math.sin(t * 0.7) * 0.008);
-      this.residentHead.rotation.y = pose.glance;
-      this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025;
-      this.residentLegs?.forEach((leg, i) => { leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : 0; });
-      this.residentArms?.forEach((arm, i) => { arm.rotation.x = (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035; arm.rotation.z = i ? -pose.wave * 0.65 : 0.04 * Math.sin(t * 0.8); });
+      this.residentGroup.rotation.set(look * 0.2 + grab * 0.14, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
+      this.residentHead.rotation.y = pose.glance * (1 - look);
+      this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * 0.22;
+      this.residentLegs?.forEach((leg, i) => {
+        leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : -1.45 * sit;
+        if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : 1.45 * sit;
+      });
+      // Hands behind the back to inspect, a reach for the cash table, and a wave with whatever was found there.
+      this.residentArms?.forEach((arm, i) => {
+        arm.rotation.x = (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035 + look * 0.45 - sit * 0.3 - (i ? grab * 1.2 : 0);
+        arm.rotation.z = i ? -pose.wave * 0.65 : 0.04 * Math.sin(t * 0.8);
+      });
+      if (this.residentNote) this.residentNote.visible = cash && pose.phase > 13 && pose.phase < 30;
     }
     if (this.faun.visible !== state.faun) this.lighting?.invalidate();
     this.faun.visible = state.faun;
@@ -875,7 +965,7 @@ export class RoomScene {
     cancelAnimationFrame(this.raf); this.observer.disconnect(); this.intersectionObserver?.disconnect();
     this.canvas.removeEventListener('pointerdown', this.down); this.canvas.removeEventListener('pointerup', this.up); this.canvas.removeEventListener('pointercancel', this.cancel);
     this.canvas.removeEventListener('pointermove', this.move); this.canvas.removeEventListener('pointerleave', this.cancel);
-    this.canvas.removeEventListener('webglcontextlost', this.lost); document.removeEventListener('visibilitychange', this.visible);
+    this.canvas.removeEventListener('wheel', this.wheel); this.canvas.removeEventListener('webglcontextlost', this.lost); document.removeEventListener('visibilitychange', this.visible);
     window.removeEventListener('blur', this.cancel); document.removeEventListener('keydown', this.keys);
     for (const map of Object.values(this.floorMaps || {})) if (map !== this.floor?.material.map) map.dispose();
     this.lighting?.dispose(); disposeObjects(this.scene); this.renderer.dispose();

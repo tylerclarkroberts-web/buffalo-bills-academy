@@ -76,6 +76,52 @@ export function residentStep(furniture = defaultFurniture(), shelves = [], wallD
   return { x: 0, z: 0 };
 }
 
+/**
+ * Places the resident can stroll to from the rug: the couch to sit on, the cash table to raid and furniture to inspect.
+ * Each has a `path` of floor points ending at the spot where they stand, found on a quarter-unit grid around the furniture.
+ * ponytail: low shelves are not obstacles; add their footprints if the resident starts walking through them.
+ */
+export function residentErrands(furniture = defaultFurniture()) {
+  const home = furniture.rug, live = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off);
+  const solid = live.map(id => furnitureRect(id, furniture[id]));
+  const clear = (x, z) => Math.abs(x) <= 4 * S - 0.5 && Math.abs(z) <= 3 * S - 0.45
+    && !solid.some(r => x + 0.35 > r[0] && x - 0.35 < r[2] && z + 0.3 > r[1] && z - 0.3 < r[3]);
+  const walk = (from, to) => {
+    const steps = Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / 0.2);
+    return Array.from({ length: steps + 1 }, (_, i) => i / (steps || 1)).every(part => clear(from[0] + (to[0] - from[0]) * part, from[1] + (to[1] - from[1]) * part));
+  };
+  // Breadth-first over clear floor cells, then keep only the corners a straight walk cannot skip.
+  const route = (from, to) => {
+    if (walk(from, to)) return [to];
+    const key = cell => cell.join(), start = from.map(v => Math.round(v * 4)), goal = to.map(v => Math.round(v * 4));
+    const previous = new Map([[key(start), null]]), queue = [start];
+    for (let n = 0; n < queue.length && !previous.has(key(goal)); n++) for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = [queue[n][0] + di, queue[n][1] + dj];
+      if (!previous.has(key(next)) && clear(next[0] / 4, next[1] / 4)) { previous.set(key(next), queue[n]); queue.push(next); }
+    }
+    if (!previous.has(key(goal))) return null;
+    const cells = [], path = [];
+    for (let at = goal; at; at = previous.get(key(at))) cells.unshift([at[0] / 4, at[1] / 4]);
+    for (let n = 2, anchor = from; n < cells.length; n++) if (!walk(anchor, cells[n])) { anchor = cells[n - 1]; path.push(anchor); }
+    return [...path, to];
+  };
+  const errands = [];
+  for (const [id, kind] of [['couch', 'sit'], ['pet', 'inspect'], ['wealth', 'cash'], ['desk', 'inspect'], ['floor', 'inspect'], ['wardrobe', 'inspect']]) {
+    if (!live.includes(id)) continue;
+    const place = furniture[id], rect = furnitureRect(id, place), turn = place.r * Math.PI / 2, front = [Math.round(Math.sin(turn)), Math.round(Math.cos(turn))];
+    // Doors, drawers and cushions have a front; tables can be approached from whichever side is nearest.
+    const sides = ['pet', 'wealth', 'floor'].includes(id) ? [[0, 1], [1, 0], [-1, 0], [0, -1]] : [front];
+    const spot = sides.map(([dx, dz]) => ({ dx, dz, x: place.x + dx * ((rect[2] - rect[0]) / 2 + 0.5), z: place.z + dz * ((rect[3] - rect[1]) / 2 + 0.45) }))
+      .filter(spot => Math.hypot(spot.x - home.x, spot.z - home.z) > 0.5)
+      .map(spot => ({ ...spot, path: route([home.x, home.z], [spot.x, spot.z]) })).filter(spot => spot.path)
+      .sort((a, b) => a.path.length - b.path.length || Math.hypot(a.x - home.x, a.z - home.z) - Math.hypot(b.x - home.x, b.z - home.z))[0];
+    if (!spot) continue;
+    errands.push(kind === 'sit' ? { kind, path: spot.path, facing: Math.atan2(spot.dx, spot.dz), seat: [place.x + spot.dx * 0.12, place.z + spot.dz * 0.12] }
+      : { kind, path: spot.path, facing: Math.atan2(-spot.dx, -spot.dz) });
+  }
+  return errands;
+}
+
 /** Project onto the floor, including cropped furniture origins; the caller bounds the actual pointer. */
 export function floorPoint(camera, rect, x, y) {
   if (!rect.width || !rect.height) return null;
@@ -115,7 +161,7 @@ export function roomRenderSize(width, height, pixelRatio = 1) {
 export const roomWallVisibility = position => ({ back: position.z >= -3 * S, left: position.x >= -4 * S });
 
 /** Fit the full room and yard at any angle before applying zoom. */
-export function makeRoomCamera(aspect, view = {}) {
+export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
   const { rotation, zoom } = roomView(view);
   const turn = rotation * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 60);
@@ -133,8 +179,11 @@ export function makeRoomCamera(aspect, view = {}) {
   const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   const halfH = Math.max((maxY - minY) / 2, (maxX - minX) / (2 * a)) * 1.06;
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  camera.left = cx - halfH * a; camera.right = cx + halfH * a;
-  camera.top = cy + halfH; camera.bottom = cy - halfH;
+  // Zooming in leaves room to slide the frame; pan is -1..1 of that slack, so 100% always shows everything.
+  const slack = 1 - 1 / Math.max(1, zoom), side = value => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+  const px = cx + side(pan?.[0]) * halfH * a * slack, py = cy + side(pan?.[1]) * halfH * slack;
+  camera.left = px - halfH * a; camera.right = px + halfH * a;
+  camera.top = py + halfH; camera.bottom = py - halfH;
   camera.zoom = zoom;
   camera.updateProjectionMatrix();
   return camera;

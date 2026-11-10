@@ -97,7 +97,7 @@ export function wallMountsFit(shelves, wallDisplays, furniture) {
     // Include wardrobe trim/handles, desk decorations and the taller resident's hat, regardless of current styling.
     const pad = id === 'wardrobe' ? [0.075, 0.175] : id === 'desk' ? [0, 0.075] : [0, 0];
     if (place.r % 2) pad.reverse();
-    const height = { wardrobe: 2.6, pet: 2.2, wealth: 1.8, desk: 1.7, floor: 0.9, rug: 2.95 }[id];
+    const height = { wardrobe: 2.6, pet: 2.2, wealth: 1.8, desk: 1.7, floor: 0.9, rug: 2.95, couch: 1.15 }[id];
     return [[rect[0] - pad[0], 0, rect[1] - pad[1]], [rect[2] + pad[0], height, rect[3] + pad[1]]];
   }) : [];
   return boxes.every((a, i) => boxes.slice(i + 1).every(b => !intersects(a, b)) && furnitureBoxes.every(b => !intersects(a, b)));
@@ -119,6 +119,11 @@ export const ROOM_FINISHES = {
     types: [{ id: 'classic', name: 'Classic wardrobe' }, { id: 'paneled', name: 'Paneled wardrobe' }],
     colors: [{ id: 'walnut', name: 'Walnut', color: '#805637' }, { id: 'honey', name: 'Honey pine', color: '#ba8951' }, { id: 'sage', name: 'Sage', color: '#6d785b' }, { id: 'clay', name: 'Clay', color: '#9a6650' }],
     default: { typeId: 'classic', colorId: 'walnut' },
+  },
+  couch: {
+    types: [{ id: 'settee', name: 'Tufted settee' }, { id: 'bench', name: 'Bunkhouse bench' }],
+    colors: [{ id: 'oxblood', name: 'Oxblood', color: '#7c3a3a' }, { id: 'sage', name: 'Sage', color: '#66755a' }, { id: 'indigo', name: 'Indigo', color: '#3d5273' }, { id: 'saddle', name: 'Saddle tan', color: '#a8743f' }],
+    default: { typeId: 'settee', colorId: 'oxblood' },
   },
   shelf: {
     types: [{ id: 'plank', name: 'Plain shelf' }, { id: 'braced', name: 'Braced shelf' }],
@@ -144,23 +149,26 @@ export function roomShelves(value) {
     return [{ id: shelf.id, spotId: shelf.spotId, ...finishOf('shelf', shelf), ...(typeof shelf.sizeId === 'string' && Object.hasOwn(ROOM_SHELF_SIZES, shelf.sizeId) ? { sizeId: shelf.sizeId } : {}) }];
   });
 }
-export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe'].map(kind => [kind, finishOf(kind, value?.[kind])]));
+export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe', 'couch'].map(kind => [kind, finishOf(kind, value?.[kind])]));
 
-/** The room and yard keep their original furniture sizes on floors scaled to 1.75x their first area. */
-export const ROOM_FLOOR_SCALE = Math.sqrt(1.75);
+/** The room and yard keep their original furniture sizes on floors scaled to 2.1x their first area. */
+export const ROOM_FLOOR_SCALE = Math.sqrt(2.1);
+/** Saved rooms carry this marker; records without it were arranged on the earlier 1.75x floor. */
+export const ROOM_PLAN = 2;
 const S = ROOM_FLOOR_SCALE, cm = n => Math.round(n * 100) / 100;
 /**
  * Movable furniture in scene units: footprint [width, depth] and default centre [x, z].
  * `floor`, `window` and `desk` share their display-spot IDs. Flat pieces may sit under others.
  */
 export const ROOM_FURNITURE = {
-  desk: { label: 'Writing desk', size: [1.8, 0.9], home: [cm(-0.55 * S), cm(-3 * S + 1.1)], removable: true },
+  desk: { label: 'Writing desk', size: [1.8, 0.9], home: [cm(0.75 * S), cm(-3 * S + 1.1)], removable: true },
   pet: { label: 'Terrarium', size: [1.6, 1.15], home: [cm(-2.15 * S), cm(1.25 * S)] },
   wardrobe: { label: 'Wardrobe', size: [1.5, 0.85], home: [cm(4 * S - 0.75), cm(-3 * S + 0.5)], removable: true },
   wealth: { label: 'Cash table', size: [2.2, 1.3], home: [cm(2.25 * S), cm(1.45 * S)] },
   rug: { label: 'Rug', size: [3.5, 2.1], home: [cm(0.2 * S), cm(1.3 * S)], flat: true },
   floor: { label: 'Floor display', size: [1.3, 0.9], home: [cm(-0.55 * S), cm(-0.65 * S)] },
   window: { label: 'Yard display', size: [2.8, 2.05], home: [cm(6.2 * S), cm(-0.3 * S)], yard: true },
+  couch: { label: 'Couch', size: [2.4, 1], home: [cm(-1.5 * S), cm(-3 * S + 0.6)], removable: true },
 };
 // Rectangles are [minX, minZ, maxX, maxZ]. The yard area stops short of the fence and the stepping-stone path.
 const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S];
@@ -204,6 +212,28 @@ export function furnitureValid(value) {
   return Object.keys(out).every(id => furnitureFits(out, id)) ? out : null;
 }
 export const roomFurniture = value => furnitureValid(value) || defaultFurniture();
+/** Nearest free quarter-unit spot to a piece's default position, for putting stored furniture back. */
+export function freeSpot(furniture, id, shelves, wallDisplays) {
+  const [homeX, homeZ] = ROOM_FURNITURE[id].home, reach = Math.ceil(4 * S * 4) / 4;
+  let best = null;
+  for (let x = -reach; x <= reach; x += 0.25) for (let z = -reach; z <= reach; z += 0.25) {
+    const distance = Math.hypot(x - homeX, z - homeZ);
+    const candidate = { ...furniture, [id]: { ...furniture[id], x, z } };
+    if ((!best || distance < best.distance) && furnitureFits(candidate, id) && wallMountsFit(shelves, wallDisplays, candidate)) best = { x, z, distance };
+  }
+  return best && { x: best.x, z: best.z };
+}
+/** A room arranged on the earlier floor: spread its furniture over the larger one and find the new couch a clear spot. */
+export function upgradeFurniture(value, shelves, wallDisplays) {
+  const k = S / Math.sqrt(1.75), spread = {};
+  for (const [id, place] of Object.entries(value && typeof value === 'object' ? value : {})) spread[id] = place && typeof place === 'object' ? { ...place, x: place.x * k, z: place.z * k } : place;
+  const [x, z] = ROOM_FURNITURE.couch.home, furniture = furnitureValid(spread);
+  if (furniture && wallMountsFit(shelves, wallDisplays, furniture)) return furniture;
+  const stored = furnitureValid({ ...spread, couch: { x, z, r: 0, off: true } });
+  if (!stored) return defaultFurniture();
+  const spot = freeSpot({ ...stored, couch: { x, z, r: 0 } }, 'couch', shelves, wallDisplays);
+  return spot ? { ...stored, couch: { ...spot, r: 0 } } : stored;
+}
 export const roomAnchors = (shelves = defaultShelves(), furniture) => ROOM_ANCHORS.flatMap(anchor => {
   if (furniture?.[anchor.id]?.off) return [];
   if (anchor.type !== 'shelf') return [anchor];

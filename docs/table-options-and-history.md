@@ -2,11 +2,11 @@
 
 ## Start a table
 
-Use **Tables** in the app header to return to the lobby, then open **Start a table**. The same continuous form is available on desktop and mobile. Name, visibility, buy-in, blinds, seats, per-turn time, rebuys and speed-ups are together; there is no separate **Options** step. On short or narrow screens, scroll inside the form to reach its remaining settings. The create button follows the settings.
+Use the Buffalo Bill's wordmark in the app header (**Tables** on windows narrower than 1100px) to return to the lobby, then open **Start a table**. The same continuous form is available on desktop and mobile. Name, visibility, buy-in, blinds, seats, per-turn time, rebuys and speed-ups are together; there is no separate **Options** step. On short or narrow screens, scroll inside the form to reach its remaining settings. The create button follows the settings.
 
 **Friends** shows the human-table controls. **Play bots** shows bot count, practice stack, blinds, turn time, **Let friends join too**, and speed-ups. Bot practice stays private and uses unlimited rebuys. The selected values stay in place when the window changes between desktop and mobile layouts. See [Public and private poker tables](public-tables.md) for visibility and joining rules.
 
-The header keeps **Tables** labeled at every width. Below 1100px, **Games** opens Risk bets and Acid Mines, plus Barn and General Store when signed in. Larger windows keep the individual game shortcuts. Tab moves through the Games links; Escape closes the disclosure and returns focus to its button.
+At 1100px and wider, the wordmark is the way back to the lobby and there is no separate **Tables** button. Below 1100px the wordmark is hidden, a labeled **Tables** button takes its place, and **Games** opens Risk bets and Acid Mines, plus Barn and General Store when signed in. Larger windows keep the individual game shortcuts. Tab moves through the Games links; Escape closes the disclosure and returns focus to its button.
 
 ## Change options after a table starts
 

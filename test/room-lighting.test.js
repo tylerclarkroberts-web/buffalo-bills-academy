@@ -21,7 +21,7 @@ test('one filtered shadow map covers the full cabin and yard in a tight frustum'
   assert.ok(sun.shadow.intensity > 0 && sun.shadow.intensity < 0.6);
   scene.updateMatrixWorld(true); sun.shadow.updateMatrices(sun);
   const camera = sun.shadow.camera;
-  assert.ok(camera.right - camera.left < 22 && camera.top - camera.bottom < 16 && camera.far < 25);
+  assert.ok(camera.right - camera.left < 24 && camera.top - camera.bottom < 17.5 && camera.far < 27);
   for (const x of [ROOM_BOUNDS.min[0], ROOM_BOUNDS.max[0]]) for (const y of [ROOM_BOUNDS.min[1], ROOM_BOUNDS.max[1]]) for (const z of [ROOM_BOUNDS.min[2], ROOM_BOUNDS.max[2]]) {
     const point = new THREE.Vector3(x, y, z).project(camera);
     assert.ok([point.x, point.y, point.z].every(value => Math.abs(value) <= 1), `room corner ${x}, ${y}, ${z} stays inside the shadow map`);

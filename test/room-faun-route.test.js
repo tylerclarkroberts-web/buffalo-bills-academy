@@ -61,18 +61,18 @@ test('faun visits alternate room and wagon areas deterministically without chang
 
 test('animated visits follow moved and rotated wagons and avoid newly occupied indoor routes', () => {
   const furniture = defaultFurniture();
-  for (const place of [{ x: 7.25, z: -2.5, r: 0 }, { x: 9.5, z: -1.5, r: 1 }, { x: 8.2, z: 0.5, r: 2 }, { x: 7, z: -1, r: 3 }]) {
+  for (const place of [{ x: 7.95, z: -2.75, r: 0 }, { x: 10.4, z: -1.65, r: 1 }, { x: 9, z: 0.55, r: 2 }, { x: 7.65, z: -1.1, r: 3 }]) {
     const moved = { ...furniture, window: place };
     assert.ok(furnitureValid(moved));
     const route = faunVisitRoute(moved, defaultShelves(), defaultWallDisplays(), 1);
     assert.equal(route.location, 'yard'); checkAnimatedRoute(route, moved);
   }
-  const residentMoved = { ...furniture, rug: { x: 3.5, z: 0.5, r: 0 } };
+  const residentMoved = { ...furniture, rug: { x: 2.5, z: -0.75, r: 0 } };
   assert.ok(furnitureValid(residentMoved));
   const route = faunVisitRoute(residentMoved, defaultShelves(), defaultWallDisplays(), 0);
   assert.notDeepEqual(route, faunVisitRoute(furniture, defaultShelves(), defaultWallDisplays(), 0));
   checkAnimatedRoute(route, residentMoved);
-  const shelves = [{ ...defaultShelves()[0], spotId: 'back-shelf-1-10' }], storedWardrobe = { ...furniture, wardrobe: { ...furniture.wardrobe, off: true } };
+  const shelves = [{ ...defaultShelves()[0], spotId: 'back-shelf-1-10' }], storedWardrobe = { ...furniture, wardrobe: { ...furniture.wardrobe, off: true }, desk: { ...furniture.desk, off: true } };
   assert.ok(wallMountsFit(shelves, defaultWallDisplays(), storedWardrobe));
   const nearShelf = faunVisitRoute(storedWardrobe, shelves, defaultWallDisplays(), 2);
   assert.notDeepEqual(nearShelf, faunVisitRoute(storedWardrobe, [], defaultWallDisplays(), 2));
@@ -80,7 +80,8 @@ test('animated visits follow moved and rotated wagons and avoid newly occupied i
 });
 
 test('a crowded valid layout uses the clear path without moving through blocked routes', () => {
-  const furniture = { ...defaultFurniture(), wardrobe: { x: 4, z: 0.5, r: 0 }, pet: { x: 2, z: -0.8, r: 0 }, window: { x: 6.35 * S, z: -0.7 * S, r: 0 } };
+  // A turned wagon in the middle of the yard leaves no side wide enough for him and his umbrella.
+  const furniture = { ...defaultFurniture(), wardrobe: { x: 4.4, z: 0.55, r: 0 }, pet: { x: 2.2, z: -0.9, r: 0 }, window: { x: 9.2, z: -1, r: 1 } };
   assert.ok(furnitureValid(furniture));
   const route = faunVisitRoute(furniture, defaultShelves(), defaultWallDisplays(), 0);
   assert.equal(route.location, 'path'); assert.deepEqual(route.from, route.to);

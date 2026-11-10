@@ -1,7 +1,7 @@
 import { GameError } from './engine/game.js';
 import { ROOM_ANCHORS, ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FINISHES,
   ROOM_FURNITURE, ROOM_WALL_SPOTS, defaultWallDisplays, roomWallDisplays, wallMountsFit,
-  defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture } from './catalog/room.js';
+  defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture, upgradeFurniture, ROOM_PLAN } from './catalog/room.js';
 
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const signedIn = player => !!(player?.google || player?.login);
@@ -18,8 +18,8 @@ const validShelves = value => Array.isArray(value) && value.length <= ROOM_SHELF
     && ROOM_SHELF_IDS.includes(shelf.id) && ROOM_SHELF_SPOTS.some(spot => spot.id === shelf.spotId)
     && (!Object.hasOwn(shelf, 'sizeId') || typeof shelf.sizeId === 'string' && Object.hasOwn(ROOM_SHELF_SIZES, shelf.sizeId))
     && validFinish('shelf', { typeId: shelf.typeId, colorId: shelf.colorId }));
-const validFinishes = value => allowedBody(value, ['floor', 'rug', 'wardrobe'])
-  && ['floor', 'rug', 'wardrobe'].every(kind => validFinish(kind, value[kind]));
+const validFinishes = value => allowedBody(value, ['floor', 'rug', 'wardrobe', 'couch'])
+  && ['floor', 'rug', 'wardrobe'].every(kind => validFinish(kind, value[kind])) && (!('couch' in value) || validFinish('couch', value.couch));
 const validFurniture = value => allowedBody(value, Object.keys(ROOM_FURNITURE))
   && Object.values(value).every(place => allowedBody(place, ['x', 'z', 'r', 'off'])) && !!furnitureValid(value);
 const validWallDisplays = value => allowedBody(value, Object.keys(defaultWallDisplays()))
@@ -44,7 +44,8 @@ export class Rooms {
   saved(pid) {
     const value = Object.hasOwn(this.doc.rooms, pid) ? this.doc.rooms[pid] : null;
     if (!record(value)) return defaults();
-    const shelves = roomShelves(value.shelves), furniture = roomFurniture(value.furniture), availableAnchors = roomAnchors(shelves, furniture);
+    const shelves = roomShelves(value.shelves), wallDisplays = roomWallDisplays(value.wallDisplays, shelves);
+    const furniture = value.plan === ROOM_PLAN ? roomFurniture(value.furniture) : upgradeFurniture(value.furniture, shelves, wallDisplays), availableAnchors = roomAnchors(shelves, furniture);
     const owned = new Set(this.owned(pid)), anchors = new Set(), items = new Set();
     const placements = [];
     for (const place of Array.isArray(value.placements) ? value.placements : []) {
@@ -57,7 +58,7 @@ export class Rooms {
     return {
       layoutRevision: Number.isSafeInteger(value.layoutRevision) && value.layoutRevision >= 0 ? value.layoutRevision : 0,
       themeId: knownTheme(value.themeId) ? value.themeId : ROOM_THEMES[0].id,
-      placements, shelves, wallDisplays: roomWallDisplays(value.wallDisplays, shelves), finishes: roomFinishes(value.finishes), furniture,
+      placements, shelves, wallDisplays, finishes: roomFinishes(value.finishes), furniture,
     };
   }
   isOpen(pid) {
@@ -135,7 +136,7 @@ export class Rooms {
       }
       anchors.add(place.anchorId); items.add(place.itemId);
     }
-    this.commit(player.id, { ...current, layoutRevision: current.layoutRevision + 1, themeId: body.themeId,
+    this.commit(player.id, { ...current, plan: ROOM_PLAN, layoutRevision: current.layoutRevision + 1, themeId: body.themeId,
       placements: body.placements.map(place => ({ anchorId: place.anchorId, itemId: place.itemId })), shelves, wallDisplays, finishes, furniture });
     return this.owner(player);
   }

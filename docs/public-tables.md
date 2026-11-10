@@ -4,7 +4,7 @@ Poker hosts choose whether a new table appears in the lobby's **Public tables** 
 
 ## Create and join a table
 
-1. Use **Tables** in the app header, open **Start a table** and choose **Friends**.
+1. Select the Buffalo Bill's wordmark in the app header (**Tables** on windows narrower than 1100px), open **Start a table** and choose **Friends**.
 2. Choose **Private · invite link** or **Public** under Visibility. Private is the default.
 3. Set the name, buy-in, blinds, seats, per-turn time, rebuys and optional speed-ups in the same form, then choose **Open the table**. Scroll within the form on smaller screens; there is no separate **Options** step.
 4. For a private table, share its existing invite link. For a public table, other players can find it under **Public tables**.

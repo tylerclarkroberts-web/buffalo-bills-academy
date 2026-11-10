@@ -38,7 +38,7 @@ export default function Room({ id }) {
   const [draft, setDraft] = useState(null);
   const base = useRef('');
   const [preview, setPreview] = useState(false);
-  const [selection, setSelection] = useState({ kind: 'pet' });
+  const [selection, setSelection] = useState({ kind: 'none' });
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -90,9 +90,9 @@ export default function Room({ id }) {
   const arrangeFurniture = useCallback((id, change, done) => {
     if (!canMoveShelf.current) return;
     const current = draftRef.current, next = placeFurniture(current, id, change);
-    if (next === current) { setMsg(`${ROOM_FURNITURE[id].label} does not fit there. Keep it on clear floor, away from other furniture, shelves, wall displays, the doorway and where you stand on the rug.`); return; }
+    if (next === current) { setMsg(`${ROOM_FURNITURE[id].label} does not fit there. It needs clear floor, away from shelves and the doorway.`); return; }
     setDraft(next); setMsg(done || `${ROOM_FURNITURE[id].label} moved. Save room to keep it.`);
-    if (change.off) setSelection({ kind: 'edit' });
+    if ('off' in change) setSelection({ kind: 'none' });
   }, []);
   const hoverMoney = useCallback((show) => {
     clearTimeout(hoverTimer.current);
@@ -172,7 +172,7 @@ export default function Room({ id }) {
     if (!room || !canvas.current) return undefined;
     let renderer;
     try {
-      renderer = new RoomScene(canvas.current, { onSelect: setSelection, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onError: () => { setSceneFailed(true); setMoneyHovered(false); setSpeech(null); } });
+      renderer = new RoomScene(canvas.current, { onSelect: setSelection, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onZoom: step => moveView(step), onError: () => { setSceneFailed(true); setMoneyHovered(false); setSpeech(null); } });
       scene.current = renderer; setSceneFailed(false);
     } catch { setSceneFailed(true); }
     return () => { renderer?.dispose(); scene.current = null; };
@@ -233,17 +233,18 @@ export default function Room({ id }) {
 
   function arrange() {
     if (!room || preview || busy) return;
-    const next = layoutOf(room); base.current = layoutKey(next); setDraft(next); setConflict(false); setMsg(''); setErr('');
-    if (!['anchor', 'wardrobe', 'finish', 'surface'].includes(selection.kind)) setSelection({ kind: 'edit' });
+    const next = layoutOf(room); base.current = layoutKey(next); setDraft(next); setConflict(false); setErr('');
+    setMsg('Drag things to move them. Click one to change it.');
+    if (!['anchor', 'wardrobe', 'finish', 'surface'].includes(selection.kind)) setSelection({ kind: 'none' });
   }
   function place(anchorId, itemId) {
     setDraft((current) => ({ ...current, placements: [...current.placements.filter((p) => p.anchorId !== anchorId && (!itemId || p.itemId !== itemId)), ...(itemId ? [{ anchorId, itemId }] : [])] }));
     setMsg(itemId ? 'Arrangement changed. Save when it feels right.' : 'Returned to storage. You still own it.');
   }
-  function discard() { dirtyRef.current = false; setDraft(null); setConflict(false); setErr(''); setMsg('Room layout changes canceled.'); setSelection({ kind: 'pet' }); }
+  function discard() { dirtyRef.current = false; setDraft(null); setConflict(false); setErr(''); setMsg('Room layout changes canceled.'); setSelection({ kind: 'none' }); }
   function save() {
     run(() => api('PATCH', '/room/layout', { expectedRevision: draft.layoutRevision, themeId: draft.themeId, placements: draft.placements, shelves: draft.shelves, wallDisplays: draft.wallDisplays, finishes: draft.finishes, furniture: draft.furniture }), (next) => {
-      dirtyRef.current = false; setRoom(next); setDraft(null); setConflict(false); setSelection({ kind: 'pet' });
+      dirtyRef.current = false; setRoom(next); setDraft(null); setConflict(false); setSelection({ kind: 'none' });
     }, 'Room saved. Visitors see this arrangement.');
   }
   function care(action) {
@@ -262,6 +263,11 @@ export default function Room({ id }) {
   }
   function moveView(zoom = 0, rotation = 0) {
     setCameraView((current) => roomView({ zoom: current.zoom + zoom, rotation: current.rotation + rotation }));
+  }
+  async function invite() {
+    if (!me.signedIn) { setSelection({ kind: 'door' }); return; }
+    try { await navigator.clipboard.writeText(`${window.location.origin}/rooms/${room.owner.id}`); setMsg('Room link copied. Visitors must sign in.'); }
+    catch { setMsg(`Your room link: ${window.location.origin}/rooms/${room.owner.id}`); }
   }
   function putShelf(sizeId) {
     if (!draft || busy) return;
@@ -282,7 +288,7 @@ export default function Room({ id }) {
   }
   function takeShelfOut(id) {
     setDraft(current => current ? removeShelf(current, id) : current);
-    setSelection({ kind: 'edit' }); setMsg('Shelf removed. Its items are back in storage. Save room to keep this change.');
+    setSelection({ kind: 'none' }); setMsg('Shelf removed. Its items are back in storage. Save room to keep this change.');
   }
   function style(kind, field, value, shelfId) { setDraft(current => current ? changeStyle(current, kind, field, value, shelfId) : current); }
   function cycleMount(direction) {
@@ -319,107 +325,102 @@ export default function Room({ id }) {
   const stored = editing && draft ? Object.keys(ROOM_FURNITURE).filter(id => draft.furniture[id].off) : [];
   const steps = nudgeAxes(cameraView.rotation);
   const nudge = ([x, z], sign) => arrangeFurniture(pieceId, { x: piecePlace.x + x * sign * 0.25, z: piecePlace.z + z * sign * 0.25 });
-  const panelTitle = selection.kind === 'add-shelf' ? 'Add a shelf' : selection.kind === 'surface' ? surfaceLabel : selection.kind === 'edit' ? 'Edit room' : selection.kind === 'finish' ? 'Wall finish' : selection.kind === 'pet' ? 'The terrarium' : selection.kind === 'wardrobe' ? 'Wardrobe & mirror' : selection.kind === 'wealth' ? 'Chips & cash' : selection.kind === 'anchor' ? selectedShelfLabel || selectedAnchor?.label || 'Display spot' : editing ? 'Your collection' : 'On display';
-  const editTargets = [{ label: 'Walls', target: { kind: 'finish' } }, { label: 'Floor finish', target: { kind: 'surface', surface: 'floor' } }, { label: 'Rug', target: { kind: 'surface', surface: 'rug' } }, ...anchors.filter(anchor => !anchor.shelfId || anchor.id === anchor.shelfId).map(anchor => ({ label: ROOM_ANCHORS.find(base => base.id === anchor.id)?.label || anchor.label, target: { kind: 'anchor', anchorId: anchor.id } })), { label: 'Wardrobe', target: { kind: 'wardrobe' } }, { label: 'Pet', target: { kind: 'pet' } }, { label: 'Cash table', target: { kind: 'wealth' } }];
+  const panelTitle = { add: 'Add to the room', surface: surfaceLabel, finish: 'Walls', pet: 'The terrarium', wardrobe: 'Wardrobe & mirror', wealth: 'Chips & cash', couch: 'Couch', door: 'The front door', collection: editing ? 'Your collection' : 'On display' }[selection.kind]
+    || selectedShelfLabel || selectedAnchor?.label || 'Display spot';
+  const editTargets = [{ label: 'Walls', target: { kind: 'finish' } }, { label: 'Floor finish', target: { kind: 'surface', surface: 'floor' } }, { label: 'Rug', target: { kind: 'surface', surface: 'rug' } }, ...anchors.filter(anchor => !anchor.shelfId || anchor.id === anchor.shelfId).map(anchor => ({ label: ROOM_ANCHORS.find(base => base.id === anchor.id)?.label || anchor.label, target: { kind: 'anchor', anchorId: anchor.id } })), { label: 'Wardrobe', target: { kind: 'wardrobe' } }, ...(!draft || draft.furniture.couch.off ? [] : [{ label: 'Couch', target: { kind: 'couch' } }]), { label: 'Terrarium', target: { kind: 'pet' } }, { label: 'Cash table', target: { kind: 'wealth' } }];
+  const picked = editTargets.findIndex(({ target }) => selection.kind === target.kind && (selection.anchorId === target.anchorId || selectedShelf?.id === target.anchorId) && selection.surface === target.surface);
+  const shelvesFull = !!draft && draft.shelves.length >= ROOM_SHELF_IDS.length;
+  const wealthProps = { onPointerEnter: () => hoverMoney(true), onPointerLeave: () => hoverMoney(false), onFocus: () => hoverMoney(true), onBlur: () => hoverMoney(false), 'aria-describedby': moneyHovered ? 'room-money-tooltip' : undefined };
 
   return <div className="screen room-page" data-test="personal-room">
     <header className="room-heading">
-      <div><p className="kicker">A little place in the Academy</p><h1 className="western">{owner ? 'My Room' : `${room.owner.name}’s room`}</h1></div>
-      {owner && <div className="room-heading-actions">
-        <button className="btn ghost" onClick={() => { setPreview(!preview); setSelection({ kind: 'pet' }); setFitOpen(false); }} aria-pressed={preview} disabled={busy}>{preview ? 'Back to my room' : 'Preview as visitor'}</button>
-        {!preview && !draft && <button className="btn" onClick={arrange} disabled={busy}>Edit room</button>}
-      </div>}
+      <h1 className="western">{owner ? 'My Room' : `${room.owner.name}’s room`}{preview && <small role="status"> as visitors see it</small>}</h1>
+      {owner && <div className="room-actions">{editing && draft ? <>
+        <button className="btn ghost" onClick={() => setSelection({ kind: 'add' })} disabled={busy || (shelvesFull && !stored.length)}>Add</button>
+        {dirty && <button className="btn ghost" onClick={discard} disabled={busy}>Cancel</button>}
+        <button className="btn" onClick={dirty ? save : () => { setDraft(null); setMsg(''); setSelection({ kind: 'none' }); }} disabled={busy}>{dirty ? 'Save room' : 'Done'}</button>
+      </> : <>
+        {!preview && <button className="btn ghost" onClick={invite}>{me.signedIn ? 'Copy link' : 'Invite friends'}</button>}
+        <button className="btn ghost" onClick={() => { setPreview(!preview); setSelection({ kind: 'none' }); setFitOpen(false); }} aria-pressed={preview} disabled={busy}>{preview ? 'Back to my room' : 'Visitor view'}</button>
+        {!preview && <button className="btn" onClick={arrange} disabled={busy}>Edit room</button>}
+      </>}</div>}
     </header>
-    {preview && <p className="room-note" role="status">Visitor preview · your saved arrangement, outfit, pet, displays and wealth.</p>}
-    {!owner && <p className="room-note">Make yourself at home. You can look around; only {room.owner.name} can change this room.</p>}
-    {pendingPath && <div className="room-leave" role="alert"><p>You have an unsaved arrangement. Keep decorating or discard it before leaving?</p><div className="room-actions"><button className="btn" onClick={() => setPendingPath(null)}>Keep editing</button><button className="btn ghost" onClick={() => { const destination = pendingPath; dirtyRef.current = false; setDraft(null); setPendingPath(null); navigate(destination); }}>Discard and leave</button></div></div>}
-    {editing && draft && <div className="room-arrange">
-      <p className="small">Drag furniture, shelves or wall displays to move them. Click something glowing to change it. Save when the room feels right.</p>
-      <div className="room-actions"><button className="btn ghost" onClick={() => setSelection({ kind: 'add-shelf' })} disabled={busy || draft.shelves.length >= ROOM_SHELF_IDS.length}>Add shelf · {draft.shelves.length}/{ROOM_SHELF_IDS.length}</button><button className="btn" onClick={dirty ? save : () => { setDraft(null); setSelection({ kind: 'pet' }); }} disabled={busy}>{dirty ? 'Save room' : 'Done editing'}</button><button className="btn ghost" onClick={discard} disabled={busy}>Cancel edits</button></div>
-    </div>}
-    <div className="room-body">
+    {pendingPath && <div className="room-leave" role="alert"><p>Leave without saving your arrangement?</p><div className="room-actions"><button className="btn" onClick={() => setPendingPath(null)}>Keep editing</button><button className="btn ghost" onClick={() => { const destination = pendingPath; dirtyRef.current = false; setDraft(null); setPendingPath(null); navigate(destination); }}>Discard and leave</button></div></div>}
+    <div className={`room-body ${selection.kind === 'none' ? '' : 'has-detail'}`}>
       <section className="room-view" aria-label="Your room scene">
-        <div className="room-camera" role="group" aria-label="Room view" data-test="room-view-controls">
-          <button className="btn ghost" aria-label="Rotate left" title="Rotate left" disabled={sceneFailed} onClick={() => moveView(0, -15)}>↶</button>
-          <button className="btn ghost" aria-label="Rotate right" title="Rotate right" disabled={sceneFailed} onClick={() => moveView(0, 15)}>↷</button>
-          <button className="btn ghost" aria-label="Zoom out" title="Zoom out" disabled={sceneFailed || cameraView.zoom <= ROOM_VIEW_LIMITS.minZoom} onClick={() => moveView(-0.25)}>−</button>
-          <output aria-label="Room zoom" aria-live="polite" data-test="room-zoom">{Math.round(cameraView.zoom * 100)}%</output>
-          <button className="btn ghost" aria-label="Zoom in" title="Zoom in" disabled={sceneFailed || cameraView.zoom >= ROOM_VIEW_LIMITS.maxZoom} onClick={() => moveView(0.25)}>+</button>
-          <button className="btn ghost" aria-label="Reset view" title="Reset view" disabled={sceneFailed} onClick={() => setCameraView(roomView())}>⌂</button>
-          <button className="btn ghost room-activity-toggle" aria-pressed={activityPaused} disabled={sceneFailed} onClick={() => setActivityPaused(value => !value)}>{activityPaused ? 'Resume activity' : 'Pause activity'}</button>
-        </div>
-        <div className={`room-canvas-wrap ${sceneFailed ? 'room-scene-unavailable' : ''}`}><canvas ref={canvas} className="room-canvas" role="img" tabIndex={editing && draft ? 0 : undefined} aria-keyshortcuts={editing && draft ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined} aria-label="A western cutaway room. Use the view controls to zoom and turn, or the named room controls to inspect objects. In edit mode, select an object, focus the room and use arrow keys to move." title={editing && draft ? 'Select an object, then focus the room and use arrow keys to move.' : undefined} data-test="room-canvas" />{speech && !sceneFailed && <div ref={speechRef} className="room-speech" role="status" aria-label={speech.speaker === 'faun' ? 'A shy faun says' : `${room.owner.name} says`} style={{ left: speech.x, top: speech.y }}>{speech.text}</div>}{sceneFailed && <p className="room-fallback">The 3D view is unavailable here. Your room and all its controls are still available below.</p>}{moneyHovered && <div className="room-money-tooltip" role="tooltip" id="room-money-tooltip" onPointerEnter={() => hoverMoney(true)} onPointerLeave={() => hoverMoney(false)}><strong>Cash: {money(display.worth?.bankroll)}</strong><span>Chips at tables: {money(display.worth?.chips)}</span></div>}</div>
-        {editing && draft ? <nav className="room-edit-targets" aria-label="Editable room objects">
-          {editTargets.map(({ label, target }) => <button key={label} className="btn ghost small" aria-pressed={selection.kind === target.kind && (selection.anchorId === target.anchorId || selectedShelf?.id === target.anchorId) && selection.surface === target.surface} disabled={busy} onClick={() => setSelection(target)}>{label}</button>)}
-        </nav> : <nav className="room-destinations" aria-label="Room objects">{[['pet', 'Pet'], ['wardrobe', 'Wardrobe'], ['collection', editing ? 'Collection' : 'Displays'], ['wealth', 'Chips & cash']].map(([kind, title]) => <button key={kind} className={`btn ${selection.kind === kind ? '' : 'ghost'}`} aria-pressed={selection.kind === kind} aria-describedby={kind === 'wealth' && moneyHovered ? 'room-money-tooltip' : undefined} onPointerEnter={kind === 'wealth' ? () => hoverMoney(true) : undefined} onPointerLeave={kind === 'wealth' ? () => hoverMoney(false) : undefined} onFocus={kind === 'wealth' ? () => hoverMoney(true) : undefined} onBlur={kind === 'wealth' ? () => hoverMoney(false) : undefined} onClick={() => setSelection({ kind })}>{title}</button>)}</nav>}
-        <p className="small muted room-caption">{editing && draft ? 'Drag to move. Click to change styles, colors and displays. Save room to keep your arrangement.' : 'Your resident is just enjoying the room. Select a furnishing to take a closer look.'}</p>
-      </section>
-      <section className="room-detail panel" aria-label={panelTitle} data-test="room-detail">
-        <h2 className="western">{panelTitle}</h2>
-        {piece && (piecePlace.off ? <button className="btn" disabled={busy} onClick={() => arrangeFurniture(pieceId, { off: false }, `${piece.label} is back in the room. Save room to keep it.`)}>Put the {piece.label.toLowerCase()} back</button> : <div className="room-style-choices" data-test="room-furniture-controls">
-          <h3>Move the {piece.label.toLowerCase()}</h3>
-          <div className="room-actions" role="group" aria-label={`Move the ${piece.label.toLowerCase()}`}>
-            {[['←', 'left', steps.right, -1], ['↑', 'back', steps.away, 1], ['↓', 'forward', steps.away, -1], ['→', 'right', steps.right, 1]].map(([arrow, name, step, sign]) => <button key={name} className="btn ghost" aria-label={`Move ${name}`} title={`Move ${name}`} disabled={busy} onClick={() => nudge(step, sign)}>{arrow}</button>)}
-            <button className="btn ghost" disabled={busy} onClick={() => arrangeFurniture(pieceId, { r: (piecePlace.r + 1) % 4 }, `${piece.label} turned. Save room to keep it.`)}>Turn</button>
-            {piece.removable && <button className="btn ghost" disabled={busy} onClick={() => arrangeFurniture(pieceId, { off: true }, `${piece.label} put away${pieceId === 'desk' ? ', with anything displayed on it back in storage' : ''}. Save room to keep this change.`)}>Put away</button>}
+        <div className={`room-canvas-wrap ${sceneFailed ? 'room-scene-unavailable' : ''}`}><canvas ref={canvas} className="room-canvas" role="img" tabIndex={editing && draft ? 0 : undefined} aria-keyshortcuts={editing && draft ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined} aria-label={editing && draft ? 'Your room. Select an object, then use the arrow keys here to move it.' : 'A western cutaway room. The buttons below it look around and open its objects.'} data-test="room-canvas" />{speech && !sceneFailed && <div ref={speechRef} className="room-speech" role="status" aria-label={speech.speaker === 'faun' ? 'A shy faun says' : `${room.owner.name} says`} style={{ left: speech.x, top: speech.y }}>{speech.text}</div>}{sceneFailed && <p className="room-fallback">The 3D view is unavailable here. The buttons below still work.</p>}{moneyHovered && <div className="room-money-tooltip" role="tooltip" id="room-money-tooltip" onPointerEnter={() => hoverMoney(true)} onPointerLeave={() => hoverMoney(false)}><strong>Cash: {money(display.worth?.bankroll)}</strong><span>Chips at tables: {money(display.worth?.chips)}</span></div>}</div>
+        {!preview && <div className="room-feedback" aria-live="polite">{err && <p className="error" role="alert">{err}</p>}{msg && <p role="status">{msg}</p>}{conflict && draft && <button className="btn ghost small" disabled={busy} onClick={() => { discard(); load(); }}>Load saved room</button>}</div>}
+        <div className="room-tools">
+          {editing && draft ? <select className="room-pick" aria-label="Select something to change" value={picked < 0 ? '' : picked} disabled={busy} onChange={e => setSelection(e.target.value === '' ? { kind: 'none' } : editTargets[e.target.value].target)}>
+            <option value="">Select…</option>{editTargets.map(({ label }, i) => <option key={label} value={i}>{label}</option>)}
+          </select> : <nav className="room-destinations" aria-label="Room objects">{[['pet', 'Pet'], ['wardrobe', 'Wardrobe'], ['collection', editing ? 'Collection' : 'Displays'], ['wealth', 'Chips & cash']].map(([kind, title]) => <button key={kind} className="btn ghost" aria-pressed={selection.kind === kind} {...(kind === 'wealth' ? wealthProps : {})} onClick={() => setSelection({ kind: selection.kind === kind ? 'none' : kind })}>{title}</button>)}</nav>}
+          <div className="room-camera" role="group" aria-label="Room view" data-test="room-view-controls">
+            <button className="btn ghost" aria-label="Rotate left" disabled={sceneFailed} onClick={() => moveView(0, -15)}>↶</button>
+            <button className="btn ghost" aria-label="Rotate right" disabled={sceneFailed} onClick={() => moveView(0, 15)}>↷</button>
+            <button className="btn ghost" aria-label="Zoom out" disabled={sceneFailed || cameraView.zoom <= ROOM_VIEW_LIMITS.minZoom} onClick={() => moveView(-0.25)}>−</button>
+            <button className="btn ghost" aria-label="Zoom in" disabled={sceneFailed || cameraView.zoom >= ROOM_VIEW_LIMITS.maxZoom} onClick={() => moveView(0.25)}>+</button>
+            <button className="btn ghost" aria-label="Reset view" disabled={sceneFailed} onClick={() => setCameraView(roomView())}>⌂</button>
+            {!(editing && draft) && <button className="btn ghost" aria-label={activityPaused ? 'Resume activity' : 'Pause activity'} aria-pressed={activityPaused} disabled={sceneFailed} onClick={() => setActivityPaused(value => !value)}>{activityPaused ? '▶' : '❙❙'}</button>}
+            <output className="sr-only" aria-label="Room zoom" aria-live="polite" data-test="room-zoom">{Math.round(cameraView.zoom * 100)}%</output>
           </div>
-          <p className="small muted">Arrows follow the current view. You can also drag the {piece.label.toLowerCase()} directly in the scene.{piece.removable ? ' Put it away to clear the floor; Edit room offers it back.' : ''}</p>
-        </div>)}
-        {selection.kind === 'edit' && <><p>Drag to move. Click a glowing object to make it yours.</p><p className="small muted">Use Add shelf for a small or large shelf. Furniture, styles, paint and displays save together; pet care and clothing changes save immediately.</p>{stored.map(id => <button key={id} className="btn ghost" disabled={busy} onClick={() => arrangeFurniture(id, { off: false }, `${ROOM_FURNITURE[id].label} is back in the room. Save room to keep it.`)}>Put the {ROOM_FURNITURE[id].label.toLowerCase()} back</button>)}</>}
-        {selection.kind === 'add-shelf' && editing && draft && <><p className="small muted">Choose a size. We’ll find a clear spot, then you can drag it where you like.</p><ShelfSizes disabled={busy || draft.shelves.length >= ROOM_SHELF_IDS.length} onChange={putShelf} /><p className="small muted">Free · {draft.shelves.length} of {ROOM_SHELF_IDS.length} shelves in use.</p></>}
+        </div>
+      </section>
+      {selection.kind !== 'none' && <section className="room-detail panel" aria-label={panelTitle} data-test="room-detail">
+        <div className="room-detail-head"><h2 className="western">{panelTitle}</h2><button className="btn ghost room-close" aria-label="Close" onClick={() => setSelection({ kind: 'none' })}>×</button></div>
+        {piece && !piecePlace.off && <div className="room-actions" role="group" aria-label={`Move the ${piece.label.toLowerCase()}`} data-test="room-furniture-controls">
+          {[['←', 'left', steps.right, -1], ['↑', 'back', steps.away, 1], ['↓', 'forward', steps.away, -1], ['→', 'right', steps.right, 1]].map(([arrow, name, step, sign]) => <button key={name} className="btn ghost room-nudge" aria-label={`Move ${name}`} disabled={busy} onClick={() => nudge(step, sign)}>{arrow}</button>)}
+          <button className="btn ghost" disabled={busy} onClick={() => arrangeFurniture(pieceId, { r: (piecePlace.r + 1) % 4 }, `${piece.label} turned. Save room to keep it.`)}>Turn</button>
+          {piece.removable && <button className="btn ghost" disabled={busy} onClick={() => arrangeFurniture(pieceId, { off: true }, `${piece.label} put away${pieceId === 'desk' ? ', with anything displayed on it back in storage' : ''}. Add brings it back.`)}>Put away</button>}
+        </div>}
+        {selection.kind === 'add' && editing && draft && <>
+          <h3>Shelf <small className="muted">{draft.shelves.length} of {ROOM_SHELF_IDS.length}</small></h3>
+          <ShelfSizes disabled={busy || shelvesFull} onChange={putShelf} />
+          {stored.length > 0 && <><h3>Put away</h3><div className="room-choices">{stored.map(id => <button key={id} className="btn room-choice" disabled={busy} onClick={() => arrangeFurniture(id, { off: false }, `${ROOM_FURNITURE[id].label} is back in the room. Save room to keep it.`)}>{ROOM_FURNITURE[id].label}</button>)}</div></>}
+        </>}
+        {selection.kind === 'door' && <><p>Sign in with an account so friends can visit.</p><SignIn compact next="/room" /></>}
+        {selection.kind === 'couch' && editing && draft && <StyleChoices kind="couch" label="Couch" value={draft.finishes.couch} disabled={busy} onChange={(field, value) => style('couch', field, value)} />}
         {selection.kind === 'surface' && editing && draft && <StyleChoices kind={selection.surface} label={surfaceLabel} value={draft.finishes[selection.surface]} disabled={busy} onChange={(field, value) => style(selection.surface, field, value)} />}
-        {selection.kind === 'finish' && editing && draft && <><p className="small muted">Choose a free wall finish.</p><div className="room-choices">{ROOM_THEMES.map((theme) => <button key={theme.id} className="btn room-choice" aria-pressed={draft.themeId === theme.id} disabled={busy} onClick={() => setDraft({ ...draft, themeId: theme.id })}>{theme.name}</button>)}</div></>}
+        {selection.kind === 'finish' && editing && draft && <div className="room-choices">{ROOM_THEMES.map((theme) => <button key={theme.id} className="btn room-choice" aria-pressed={draft.themeId === theme.id} disabled={busy} onClick={() => setDraft({ ...draft, themeId: theme.id })}>{theme.name}</button>)}</div>}
         {selection.kind === 'pet' && <>
-          {!pet ? <><p>The terrarium is waiting for a resident.</p>{editing && <Link to="/barn" className="btn ghost">Visit the Barn</Link>}</> : pet.stage === 'egg' ? <><p>A speckled egg from the mines. Its resident is still a surprise.</p>{editing && privatePet?.stage === 'egg' && <><p className="small muted">Keeping it warm is a kind gesture; it does not speed up hatching.</p><button className="btn" disabled={busy || privatePet.warmCoolMs > elapsed} onClick={() => care('play')}>Keep it warm {privatePet.warmCoolMs > elapsed ? `· ${left(privatePet.warmCoolMs - elapsed)}` : ''}</button></>}</> : <><h3>{pet.name}</h3><p className="small muted">{pet.speciesName} · Level {pet.level}</p>{pet.stage === 'dead' ? <><p>A small memorial to your resident.</p>{editing && <Link to="/barn" className="btn ghost">Visit the memorial in the Barn</Link>}</> : editing && privatePet?.stage === 'creature' ? <>
+          {!pet ? <><p>The terrarium is waiting for a resident.</p>{editing && <Link to="/barn" className="btn ghost">Visit the Barn</Link>}</> : pet.stage === 'egg' ? <><p>A speckled egg from the mines. Its resident is still a surprise.</p>{editing && privatePet?.stage === 'egg' && <><button className="btn" disabled={busy || privatePet.warmCoolMs > elapsed} onClick={() => care('play')}>Keep it warm {privatePet.warmCoolMs > elapsed ? `· ${left(privatePet.warmCoolMs - elapsed)}` : ''}</button><p className="small muted">A kind gesture. It does not hatch any faster.</p></>}</> : <><h3>{pet.name}</h3><p className="small muted">{pet.speciesName} · Level {pet.level}</p>{pet.stage === 'dead' ? <><p>A small memorial to your resident.</p>{editing && <Link to="/barn" className="btn ghost">Visit the memorial in the Barn</Link>}</> : editing && privatePet?.stage === 'creature' ? <>
             <dl className="room-needs">{[['hunger', 'Fed'], ['mood', 'Mood'], ['clean', 'Clean']].map(([key, name]) => <div key={key}><dt>{name}</dt><dd><meter min="0" max="100" value={privatePet.needs[key]} aria-label={name} /><span className="num">{privatePet.needs[key]}%</span></dd></div>)}</dl>
-            {privatePet.starving > 0 && <p className="room-warning">Your bug needs food. Visit the Barn for its care details.</p>}
+            {privatePet.starving > 0 && <p className="room-warning">Your bug needs food.</p>}
             <div className="room-actions">{[['feed', 'Feed'], ['play', 'Play'], ['clean', 'Mist']].map(([action, name]) => <button key={action} className="btn" onClick={() => care(action)} disabled={busy || privatePet.cool[action] > elapsed}>{name}{privatePet.cool[action] > elapsed ? ` · ${left(privatePet.cool[action] - elapsed)}` : ''}</button>)}</div>
-            <p className="small muted">Free care applies immediately, with the same cooldowns as the Barn. Care XP: max 120/day, shared with Barn and store care. Resets at midnight UTC; fight XP, daily and feeder bonuses are extra.</p><Link to="/barn" className="btn ghost">More pet details</Link>
+            <Link to="/barn" className="small">More in the Barn →</Link>
           </> : <p className="small muted">{editing ? 'Opening the terrarium…' : 'The owner takes care of this resident.'}</p>}</>}
-          {editing && <Link to="/store" className="small">Bug food, toys, style and care supplies →</Link>}
         </>}
         {selection.kind === 'wardrobe' && <>
-          {editing && draft && <><StyleChoices kind="wardrobe" label="Wardrobe" value={draft.finishes.wardrobe} disabled={busy} onChange={(field, value) => style('wardrobe', field, value)} /><p className="small muted">Furniture changes save with the room. Clothing changes below save immediately.</p></>}
-          <div className="room-outfit"><Bust id={room.owner.id} avatar={room.owner.avatar} size={110} still title={`${room.owner.name}'s current outfit`} /><p className="small muted">{editing ? 'Your worn outfit appears throughout the Academy. Wearing and fitting save immediately.' : 'The current outfit. The rest of the wardrobe stays private.'}</p></div>
+          {editing && draft && <StyleChoices kind="wardrobe" label="Wardrobe" value={draft.finishes.wardrobe} disabled={busy} onChange={(field, value) => style('wardrobe', field, value)} />}
+          <Bust id={room.owner.id} avatar={room.owner.avatar} size={110} still title={`${room.owner.name}'s current outfit`} />
           {editing && (!shop ? <p className="muted small">Opening the wardrobe…</p> : <>
-            <div className="room-clothes">{shop.items.filter((item) => item.kind === 'avatar' && shop.own[item.id]).map((item) => { const worn = shop.eq[item.slot] === item.id; return <div className="room-clothing" key={item.id}><span>{item.name}<small className="muted">{worn ? 'Wearing' : 'Owned'}</small></span><button className="btn ghost small" disabled={busy} onClick={() => equip(item, worn)} aria-label={`${worn ? 'Take off' : 'Wear'} ${item.name}`}>{worn ? 'Take off' : 'Wear'}</button></div>; })}{!shop.items.some((item) => item.kind === 'avatar' && shop.own[item.id]) && <p className="muted small">Your wardrobe is ready for its first purchase.</p>}</div>
+            <div className="room-clothes">{shop.items.filter((item) => item.kind === 'avatar' && shop.own[item.id]).map((item) => { const worn = shop.eq[item.slot] === item.id; return <div className="room-clothing" key={item.id}><span>{item.name}<small className="muted">{worn ? 'Wearing' : 'Owned'}</small></span><button className="btn ghost small" disabled={busy} onClick={() => equip(item, worn)} aria-label={`${worn ? 'Take off' : 'Wear'} ${item.name}`}>{worn ? 'Take off' : 'Wear'}</button></div>; })}{!shop.items.some((item) => item.kind === 'avatar' && shop.own[item.id]) && <p className="muted small">Nothing in here yet.</p>}</div>
             {shop.items.some((item) => item.kind === 'avatar' && item.slot !== 'skin' && shop.eq[item.slot] === item.id) && <button className="btn ghost" ref={fitButton} onClick={() => setFitOpen(true)} disabled={busy}>Fit accessories</button>}
-            <Link to="/store" className="btn ghost">Browse the General Store</Link>
+            <Link to="/store" className="small">General Store →</Link>
           </>)}
         </>}
         {selection.kind === 'wealth' && <>
-          <h3>{Number.isInteger(display.wealthStage) ? WEALTH[display.wealthStage] : 'A decorative tray'}</h3>
-          <p className="room-worth num">{money(display.worth?.total)}</p><p className="small muted">In-game wealth · play money only</p><dl className="room-money">{[['bankroll', 'Cash'], ['chips', 'Chips at tables'], ['holdings', 'Investments'], ['riskEscrow', 'Risk stakes']].map(([key, name]) => <div key={key}><dt>{name}</dt><dd className="num">{money(display.worth?.[key])}</dd></div>)}</dl><p className="small muted">Moving cash onto a table keeps it in the total. Hover over the pile for cash and chips, or select it for this breakdown.</p>
+          <p className="room-worth num">{money(display.worth?.total)}</p>
+          <p className="small muted">{Number.isInteger(display.wealthStage) ? WEALTH[display.wealthStage] : 'A decorative tray'} · play money only</p>
+          <dl className="room-money">{[['bankroll', 'Cash'], ['chips', 'Chips at tables'], ['holdings', 'Investments'], ['riskEscrow', 'Risk stakes']].map(([key, name]) => <div key={key}><dt>{name}</dt><dd className="num">{money(display.worth?.[key])}</dd></div>)}</dl>
         </>}
         {selection.kind === 'collection' && <>
-          <p className="small muted">{editing && draft ? 'Choose a spot, then choose an owned oddity. Removing it from display keeps it in storage.' : 'Select a display to inspect it.'}</p>
           <div className="room-spots">{anchors.map((anchor) => { const item = ROOM_ITEM[display.placements.find((p) => p.anchorId === anchor.id)?.itemId]; return <button className="room-spot" key={anchor.id} onClick={() => setSelection({ kind: 'anchor', anchorId: anchor.id })}>{item && <PixIcon pix={item.pix} size={32} />}<span>{anchor.label}<small>{item?.name || 'Empty spot'}</small></span></button>; })}</div>
-          {editing && <><h3>In your collection</h3>{owned.length ? <ul className="room-storage">{owned.map((item) => <li key={item.id}>{item.name}<span className="small muted">{display.placements.some((p) => p.itemId === item.id) ? 'On display' : 'In storage'}</span></li>)}</ul> : <p className="small muted">No oddities yet. Your furnished room is yours all the same.</p>}<Link to="/store" className="small">Find an oddity at the General Store →</Link></>}
+          {editing && <><h3>In your collection</h3>{owned.length ? <ul className="room-storage">{owned.map((item) => <li key={item.id}>{item.name}<span className="small muted">{display.placements.some((p) => p.itemId === item.id) ? 'On display' : 'In storage'}</span></li>)}</ul> : <p className="small muted">No oddities yet.</p>}<Link to="/store" className="small">General Store →</Link></>}
         </>}
         {selection.kind === 'anchor' && <>
           {editing && draft && selectedShelf && <>
-            <p className="small muted room-drag-hint"><strong>Drag to move.</strong> Everything on the shelf moves with it.</p>
             <ShelfSizes value={selectedShelf.sizeId || 'standard'} disabled={busy} onChange={sizeId => changeShelfSize(selectedShelf.id, sizeId)} />
             <StyleChoices kind="shelf" label={selectedShelfLabel} value={selectedShelf} disabled={busy} onChange={(field, value) => style('shelf', field, value, selectedShelf.id)} />
             {shelfSlots(selectedShelf).length > 1 && <div className="room-choices room-shelf-slots" role="group" aria-label={`${selectedShelfLabel} item slots`}>{shelfSlots(selectedShelf).map((slot, index) => { const item = ROOM_ITEM[display.placements.find(place => place.anchorId === slot.id)?.itemId]; return <button key={slot.id} className="btn room-choice room-shelf-slot" aria-label={`${slot.label}: ${item?.name || 'Empty slot'}`} aria-pressed={selection.anchorId === slot.id} disabled={busy} onClick={() => setSelection({ kind: 'anchor', anchorId: slot.id })}><span className="room-slot-label">Slot {index + 1}</span>{item && <PixIcon pix={item.pix} size={24} />}<span className="room-slot-item">{item?.name || 'Empty slot'}</span></button>; })}</div>}
-            <button className="btn ghost small" disabled={busy} onClick={() => takeShelfOut(selectedShelf.id)}>Remove shelf</button>
-          </>}
-          {editing && draft && selectedAnchor?.type === 'wall' && <>
-            <p className="small muted room-drag-hint"><strong>Drag to move.</strong> Choose what to hang here below.</p>
           </>}
           {editing && draft && sceneFailed && (selectedShelf || selectedAnchor?.type === 'wall') && <div className="room-actions" role="group" aria-label="Move to a clear wall spot"><button className="btn ghost small" disabled={busy} onClick={() => cycleMount(-1)}>Previous clear spot</button><button className="btn ghost small" disabled={busy} onClick={() => cycleMount(1)}>Next clear spot</button></div>}
-          {editing && draft ? <p className="small muted">Choose what to display here. Everything below fits this spot.</p> : displayedItem ? <><div className="room-oddity"><PixIcon pix={displayedItem.pix} size={64} /><h3>{displayedItem.name}</h3></div><p>{displayedItem.desc}</p><p className="small muted">Room decoration · no gameplay bonus.</p></> : <p className="muted">Nothing on display here yet.</p>}
-          {editing && draft && selectedAnchor && <div className="room-choices" role="group" aria-label={`Choose a display for ${selectedAnchor.label}`}><button className="btn room-choice" aria-pressed={!selectedItem} disabled={busy} onClick={() => place(selectedAnchor.id, '')}>Leave empty</button>{owned.filter((item) => roomItemFits(item, selectedAnchor)).map((item) => { const currentSpot = display.placements.find((p) => p.itemId === item.id)?.anchorId; return <button key={item.id} className="btn room-choice" aria-pressed={selectedItem === item.id} disabled={busy} onClick={() => place(selectedAnchor.id, item.id)}><PixIcon pix={item.pix} size={36} /><span>{item.name}{currentSpot && currentSpot !== selectedAnchor.id && <small className="muted">Move from {anchors.find((a) => a.id === currentSpot)?.label}</small>}</span></button>; })}</div>}
-          {editing && !draft && <button className="btn" disabled={busy} onClick={arrange}>Edit room</button>}
-          {(!editing || !draft) && <button className="btn ghost" onClick={() => setSelection({ kind: 'collection' })}>All displays</button>}
+          {!(editing && draft) && (displayedItem ? <><div className="room-oddity"><PixIcon pix={displayedItem.pix} size={64} /><h3>{displayedItem.name}</h3></div><p>{displayedItem.desc}</p></> : <p className="muted">Nothing on display here yet.</p>)}
+          {editing && draft && selectedAnchor && <><h3>On display</h3><div className="room-choices" role="group" aria-label={`Choose a display for ${selectedAnchor.label}`}><button className="btn room-choice" aria-pressed={!selectedItem} disabled={busy} onClick={() => place(selectedAnchor.id, '')}>Leave empty</button>{owned.filter((item) => roomItemFits(item, selectedAnchor)).map((item) => { const currentSpot = display.placements.find((p) => p.itemId === item.id)?.anchorId; return <button key={item.id} className="btn room-choice" aria-pressed={selectedItem === item.id} disabled={busy} onClick={() => place(selectedAnchor.id, item.id)}><PixIcon pix={item.pix} size={36} /><span>{item.name}{currentSpot && currentSpot !== selectedAnchor.id && <small className="muted">Move from {anchors.find((a) => a.id === currentSpot)?.label}</small>}</span></button>; })}</div></>}
+          {editing && draft && selectedShelf && <button className="btn ghost small" disabled={busy} onClick={() => takeShelfOut(selectedShelf.id)}>Remove shelf</button>}
+          {!(editing && draft) && <button className="btn ghost" onClick={() => setSelection({ kind: 'collection' })}>All displays</button>}
         </>}
-      </section>
+      </section>}
     </div>
-    {!preview && <div className="room-feedback" aria-live="polite">{err && <p className="error" role="alert">{err}</p>}{msg && <p role="status">{msg}</p>}{conflict && draft && <button className="btn ghost" disabled={busy} onClick={() => { discard(); load(); }}>Load saved room and discard my arrangement</button>}</div>}
-    {editing && <section className="room-sharing panel" aria-label="Room link">
-      <div><h2 className="western">The front door</h2><p className="small muted">Any signed-in player can visit your room and see your cash and chips. Only you can change things.</p></div>
-      {!me.signedIn ? <div className="room-account-signin"><p className="small muted">Sign in with an account so friends can visit.</p><SignIn compact next="/room" /></div> : <div className="room-link"><label>Room link<input readOnly value={`${window.location.origin}/rooms/${room.owner.id}`} onFocus={(e) => e.target.select()} /></label><button className="btn ghost" onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/rooms/${room.owner.id}`); setMsg('Room link copied. Visitors must sign in.'); } catch { setMsg('Select the room link to copy it.'); } }}>Copy link</button></div>}
-    </section>}
     {editing && fitOpen && shop && <div ref={fitBox}><FitDialog me={me} shop={shop} onClose={() => setFitOpen(false)} onSaved={(next) => { panelSequence.current += 1; setShop(next); load(); }} /></div>}
   </div>;
 }

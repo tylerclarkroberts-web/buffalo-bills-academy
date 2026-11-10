@@ -1,4 +1,4 @@
-import { ROOM_FINISHES, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
+import { ROOM_FINISHES, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
 
 export const layoutOf = room => ({ layoutRevision: room.layoutRevision, themeId: room.themeId,
   placements: room.placements.map(place => ({ ...place })), shelves: roomShelves(room.shelves), wallDisplays: roomWallDisplays(room.wallDisplays, roomShelves(room.shelves)), finishes: roomFinishes(room.finishes), furniture: roomFurniture(room.furniture) });
@@ -54,17 +54,6 @@ export const furnitureOf = selection => {
   const id = selection?.kind === 'anchor' ? selection.anchorId : selection?.kind === 'surface' ? selection.surface : selection?.kind;
   return id !== 'floor' || selection.kind === 'anchor' ? (Object.hasOwn(ROOM_FURNITURE, id) ? id : null) : null;
 };
-/** Nearest free quarter-unit spot to a piece's default position, for putting stored furniture back. */
-function freeSpot(furniture, id, shelves, wallDisplays) {
-  const [homeX, homeZ] = ROOM_FURNITURE[id].home;
-  let best = null;
-  for (let x = -5.25; x <= 5.25; x += 0.25) for (let z = -4; z <= 4.25; z += 0.25) {
-    const distance = Math.hypot(x - homeX, z - homeZ);
-    const candidate = { ...furniture, [id]: { ...furniture[id], x, z } };
-    if ((!best || distance < best.distance) && furnitureFits(candidate, id) && wallMountsFit(shelves, wallDisplays, candidate)) best = { x, z, distance };
-  }
-  return best && { x: best.x, z: best.z };
-}
 /** Move, turn (`r`), store (`off: true`) or restore (`off: false`) one piece; unchanged when it would not fit. */
 export function placeFurniture(layout, id, change) {
   if (!layout?.furniture || !Object.hasOwn(ROOM_FURNITURE, id) || (change.off && !ROOM_FURNITURE[id].removable)) return layout;
