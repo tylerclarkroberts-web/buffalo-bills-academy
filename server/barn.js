@@ -12,7 +12,7 @@ import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
 import { simulateBout } from './engine/bout.js';
 import { movesFor, battleFor, combatStats, STANCES } from './engine/bug-combat.js';
 
-export const EGG_CHANCE = 6000; // out of 100,000 shifts (6%), for players with an empty barn
+export const EGG_CHANCE = 10000; // out of 100,000 shifts (10%), for players with an empty barn
 export const DEFAULT_INCUBATE_MS = 3 * 24 * 3600e3;
 // Needs decay gently: from full to empty in about a week (hunger, v33: was 2 days), 2.5 days (mood) and 3 days
 // (cleanliness). Hunger is only the gauge; what kills is time since the last feed (STARVE_MS), not the gauge at zero.

@@ -3,8 +3,9 @@ import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
 import { makeMaze, rng, veinChain, eggSpot, FIRST_POOL_STEPS } from './maze.js';
+import { stickTurn } from './controls.js';
 
-const EGG_MS = 10000; // v30: an egg (when the server put one in this shift) lies near the start for the first 10 s
+const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
 import { MineScene, MINE_REACH } from './scene.js';
 import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
@@ -167,7 +168,7 @@ function Intro({ me, loading, onStart, starting }) {
         <section className="m-box">
           <h2>&gt; SHIFT ORIENTATION</h2>
           <ol>
-            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · on phones, the stick</span></li>
+            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
             <li>Find the glowing pool. Dry? The vein moved deeper. Hold <b>MINE</b> when it's in.</li>
             <li>Get paid. Clock in again. Repeat for weeks.</li>
@@ -385,7 +386,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
       {near && (
         <div className="m-mine">
           <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>
-          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}>
+          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}>
             {progress >= 1 ? 'BUCKET FULL' : holding ? 'MINING…' : 'HOLD TO MINE'}
           </button>
           <div className="m-dim small">or hold SPACE</div>
@@ -412,8 +413,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   );
 }
 
-/** v51: phone mine controls. Stick for walk + gentle turn; dedicated L/R buttons for a clean 90° snap so
- *  you can hold forward and tap a turn without fighting the deadzone. Curve softens diagonals. */
+/** Phone controls: stick for walking and gentle steering; hold the arrows to turn. */
 function MovePad({ apply }) {
   const base = useRef(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
@@ -421,12 +421,9 @@ function MovePad({ apply }) {
   const turn = useRef(0); // -1 / 0 / +1 from the side buttons
   const active = useRef(false);
   const push = () => {
-    let { x, y } = stick.current;
-    // wider forward corridor: small sideways drift while walking doesn't yank you around
-    if (Math.abs(y) > 0.35 && Math.abs(x) < 0.45) x *= 0.35;
+    const { x, y } = stick.current;
     const f = Math.abs(y) < 0.12 ? 0 : -Math.sign(y) * Math.min(1, (Math.abs(y) - 0.12) / 0.88) ** 0.85;
-    const fromStick = Math.abs(x) < 0.18 ? 0 : Math.sign(x) * Math.min(1, (Math.abs(x) - 0.18) / 0.82);
-    const t = turn.current || fromStick * 0.9;
+    const t = turn.current || stickTurn(x);
     apply(f, t);
   };
   const move = (e) => {

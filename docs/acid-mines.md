@@ -2,6 +2,18 @@
 
 Clock in, follow the clicks through the tunnels, and hold **Mine** at a flowing pool to fill the bucket. Shifts take at least 20 seconds; some veins take longer. The server chooses the payout and credits it to your bankroll when the shift finishes.
 
+## Finding an egg
+
+Each new shift has a **10% chance** of an egg when your Barn is empty. An egg, living bug or unburied dead bug occupies the Barn and prevents another egg from appearing. Resuming a shift keeps its original roll; reloading does not give another chance.
+
+An egg appears near the entrance for the **first 30 seconds of the shift**. Approach it and use **Pick it up**, tap the egg itself, or press **G**. The server keeps an additional three-second allowance for the pickup request to arrive. The timer starts at clock-in and continues when you leave or reload the page; finishing or quitting the shift ends the opportunity. Collection moves the egg into your existing Barn slot without changing the shift's pay or timing.
+
+## Phone controls
+
+The stick moves forward/back and turns when pushed sideways. Small sideways thumb movements stay in a deadzone; moving farther sideways increases turning smoothly. Hold the left/right arrow buttons to turn continuously; they do not snap to a fixed angle. Drag the tunnel view to look around. At a flowing pool, hold **Mine** to fill the bucket. Releasing or cancelling the press stops mining.
+
+On narrow portrait layouts, mining, egg pickup and door actions sit above the movement pad. Narrow landscape layouts put them beside it. The status and acid meter use separate columns on narrow screens; the decorative header brand hides on the smallest screens to keep Surface, balance and sound reachable. The orientation screen explains the stick, held turn buttons and drag-to-look gesture. The November 10, 2026 update fixes the mining-panel overlap observed at 320px and 390px and removes the sudden steering jump while walking. Physical-phone feel, performance and Safari remain unverified.
+
 ## Leaving after getting paid
 
 After a successful shift, **Back to the card room** and the mine header's **Surface** button both bring up the Foreman for a brief send-off. He picks one of eighteen three-line grumbles about payroll, work ethic, or heading back to the cards. Normal acid pay and all jackpot results qualify.
@@ -38,10 +50,14 @@ Wrong and correct answers randomly choose from their own pools. The eight existi
 
 ## Development checks
 
-Run `node --test test/foreman.test.js` and `npm run build` from the repository root. Check both paid exit buttons, **Another shift**, and mud/unfinished-shift quizzes on desktop and narrow/short mobile layouts. Confirm paid send-offs return home without a math form or an answer request, and leave the credited bankroll unchanged.
+Run `node --test test/mines-eggs.test.js test/mines-controls.test.js test/foreman.test.js` and `npm run build` from the repository root. Check egg visibility through 30 seconds and pickup after the former ten-second deadline. Check movement and action targets together on portrait and short landscape layouts, including smooth steering and releasing/cancelling a mining press. Check both paid exit buttons, **Another shift**, and mud/unfinished-shift quizzes on desktop and narrow/short mobile layouts. Confirm paid send-offs return home without a math form or an answer request, and leave the credited bankroll unchanged.
 
 No endpoints, saved-data formats, or environment settings change for paid send-offs. See [Development and troubleshooting](development.md) for local setup and the known test baseline.
 
 Verification on November 10, 2026: all eight Foreman tests passed, the frontend build passed with the existing duplicate-attribute warnings in the blackjack screen, and local documentation links resolved. An isolated local server with synthetic accounts, deterministic payouts, and shortened shift waits exercised both paid departure buttons, Another shift, unchanged pay, absence of a pending paid quiz, and the existing unfinished-shift math form. The dialogue was checked at 1366×768, 320×640, and 844×390, including scrolling the results screen before departure. The full suite, physical devices, and live deployment were not checked.
 
 The subsequent dialogue-only expansion tripled every pool listed above, bringing the distinct written lines from 98 to 296. All eight Foreman tests, the frontend build, and local documentation-link checks passed again; the existing blackjack build warnings remain. The selection logic and layouts did not change in this expansion, and browser checks and the full suite were not repeated.
+
+The same day's egg update raises the chance from 6% to 10% and the visible window from 10 to 30 seconds, preserving the three-second network allowance and existing API/data formats. All three deterministic egg tests passed, covering probability boundaries, occupied Barns, resuming without a reroll, authenticated pickup at 30 and 33 seconds, and rejection after 33 seconds or for invalid/repeated claims. The build passed with the existing blackjack warnings. Isolated browser checks at 1280×844, 390×844, 320×640 and 568×320 confirmed visibility after 20 seconds, pickup at 25 seconds through the UI/API, disappearance after 30 seconds, and reachable pickup/movement targets. These checks used synthetic accounts, controlled clocks and repositioning near the egg; they do not prove real-device search ease.
+
+The mobile fixes passed two steering tests and browser checks at 320×640, 390×844, 568×320, 667×340, 844×390 and desktop 1280×800. Hit-testing confirmed that movement and mining targets no longer overlap, while scripted pointer input verified continuous steering, held-turn release and cancellation stopping mining progress. All 12 existing Foreman/Barn tests also passed. No browser exceptions were observed. Physical devices, Safari, a full-suite run and live deployment were not checked.
