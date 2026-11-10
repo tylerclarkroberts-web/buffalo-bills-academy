@@ -20,6 +20,80 @@ const screenPoint = (camera, position) => {
   return { clientX: (p.x + 1) * 846 / 2, clientY: (1 - p.y) * 380 / 2 };
 };
 
+test('yard partition leaves an open doorway and its glazing does not intercept room controls', () => {
+  const scene = furnitureScene();
+  scene.static = new THREE.Group(); scene.raycaster = new THREE.Raycaster();
+  scene.wardrobe.position.set(3.25, 0, -2.5);
+  scene.buildSideDoor();
+  scene.update({ placements: [], shelves: [], finishes: roomFinishes() });
+  scene.static.updateMatrixWorld(true); scene.dynamic.updateMatrixWorld(true);
+  const partition = scene.static.getObjectByName('yard-partition');
+  const doorway = new THREE.Raycaster(new THREE.Vector3(3.6, 1.3, 1.525), new THREE.Vector3(1, 0, 0), 0, 1);
+  assert.equal(doorway.intersectObject(partition, true).length, 0, 'the walkway through the door is open');
+  const glass = [];
+  partition.traverse(object => { if (object.material?.transparent) glass.push(object); });
+  assert.ok(glass.length > 0);
+  for (const pane of glass) {
+    assert.equal(pane.material.depthWrite, false);
+    assert.equal(pane.material.side, THREE.DoubleSide);
+    assert.ok(pane.material.opacity < 0.2, 'glazing keeps the interior visible');
+    assert.ok(!scene.picks.includes(pane) && !scene.walls.includes(pane), 'glazing is not an invisible input blocker');
+  }
+  for (const editing of [false, true]) {
+    scene.setEditing(editing);
+    for (const [position, selection] of [
+      [[2.25, 1.4, 1.45], { kind: 'wealth' }],
+      [[3.25, 2.2, -2.5], { kind: 'wardrobe' }],
+      [[5.75, 1.1, -0.3], { kind: 'anchor', anchorId: 'window' }],
+    ]) {
+      const point = screenPoint(scene.camera, position);
+      assert.deepEqual(scene.targetAt(point.clientX, point.clientY), selection);
+    }
+  }
+  scene.setEditing(false);
+  for (const group of [scene.static, scene.dynamic]) group.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+});
+
+test('shared outdoor terrain survives wall cutaways without changing the room camera fit', () => {
+  const scene = furnitureScene(); scene.static = new THREE.Group();
+  const bounds = structuredClone(ROOM_BOUNDS), projection = scene.camera.projectionMatrix.toArray();
+  scene.buildOutdoors(); scene.static.updateMatrixWorld(true);
+  const landscape = scene.static.getObjectByName('surrounding-landscape');
+  assert.ok(landscape);
+  assert.deepEqual(ROOM_BOUNDS, bounds);
+  assert.deepEqual(makeRoomCamera(846 / 380).projectionMatrix.toArray(), projection);
+  // The real ground continues behind the rear window and beyond the side yard.
+  for (const [x, z] of [[-1.5, -6.5], [8, 1.5]]) {
+    const ray = new THREE.Raycaster(new THREE.Vector3(x, 5, z), new THREE.Vector3(0, -1, 0));
+    assert.ok(ray.intersectObject(landscape, true).length > 0);
+  }
+  for (const rotation of [0, 90, 180, 270]) {
+    scene.camera = makeRoomCamera(846 / 380, { rotation }); scene.applyCutaway();
+    assert.equal(landscape.visible, true);
+    assert.ok(landscape.children.every(object => object.visible), 'cutaways remove house walls, not the surrounding world');
+  }
+  landscape.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+});
+
+test('a displayed wagon picks its visible canopy without swallowing the nearby wardrobe', () => {
+  const scene = furnitureScene(); scene.raycaster = new THREE.Raycaster();
+  scene.wardrobe.position.set(3.25, 0, -2.5);
+  const view = { placements: [{ anchorId: 'window', itemId: 'odd-wagon' }], shelves: [], finishes: roomFinishes() };
+  scene.update(view); scene.dynamic.updateMatrixWorld(true);
+  const canopy = scene.wagon.localToWorld(new THREE.Vector3(-0.075, 1.25, 0)).toArray();
+  const pointAt = position => { const p = screenPoint(scene.camera, position); return scene.targetAt(p.clientX, p.clientY); };
+  for (const editing of [false, true]) {
+    scene.setEditing(editing);
+    assert.deepEqual(pointAt(canopy), { kind: 'anchor', anchorId: 'window' });
+    assert.deepEqual(pointAt([3.25, 1.3, -2.5]), { kind: 'wardrobe' }, 'empty corners of the wagon box cannot intercept the visible wardrobe');
+  }
+  scene.update({ ...view, placements: [] }); scene.dynamic.updateMatrixWorld(true);
+  assert.equal(scene.wagon, null, 'removing the display clears the old model pick reference');
+  assert.deepEqual(pointAt(canopy), { kind: 'anchor', anchorId: 'window' }, 'the empty yard still offers a display target');
+  scene.setEditing(false);
+  scene.dynamic.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+});
+
 test('shelf positions follow identities, including added shelves, while removed shelves disappear', () => {
   assert.deepEqual(roomPositions(), ROOM_POSITIONS);
   const shelves = [{ ...defaultShelves()[0], spotId: 'left-high-front' }, { ...defaultShelves()[1], id: 'shelf-3' }];

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { ROOM_ITEM, ROOM_FINISHES, ROOM_SHELF_SPOTS, roomShelves, roomFinishes } from '../../../server/catalog/room.js';
+import { coveredWagon } from './wagon.js';
 import { pixGrid } from '../store/pixart.js';
 import { spriteCanvas, drawGrave } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
@@ -72,15 +73,7 @@ function oddity(id) {
       mesh(group, new THREE.TorusGeometry(0.12, 0.025, 6, 12), material('#9e762e'), -0.3, 0.2);
       break;
     }
-    case 'odd-wagon': {
-      box(group, 1.3, 0.24, 0.8, '#9f673a', 0, 0.4);
-      const roof = mesh(group, new THREE.SphereGeometry(0.58, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), material('#e9dbc0'), 0, 0.55); roof.scale.set(1.3, 1, 0.8);
-      for (const x of [-0.46, 0.46]) for (const z of [-0.47, 0.47]) {
-        const wheel = cylinder(group, 0.25, 0.25, 0.08, '#503b25', x, 0.25, z); wheel.rotation.x = Math.PI / 2;
-        const hub = cylinder(group, 0.07, 0.07, 0.1, '#bc9556', x, 0.25, z); hub.rotation.x = Math.PI / 2;
-      }
-      break;
-    }
+    case 'odd-wagon': return coveredWagon();
     case 'odd-vaccine': {
       const syringe = new THREE.Group(); group.add(syringe); syringe.rotation.z = -0.5;
       cylinder(syringe, 0.07, 0.07, 0.4, '#c3d7cd', 0, 0.3);
@@ -138,6 +131,8 @@ export class RoomScene {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color('#c5b394');
+    this.scene.fog = new THREE.Fog('#c5b394', 26, 52);
     this.scene.add(new THREE.HemisphereLight('#ffe8bd', '#503740', 2.1));
     const sun = new THREE.DirectionalLight('#ffdb9c', 2.2); sun.position.set(1, 6, 4); this.scene.add(sun);
     this.view = roomView(); this.camera = makeRoomCamera(1, this.view);
@@ -239,7 +234,10 @@ export class RoomScene {
     const r = this.canvas.getBoundingClientRect(); if (!r.width || !r.height) return null;
     this.raycaster.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, 1 - (y - r.top) / r.height * 2), this.camera);
     const targets = this.editing ? [...this.picks, ...this.walls] : this.picks.filter(target => target.userData.selection.kind !== 'surface');
-    return this.raycaster.intersectObjects(targets.filter(shown), false)[0]?.object.userData.selection || null;
+    const hit = this.raycaster.intersectObjects(targets.filter(target => shown(target) && !(this.wagon && target.userData.selection.anchorId === 'window')), false)[0];
+    const wagonHit = this.wagon && this.raycaster.intersectObject(this.wagon, true)[0];
+    if (wagonHit && (!hit || wagonHit.distance < hit.distance)) return { kind: 'anchor', anchorId: 'window' };
+    return hit?.object.userData.selection || null;
   }
   applyCutaway() {
     if (!this.camera) return;
@@ -274,6 +272,7 @@ export class RoomScene {
   }
   buildRoom() {
     const p = this.static;
+    this.buildOutdoors();
     const floorMap = paintedTexture(128, 128, ctx => {
       ctx.fillStyle = '#815a38'; ctx.fillRect(0, 0, 128, 128);
       for (let i = 0; i < 8; i++) {
@@ -322,20 +321,8 @@ export class RoomScene {
         box(this.backWall, 4 - opening.right, 0.025, 0.02, '#735238', (opening.right + 4) / 2, y, -2.9);
       } else box(this.backWall, 8, 0.025, 0.02, '#735238', 0, y, -2.9);
     }
-    // A recessed landscape, four glass panes and a projecting sill make this read as an exterior window.
-    const landscape = paintedTexture(256, 192, ctx => {
-      const sky = ctx.createLinearGradient(0, 0, 0, 192); sky.addColorStop(0, '#91b7c0'); sky.addColorStop(1, '#f0d2a0');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, 256, 192);
-      ctx.fillStyle = '#f6dfab'; ctx.beginPath(); ctx.arc(193, 42, 16, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#9b987c'; ctx.beginPath(); ctx.moveTo(0, 122); ctx.lineTo(48, 87); ctx.lineTo(91, 103); ctx.lineTo(151, 76); ctx.lineTo(210, 108); ctx.lineTo(256, 96); ctx.lineTo(256, 192); ctx.lineTo(0, 192); ctx.fill();
-      ctx.fillStyle = '#778363'; ctx.beginPath(); ctx.moveTo(0, 148); ctx.lineTo(83, 119); ctx.lineTo(166, 143); ctx.lineTo(256, 121); ctx.lineTo(256, 192); ctx.lineTo(0, 192); ctx.fill();
-      ctx.fillStyle = '#b4a174'; ctx.fillRect(0, 168, 256, 24);
-      ctx.strokeStyle = '#786447'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 161); ctx.lineTo(256, 170);
-      for (let x = 15; x < 256; x += 38) { ctx.moveTo(x, 151); ctx.lineTo(x, 175); } ctx.stroke();
-    });
-    landscape.magFilter = landscape.minFilter = THREE.LinearFilter;
-    mesh(this.backWall, new THREE.PlaneGeometry(openingWidth, openingHeight), new THREE.MeshBasicMaterial({ map: landscape }), windowX, windowY, -3.14);
-    const pane = new THREE.MeshBasicMaterial({ color: '#d0e6e2', transparent: true, opacity: 0.16, depthWrite: false });
+    // Both windows look into the same world as the yard.
+    const pane = new THREE.MeshBasicMaterial({ color: '#d0e6e2', transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
     mesh(this.backWall, new THREE.PlaneGeometry(openingWidth - 0.12, openingHeight - 0.12), pane, windowX, windowY, -2.91);
     for (const x of [opening.left, opening.right]) box(this.backWall, 0.13, openingHeight + 0.18, 0.23, '#a47a43', x, windowY, -2.94);
     for (const y of [opening.bottom, opening.top]) box(this.backWall, openingWidth + 0.2, 0.13, 0.23, '#c39b58', windowX, y, -2.92);
@@ -352,6 +339,7 @@ export class RoomScene {
     for (const y of [0.28, 0.58]) box(p, 2.85, 0.1, 0.09, '#a58656', 5.75, y, -2.9);
     for (const z of [-2.9, -1.45]) box(p, 0.12, 0.78, 0.12, '#80603c', 7.15, 0.39, z);
     for (const y of [0.28, 0.58]) box(p, 0.09, 0.1, 1.45, '#a58656', 7.15, y, -2.175);
+    this.buildSideDoor();
     // Shelf instances are rebuilt with their displayed items in update().
     this.table(p, -0.55, -1.9, 1.8, 0.9, 0.9);
     box(p, 1.5, 0.3, 0.07, '#65462e', -0.55, 0.67, -1.49);
@@ -372,6 +360,76 @@ export class RoomScene {
     for (const x of [1.2, 3.3]) box(p, 0.04, 0.08, 1.2, '#b08b4d', x, 1.12, 1.45);
     const light = new THREE.PointLight('#ffd28c', 6, 7, 2); light.position.set(-2.6, 2.7, 0.9); this.scene.add(light);
     cylinder(this.leftWall, 0.22, 0.22, 0.14, '#c39b58', -3.62, 2.7, 1.9);
+  }
+  buildOutdoors() {
+    const outside = new THREE.Group(); outside.name = 'surrounding-landscape'; this.static.add(outside);
+    const ground = mesh(outside, new THREE.CircleGeometry(32, 64), material('#92916b'), 1, -0.22, 0);
+    ground.rotation.x = -Math.PI / 2;
+    // Fixed scenery stays outside camera-fit bounds so the furnished room remains the focus.
+    for (let i = 0; i < 14; i++) {
+      const angle = i * Math.PI * 2 / 14, radius = 21 + i % 3;
+      const hill = mesh(outside, new THREE.IcosahedronGeometry(1, 1), material(['#85896f', '#969378', '#a59c83'][i % 3]), Math.cos(angle) * radius, 0.5, Math.sin(angle) * radius);
+      hill.scale.set(5 + i % 3, 2.8 + i % 4, 5);
+    }
+    // A dusty lane runs past the yard, with irregular verge patches instead of a floating platform.
+    box(outside, 2.4, 0.015, 40, '#b49b71', 9, -0.205, 0);
+    for (const [x, z] of [[-6, -5], [3, -7], [7, -6], [-7, 3], [13, 4]]) {
+      cylinder(outside, 0.12, 0.2, 1.2, '#665136', x, 0.38, z, 7);
+      for (const [dx, y, dz, radius] of [[0, 1.7, 0, 0.95], [-0.55, 1.1, 0.2, 0.7], [0.5, 1.25, -0.2, 0.75]]) {
+        const crown = mesh(outside, new THREE.IcosahedronGeometry(radius, 1), material('#647653'), x + dx, y, z + dz); crown.scale.y = 1.25;
+      }
+    }
+    for (let i = 0; i < 34; i++) {
+      const angle = i * 2.39996, radius = 9 + i % 7;
+      const x = Math.cos(angle) * radius + 1, z = Math.sin(angle) * radius;
+      if (x > 7.6 && x < 10.4) continue;
+      const shrub = mesh(outside, new THREE.IcosahedronGeometry(0.3, 0), material(i % 3 ? '#737e55' : '#8b815d'), x, -0.03, z);
+      shrub.scale.set(1.4, 0.7 + i % 3 * 0.2, 1);
+      const patch = mesh(outside, new THREE.CircleGeometry(0.8 + i % 3 * 0.2, 7), material('#858761'), x, -0.21, z);
+      patch.rotation.x = -Math.PI / 2; patch.scale.y = 0.6;
+    }
+    for (const [x, z, size] of [[-5,-4,0.4], [7.8,-3.6,0.32], [7.6,2.7,0.24], [-5.3,3.8,0.3]]) {
+      const rock = mesh(outside, new THREE.DodecahedronGeometry(size), material('#8e8877'), x, -0.03, z); rock.scale.y = 0.6;
+    }
+    // Contact shade and a stone footing visually anchor the cabin to its surroundings.
+    box(outside, 8.7, 0.16, 6.7, '#695e48', 0, -0.19, 0);
+    for (let x = -4; x <= 4; x += 0.8) box(outside, 0.76, 0.13, 0.19, x % 1.6 ? '#8a816c' : '#9e9279', x, -0.12, 3.28);
+    for (const [x, z, w, d] of [[5.75,-0.3,2.4,1.4], [0,0,9,7]]) {
+      const shadow = mesh(outside, new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: '#433c2b', transparent: true, opacity: 0.14, depthWrite: false }), x, -0.195, z);
+      shadow.rotation.x = -Math.PI / 2;
+    }
+  }
+  buildSideDoor() {
+    const side = new THREE.Group(); side.name = 'yard-partition'; this.static.add(side);
+    const trim = '#956c42', dark = '#59422e';
+    // Low cutaway siding and clear upper panes divide the yard without obscuring the room.
+    for (const [from, to] of [[-3, 0.8], [2.25, 3]]) {
+      const length = to - from, z = (from + to) / 2;
+      const panel = mesh(side, new THREE.BoxGeometry(0.14, 0.58, length), this.wallMaterial, 4.08, 0.29, z);
+      panel.userData.selection = { kind: 'finish' }; this.walls.push(panel);
+      box(side, 0.24, 0.09, length, trim, 4.08, 0.63, z);
+      for (let y = 0.18; y < 0.55; y += 0.18) box(side, 0.16, 0.018, length, dark, 4.08, y, z);
+    }
+    const glass = new THREE.MeshBasicMaterial({ color: '#c1d5cb', transparent: true, opacity: 0.075, depthWrite: false, side: THREE.DoubleSide });
+    for (const [from, to] of [[-2.98, -1.15], [-1.15, 0.78]]) {
+      const z = (from + to) / 2, length = to - from;
+      mesh(side, new THREE.BoxGeometry(0.02, 1.48, length - 0.12), glass, 4.08, 1.46, z);
+      for (const y of [0.72, 1.46, 2.2]) box(side, 0.1, 0.06, length, trim, 4.08, y, z);
+    }
+    for (const z of [-3, -1.15, 0.8, 2.25, 3]) box(side, 0.12, z === 3 ? 0.72 : 2.75, 0.12, trim, 4.08, z === 3 ? 0.36 : 1.375, z);
+    box(side, 0.18, 0.15, 5.35, dark, 4.08, 2.75, -0.375);
+    box(side, 0.48, 0.1, 1.48, '#bda079', 4.18, 0.025, 1.525);
+    // Door leaf swings out into the clear walkway, away from the parked wagon.
+    const door = new THREE.Group(); door.name = 'open-yard-door'; door.position.set(4.08, 0.06, 2.2); door.rotation.y = -Math.PI / 2.7; side.add(door);
+    for (const z of [0, -1.3]) box(door, 0.08, 2.45, 0.1, trim, 0, 1.225, z);
+    for (const y of [0.05, 0.85, 2.4]) box(door, 0.08, 0.1, 1.4, trim, 0, y, -0.65);
+    box(door, 0.055, 0.7, 1.2, '#785332', 0, 0.45, -0.65);
+    mesh(door, new THREE.BoxGeometry(0.018, 1.4, 1.2), glass, 0, 1.62, -0.65);
+    const handle = cylinder(door, 0.035, 0.035, 0.12, '#d2ae65', 0.09, 1.02, -1.17); handle.rotation.z = Math.PI / 2;
+    for (const y of [0.3, 2.15]) box(door, 0.09, 0.13, 0.18, '#4f4b40', 0, y, -0.02);
+    for (let i = 0; i < 4; i++) {
+      const step = box(this.static, 0.5, 0.035, 0.65, i % 2 ? '#b2a082' : '#c1ae8b', 4.6 + i * 0.67, 0.035, 1.52 + (i % 2) * 0.12); step.rotation.y = i % 2 ? 0.08 : -0.09;
+    }
   }
   table(parent, x, z, w, d, h) {
     box(parent, w, 0.14, d, '#93633c', x, h, z);
@@ -427,7 +485,7 @@ export class RoomScene {
     if (this.disposed) return;
     this.cancelPointer();
     const generation = ++this.generation;
-    disposeObjects(this.dynamic); this.dynamic.clear(); this.picks = [];
+    disposeObjects(this.dynamic); this.dynamic.clear(); this.picks = []; this.wagon = null;
     this.shelves = roomShelves(view.shelves);
     this.furnishings(roomFinishes(view.finishes));
     this.wallMaterial.color.set(PAINT[view.themeId] || PAINT['bunkhouse-timber']);
@@ -438,12 +496,12 @@ export class RoomScene {
       if (ROOM_ITEM[itemId]) {
         const prop = oddity(itemId); if (!holder) prop.position.set(...position);
         if (anchorId.startsWith('wall-')) prop.userData.wallSide = 'back';
-        if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y = -0.16; }
+        if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y = -0.16; this.wagon = prop; }
         (holder || this.dynamic).add(prop);
       }
       const wall = anchorId.startsWith('wall');
-      const height = anchorId === 'window' ? 0.95 : wall ? 0.4 : 0.3;
-      const size = anchorId === 'window' ? [2.8, 2, 1.9] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : [1.25, 0.9, 0.9];
+      const height = anchorId === 'window' ? 1.125 : wall ? 0.4 : 0.3;
+      const size = anchorId === 'window' ? [2.8, 2.25, 2.05] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : [1.25, 0.9, 0.9];
       this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId });
     }
     this.pet(view.pet);
