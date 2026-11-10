@@ -33,6 +33,11 @@ test('the covered wagon stays inside its yard footprint with four grounded spoke
 test('the canopy is open at both ends, shaded on both sides, and bounded in rendering cost', () => {
   const wagon = coveredWagon(); wagon.updateMatrixWorld(true);
   const cover = wagon.getObjectByName('wagon-canopy');
+  const cloth = wagon.getObjectByName('wagon-cloth'), radii = [];
+  const positions = cloth.geometry.attributes.position;
+  for (let i = 0; i < positions.count; i++) radii.push(Math.hypot(positions.getX(i), positions.getZ(i)));
+  assert.ok(Math.max(...radii) - Math.min(...radii) > 0.005, 'cloth drapes subtly between its hoops');
+  assert.ok(wagon.getObjectByName('wagon-ironwork'));
   for (const direction of [-1, 1]) {
     const ray = new THREE.Raycaster(new THREE.Vector3(-direction * 2, 1.02, 0), new THREE.Vector3(direction, 0, 0));
     assert.equal(ray.intersectObject(cover, true).length, 0, 'the interior sightline crosses both open ends');

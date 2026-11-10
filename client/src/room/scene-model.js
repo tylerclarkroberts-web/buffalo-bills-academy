@@ -1,14 +1,19 @@
 import * as THREE from 'three';
-import { ROOM_SHELF_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, roomShelves, defaultFurniture } from '../../../server/catalog/room.js';
+import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect } from '../../../server/catalog/room.js';
 
 export { ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
 /** Heights of the display spots that ride on movable furniture. */
 const SPOT_HEIGHT = { desk: 0.97, floor: 0.08, window: 0.02 };
-export const ROOM_BOUNDS = { min: [-4.35 * S, -0.2, -3.35 * S], max: [8.6 * S, 3.65, 3.35 * S] };
+export const RESIDENT_HEIGHT_SCALE = 1.4;
+// The stylized, un-hatted 1.94-unit resident represents 5 ft 11 in; walls are 8 ft 6 in.
+export const ROOM_WALL_HEIGHT = 1.94 * RESIDENT_HEIGHT_SCALE * 102 / 71;
+export const ROOM_DOOR_HEIGHT = ROOM_WALL_HEIGHT * 80 / 102;
+export const ROOM_BOUNDS = { min: [-4.35 * S, -0.2, -3.35 * S], max: [8.6 * S, ROOM_WALL_HEIGHT + 0.25, 3.35 * S] };
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
-export const roomShelfPosition = spot => [-4 * S + 0.75, spot.position[1], spot.position[2] * S];
+export const roomShelfPosition = spot => spot.wallSide === 'back' ? [spot.position[0] * S, spot.position[1], -3 * S + 0.75] : [-4 * S + 0.75, spot.position[1], spot.position[2] * S];
+export const wallDisplayPosition = spot => spot.wallSide === 'left' ? [-4 * S + 0.19, spot.position[1], spot.position[2] * S] : [spot.position[0] * S, spot.position[1], -3 * S + 0.19];
 
 export const ROOM_POSITIONS = {
   'wall-left': [-2.9 * S, 2.55, -3 * S + 0.19], 'wall-right': [-1.25 * S, 2.55, -3 * S + 0.19],
@@ -20,32 +25,60 @@ export const ROOM_FIXTURES = {
   pet: home('pet'), wardrobe: home('wardrobe'), wealth: home('wealth'), rug: home('rug', 0.03), resident: [0.2 * S, 0.05, 1.25 * S],
 };
 
-export function roomPositions(shelves, furniture = defaultFurniture()) {
+export function roomPositions(shelves, furniture = defaultFurniture(), wallDisplays) {
   const positions = Object.fromEntries(Object.entries(ROOM_POSITIONS).filter(([id]) => !id.startsWith('shelf-') && !furniture[id]?.off)
     .map(([id, position]) => [id, furniture[id] ? [furniture[id].x, SPOT_HEIGHT[id], furniture[id].z] : position]));
   for (const shelf of roomShelves(shelves)) {
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
-    if (spot) positions[shelf.id] = roomShelfPosition(spot);
+    if (spot) for (const slot of shelfSlots(shelf)) {
+      const point = roomShelfPosition(spot);
+      if (spot.wallSide === 'back') point[0] -= slot.offset; else point[2] += slot.offset;
+      positions[slot.id] = point;
+    }
   }
+  for (const [id, spotId] of Object.entries(roomWallDisplays(wallDisplays, roomShelves(shelves)))) positions[id] = wallDisplayPosition(ROOM_WALL_SPOTS.find(spot => spot.id === spotId));
   return positions;
 }
 
-export function nearestShelfSpot(camera, rect, x, y, shelves, shelfId) {
+export function nearestShelfSpot(camera, rect, x, y, shelves, shelfId, wallDisplays, furniture, grab = { x: 0, y: 0 }) {
   if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width || y < rect.top || y > rect.top + rect.height) return null;
   const occupied = new Set(shelves.filter(shelf => shelf.id !== shelfId).map(shelf => shelf.spotId));
   let closest = null, distance = Math.max(28, Math.min(80, rect.width * 0.12));
   for (const spot of ROOM_SHELF_SPOTS) {
-    if (occupied.has(spot.id)) continue;
+    if (occupied.has(spot.id) || !wallMountsFit(shelves.map(shelf => shelf.id === shelfId ? { ...shelf, spotId: spot.id } : shelf), roomWallDisplays(wallDisplays, shelves), furniture)) continue;
     const point = new THREE.Vector3(...roomShelfPosition(spot)).project(camera);
-    const d = Math.hypot(rect.left + (point.x + 1) * rect.width / 2 - x, rect.top + (1 - point.y) * rect.height / 2 - y);
+    const d = Math.hypot(rect.left + (point.x + 1) * rect.width / 2 - x + grab.x, rect.top + (1 - point.y) * rect.height / 2 - y + grab.y);
     if (d < distance) { closest = spot; distance = d; }
   }
   return closest;
 }
 
-/** Where a screen point meets the floor, snapped to quarter units; null outside the canvas or above the horizon. */
-export function floorPoint(camera, rect, x, y) {
+export function nearestWallSpot(camera, rect, x, y, shelves, wallDisplays, id, furniture, grab = { x: 0, y: 0 }) {
   if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width || y < rect.top || y > rect.top + rect.height) return null;
+  let closest = null, distance = Math.max(28, Math.min(80, rect.width * 0.12));
+  for (const spot of ROOM_WALL_SPOTS) {
+    if (!wallSpotAvailable(shelves, wallDisplays, id, spot.id, furniture)) continue;
+    const point = new THREE.Vector3(...wallDisplayPosition(spot)); point.y += 0.4; point.project(camera);
+    const d = Math.hypot(rect.left + (point.x + 1) * rect.width / 2 - x + grab.x, rect.top + (1 - point.y) * rect.height / 2 - y + grab.y);
+    if (d < distance) { closest = spot; distance = d; }
+  }
+  return closest;
+}
+
+/** A short clear route beside the rug; the same footprint rules keep the resident out of furniture. */
+export function residentStep(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays()) {
+  for (const [dx, dz] of [[0.55, 0], [-0.55, 0], [0, 0.55], [0, -0.55]]) {
+    if ([0.25, 0.5, 0.75, 1].every(part => {
+      const moved = { ...furniture, rug: { ...furniture.rug, x: furniture.rug.x + dx * part, z: furniture.rug.z + dz * part } };
+      return furnitureFits(moved, 'rug') && wallMountsFit(shelves, wallDisplays, moved);
+    })) return { x: dx, z: dz };
+  }
+  return { x: 0, z: 0 };
+}
+
+/** Project onto the floor, including cropped furniture origins; the caller bounds the actual pointer. */
+export function floorPoint(camera, rect, x, y) {
+  if (!rect.width || !rect.height) return null;
   const from = new THREE.Vector3((x - rect.left) / rect.width * 2 - 1, 1 - (y - rect.top) / rect.height * 2, -1).unproject(camera);
   const direction = camera.getWorldDirection(new THREE.Vector3());
   if (direction.y >= -1e-6) return null;
@@ -74,8 +107,8 @@ export function roomView(value = {}) {
 export function roomRenderSize(width, height, pixelRatio = 1) {
   const w = Number.isFinite(width) && width > 0 ? width : 1;
   const h = Number.isFinite(height) && height > 0 ? height : 1;
-  const ratio = Number.isFinite(pixelRatio) ? Math.min(1.5, Math.max(1, pixelRatio)) : 1;
-  const scale = Math.min(ratio, 1600 / w, 1000 / h);
+  const ratio = Number.isFinite(pixelRatio) ? Math.min(2, Math.max(1, pixelRatio)) : 1;
+  const scale = Math.min(ratio, 4096 / w, 2160 / h, Math.sqrt(5000000 / (w * h)));
   return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
 }
 
@@ -118,4 +151,67 @@ export function wealthLayout(stage) {
   }
   const bundles = Array.from({ length: [0, 0, 0, 2, 4, 6][stage] }, (_, i) => ({ x: 0.68, y: 0.045 + Math.floor(i / 2) * 0.09, z: (i % 2) * 0.38 - 0.2 }));
   return { neutral: false, chips, bundles };
+}
+
+/** Short, deterministic visits that keep the faun's off-centre umbrella clear along the whole route. */
+export function faunVisitRoute(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays(), visitIndex = 0) {
+  const overlaps = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  const footprint = ({ x, z }, facing) => {
+    const cos = Math.cos(facing), sin = Math.sin(facing), corners = [];
+    // Envelope includes 1.25x height, the lean, head turns and entrance/retreat yaw.
+    for (const dx of [-1.22, 0.62]) for (const dz of [-0.48, 0.75]) corners.push([x + dx * cos + dz * sin, z + dz * cos - dx * sin]);
+    return [Math.min(...corners.map(p => p[0])), Math.min(...corners.map(p => p[1])), Math.max(...corners.map(p => p[0])), Math.max(...corners.map(p => p[1]))];
+  };
+  const clear = (route, area, obstacles) => {
+    const a = footprint(route.from, route.facing), b = footprint(route.to, route.facing);
+    const swept = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+    return swept[0] >= area[0] && swept[1] >= area[1] && swept[2] <= area[2] && swept[3] <= area[3]
+      && obstacles.every(obstacle => !overlaps(swept, obstacle));
+  };
+  const roomObstacles = Object.entries(ROOM_FURNITURE).filter(([id, piece]) => !piece.flat && !piece.yard && !furniture[id].off).map(([id]) => {
+    const rect = furnitureRect(id, furniture[id]), pad = id === 'wardrobe' ? 0.18 : id === 'desk' ? 0.08 : 0;
+    return [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
+  });
+  const resident = residentRect(furniture);
+  roomObstacles.push([resident[0] - 0.6, resident[1] - 0.6, resident[2] + 0.6, resident[3] + 0.6]);
+  // Treat wall mounts as solid through visitor height, and include the projecting window sill.
+  roomObstacles.push([-0.45 * S, -3 * S, 1.95 * S, -3 * S + 0.65]);
+  for (const shelf of shelves) {
+    const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
+    if (!spot) continue;
+    const [x, , z] = roomShelfPosition(spot), along = shelf.sizeId === 'wide' ? 1.25 : 0.45;
+    roomObstacles.push(spot.wallSide === 'left' ? [x - 0.65, z - along, x + 0.65, z + along] : [x - along, z - 0.65, x + along, z + 0.65]);
+  }
+  for (const spotId of Object.values(wallDisplays)) {
+    const spot = ROOM_WALL_SPOTS.find(spot => spot.id === spotId);
+    if (!spot) continue;
+    const [x, , z] = wallDisplayPosition(spot);
+    roomObstacles.push(spot.wallSide === 'left' ? [x - 0.11, z - 0.6, x + 0.11, z + 0.6] : [x - 0.6, z - 0.11, x + 0.6, z + 0.11]);
+  }
+  const route = (x, z, dx, dz, facing, location) => ({ from: { x, z }, to: { x: x + dx, z: z + dz }, facing, location });
+  const wardrobe = furnitureRect('wardrobe', furniture.wardrobe), wagon = furnitureRect('window', furniture.window);
+  const indoors = [
+    route(1.8 * S, -0.5 * S, -0.6, 0, 0.35, 'room'),
+    route(wardrobe[0] - 1.1, wardrobe[3] + 0.6, 0, 0.6, 0.35, 'room'),
+    route(4 * S - 1.25, -0.1 * S, -0.6, 0, 0.35, 'room'),
+  ];
+  const outside = [
+    route(furniture.window.x - 0.3, wagon[1] - 0.6, 0, -0.6, Math.PI, 'yard'),
+    route(wagon[2] + 0.6, furniture.window.z - 0.3, 0.6, 0, Math.PI / 2, 'yard'),
+    route(furniture.window.x + 0.3, wagon[3] + 0.6, 0, 0.6, 0, 'yard'),
+    route(wagon[0] - 0.6, furniture.window.z + 0.3, -0.6, 0, -Math.PI / 2, 'yard'),
+  ];
+  const groups = [
+    [indoors, [-4 * S + 0.15, -3 * S + 0.15, 4 * S - 0.2, 3 * S - 0.15], roomObstacles],
+    [outside, [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S], [wagon]],
+  ];
+  const index = Number.isFinite(visitIndex) ? Math.max(0, Math.floor(visitIndex)) : 0;
+  for (const groupIndex of [index % 2, 1 - index % 2]) {
+    const [candidates, area, obstacles] = groups[groupIndex];
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[(Math.floor(index / 2) + i) % candidates.length];
+      if (clear(candidate, area, obstacles)) return candidate;
+    }
+  }
+  return route(6.65 * S, 2.25 * S, 0, 0, 0, 'path');
 }
