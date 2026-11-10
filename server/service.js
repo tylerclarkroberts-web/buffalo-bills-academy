@@ -92,13 +92,22 @@ export class PokerService {
   renamePlayer(player, name) {
     player.name = cleanName(name);
     this.store.savePlayers();
+    // Every table that knows this player: their seat, and their standings row if they have left.
     for (const t of this.store.allTables()) {
-      const s = t.seats.find((x) => x && x.playerId === player.id);
-      if (s) this.mutate(t.code, (tb) => { tb.seats.find((x) => x && x.playerId === player.id).name = player.name; if (tb.ledger[player.id]) tb.ledger[player.id].name = player.name; });
+      const seated = t.seats.some((x) => x && x.playerId === player.id && x.name !== player.name);
+      const listed = t.ledger?.[player.id] && t.ledger[player.id].name !== player.name;
+      if (!seated && !listed) continue;
+      this.mutate(t.code, (tb) => {
+        for (const s of tb.seats) if (s && s.playerId === player.id) s.name = player.name;
+        if (tb.ledger[player.id]) tb.ledger[player.id].name = player.name;
+      });
     }
     return { id: player.id, name: player.name };
   }
-  /** Change the login handle (@username). Display name is separate (renamePlayer). Sessions stay on player id. */
+  /**
+   * Change the login handle (@username). Sessions stay on player id. The display name is separate (renamePlayer),
+   * but a player who never chose one is still shown under their handle, so in that case the name follows the handle.
+   */
   changeUsername(player, raw) {
     const username = normUsername(raw);
     const err = checkUsername(username);
@@ -106,6 +115,7 @@ export class PokerService {
     if (player.login?.username === username) return { username };
     const taken = this.loginTaken({ username }, player.id);
     if (taken) throw new G.GameError(taken, 409);
+    const followed = !!player.login?.username && String(player.name).trim().toLowerCase() === player.login.username;
     if (!player.login) {
       player.login = { username, email: player.google?.email || null, hash: null, changedAt: this.now() };
     } else {
@@ -113,6 +123,7 @@ export class PokerService {
       player.login.changedAt = this.now();
     }
     this.store.savePlayers();
+    if (followed) this.renamePlayer(player, String(raw).trim());
     return { username };
   }
 

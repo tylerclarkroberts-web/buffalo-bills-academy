@@ -100,11 +100,13 @@ export function Profile({ id }) {
         </div>
         {self && !editing && (
           <div className="pf-actions">
+            <button className="btn small" onClick={() => navigate('/room')}>My Room</button>
             {me?.avatar?.wear && <button className="btn small" onClick={() => api('GET', '/shop').then(setFitShop).catch((e) => setErr(e.message))} data-test="profile-fit">Fit accessories</button>}
             <button ref={renameButton} className="btn small" onClick={() => { setName(p.name); setRenameError(''); setRenameStatus(''); setEditing(true); }}>Rename</button>
             <button className="btn small ghost" onClick={() => signOut().then(() => navigate('/'))}>Sign out</button>
           </div>
         )}
+        {!self && p.roomVisitAvailable && <Link className="btn small" to={`/rooms/${p.id}`}>Visit room</Link>}
       </div>
       {fitShop && me && <FitDialog me={me} shop={fitShop} onClose={() => setFitShop(null)} onSaved={setFitShop} />}
       <Tabs label="Profile" value={tab} onChange={setTab} tabs={tabs} />
@@ -188,15 +190,14 @@ function UsernameHandle({ me }) {
   const [err, setErr] = useState('');
   useEffect(() => { setU(me.username || ''); }, [me.username]);
   const dirty = u.trim().toLowerCase() !== (me.username || '');
-  const save = async (e) => {
-    e?.preventDefault?.();
+  const run = async (fn, done) => {
     setErr(''); setMsg(''); setBusy(true);
-    try {
-      await changeUsername(u);
-      setMsg('Handle saved.');
-    } catch (e2) { setErr(e2.message); }
+    try { await fn(); setMsg(done); } catch (e2) { setErr(e2.message); }
     finally { setBusy(false); }
   };
+  const save = (e) => { e?.preventDefault?.(); run(() => changeUsername(u), 'Handle saved.'); };
+  // Tables show the display name. It follows the handle until you pick a different one; after that, offer to match them.
+  const differs = !!me.username && me.name.trim().toLowerCase() !== me.username;
   return (
     <form className="account handle-card" data-test="settings-username" onSubmit={save}>
       <h2 className="display sl-title">Username handle</h2>
@@ -207,9 +208,15 @@ function UsernameHandle({ me }) {
       </label>
       <div className="row gap">
         <button className="btn small light" disabled={busy || !u.trim() || !dirty} data-test="settings-username-save">{busy ? 'Saving…' : 'Save handle'}</button>
-        {msg && <span className="small ok" data-test="settings-username-ok">{msg}</span>}
+        {msg && <span className="small ok" role="status" data-test="settings-username-ok">{msg}</span>}
         {err && <span className="error small" role="alert">{err}</span>}
       </div>
+      <p className="small muted handle-shown" data-test="settings-shown-as">
+        At tables you appear as <b>{me.name}</b>.{' '}
+        {differs
+          ? <button type="button" className="linkish" disabled={busy} onClick={() => run(() => rename(me.username), 'Table name updated.')} data-test="settings-use-handle">Use {me.username} instead</button>
+          : me.username ? 'Changing your handle changes this name too.' : null}
+      </p>
     </form>
   );
 }

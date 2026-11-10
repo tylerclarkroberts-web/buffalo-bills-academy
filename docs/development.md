@@ -63,12 +63,13 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | Lobby and table creation | `client/src/Home.jsx` |
 | Browser HTTP/session helpers | `client/src/api.js` |
 | Selfie framing, segmentation worker and correction | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`; see [Selfie avatars](selfie-avatars.md). |
-| Poker screen | `client/src/TablePage.jsx`, `client/src/table/` |
+| Poker screen | `client/src/TablePage.jsx`, `client/src/table/`; see [Playing at a poker table](table-play.md). |
 | Express startup, routes, feature wiring | `server/index.js`, `server/app.js` |
 | Poker orchestration and timers | `server/service.js` |
 | Poker rules, cards, evaluation, pots | `server/engine/` |
 | Blackjack | `server/blackjack/`, `client/src/bj/` |
 | Other games | Matching slots, mines, barn, store, and avatar modules under `server/` and `client/src/` |
+| Personal rooms | `server/rooms.js`, `server/catalog/room.js`, `client/src/room/`; see [Personal rooms](personal-rooms.md). |
 | Shared play-money bankroll | `server/accounts.js` |
 | Accounts and sessions | `server/auth.js`, `server/passwords.js` |
 | Persistence | `server/store.js` |
@@ -105,6 +106,8 @@ Use synthetic or explicitly authorized test photos; do not commit personal image
 
 `server/store.js` loads state into process memory and writes JSON files, including `players.json`, per-table files under `tables/`, and additional feature/session documents. Avatars also live under the data directory. Writes use a temporary file followed by a rename.
 
+Personal-room metadata is stored in `rooms.json` (schema version 1): arrangement revision, theme, owned-item placements, shelf identities/mounts/styles, floor/rug/wardrobe finishes and furniture positions per player. Older records without shelf/finish/furniture fields retain the original two shelves, finishes and furniture positions; explicit empty shelf lists remain empty. It does not duplicate balances, inventory or pet clocks. Previously stored sharing flags are ignored: rooms and exact financial balances are visible to signed-in visitors. Room writes persist before replacing their in-memory state; layout revisions reject conflicting edits. Deleting an account removes its room record. See [Personal rooms](personal-rooms.md#api-and-persistence) for the contract and limits.
+
 Keep the data directory to preserve local state. Stop the server before manually inspecting or changing saved state, and keep a copy before intentional maintenance. Atomic file replacement does not provide a transaction spanning multiple files, and separate server processes do not share an in-memory store. Do not assume this design supports multiple concurrent replicas against one data directory.
 
 ## Validation and known baseline
@@ -118,6 +121,10 @@ node --test test/public-tables.test.js test/delete-account.test.js
 For UI changes, check both desktop and mobile, including a short/narrow viewport, loading and empty states, and the primary interaction. For the poker and blackjack tables, also check a large window (2560×1440 and 3840×2160 at 100% scaling). Above the 1080p felt size, poker seats, cards and table labels grow with the felt (`tableScale` in `client/src/ui.jsx`). The top bar, footer, poker header, side panel and action bar, and the whole blackjack card, step up by window size (`--ui` at the end of `client/src/styles.css`). At 1080p and below nothing changes; the multi-table view keeps its normal chrome size. For API or persistence changes, exercise the actual HTTP boundary, invalid input, and existing saved records where relevant.
 
 For host settings, `node --test test/host-settings.test.js test/v42.test.js test/game.test.js` covers the new update path alongside existing auto-check and poker rules. See [Host options and room history](table-options-and-history.md) for the host controls and lobby filter checks.
+
+For personal rooms, run `node --test test/rooms.test.js test/rooms-api.test.js test/room-scene.test.js test/room-layout.test.js test/room-wagon.test.js`, then the build and full suite. The focused tests exercise permissions/projection, ownership, furniture/style persistence, furniture placement rules and dragging, layout draft actions and bounded camera/wealth geometry. They do not prove browser GPU rendering, physical-phone performance or live deployment. Verify the actual room at desktop, 390px, 320px and short landscape, plus shelf gestures/button alternatives, non-WebGL controls and owner/second-account visitor paths; see [Personal rooms](personal-rooms.md#verification-and-limits).
+
+On Windows, restricted execution can produce `EPERM` during atomic renames in the system temporary directory. Retry with `TEMP` and `TMP` set to a writable temporary directory inside the workspace, or use the approved unrestricted test context when needed. Keep the temporary test directory outside committed files. An environment failure does not establish a source regression or a passing test run; record the actual rerun result.
 
 During verification of host options and room filters on November 8, 2026, using Node 24.19.0/npm 11.17.0 on Windows:
 
@@ -166,3 +173,49 @@ Profile **Account** contains the single username editor, password controls, Goog
 For this layout, check both tabs on a 320px-wide phone, short landscape and desktop. Reach every form and action by scrolling and keyboard, expand the deletion confirmation without submitting it, and check configured and unavailable Slack states. Confirm that the username editor appears only in Account and that existing save, error and pending states remain usable. Record results separately from the earlier UI batch above.
 
 Follow-up verification (2026-11-09): `node --test test/username.test.js test/delete-account.test.js` passed all 6 tests using a workspace-local temporary directory; `npm run build` passed with the existing blackjack duplicate-attribute warnings. Browser checks at 320×640, 390×844, 844×390 and 1366×768 confirmed one scroll owner per pane, natural-height cards, no horizontal page overflow and keyboard access to the bottom controls. The unavailable and configured Slack views were checked using an isolated local stub; no Slack messages were sent. The OAuth return still opens Account, the deletion confirmation can be expanded and cancelled, and Table replay persists across reload. No passwords, Google links or live accounts were changed. The full suite was not repeated for this layout-only follow-up; the earlier integration results remain above.
+
+### Phone table play — November 9, 2026
+
+The phone table menu, the bet and raise sizing panel, larger phone avatars and the display-name/handle link were checked locally on Windows (Node 24, built frontend on a local port with a temporary data directory and development sign-in). See [Playing at a poker table](table-play.md) and [Profile and account](profile-and-account.md#display-name-and-username-handle).
+
+| Check | Result |
+| --- | --- |
+| `node --test test/betsize.test.js test/chipspot.test.js test/username.test.js` | 13 passed, 0 failed. |
+| `npm run build` | Passed; the existing blackjack duplicate-attribute warnings remain. |
+| `npm test` | 282 tests: 277 passed, 5 failed. |
+
+The five failures are the four Doom tests with the existing Windows URL-to-path issue and the Slack auto-link retry test. The Slack test also failed alone, and failed the same way with `server/service.js` restored to the previous commit, so it is not caused by this change. The full suite is not passing.
+
+Browser checks used an emulated 375×812 phone, 844×390 and 667×340 landscape, and a 1024×768 desktop window, on a six-seat bot table and a nine-seat table with long names:
+
+- Header: the title no longer shares its row with icon buttons; Menu rows, the stakes/visibility footer, outside-tap dismissal and the wide-screen inline buttons.
+- Sizing panel: presets, single taps and press-and-hold on each step button, slider stops across the range (20 to 5,000 at 5/10 blinds), and the confirm label. Row widths fit 375px without wrapping.
+- Felt: avatar size 55px at six seats and 37px at nine (39px and 29px before), dropping to 44px at six seats while the sizing panel is open. A script compared the on-page rectangles of every seat, name plate, tag, bet chip, the board and the pot: no overlaps and nothing off screen at six seats (panel closed and open) or, by eye, at nine seats before the flop.
+- Desktop Players panel at 1024px: names show about nine characters with an ellipsis instead of one letter; the buy-in column is hidden at that width.
+- Names: handle and display-name changes through `PATCH /api/me` and the Account card, with the seat and Players row read back from the table.
+
+Not checked: physical phones, real touch input (hold-to-repeat and the numeric keypad were exercised with synthetic pointer events only), iOS Safari, a table with gag or Smoke Shop items in the menu, the showdown-replay and Invite rows, the multi-table view, and 1440p/4K windows. The landscape measurements were taken while the action bar's entry animation was paused by the hidden preview pane, so the final resting position there was calculated, not observed. Production deployment was not part of this work.
+
+### Personal-room verification — November 9, 2026
+
+The personal-room branch was rebased onto `7fb185e` before final validation. All 43 focused room domain/API/scene/draft tests passed using `node --test --test-concurrency=1 test/rooms.test.js test/rooms-api.test.js test/room-scene.test.js test/room-layout.test.js`. These cover authorization, visitor projection, exact wealth, revisions and failed writes, legacy defaults, shelf/style validation and persistence, draft actions, bounded geometry, hold/release cancellation and full-turn hidden-wall picking. `npm run build` passed, retaining two existing duplicate `data-test` attribute warnings in `BlackjackPage.jsx`.
+
+The final sequential full-suite retry, `node --test --test-concurrency=1 'test/*.test.js'`, ran 325 tests: 319 passed and six failed. Four failures were the existing Doom Windows URL-to-path errors; one was the previously observed Slack stale-alert assertion. The sixth was the unchanged randomized Fawn odds test, whose cash count was 242 against a limit below 240; rerunning `node --test --test-concurrency=1 test/fawn.test.js` passed all five tests. All room tests passed in the full-suite retry. This is not a passing full suite.
+
+The first final full run had 314 passes and 11 failures, including six failures associated with intermittent Windows atomic-rename `EPERM` errors. Retrying with `TEMP` and `TMP` set to the shorter writable `C:\Projects\buffalo-bills-academy\.scratch\room-final-test-temp` directory eliminated those rename errors. Both runs and the isolated retry are separate observations; no unrelated game rules or test assertions were changed to obtain these results.
+
+Browser checks used synthetic local accounts/data. Desktop, 390px, 320px and 844×390 layouts were checked, with no horizontal overflow in the narrow/short views. Checks covered oddity clicks and contextual desk/yard placement; legacy two-shelf defaults; adding/styling/filling all four shelf identities; moving a filled shelf with a desktop hold-and-drag or location buttons; removal, cancel restoration, save/reload and returned inventory; floor/rug/wardrobe finishes; immediate pet/clothing changes during a layout draft; preview returning to the draft; navigation protection; exact owner balances and second-account visitor separation; money hover/focus/Escape; zoom/reset and full-turn wall cutaways. After deliberate WebGL context loss, view buttons disabled while furniture/style controls remained usable; reloading restored 3D.
+
+The final rebased build also passed browser checks for the account/profile room entry points, preserved upstream avatar/account controls, unsaved navigation, and refreshing selected Pet/Wardrobe panels after care or clothing changes in another tab. A sequencing self-check covered stale reads after mutations, panel changes and unmount; accessory-fit saves invalidate older panel reads too. All 48 local documentation links (including seven heading anchors) resolved, and the personal-room guide's JSON example passed through the actual room-save contract. See [Personal rooms](personal-rooms.md#verification-and-limits) for supported behavior and persistence details.
+
+Physical-phone gestures/performance and iOS Safari remain unverified. The resident outfit is approximate; wardrobe details use the existing exact avatar rendering. Arbitrary furniture placement and pointer camera gestures are not implemented. These are local checks, not a production deployment.
+
+The November 9 room/yard refinement keeps the original plain dark backdrop and painted rear-window view, with a wider side yard, matching fence/path, open glazed doorway and detailed covered wagon. The room and yard each have 75% more floor area, with unchanged furniture sizes and adjusted mounts, click targets and camera framing. All 48 focused room checks passed, including measured floor areas, furniture dimensions, shelf clearance/dragging, doorway/glazing behavior, full-turn camera framing, actual wagon bounds/openings, model picking and the empty-yard fallback. The build passed with the same two existing blackjack warnings. Browser checks at 1280×800 and 320×740 confirmed the larger layout, direct wagon/desk/shelf/cash selection, shelf movement and cancel, rotation/zoom/reset, and narrow-screen framing without horizontal overflow. All 48 local documentation links still resolved. This is a visual/client-only change with no API or persistence changes; the full suite was not repeated, and the preceding 325-test observation remains the latest full-suite result. Physical-phone performance and Safari remain unverified.
+
+### Movable room furniture — November 10, 2026
+
+Owners can move, turn and (for the desk and wardrobe) put away room furniture within server-checked floor-plan rules; positions are an optional `furniture` field in the existing room record. All 52 focused room checks passed with `node --test --test-concurrency=1 test/rooms.test.js test/rooms-api.test.js test/room-scene.test.js test/room-layout.test.js test/room-wagon.test.js`, including save validation, fallback for bad stored positions, draft moves/turns/storage, hold-drag previews and view-relative arrows. `npm run build` passed. All 87 local documentation links resolved and the guide's JSON example saved through the real room contract.
+
+A browser check against an isolated local server and a development account at 1280×800 and 320×740 covered the move arrows (including after turning the view), a refused turn against the wall, putting the wardrobe away and back, saving, and reloading the saved arrangement, with no horizontal overflow. Dragging was exercised with scripted pointer events and a stubbed pointer capture, not a real held mouse or finger. A sequential full-suite run after the change, `node --test --test-concurrency=1 "test/*.test.js"`, ran 334 tests: 329 passed and five failed. Four were the existing Doom Windows URL-to-path errors and one was the previously observed Slack stale-alert assertion; all room tests passed. This is not a passing full suite. A second-account visit, physical phones and Safari were not rechecked for this change.
+
+A follow-up the same day makes the resident stand at the centre of the rug wherever it is moved, with the keep-clear spot following it. The focused room tests (52) and the build passed again, and a browser check confirmed the resident moving with the rug; the full suite was not repeated for this follow-up.

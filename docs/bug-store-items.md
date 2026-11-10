@@ -14,6 +14,12 @@ Buying a consumable puts it in your inventory. Its effect starts when you press 
 
 The lamp and mister do not stay equipped or run automatically. Their cooldowns are separate. Their boosts do not reset the feeding clock. Each gives up to 6 care XP, half a free care action, inside the shared limit of 120 care XP per UTC day. Food and the feeder protect against starvation; mood and cleanliness do not.
 
+## Your bug in My Room
+
+[My Room](personal-rooms.md) displays the same Barn egg, bug or memorial in a 3D terrarium. It does not create another pet, change needs/XP rules or provide passive care. Owners can use the existing free Feed, Play and Mist actions, including while editing the room; other equipment, consumables and full pet details remain in the General Store and Barn. Care and clothing actions save immediately, independently of **Save room** or **Cancel edits**. A visitor can inspect appearance and level but cannot care for the pet and does not receive its private feeding history or cooldowns.
+
+Room oddities are decorative. The Oil Lamp oddity is separate from the single-use Cosy Heat Lamp care item; neither displaying an oddity nor visiting a room grants pet benefits.
+
 ## Bug food
 
 Food increases Fed by the amount below and resets the starvation clock. All store foods share one 15-minute cooldown. Each use also gives up to 12 care XP within the shared limit of 120 care XP per UTC day; free Barn care shares that XP limit. Store-food cooldowns are separate from the free **Feed** button's 20-minute cooldown.
