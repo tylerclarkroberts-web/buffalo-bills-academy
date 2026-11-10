@@ -512,7 +512,7 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
   .newtable .pills { display: none; }
 }
 .felt-box.tall .tag.fold { display: none; }
-.felt-box.tall .seat.folded .seat-stack::after { content: ' · folded'; color: var(--mute); }
+.felt-box.tall .seat.folded .seat-stack::after { content: 'folded'; display: block; font-size: .85em; line-height: 1.1; color: var(--mute); }
 
 /* sign-in: Google or username + password */
 .signin-box { width: 100%; max-width: 420px; justify-items: stretch; }
@@ -1380,3 +1380,79 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
   .acct-chip { max-width: 100%; }
   .acct-chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+/* ---- phone table header: one labelled menu instead of a row of icon buttons (TableMenu in TablePage.jsx) ---- */
+.menu-label, .menu-ico { display: none; }
+.tp-head.compact { gap: 10px; align-items: center; }
+.tp-head.compact .tp-title h1 { font-size: clamp(18px, 5.4vw, 24px); line-height: 1.15; }
+.tp-menu-wrap { position: relative; flex: none; }
+.tp-menu-btn { gap: 6px; padding: 0 14px; min-height: 40px; white-space: nowrap; }
+.tp-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 80; width: min(292px, calc(100vw - 24px)); max-height: calc(100dvh - 150px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain;
+  padding: 6px; display: grid; gap: 2px; border-radius: 14px; background: linear-gradient(180deg, #3a1027, #24091a); border: 1px solid rgba(242, 198, 90, .6); box-shadow: 0 18px 40px rgba(0, 0, 0, .6), 0 0 0 4px rgba(0, 0, 0, .25); animation: rise .2s var(--ease); }
+.tp-menu > .gag-wrap, .tp-menu > .music { display: grid; }
+.tp-menu > .btn, .tp-menu > .gag-wrap > .btn, .tp-menu > .music > .btn { width: 100%; justify-content: flex-start; gap: 10px; min-height: 46px; padding: 0 12px; border: 0; border-radius: 9px; background: none; color: var(--paper); font-size: 14.5px; font-weight: 600; text-align: left; }
+.tp-menu > .btn:hover, .tp-menu > .gag-wrap > .btn:hover, .tp-menu > .music > .btn:hover,
+.tp-menu > .btn:focus-visible, .tp-menu > .gag-wrap > .btn:focus-visible, .tp-menu > .music > .btn:focus-visible,
+.tp-menu > .gag-wrap > .btn[aria-expanded=true], .tp-menu > .music > .btn[aria-expanded=true] { background: rgba(242, 198, 90, .12); }
+.tp-menu > .btn > :first-child, .tp-menu > .gag-wrap > .btn > :first-child, .tp-menu > .music > .btn > :first-child { flex: none; width: 20px; text-align: center; color: var(--gold); }
+.tp-menu .say-btn.live, .tp-menu .music-btn.live { color: var(--paper); }
+.tp-menu .hide-s { display: inline !important; }
+.tp-menu .menu-label, .tp-menu .menu-ico { display: inline; }
+.tp-menu .gag-pop, .tp-menu .music-pop { position: static; width: auto; margin: 2px 4px 6px; box-shadow: none; animation: none; }
+.tp-menu-info { display: grid; gap: 3px; margin-top: 4px; padding: 8px 12px 6px; border-top: 1px solid var(--line); line-height: 1.35; }
+.tp-menu-info p { margin: 0; }
+.tp-menu-info .rule-badges { margin-left: 0; }
+
+/* ---- raise panel: quick sizes, − / + steps, and a slider that is precise at the small end (table/betsize.js) ---- */
+.raise-row.presets .btn { flex: 1 1 0; min-width: 0; padding-left: 4px; padding-right: 4px; white-space: nowrap; }
+.raise-row.stepper .step { flex: 1 1 0; min-width: 0; padding-left: 2px; padding-right: 2px; font-family: var(--mono); white-space: nowrap; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.raise-row.stepper .amount { flex: 1.5 1 0; width: auto; min-width: 76px; text-align: center; font-size: 16px; /* 16px: iOS does not zoom the page on focus */ font-weight: 700; color: var(--gold); border-color: rgba(242, 198, 90, .7); appearance: textfield; -moz-appearance: textfield; }
+.raise .amount::-webkit-outer-spin-button, .raise .amount::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.raise-row.confirm .back { flex: none; }
+.raise-row.confirm .raise-btn { min-height: 40px; white-space: nowrap; }
+@media (min-width: 900px) { .tp-wide .raise { max-width: 620px; margin-left: auto; } }
+@media (max-width: 899px) { .actionbar.raising .mycards { display: none; } }
+.tp-land .actionbar.raising .mycards, .tp-pane-mode .actionbar.raising .mycards { display: none; }
+
+/* ---- phone felt: faces big enough to recognise ----
+   On an upright felt the bust is sized from the width (TableFelt in TablePage.jsx). To pay for it, other players'
+   face-down cards shrink and tuck behind the shoulder, the head fills more of the bust, and name plates stay
+   inside the screen edge. */
+.felt-box.tall .bust .b-head { left: 9%; width: 82%; height: 89%; }
+.felt-box.tall .seat:not(.me) .seat-cards { margin-left: calc(var(--bust) * -.34); }
+.felt-box.tall .seat:not(.me) .seat-cards .card, .felt-box.tall .seat:not(.me) .seat-cards .card.sm { --w: max(18px, calc(var(--bust) * .4)); }
+.felt-box.tall .seat.me .seat-cards .card, .felt-box.tall .seat.me .seat-cards .card.sm { --w: max(22px, calc(var(--bust) * .6)); }
+.felt-box.tall .seat-plate { padding-left: 8px; padding-right: 8px; min-width: calc(var(--bust) * 1.15); }
+.felt-box.tall .seat-name { max-width: calc(var(--bust) * 1.5); }
+.felt-box.tall.crowd .seat-name { max-width: calc(var(--bust) * 1.7); }
+
+/* text buttons inside sentences */
+.linkish { background: none; border: 0; color: var(--teal); font: inherit; text-decoration: underline; cursor: pointer; padding: 0; min-height: 0; }
+.linkish:disabled { opacity: .5; cursor: default; }
+@media (pointer: coarse) { .handle-shown .linkish { padding: 10px 0; margin: -10px 0; } }
+
+/* phones: no double-tap zoom on controls (it delayed and swallowed quick taps on the − / + steps), and a
+   two-line footer instead of three so the felt gets the height */
+button, .btn, [role=button], label { touch-action: manipulation; }
+@media (max-width: 520px) { .legal { font: 500 10px/1.3 var(--sans); gap: 0 8px; padding-top: 3px; } }
+/* your own countdown is already in the turn bar right below; on a phone the seat tag only collided with it */
+.felt-box.tall .seat.me .tag.gold { display: none; }
+/* phone on its side: the raise panel has three rows and very little height, so it borrows the turn bar's and the tab row's
+   space until you confirm or go back (the countdown stays on your seat) and uses slightly shorter rows */
+@media (orientation: landscape) and (max-height: 520px) {
+  .tp-land .raise { gap: 4px; }
+  .tp-land .raise .btn, .tp-land .raise .amount, .tp-land .raise input[type=range] { min-height: 40px; }
+  .tp-land .tp-bottom:has(.actionbar.raising) .turnbar { display: none; }
+  .tp-land-side:has(.actionbar.raising) .tp-tabs { display: none; }
+}
+
+/* Players list in a narrow side panel (desktop windows around 1024px): the three number columns left the name
+   one letter wide. There the buy-in column steps aside; chips and net stay. */
+.standings { container-type: inline-size; }
+@container (max-width: 300px) {
+  .st-row { grid-template-columns: minmax(0, 1fr) 52px 52px; }
+  .st-row > span:nth-child(3) { display: none; }
+}
+.st-name { min-width: 0; }
+.st-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-name > i { flex: none; }
