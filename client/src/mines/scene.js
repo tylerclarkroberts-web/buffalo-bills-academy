@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { rng } from './maze.js';
 import { MIN_GAP } from './stalker.js';
 
-const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
+export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
 function canvasTex(w, h, draw, { repeat = [1, 1] } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -115,7 +115,7 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, localStart, reduceMotion = false, onDread, onEvent } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11 } = {}) {
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
     this.stalker = stalker || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
@@ -124,11 +124,11 @@ export class MineScene {
     this.scale = 0.34; // render small, upscale with pixelated CSS for the CRT look
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#020402');
-    this.scene.fog = new THREE.Fog('#020402', 2.5, 17);
+    this.scene.fog = new THREE.Fog('#020402', 2.5, fogFar); // deeper shafts are darker; a headlamp pushes it back
     this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 60);
     this.scene.add(this.camera);
     this.scene.add(new THREE.AmbientLight('#3a5a2a', 0.55));
-    this.lamp = new THREE.PointLight('#d9ffc2', 18, 11, 1.6);
+    this.lamp = new THREE.PointLight('#d9ffc2', 18, lampReach, 1.6);
     this.camera.add(this.lamp);
 
     const { grid, size } = maze;

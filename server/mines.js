@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { makeMaze, bucketChain, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.05% is exact.
@@ -93,6 +94,9 @@ export const BUCKET_CAPACITY = 100;
 export const EXTRACTION_RATE = 5;
 export const PULSE_GAP_MS = 1000;
 const CAPACITY = BUCKET_CAPACITY * 1000; // Integer thousandths keep pulse frequency from changing the yield.
+// Gear is fixed on the shift at clock-in; shifts started before gear existed fall back to the plain bucket.
+const cap = (s) => s.capacity ?? CAPACITY;
+const rate = (s) => s.rate ?? EXTRACTION_RATE;
 
 export function poolQuantity(elapsed, veinMs, roll) {
   const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
@@ -116,7 +120,8 @@ function reloadRequired() {
 }
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman }) {
+  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman, owned }) {
+    this.owned = owned || (() => ({})); // player id -> General Store items they own (wired to the shop in app.js)
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
     this.barn = barn || null; // v30: eggs (its own random source; see barn.js)
@@ -135,6 +140,18 @@ export class Mines {
     if (shift) next.active[playerId] = shift; else delete next.active[playerId];
     if (completed) next.completed = { ...this.doc.completed, [playerId]: completed };
     this.store.saveDoc('mines', next); this.doc = next;
+  }
+  /** What a player's mine gear adds up to: biggest bucket, fastest filler, and the shafts they hold permits for. */
+  gear(playerId) {
+    const own = this.owned(playerId) || {}; const has = MINE_ITEMS.filter((x) => own[x.id]);
+    return { cap: Math.max(BUCKET_CAPACITY, ...has.map((x) => x.cap || 0)), rate: Math.max(1, ...has.map((x) => x.rate || 0)),
+      lamp: has.some((x) => x.lamp), rod: has.some((x) => x.rod), shafts: SHAFTS.filter((s) => !s.permit || own[s.permit]) };
+  }
+  /** The shift office: what you would clock in with, and every shaft with whether your permit opens it. */
+  office(player) {
+    const g = this.gear(player.id);
+    return { capacity: g.cap, extractionRate: EXTRACTION_RATE * g.rate, lamp: g.lamp, rod: g.rod,
+      shafts: SHAFTS.map((s) => ({ id: s.id, name: s.name, fare: s.fare, max: s.max, open: g.shafts.includes(s) })) };
   }
   requireVersion(request) { if (request?.rulesVersion !== 2) throw reloadRequired(); }
   current(player, shiftId) {
@@ -159,7 +176,7 @@ export class Mines {
     const cur = this.doc.active[player.id];
     if (cur?.rulesVersion === 2) {
       this.requireVersion(request);
-      if (cur.settlement || now - cur.startedAt >= MAX_SHIFT_MS || cur.collected >= CAPACITY) return this.settle(player, cur);
+      if (cur.settlement || now - cur.startedAt >= MAX_SHIFT_MS || cur.collected >= cap(cur)) return this.settle(player, cur);
     }
     const last = this.doc.completed?.[player.id];
     if (!cur && last?.result && request?.afterShiftId !== last.shiftId) {
@@ -170,20 +187,28 @@ export class Mines {
     this.requireVersion(request);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
+    const gear = this.gear(player.id);
+    const shaft = request.shaft == null ? SHAFTS[0] : gear.shafts.find((s) => s.id === String(request.shaft));
+    if (!shaft) throw new GameError('The elevator operator wants to see a permit for that shaft.', 403);
+    if (shaft.fare) this.accounts.requireFunds(player, shaft.fare, `the elevator to ${shaft.name}`);
     const shift = { id: crypto.randomBytes(12).toString('base64url'), seed: crypto.randomInt(2 ** 31), startedAt: now, ...rollScare(this.scareInt), ...this.vein() };
     const maze = makeMaze(shift.seed, shift.cells || 7, FIRST_POOL_STEPS[shift.cells || 7]);
     const chain = bucketChain(maze, shift.seed);
-    Object.assign(shift, { rulesVersion: 2, collected: 0, index: 0, outcome: rollOutcome(this.randInt),
+    Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, scale: shaft.scale, capacity: Math.min(gear.cap, shaft.max) * 1000, rate: EXTRACTION_RATE * gear.rate,
+      ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}), collected: 0, index: 0, outcome: rollOutcome(this.randInt),
       readyAt: now + Math.max(MIN_SHIFT_MS, poolTravelMs(chain.legs[0], true)),
       pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null })) });
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay, vein and visitor never see it
-    this.accounts.touchMining(player, { recentStarts: [...recent, now] });
+    // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
+    const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
+    if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
+    this.store.commitPlayerDrafts([draft]);
     this.commit(player.id, shift); this.holds.delete(player.id);
     return this.publicShift(shift, false);
   }
   publicShift(s, resumed) {
     return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}),
-      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: BUCKET_CAPACITY, extractionRate: EXTRACTION_RATE, collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
+      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
 
@@ -204,12 +229,14 @@ export class Mines {
     const cur = this.current(player, shiftId);
     if (cur.rulesVersion === 2) {
       this.requireVersion(request);
-      if (cur.settlement || cur.collected >= CAPACITY || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+      if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
       const i = this.target(cur, request.poolId);
       if (i < cur.index || cur.pools[i].quantity !== null || this.now() < cur.readyAt) return this.publicShift(cur, true);
       const next = structuredClone(cur), pool = next.pools[i];
-      let quantity = poolQuantity(this.now() - cur.startedAt, cur.veinMs, pool.roll) * 1000;
-      if (i === next.pools.length - 1) quantity = Math.max(quantity, CAPACITY - next.collected);
+      const scale = 1000 * (cur.scale || 1); // deeper shafts: the same deposits, several times the size
+      let quantity = poolQuantity(this.now() - cur.startedAt, cur.veinMs, pool.roll) * scale;
+      if (!quantity && cur.rod) quantity = 20 * scale; // the dowsing rod never walks you to a dry hole
+      if (i === next.pools.length - 1) quantity = Math.max(quantity, cap(next) - next.collected);
       pool.quantity = pool.remaining = quantity;
       this.advance(next, this.now()); this.commit(player.id, next);
       return this.publicShift(next, true);
@@ -225,7 +252,7 @@ export class Mines {
     const cur = this.current(player, shiftId);
     if (cur.rulesVersion !== 2) throw reloadRequired();
     const now = this.now();
-    if (cur.settlement || cur.collected >= CAPACITY || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+    if (cur.settlement || cur.collected >= cap(cur) || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
     const i = this.target(cur, request.poolId);
     if (i < cur.index) return this.publicShift(cur, true);
     if (now < cur.readyAt || cur.pools[i].remaining === null) throw new GameError('Reach and inspect the pool before mining.', 425);
@@ -243,13 +270,13 @@ export class Mines {
     let next = cur;
     if (now > hold.at) {
       next = structuredClone(cur);
-      const amount = Math.min((now - hold.at) * EXTRACTION_RATE, next.pools[i].remaining, CAPACITY - next.collected);
+      const amount = Math.min((now - hold.at) * rate(next), next.pools[i].remaining, cap(next) - next.collected);
       next.collected += amount; next.pools[i].remaining -= amount;
       this.advance(next, now); this.commit(player.id, next);
     }
-    if (request.action === 'stop' || next.index !== i || next.collected >= CAPACITY) this.holds.delete(player.id);
+    if (request.action === 'stop' || next.index !== i || next.collected >= cap(next)) this.holds.delete(player.id);
     else this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
-    if (next.collected >= CAPACITY) return this.settle(player, next);
+    if (next.collected >= cap(next)) return this.settle(player, next);
     return this.publicShift(next, true);
   }
 
@@ -279,7 +306,7 @@ export class Mines {
     const cur = this.current(player, shiftId);
     if (cur.rulesVersion === 2) {
       this.requireVersion(request);
-      if (cur.settlement || cur.collected >= CAPACITY || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+      if (cur.settlement || cur.collected >= cap(cur) || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
       throw new GameError('Fill the bucket or clock out with what you have.', 409);
     }
     const elapsed = now - cur.startedAt;
@@ -299,10 +326,13 @@ export class Mines {
     this.holds.delete(player.id);
     let cur = shift;
     if (!cur.settlement) {
-      const r = cur.outcome;
-      const result = cur.collected > 0 ? { ...r, shiftId: cur.id, collected: cur.collected / 1000, capacity: BUCKET_CAPACITY,
-        amount: Math.round(r.amount * 100 * cur.collected / CAPACITY) / 100,
-        ...(r.outcome === 'dud' && cur.collected < CAPACITY ? { text: 'Mostly mud. The foreman pays for what you brought and questions your judgment.' } : {}) } : null;
+      const r = cur.outcome, full = cap(cur);
+      // Acid and mud pay by the unit, so a bigger bucket is a bigger cheque. The rare finds are one find however big
+      // the bucket: a full bucket of any size pays the same $10,000, and a partial one its fraction.
+      const per = r.amount >= 10000 ? full : CAPACITY;
+      const result = cur.collected > 0 ? { ...r, shiftId: cur.id, collected: cur.collected / 1000, capacity: full / 1000,
+        amount: Math.round(r.amount * 100 * cur.collected / per) / 100,
+        ...(r.outcome === 'dud' && cur.collected < full ? { text: 'Mostly mud. The foreman pays for what you brought and questions your judgment.' } : {}) } : null;
       cur = { ...cur, settlement: { shiftId: cur.id, result, reason: result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt } };
       this.commit(player.id, cur);
     }
