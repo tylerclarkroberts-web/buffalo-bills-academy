@@ -1070,7 +1070,9 @@ input, select { background: rgba(0, 0, 0, .28); }
 @keyframes w-spin { from { transform: scaleX(1); } 50% { transform: scaleX(-1); } to { transform: scaleX(1); } }
 .w-buzz { animation: w-buzz 2.6s ease-in-out infinite; }
 @keyframes w-buzz { 0%, 100% { transform: translate(0, 0); } 30% { transform: translate(-3px, -2px); } 60% { transform: translate(2px, 2px); } }
-@media (prefers-reduced-motion: reduce) { .w-spin, .w-buzz { animation: none; } }
+.w-twinkle { animation: w-twinkle 1.8s ease-in-out infinite; }
+@keyframes w-twinkle { 0%, 60%, 100% { opacity: 0; } 75% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .w-spin, .w-buzz, .w-twinkle { animation: none; } }
 
 /* v34: the Store button, beside the Barn */
 .store-btn { background: radial-gradient(120% 140% at 50% 0, rgba(120, 220, 140, .2), rgba(14, 30, 16, .95) 70%); border-color: #7ad08a; color: #dfffe4; }
@@ -1092,6 +1094,9 @@ input, select { background: rgba(0, 0, 0, .28); }
 .fx-confetti i { width: 7px; height: 7px; border-radius: 1px; background: hsl(calc(var(--k) * 70), 90%, 60%); }
 .fx-pie i { background: #fff6e0; width: 14px; height: 12px; border-radius: 50%; }
 .fx-noodle i, .fx-tumbleweed i { display: none; }
+.fx-mariachi i { width: auto; height: auto; left: -6px; top: -10px; background: none; box-shadow: none; border-radius: 0; font: 700 16px/1 var(--mono); color: hsl(calc(var(--k) * 60 + 20), 90%, 65%); text-shadow: 0 1px 0 #281c24; }
+.fx-mariachi i::before { content: '♪'; }
+.fx-mariachi i:nth-child(odd)::before { content: '♫'; }
 .fx-noodle .pf-from { animation: pf-tap 1.8s ease-in-out forwards; transform-origin: 0% 100%; }
 .gag-fx .pf-snap { position: absolute; left: 6px; top: -40px; font: 700 13px var(--mono); color: #fff4c8; text-shadow: 0 1px 0 #281c24, 0 0 6px rgba(0,0,0,.6); opacity: 0; animation: pf-snap 1.8s steps(1, end) forwards; }
 @keyframes pf-tap { 0% { transform: translate(-90%, -120%) rotate(-50deg); opacity: 0; } 15% { opacity: 1; } 35% { transform: translate(-50%, -60%) rotate(10deg); } 45% { transform: translate(-50%, -62%) rotate(-6deg); } 60% { transform: translate(-50%, -60%) rotate(4deg); opacity: 1; } 100% { transform: translate(-50%, -20%) rotate(30deg); opacity: 0; } }

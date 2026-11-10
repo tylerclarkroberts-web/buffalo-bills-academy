@@ -6,6 +6,7 @@
 import { GameError } from './engine/game.js';
 import { CATALOG, ITEM, TABS, AVATAR_SLOTS, BUG_SLOTS, GAG_RENAME, TOBACCO_NOTICE } from './catalog/index.js';
 import { GEAR_CAP } from './engine/bout.js';
+import { BOOST_XP } from './barn.js';
 
 export const CONFIRM_OVER = 1000;          // purchases above this need { confirm: true }
 export const MAX_STACK = 20;               // consumables you can hold of one kind
@@ -102,11 +103,10 @@ export class Shop {
     if (!this.hatched(p.id)) throw new GameError('You need a hatched bug for that.', 409);
     const now = this.now(); const cd = USE_COOLDOWN_MS[x.use] || 0;
     if (cd && now - (iv.used[x.use] || 0) < cd) throw new GameError('Your bug needs a little while before the next one.', 429);
-    if (x.use === 'feeder') {
-      const pen = this.barn.view(p.id).pen;
-      if (Math.max(now, pen.feederUntil || 0) + x.days * DAY - now > FEEDER_MAX_AHEAD_MS) throw new GameError('The feeder is already stocked for the next two months.', 409);
-      this.barn.addFeeder(p.id, x.days * DAY);
-    } else this.barn.boost(p.id, x.use === 'food' ? { stat: 'hunger', gain: x.food, fed: true } : { stat: x.use === 'clean' ? 'clean' : 'mood', gain: 40 });
+    // `days` (the feeder, and Golden Ambrosia) keeps the bowl full that long; checked before anything is spent
+    if (x.days && Math.max(now, this.barn.view(p.id).pen.feederUntil || 0) + x.days * DAY - now > FEEDER_MAX_AHEAD_MS) throw new GameError('The feeder is already stocked for the next two months.', 409);
+    if (x.use !== 'feeder') this.barn.boost(p.id, x.use === 'food' ? { stat: 'hunger', gain: x.food, fed: true } : { stat: x.use === 'clean' ? 'clean' : 'mood', gain: 40, xp: BOOST_XP });
+    if (x.days) this.barn.addFeeder(p.id, x.days * DAY);
     iv.own[id] -= 1; if (!iv.own[id]) delete iv.own[id];
     iv.used[x.use] = now; this.save();
     return this.view(p);
@@ -140,7 +140,7 @@ export class Shop {
     const out = {}; for (const s of BUG_SLOTS) if (iv.eq[s] && iv.own[iv.eq[s]]) out[s] = iv.eq[s];
     for (const s of ['bugskin', 'bughat', 'bugacc']) if (out[s]) out[s] = lookOf(out[s]);
     out.gearBonus = Math.min(GEAR_CAP, ITEM[out.gear]?.gear || 0);
-    out.toyMood = Math.min(15, ITEM[out.toy]?.mood || 0);
+    out.toyMood = Math.min(20, ITEM[out.toy]?.mood || 0);
     return out;
   }
   forget(pid) { delete this.doc.inv[pid]; this.save(); }

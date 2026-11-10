@@ -223,6 +223,7 @@ const WEARPIX = {
   bandana: { at: 'mid', p: ['rrrrrrrrrrrr', '.rrwrrrrwrr.', '..rrrrrrrr..', '....rrrr....'], k: { r: '#c02a2a', w: '#ffffff' } },
   cape: { at: 'back', p: ['rr', 'rrr', 'rrrr', 'rrrr', 'rrrrr', 'rrrrr', 'rrrrrr', 'rrrrrr'], k: { r: '#c02030' } },
   scarf: { at: 'mid', p: ['tttttttttttt', 'tttttttttttt', '........tt..', '........tt..', '........tt..'], k: { t: '#21a7a0' } },
+  dapper: { at: 'eye', p: ['.......yyy..', '......yccy..', '......yccy..', '.......yyy..', '........y...', 'kk..kkkk..kk', '.kkkk..kkkk.'], k: { y: '#e0b040', c: '#cfefff', k: '#f0e6d0' } }, // pale: a dark moustache vanishes into the outline
 };
 function bounds(grid) {
   let top = SPRITE, bot = 0, l = SPRITE, r = 0;

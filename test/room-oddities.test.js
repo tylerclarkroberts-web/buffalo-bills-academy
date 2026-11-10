@@ -39,7 +39,7 @@ test('certificates and labels use crisp paint textures that are disposed when re
   const scene = fixture(t);
   for (const [id, width, title] of [
     ['odd-deed', 512, 'DEED TO THE MOON'], ['odd-sheriffbadge', 512, 'FISHING LICENCE'],
-    ['odd-snakeoil', 256, 'SNAKE OIL'], ['odd-piano', 512, null],
+    ['odd-railroad', 512, 'RAILROAD SHARE'], ['odd-snakeoil', 256, 'SNAKE OIL'], ['odd-piano', 512, null],
   ]) {
     scene.update({ shelves: [], placements: [{ anchorId: 'floor', itemId: id }] });
     const maps = [];

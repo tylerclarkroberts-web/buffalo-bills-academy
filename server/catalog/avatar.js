@@ -26,6 +26,10 @@ const HATS = [
   ['wizard', 'Wizard Hat', [['Midnight', '#2a2a7a', '#f2d050', 600]], 'Stars sold separately. Just kidding, they\'re on it.'],
   ['crownflowers', 'Flower Crown', [['Meadow', '#f080a0', '#60c060', 150]], 'Picked fresh this morning by someone else.'],
   ['hardhat', 'Miner\'s Helmet', [['Yellow', '#f0c020', '#fff8b0', 300]], 'With a lamp that never needs a battery. Or works.'],
+  // v52 mid-range: something between "everything cheap" and "one crown"
+  ['diving', 'Diving Helmet', [['Brass', '#c8902c', '#5a3a14', 4000]], 'Brass, one porthole. You are 900 miles from the sea.'],
+  ['jackalope', 'Taxidermy Jackalope', [['Prairie', '#a07850', '#e8dcc0', 8000]], 'Mounted on your head. It is looking at the pot.'],
+  ['judgewig', 'Powdered Judge\'s Wig', [['Powder', '#f4f0e6', '#d0c8b8', 12000]], 'Overruled.'],
 ];
 for (const [shape, base, ways, desc] of HATS) for (const [w, c, c2, price] of ways) add({ id: `hat-${shape}-${w.toLowerCase().replace(/[^a-z]+/g, '')}`, name: ways.length > 1 ? `${base} (${w})` : base, cat: 'hats', slot: 'hat', price, desc, look: { shape, c, c2 } });
 
@@ -43,6 +47,7 @@ const EYES = [
   ['shades', 'Shutter Shades', '#f0e020', '#1a1a1a', 120, 'You can see out. Mostly.'],
   ['nerd', 'Taped Glasses', '#1a1a1a', '#f8f8f8', 25, 'Held together by tape and optimism.'],
   ['visor', 'Dealer Visor', '#2a8a4a', '#bff0c0', 150, 'Green, translucent, deeply professional.'],
+  ['diamond', 'Diamond Monocle', '#e8eef8', '#9fe8ff', 10000, 'The $450 one, but smug.'],
 ];
 for (const [shape, name, c, c2, price, desc] of EYES) add({ id: `eyes-${shape}`, name, cat: 'face', slot: 'eyes', price, desc, look: { shape, c, c2 } });
 
@@ -56,6 +61,7 @@ const FACE = [
   ['beardfake', 'Fake Beard', '#8a6a4a', 90, 'Glue-on. Fools nobody. Wear it anyway.'],
   ['blush', 'Rosy Cheeks', '#ff7090', 25, 'Looks like you just won a big pot.'],
   ['pipe', 'Corncob Pipe', '#c8a060', 300, 'Unlit. This is a family saloon.'],
+  ['goldtooth', 'Gold Tooth Grin', '#f0c030', 5000, 'One tooth. Catches the light on every bluff.'],
 ];
 for (const [shape, name, c, price, desc] of FACE) add({ id: `face-${shape}`, name, cat: 'face', slot: 'face', price, desc, look: { shape, c } });
 
@@ -83,6 +89,9 @@ const BODY = [
   ['armor', 'Tin Armour', '#9aa0a8', '#5a6068', 2500, 'Clanks when you check.'],
   ['cape', 'Velvet Cape', '#6a1a8a', '#f2c65a', 4000, 'Swish dramatically after every win.'],
   ['sequin', 'Sequin Jacket', '#e0c030', '#ff60a0', 6000, 'Visible from orbit.'],
+  // appended (ids are by position): keep new body items at the end
+  ['bearskin', 'Bear-Skin Coat', '#6a4428', '#b08860', 8000, 'The bear\'s head is still attached and disapproves.'],
+  ['cards', 'Suit of Playing Cards', '#1a1a1a', '#d02030', 12000, '52 cards, none of them aces.'],
 ];
 BODY.forEach(([shape, name, c, c2, price, desc], i) => add({ id: `body-${shape}-${i}`, name, cat: 'clothes', slot: 'body', price, desc, look: { shape, c, c2 } }));
 
@@ -101,6 +110,7 @@ const ACC = [
   ['badge', '"I ♥ Poker" Pin', '#e02040', 25, 'Tasteful? No. Sincere? Yes.'], ['feather', 'Hat Feather', '#40a0ff', 90, 'Sticks out of nothing in particular.'],
   ['cigar', 'Chocolate Cigar', '#5a3a1a', 120, 'Chocolate. Tastes like victory.'], ['bee', 'Pet Bee', '#f0c020', 300, 'Follows you around. Doesn\'t sting. Much.'],
   ['star', 'Gold Star Sticker', '#ffd040', 25, 'You get a gold star.'], ['balloon', 'Balloon on a String', '#ff4060', 150, 'It floats above your seat. Pop-proof.'],
+  ['vulture', 'Shoulder Vulture', '#3a2a22', 6000, 'The parrot\'s patient cousin. Waits for you to bust.'], ['storm', 'Tiny Storm Cloud', '#6a6e80', 16000, 'Rains on your seat only. Thunder sold separately.'],
 ];
 for (const [shape, name, c, price, desc] of ACC) add({ id: `acc-${shape}`, name, cat: 'extras', slot: 'acc', price, desc, look: { shape, c } });
 

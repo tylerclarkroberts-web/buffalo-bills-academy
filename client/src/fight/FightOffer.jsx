@@ -24,7 +24,7 @@ export function FightOffer({ refund, stake, quip, onFight, onDecline, clock, arm
           {quip && <p className="fo-quip">“{quip}”</p>}
           <dl id="fo-stakes" className="fo-stakes">
             <div className="win"><dt>Win</dt><dd>He covers your big blind: <b>+{money(refund)}</b></dd></div>
-            <div className="lose"><dt>Lose</dt><dd>5% of your total cash goes into the pot{stake !== null && stake !== undefined ? <>: <b>−{money(stake)}</b></> : null}</dd></div>
+            <div className="lose"><dt>Lose</dt><dd>5% of your total cash (at most 10 big blinds) goes into the pot{stake !== null && stake !== undefined ? <>: <b>−{money(stake)}</b></> : null}</dd></div>
           </dl>
           <div className="fo-btns">
             <button className="btn primary fo-fight" disabled={!armed} onClick={onFight}>Fight</button>

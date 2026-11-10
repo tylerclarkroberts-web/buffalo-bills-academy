@@ -95,6 +95,7 @@ function oddity(id) {
   switch (id) {
     case 'odd-deed': frame(group, 'deed'); break;
     case 'odd-sheriffbadge': frame(group, 'sheriffbadge', 0.9, 0.65); break;
+    case 'odd-railroad': frame(group, 'railroad', 0.9, 0.7); break;
     case 'odd-horseshoe': {
       box(group, 0.8, 0.86, 0.04, '#5c4028', 0, 0.42, -0.03); box(group, 0.7, 0.76, 0.045, '#7d5a38', 0, 0.42, -0.028);
       const arc = mesh(group, new THREE.TorusGeometry(0.24, 0.055, 6, 16, Math.PI), material('#b5a77f'), 0, 0.35, 0);

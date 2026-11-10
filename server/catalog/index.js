@@ -7,6 +7,8 @@ import { TOBACCO_ITEMS } from './tobacco.js';
 export { TOBACCO_NOTICE } from './tobacco.js';
 
 export const CATALOG = [...AVATAR_ITEMS, ...GAG_ITEMS, ...ABSURD_ITEMS, ...TOBACCO_ITEMS, ...BUG_ITEMS];
+/** The most anything in the store can cost (v52: raised from $20,000). */
+export const MAX_PRICE = 50000;
 export const ITEM = Object.fromEntries(CATALOG.map((x) => [x.id, x]));
 /** Tabs in store order. `bug: true` tabs appear only after your egg hatches. */
 export const TABS = [
@@ -23,7 +25,7 @@ const ids = new Set();
 for (const x of CATALOG) {
   if (ids.has(x.id)) throw new Error(`duplicate catalog id ${x.id}`);
   ids.add(x.id);
-  if (!(Number.isInteger(x.price) && x.price > 0 && x.price <= 20000)) throw new Error(`bad price ${x.id}`);
+  if (!(Number.isInteger(x.price) && x.price > 0 && x.price <= MAX_PRICE)) throw new Error(`bad price ${x.id}`);
   if (!TABS.some((t) => t.id === x.cat)) throw new Error(`bad tab ${x.id}`);
   if (x.slot && ![...AVATAR_SLOTS, ...BUG_SLOTS].includes(x.slot)) throw new Error(`bad slot ${x.id}`);
 }

@@ -35,7 +35,7 @@ test('mister and lamp descriptions match one-use boosts, decay and separate cool
     assert.equal(USE_COOLDOWN_MS[use], 30 * 60e3);
     assert.ok(Math.abs(DECAY_PER_HOUR[stat] * hours - 40) < 1e-9);
   }
-  assert.equal(pen.fedAt, fedAt); assert.equal(pen.xp, xp);
+  assert.equal(pen.fedAt, fedAt); assert.equal(pen.xp, xp + 12, 'mister and lamp each give 6 care XP');
   clock.now += 30 * 60e3; setNeeds(95);
   shop.use(player, 'mister'); shop.use(player, 'heatlamp');
   assert.equal(barn.needs(pen, clock.now).clean, 100);
@@ -61,6 +61,19 @@ test('each food grants its stated Fed amount; food cooldown and care XP are shar
     assert.equal(pen.xp - xp, 5, 'care XP stays at the daily cap');
     assert.ok(barn.needs(pen, clock.now).hunger <= 100);
   }
+});
+
+test('Golden Ambrosia keeps the bowl full for 7 days; a feeder pays 12 XP per full day it runs', () => {
+  const { clock, barn, shop, player, pen, setNeeds, own } = setup();
+  setNeeds(10); own('food-ambrosia'); own('feeder');
+  assert.match(item('food-ambrosia').desc, /7 days/);
+  shop.use(player, 'food-ambrosia');
+  assert.equal(pen.feederUntil, clock.now + 7 * DAY);
+  clock.now += 3 * DAY; assert.equal(barn.needs(pen, clock.now).hunger, 100);
+  const xp = barn.view(player.id).pen.xp; // settle day XP so far
+  shop.use(player, 'feeder'); assert.match(item('feeder').desc, /12 XP/);
+  setNeeds(100); clock.now += 2 * DAY;
+  assert.equal(barn.view(player.id).pen.xp - xp, 2 * (10 + 12), 'two covered days: day XP plus feeder XP');
 });
 
 test('feeder starts on use, extends remaining time and preserves other needs decay', () => {
@@ -95,6 +108,7 @@ test('toys are reusable Play bonuses; equipment slots replace rather than stack'
   own('gear-armor'); own('gear-bandage');
   shop.equip(player, { id: 'gear-armor' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.06);
   shop.equip(player, { id: 'gear-bandage' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.01);
+  assert.ok(item('gear-boots').desc.includes('+2.5% damage'));
   const before = structuredClone(pen);
   for (const id of ['bugskin-ruby', 'bugwear-tophat', 'bugwear-bow']) { own(id); shop.equip(player, { id }); }
   assert.deepEqual(pen, before, 'cosmetics do not change needs, XP or species');
