@@ -63,7 +63,7 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | Lobby and table creation | `client/src/Home.jsx` |
 | Browser HTTP/session helpers | `client/src/api.js` |
 | Selfie framing, segmentation worker and correction | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`; see [Selfie avatars](selfie-avatars.md). |
-| Poker screen | `client/src/TablePage.jsx`, `client/src/table/` |
+| Poker screen | `client/src/TablePage.jsx`, `client/src/table/`; see [Playing at a poker table](table-play.md). |
 | Express startup, routes, feature wiring | `server/index.js`, `server/app.js` |
 | Poker orchestration and timers | `server/service.js` |
 | Poker rules, cards, evaluation, pots | `server/engine/` |
@@ -166,3 +166,25 @@ Profile **Account** contains the single username editor, password controls, Goog
 For this layout, check both tabs on a 320px-wide phone, short landscape and desktop. Reach every form and action by scrolling and keyboard, expand the deletion confirmation without submitting it, and check configured and unavailable Slack states. Confirm that the username editor appears only in Account and that existing save, error and pending states remain usable. Record results separately from the earlier UI batch above.
 
 Follow-up verification (2026-11-09): `node --test test/username.test.js test/delete-account.test.js` passed all 6 tests using a workspace-local temporary directory; `npm run build` passed with the existing blackjack duplicate-attribute warnings. Browser checks at 320×640, 390×844, 844×390 and 1366×768 confirmed one scroll owner per pane, natural-height cards, no horizontal page overflow and keyboard access to the bottom controls. The unavailable and configured Slack views were checked using an isolated local stub; no Slack messages were sent. The OAuth return still opens Account, the deletion confirmation can be expanded and cancelled, and Table replay persists across reload. No passwords, Google links or live accounts were changed. The full suite was not repeated for this layout-only follow-up; the earlier integration results remain above.
+
+### Phone table play — November 9, 2026
+
+The phone table menu, the bet and raise sizing panel, larger phone avatars and the display-name/handle link were checked locally on Windows (Node 24, built frontend on a local port with a temporary data directory and development sign-in). See [Playing at a poker table](table-play.md) and [Profile and account](profile-and-account.md#display-name-and-username-handle).
+
+| Check | Result |
+| --- | --- |
+| `node --test test/betsize.test.js test/chipspot.test.js test/username.test.js` | 13 passed, 0 failed. |
+| `npm run build` | Passed; the existing blackjack duplicate-attribute warnings remain. |
+| `npm test` | 282 tests: 277 passed, 5 failed. |
+
+The five failures are the four Doom tests with the existing Windows URL-to-path issue and the Slack auto-link retry test. The Slack test also failed alone, and failed the same way with `server/service.js` restored to the previous commit, so it is not caused by this change. The full suite is not passing.
+
+Browser checks used an emulated 375×812 phone, 844×390 and 667×340 landscape, and a 1024×768 desktop window, on a six-seat bot table and a nine-seat table with long names:
+
+- Header: the title no longer shares its row with icon buttons; Menu rows, the stakes/visibility footer, outside-tap dismissal and the wide-screen inline buttons.
+- Sizing panel: presets, single taps and press-and-hold on each step button, slider stops across the range (20 to 5,000 at 5/10 blinds), and the confirm label. Row widths fit 375px without wrapping.
+- Felt: avatar size 55px at six seats and 37px at nine (39px and 29px before), dropping to 44px at six seats while the sizing panel is open. A script compared the on-page rectangles of every seat, name plate, tag, bet chip, the board and the pot: no overlaps and nothing off screen at six seats (panel closed and open) or, by eye, at nine seats before the flop.
+- Desktop Players panel at 1024px: names show about nine characters with an ellipsis instead of one letter; the buy-in column is hidden at that width.
+- Names: handle and display-name changes through `PATCH /api/me` and the Account card, with the seat and Players row read back from the table.
+
+Not checked: physical phones, real touch input (hold-to-repeat and the numeric keypad were exercised with synthetic pointer events only), iOS Safari, a table with gag or Smoke Shop items in the menu, the showdown-replay and Invite rows, the multi-table view, and 1440p/4K windows. The landscape measurements were taken while the action bar's entry animation was paused by the hidden preview pane, so the final resting position there was calculated, not observed. Production deployment was not part of this work.
