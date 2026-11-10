@@ -1,5 +1,5 @@
 // General Store catalog, part 2: gags (v36, formerly "pranks": used once at a table, cartoon only) and absurd
-// things that do nothing. Gags never touch cards, chips, turns or timers, reveal nothing, and can be turned off
+// room decorations without gameplay bonuses. Gags never touch cards, chips, turns or timers, reveal nothing, and can be turned off
 // (Settings, host switch). Each gag is ONE-TIME USE: you hold at most one of each, and firing it uses it up.
 // `pix` names the original pixel-art icon the client draws (client/src/store/pixicons.js); `emoji` is a text fallback.
 export const GAG_ITEMS = [
@@ -15,9 +15,9 @@ export const GAG_RENAME = { 'prank-squirt': 'gag-squirt', 'prank-soaker': 'gag-s
 
 export const ABSURD_ITEMS = [
   ['lamp', 'Oil Lamp', 60, '🪔', 'Lights nothing. Requires oil you do not have.'],
-  ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. It lives in a field somewhere. You will never see it.'],
+  ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. Park it in the yard beside your room. Still no horse included.'],
   ['vaccine', 'Smallpox Vaccine', 900, '💉', 'Smallpox was declared eradicated in 1980. You are, however, extra prepared.'],
-  ['anvil', 'Anvil', 450, '⚒️', 'Falls on no one. Very heavy in your inventory.'],
+  ['anvil', 'Anvil', 450, '⚒️', 'Falls on no one. Very heavy on your floor.'],
   ['deed', 'Deed to the Moon', 20000, '🌕', 'Legally meaningless. Spiritually enormous.'],
   ['spittoon', 'Brass Spittoon', 150, '🏺', 'Polished. Unused. Let\'s keep it that way.'],
   ['rock', 'A Rock', 25, '🪨', 'It is a rock. It is your rock.'],
