@@ -1,6 +1,26 @@
 # Acid Mines
 
-Clock in, follow the clicks through the tunnels, and hold **Mine** at a flowing pool to fill the bucket. Shifts take at least 20 seconds; some veins take longer. The server chooses the payout and credits it to your bankroll when the shift finishes.
+Clock in, follow the clicks through the tunnels, and hold **Mine** to collect acid into a **100-unit bucket**. Each shift keeps one map and one bucket across several deposits. Release to stop; collected acid stays in the bucket. **Clock out** or **Surface** weighs what you have collected. A full bucket automatically pays out and offers another shift or a return to the card room.
+
+## Deposits and gradual availability
+
+Acid cannot be collected during the first 20 seconds. Each shift has its own hidden maturation time: early discoveries are more often dry or small, while later discoveries are more often substantial. It is possible to find useful acid before that hidden time has elapsed. Waiting does not improve a pool you have already inspected.
+
+Ordinary deposits hold 20, 35, or 60 units. Hold **Mine** to collect five units per second; the liquid surface drops as the deposit drains. A dry or drained basin stays that way for this shift. Guidance moves to the next deposit after the current one is exhausted. The last deposit can be larger so that the route always contains enough acid to finish the bucket. There is no manual skip command, acid quality grade, or equipment upgrade in this version.
+
+The bucket meter stays visible while walking. Small and large deposits take different amounts of mining, and a partly drained pool retains its remaining material after a reload. Movement, finding more deposits, and the shift's gradual availability provide the pacing; two to four minutes without navigation help is a tuning target, not a mandatory countdown.
+
+The full-bucket outcome remains a surprise. A normal full bucket pays $80–$120; a partial bucket receives the same fraction of its shift's hidden full-bucket payout. This applies to mud and rare discoveries too: half of a $100 outcome pays $50, and half of a $10 mud outcome pays $5. The server saves the outcome once; reloading or checking a pool again cannot reroll it. The meter measures collected volume, not guaranteed dollars.
+
+## Interruptions and returning
+
+Only server-confirmed collection is saved. Releasing or cancelling Mine, losing focus, hiding the page, or opening Doom stops extraction. No acid is collected while disconnected or away. If a request fails, stop mining and retry; the confirmed bucket and deposit remain intact.
+
+Clocking in after a reload resumes an unfinished shift. If payment completed but its response was lost, the saved result is recovered instead of paying again. **Another shift** acknowledges that result and starts a new trip. A new-version shift that reaches its 30-minute expiry is settled for its collected contents on the next mining request; an empty bucket still receives the usual lecture.
+
+Once a result is displayed, the browser remembers only its shift ID in an account-scoped localStorage entry, so a later clock-in can start a new trip. No payout or bucket contents are stored there. If browser storage is unavailable, the saved result may appear again without paying twice.
+
+Shifts already active before this update retain their original timing and payout rules until they finish or expire. Their client-side four-second mining meter is not converted into saved acid.
 
 ## Finding an egg
 
@@ -36,11 +56,11 @@ There is no math question, bonus, pay deduction, or clock-in restriction for thi
 
 Controls behind the Foreman are inactive while he speaks. Clock-in and departure buttons also wait for an in-progress clock-in request, so another shift cannot start behind the send-off.
 
-The paid send-off is local to the current results screen. It is not saved or replayed after a reload, and it does not intercept browser Back or navigation outside the mine's departure buttons.
+The paid send-off is local to the results screen and does not intercept browser Back or navigation outside the mine's departure buttons. Its dialogue position is not saved. A recovered payment result can offer a fresh send-off without paying again.
 
 ## Mud and empty buckets
 
-Leaving an unfinished shift with **Surface** or the shift's quit control ends that shift without pay and triggers the usual lecture and math question. A mud result still pays $10 and immediately triggers its own lecture and question.
+Leaving with an empty bucket ends the shift without pay and triggers the usual lecture and math question. A partly filled bucket is paid proportionally. A full mud bucket pays $10; partial mud pays its corresponding fraction, followed by the mud lecture and question. Ordinary partial payouts do not trigger the empty-bucket quiz.
 
 Those questions remain server-held and block another clock-in until answered correctly. A wrong answer gives a new question without taking money. A correct first answer can award the existing $5 bonus, at most three times per hour.
 
@@ -61,6 +81,36 @@ Paid departures randomly choose a complete scene so each joke keeps its setup an
 Wrong and correct answers randomly choose from their own pools. The eight existing math generators still randomize their numbers; dialogue variety does not change question difficulty, pay, or bonuses. Already-pending server-held lectures keep their original lines until completed.
 
 ## Development checks
+
+### API and persistence
+
+All mining endpoints require the signed-in player. New shifts use `rulesVersion: 2`; clients must send this version when creating or operating a new-version shift. Existing legacy shifts retain their old contract. An incompatible client must reload; a version error does not discard the active shift.
+
+| Request | Behavior |
+| --- | --- |
+| `POST /api/mines/start` with `{"rulesVersion":2}` | Starts or resumes a shift, or recovers its saved result. |
+| `POST /api/mines/start` with `rulesVersion` and `afterShiftId` | Acknowledges that completed shift and starts another. |
+| `POST /api/mines/probe` with `rulesVersion`, `shiftId`, and `poolId` | Inspects the current deposit once; repeats return saved state. |
+| `POST /api/mines/extract` with those identifiers and `action: "start"`, `"continue"`, or `"stop"` | Starts, advances, or stops server-timed extraction. A full bucket returns its settlement. |
+| `POST /api/mines/quit` with `rulesVersion` and `shiftId` | Settles collected acid, or ends an empty shift with a lecture. |
+| `POST /api/mines/finish` | Retains legacy completion and rejects attempts to bypass new-version collection. |
+| `POST /api/mines/egg` | Retains the existing pickup contract and opportunity window. |
+
+New-version state retains shift identity, seed, clock, maze size, scare, and egg information, and adds `rulesVersion`, `capacity`, `collected`, `extractionRate`, `currentPoolId`, `readyAt`, and `pools`. Each pool has an `id`, coordinates, and nullable `quantity`/`remaining`; null means uninspected. `readyAt` exposes only the minimum arrival/first-20-second floor, not the hidden maturation time. Successful settlement returns `{result: ...}` with the existing payout fields plus `shiftId`, `collected`, and `capacity`; empty departure returns the Foreman's `{pending: ...}` response.
+
+The browser serializes extraction pulses about every 500ms. The first pulse arms collection; a gap over one second disarms it without credit for the gap. The server validates ownership, version, target order, minimum feasible travel intervals, elapsed extraction, deposit remainder, and bucket capacity. It does not accept client quantities or payout values. These bounds are not proof of physical movement or button presses: navigation remains client-owned.
+
+`mines.json` holds versioned active shifts, private outcome/availability state, resolved deposits, collected volume, and prepared settlements. Payment, mining statistics, and the latest settlement receipt are committed together in `players.json`; Foreman issuance records the originating shift so recovery cannot issue its lecture twice. Active holds are memory-only and never restart after a server restart. Failed writes retain recoverable progress. The existing single-process JSON-store limitation remains; there is no new database, dependency, or environment variable.
+
+### Release boundary
+
+The public source snapshot lacks the owned-bug guide currently present in the deployed site's JavaScript. This change does not invent a replacement. Before merging or deploying, recover and compare the deployed source, preserve its bug guide, connect its existing target to successive deposits, and check for other missing live functionality. An ideal-route timing simulation is not a verification of that live guide.
+
+### Current verification
+
+Run the focused bucket, route, client-control, scene, egg, tilt, Foreman, and payment-store checks, then `npm run build` and the full suite. Exercise partial and automatic completion, retry/reload, dry and drained pools, failed requests, and reachable controls at desktop, narrow portrait, and short landscape sizes. Use `npm run sim:mines -- 5000` for a repeatable comparison of legacy, unguided bucket, and ideal-route timing. See [Development and troubleshooting](development.md) for commands and persistence details; record actual results in the PR.
+
+### Earlier verification
 
 Run `node --test test/mines-eggs.test.js test/mines-controls.test.js test/mines-tilt.test.js test/foreman.test.js` and `npm run build` from the repository root. Check egg visibility through 30 seconds and pickup after the former ten-second deadline. Check movement and action targets together on portrait and short landscape layouts, including smooth steering and releasing/cancelling a mining press. For tilt, check permission grant/denial, missing readings, current-grip calibration, both landscape directions, Recenter, steady holds, mining/room pause, focus loss and touch fallback. Physical iPhone and Android checks are still needed to tune sensitivity and judge whether tilt feels easier. Check both paid exit buttons, **Another shift**, and mud/unfinished-shift quizzes on desktop and narrow/short mobile layouts. Confirm paid send-offs return home without a math form or an answer request, and leave the credited bankroll unchanged.
 

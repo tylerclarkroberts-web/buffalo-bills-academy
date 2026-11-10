@@ -50,17 +50,25 @@ export class Accounts {
     return p.bankroll;
   }
 
-  touchMining(p, patch) { this.ensure(p); Object.assign(p.mining, patch); this.save(); }
+  touchMining(p, patch) {
+    this.ensure(p);
+    this.store.commitPlayerDrafts([{ ...p, mining: { ...p.mining, ...patch } }]);
+  }
   recordShift(p, r) {
     this.ensure(p);
-    const m = p.mining;
+    if (r.shiftId && p.mining.lastSettlement?.shiftId === r.shiftId) return p.mining.lastSettlement;
+    const draft = { ...p, mining: { ...p.mining } };
+    const m = draft.mining;
     m.shifts += 1; m.earned = cents(m.earned + r.amount); m.best = Math.max(m.best, r.amount);
-    if (r.amount >= 10000) m.jackpots += 1;
+    if (['motherlode', 'aliens', 'diamonds'].includes(r.outcome) || r.amount >= 10000) m.jackpots += 1;
     // v38: how long each finished shift took (clock-in to payout, ms), plus a running total. Stored only, not shown yet.
     const ms = Number.isFinite(r.ms) && r.ms > 0 ? Math.round(r.ms) : 0;
     m.totalMs = (m.totalMs || 0) + ms; m.timedShifts = (m.timedShifts || 0) + (ms ? 1 : 0);
     m.history = [...m.history, { t: r.at, outcome: r.outcome, amount: r.amount, ...(ms ? { ms } : {}) }].slice(-MAX_SHIFT_HISTORY);
-    this.change(p, r.amount, 'mine', `Acid Mines: ${r.title.toLowerCase()}`);
+    this.change(draft, r.amount, 'mine', `Acid Mines: ${r.title.toLowerCase()}`, { save: false });
+    if (r.shiftId) m.lastSettlement = { ...r, bankroll: draft.bankroll };
+    this.store.commitPlayerDrafts([draft]);
+    return m.lastSettlement;
   }
   recordHand(p, { won, amount, pot }) {
     this.ensure(p);

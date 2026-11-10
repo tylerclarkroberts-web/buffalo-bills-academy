@@ -50,6 +50,8 @@ The General Store's **Spectacles** department sells $2,500–$50,000 one-time-us
 
 ## Acid Mines
 
+Fill one 100-unit bucket across differently sized deposits in the same shift. Early discoveries are more often dry or small; later ones are more promising. Hold Mine to drain a pool, clock out for a proportional payout, or fill the bucket for automatic payment. Reloading resumes confirmed progress; mud and rare discoveries remain payout surprises.
+
 An empty Barn gives each new mining shift a 10% chance of an egg near the entrance, available for the first 30 seconds.
 
 Phone controls use a stick to walk and steer, held arrows to turn, and dragging the view to look. Mining and pickup actions stay separate from the movement pad on narrow screens.
@@ -57,6 +59,8 @@ Phone controls use a stick to walk and steer, held arrows to turn, and dragging 
 Phones can also opt into **TILT** controls, calibrate with **Recenter**, and switch back with **Use touch**. Motion access needs browser support and HTTPS; sensor data stays in the browser. Physical-phone sensitivity remains unverified.
 
 Leaving after a successful paid shift gets a short, grumbling send-off from the Foreman, with no math question. Mud and quitting empty-handed still trigger his usual lecture and quiz. See [Acid Mines](docs/acid-mines.md) for departure controls and pay behavior.
+
+This public snapshot does not contain the live site's owned-bug mine guide. Reconcile the deployed source before merging or deploying the bucket changes; see the guide's [release boundary](docs/acid-mines.md#release-boundary).
 
 ## Selfie avatars
 

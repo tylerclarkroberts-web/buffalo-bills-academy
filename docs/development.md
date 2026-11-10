@@ -68,7 +68,8 @@ Unset inherited integration credentials for isolated local testing. Never commit
 | Poker orchestration and timers | `server/service.js` |
 | Poker rules, cards, evaluation, pots | `server/engine/` |
 | Blackjack | `server/blackjack/`, `client/src/bj/` |
-| Other games | Matching slots, mines, barn, store, and avatar modules under `server/` and `client/src/` |
+| Acid Mines | `server/mines.js`, `server/foreman.js`, `client/src/mines/`; see [Acid Mines API and persistence](acid-mines.md#api-and-persistence). |
+| Other games | Matching slots, barn, store, and avatar modules under `server/` and `client/src/` |
 | Bug combat and progression | `server/barn.js`, `server/engine/bug-combat.js`, `server/engine/bout.js`, `client/src/barn/`; see [Bug combat](bug-combat.md). |
 | Personal rooms | `server/rooms.js`, `server/catalog/room.js`, `client/src/room/`; see [Personal rooms](personal-rooms.md). |
 | Shared play-money bankroll | `server/accounts.js` |
@@ -109,7 +110,30 @@ Use synthetic or explicitly authorized test photos; do not commit personal image
 
 Personal-room metadata is stored in `rooms.json` (schema version 1): arrangement revision, theme, owned-item placements, shelf identities/mounts/styles/sizes, wall-display mounts, floor/rug/wardrobe finishes and furniture positions per player. Older records without shelf/wall-display/finish/furniture fields retain the original two small shelves, two upper back-wall displays, finishes and furniture positions; explicit empty shelf lists remain empty. Shelf `sizeId` is optional (`standard` or `wide`); omitted sizes in older client writes preserve an existing size, and large-shelf extra slots use the existing placements list. The optional `wallDisplays` layout field preserves current mounts when omitted and validates both display IDs, approved distinct mounts and clearance from shelves, furniture and the resident when supplied. It does not duplicate balances, inventory or pet clocks. Previously stored sharing flags are ignored: rooms and exact financial balances are visible to signed-in visitors. Room writes persist before replacing their in-memory state; layout revisions reject conflicting edits. Deleting an account removes its room record. See [Personal rooms](personal-rooms.md#api-and-persistence) for the contract and limits.
 
+Version-2 mining shifts use `mines.json` for the saved payout/availability rolls, deposit identities and resolved amounts, bucket contents, prepared settlement, and latest completed response per player. Quantities are integer thousandths internally and units in the API. Settlement first saves its prepared result, then `Accounts.recordShift` uses `Store.commitPlayerDrafts` to atomically write bankroll, transaction, mining statistics and `mining.lastSettlement` together in `players.json`. The shift ID prevents repeat payment. Empty or mud departures save a matching `lastMineShift` marker with their pending lecture in `foreman.json`; retrying issuance cannot create another lecture. Only then is the active shift replaced by its completed receipt. A failed stage remains recoverable on the next mining interaction, including after restart. Extraction holds remain in memory and never resume after restart. Legacy active shifts keep their original settlement path.
+
+The browser's account-scoped `acidMine.seenResult:<playerId>` localStorage entry stores only the last displayed shift receipt ID. It lets a later clock-in acknowledge an already-seen result; it does not store or determine collection, pay, or account balance. If storage is unavailable or the result was never displayed, the server can replay the saved result safely.
+
 Keep the data directory to preserve local state. Stop the server before manually inspecting or changing saved state, and keep a copy before intentional maintenance. Atomic file replacement does not provide a transaction spanning multiple files, and separate server processes do not share an in-memory store. Do not assume this design supports multiple concurrent replicas against one data directory.
+
+## Acid Mines checks
+
+All mine requests require a signed-in player. New shifts require `rulesVersion: 2`; probe and extraction requests also identify the current `shiftId` and `poolId`. Extraction accepts only `start`, `continue`, or `stop`, never a client quantity or payout. Serial pulses run about every 500ms; the first arms extraction and gaps over one second receive no gap credit. Server checks enforce target order, minimum travel time, deposit remainder and capacity, but do not simulate player movement. [The Mines contract](acid-mines.md#api-and-persistence) lists each request and public field.
+
+Clock-in, probe, extraction and cash-out can return a recovered `{result}` or empty-departure `{pending}` instead of active shift state. A displayed result's `shiftId` is passed as `afterShiftId` on the next clock-in to acknowledge it. Expired version-2 shifts settle collected contents on the next interaction; existing legacy shifts retain their original rules. HTTP 409 with `code: "mine_reload"` requests a client reload without deleting the shift. Early probes leave the current deposit unresolved; extraction before inspection returns 425. Future pool IDs return 409, while repeats for a previous pool return current state without advancing again.
+
+Run the focused checks, build, full suite and repeatable timing comparison from the repository root:
+
+```sh
+node --test test/mines-buckets.test.js test/mines-route.test.js test/mines-client.test.js test/mines-scene.test.js test/mines-eggs.test.js test/mines-controls.test.js test/mines-tilt.test.js test/foreman.test.js test/conquest-store.test.js
+npm run build
+node --test --test-concurrency=1 "test/*.test.js"
+npm run sim:mines -- 5000
+```
+
+The focused tests cover maturation and saved resolution, route progression, extraction limits, partial and automatic payouts, duplicate requests/competing tabs, cancellation and reload, expiry/legacy compatibility, failed saves and settlement recovery. The shared player-store checks cover atomic payment drafts. Timing simulation compares legacy, unguided bucket and ideal-route travel; it is not a human playtest or validation of the deployed bug guide. Check desktop, narrow portrait and short landscape for reachable movement/mining controls, bucket visibility, dry/drained basins, retry/reload, partial cash-out and full settlement. Preserve egg, tilt, sound, reduced motion, visitor and Doom interactions; physical-phone motion still needs device testing. Record actual results and existing failures separately in the PR.
+
+Before merging or deploying, recover and compare the source behind the live site's owned-bug guide, connect its existing target to successive deposits, and check for other missing live behavior. The public snapshot does not contain that guide; this implementation does not replace it. No dependency, database or environment setting is added.
 
 ## Validation and known baseline
 
