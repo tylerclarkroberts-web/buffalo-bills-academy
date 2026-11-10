@@ -1,12 +1,14 @@
 import { ABSURD_ITEMS } from './gags.js';
 
 export const ROOM_ANCHORS = [
-  { id: 'wall-left', label: 'Left wall', type: 'wall' },
-  { id: 'wall-right', label: 'Right wall', type: 'wall' },
+  { id: 'wall-left', label: 'Wall display 1', type: 'wall' },
+  { id: 'wall-right', label: 'Wall display 2', type: 'wall' },
   { id: 'shelf-left', label: 'Shelf 1', type: 'shelf' },
   { id: 'shelf-right', label: 'Shelf 2', type: 'shelf' },
   { id: 'shelf-3', label: 'Shelf 3', type: 'shelf' },
   { id: 'shelf-4', label: 'Shelf 4', type: 'shelf' },
+  { id: 'shelf-5', label: 'Shelf 5', type: 'shelf' },
+  { id: 'shelf-6', label: 'Shelf 6', type: 'shelf' },
   { id: 'desk', label: 'Writing desk', type: 'desk' },
   { id: 'floor', label: 'Floor', type: 'floor' },
   { id: 'window', label: 'Yard', type: 'outdoor' },
@@ -16,13 +18,92 @@ export const ROOM_THEMES = [
   { id: 'bunkhouse-sage', name: 'Sage wash' },
   { id: 'bunkhouse-clay', name: 'Clay walls' },
 ];
-export const ROOM_SHELF_IDS = ['shelf-left', 'shelf-right', 'shelf-3', 'shelf-4'];
+export const ROOM_SHELF_IDS = ['shelf-left', 'shelf-right', 'shelf-3', 'shelf-4', 'shelf-5', 'shelf-6'];
+export const ROOM_SHELF_SIZES = {
+  standard: { label: 'Standard', width: 1.25, depth: 0.8, capacity: 1 },
+  wide: { label: 'Wide', width: 1.25, depth: 2.4, capacity: 3 },
+};
+export function shelfSlots(shelf) {
+  if (!shelf || !ROOM_SHELF_IDS.includes(shelf.id)) return [];
+  const label = ROOM_ANCHORS.find(anchor => anchor.id === shelf.id).label, wide = shelf.sizeId === 'wide';
+  return (wide ? [0, -0.8, 0.8] : [0]).map((offset, i) => ({ id: i ? `${shelf.id}-slot-${i + 1}` : shelf.id, offset, label: wide ? `${label} · ${i + 1}` : label }));
+}
+export const shelfForAnchor = (shelves, anchorId) => shelves.find(shelf => shelfSlots(shelf).some(slot => slot.id === anchorId));
+const wallMountGrid = (kind, wallSide, coordinates, heights) => heights.flatMap((y, row) => coordinates.map((along, column) => ({
+  id: `${wallSide}-${kind}-${row + 1}-${column + 1}`, label: `${wallSide === 'left' ? 'Left' : 'Back'} wall · row ${row + 1}, position ${column + 1}`, wallSide,
+  position: wallSide === 'left' ? [kind === 'shelf' ? -3.25 : -3.81, y, along] : [along, y, kind === 'shelf' ? -2.25 : -2.81],
+})));
+const LEFT_MOUNTS = [-2.5, -1.9, -1.25, -0.6, 0.05, 0.7, 1.35, 1.6, 2, 2.3, 2.55];
+const BACK_MOUNTS = [-3.3, -2.65, -2, -1.35, -0.7, -0.05, 0.5, 1.15, 1.8, 2.35, 3, 3.4];
 export const ROOM_SHELF_SPOTS = [
-  { id: 'left-low-back', label: 'Back lower', position: [-3.25, 1.22, -1.7] },
-  { id: 'left-low-front', label: 'Front lower', position: [-3.25, 1.22, -0.4] },
-  { id: 'left-high-back', label: 'Back upper', position: [-3.25, 2.25, -1.7] },
-  { id: 'left-high-front', label: 'Front upper', position: [-3.25, 2.25, -0.4] },
+  { id: 'left-low-back', label: 'Left wall · back lower', wallSide: 'left', position: [-3.25, 1.22, -1.7] },
+  { id: 'left-low-front', label: 'Left wall · middle lower', wallSide: 'left', position: [-3.25, 1.22, -0.4] },
+  { id: 'left-high-back', label: 'Left wall · back upper', wallSide: 'left', position: [-3.25, 2.25, -1.7] },
+  { id: 'left-high-front', label: 'Left wall · middle upper', wallSide: 'left', position: [-3.25, 2.25, -0.4] },
+  { id: 'left-low-door', label: 'Left wall · front lower', wallSide: 'left', position: [-3.25, 1.22, 0.9] },
+  { id: 'left-high-door', label: 'Left wall · front upper', wallSide: 'left', position: [-3.25, 2.25, 0.9] },
+  { id: 'left-low-corner', label: 'Left wall · corner lower', wallSide: 'left', position: [-3.25, 1.22, -2.55] },
+  { id: 'left-high-corner', label: 'Left wall · corner upper', wallSide: 'left', position: [-3.25, 2.25, -2.55] },
+  { id: 'back-low-left', label: 'Back wall · left lower', wallSide: 'back', position: [-2.5, 1.22, -2.25] },
+  { id: 'back-high-left', label: 'Back wall · left upper', wallSide: 'back', position: [-2.5, 2.25, -2.25] },
+  { id: 'back-low-right', label: 'Back wall · right lower', wallSide: 'back', position: [-1.3, 1.22, -2.25] },
+  { id: 'back-high-right', label: 'Back wall · right upper', wallSide: 'back', position: [-1.3, 2.25, -2.25] },
+  ...wallMountGrid('shelf', 'left', LEFT_MOUNTS, [0.4, 1.22, 1.75, 2.25]),
+  ...wallMountGrid('shelf', 'back', BACK_MOUNTS, [0.4, 1.22, 1.75, 2.25]),
 ];
+export const ROOM_WALL_SPOTS = [
+  { id: 'back-high-left', label: 'Back wall · left upper', wallSide: 'back', position: [-2.9, 2.55, -2.81] },
+  { id: 'back-high-right', label: 'Back wall · right upper', wallSide: 'back', position: [-1.25, 2.55, -2.81] },
+  { id: 'back-low-left', label: 'Back wall · left lower', wallSide: 'back', position: [-2.9, 1.15, -2.81] },
+  { id: 'back-low-right', label: 'Back wall · right lower', wallSide: 'back', position: [-1.25, 1.15, -2.81] },
+  { id: 'left-low-corner', label: 'Left wall · corner lower', wallSide: 'left', position: [-3.81, 1.15, -2.55] },
+  { id: 'left-high-corner', label: 'Left wall · corner upper', wallSide: 'left', position: [-3.81, 2.4, -2.55] },
+  { id: 'left-low-front', label: 'Left wall · front lower', wallSide: 'left', position: [-3.81, 1.15, 0.9] },
+  { id: 'left-high-front', label: 'Left wall · front upper', wallSide: 'left', position: [-3.81, 2.4, 0.9] },
+  ...wallMountGrid('display', 'left', LEFT_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
+  ...wallMountGrid('display', 'back', BACK_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
+];
+export const defaultWallDisplays = () => ({ 'wall-left': 'back-high-left', 'wall-right': 'back-high-right' });
+export function roomWallDisplays(value, shelves = []) {
+  const result = {};
+  for (const [id, fallback] of Object.entries(defaultWallDisplays())) {
+    const candidates = [value?.[id], fallback, ...ROOM_WALL_SPOTS.map(spot => spot.id)];
+    result[id] = candidates.find(spotId => ROOM_WALL_SPOTS.some(spot => spot.id === spotId)
+      && wallMountsFit(shelves, { ...result, [id]: spotId })) || fallback;
+  }
+  return result;
+}
+/** Fixed wall footprints keep shelves, their contents and framed displays clear, including corners. */
+export function wallMountsFit(shelves, wallDisplays, furniture) {
+  const scale = ROOM_FLOOR_SCALE;
+  const bounds = (spot, shelf) => {
+    const [x, y, z] = spot.position, half = shelf ? (shelf.sizeId === 'wide' ? 1.25 : 0.45) : 0.6;
+    const depth = shelf ? [0.1, 1.4] : [0.15, 0.3], height = shelf ? [-0.3, 0.7] : [-0.15, 0.95];
+    return spot.wallSide === 'left'
+      ? [[-4 * scale + depth[0], y + height[0], z * scale - half], [-4 * scale + depth[1], y + height[1], z * scale + half]]
+      : [[x * scale - half, y + height[0], -3 * scale + depth[0]], [x * scale + half, y + height[1], -3 * scale + depth[1]]];
+  };
+  const mounts = [...shelves.map(shelf => [ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId), shelf]),
+    ...Object.values(wallDisplays).map(id => [ROOM_WALL_SPOTS.find(spot => spot.id === id), null])];
+  if (mounts.some(([spot]) => !spot)) return false;
+  const boxes = mounts.map(([spot, shelf]) => bounds(spot, shelf));
+  const intersects = (a, b) => a[0].every((min, axis) => min < b[1][axis] - 0.01 && b[0][axis] < a[1][axis] - 0.01);
+  // Include the lower window apron and projecting sill, not just its glass opening.
+  const window = [[-0.45 * scale, 1.15, -3 * scale], [1.95 * scale, 2.98, -3 * scale + 0.65]];
+  if (boxes.some(box => box[0][0] < -4 * scale + 0.08 || box[1][0] > 4 * scale - 0.08
+    || box[0][2] < -3 * scale + 0.08 || box[1][2] > 3 * scale - 0.08 || intersects(box, window))) return false;
+  const furnitureBoxes = furniture ? Object.entries(ROOM_FURNITURE).filter(([id, piece]) => !piece.yard && !furniture[id].off).map(([id]) => {
+    const place = furniture[id], rect = id === 'rug' ? residentRect(furniture) : furnitureRect(id, place);
+    // Include wardrobe trim/handles, desk decorations and the taller resident's hat, regardless of current styling.
+    const pad = id === 'wardrobe' ? [0.075, 0.175] : id === 'desk' ? [0, 0.075] : [0, 0];
+    if (place.r % 2) pad.reverse();
+    const height = { wardrobe: 2.6, pet: 2.2, wealth: 1.8, desk: 1.7, floor: 0.9, rug: 2.95 }[id];
+    return [[rect[0] - pad[0], 0, rect[1] - pad[1]], [rect[2] + pad[0], height, rect[3] + pad[1]]];
+  }) : [];
+  return boxes.every((a, i) => boxes.slice(i + 1).every(b => !intersects(a, b)) && furnitureBoxes.every(b => !intersects(a, b)));
+}
+export const wallSpotAvailable = (shelves, wallDisplays, id, spotId, furniture) => Object.hasOwn(defaultWallDisplays(), id)
+  && ROOM_WALL_SPOTS.some(spot => spot.id === spotId) && wallMountsFit(shelves, { ...wallDisplays, [id]: spotId }, furniture);
 export const ROOM_FINISHES = {
   floor: {
     types: [{ id: 'planks', name: 'Wood planks' }, { id: 'stone', name: 'Stone slabs' }],
@@ -60,7 +141,7 @@ export function roomShelves(value) {
     if (!shelf || !ROOM_SHELF_IDS.includes(shelf.id) || !ROOM_SHELF_SPOTS.some(spot => spot.id === shelf.spotId)
       || ids.has(shelf.id) || spots.has(shelf.spotId)) return [];
     ids.add(shelf.id); spots.add(shelf.spotId);
-    return [{ id: shelf.id, spotId: shelf.spotId, ...finishOf('shelf', shelf) }];
+    return [{ id: shelf.id, spotId: shelf.spotId, ...finishOf('shelf', shelf), ...(typeof shelf.sizeId === 'string' && Object.hasOwn(ROOM_SHELF_SIZES, shelf.sizeId) ? { sizeId: shelf.sizeId } : {}) }];
   });
 }
 export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe'].map(kind => [kind, finishOf(kind, value?.[kind])]));
@@ -123,8 +204,12 @@ export function furnitureValid(value) {
   return Object.keys(out).every(id => furnitureFits(out, id)) ? out : null;
 }
 export const roomFurniture = value => furnitureValid(value) || defaultFurniture();
-export const roomAnchors = (shelves = defaultShelves(), furniture) => ROOM_ANCHORS.filter(anchor =>
-  (anchor.type !== 'shelf' || shelves.some(shelf => shelf.id === anchor.id)) && !furniture?.[anchor.id]?.off);
+export const roomAnchors = (shelves = defaultShelves(), furniture) => ROOM_ANCHORS.flatMap(anchor => {
+  if (furniture?.[anchor.id]?.off) return [];
+  if (anchor.type !== 'shelf') return [anchor];
+  const shelf = shelves.find(shelf => shelf.id === anchor.id);
+  return shelfSlots(shelf).map((slot, slotIndex) => ({ id: slot.id, label: slot.label, type: 'shelf', shelfId: shelf.id, slotIndex }));
+});
 const TYPES = {
   lamp: 'shelf', wagon: 'outdoor', vaccine: 'shelf', anvil: 'floor', deed: 'wall', spittoon: 'floor',
   rock: 'shelf', telegraph: 'desk', snakeoil: 'shelf', piano: 'shelf', horseshoe: 'wall', sheriffbadge: 'wall',

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { defaultShelves, roomFinishes } from '../server/catalog/room.js';
+import { defaultShelves, roomFinishes, defaultWallDisplays, defaultFurniture } from '../server/catalog/room.js';
 
 async function fixture(t) {
   const prefix = path.join(os.tmpdir(), 'bba-room-api-');
@@ -69,7 +69,7 @@ test('visitors receive displayed possessions and exact worth without unrelated p
   const visit = await visitor.api('GET', `/api/players/${owner.id}/room`);
   assert.equal(visit.status, 200);
   assert.equal(visit.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(Object.keys(visit.body).sort(), ['finishes', 'furniture', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wealthStage', 'worth']);
+  assert.deepEqual(Object.keys(visit.body).sort(), ['finishes', 'furniture', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wallDisplays', 'wealthStage', 'worth']);
   assert.deepEqual(Object.keys(visit.body.owner).sort(), ['avatar', 'id', 'name']);
   assert.deepEqual(visit.body.placements, layout.placements);
   assert.ok(!JSON.stringify(visit.body).includes('odd-vaccine'), 'undisplayed collection stays private');
@@ -97,6 +97,21 @@ test('HTTP layout writes enforce ownership, reject stale edits and cannot target
   assert.deepEqual((await visitor.api('GET', '/api/room')).body.placements, []);
 });
 
+test('HTTP saves reject furniture intersecting shelves and shelves intersecting saved furniture', async t => {
+  const { owner } = await fixture(t), place = { x: -3, z: -3.4, r: 0 };
+  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements: [], furniture: { wardrobe: place },
+    wallDisplays: { 'wall-left': 'left-low-front', 'wall-right': 'left-high-front' } };
+  assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 200);
+  const shelves = [{ ...defaultShelves()[0], spotId: 'back-low-left' }];
+  const blocked = await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, furniture: undefined, shelves });
+  assert.equal(blocked.status, 400);
+  assert.match(blocked.body.error, /clear of each other, furniture and the resident/);
+  assert.equal((await owner.api('GET', '/api/room')).body.layoutRevision, 1);
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, furniture: defaultFurniture(), shelves })).status, 200);
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 2, wallDisplays: undefined })).status, 400);
+  assert.equal((await owner.api('GET', '/api/room')).body.layoutRevision, 2);
+});
+
 test('HTTP furniture edits move shelf contents, validate mounts, and show only the saved layout to visitors', async t => {
   const { service, owner, visitor } = await fixture(t);
   service.shop.inv(owner.id).own['odd-lamp'] = 1;
@@ -119,6 +134,48 @@ test('HTTP furniture edits move shelf contents, validate mounts, and show only t
   assert.deepEqual((await visitor.api('GET', `/api/players/${owner.id}/room`)).body.shelves, []);
   assert.equal(service.shop.inv(owner.id).own['odd-lamp'], 1);
   assert.equal((await visitor.api('PATCH', `/api/players/${owner.id}/room`, draft)).status, 404);
+});
+
+test('HTTP wall display positions persist for visitors and reject occupied or malformed mounts', async t => {
+  const { owner, visitor, service } = await fixture(t);
+  service.shop.inv(owner.id).own['odd-deed'] = 1;
+  const initial = (await owner.api('GET', '/api/room')).body;
+  assert.deepEqual(initial.wallDisplays, defaultWallDisplays());
+  const wallDisplays = { ...initial.wallDisplays, 'wall-left': 'left-high-front' };
+  const draft = { expectedRevision: 0, themeId: initial.themeId, placements: [{ anchorId: 'wall-left', itemId: 'odd-deed' }], wallDisplays };
+  const saved = await owner.api('PATCH', '/api/room/layout', draft);
+  assert.equal(saved.status, 200);
+  assert.deepEqual((await visitor.api('GET', `/api/players/${owner.id}/room`)).body.wallDisplays, wallDisplays);
+  for (const invalid of [{ ...wallDisplays, 'wall-left': wallDisplays['wall-right'] }, { ...wallDisplays, ownerId: visitor.id }, null]) {
+    assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, wallDisplays: invalid })).status, 400);
+  }
+  const shelves = [{ ...defaultShelves()[0], spotId: 'left-high-door' }];
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, shelves })).status, 400);
+  const { wallDisplays: omitted, ...olderClient } = draft;
+  const preserved = await owner.api('PATCH', '/api/room/layout', { ...olderClient, expectedRevision: 1 });
+  assert.equal(preserved.status, 200);
+  assert.deepEqual(preserved.body.wallDisplays, wallDisplays);
+  assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 409);
+});
+test('HTTP wide shelves retain three items, enforce size and slot ownership, and shrink without consuming possessions', async t => {
+  const { owner, visitor, service } = await fixture(t);
+  const placements = [{ anchorId: 'shelf-left', itemId: 'odd-lamp' }, { anchorId: 'shelf-left-slot-2', itemId: 'odd-rock' }, { anchorId: 'shelf-left-slot-3', itemId: 'odd-snakeoil' }];
+  for (const { itemId } of placements) service.shop.inv(owner.id).own[itemId] = 1;
+  const shelves = defaultShelves().map((shelf, i) => i === 0 ? { ...shelf, sizeId: 'wide' } : shelf);
+  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements, shelves };
+  assert.equal((await visitor.api('PATCH', '/api/room/layout', draft)).status, 400);
+  const saved = await owner.api('PATCH', '/api/room/layout', draft);
+  assert.equal(saved.status, 200); assert.deepEqual(saved.body.placements, placements);
+  assert.deepEqual((await visitor.api('GET', `/api/players/${owner.id}/room`)).body.shelves, shelves);
+  for (const invalid of [{ ...shelves[0], sizeId: null }, { ...shelves[0], sizeId: 'unlimited' }, { ...shelves[0], capacity: 20 },
+    { ...shelves[0], sizeId: ['wide'] }, { ...shelves[0], sizeId: ['standard'] }, { ...shelves[0], sizeId: { toString: 'wide' } }]) {
+    assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, shelves: [invalid] })).status, 400);
+  }
+  const shrunk = shelves.map(shelf => ({ ...shelf, sizeId: 'standard' }));
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, shelves: shrunk })).status, 400);
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, shelves: shrunk, placements: placements.slice(0, 1) })).status, 200);
+  assert.deepEqual((await visitor.api('GET', `/api/players/${owner.id}/room`)).body.placements, placements.slice(0, 1));
+  for (const { itemId } of placements) assert.equal(service.shop.inv(owner.id).own[itemId], 1);
 });
 
 test('the wealth display follows total worth when wallet money moves to poker chips', async t => {
