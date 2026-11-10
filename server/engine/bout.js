@@ -40,7 +40,7 @@ export function simulateBout(a, b, seed) {
     else if (available.length > 1 && available[0].id === s.lastSpecial) available = [available[1], available[0]];
     const move = available[0] || s.moves[0];
     if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.lastSpecial = move.id; }
-    let dmg = 0, healed = 0, hit = true, detail = '';
+    let dmg = 0, healed = 0, hit = true, critical = false, detail = '';
     if (move.effect === 'heal') {
       healed = Math.min(maxHp[by] - hp[by], Math.round(move.heal * s.stats.damageMultiplier)); hp[by] += healed;
       detail = `recovers ${healed} HP`;
@@ -50,6 +50,10 @@ export function simulateBout(a, b, seed) {
       const guard = 1 - target.guard * (move.effect === 'pierce' ? 0.5 : 1);
       if (hit) {
         dmg = Math.min(hp[1 - by], Math.max(1, Math.round(move.power * (0.8 + R() * 0.45) * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * guard * s.weaken)));
+        if (move.criticalChance && dmg < hp[1 - by] && R() < move.criticalChance) {
+          critical = true; dmg = hp[1 - by] - 1;
+          detail = `; critical hit leaves ${target.c.name} at 1 HP`;
+        }
         hp[1 - by] -= dmg;
         if (move.effect === 'venom') { target.venom = { damage: Math.max(1, Math.round(move.venom * s.stats.damageMultiplier)), left: move.duration, name: move.name, moveId: move.id, tier: move.tier }; detail = ' and poisons for two turns'; }
         if (move.effect === 'weaken') { target.weaken = move.weaken; detail = ' and weakens the next attack'; }
@@ -58,7 +62,7 @@ export function simulateBout(a, b, seed) {
       if (move.effect === 'guard') { s.guard = move.guard; detail += ' and raises a guard'; }
       detail = hit ? `deals ${dmg} damage${detail}` : `misses${move.effect === 'guard' ? ' but raises a guard' : ''}`;
     }
-    rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, dmg, healed, hp: [...hp], turn, ownTurn: s.turn,
+    rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn,
       line: `${s.c.name} uses ${move.name}: ${detail}.` });
   }
   const score = hp[0] * maxHp[1] - hp[1] * maxHp[0];

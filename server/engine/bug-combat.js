@@ -59,7 +59,8 @@ export function movesFor(species, level, legacyAbilities = 0) {
   return MOVE_IDS.map((id, tier) => {
     const effect = effects[tier], base = EFFECTS[effect], extra = Math.max(0, tier - 1) * 2;
     return { id, name: names[tier], level: ABILITY_LEVELS[tier], unlocked: level >= ABILITY_LEVELS[tier] || tier < Math.min(3, legacyAbilities),
-      tier, effect, ...base, power: base.power ? base.power + extra : 0, ...(base.heal ? { heal: base.heal + extra } : {}) };
+      tier, effect, ...base, power: base.power ? base.power + extra : 0, ...(base.heal ? { heal: base.heal + extra } : {}),
+      ...(id === 'capstone' && effect === 'pierce' ? { criticalChance: 0.05, description: `${base.description} On a nonlethal hit, 5% chance to leave the opponent at 1 HP.` } : {}) };
   });
 }
 
