@@ -54,7 +54,7 @@ export const MIN_SHIFT_MS = 20000;
 // player takes a corner fast (the client's job: client/src/mines/stalker.js). He's harmless: pay and timing ignore him.
 export const SCARE_CHANCE = 28000; // out of 100,000
 export const SCARE_AFTER_MS = 30000;
-export const EGG_WINDOW_MS = 10000; // v30: an egg (when there is one) lies near the start for the first 10 s of the shift
+export const EGG_WINDOW_MS = 30000; // an egg (when there is one) lies near the start for the first 30 s of the shift
 export function rollScare(randInt = (n) => crypto.randomInt(n)) {
   return { scare: randInt(100000) < SCARE_CHANCE };
 }
@@ -134,7 +134,7 @@ export class Mines {
     const cur = this.doc.active[player.id];
     if (!cur || cur.id !== shiftId) throw new GameError('That shift is not yours or already ended.', 409);
     if (!cur.egg || cur.eggTaken || !this.barn) throw new GameError('There is nothing here to pick up.', 409);
-    if (this.now() - cur.startedAt > EGG_WINDOW_MS + 3000) throw new GameError('It rolled into a crack. Gone.', 409); // it lies there for the first 10 s (plus a little for the network)
+    if (this.now() - cur.startedAt > EGG_WINDOW_MS + 3000) throw new GameError('It rolled into a crack. Gone.', 409); // allow a little extra for the network
     const r = this.barn.layEgg(player.id);
     cur.eggTaken = true; this.save();
     return r;
