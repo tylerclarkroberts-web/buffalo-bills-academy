@@ -26,7 +26,7 @@ import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js
 import { Conquest, mountConquest } from './conquest.js';
 import { Rooms } from './rooms.js';
 
-export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
+export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
   const service = new PokerService({ dataDir, now });
   const config = authConfig(env);
   if (devLogin !== undefined) config.devLogin = devLogin;
@@ -50,7 +50,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
-  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, vein, barn, foreman });
+  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman });
   const avatars = new Avatars({ dir: service.store.dir, store: service.store, now: service.now });
   service.avatars = avatars;
   // v34: the General Store. Avatars carry what you wear; the barn reads bug looks, toy and gear bonuses from it.
@@ -251,8 +251,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // ----- Acid Mines -----
   api.get('/fawn', needPlayer, wrap((req) => fawn.status(accounts.ensure(req.player))));
   api.post('/fawn/claim', needPlayer, wrap((req) => fawn.claim(accounts.ensure(req.player))));
-  api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player))));
-  api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
+  api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));
+  api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/egg', needPlayer, wrap((req) => mines.takeEgg(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
   // ----- the Barn (v30) -----
   api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id)));
@@ -263,10 +264,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/bouts/:id/join', needPlayer, wrap((req) => barn.joinBout(req.player.id, req.params.id, req.body)));
   api.delete('/barn/bouts/:id', needPlayer, wrap((req) => barn.cancelBout(req.player.id, req.params.id)));
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
-  api.post('/mines/quit', needPlayer, wrap((req) => mines.quit(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  api.post('/mines/quit', needPlayer, wrap((req) => mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
-  api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
 
   // ----- investing (play money) -----
   api.get('/market', wrap(async (req) => ({ quotes: await market.quotes(), portfolio: req.player ? market.portfolio(accounts.ensure(req.player)) : null, bankroll: req.player?.bankroll ?? null })));
@@ -287,7 +288,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    if (mines.doc.active[p.id]) { delete mines.doc.active[p.id]; mines.save(); }
+    mines.forget(p.id);
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();

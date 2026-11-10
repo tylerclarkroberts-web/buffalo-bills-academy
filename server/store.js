@@ -50,6 +50,7 @@ export class Store {
       p.bankroll = draft.bankroll;
       p.txns = draft.txns;
       p.conquest = draft.conquest;
+      if (Object.hasOwn(draft, 'mining')) p.mining = draft.mining;
       if (Object.hasOwn(draft, 'barnBouts')) p.barnBouts = draft.barnBouts;
     }
   }

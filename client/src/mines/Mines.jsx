@@ -4,6 +4,7 @@ import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
 import { makeMaze, rng, veinChain, eggSpot, FIRST_POOL_STEPS } from './maze.js';
 import { stickTurn } from './controls.js';
+import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
 import { MineScene, MINE_REACH } from './scene.js';
@@ -77,6 +78,8 @@ export default function Mines() {
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
   const [starting, setStarting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const exitShift = useRef(null);
   const [sound, setSound] = useState(false);
   const [lecture, setLecture] = useState(null); // server-held quiz, or a local paid-shift farewell
   const audio = useRef(null);
@@ -88,13 +91,25 @@ export default function Mines() {
     return () => { document.body.classList.remove('in-mines'); audio.current?.dispose(); };
   }, []);
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
-  async function quit() { // v45: leaving a shift with no acid ends it unpaid, and the foreman storms in
-    const id = shift?.shiftId; setPhase('intro');
-    try { const v = await api('POST', '/mines/quit', { shiftId: id }); if (v?.pending) setLecture(v.pending); } catch (e) { setErr(e.message); }
+  useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
+  function complete(v) {
+    if (v.result) {
+      setResult(v.result); setPhase('result'); refreshSession();
+      if (v.result.foreman) setLecture(v.result.foreman);
+    } else if (Object.hasOwn(v, 'pending')) {
+      setPhase('intro'); if (v.pending) setLecture(v.pending);
+    }
+  }
+  async function quit() {
+    if (leaving) return;
+    setLeaving(true);
+    try { complete(await api('POST', '/mines/quit', { shiftId: shift?.shiftId })); }
+    catch (e) { setErr(e.message); }
+    finally { setLeaving(false); }
   }
   function leave() {
-    if (lecture || starting) return;
-    if (phase === 'play' && shift) return quit();
+    if (lecture || starting || leaving) return;
+    if (phase === 'play' && shift) return exitShift.current ? exitShift.current() : quit();
     const farewell = phase === 'result' ? paidFarewell(result) : null;
     if (farewell) setLecture(farewell);
     else navigate('/');
@@ -106,8 +121,11 @@ export default function Mines() {
     setStarting(true);
     setErr('');
     try {
-      const s = await api('POST', '/mines/start');
+      const afterShiftId = result?.shiftId || readMineReceipt(me?.id);
+      const s = await api('POST', '/mines/start', { rulesVersion: 2, ...(afterShiftId ? { afterShiftId } : {}) });
+      if (s.result || Object.hasOwn(s, 'pending')) { complete(s); return; }
       setShift({ ...s, localStart: Date.now() - (s.serverNow - s.startedAt) });
+      setResult(null);
       setPhase('play');
     } catch (e) {
       if (e.code === 'foreman') { const v = await api('GET', '/mines/foreman').catch(() => null); if (v?.pending) { setLecture(v.pending); return; } }
@@ -130,7 +148,7 @@ export default function Mines() {
       <div className="crt" aria-hidden="true" />
       <div inert={lecture ? '' : undefined} aria-hidden={!!lecture || undefined}>
         <header className="m-top">
-          <button className="m-link" disabled={starting} onClick={leave}>◄ SURFACE</button>
+          <button className="m-link" disabled={starting || leaving} onClick={leave}>◄ SURFACE</button>
           <span className="m-brand">ACID MINE CO.<span className="m-dim m-shaft"> · SHAFT 7</span></span>
           <span className="m-right">
             {me && <span className="m-bank">${me.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>}
@@ -139,7 +157,7 @@ export default function Mines() {
         </header>
         {err && <div className="m-err" role="alert" onClick={() => setErr('')}>! {err}</div>}
         {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} starting={starting} />}
-        {phase === 'play' && shift && <Shift shift={shift} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} />}
+        {phase === 'play' && shift && <Shift key={shift.shiftId} shift={shift} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} onComplete={complete} exitShift={exitShift} onLeaving={setLeaving} />}
         {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} />}
       </div>
       {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); navigate('/'); }} />}
@@ -174,11 +192,10 @@ function Intro({ me, loading, onStart, starting }) {
             <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
             <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
-            <li>Find the pool. Dry? The vein moved deeper. When it glows, the acid's in: hold <b>MINE</b>.</li>
-            <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
-            <li>Get paid. Clock in again. Repeat for weeks.</li>
+            <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
+            <li>One bucket. 100 units. Clock out with what you've got, or fill it for automatic pay.</li>
           </ol>
-          <p className="m-dim">Shifts last at least 20 seconds. Some last a lot longer. One shift at a time. Pay goes straight into your bankroll.</p>
+          <p className="m-dim">Acid seeps in over time. Later finds tend to be fuller. Payroll weighs the bucket when you finish.</p>
           {loading ? null : me ? <button className="m-btn" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
         </section>
         <section className="m-box">
@@ -204,19 +221,32 @@ const DRY_LINES = [
   'NOTHING BUT DAMP ROCK. KEEP WALKING.',
 ];
 
-function Shift({ shift, audio, sound, onFinish, onQuit }) {
+function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, onLeaving }) {
+  const bucketShift = shift.rulesVersion === 2;
   const canvas = useRef(null);
   const sceneRef = useRef(null);
+  const client = useRef(null);
+  const [bucket, setBucket] = useState(shift);
+  const bucketRef = useRef(shift);
+  const [mineError, setMineError] = useState(null);
+  const errorRef = useRef(null);
+  const [clockingOut, setClockingOut] = useState(false);
+  const closing = useRef(false);
   const [near, setNear] = useState(false);
   const [dist, setDist] = useState(99);
-  const [progress, setProgress] = useState(0);
+  const [legacyProgress, setProgress] = useState(0);
+  const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
+  const holdingRef = useRef(false);
+  const hold = value => { holdingRef.current = value; setHolding(value); };
+  const release = () => { hold(false); client.current?.stop().catch(() => {}); };
   const [elapsed, setElapsed] = useState(0);
   const [line, setLine] = useState(LINES[shift.seed % LINES.length]);
   const [status, setStatus] = useState('FIND THE ACID POOL');
   const done = useRef(false);
   const cells = FIRST_POOL_STEPS[shift.cells] ? shift.cells : 7;
   const maze = useRef(makeMaze(shift.seed, cells, FIRST_POOL_STEPS[cells])).current;
+  const eggLocation = useRef(eggSpot(maze, shift.seed)).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
   const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker(chain);
   const dreadEl = useRef(null);
@@ -232,6 +262,44 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   const [tiltActive, setTiltActive] = useState(false);
   const tiltActiveRef = useRef(false);
   const keys = useRef(new Set()).current;
+  const accept = state => {
+    if (state.result || Object.hasOwn(state, 'pending')) {
+      done.current = true; hold(false); onComplete(state); return;
+    }
+    const previous = bucketRef.current;
+    bucketRef.current = state; setBucket(state); errorRef.current = null; setMineError(null);
+    if (state.collected > previous.collected) audio?.chunk();
+    sceneRef.current?.setDeposits(state.pools, state.currentPoolId);
+    const pool = state.pools.find(p => p.id === state.currentPoolId);
+    vein.current.flowing = !!pool?.remaining;
+    if (state.currentPoolId !== previous.currentPoolId) {
+      hold(false); setNear(false);
+      const dry = state.pools.find(p => p.id === previous.currentPoolId)?.quantity === 0;
+      setStatus(dry ? 'DRY. FOLLOW THE CLICKS.' : 'POOL DRAINED. FOLLOW THE CLICKS.');
+      setLine(dry ? DRY_LINES[state.pools.findIndex(p => p.id === state.currentPoolId) % DRY_LINES.length] : 'YOU HAVE REMOVED THE WET FROM THIS HOLE.');
+    } else if (pool?.remaining) {
+      setStatus('FIND THE ACID POOL');
+      if (previous.pools.find(p => p.id === pool.id)?.quantity == null) setLine('THE ACID IS IN. TAKE WHAT YOU CAN CARRY.');
+    } else {
+      setStatus('IT\'S SEEPING IN. WAIT FOR IT.');
+      vein.current.waitUntil = Date.now() + Math.max(250, Math.min(2500, state.readyAt - state.serverNow));
+    }
+  };
+  const fail = error => {
+    errorRef.current = error; setMineError(error); hold(false);
+    if (sceneRef.current) sceneRef.current.mining = false;
+  };
+  async function clockOut() {
+    if (!bucketShift) return onQuit();
+    if (closing.current || done.current) return;
+    closing.current = true; hold(false); setClockingOut(true); onLeaving(true);
+    try { await client.current.clockOut(); } catch { /* the request lane keeps the error and confirmed bucket */ }
+    finally { closing.current = false; setClockingOut(false); onLeaving(false); }
+  }
+  const retry = async () => {
+    if (closing.current || done.current) return;
+    try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
+  };
   const move = (f, t) => {
     const s = sceneRef.current;
     if (!s || doomRef.current) return;
@@ -248,7 +316,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   const openDoor = useRef(null);
   openDoor.current = () => {
     if (doomRef.current) return;
-    doomRef.current = true; setDoom(true); setHolding(false);
+    doomRef.current = true; setDoom(true); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
     soundWas.current = !!audio?.on; if (audio?.on) audio.stop();
   };
@@ -261,6 +329,33 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   useEffect(() => {
     let lastNear = false, lastD = 99;
     const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (bucketShift) {
+      client.current = createMiningClient({
+        send: (path, body) => api('POST', path, { rulesVersion: 2, shiftId: shift.shiftId, ...body }),
+        onState: accept, onError: fail,
+      });
+      exitShift.current = clockOut;
+      const pool = shift.pools.find(p => p.id === shift.currentPoolId);
+      if (pool) maze.pool = pool;
+      vein.current.flowing = !!pool?.remaining;
+    }
+    // At a pool: ask the server if the acid is in yet (it alone knows when). Dry: the vein moves on to the next
+    // pool in the chain and this one stays behind as a crater. Seeping (or no pools left): wait here and ask again.
+    const askVein = async () => {
+      const v = vein.current;
+      if (v.asking || v.flowing || Date.now() < v.waitUntil || closing.current || done.current || errorRef.current || doomRef.current) return;
+      v.asking = true;
+      try {
+        if (bucketShift) { await client.current.probe(bucketRef.current.currentPoolId); return; }
+        const r = await api('POST', '/mines/probe', { shiftId: shift.shiftId });
+        if (r.flowing) { v.flowing = true; setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
+        if (r.seeping || v.i >= chain.length - 1) { v.waitUntil = Date.now() + 2500; setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
+        v.i += 1; const p = chain[v.i];
+        maze.pool = p; stalker.pool = p; sceneRef.current?.setPool(p.x, p.y);
+        setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
+        setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
+      } catch { v.waitUntil = Date.now() + 3000; } finally { v.asking = false; }
+    };
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
@@ -286,11 +381,11 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     };
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d) => {
-        const v = vein.current; v.reach(d);
-        const kind = v.wantProbe(Date.now()); if (kind) askVein(kind);
-        const n = v.canMine();
-        if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
-        if (n !== lastNear) { lastNear = n; setNear(n); }
+        const at = d < MINE_REACH;
+        if (at && !vein.current.flowing) askVein();
+        const n = at && vein.current.flowing && !done.current;
+        if (n) stalker.acidFound();
+        if (n !== lastNear) { lastNear = n; setNear(n); if (!n) release(); }
         if (Math.abs(d - lastD) > 0.4) { lastD = d; setDist(d); }
       },
       stalker, bugGuide, localStart: shift.localStart, reduceMotion: reduce,
@@ -306,8 +401,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
         if (e === 'bug-done') setLine('YOUR BUG SETTLES BY THE GLOW. THE ACID IS HERE.');
       },
     });
-    sceneRef.current = scene; scene.setAcid(vein.current.flowing);
-    if (eggRef.current) { const spot = eggSpot(maze, shift.seed); if (spot && Date.now() - shift.localStart < EGG_MS) scene.addEgg(spot); else eggRef.current = null; }
+    sceneRef.current = scene;
+    if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
+    if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
       eggRef.current = 'taking'; setEggNear(false);
@@ -327,17 +423,20 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
       scene.input.t = (keys.has('arrowright') || keys.has('e') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
     };
     const down = (e) => {
-      if (doomRef.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (doomRef.current || closing.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
       if (k === 'f' && doorRef.current) { openDoor.current(); return; }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
-      if (k === ' ' || k === 'enter') { setHolding(true); e.preventDefault(); return; }
+      if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
       keys.add(k); sync();
     };
-    const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { setHolding(false); return; } keys.delete(k); sync(); };
+    const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { release(); return; } keys.delete(k); sync(); };
+    const stopInput = () => { release(); keys.clear(); scene.input.f = scene.input.s = scene.input.t = 0; };
+    const hidden = () => { if (document.hidden) stopInput(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);
+    window.addEventListener('blur', stopInput); document.addEventListener('visibilitychange', hidden);
     // mouse / touch look: drag anywhere on the view
     let drag = null;
     const c = canvas.current;
@@ -357,8 +456,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     }, 250);
     const flavor = setInterval(() => { if (!visitorHere.current) setLine(LINES[Math.floor(Math.random() * LINES.length)]); }, 6500);
     return () => {
+      client.current?.dispose(); exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor);
       audio?.dread(false); // clocking out: the normal music comes back
     };
@@ -386,9 +487,15 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     return () => clearInterval(id);
   }, [dist, audio]);
 
-  // mining: hold to fill the bucket (about 4 seconds), then wait out the shift minimum
   useEffect(() => {
-    const s = sceneRef.current; if (s) s.mining = holding && near;
+    const s = sceneRef.current; if (s) s.mining = holding && near && !mineError && !clockingOut;
+    if (bucketShift) {
+      if (holding && holdingRef.current && near && !mineError && !clockingOut && !done.current) {
+        client.current.start(bucketRef.current.currentPoolId); setLine('MINING ACID. SOMEHOW.');
+      }
+      return () => { client.current?.stop().catch(() => {}); };
+    }
+    // Legacy shifts retain their original four-second collection rule.
     if (!holding || !near || done.current) return;
     const id = setInterval(() => {
       setProgress((p) => {
@@ -398,9 +505,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
       });
     }, 100);
     return () => clearInterval(id);
-  }, [holding, near]);
+  }, [holding, near, mineError, clockingOut]);
   useEffect(() => {
-    if (progress < 1 || done.current) return;
+    if (bucketShift || progress < 1 || done.current) return;
     const left = shift.minMs + 400 - (Date.now() - shift.localStart);
     if (left > 0) { setStatus('BUCKET FULL. FOREMAN SAYS THE SHIFT ISN\'T OVER. KEEP SCRAPING.'); }
     const go = async () => {
@@ -418,14 +525,25 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     <div className="m-play">
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div></div>
-      <div className="m-hud tr"><div className={`geiger ${dist < 4 ? 'hot' : dist < 9 ? 'warm' : ''}`}>ACID {'▮'.repeat(Math.max(1, Math.min(10, Math.round(11 - dist))))}{'▯'.repeat(Math.max(0, 10 - Math.max(1, Math.min(10, Math.round(11 - dist)))))}</div><button className="m-link" onClick={onQuit}>CLOCK OUT</button></div>
+      <div className="m-hud tr">
+        <div className={`geiger ${dist < 4 ? 'hot' : dist < 9 ? 'warm' : ''}`}>ACID {'▮'.repeat(Math.max(1, Math.min(10, Math.round(11 - dist))))}{'▯'.repeat(Math.max(0, 10 - Math.max(1, Math.min(10, Math.round(11 - dist)))))}</div>
+        {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
+          <span>BUCKET {Math.floor(bucket.collected)} / {bucket.capacity}</span>
+          <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
+        </div>}
+        <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
+      </div>
+      {mineError && <div className="m-recovery" role="alert">
+        <span>{mineError.message}</span>
+        <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
+      </div>}
       <div className="m-ticker" aria-live="polite">{line}</div>
       {near && (
         <div className="m-mine">
-          <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>
-          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}
-            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setHolding(true); } }}
-            onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setHolding(false); } }} onBlur={() => setHolding(false)}>
+          {!bucketShift && <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>}
+          <button className={`m-btn big ${holding ? 'on' : ''}`} disabled={!!mineError || clockingOut} onPointerDown={(e) => { e.preventDefault(); hold(true); }} onPointerUp={release} onPointerCancel={release} onPointerLeave={release} onContextMenu={(e) => e.preventDefault()}
+            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); hold(true); } }}
+            onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); release(); } }} onBlur={release}>
             {progress >= 1 ? 'BUCKET FULL' : holding ? 'MINING…' : 'HOLD TO MINE'}
           </button>
           <div className="m-dim small">or hold SPACE</div>
@@ -492,7 +610,7 @@ function MovePad({ apply }) {
 }
 
 function Result({ r, onAgain, onLeave, starting }) {
-  const big = r.amount >= 10000;
+  const big = ['motherlode', 'aliens', 'diamonds'].includes(r.outcome);
   return (
     <main className={`m-result o-${r.outcome} ${big ? 'jackpot' : ''}`}>
       <div className="hazard-bar" />
@@ -500,7 +618,8 @@ function Result({ r, onAgain, onLeave, starting }) {
       <pre className="m-art" aria-hidden="true">{ART[r.outcome]}</pre>
       <h1 className="m-title">{r.title}</h1>
       <p className="m-story">{r.text}</p>
-      <div className="m-pay">+${r.amount.toLocaleString()}</div>
+      <div className="m-pay">+${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+      {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">
         <button className="m-btn" disabled={starting} onClick={onAgain}>[ ANOTHER SHIFT ]</button>

@@ -64,6 +64,18 @@ function poolTexture() {
   });
 }
 
+function disposeMeshes(root, textures = true) {
+  const resources = new Set();
+  root.traverse((o) => {
+    if (o.geometry) resources.add(o.geometry);
+    for (const material of [].concat(o.material || [])) {
+      resources.add(material);
+      if (textures && material.map) resources.add(material.map);
+    }
+  });
+  for (const resource of resources) resource.dispose();
+}
+
 // The visitor: bald, pale, hollow-eyed, a long black coat, arms that hang too low and fingers that go on too
 // long. About 2.3 m: his head nearly scrapes the 2.6 m ceiling. Built from plain shapes; front is +z.
 function buildVisitor() {
@@ -123,6 +135,7 @@ export class MineScene {
 
     const { grid, size } = maze;
     const wallMat = new THREE.MeshLambertMaterial({ map: rockTexture(r) });
+    this.wallMaterial = wallMat;
     let n = 0; for (const row of grid) for (const v of row) n += v;
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(TILE, WALL_H, TILE), wallMat, n);
     const m = new THREE.Matrix4(); let i = 0;
@@ -131,6 +144,7 @@ export class MineScene {
     const floorT = floorTexture(r); floorT.repeat.set(size, size);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(size * TILE, size * TILE), new THREE.MeshLambertMaterial({ map: floorT }));
     floor.rotation.x = -Math.PI / 2; floor.position.set((size - 1) * TILE / 2, 0, (size - 1) * TILE / 2); this.scene.add(floor);
+    this.floor = floor;
     const ceilT = rockTexture(r); ceilT.repeat.set(size, size);
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(size * TILE, size * TILE), new THREE.MeshLambertMaterial({ map: ceilT, color: '#7a8a70' }));
     ceil.rotation.x = Math.PI / 2; ceil.position.set(floor.position.x, WALL_H, floor.position.z); this.scene.add(ceil);
@@ -207,9 +221,11 @@ export class MineScene {
       d.userData = { x: x * TILE + (r() - 0.5) * TILE * 0.8, z: y * TILE + (r() - 0.5) * TILE * 0.8, v: 0, wait: r() * 3 };
       d.position.set(d.userData.x, WALL_H, d.userData.z); this.scene.add(d); this.drops.push(d);
     }
+    this.puddleGlints = [];
     for (const [x, y] of open) if (r() < 0.06) { // puddle glints
       const p = new THREE.Mesh(new THREE.CircleGeometry(0.18 + r() * 0.2, 8), new THREE.MeshBasicMaterial({ color: '#3c8a1c' }));
       p.rotation.x = -Math.PI / 2; p.position.set(x * TILE + (r() - 0.5), 0.015, y * TILE + (r() - 0.5)); this.scene.add(p);
+      p.userData.tile = `${x},${y}`; this.puddleGlints.push(p);
     }
 
     if (this.stalker) { this.visitor = buildVisitor(); this.scene.add(this.visitor.group); this.fade = 0; this.flick = 0; this.nextFlick = 1; this.lastDread = -1; }
@@ -325,6 +341,69 @@ export class MineScene {
     for (const c of this.crystals) { c.position.x += dx; c.position.z += dz; }
     this.bugGuide?.setPool({ x, y });
   }
+  /** Finite deposits share their liquid texture; confirmations only move the liquid surface. */
+  setDeposits(pools, currentPoolId) {
+    this.deposits ||= new Map();
+    this.poolMesh.visible = false;
+    for (const crystal of this.crystals) crystal.visible = false;
+    const visible = pools.filter((p) => p.quantity !== null || p.id === currentPoolId);
+    const ids = new Set(visible.map((p) => p.id));
+    for (const [id, deposit] of this.deposits) if (!ids.has(id)) {
+      this.scene.remove(deposit.group); disposeMeshes(deposit.group, false); this.deposits.delete(id);
+    }
+    for (const pool of visible) {
+      let deposit = this.deposits.get(pool.id);
+      if (!deposit) {
+        const group = new THREE.Group(); group.name = `mine-deposit-${pool.id}`;
+        const wall = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.68, 1, 20, 1, true), new THREE.MeshLambertMaterial({ map: this.wallMaterial.map, color: '#66704c', emissive: '#111a08', side: THREE.BackSide }));
+        const bottom = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshLambertMaterial({ color: '#28321c', emissive: '#0b1506' }));
+        const rim = new THREE.Mesh(new THREE.RingGeometry(1, 1.08, 20), new THREE.MeshLambertMaterial({ color: '#53643a', emissive: '#172509' }));
+        const liquid = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ map: this.poolTex, color: '#b6ff7a' }));
+        for (const mesh of [bottom, rim, liquid]) mesh.rotation.x = -Math.PI / 2;
+        rim.position.y = 0.012;
+        group.add(wall, bottom, rim, liquid); this.scene.add(group);
+        deposit = { group, wall, bottom, rim, liquid }; this.deposits.set(pool.id, deposit);
+      }
+      const units = pool.quantity > 0 ? pool.quantity : 35;
+      const radius = 0.48 + Math.min(100, units) * 0.0052;
+      const depth = pool.quantity === 0 ? 0.18 : 0.16 + Math.min(100, units) * 0.005;
+      const fraction = pool.quantity === null ? 0.6 : pool.quantity > 0 ? Math.max(0, Math.min(1, pool.remaining / pool.quantity)) : 0;
+      deposit.radius = radius; deposit.depth = depth;
+      deposit.group.position.set(pool.x * TILE, 0, pool.y * TILE);
+      deposit.wall.scale.set(radius, depth, radius); deposit.wall.position.y = -depth / 2;
+      deposit.bottom.scale.setScalar(radius * 0.68); deposit.bottom.position.y = -depth + 0.005;
+      deposit.rim.scale.setScalar(radius);
+      deposit.liquid.position.y = -depth + 0.015 + fraction * (depth - 0.07);
+      deposit.liquid.scale.setScalar(radius * (0.68 + 0.32 * (deposit.liquid.position.y + depth) / depth) * 0.98);
+      deposit.liquid.visible = pool.quantity === null || pool.remaining > 0;
+      deposit.liquid.material.color.set(pool.quantity === null ? '#647d35' : '#b6ff7a');
+    }
+    const floorKey = visible.map((p) => `${p.id}:${p.x},${p.y}:${this.deposits.get(p.id).radius}`).join('|');
+    if (floorKey !== this.depositFloorKey) {
+      this.depositFloorKey = floorKey;
+      const extent = this.maze.size * TILE, half = extent / 2, center = (this.maze.size - 1) * TILE / 2;
+      const shape = new THREE.Shape();
+      shape.moveTo(-half, -half); shape.lineTo(half, -half); shape.lineTo(half, half); shape.lineTo(-half, half); shape.closePath();
+      for (const pool of visible) {
+        const hole = new THREE.Path();
+        hole.absarc(pool.x * TILE - center, center - pool.y * TILE, this.deposits.get(pool.id).radius, 0, Math.PI * 2, true);
+        shape.holes.push(hole);
+      }
+      const geometry = new THREE.ShapeGeometry(shape, 5), position = geometry.attributes.position, uv = geometry.attributes.uv;
+      for (let i = 0; i < position.count; i++) uv.setXY(i, position.getX(i) / extent + 0.5, position.getY(i) / extent + 0.5);
+      this.floor.geometry.dispose(); this.floor.geometry = geometry;
+      const tiles = new Set(visible.map((p) => `${p.x},${p.y}`));
+      for (const glint of this.puddleGlints || []) glint.visible = !tiles.has(glint.userData.tile);
+    }
+    const target = pools.find((p) => p.id === currentPoolId);
+    this.hasPoolTarget = !!target; this.poolLight.visible = !!target;
+    if (target) {
+      this.poolPos.set(target.x * TILE, 0, target.y * TILE);
+      this.poolLight.position.copy(this.poolPos).setY(0.6);
+      this.maze.pool = { x: target.x, y: target.y };
+      if (this.stalker) this.stalker.pool = this.maze.pool;
+    }
+  }
   /** v30: this shift's egg (only when the server put one in it). Against a wall, never in the way: no collision. */
   addEgg(spot) {
     const g = new THREE.Group();
@@ -380,7 +459,7 @@ export class MineScene {
     this.paused = p;
     if (p) cancelAnimationFrame(this.raf); else { this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); }
   }
-  distanceToPool() { return Math.hypot(this.pos.x - this.poolPos.x, this.pos.y - this.poolPos.z); }
+  distanceToPool() { return this.deposits && !this.hasPoolTarget ? 99 : Math.hypot(this.pos.x - this.poolPos.x, this.pos.y - this.poolPos.z); }
   loop(now) {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
@@ -405,8 +484,8 @@ export class MineScene {
     const dread = this.dreadLevel || 0;
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
     this.lamp.intensity = 16 + Math.sin(now / 90) * 0.6 + dip; // a tired headlamp (more tired when he's near)
-    this.poolLight.intensity = this.acid ? 11 + Math.sin(now / 380) * 4 : 1.6;
-    if (this.acid) this.poolTex.offset.set(now / 9000, now / 13000);
+    this.poolLight.intensity = 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4);
+    if (!this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
     if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }
     for (const d of this.drops) {
       const u = d.userData;
@@ -421,7 +500,7 @@ export class MineScene {
   }
   dispose() {
     cancelAnimationFrame(this.raf);
-    this.scene.traverse((o) => { o.geometry?.dispose(); const m = o.material; if (m) { m.map?.dispose(); m.dispose(); } });
+    disposeMeshes(this.scene);
     this.renderer.dispose();
   }
 }

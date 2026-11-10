@@ -1,6 +1,7 @@
 // The Acid Mines: the only faucet in the closed economy. The server decides every payout.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
+import { makeMaze, bucketChain, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.05% is exact.
@@ -24,7 +25,7 @@ const NORMAL_LINES = [
   'The foreman nods. That is the most emotion he has ever shown.',
   'You hum the mine song. Nobody else knows the mine song.',
   'You found acid where acid usually is. Groundbreaking.',
-  'The deposit respawns behind you. It always respawns.',
+  'The hole is empty. Payroll considers this an improvement.',
 ];
 const TOTAL = OUTCOMES.reduce((a, o) => a + o.odds, 0); // 100000
 
@@ -59,7 +60,7 @@ export function rollScare(randInt = (n) => crypto.randomInt(n)) {
   return { scare: randInt(100000) < SCARE_CHANCE };
 }
 // The vein (internal, not shown to players): how long this shift's acid takes to show up. The server rolls it at
-// clock-in from its own random source (never the payout one), keeps it to itself, and won't pay a shift before it.
+// clock-in from its own random source (never the payout one). Legacy shifts wait for it; v2 deposits mature toward it.
 // Heavy-tailed on purpose: about a quarter of shifts hit acid under 30 s (small maze), most still under 2 minutes,
 // a real chunk take 3-5. Documented in DECISIONS.md.
 //   25%  lucky vein   uniform 20-30 s (the floor: MIN_SHIFT_MS still applies; cells=7 so the walk fits)
@@ -86,11 +87,36 @@ export function rollVein(randInt = (n) => crypto.randomInt(n)) {
   const cells = b.id === 'lucky' ? 7 : ms < 75000 ? (randInt(5) === 0 ? 9 : 7) : ms < 150000 ? 9 : 11;
   return { veinMs: ms, cells };
 }
-const MAX_SHIFT_MS = 30 * 60 * 1000;
+export const MAX_SHIFT_MS = 30 * 60 * 1000;
 const MAX_SHIFTS_PER_HOUR = 120;
+export const BUCKET_CAPACITY = 100;
+export const EXTRACTION_RATE = 5;
+export const PULSE_GAP_MS = 1000;
+const CAPACITY = BUCKET_CAPACITY * 1000; // Integer thousandths keep pulse frequency from changing the yield.
+
+export function poolQuantity(elapsed, veinMs, roll) {
+  const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
+  const early = [60, 30, 8, 2], mature = [5, 15, 40, 40], amounts = [0, 20, 35, 60];
+  let remaining = roll / 1000;
+  for (let i = 0; i < amounts.length; i++) {
+    remaining -= early[i] + (mature[i] - early[i]) * p;
+    if (remaining < 0) return amounts[i];
+  }
+  return 60;
+}
+
+export function poolTravelMs(steps, first = false) {
+  // Allow diagonal/corner cutting and mining reach; this is a travel floor, not position verification.
+  return Math.max(0, Math.floor((steps * 2.2 - (first ? 1.9 : 3.8)) / (3.6 * Math.SQRT2) * 1000));
+}
+
+function reloadRequired() {
+  const error = new GameError('The mine has changed. Reload before starting or continuing this shift.', 409);
+  error.code = 'mine_reload'; return error;
+}
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, veinInt, vein, barn, foreman }) {
+  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman }) {
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
     this.barn = barn || null; // v30: eggs (its own random source; see barn.js)
@@ -99,78 +125,163 @@ export class Mines {
     // ...and another for the vein, so how long a shift takes can never influence what it pays either.
     this.veinInt = veinInt || ((n) => crypto.randomInt(n));
     this.vein = vein || (() => rollVein(this.veinInt)); // tests can pin it
+    this.poolInt = poolInt || ((n) => crypto.randomInt(n));
     this.doc = store.loadDoc('mines', { active: {} });
+    this.holds = new Map(); // Never resume a held button after a disconnect or restart.
   }
   save() { this.store.saveDoc('mines', this.doc); }
+  commit(playerId, shift, completed) {
+    const next = { ...this.doc, active: { ...this.doc.active } };
+    if (shift) next.active[playerId] = shift; else delete next.active[playerId];
+    if (completed) next.completed = { ...this.doc.completed, [playerId]: completed };
+    this.store.saveDoc('mines', next); this.doc = next;
+  }
+  requireVersion(request) { if (request?.rulesVersion !== 2) throw reloadRequired(); }
+  current(player, shiftId) {
+    const cur = this.doc.active[player.id];
+    if (typeof shiftId !== 'string' || !cur || cur.id !== shiftId) throw new GameError('That shift is not yours or already ended. Start a new shift.', 409);
+    return cur;
+  }
+  completed(player, shiftId, request) {
+    const receipt = this.doc.completed?.[player.id];
+    if (!receipt || receipt.shiftId !== shiftId) return null;
+    this.requireVersion(request);
+    return this.completionView(player, receipt);
+  }
+  completionView(player, receipt) {
+    const pending = this.foreman?.doc.lastMineShift?.[player.id] === receipt.shiftId ? this.foreman.view(player.id).pending : null;
+    if (!receipt.result) return { pending };
+    return { result: { ...receipt.result, bankroll: player.bankroll, ...(receipt.reason === 'mud' && pending ? { foreman: pending } : {}) } };
+  }
 
-  start(player) {
+  start(player, request = {}) {
     const now = this.now();
     const cur = this.doc.active[player.id];
+    if (cur?.rulesVersion === 2) {
+      this.requireVersion(request);
+      if (cur.settlement || now - cur.startedAt >= MAX_SHIFT_MS || cur.collected >= CAPACITY) return this.settle(player, cur);
+    }
+    const last = this.doc.completed?.[player.id];
+    if (!cur && last?.result && request?.afterShiftId !== last.shiftId) {
+      this.requireVersion(request); return this.completionView(player, last);
+    }
     if (this.foreman?.pending(player.id)) { const e = new GameError('The foreman is waiting on an answer before you clock in again.', 409); e.code = 'foreman'; throw e; }
-    if (cur && now - cur.startedAt < MAX_SHIFT_MS) return this.publicShift(cur, true, player.id);
+    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true); }
+    this.requireVersion(request);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
     const shift = { id: crypto.randomBytes(12).toString('base64url'), seed: crypto.randomInt(2 ** 31), startedAt: now, ...rollScare(this.scareInt), ...this.vein() };
+    const maze = makeMaze(shift.seed, shift.cells || 7, FIRST_POOL_STEPS[shift.cells || 7]);
+    const chain = bucketChain(maze, shift.seed);
+    Object.assign(shift, { rulesVersion: 2, collected: 0, index: 0, outcome: rollOutcome(this.randInt),
+      readyAt: now + Math.max(MIN_SHIFT_MS, poolTravelMs(chain.legs[0], true)),
+      pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null })) });
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay, vein and visitor never see it
-    this.doc.active[player.id] = shift;
     this.accounts.touchMining(player, { recentStarts: [...recent, now] });
-    this.save();
-    return this.publicShift(shift, false, player.id);
+    this.commit(player.id, shift); this.holds.delete(player.id);
+    return this.publicShift(shift, false);
   }
-  /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
-  guideBug(playerId) {
-    if (!this.barn) return null;
-    try {
-      // Prefer the public view (hatches eggs, applies style). Fall back to the raw pen if view throws on a corrupt row.
-      let pen = null, style = null;
-      try {
-        const v = this.barn.view(playerId);
-        pen = v?.pen || null;
-        style = pen?.style || null;
-      } catch {
-        const raw = this.barn.doc?.pens?.[playerId];
-        if (raw?.stage === 'creature') pen = { stage: 'creature', species: raw.species, name: raw.name, speciesName: raw.species };
-      }
-      if (!pen || pen.stage !== 'creature') return null;
-      return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
-    } catch { return null; }
-  }
-  publicShift(s, resumed, playerId) {
-    const bug = playerId != null ? this.guideBug(playerId) : null;
-    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}) }; // (scareAt: shifts started before v19)
+  publicShift(s, resumed) {
+    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}),
+      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: BUCKET_CAPACITY, extractionRate: EXTRACTION_RATE, collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
+        pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
 
-  /** Standing at a pool: is the acid there yet? Only ever says yes / seeping / no, never the vein time. */
-  probe(player, shiftId) {
-    const cur = this.doc.active[player.id];
-    if (!cur || cur.id !== shiftId) throw new GameError('That shift is not yours or already ended. Start a new shift.', 409);
+  target(s, poolId) {
+    const i = s.pools.findIndex((p) => p.id === poolId);
+    if (i < 0 || i > s.index) throw new GameError('Follow the current pool. This one is not ready to mine.', 409);
+    return i;
+  }
+  advance(s, now) {
+    if (s.pools[s.index].remaining === 0 && s.index < s.pools.length - 1) {
+      s.index++; s.readyAt = now + poolTravelMs(s.pools[s.index].steps);
+    }
+  }
+
+  /** Resolve a v2 deposit once; legacy probes retain their original availability response. */
+  probe(player, shiftId, request = {}) {
+    const completed = this.completed(player, shiftId, request); if (completed) return completed;
+    const cur = this.current(player, shiftId);
+    if (cur.rulesVersion === 2) {
+      this.requireVersion(request);
+      if (cur.settlement || cur.collected >= CAPACITY || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+      const i = this.target(cur, request.poolId);
+      if (i < cur.index || cur.pools[i].quantity !== null || this.now() < cur.readyAt) return this.publicShift(cur, true);
+      const next = structuredClone(cur), pool = next.pools[i];
+      let quantity = poolQuantity(this.now() - cur.startedAt, cur.veinMs, pool.roll) * 1000;
+      if (i === next.pools.length - 1) quantity = Math.max(quantity, CAPACITY - next.collected);
+      pool.quantity = pool.remaining = quantity;
+      this.advance(next, this.now()); this.commit(player.id, next);
+      return this.publicShift(next, true);
+    }
     const left = Math.max(MIN_SHIFT_MS, cur.veinMs || 0) - (this.now() - cur.startedAt);
     return { flowing: left <= 0, seeping: left > 0 && left <= SEEP_MS };
   }
 
+  extract(player, shiftId, request = {}) {
+    this.requireVersion(request);
+    if (!['start', 'continue', 'stop'].includes(request.action)) throw new GameError('Choose a valid mining action.', 400);
+    const completed = this.completed(player, shiftId, request); if (completed) return completed;
+    const cur = this.current(player, shiftId);
+    if (cur.rulesVersion !== 2) throw reloadRequired();
+    const now = this.now();
+    if (cur.settlement || cur.collected >= CAPACITY || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+    const i = this.target(cur, request.poolId);
+    if (i < cur.index) return this.publicShift(cur, true);
+    if (now < cur.readyAt || cur.pools[i].remaining === null) throw new GameError('Reach and inspect the pool before mining.', 425);
+    const hold = this.holds.get(player.id);
+    const live = hold?.shiftId === shiftId && hold.poolId === request.poolId && now >= hold.at && now - hold.at <= PULSE_GAP_MS;
+    if (request.action === 'start') {
+      if (!live) this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
+      return this.publicShift(cur, true);
+    }
+    if (!live) {
+      this.holds.delete(player.id);
+      if (request.action === 'continue') throw new GameError('Mining stopped. Hold Mine again.', 409);
+      return this.publicShift(cur, true);
+    }
+    let next = cur;
+    if (now > hold.at) {
+      next = structuredClone(cur);
+      const amount = Math.min((now - hold.at) * EXTRACTION_RATE, next.pools[i].remaining, CAPACITY - next.collected);
+      next.collected += amount; next.pools[i].remaining -= amount;
+      this.advance(next, now); this.commit(player.id, next);
+    }
+    if (request.action === 'stop' || next.index !== i || next.collected >= CAPACITY) this.holds.delete(player.id);
+    else this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
+    if (next.collected >= CAPACITY) return this.settle(player, next);
+    return this.publicShift(next, true);
+  }
+
   /** v30: pick up the egg lying in this shift's tunnels. Touches nothing about the shift itself (clock, vein, pay). */
   takeEgg(player, shiftId) {
-    const cur = this.doc.active[player.id];
-    if (!cur || cur.id !== shiftId) throw new GameError('That shift is not yours or already ended.', 409);
+    const cur = this.current(player, shiftId);
+    if (cur.settlement) throw new GameError('That shift has already ended.', 409);
     if (!cur.egg || cur.eggTaken || !this.barn) throw new GameError('There is nothing here to pick up.', 409);
     if (this.now() - cur.startedAt > EGG_WINDOW_MS + 3000) throw new GameError('It rolled into a crack. Gone.', 409); // allow a little extra for the network
     const r = this.barn.layEgg(player.id);
-    cur.eggTaken = true; this.save();
+    this.commit(player.id, { ...cur, eggTaken: true });
     return r;
   }
 
-  /** v45: clock out early with no acid. The shift ends unpaid and the foreman wants a word. */
-  quit(player, shiftId) {
-    const cur = this.doc.active[player.id];
-    if (!cur || cur.id !== shiftId) throw new GameError('That shift is not yours or already ended.', 409);
-    delete this.doc.active[player.id]; this.save();
+  /** Cash out confirmed v2 material; empty and legacy quits keep the Foreman's lecture. */
+  quit(player, shiftId, request = {}) {
+    const completed = this.completed(player, shiftId, request); if (completed) return completed;
+    const cur = this.current(player, shiftId);
+    if (cur.rulesVersion === 2) { this.requireVersion(request); return this.settle(player, cur); }
+    this.commit(player.id, null);
     return this.foreman ? this.foreman.scold(player.id, 'quit') : { pending: null };
   }
 
-  finish(player, shiftId) {
+  finish(player, shiftId, request = {}) {
+    const completed = this.completed(player, shiftId, request); if (completed) return completed;
     const now = this.now();
-    const cur = this.doc.active[player.id];
-    if (!cur || cur.id !== shiftId) throw new GameError('That shift is not yours or already ended. Start a new shift.', 409);
+    const cur = this.current(player, shiftId);
+    if (cur.rulesVersion === 2) {
+      this.requireVersion(request);
+      if (cur.settlement || cur.collected >= CAPACITY || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+      throw new GameError('Fill the bucket or clock out with what you have.', 409);
+    }
     const elapsed = now - cur.startedAt;
     if (elapsed > MAX_SHIFT_MS) { delete this.doc.active[player.id]; this.save(); throw new GameError('Your shift timed out. Start a new one.', 410); }
     if (elapsed < MIN_SHIFT_MS) throw new GameError(`Keep digging: a shift lasts at least ${Math.ceil(MIN_SHIFT_MS / 1000)} seconds.`, 425);
@@ -182,5 +293,29 @@ export class Mines {
     this.accounts.recordShift(player, { ...r, at: now, ms: elapsed });
     const foreman = r.outcome === 'dud' && this.foreman ? this.foreman.scold(player.id, 'mud').pending : null; // v45: mud is not acid
     return { ...r, bankroll: player.bankroll, ...(foreman ? { foreman } : {}) };
+  }
+
+  settle(player, shift) {
+    this.holds.delete(player.id);
+    let cur = shift;
+    if (!cur.settlement) {
+      const r = cur.outcome;
+      const result = cur.collected > 0 ? { ...r, shiftId: cur.id, collected: cur.collected / 1000, capacity: BUCKET_CAPACITY,
+        amount: Math.round(r.amount * 100 * cur.collected / CAPACITY) / 100,
+        ...(r.outcome === 'dud' && cur.collected < CAPACITY ? { text: 'Mostly mud. The foreman pays for what you brought and questions your judgment.' } : {}) } : null;
+      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt } };
+      this.commit(player.id, cur);
+    }
+    const receipt = cur.settlement;
+    if (receipt.result) this.accounts.recordShift(player, { ...receipt.result, at: receipt.at, ms: receipt.ms });
+    if (receipt.reason) this.foreman?.scold(player.id, receipt.reason, cur.id);
+    this.commit(player.id, null, receipt);
+    return this.completionView(player, receipt);
+  }
+
+  forget(playerId) {
+    const next = { ...this.doc, active: { ...this.doc.active }, completed: { ...this.doc.completed } };
+    delete next.active[playerId]; delete next.completed[playerId];
+    this.store.saveDoc('mines', next); this.doc = next; this.holds.delete(playerId);
   }
 }

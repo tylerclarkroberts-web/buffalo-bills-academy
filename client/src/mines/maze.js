@@ -66,8 +66,18 @@ export const FIRST_POOL_STEPS = { 7: 26, 9: 42, 11: 60 };
  * the client walks the chain, asking at each pool. Earlier pools turn out dry and stay behind as decoys.
  */
 export function veinChain(maze, seed, k = 8) {
+  return poolChain(maze, seed, k, false);
+}
+
+/** Finite deposits: keep each walk useful without sending miners to the farthest corner every time. */
+export function bucketChain(maze, seed) {
+  return poolChain(maze, seed, 8, true);
+}
+
+function poolChain(maze, seed, k, bucket) {
   const r = rng((seed ^ 0xac1d) >>> 0);
   const { grid, size } = maze;
+  const target = { 7: 26, 9: 34, 11: 42 }[(size - 1) / 2];
   const ends = [];
   for (let y = 1; y < size; y += 2) for (let x = 1; x < size; x += 2) {
     if (grid[y][x]) continue;
@@ -78,9 +88,11 @@ export function veinChain(maze, seed, k = 8) {
   const used = new Set([`${maze.pool.x},${maze.pool.y}`, '1,1']);
   while (chain.length < k) {
     const at = chain[chain.length - 1]; const d = distFrom(grid, at.x, at.y);
-    const left = ends.filter((e) => !used.has(`${e.x},${e.y}`) && d[e.y][e.x] > 0).sort((a, b) => d[b.y][b.x] - d[a.y][a.x]);
+    const left = ends.filter((e) => !used.has(`${e.x},${e.y}`) && d[e.y][e.x] > 0).sort((a, b) => bucket
+      ? Math.abs(d[a.y][a.x] - target) - Math.abs(d[b.y][b.x] - target)
+      : d[b.y][b.x] - d[a.y][a.x]);
     if (!left.length) break;
-    const pick = left[Math.floor(r() * Math.min(3, left.length))]; // one of the three farthest
+    const pick = left[Math.floor(r() * Math.min(3, left.length))];
     chain.push(pick); used.add(`${pick.x},${pick.y}`);
   }
   chain.legs = chain.map((p, i) => (i ? distFrom(grid, chain[i - 1].x, chain[i - 1].y)[p.y][p.x] : maze.steps));
