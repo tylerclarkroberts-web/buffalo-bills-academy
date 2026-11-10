@@ -22,6 +22,10 @@ Open http://localhost:3000. Local data is created in `data/`. Username accounts 
 - **Start a table** puts seats, turn time, rebuys and speed-ups in the same form as name, visibility, buy-in and blinds. Scroll within the form on smaller screens; there is no separate Options step.
 - **Your tables** shows who is acting and your position in the current betting round. Failed refreshes keep the last loaded tables visible and offer Retry. See [Host options and room history](docs/table-options-and-history.md) for counting rules and refresh limits.
 
+## Playing a hand
+
+On phones the table header has one **Menu** for Say, gags, Smoke Shop items, showdown replay, music and Invite. The bet and raise panel offers pot-size shortcuts, buttons that step by one small or big blind, a typed amount, and a slider that is precise at small sizes. Avatars are larger on an upright phone. See [Playing at a poker table](docs/table-play.md).
+
 ## Poker table visibility
 
 New tables default to **Private · invite link**. They are unlisted, but anyone with the invite link can open the table and join when a seat is available. Private does not mean host approval or password protection.
@@ -57,7 +61,8 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 - [Development and troubleshooting](docs/development.md): commands, architecture, configuration, and known issues.
 - [Public and private poker tables](docs/public-tables.md): player guide, behavior, API, compatibility, and checks.
 - [Host options and room history](docs/table-options-and-history.md): create tables, read turn positions, recover failed list loads, change defaults for future hands, filter rooms, and replay missed public activity.
-- [Profile and account](docs/profile-and-account.md): change your avatar or display name, manage sign-in in Account, and find table preferences and alerts in Settings.
+- [Playing at a poker table](docs/table-play.md): the phone table menu, choosing a bet or raise amount, and how seats are shown.
+- [Profile and account](docs/profile-and-account.md): change your avatar or display name, see how the name at tables follows your handle, manage sign-in in Account, and find table preferences and alerts in Settings.
 - [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
 - [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.
