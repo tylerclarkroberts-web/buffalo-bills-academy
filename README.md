@@ -54,6 +54,8 @@ An empty Barn gives each new mining shift a 10% chance of an egg near the entran
 
 Phone controls use a stick to walk and steer, held arrows to turn, and dragging the view to look. Mining and pickup actions stay separate from the movement pad on narrow screens.
 
+Phones can also opt into **TILT** controls, calibrate with **Recenter**, and switch back with **Use touch**. Motion access needs browser support and HTTPS; sensor data stays in the browser. Physical-phone sensitivity remains unverified.
+
 Leaving after a successful paid shift gets a short, grumbling send-off from the Foreman, with no math question. Mud and quitting empty-handed still trigger his usual lecture and quiz. See [Acid Mines](docs/acid-mines.md) for departure controls and pay behavior.
 
 ## Selfie avatars
