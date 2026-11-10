@@ -758,21 +758,23 @@ export function viewFor(t, playerId, now) {
 // ---------- Fight Guntrad (side game for the big blind) ----------
 // The big blind is always posted as normal, so the hand never waits. The BB player may take an optional
 // fight while the hand is on and they haven't acted yet. Win: the house refunds their big blind to their
-// bankroll. Lose (or forfeit, or let the clock run out): 5% of their bankroll goes into this pot as dead money.
+// bankroll. Lose (or forfeit, or let the clock run out): 5% of their bankroll goes into this pot as dead money,
+// never more than FIGHT_CAP_BB big blinds (so a rich player isn't risking $1,000 to win back a $20 blind).
 export const FIGHT_PCT = 5;
+export const FIGHT_CAP_BB = 10;
 export const FIGHT_LIMIT_MS = Math.ceil((F.MAX_FRAMES / F.FPS) * 1000) + 30000; // longest possible fight + loading slack
 export const FIGHT_CLOCK_SLACK_FRAMES = 2 * F.FPS; // a replay may run at most 2 seconds ahead of the wall clock
-/** 5% of a bankroll in whole dollars (rounded), at least $1, never more than they have. 0 if they have under $1. */
-export function fightStake(bankroll) {
+/** 5% of a bankroll in whole dollars (rounded), at least $1, never more than they have or 10 big blinds. 0 if they have under $1. */
+export function fightStake(bankroll, bigBlind = Infinity) {
   const b = Math.floor(Number(bankroll) || 0);
   if (b < 1) return 0;
-  return Math.min(b, Math.max(1, Math.round((Number(bankroll) * FIGHT_PCT) / 100)));
+  return Math.min(b, Math.max(1, FIGHT_CAP_BB * bigBlind), Math.max(1, Math.round((Number(bankroll) * FIGHT_PCT) / 100)));
 }
 function offerFight(t, seat, ctx) {
   const h = t.hand; const s = t.seats[seat]; const p = h.players[seat];
   if (!t.econ || typeof ctx.bankrollOf !== 'function') return; // only on tables backed by real bankrolls
   if (s.sittingOut || s.leaving || p.total <= 0) return;
-  if (fightStake(ctx.bankrollOf(s.playerId)) < 1) return;
+  if (fightStake(ctx.bankrollOf(s.playerId), t.settings.bigBlind) < 1) return;
   h.fightOffer = { seat, playerId: s.playerId, refund: p.total, status: 'open' };
 }
 function fightBook(t) { return (t.fightBook ||= { refund: {}, take: {} }); }
@@ -829,7 +831,7 @@ function settleFight(t, result, why, ctx, stats = {}) {
     log(t, ctx, `${f.name} beat Guntrad the Pit Boss! The house covers their big blind (${f.refund} back to their bankroll)`);
     return;
   }
-  const stake = fightStake(typeof ctx.bankrollOf === 'function' ? ctx.bankrollOf(f.playerId) : 0);
+  const stake = fightStake(typeof ctx.bankrollOf === 'function' ? ctx.bankrollOf(f.playerId) : 0, t.settings.bigBlind);
   f.stake = stake;
   const h = t.hand;
   if (stake > 0 && h && h.number === f.hand) {

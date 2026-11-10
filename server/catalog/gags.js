@@ -9,6 +9,7 @@ export const GAG_ITEMS = [
   { id: 'gag-spaghetti', name: 'Uncooked Spaghetti Noodle', price: 120, effect: 'noodle', emoji: '🍝', desc: 'One single dry spaghetti noodle, brandished with intent. Taps a seat — tik — and snaps in half. Not al dente. Not even close.' },
   { id: 'gag-pie', name: 'Cream Pie', price: 300, effect: 'pie', emoji: '🥧', desc: 'Cartoon pie, splat, gone in two seconds. No calories.' },
   { id: 'gag-tumbleweed', name: 'Tumbleweed', price: 25, effect: 'tumbleweed', emoji: '🌾', desc: 'Rolls a tumbleweed past someone who is taking too long.' },
+  { id: 'gag-mariachi', name: 'Mariachi Trio', price: 4000, effect: 'mariachi', emoji: '🎺', desc: 'Three tiny musicians serenade a seat for a few seconds. A shower of notes, no song you could name. Never touches the cards.' },
 ].map((x) => ({ kind: 'gag', cat: 'gags', slot: null, once: true, pix: x.id.slice(4), ...x }));
 /** v36 migration: old prank ids -> gag ids (the rubber chicken became the spaghetti noodle). */
 export const GAG_RENAME = { 'prank-squirt': 'gag-squirt', 'prank-soaker': 'gag-soaker', 'prank-confetti': 'gag-confetti', 'prank-chicken': 'gag-spaghetti', 'prank-pie': 'gag-pie', 'prank-tumbleweed': 'gag-tumbleweed' };
@@ -26,4 +27,6 @@ export const ABSURD_ITEMS = [
   ['piano', 'Player Piano Roll', 750, '🎹', 'Plays a tune on a piano you do not own.'],
   ['horseshoe', 'Lucky Horseshoe', 2500, '🧲', 'Does not change your luck. The deck is shuffled by a machine that does not care.'],
   ['sheriffbadge', 'Expired Fishing Licence', 60, '🎣', 'Valid in 1887 only.'],
+  ['bigrock', 'A Second, Bigger Rock', 4000, '🪨', 'Your first rock has a sibling now. It is bigger. It is still a rock.'],
+  ['railroad', 'Railroad Share Certificate', 10000, '📜', 'One share of the Great Basin & Pacific. The railroad went bankrupt in 1893.'],
 ].map(([id, name, price, emoji, desc]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: 'oddities', slot: null }));

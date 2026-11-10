@@ -28,6 +28,8 @@ export const CARE = {
 export const CARE_XP = 12;   // per care action...
 export const CARE_XP_PER_DAY = 120; // ...up to this much a day (UTC), so a week of steady care reaches level 5
 export const DAY_XP = 10;    // per full day since hatching, while it's not neglected
+export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action, inside the same daily cap
+export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
 export const BOUT_LEVEL = 5;
 export const BOUT_COOLDOWN_MS = 60 * 60e3; // one bout an hour
 const STATS = ['hunger', 'mood', 'clean'];
@@ -121,6 +123,7 @@ export class Barn {
       pen.dayXpAt += 24 * 3600e3;
       const n = this.needs(pen, pen.dayXpAt);
       if ((n.hunger + n.mood + n.clean) / 3 >= 25) pen.xp += DAY_XP;
+      if ((pen.feederUntil || 0) >= pen.dayXpAt && (pen.feederFrom || 0) < pen.dayXpAt) pen.xp += FEEDER_DAY_XP;
     }
   }
   refresh(playerId) {
@@ -177,7 +180,7 @@ export class Barn {
     const day = Math.floor(now / 86400e3);
     if (pen.xpDay !== day) { pen.xpDay = day; pen.xpToday = 0; }
     for (const s of STATS) pen.stats[s] = { v: n[s], at: now }; // re-base all three, then bump one
-    const toy = action === 'play' ? (this.styleOf?.(playerId).toyMood || 0) : 0; // store toy: capped at +15
+    const toy = action === 'play' ? (this.styleOf?.(playerId).toyMood || 0) : 0; // store toy: capped at +20
     pen.stats[a.stat].v = Math.min(100, n[a.stat] + a.gain + toy);
     pen.cool[action] = now;
     if (action === 'feed') pen.fedAt = now;
@@ -237,18 +240,18 @@ export class Barn {
     delete this.doc.pens[playerId]; this.save();
     return { ...this.view(playerId), graves: this.doc.graves[playerId] };
   }
-  /** A store consumable: bump one need (food also counts as a feed and earns care XP inside the daily cap). */
-  boost(playerId, { stat, gain, fed = false }) {
+  /** A store consumable: bump one need and earn `xp` care XP inside the daily cap (food also counts as a feed). */
+  boost(playerId, { stat, gain, fed = false, xp = fed ? CARE_XP : 0 }) {
     const pen = this.refresh(playerId);
     if (!pen || pen.stage !== 'creature') throw new GameError('You need a hatched bug for that.', 409);
     const now = this.now(); const n = this.needs(pen, now);
     for (const st of STATS) pen.stats[st] = { v: n[st], at: now };
     pen.stats[stat].v = Math.min(100, n[stat] + Math.max(0, Math.min(100, gain)));
-    if (fed) {
-      pen.fedAt = now;
+    if (fed) pen.fedAt = now;
+    if (xp > 0) {
       const day = Math.floor(now / 86400e3);
       if (pen.xpDay !== day) { pen.xpDay = day; pen.xpToday = 0; }
-      const g = Math.min(CARE_XP, CARE_XP_PER_DAY - pen.xpToday);
+      const g = Math.min(xp, CARE_XP_PER_DAY - pen.xpToday);
       if (g > 0) { pen.xp += g; pen.xpToday += g; }
     }
     this.save();
