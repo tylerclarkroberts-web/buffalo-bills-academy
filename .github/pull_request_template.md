@@ -1,14 +1,9 @@
-## What changed and why
+## Change
 
-Describe the problem and resulting behavior, including compatibility or privacy changes.
+What problem does this solve? Note any compatibility or privacy impact.
 
-## Validation
+## Checks
 
-List the commands and results. Separate known baseline failures from new failures and mention checks not performed. Include desktop/mobile evidence for UI changes when useful.
+Commands and actual results, including existing failures and anything untested. Include desktop/mobile checks for UI changes.
 
-## Documentation
-
-- [ ] Updated the relevant README, feature/API guide, or development instructions in this PR; or explained why documented behavior is unchanged.
-- [ ] Checked examples and relative links, and updated any limitations or test baselines affected by this change.
-
-See the [contribution guide](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/blob/main/CONTRIBUTING.md) for the documentation map and review workflow.
+Update existing docs only if needed for setup, privacy, saved data or a non-obvious contract. Keep test-run details here. See [Contributing](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/blob/main/CONTRIBUTING.md).
