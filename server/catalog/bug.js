@@ -63,6 +63,6 @@ const GEAR = [
   ['helmet', 'Acorn Helmet', 1500, 0.03], ['shield', 'Leaf Shield', 2500, 0.04], ['mandibles', 'Gilded Mandibles', 6000, 0.05],
   ['armor', 'Beetle Plate Armour', 20000, 0.06], ['bandage', 'Lucky Bandage', 60, 0.01],
 ];
-for (const [id, name, price, gear] of GEAR) add({ id: `gear-${id}`, name, price, emoji: '🛡️', desc: `Reusable: equip one battle item at a time for +${+(gear * 100).toFixed(1)}% damage in Barn bouts (max +6%). Stays equipped until swapped or taken off. Bouts unlock at level 5, once an hour, with no money or XP at stake. No effect on poker.`, cat: 'gear', slot: 'gear', gear });
+for (const [id, name, price, gear] of GEAR) add({ id: `gear-${id}`, name, price, emoji: '🛡️', desc: `Reusable: equip one battle item at a time for +${+(gear * 100).toFixed(1)}% attack damage in Barn bouts (max +6%). Stays equipped until swapped or taken off. Bouts unlock at level 3, once an hour, and award 20 XP for a win, loss or draw outside the care XP cap. No money at stake and no effect on poker.`, cat: 'gear', slot: 'gear', gear });
 
 export const BUG_ITEMS = items;

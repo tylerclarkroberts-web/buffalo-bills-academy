@@ -76,6 +76,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 - [Playing at a poker table](docs/table-play.md): the phone table menu, choosing a bet or raise amount, and how seats are shown.
 - [Profile and account](docs/profile-and-account.md): change your avatar or display name, see how the name at tables follows your handle, manage sign-in in Account, and find table preferences and alerts in Settings.
 - [Bug store supplies](docs/bug-store-items.md): the shared 120 care XP/day limit, daily and feeder bonuses, effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
+- [Bug combat](docs/bug-combat.md): level-3 fights, five moves through level 10, fighting styles, species strengths and 20 fight XP outside the care cap.
 - [Personal rooms](docs/personal-rooms.md): a 3D home for your bug, wardrobe and oddities, with zoom/turn controls and signed-in visits with visible wealth and exact balances.
 - [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.

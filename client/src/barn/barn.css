@@ -24,6 +24,23 @@
 .barn-bar.low i { background: linear-gradient(90deg, #c04a2a, #ff8a5a); }
 .barn-bar.xp i { background: linear-gradient(90deg, #c8902a, #f2c65a); }
 .barn-xp-limit { margin: 0; }
+.barn-progress, .barn-tab-content { display: grid; gap: 6px; }
+.barn-tab-content p { margin: 0; }
+.barn-combat-stats { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; }
+.barn-combat-stats dt { font-size: 11px; color: var(--paper-2); }
+.barn-combat-stats dd { margin: 2px 0 0; font: 600 14px var(--mono); color: var(--gold); }
+.barn-setup { min-width: 0; margin: 4px 0 0; padding: 10px; display: grid; gap: 10px; border: 1px solid rgba(255,255,255,.2); border-radius: 10px; }
+.barn-setup legend { padding: 0 5px; color: var(--gold); font-size: 13px; }
+.barn-stance { display: grid; gap: 5px; font-size: 13px; }
+.barn-stance select { width: 100%; min-width: 0; min-height: 40px; padding: 6px 8px; background: #2a160c; color: var(--paper-2); border: 1px solid #7a4a2a; border-radius: 6px; font: inherit; }
+.barn-moves { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+.barn-moves li { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.12); }
+.barn-moves li.locked { color: var(--paper-2); }
+.barn-moves label { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; min-height: 36px; font-size: 13px; }
+.barn-moves input { width: 20px; height: 20px; margin: 0; accent-color: var(--gold); flex-shrink: 0; }
+.barn-moves label b { overflow-wrap: anywhere; }
+.barn-moves label span { flex-basis: 100%; }
+.barn-setup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .barn-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .barn-acts .btn { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 0; min-height: 44px; padding: 4px 10px; }
 .barn-acts .btn small { font: 500 10px var(--mono); opacity: .75; }
@@ -51,18 +68,22 @@
 
 .barn-arena { margin: 0; }
 
-/* Barn bouts (v31): an overlay over the barn body, same no-scroll box. */
+/* Barn bouts: a modal replay keeps background controls out of the keyboard path. */
 .barn-wrap { position: relative; }
-.bout { position: absolute; inset: 0; z-index: 5; display: grid; grid-template-rows: auto 1fr auto auto; gap: 6px; padding: 12px 16px; border-radius: inherit;
+.bout { position: fixed; inset: 0; width: min(980px, calc(100vw - 24px)); height: min(620px, calc(100dvh - 100px)); max-width: none; max-height: none; margin: auto; box-sizing: border-box; color: var(--paper-2); border: 1px solid #7a4a2a; display: grid; grid-template-rows: auto minmax(80px, 1fr) auto auto; gap: 6px; padding: 12px 16px; border-radius: 18px;
   background: radial-gradient(120% 80% at 50% 30%, #5a2e14, #1e0c06 85%); }
+.bout::backdrop { background: rgba(0,0,0,.65); }
+.bout:not([open]) { display: none; }
 .bout-top { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.bout-side { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; }
+.bout-side { min-width: 0; display: grid; grid-template-columns: minmax(0, auto) 1fr; align-items: baseline; gap: 2px 8px; }
 .bout-side b { font-family: var(--display); color: var(--gold); font-size: clamp(15px, 2vw, 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bout-side .barn-bar { grid-column: 1 / -1; height: 12px; }
 .bout-side.s1 { text-align: right; } .bout-side.s1 .barn-bar { transform: scaleX(-1); }
+.bout-hp { grid-column: 1 / -1; }
 .barn-bar.hp i { background: linear-gradient(90deg, #d04030, #ffb050); transition: width .35s; }
 .bout-ring { position: relative; min-height: 0; border-radius: 12px; overflow: hidden; background: repeating-linear-gradient(0deg, transparent 0 82%, rgba(200,160,74,.35) 82% 100%), radial-gradient(80% 60% at 50% 45%, #6a4a2a, #2a160c 80%); }
 .bout-line { margin: 0; min-height: 2.6em; text-align: center; font-size: 14px; }
+.bout-xp { margin: 5px 0 0; color: var(--gold); font-size: 13px; }
 .bout-acts { display: flex; justify-content: center; }
 .barn-bouts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .barn-bouts .btn { min-height: 40px; flex-direction: column; gap: 0; padding: 4px 16px; } .barn-bouts .btn small { font: 500 10px var(--mono); opacity: .75; }

@@ -143,7 +143,7 @@ test('toys are reusable Play bonuses; equipment slots replace rather than stack'
   own('gear-armor'); own('gear-bandage');
   shop.equip(player, { id: 'gear-armor' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.06);
   shop.equip(player, { id: 'gear-bandage' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.01);
-  assert.ok(item('gear-boots').desc.includes('+2.5% damage'));
+  assert.ok(item('gear-boots').desc.includes('+2.5% attack damage'));
   const before = structuredClone(pen);
   for (const id of ['bugskin-ruby', 'bugwear-tophat', 'bugwear-bow']) { own(id); shop.equip(player, { id }); }
   assert.deepEqual(pen, before, 'cosmetics do not change needs, XP or species');

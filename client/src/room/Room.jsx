@@ -329,7 +329,7 @@ export default function Room({ id }) {
             <dl className="room-needs">{[['hunger', 'Fed'], ['mood', 'Mood'], ['clean', 'Clean']].map(([key, name]) => <div key={key}><dt>{name}</dt><dd><meter min="0" max="100" value={privatePet.needs[key]} aria-label={name} /><span className="num">{privatePet.needs[key]}%</span></dd></div>)}</dl>
             {privatePet.starving > 0 && <p className="room-warning">Your bug needs food. Visit the Barn for its care details.</p>}
             <div className="room-actions">{[['feed', 'Feed'], ['play', 'Play'], ['clean', 'Mist']].map(([action, name]) => <button key={action} className="btn" onClick={() => care(action)} disabled={busy || privatePet.cool[action] > elapsed}>{name}{privatePet.cool[action] > elapsed ? ` · ${left(privatePet.cool[action] - elapsed)}` : ''}</button>)}</div>
-            <p className="small muted">Free care applies immediately, with the same cooldowns as the Barn. Care XP: max 120/day, shared with Barn and store care. Resets at midnight UTC; daily and feeder bonuses are extra.</p><Link to="/barn" className="btn ghost">More pet details</Link>
+            <p className="small muted">Free care applies immediately, with the same cooldowns as the Barn. Care XP: max 120/day, shared with Barn and store care. Resets at midnight UTC; fight XP, daily and feeder bonuses are extra.</p><Link to="/barn" className="btn ghost">More pet details</Link>
           </> : <p className="small muted">{editing ? 'Opening the terrarium…' : 'The owner takes care of this resident.'}</p>}</>}
           {editing && <Link to="/store" className="small">Bug food, toys, style and care supplies →</Link>}
         </>}

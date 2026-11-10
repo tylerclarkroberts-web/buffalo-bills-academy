@@ -11,6 +11,7 @@ The Barn's Care tab and the owner's My Room care controls show the **120 care XP
 - Free care and store food award up to **12 care XP** per use; misters and heat lamps award up to **6**. If fewer points remain, you receive only those points.
 - Once the allowance is used, care still improves needs and food still resets the starvation clock, but these actions give no more XP until the reset. Consumables are still spent.
 - Daily bonuses are extra: at each 24-hour checkpoint since hatching, a living bug earns **10 XP** if its average Fed, Mood and Clean is at least 25. An active feeder adds **12 XP** at that checkpoint, regardless of the care allowance. The feeder gives no immediate XP on use; its first bonus arrives at the next checkpoint after activation, which can be less than 24 hours later. Accrued bonuses are applied when the server next refreshes the bug.
+- [Barn fights](bug-combat.md) award **20 XP** for every new fight you start, win, lose or draw, outside the care allowance. Fights open at level 3, once an hour. There is no daily fight-XP cap. Replays do not award XP again.
 
 ## Bug care
 
@@ -66,6 +67,6 @@ Toys are permanent purchases. Equip one toy at a time; each free **Play** action
 
 Style items are permanent cosmetics. Equip one shell colour, one hat and one accessory together. They stay until swapped or taken off, and do not alter species, needs, XP or battle strength. The first purchase in an empty equipment slot is equipped automatically; later purchases can be worn from the detail panel.
 
-Battle gear is also permanent, with one gear slot. It adds the listed 1–6% damage (Six Tiny Boots: 2.5%) while equipped in Barn bouts, capped at 6%. Gear bonuses do not stack. Bouts unlock at level 5 and have a one-hour cooldown, with no money or XP at stake. Store items do not change poker cards or odds.
+Battle gear is also permanent, with one gear slot. It adds the listed 1–6% attack damage (Six Tiny Boots: 2.5%) while equipped in Barn bouts, capped at 6%. Gear bonuses do not stack. Bouts unlock at level 3 and have a one-hour cooldown, with no money at stake and 20 participation XP. See [Bug combat](bug-combat.md) for moves, fighting styles, strengths and progression. Store items do not change poker cards or odds.
 
 These explanations reflect `server/catalog/bug.js`, `server/shop.js`, `server/barn.js` and `server/engine/bout.js`. Prices, effects, caps and cooldowns are enforced on the server; changing this wording does not change the game rules.

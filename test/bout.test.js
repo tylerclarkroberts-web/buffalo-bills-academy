@@ -1,32 +1,30 @@
-// v31: barn bouts. Server-decided, deterministic, cosmetic: no money, no XP, level 5+ only, one an hour.
+// Barn bouts: deterministic combat, level 3+, XP for participation, one an hour, no money at stake.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateBout, BOUT_HP, MAX_ROUNDS } from '../server/engine/bout.js';
-import { Barn, BOUT_COOLDOWN_MS } from '../server/barn.js';
+import { simulateBout, MAX_ROUNDS } from '../server/engine/bout.js';
+import { Barn, BOUT_COOLDOWN_MS, BOUT_XP } from '../server/barn.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
 
 const A = { species: ROSTER[0].id, name: 'A', level: 5, mood: 60 };
 const B = { species: ROSTER[1].id, name: 'B', level: 5, mood: 60 };
 const mem = () => { const d = {}; return { loadDoc: (k, f) => d[k] || f, saveDoc: (k, v) => { d[k] = JSON.parse(JSON.stringify(v)); } }; };
 
-test('bout sim is deterministic, bounded, and HP only goes down', () => {
+test('bout sim is deterministic and keeps combat events and HP bounded', () => {
   const r1 = simulateBout(A, B, 'seed-1'), r2 = simulateBout(A, B, 'seed-1');
   assert.deepEqual(r1, r2);
-  assert.ok(r1.rounds.length >= 1 && r1.rounds.length <= MAX_ROUNDS);
-  let prev = [BOUT_HP, BOUT_HP];
-  for (const r of r1.rounds) { assert.ok(r.hp[0] <= prev[0] && r.hp[1] <= prev[1]); assert.equal(r.hit, r.dmg > 0); assert.ok(r.line.length > 10); prev = r.hp; }
-  const last = r1.rounds.at(-1).hp;
-  assert.equal(r1.winner, last[0] === last[1] ? null : last[0] > last[1] ? 0 : 1);
+  assert.ok(r1.rounds.length >= 1 && r1.rounds.length <= MAX_ROUNDS * 2);
+  for (const r of r1.rounds) { r.hp.forEach((hp, i) => assert.ok(hp >= 0 && hp <= r1.maxHp[i])); assert.ok(r.dmg >= 0); assert.ok(r.line.length > 10); }
+  assert.ok([0, 1, null].includes(r1.winner));
 });
 
-test('bouts are fair: no species pair is lopsided, only unlocked abilities are used', () => {
+test('equal-level basic-only bouts retain balanced species traits and no locked moves', () => {
   let worst = 0;
   for (let i = 0; i < ROSTER.length; i += 3) for (let j = 1; j < ROSTER.length; j += 5) {
     if (i === j) continue;
     let w = 0; const N = 400;
     for (let s = 0; s < N; s++) {
-      const o = simulateBout({ ...A, species: ROSTER[i].id }, { ...B, species: ROSTER[j].id, level: 3 }, `f${s}`);
-      for (const r of o.rounds) if (r.by === 1) assert.ok(r.tier <= 1, 'level 3 has no third ability');
+      const o = simulateBout({ ...A, species: ROSTER[i].id, level: 3, battle: { stance: 'balanced', specials: [] } }, { ...B, species: ROSTER[j].id, level: 3, battle: { stance: 'balanced', specials: [] } }, `f${s}`);
+      for (const r of o.rounds) assert.equal(r.moveId, 'basic', 'level 3 has only its basic move');
       if (o.winner === 0) w++;
     }
     worst = Math.max(worst, Math.abs(w / N - 0.5));
@@ -41,18 +39,18 @@ test('Barn.bout: level gate, cooldown, record, stored replay, stray when alone, 
   b.layEgg('p1');
   assert.throws(() => b.bout('p1'), /Eggs do not fight/);
   clock.t += 2000; b.view('p1');
-  assert.throws(() => b.bout('p1'), /level 5/);
+  assert.throws(() => b.bout('p1'), /level 3/);
   assert.throws(() => b.bout('nobody'), /empty/);
-  b.doc.pens.p1.xp = xpFor(5);
+  b.doc.pens.p1.xp = xpFor(3);
   const v = b.bout('p1').pen;
   assert.equal(v.record.w + v.record.l + v.record.d, 1);
-  assert.ok(v.lastBout.them.stray, 'nobody else is level 5, so a stray turns up');
+  assert.ok(v.lastBout.them.stray, 'no nearby-level bug is available, so a stray turns up');
   assert.deepEqual(simulateBout(v.lastBout.you, v.lastBout.them, v.lastBout.seed).rounds, v.lastBout.rounds, 'the stored log is exactly the seeded sim');
-  assert.equal(v.xp, xpFor(5), 'no XP from bouts');
+  assert.equal(v.xp, xpFor(3) + BOUT_XP);
   assert.ok(v.boutCoolMs > 0);
   assert.throws(() => b.bout('p1'), /icing/);
-  // a second rancher at level 5: now they meet each other, and only the challenger's record moves
-  b.layEgg('p2'); clock.t += 2000; b.view('p2'); b.doc.pens.p2.xp = xpFor(6);
+  // A second rancher within one level: they meet, and only the challenger's record moves.
+  b.layEgg('p2'); clock.t += 2000; b.view('p2'); b.doc.pens.p2.xp = xpFor(4);
   const v2 = b.bout('p2').pen;
   assert.equal(v2.lastBout.them.stray, false); assert.equal(v2.lastBout.them.name, b.doc.pens.p1.name);
   assert.equal(b.view('p1').pen.record.w + b.view('p1').pen.record.l + b.view('p1').pen.record.d, 1);
