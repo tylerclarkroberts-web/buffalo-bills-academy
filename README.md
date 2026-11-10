@@ -50,6 +50,10 @@ Choose **Change avatar** on your profile picture or from the account menu. In Pr
 
 Frame a selfie or uploaded photo, remove its background on your device, and correct the cutout before making a low-poly head. The saved picture and 3D preview share that cutout. Manual brushes remain available when automatic removal cannot run; only the finished drawing is uploaded when you save. See [Selfie avatars](docs/selfie-avatars.md) for the flow, local-photo lifetime, download size and limitations.
 
+## Personal rooms
+
+**My Room** is a furnished 3D bunkhouse for your bug, wardrobe and owned oddities. Zoom in or out, turn the view, or reset it. Select **Edit room**, then click glowing objects to change displays, paint, floor, rug and furniture styles. Move, turn or put away furniture within the floor plan, and add, remove or move shelves with their displayed items; Save/Cancel covers the room layout together. Use existing pet care and clothing actions, and see a chip-and-cash pile sized by total in-game wealth. Any signed-in player can visit another account's room and see its wealth. Hover over the money for exact cash and chips, or select it for the full breakdown. See [Personal rooms](docs/personal-rooms.md) for controls, visits, API examples, storage and rendering limits.
+
 ## Configuration and data
 
 Optional settings are listed in [.env.example](.env.example). Export values in your shell before starting; the app does not automatically load `.env` files. Google OAuth needs `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and your own `SESSION_SECRET`. Set `PUBLIC_URL` to configure the public origin and callback; otherwise the server uses the request origin. The callback path is `/auth/google/callback`. Slack integration is disabled unless `SLACK_BOT_TOKEN` is set. Leave `DEV_LOGIN` unset outside local testing, and never reuse production credentials.
@@ -64,6 +68,7 @@ Game state is stored locally as JSON and avatar files under `data/`; no separate
 - [Playing at a poker table](docs/table-play.md): the phone table menu, choosing a bet or raise amount, and how seats are shown.
 - [Profile and account](docs/profile-and-account.md): change your avatar or display name, see how the name at tables follows your handle, manage sign-in in Account, and find table preferences and alerts in Settings.
 - [Bug store supplies](docs/bug-store-items.md): effects, duration, cooldowns, and equipment limits for bug food, toys, style, care, and battle gear.
+- [Personal rooms](docs/personal-rooms.md): a 3D home for your bug, wardrobe and oddities, with zoom/turn controls and signed-in visits with visible wealth and exact balances.
 - [Selfie avatars](docs/selfie-avatars.md): framing, local background removal, correction brushes, privacy and model maintenance.
 - [Contributing](CONTRIBUTING.md): branch/PR workflow, validation, and keeping documentation current with code.
 - [ConquestK integration](docs/conquest-integration.md): account links, Risk bets, fixed odds, persistence, and rollout.
