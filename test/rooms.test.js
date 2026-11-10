@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Rooms } from '../server/rooms.js';
 import { Barn, DAY_XP } from '../server/barn.js';
-import { ROOM_ANCHORS, ROOM_ITEMS, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES, defaultShelves, roomFinishes, roomAnchors, wealthStage, defaultFurniture, furnitureFits, defaultWallDisplays, roomWallDisplays, wallMountsFit } from '../server/catalog/room.js';
+import { ROOM_ANCHORS, ROOM_ITEMS, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES, defaultShelves, roomFinishes, roomAnchors, wealthStage, defaultFurniture, furnitureFits, defaultWallDisplays, roomWallDisplays, wallMountsFit, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-rooms-'));
@@ -64,6 +64,16 @@ test('visitors see displayed things, appearance and exact current worth without 
   assert.deepEqual(shown.worth, rooms.owner(owner).worth);
   assert.equal(rooms.visit(visitor, owner).wealthStage, 3);
   assert.equal(rooms.owner(owner).wealthStage, 3);
+});
+
+test('the terrarium shows the toy, gear, running feeder and one-word temper, never care timing', t => {
+  const { rooms, owner, visitor, shop, setPen } = fixture(t);
+  const bug = { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 4 };
+  shop.bugStyle = () => ({ toy: 'toy-wheel', gear: 'gear-helmet', gearBonus: 0.03, toyMood: 12 });
+  setPen({ ...bug, mood: 'peckish', feederUntil: 987654322, fedAt: 5, needs: { hunger: 20 }, cool: { feed: 9 }, diesInMs: 4 });
+  assert.deepEqual(rooms.visit(visitor, owner).pet, { ...bug, toy: 'toy-wheel', gear: 'gear-helmet', feeder: true, mood: 'peckish' });
+  setPen({ ...bug, mood: 'thriving', feederUntil: 1 });
+  assert.deepEqual(rooms.visit(visitor, owner).pet, { ...bug, toy: 'toy-wheel', gear: 'gear-helmet', mood: 'thriving' });
 });
 
 test('eggs hide their species and memorials hide neglect timing', t => {
@@ -139,7 +149,7 @@ test('shelf moves preserve contents and styles across restart without changing p
     { anchorId: 'shelf-left', itemId: 'odd-lamp' }, { anchorId: 'shelf-right', itemId: 'odd-vaccine' },
     { anchorId: 'shelf-3', itemId: 'odd-rock' }, { anchorId: 'shelf-4', itemId: 'odd-snakeoil' },
   ];
-  const finishes = { floor: { typeId: 'stone', colorId: 'slate' }, rug: { typeId: 'striped', colorId: 'indigo' }, wardrobe: { typeId: 'paneled', colorId: 'clay' } };
+  const finishes = { floor: { typeId: 'stone', colorId: 'slate' }, rug: { typeId: 'striped', colorId: 'indigo' }, wardrobe: { typeId: 'paneled', colorId: 'clay' }, couch: { typeId: 'bench', colorId: 'saddle' } };
   rooms.saveLayout(owner, { ...layout(0, placements), shelves, finishes });
   const moved = shelves.map(shelf => ({ ...shelf, spotId: shelf.id === 'shelf-left' ? 'left-high-back' : shelf.id === 'shelf-3' ? 'left-low-back' : shelf.spotId }));
   rooms.saveLayout(owner, { ...layout(1, placements), shelves: moved, finishes });
@@ -204,7 +214,7 @@ test('six shelves and moved wall displays persist together while older clients p
   const spots = [...ROOM_SHELF_SPOTS.slice(0, 4).map(spot => spot.id), 'back-low-left', 'back-low-right'];
   const shelves = ROOM_SHELF_IDS.map((id, i) => ({ ...defaultShelves()[0], id, spotId: spots[i] }));
   const placements = [{ anchorId: 'wall-left', itemId: 'odd-deed' }, { anchorId: 'shelf-5', itemId: 'odd-snakeoil' }, { anchorId: 'shelf-6', itemId: 'odd-piano' }];
-  const beforeInventory = structuredClone(shop.doc), saved = rooms.saveLayout(owner, { ...layout(0, placements), shelves, wallDisplays, furniture: { desk: { ...defaultFurniture().desk, off: true } } });
+  const beforeInventory = structuredClone(shop.doc), saved = rooms.saveLayout(owner, { ...layout(0, placements), shelves, wallDisplays, furniture: { desk: { ...defaultFurniture().desk, off: true }, couch: { ...defaultFurniture().couch, off: true } } });
   assert.ok(wallMountsFit(saved.shelves, saved.wallDisplays));
   assert.deepEqual(saved.wallDisplays, wallDisplays);
   const restarted = new Rooms({ ...options, store: new Store(store.dir) });
@@ -233,7 +243,7 @@ test('wall mounting validation rejects malformed maps, duplicate positions and s
 });
 
 test('mounts and movable furniture are validated together without rewriting existing saved layouts', t => {
-  const { rooms, owner } = fixture(t), place = { x: -4.4, z: 1.4, r: 0 };
+  const { rooms, owner } = fixture(t), place = { x: Math.round((-4 * S + 0.89) * 100) / 100, z: Math.round((0.9 * S + 0.2) * 100) / 100, r: 0 };
   const first = rooms.saveLayout(owner, { ...layout(0, []), furniture: { wardrobe: place } });
   const shelves = [...first.shelves, { ...first.shelves[0], id: 'shelf-3', spotId: 'left-low-door' }];
   assert.throws(() => rooms.saveLayout(owner, { ...layout(1, []), shelves }), status(400), 'shelf-only requests check saved furniture');
@@ -349,7 +359,7 @@ test('legacy private flags do not block visits or exact worth and disappear on t
   assert.equal(shown.worth.bankroll, 142.87);
   rooms.saveLayout(owner, layout(3));
   const saved = new Store(store.dir).loadDoc('rooms').rooms.owner;
-  assert.deepEqual(Object.keys(saved).sort(), ['finishes', 'furniture', 'layoutRevision', 'placements', 'shelves', 'themeId', 'wallDisplays']);
+  assert.deepEqual(Object.keys(saved).sort(), ['finishes', 'furniture', 'layoutRevision', 'placements', 'plan', 'shelves', 'themeId', 'wallDisplays']);
   assert.equal(new Rooms({ ...options, store: new Store(store.dir) }).visit(visitor, owner).wealthStage, 3);
 });
 
@@ -438,7 +448,7 @@ test('furniture saves within the floor plan, rejects impossible spots atomically
   const bad = [null, [], { sofa: home.desk }, { desk: { ...home.desk, y: 2 } }, { desk: { x: '0', z: 0, r: 0 } }, { desk: { ...home.desk, r: 4 } },
     { desk: { ...home.desk, off: 'yes' } }, { pet: { ...home.pet, off: true } }, { wardrobe: { x: 50, z: 0, r: 0 } },
     { wardrobe: { x: home.pet.x, z: home.pet.z, r: 0 } }, { wardrobe: { x: home.window.x, z: 0, r: 0 } }, { window: { x: 0, z: 0, r: 0 } },
-    { wardrobe: { x: 0.2 * Math.sqrt(1.75), z: 1.25 * Math.sqrt(1.75), r: 0 } }];
+    { wardrobe: { x: home.rug.x, z: home.rug.z, r: 0 } }];
   for (const furniture of bad) assert.throws(() => rooms.saveLayout(owner, { ...layout(2, []), furniture }), status(400), JSON.stringify(furniture));
   assert.throws(() => rooms.saveLayout(owner, { ...layout(2, [{ anchorId: 'desk', itemId: 'odd-telegraph' }]), furniture: moved }), status(400), 'a stored desk displays nothing');
   assert.equal(rooms.owner(owner).layoutRevision, 2);

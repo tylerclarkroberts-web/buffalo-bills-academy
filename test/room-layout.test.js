@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, defaultFurniture, furnitureFits, residentRect, defaultWallDisplays, wallMountsFit, shelfSlots, shelfForAnchor, roomAnchors } from '../server/catalog/room.js';
 import { layoutOf, layoutKey, addShelf, moveShelf, resizeShelf, removeShelf, changeStyle, placeFurniture, furnitureOf, moveWallDisplay } from '../client/src/room/layout.js';
 
-const room = () => ({ layoutRevision: 3, themeId: 'bunkhouse-sage', shelves: defaultShelves(), finishes: roomFinishes(),
+// The couch is put away so these mount tests keep the open back wall they were written for.
+const cm = n => Math.round(n * 100) / 100, W = 4 * ROOM_FLOOR_SCALE, D = 3 * ROOM_FLOOR_SCALE, DOOR = 0.9 * ROOM_FLOOR_SCALE;
+const room = () => ({ layoutRevision: 3, themeId: 'bunkhouse-sage', shelves: defaultShelves(), finishes: roomFinishes(), furniture: { ...defaultFurniture(), couch: { ...defaultFurniture().couch, off: true } },
   placements: [{ anchorId: 'shelf-left', itemId: 'odd-lamp' }] });
 test('furniture drafts copy saved data and every furniture/style change marks the layout dirty', () => {
   const saved = room(), draft = layoutOf(saved), key = layoutKey(saved);
@@ -117,7 +119,7 @@ test('wall display drafts move without changing items and share collision rules 
   assert.equal(moveWallDisplay(null, 'wall-left', 'left-high-front'), null);
 });
 test('furniture moves, turns and is stored only where it fits; a stored desk returns its display and comes back to a free spot', () => {
-  const saved = { ...layoutOf(room()), placements: [{ anchorId: 'desk', itemId: 'odd-telegraph' }] }, home = defaultFurniture();
+  const saved = { ...layoutOf(room()), placements: [{ anchorId: 'desk', itemId: 'odd-telegraph' }] }, home = room().furniture;
   assert.deepEqual(saved.furniture, home);
   const moved = placeFurniture(saved, 'wardrobe', { x: 1.5, z: 0 });
   assert.notEqual(layoutKey(moved), layoutKey(saved));
@@ -146,7 +148,7 @@ test('furniture moves, turns and is stored only where it fits; a stored desk ret
 });
 
 test('shelves, wall art, furniture and the resident reject collisions in either editing direction', () => {
-  const draft = layoutOf(room()), place = { x: -4.4, z: 1.4, r: 0 };
+  const draft = layoutOf(room()), place = { x: -W + 0.89, z: DOOR + 0.2, r: 0 };
   const wardrobeFirst = placeFurniture(draft, 'wardrobe', place);
   assert.notEqual(wardrobeFirst, draft, 'an empty mount does not reserve new floor space');
   assert.equal(addShelf(wardrobeFirst, 'left-low-door'), wardrobeFirst);
@@ -155,7 +157,7 @@ test('shelves, wall art, furniture and the resident reject collisions in either 
   const shelfFirst = addShelf(draft, 'left-low-door');
   assert.notEqual(shelfFirst, draft);
   assert.equal(placeFurniture(shelfFirst, 'wardrobe', place), shelfFirst);
-  assert.notEqual(placeFurniture(shelfFirst, 'floor', { x: -4.5, z: 1.2 }), shelfFirst, 'a low decoration still fits beneath the shelf');
+  assert.notEqual(placeFurniture(shelfFirst, 'floor', { x: -W + 0.79, z: DOOR }), shelfFirst, 'a low decoration still fits beneath the shelf');
   const stored = placeFurniture(wardrobeFirst, 'wardrobe', { off: true });
   const withShelf = addShelf(stored, 'left-low-door');
   assert.notEqual(withShelf, stored, 'stored furniture does not block a shelf');
@@ -163,16 +165,16 @@ test('shelves, wall art, furniture and the resident reject collisions in either 
   assert.equal(!!restored.furniture.wardrobe.off, false);
   assert.notDeepEqual(restored.furniture.wardrobe, place, 'restoring finds a clear floor spot');
   assert.ok(wallMountsFit(restored.shelves, restored.wallDisplays, restored.furniture));
-  const residentFirst = placeFurniture(draft, 'rug', { x: -2.8, z: -2.7 });
+  const residentFirst = placeFurniture(draft, 'rug', { x: -2.5 * ROOM_FLOOR_SCALE + 0.51, z: -D + 1.27 });
   assert.notEqual(residentFirst, draft);
   assert.equal(addShelf(residentFirst, 'back-low-left'), residentFirst);
   const backShelfFirst = addShelf(draft, 'back-low-left');
   assert.notEqual(backShelfFirst, draft);
-  assert.equal(placeFurniture(backShelfFirst, 'rug', { x: -2.8, z: -2.7 }), backShelfFirst);
+  assert.equal(placeFurniture(backShelfFirst, 'rug', { x: -2.5 * ROOM_FLOOR_SCALE + 0.51, z: -D + 1.27 }), backShelfFirst);
 });
 
 test('upper shelves stay clear of the taller resident without moving saved furniture back to defaults', () => {
-  const draft = layoutOf(room()), place = { x: -4.1, z: 1.2, r: 1 };
+  const draft = layoutOf(room()), place = { x: cm(-W + 1.19), z: cm(DOOR), r: 1 };
   const residentFirst = placeFurniture(draft, 'rug', place);
   assert.notEqual(residentFirst, draft);
   assert.ok(Object.keys(residentFirst.furniture).every(id => furnitureFits(residentFirst.furniture, id)), 'the arrangement itself is valid');

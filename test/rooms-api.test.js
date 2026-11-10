@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { defaultShelves, roomFinishes, defaultWallDisplays, defaultFurniture } from '../server/catalog/room.js';
+import { defaultShelves, roomFinishes, defaultWallDisplays, defaultFurniture, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
+// The couch is put away where a test needs the open back-left wall.
+const noCouch = () => ({ ...defaultFurniture(), couch: { ...defaultFurniture().couch, off: true } });
 
 async function fixture(t) {
   const prefix = path.join(os.tmpdir(), 'bba-room-api-');
@@ -98,8 +100,8 @@ test('HTTP layout writes enforce ownership, reject stale edits and cannot target
 });
 
 test('HTTP saves reject furniture intersecting shelves and shelves intersecting saved furniture', async t => {
-  const { owner } = await fixture(t), place = { x: -3, z: -3.4, r: 0 };
-  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements: [], furniture: { wardrobe: place },
+  const { owner } = await fixture(t), place = { x: Math.round((-2.5 * S + 0.31) * 100) / 100, z: Math.round((-3 * S + 0.57) * 100) / 100, r: 0 };
+  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements: [], furniture: { wardrobe: place, couch: noCouch().couch },
     wallDisplays: { 'wall-left': 'left-low-front', 'wall-right': 'left-high-front' } };
   assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 200);
   const shelves = [{ ...defaultShelves()[0], spotId: 'back-low-left' }];
@@ -107,7 +109,7 @@ test('HTTP saves reject furniture intersecting shelves and shelves intersecting 
   assert.equal(blocked.status, 400);
   assert.match(blocked.body.error, /clear of each other, furniture and the resident/);
   assert.equal((await owner.api('GET', '/api/room')).body.layoutRevision, 1);
-  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, furniture: defaultFurniture(), shelves })).status, 200);
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, furniture: noCouch(), shelves })).status, 200);
   assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 2, wallDisplays: undefined })).status, 400);
   assert.equal((await owner.api('GET', '/api/room')).body.layoutRevision, 2);
 });
