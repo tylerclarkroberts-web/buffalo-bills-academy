@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot } from '../client/src/room/scene-model.js';
+import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_FIXTURES, roomShelfPosition } from '../client/src/room/scene-model.js';
 import { roomAnchors, ROOM_SHELF_SPOTS, defaultShelves, roomFinishes } from '../server/catalog/room.js';
 import { RoomScene } from '../client/src/room/scene.js';
+const S = ROOM_FLOOR_SCALE;
 
 function furnitureScene() {
   const canvas = { clientWidth: 846, clientHeight: 380, style: {}, captured: null,
@@ -20,16 +21,53 @@ const screenPoint = (camera, position) => {
   return { clientX: (p.x + 1) * 846 / 2, clientY: (1 - p.y) * 380 / 2 };
 };
 
+test('house and yard gain 75 percent floor area while furniture, shelves and wagon keep their size', t => {
+  const previousDocument = globalThis.document;
+  const context = { fillRect() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => { if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument; });
+  const scene = furnitureScene(); scene.static = new THREE.Group(); scene.scene = new THREE.Scene();
+  scene.scene.add(scene.static, scene.dynamic, scene.highlights, scene.dragPreview);
+  scene.buildRoom();
+  scene.update({ placements: [{ anchorId: 'window', itemId: 'odd-wagon' }], finishes: roomFinishes() });
+  scene.scene.updateMatrixWorld(true);
+  const yard = scene.structure.children.find(object => object.geometry?.parameters.width === 4.2 && object.geometry?.parameters.depth === 6);
+  assert.ok(yard, 'the enlarged yard is part of the room architecture');
+  for (const [floor, originalArea] of [[scene.floor, 8.5 * 6.5], [yard, 4.2 * 6]]) {
+    const size = new THREE.Box3().setFromObject(floor).getSize(new THREE.Vector3());
+    assert.ok(Math.abs(size.x * size.z / originalArea - 1.75) < 1e-6);
+    assert.equal(floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
+  }
+  for (const fixture of scene.static.children.filter(object => object !== scene.structure)) {
+    assert.deepEqual(fixture.getWorldScale(new THREE.Vector3()).toArray(), [1, 1, 1]);
+  }
+  const wardrobeSize = new THREE.Box3().setFromObject(scene.wardrobe.children[0]).getSize(new THREE.Vector3());
+  for (const [actual, expected] of [[wardrobeSize.x, 1.5], [wardrobeSize.y, 2.5], [wardrobeSize.z, 0.85]]) assert.ok(Math.abs(actual - expected) < 1e-6);
+  const shelf = scene.dynamic.children.find(object => object.isGroup && object.position.equals(new THREE.Vector3(...ROOM_POSITIONS['shelf-left'])));
+  assert.ok(shelf);
+  assert.deepEqual(shelf.getWorldScale(new THREE.Vector3()).toArray(), [1, 1, 1]);
+  const shelfBounds = new THREE.Box3().setFromObject(shelf), wallInside = -4 * S + 0.08 * S;
+  assert.ok(shelfBounds.min.x > wallInside && shelfBounds.min.x - wallInside < 0.15, 'the original-size shelf remains flush with the moved wall');
+  scene.wagon.getWorldScale(new THREE.Vector3()).toArray().forEach(scale => assert.ok(Math.abs(scale - 1.65) < 1e-6));
+  for (const offset of [-0.01, 0.01]) {
+    assert.equal(roomWallVisibility({ x: -4 * S + offset, z: 0 }).left, offset > 0);
+    assert.equal(roomWallVisibility({ x: 0, z: -3 * S + offset }).back, offset > 0);
+  }
+  scene.setEditing(false);
+  scene.scene.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
+});
+
 test('yard partition leaves an open doorway and its glazing does not intercept room controls', () => {
   const scene = furnitureScene();
   const [yardX, yardY, yardZ] = ROOM_POSITIONS.window;
   scene.static = new THREE.Group(); scene.raycaster = new THREE.Raycaster();
-  scene.wardrobe.position.set(3.25, 0, -2.5);
+  scene.wardrobe.position.set(...ROOM_FIXTURES.wardrobe);
+  scene.structure = new THREE.Group(); scene.structure.scale.set(S, 1, S); scene.static.add(scene.structure);
   scene.buildSideDoor();
   scene.update({ placements: [], shelves: [], finishes: roomFinishes() });
   scene.static.updateMatrixWorld(true); scene.dynamic.updateMatrixWorld(true);
   const partition = scene.static.getObjectByName('yard-partition');
-  const doorway = new THREE.Raycaster(new THREE.Vector3(3.6, 1.3, 1.525), new THREE.Vector3(1, 0, 0), 0, 1);
+  const doorway = new THREE.Raycaster(new THREE.Vector3(3.6 * S, 1.3, 1.525 * S), new THREE.Vector3(1, 0, 0), 0, S);
   assert.equal(doorway.intersectObject(partition, true).length, 0, 'the walkway through the door is open');
   const glass = [];
   partition.traverse(object => { if (object.material?.transparent) glass.push(object); });
@@ -43,8 +81,8 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
   for (const editing of [false, true]) {
     scene.setEditing(editing);
     for (const [position, selection] of [
-      [[2.25, 1.4, 1.45], { kind: 'wealth' }],
-      [[3.25, 2.2, -2.5], { kind: 'wardrobe' }],
+      [[ROOM_FIXTURES.wealth[0], 1.4, ROOM_FIXTURES.wealth[2]], { kind: 'wealth' }],
+      [[ROOM_FIXTURES.wardrobe[0], 2.2, ROOM_FIXTURES.wardrobe[2]], { kind: 'wardrobe' }],
       [[yardX, yardY + 1.1, yardZ], { kind: 'anchor', anchorId: 'window' }],
     ]) {
       const point = screenPoint(scene.camera, position);
@@ -57,7 +95,7 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
 
 test('a displayed wagon picks its visible canopy without swallowing the nearby wardrobe', () => {
   const scene = furnitureScene(); scene.raycaster = new THREE.Raycaster();
-  scene.wardrobe.position.set(3.25, 0, -2.5);
+  scene.wardrobe.position.set(...ROOM_FIXTURES.wardrobe);
   const view = { placements: [{ anchorId: 'window', itemId: 'odd-wagon' }], shelves: [], finishes: roomFinishes() };
   scene.update(view); scene.dynamic.updateMatrixWorld(true);
   const canopy = scene.wagon.localToWorld(new THREE.Vector3(-0.075, 1.25, 0)).toArray();
@@ -65,7 +103,7 @@ test('a displayed wagon picks its visible canopy without swallowing the nearby w
   for (const editing of [false, true]) {
     scene.setEditing(editing);
     assert.deepEqual(pointAt(canopy), { kind: 'anchor', anchorId: 'window' });
-    assert.deepEqual(pointAt([3.25, 1.3, -2.5]), { kind: 'wardrobe' }, 'empty corners of the wagon box cannot intercept the visible wardrobe');
+    assert.deepEqual(pointAt([ROOM_FIXTURES.wardrobe[0], 1.3, ROOM_FIXTURES.wardrobe[2]]), { kind: 'wardrobe' }, 'empty corners of the wagon box cannot intercept the visible wardrobe');
   }
   scene.update({ ...view, placements: [] }); scene.dynamic.updateMatrixWorld(true);
   assert.equal(scene.wagon, null, 'removing the display clears the old model pick reference');
@@ -78,8 +116,8 @@ test('shelf positions follow identities, including added shelves, while removed 
   assert.deepEqual(roomPositions(), ROOM_POSITIONS);
   const shelves = [{ ...defaultShelves()[0], spotId: 'left-high-front' }, { ...defaultShelves()[1], id: 'shelf-3' }];
   const positions = roomPositions(shelves);
-  assert.deepEqual(positions['shelf-left'], ROOM_SHELF_SPOTS[3].position);
-  assert.deepEqual(positions['shelf-3'], ROOM_SHELF_SPOTS[1].position);
+  assert.deepEqual(positions['shelf-left'], roomShelfPosition(ROOM_SHELF_SPOTS[3]));
+  assert.deepEqual(positions['shelf-3'], roomShelfPosition(ROOM_SHELF_SPOTS[1]));
   assert.equal(Object.hasOwn(positions, 'shelf-right'), false);
   assert.deepEqual(Object.keys(roomPositions([])).sort(), roomAnchors([]).map(anchor => anchor.id).sort());
 });
@@ -88,9 +126,9 @@ test('nearest shelf mount respects occupancy, camera changes and a bounded drop 
   const shelves = defaultShelves(), rect = { left: 0, top: 0, width: 846, height: 380 };
   for (const view of [{ zoom: 1, rotation: 0 }, { zoom: 1.5, rotation: -15 }]) {
     const camera = makeRoomCamera(rect.width / rect.height, view), destination = ROOM_SHELF_SPOTS[2];
-    const point = screenPoint(camera, destination.position);
+    const point = screenPoint(camera, roomShelfPosition(destination));
     assert.equal(nearestShelfSpot(camera, rect, point.clientX, point.clientY, shelves, shelves[0].id).id, destination.id);
-    const occupied = screenPoint(camera, ROOM_SHELF_SPOTS[1].position);
+    const occupied = screenPoint(camera, roomShelfPosition(ROOM_SHELF_SPOTS[1]));
     assert.notEqual(nearestShelfSpot(camera, rect, occupied.clientX, occupied.clientY, shelves, shelves[0].id)?.id, shelves[1].spotId);
     assert.equal(nearestShelfSpot(camera, rect, rect.width - 2, 2, shelves, shelves[0].id), null);
     assert.equal(nearestShelfSpot(camera, rect, -10, 20, shelves, shelves[0].id), null);
@@ -122,8 +160,8 @@ test('shelf hold requires a deliberate pause and moves only on release at a free
   const scene = furnitureScene(), moves = [];
   scene.editing = true; scene.onMoveShelf = (...move) => moves.push(move); scene.onSelect = () => {};
   scene.targetAt = () => ({ kind: 'anchor', anchorId: 'shelf-left' });
-  const start = { button: 0, pointerId: 7, pointerType: 'mouse', ...screenPoint(scene.camera, ROOM_SHELF_SPOTS[0].position) };
-  const destination = { ...start, ...screenPoint(scene.camera, ROOM_SHELF_SPOTS[2].position) };
+  const start = { button: 0, pointerId: 7, pointerType: 'mouse', ...screenPoint(scene.camera, roomShelfPosition(ROOM_SHELF_SPOTS[0])) };
+  const destination = { ...start, ...screenPoint(scene.camera, roomShelfPosition(ROOM_SHELF_SPOTS[2])) };
   scene.pointerDown(start); t.mock.timers.tick(449); assert.equal(scene.dragging, null);
   scene.pointerMove({ ...start, clientX: start.clientX + 20 }); t.mock.timers.tick(10);
   assert.equal(scene.dragging, null, 'movement before the hold cancels pickup');
@@ -146,7 +184,7 @@ test('shelf hold requires a deliberate pause and moves only on release at a free
   assert.equal(moves.length, 1);
 });
 
-test('room view has finite limits and resetting keeps the original camera transform', () => {
+test('room view has finite limits and resetting keeps the enlarged room at its original viewing angle', () => {
   assert.deepEqual(roomView(), { zoom: 1, rotation: 0 });
   assert.deepEqual(roomView(null), { zoom: 1, rotation: 0 });
   assert.deepEqual(roomView({ zoom: NaN, rotation: Infinity }), { zoom: 1, rotation: 0 });
@@ -158,7 +196,7 @@ test('room view has finite limits and resetting keeps the original camera transf
   }
   const camera = makeRoomCamera(846 / 380);
   const original = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 60);
-  original.position.set(10, 9, 12); original.lookAt(0, 1.1, -0.4); original.updateMatrixWorld();
+  original.position.set(10 * S, 1.1 + 7.9 * S, 12 * S); original.lookAt(0, 1.1, -0.4 * S); original.updateMatrixWorld();
   assert.deepEqual(camera.matrixWorld.toArray(), original.matrixWorld.toArray());
   assert.equal(camera.zoom, 1);
   assert.deepEqual(camera.projectionMatrix.toArray(), makeRoomCamera(846 / 380, roomView()).projectionMatrix.toArray());
@@ -205,7 +243,7 @@ test('edit highlights include empty display spots and survive scene updates, the
     wallMaterial: new THREE.MeshLambertMaterial(), wardrobe: new THREE.Group(),
     generation: 0, render() {}, pet() {}, resident() {}, wealth() {},
   });
-  scene.wardrobe.position.set(3.25, 0, -2.5);
+  scene.wardrobe.position.set(...ROOM_FIXTURES.wardrobe);
   const selection = { kind: 'anchor', anchorId: 'desk' };
   scene.setEditing(true, selection);
   scene.update({ themeId: 'bunkhouse-sage', placements: [], pet: null });
@@ -234,20 +272,20 @@ test('edit highlights include empty display spots and survive scene updates, the
 
 test('walls open finish choices only in edit mode without intercepting displayed wall items', () => {
   const width = 846, height = 380, camera = makeRoomCamera(width / height);
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 3.4, 0.16));
-  wall.position.set(0, 1.7, -3); wall.userData.selection = { kind: 'finish' }; wall.updateMatrixWorld();
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(8 * S, 3.4, 0.16 * S));
+  wall.position.set(0, 1.7, -3 * S); wall.userData.selection = { kind: 'finish' }; wall.updateMatrixWorld();
   const display = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.1, 0.3));
-  display.position.set(-2.9, 2.95, -2.81); display.userData.selection = { kind: 'anchor', anchorId: 'wall-left' }; display.updateMatrixWorld();
+  display.position.set(ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]); display.userData.selection = { kind: 'anchor', anchorId: 'wall-left' }; display.updateMatrixWorld();
   const scene = { camera, canvas: { getBoundingClientRect: () => ({ left: 0, top: 0, width, height }) },
     picks: [display], walls: [wall], raycaster: new THREE.Raycaster() };
   const target = point => {
     const p = new THREE.Vector3(...point).project(camera);
     return RoomScene.prototype.targetAt.call(scene, (p.x + 1) * width / 2, (1 - p.y) * height / 2);
   };
-  assert.equal(target([1, 1, -3]), null);
+  assert.equal(target([S, 1, -3 * S]), null);
   scene.editing = true;
-  assert.deepEqual(target([1, 1, -3]), { kind: 'finish' });
-  assert.deepEqual(target([-2.9, 2.95, -2.81]), { kind: 'anchor', anchorId: 'wall-left' });
+  assert.deepEqual(target([S, 1, -3 * S]), { kind: 'finish' });
+  assert.deepEqual(target([ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]]), { kind: 'anchor', anchorId: 'wall-left' });
   for (const object of [wall, display]) { object.geometry.dispose(); object.material.dispose(); }
 });
 
@@ -256,7 +294,7 @@ test('the money hover and click target follows the visible pile after camera res
     for (const view of [{ zoom: 0.75, rotation: -30 }, { zoom: 1, rotation: 0 }, { zoom: 2.5, rotation: 30 }]) {
       const camera = makeRoomCamera(width / height, view);
       const pick = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1, 1.25));
-      pick.position.set(2.25, 1.4, 1.45); pick.userData.selection = { kind: 'wealth' }; pick.updateMatrixWorld();
+      pick.position.set(ROOM_FIXTURES.wealth[0], 1.4, ROOM_FIXTURES.wealth[2]); pick.userData.selection = { kind: 'wealth' }; pick.updateMatrixWorld();
       const canvas = { getBoundingClientRect: () => ({ left: 30, top: 20, width, height }) };
       const scene = { canvas, camera, picks: [pick], raycaster: new THREE.Raycaster() };
       const point = pick.position.clone().project(camera);
@@ -290,11 +328,11 @@ test('near walls, window trim, wall decorations and their click targets cut away
   const scene = furnitureScene();
   scene.raycaster = new THREE.Raycaster();
   scene.backWall = new THREE.Group(); scene.leftWall = new THREE.Group(); scene.cornerPost = new THREE.Group();
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 3.4, 0.16));
-  wall.position.set(0, 1.7, -3); wall.userData.selection = { kind: 'finish' }; scene.backWall.add(wall);
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(8 * S, 3.4, 0.16 * S));
+  wall.position.set(0, 1.7, -3 * S); wall.userData.selection = { kind: 'finish' }; scene.backWall.add(wall);
   scene.backWall.updateMatrixWorld(); scene.walls.push(wall);
   const decoration = new THREE.Group(); decoration.userData.wallSide = 'back'; scene.dynamic.add(decoration);
-  scene.pick([-2.9, 2.95, -2.81], [1.2, 1.1, 0.3], { kind: 'anchor', anchorId: 'wall-left' });
+  scene.pick([ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]], [1.2, 1.1, 0.3], { kind: 'anchor', anchorId: 'wall-left' });
   scene.dynamic.updateMatrixWorld();
   for (const [rotation, expected] of [[0, { back: true, left: true }], [90, { back: false, left: true }],
     [180, { back: false, left: false }], [270, { back: true, left: false }]]) {
@@ -308,7 +346,7 @@ test('near walls, window trim, wall decorations and their click targets cut away
     assert.equal(scene.picks[0].visible, expected.back);
     assert.equal(scene.highlights.children[0].visible, expected.back);
     if (!expected.back) {
-      const point = screenPoint(scene.camera, [1, 1, -3]);
+      const point = screenPoint(scene.camera, [S, 1, -3 * S]);
       assert.equal(scene.targetAt(point.clientX, point.clientY), null, 'hidden parent walls do not intercept clicks');
     }
   }
@@ -335,10 +373,10 @@ test('wealth art distinguishes unknown from empty and caps extreme inputs', () =
 test('the wagon footprint stays outside the cabin and desk props sit above the indoor floor', () => {
   assert.deepEqual(Object.keys(ROOM_POSITIONS).sort(), roomAnchors().map(anchor => anchor.id).sort());
   const [x, y, z] = ROOM_POSITIONS.window;
-  assert.ok(x - 1.3 > 4.25, 'the full wagon belongs beyond the cabin floor edge');
+  assert.ok(x - 1.3 > 4.25 * S, 'the full wagon belongs beyond the cabin floor edge');
   assert.ok(y >= 0 && y < 0.1, 'the wagon sits at yard ground level');
   const [deskX, deskY, deskZ] = ROOM_POSITIONS.desk;
-  assert.ok(Math.abs(deskX) < 4 && Math.abs(deskZ) < 3 && deskY > 0.8 && deskY < 1.2, 'writing surface is inside at desk height');
+  assert.ok(Math.abs(deskX) < 4 * S && Math.abs(deskZ) < 3 * S && deskY > 0.8 && deskY < 1.2, 'writing surface is inside at desk height');
   for (const aspect of [320 / 280, 390 / 280, 736 / 440, 844 / 300]) {
     const camera = makeRoomCamera(aspect);
     for (const dx of [-1.3, 1.3]) for (const dy of [0, 1.9]) for (const dz of [-0.9, 0.9]) {

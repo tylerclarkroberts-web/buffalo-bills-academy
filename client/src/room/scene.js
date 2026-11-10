@@ -6,7 +6,7 @@ import { pixGrid } from '../store/pixart.js';
 import { spriteCanvas, drawGrave } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, roomRenderSize, roomView, roomWallVisibility } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_FIXTURES, ROOM_POSITIONS, roomShelfPosition } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#8c6243', 'bunkhouse-sage': '#6d785b', 'bunkhouse-clay': '#9a6650' };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -220,7 +220,7 @@ export class RoomScene {
     for (const spot of ROOM_SHELF_SPOTS) {
       if (occupied.has(spot.id)) continue;
       const geometry = new THREE.BoxGeometry(1.3, 0.12, 0.85);
-      const marker = mesh(this.dragPreview, geometry, new THREE.MeshBasicMaterial({ color: spot.id === spotId ? '#b9df83' : '#f2c65a', transparent: true, opacity: spot.id === spotId ? 0.4 : 0.1, depthWrite: false }), ...spot.position);
+      const marker = mesh(this.dragPreview, geometry, new THREE.MeshBasicMaterial({ color: spot.id === spotId ? '#b9df83' : '#f2c65a', transparent: true, opacity: spot.id === spotId ? 0.4 : 0.1, depthWrite: false }), ...roomShelfPosition(spot));
       marker.renderOrder = 5;
       const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: '#ffdc83', transparent: true, opacity: 0.75 }));
       outline.position.copy(marker.position); this.dragPreview.add(outline);
@@ -269,7 +269,8 @@ export class RoomScene {
     this.applyCutaway(); this.render();
   }
   buildRoom() {
-    const p = this.static;
+    this.structure = new THREE.Group(); this.structure.scale.set(ROOM_FLOOR_SCALE, 1, ROOM_FLOOR_SCALE); this.static.add(this.structure);
+    const p = this.structure;
     const floorMap = paintedTexture(128, 128, ctx => {
       ctx.fillStyle = '#815a38'; ctx.fillRect(0, 0, 128, 128);
       for (let i = 0; i < 8; i++) {
@@ -280,7 +281,7 @@ export class RoomScene {
       }
     });
     floorMap.magFilter = THREE.LinearFilter; floorMap.minFilter = THREE.LinearMipmapLinearFilter; floorMap.generateMipmaps = true;
-    floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping; floorMap.repeat.set(4, 3);
+    floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping; floorMap.repeat.set(4 * ROOM_FLOOR_SCALE, 3 * ROOM_FLOOR_SCALE);
     const stoneMap = paintedTexture(128, 128, ctx => {
       ctx.fillStyle = '#56534a'; ctx.fillRect(0, 0, 128, 128);
       for (let row = 0; row < 4; row++) for (let col = -1; col < 5; col++) {
@@ -291,7 +292,7 @@ export class RoomScene {
       }
     });
     stoneMap.magFilter = THREE.LinearFilter; stoneMap.minFilter = THREE.LinearMipmapLinearFilter; stoneMap.generateMipmaps = true;
-    stoneMap.wrapS = stoneMap.wrapT = THREE.RepeatWrapping; stoneMap.repeat.set(3, 2);
+    stoneMap.wrapS = stoneMap.wrapT = THREE.RepeatWrapping; stoneMap.repeat.set(3 * ROOM_FLOOR_SCALE, 2 * ROOM_FLOOR_SCALE);
     this.floorMaps = { planks: floorMap, stone: stoneMap };
     this.floor = mesh(p, new THREE.BoxGeometry(8.5, 0.2, 6.5), material('#f0d4a2', { map: floorMap }), 0, -0.1, 0);
     this.wallMaterial = material('#8c6243'); this.walls = [];
@@ -349,29 +350,33 @@ export class RoomScene {
     for (const z of [-2.9, -1.45]) box(p, 0.12, 0.78, 0.12, '#80603c', 8.35, 0.39, z);
     for (const y of [0.28, 0.58]) box(p, 0.09, 0.1, 1.45, '#a58656', 8.35, y, -2.175);
     this.buildSideDoor();
-    // Shelf instances are rebuilt with their displayed items in update().
-    this.table(p, -0.55, -1.9, 1.8, 0.9, 0.9);
-    box(p, 1.5, 0.3, 0.07, '#65462e', -0.55, 0.67, -1.49);
-    cylinder(p, 0.035, 0.035, 0.06, '#c4a05d', -0.55, 0.67, -1.43).rotation.x = Math.PI / 2;
-    this.table(p, -2.15, 1.25, 1.5, 1.05, 0.85);
-    box(p, 1.55, 0.07, 1.1, '#a5a16d', -2.15, 0.97, 1.25);
+    // Furnishings keep their original size while their origins spread across the larger floor.
+    const desk = this.fixture([ROOM_POSITIONS.desk[0], 0, ROOM_POSITIONS.desk[2]]);
+    this.table(desk, 0, 0, 1.8, 0.9, 0.9);
+    box(desk, 1.5, 0.3, 0.07, '#65462e', 0, 0.67, 0.41);
+    cylinder(desk, 0.035, 0.035, 0.06, '#c4a05d', 0, 0.67, 0.47).rotation.x = Math.PI / 2;
+    const terrarium = this.fixture(ROOM_FIXTURES.pet);
+    this.table(terrarium, 0, 0, 1.5, 1.05, 0.85);
+    box(terrarium, 1.55, 0.07, 1.1, '#a5a16d', 0, 0.97);
     const glass = material('#b3d2b7', { transparent: true, opacity: 0.13, depthWrite: false });
-    mesh(p, new THREE.BoxGeometry(1.5, 1.05, 1.05), glass, -2.15, 1.55, 1.25);
-    for (const x of [-2.9, -1.4]) for (const z of [0.725, 1.775]) box(p, 0.045, 1.08, 0.045, '#c7a66b', x, 1.55, z);
-    box(p, 1.6, 0.12, 1.15, '#5c5537', -2.15, 2.12, 1.25);
-    // Keep the wardrobe against the back corner, clear of the window and writing desk.
-    this.wardrobe = new THREE.Group(); this.wardrobe.position.set(3.25, 0, -2.5); p.add(this.wardrobe);
-    // Maroon rug and a desk with the wealth tray.
-    this.rug = new THREE.Group(); this.rug.position.set(0.2, 0.03, 1.3); p.add(this.rug);
-    this.table(p, 2.25, 1.45, 2.2, 1.3, 0.95);
-    box(p, 2.05, 0.08, 1.13, '#4a3526', 2.25, 1.04, 1.45);
-    for (const z of [0.87, 2.03]) box(p, 2.12, 0.08, 0.04, '#b08b4d', 2.25, 1.12, z);
-    for (const x of [1.2, 3.3]) box(p, 0.04, 0.08, 1.2, '#b08b4d', x, 1.12, 1.45);
-    const light = new THREE.PointLight('#ffd28c', 6, 7, 2); light.position.set(-2.6, 2.7, 0.9); this.scene.add(light);
+    mesh(terrarium, new THREE.BoxGeometry(1.5, 1.05, 1.05), glass, 0, 1.55);
+    for (const x of [-0.75, 0.75]) for (const z of [-0.525, 0.525]) box(terrarium, 0.045, 1.08, 0.045, '#c7a66b', x, 1.55, z);
+    box(terrarium, 1.6, 0.12, 1.15, '#5c5537', 0, 2.12);
+    this.wardrobe = this.fixture(ROOM_FIXTURES.wardrobe);
+    this.rug = this.fixture(ROOM_FIXTURES.rug);
+    const moneyTable = this.fixture(ROOM_FIXTURES.wealth);
+    this.table(moneyTable, 0, 0, 2.2, 1.3, 0.95);
+    box(moneyTable, 2.05, 0.08, 1.13, '#4a3526', 0, 1.04);
+    for (const z of [-0.58, 0.58]) box(moneyTable, 2.12, 0.08, 0.04, '#b08b4d', 0, 1.12, z);
+    for (const x of [-1.05, 1.05]) box(moneyTable, 0.04, 0.08, 1.2, '#b08b4d', x, 1.12);
+    const light = new THREE.PointLight('#ffd28c', 6, 7 * ROOM_FLOOR_SCALE, 2); light.position.set(-2.6 * ROOM_FLOOR_SCALE, 2.7, 0.9 * ROOM_FLOOR_SCALE); this.scene.add(light);
     cylinder(this.leftWall, 0.22, 0.22, 0.14, '#c39b58', -3.62, 2.7, 1.9);
   }
+  fixture(position) {
+    const group = new THREE.Group(); group.position.set(...position); this.static.add(group); return group;
+  }
   buildSideDoor() {
-    const side = new THREE.Group(); side.name = 'yard-partition'; this.static.add(side);
+    const side = new THREE.Group(); side.name = 'yard-partition'; (this.structure || this.static).add(side);
     const trim = '#956c42', dark = '#59422e';
     // Low cutaway siding and clear upper panes divide the yard without obscuring the room.
     for (const [from, to] of [[-3, 0.8], [2.25, 3]]) {
@@ -399,7 +404,7 @@ export class RoomScene {
     const handle = cylinder(door, 0.035, 0.035, 0.12, '#d2ae65', 0.09, 1.02, -1.17); handle.rotation.z = Math.PI / 2;
     for (const y of [0.3, 2.15]) box(door, 0.09, 0.13, 0.18, '#4f4b40', 0, y, -0.02);
     for (let i = 0; i < 6; i++) {
-      const step = box(this.static, 0.5, 0.035, 0.65, i % 2 ? '#b2a082' : '#c1ae8b', 4.6 + i * 0.67, 0.035, 1.52 + (i % 2) * 0.12); step.rotation.y = i % 2 ? 0.08 : -0.09;
+      const step = box(this.structure || this.static, 0.5, 0.035, 0.65, i % 2 ? '#b2a082' : '#c1ae8b', 4.6 + i * 0.67, 0.035, 1.52 + (i % 2) * 0.12); step.rotation.y = i % 2 ? 0.08 : -0.09;
     }
   }
   table(parent, x, z, w, d, h) {
@@ -478,11 +483,11 @@ export class RoomScene {
     this.pet(view.pet);
     this.resident(view.owner, generation);
     this.wealth(view.wealthStage);
-    this.pick([-2.15, 1.5, 1.25], [1.65, 1.35, 1.2], { kind: 'pet' });
+    this.pick([ROOM_FIXTURES.pet[0], 1.5, ROOM_FIXTURES.pet[2]], [1.65, 1.35, 1.2], { kind: 'pet' });
     this.pick([this.wardrobe.position.x, 1.3, this.wardrobe.position.z], [1.7, 2.6, 1], { kind: 'wardrobe' });
-    this.pick([2.25, 1.4, 1.45], [2.1, 1, 1.25], { kind: 'wealth' });
-    this.pick([0, -0.08, 0], [8.5, 0.14, 6.5], { kind: 'surface', surface: 'floor' });
-    this.pick([0.2, 0.045, 1.3], [3.5, 0.02, 2.1], { kind: 'surface', surface: 'rug' });
+    this.pick([ROOM_FIXTURES.wealth[0], 1.4, ROOM_FIXTURES.wealth[2]], [2.1, 1, 1.25], { kind: 'wealth' });
+    this.pick([0, -0.08, 0], [8.5 * ROOM_FLOOR_SCALE, 0.14, 6.5 * ROOM_FLOOR_SCALE], { kind: 'surface', surface: 'floor' });
+    this.pick([ROOM_FIXTURES.rug[0], 0.045, ROOM_FIXTURES.rug[2]], [3.5, 0.02, 2.1], { kind: 'surface', surface: 'rug' });
     this.setEditing(this.editing, this.selection);
   }
   pet(pet) {
@@ -494,11 +499,11 @@ export class RoomScene {
     });
     if (map) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-      sprite.position.set(-2.15, 1.56, 1.25); sprite.scale.set(0.95, 0.95, 1); this.dynamic.add(sprite);
+      sprite.position.set(ROOM_FIXTURES.pet[0], 1.56, ROOM_FIXTURES.pet[2]); sprite.scale.set(0.95, 0.95, 1); this.dynamic.add(sprite);
     }
   }
   resident(owner, generation) {
-    const group = new THREE.Group(); group.position.set(0.2, 0.05, 1.25); group.rotation.y = 0.35; this.dynamic.add(group);
+    const group = new THREE.Group(); group.position.set(...ROOM_FIXTURES.resident); group.rotation.y = 0.35; this.dynamic.add(group);
     const avatar = owner?.avatar, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
     for (const x of [-0.14, 0.14]) { box(group, 0.2, 0.62, 0.24, '#3f4552', x, 0.42); box(group, 0.23, 0.14, 0.38, '#30231e', x, 0.1, 0.07); }
@@ -529,7 +534,7 @@ export class RoomScene {
     }
   }
   wealth(stage) {
-    const group = new THREE.Group(); group.position.set(2.1, 1.1, 1.45); this.dynamic.add(group);
+    const group = new THREE.Group(); group.position.set(ROOM_FIXTURES.wealth[0] - 0.15, 1.1, ROOM_FIXTURES.wealth[2]); this.dynamic.add(group);
     const layout = wealthLayout(stage);
     if (layout.neutral) { box(group, 1.3, 0.22, 0.8, '#805636', 0.1, 0.12); box(group, 0.13, 0.12, 0.03, '#c5a25b', 0.1, 0.12, 0.42); return; }
     const chipGeometry = new THREE.CylinderGeometry(0.13, 0.13, 0.038, 16);

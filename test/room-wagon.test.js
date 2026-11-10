@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { coveredWagon } from '../client/src/room/wagon.js';
-import { ROOM_POSITIONS, makeRoomCamera } from '../client/src/room/scene-model.js';
+import { ROOM_POSITIONS, ROOM_FLOOR_SCALE, makeRoomCamera } from '../client/src/room/scene-model.js';
 
 test('the covered wagon stays inside its yard footprint with four grounded spoked wheels', () => {
   const wagon = coveredWagon(), bounds = new THREE.Box3().setFromObject(wagon);
@@ -20,7 +20,7 @@ test('the covered wagon stays inside its yard footprint with four grounded spoke
   }
   wagon.scale.setScalar(1.65); wagon.rotation.y = -0.16; wagon.position.set(...ROOM_POSITIONS.window);
   const placed = new THREE.Box3().setFromObject(wagon);
-  assert.ok(placed.min.x > 4.25 && placed.max.x < 8.45 && placed.min.z > -3 && placed.max.z < 3, 'the actual scaled and rotated model stays on the enlarged side yard');
+  assert.ok(placed.min.x > 4.25 * ROOM_FLOOR_SCALE && placed.max.x < 8.45 * ROOM_FLOOR_SCALE && placed.min.z > -3 * ROOM_FLOOR_SCALE && placed.max.z < 3 * ROOM_FLOOR_SCALE, 'the actual scaled and rotated model stays on the enlarged side yard');
   for (const aspect of [320 / 280, 390 / 280, 846 / 380, 844 / 300]) for (const rotation of [0, 90, 180, 270]) {
     const camera = makeRoomCamera(aspect, { rotation });
     for (const x of [placed.min.x, placed.max.x]) for (const y of [placed.min.y, placed.max.y]) for (const z of [placed.min.z, placed.max.z]) {
