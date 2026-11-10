@@ -13,6 +13,7 @@ import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
 import DoomRoom from './DoomRoom.jsx';
 import Foreman from './Foreman.jsx';
+import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
 import './mines.css';
 
@@ -171,6 +172,7 @@ function Intro({ me, loading, onStart, starting }) {
           <h2>&gt; SHIFT ORIENTATION</h2>
           <ol>
             <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
+            <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
             <li>Find the pool. Dry? The vein moved deeper. When it glows, the acid's in: hold <b>MINE</b>.</li>
             <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
@@ -227,6 +229,18 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   const [eggNear, setEggNear] = useState(false);
   const eggRef = useRef(shift.egg ? 'there' : null); // there | taking | taken | gone
   const grabEgg = useRef(null);
+  const [tiltActive, setTiltActive] = useState(false);
+  const tiltActiveRef = useRef(false);
+  const keys = useRef(new Set()).current;
+  const move = (f, t) => {
+    const s = sceneRef.current;
+    if (!s || doomRef.current) return;
+    s.input.f = f; s.input.t = t; s.input.s = 0;
+  };
+  const setTiltMode = (active) => {
+    tiltActiveRef.current = active; setTiltActive(active); keys.clear();
+    move(0, 0);
+  };
 
   const doorRef = useRef(false);
   // The door behind the start (v27). Opening it only changes this page: the music pauses, the mine stops drawing,
@@ -306,13 +320,22 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     window.__acidMine = scene; // handy for debugging and automated screenshots; the server still decides everything
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
-    const keys = new Set();
     const sync = () => {
+      if (tiltActiveRef.current) return;
       scene.input.f = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
       scene.input.s = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
       scene.input.t = (keys.has('arrowright') || keys.has('e') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
     };
-    const down = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === 'f' && doorRef.current) { openDoor.current(); return; } if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; } if (k === ' ' || k === 'enter') { setHolding(true); e.preventDefault(); return; } if (k.startsWith('arrow')) e.preventDefault(); keys.add(k); sync(); };
+    const down = (e) => {
+      if (doomRef.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      const k = e.key.toLowerCase();
+      if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
+      if (k === 'f' && doorRef.current) { openDoor.current(); return; }
+      if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
+      if (k === ' ' || k === 'enter') { setHolding(true); e.preventDefault(); return; }
+      if (k.startsWith('arrow')) e.preventDefault();
+      keys.add(k); sync();
+    };
     const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { setHolding(false); return; } keys.delete(k); sync(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);
     // mouse / touch look: drag anywhere on the view
@@ -334,7 +357,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     }, 250);
     const flavor = setInterval(() => { if (!visitorHere.current) setLine(LINES[Math.floor(Math.random() * LINES.length)]); }, 6500);
     return () => {
-      scene.dispose(); delete window.__acidMine; window.removeEventListener('resize', onResize);
+      scene.dispose(); sceneRef.current = null; delete window.__acidMine; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       clearInterval(tick); clearInterval(flavor);
       audio?.dread(false); // clocking out: the normal music comes back
@@ -400,7 +423,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
       {near && (
         <div className="m-mine">
           <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>
-          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}>
+          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}
+            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setHolding(true); } }}
+            onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setHolding(false); } }} onBlur={() => setHolding(false)}>
             {progress >= 1 ? 'BUCKET FULL' : holding ? 'MINING…' : 'HOLD TO MINE'}
           </button>
           <div className="m-dim small">or hold SPACE</div>
@@ -422,7 +447,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
       {doom && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
-      <MovePad apply={(f, t) => { const s = sceneRef.current; if (!s || doomRef.current) return; s.input.f = f; s.input.t = t; s.input.s = 0; }} />
+      <div className="m-movement" inert={doom ? '' : undefined} aria-hidden={doom || undefined}>
+        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom} />
+        {!tiltActive && <MovePad apply={move} />}
+      </div>
     </div>
   );
 }
