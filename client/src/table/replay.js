@@ -12,9 +12,11 @@ export function markSeen(code, seq, playerId) { try { if (seq > seenSeq(code, pl
  */
 export function pickReplay(log, { seen = 0, noGags = false, noSmoke = false, muted = () => false } = {}) {
   return (log || []).filter((e) => Number.isInteger(e.seq) && e.seq > seen)
-    .filter((e) => !(e.ev?.k === 'gag' && (noGags || muted(e.ev.from))) && !(e.ev?.k === 'smoke' && noSmoke))
+    .filter((e) => !(e.ev?.k === 'gag' && (noGags || muted(e.ev.from))) && !(e.ev?.k === 'smoke' && noSmoke) && !(e.ev?.k === 'show' && (noGags || muted(e.ev.from))))
     .map((e) => ({ k: 'notice', ...e.ev, seq: e.seq, hand: e.hand, text: e.text, t: e.t }));
 }
 
 /** Keep the recap brisk without making longer public messages unreadable. */
-export function stepMs(step, reduced = false) { return Math.max(reduced ? 1400 : 900, Math.min(3500, (step.text || '').length * 32), ['smoke', 'gag'].includes(step.k) ? 1600 : 0); }
+export function stepMs(step, reduced = false) {
+  if (step.k === 'show') return reduced ? 2600 : 5600; // v52 spectacles: the overlay's length (Spectacle.jsx)
+  return Math.max(reduced ? 1400 : 900, Math.min(3500, (step.text || '').length * 32), ['smoke', 'gag'].includes(step.k) ? 1600 : 0); }

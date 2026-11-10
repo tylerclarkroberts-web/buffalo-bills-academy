@@ -1384,3 +1384,47 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
   .acct-chip { max-width: 100%; }
   .acct-chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+/* v52 spectacles: a full-screen cartoon over the table for one replay beat (client/src/table/Spectacle.jsx).
+   Never clickable; reduced motion gets a still badge. test/store-art.test.js checks every fx has a .show-<fx> rule. */
+.spectacle { position: fixed; inset: 0; z-index: 90; pointer-events: none; overflow: hidden; }
+.spectacle i { position: absolute; font-style: normal; }
+.spectacle.still { display: grid; place-items: center; background: radial-gradient(circle, rgba(242,198,90,.25), transparent 60%); }
+.sw-still { font-size: clamp(64px, 14vw, 140px); filter: drop-shadow(0 6px 10px #0008); }
+.rp-symbol.rp-show-art { font-size: 3.2em; } /* not .rp-show: that's the whole replay beat for a spectacle */
+.show-btn > span[aria-hidden] { font-size: 1.1em; line-height: 1; }
+
+.show-balloons .sw-balloon { bottom: -90px; width: calc(38px * var(--s)); height: calc(48px * var(--s)); border-radius: 50% 50% 48% 48%; background: radial-gradient(circle at 32% 28%, #fff9 0 12%, var(--c) 34%); box-shadow: inset -4px -6px 0 #0002; animation: sw-rise 4.6s ease-in var(--d) both; }
+.show-balloons .sw-balloon::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 46px; background: #fff8; }
+@keyframes sw-rise { from { transform: translate(0, 0); } 50% { transform: translate(var(--sway), -60vh); } to { transform: translate(0, -125vh); } }
+
+.show-fireworks { background: rgba(5, 5, 25, .35); animation: sw-dim 5.6s ease both; }
+.show-fireworks .sw-burst { position: absolute; width: 0; height: 0; }
+.show-fireworks .sw-burst i { left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); opacity: 0; animation: sw-pop 1.5s ease-out var(--d) both; }
+@keyframes sw-pop { 0% { opacity: 1; transform: rotate(var(--a)) translateX(0) scale(1.4); } 70% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateX(clamp(60px, 12vw, 150px)) translateY(30px) scale(.4); } }
+@keyframes sw-dim { 0%, 100% { opacity: 0; } 8%, 88% { opacity: 1; } }
+
+.show-blimp .sw-blimp { position: absolute; top: 10%; left: 0; display: flex; align-items: center; animation: sw-fly 5.4s linear both; }
+.show-blimp svg { width: clamp(160px, 26vw, 300px); filter: drop-shadow(0 8px 6px #0006); }
+.show-blimp .sw-banner { margin-left: -6px; padding: 6px 16px; background: #fff3dd; color: #8a1a2a; border: 3px solid #3a3a48; font: 700 clamp(18px, 3vw, 34px)/1.1 var(--display, serif); white-space: nowrap; transform: rotate(-2deg); }
+@keyframes sw-fly { from { transform: translateX(-110%); } to { transform: translateX(110vw); } }
+
+.show-stampede { animation: sw-shake .18s linear 0s 26; }
+.show-stampede .sw-buffalo { left: 100%; font-size: calc(54px * var(--s)); animation: sw-run 3.4s linear var(--d) both; }
+@keyframes sw-run { from { transform: translateX(0) translateY(0); } 25% { transform: translateX(-35vw) translateY(-8px); } 50% { transform: translateX(-70vw) translateY(0); } 75% { transform: translateX(-105vw) translateY(-8px); } to { transform: translateX(-140vw) translateY(0); } }
+@keyframes sw-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(2px, -1px); } 75% { transform: translate(-2px, 1px); } }
+
+.show-ufo .sw-ufo { position: absolute; left: 50%; top: 0; width: 0; height: 100%; }
+.show-ufo .sw-saucer { left: -60px; top: 12%; font-size: 120px; animation: sw-saucer 5.6s ease-in-out both; }
+.show-ufo .sw-beam { position: absolute; left: -90px; top: calc(12% + 90px); width: 180px; height: 55%; background: linear-gradient(rgba(170,255,120,.6), rgba(170,255,120,.08)); clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%); opacity: 0; animation: sw-beam 5.6s ease both; }
+.show-ufo .sw-cow { left: -32px; top: 62%; font-size: 64px; animation: sw-cow 5.6s ease-in-out both; }
+@keyframes sw-saucer { 0% { transform: translate(-60vw, -40vh); } 20%, 75% { transform: translate(0, 0); } 100% { transform: translate(70vw, -50vh); } }
+@keyframes sw-beam { 0%, 22% { opacity: 0; } 28%, 70% { opacity: 1; } 76%, 100% { opacity: 0; } }
+@keyframes sw-cow { 0%, 28% { transform: translateY(0) rotate(0); } 48% { transform: translateY(-36vh) rotate(-20deg); } 56% { transform: translateY(-36vh) rotate(15deg); } 70%, 100% { transform: translateY(0) rotate(0); } }
+
+.show-goldrush { animation: sw-gold 5.6s ease both; }
+.show-goldrush .sw-nugget { top: -40px; width: calc(22px * var(--s)); height: calc(18px * var(--s)); background: linear-gradient(135deg, #fff2a0, #f2c020 45%, #a8780a); clip-path: polygon(20% 0, 70% 6%, 100% 40%, 82% 92%, 30% 100%, 0 55%); transform: rotate(var(--r)); animation: sw-fall 2.6s ease-in var(--d) both; }
+@keyframes sw-fall { from { transform: translateY(0) rotate(var(--r)); } to { transform: translateY(115vh) rotate(calc(var(--r) + 540deg)); } }
+@keyframes sw-gold { 0%, 100% { background: transparent; } 12%, 80% { background: rgba(255, 200, 40, .18); } }
+
+@media (prefers-reduced-motion: reduce) { .spectacle, .spectacle * { animation: none !important; } }

@@ -19,7 +19,7 @@ Each checkbox change saves automatically and shows a saving status. Changes appl
 
 Current cards, bets, stacks, action order, deadlines, and each player’s current-hand checkbox are preserved. An explicit personal choice made between hands still overrides the table default for that player’s next hand. Bots continue to make their own decisions rather than inheriting automatic free checks.
 
-These controls do not edit blinds, buy-ins, seat capacity, turn limits, rebuy limits, or visibility. Closed tables cannot be changed. Existing host controls for gags, the Smoke Shop, and closing the table retain their current behavior.
+These controls do not edit blinds, buy-ins, seat capacity, turn limits, rebuy limits, or visibility. Closed tables cannot be changed. Existing host controls for gags, the Smoke Shop, and closing the table retain their current behavior. The gag switch, now labelled **Turn gags & spectacles off**, also refuses [table spectacles](spectacles.md).
 
 ## Find open or finished rooms
 
@@ -55,9 +55,9 @@ If a later refresh fails, the existing rows and counts remain visible with **Cou
 
 ## Catch up when you return
 
-Opening a table plays the public activity you have not watched yet in chronological order, including earlier hands, bets, folds, board cards, results, table updates, smokes, gags, and public speech. Social moments use short illustrations and captions in the same sequence as poker actions. The recap records when an item was used; it does not wait a minute between smoking moments.
+Opening a table plays the public activity you have not watched yet in chronological order, including earlier hands, bets, folds, board cards, results, table updates, smokes, gags, [spectacles](spectacles.md), and public speech. Social moments use short illustrations and captions in the same sequence as poker actions. The recap records when an item was used; it does not wait a minute between smoking moments.
 
-Use **Pause** / **Resume** to read at your own pace, or **Skip replay** to finish the queued recap immediately. **Table replay** in Settings turns automatic playback on or off. Smoking preferences, gag preferences, muted gag senders, and Guntrad's voice setting are respected. Reduced motion uses still captions instead of movement. Playback waits while the browser tab is hidden, another multi-table pane is focused, or the table itself is not visible. Turn deadlines continue running; skip the recap when you need to act immediately.
+Use **Pause** / **Resume** to read at your own pace, or **Skip replay** to finish the queued recap immediately. **Table replay** in Settings turns automatic playback on or off. Smoking preferences, gag preferences, muted gag senders, and Guntrad's voice setting are respected; gag preferences and mutes also hide spectacles. A spectacle step lasts about five seconds while its full-screen show plays. Reduced motion uses still captions instead of movement. Playback waits while the browser tab is hidden, another multi-table pane is focused, or the table itself is not visible. Turn deadlines continue running; skip the recap when you need to act immediately.
 
 Progress is saved in this browser separately for each player and table after each completed step, or when you explicitly skip. Leaving during a step keeps that unfinished step for the next visit. Another browser or device has its own progress, and clearing browser storage resets it.
 
@@ -117,7 +117,7 @@ The summary is computed for the requesting player's existing table history. It c
 
 ### Table activity and replay
 
-`GET /api/tables/:code` now returns up to 300 entries in `log`, matching the saved table history rather than the previous 120-entry response window. Entries retain their increasing `seq`, timestamp `t`, hand number, and public `text`. Successful gag and smoke uses add structured `ev` records with `k: "gag"` or `k: "smoke"`, public sender/target details, and the item's display fields. Changed, nonempty public speech adds `k: "say"` records. These share the same sequence as poker actions, so playback does not depend on which live notification arrived first. Rejected uses do not add an entry.
+`GET /api/tables/:code` now returns up to 300 entries in `log`, matching the saved table history rather than the previous 120-entry response window. Entries retain their increasing `seq`, timestamp `t`, hand number, and public `text`. Successful gag, smoke and spectacle uses add structured `ev` records with `k: "gag"`, `k: "smoke"` or `k: "show"` (see [Table spectacles](spectacles.md#http-contract)), public sender/target details, and the item's display fields. Changed, nonempty public speech adds `k: "say"` records. These share the same sequence as poker actions, so playback does not depend on which live notification arrived first. Rejected uses do not add an entry.
 
 The existing gag/smoke POST responses and live event shapes remain compatible. Smoke queue limits and scheduled timestamps remain available to older clients; the quick recap orders the use itself alongside other table activity. The replay setting continues to use `bba.fx.replay`. Replay progress stays in browser storage; it is not an account-level acknowledgment API. No new database, environment variable, dependency, or data migration is required. Existing shop and table saves remain separate file writes; see the persistence limitations in [Development and troubleshooting](development.md#local-persistence).
 

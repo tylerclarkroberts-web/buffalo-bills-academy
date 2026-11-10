@@ -67,7 +67,7 @@ function log(t, ctx, text, ev) {
 }
 /** Keep successful cosmetic uses beside public poker actions, without copying inventory or private cards. */
 export function recordTableMoment(t, kind, moment, ctx) {
-  if (kind !== 'gag' && kind !== 'smoke') throw new GameError('Unknown table moment');
+  if (kind !== 'gag' && kind !== 'smoke' && kind !== 'show') throw new GameError('Unknown table moment');
   const seat = seatOf(t, moment.from);
   const fromName = t.seats[seat]?.name || moment.fromName;
   const ev = { k: kind, id: moment.id, from: moment.from, fromName, seat, item: moment.item, name: moment.name, emoji: moment.emoji };
@@ -76,6 +76,9 @@ export function recordTableMoment(t, kind, moment, ctx) {
     const toName = t.seats[targetSeat]?.name || t.ledger[moment.to]?.name || 'a player';
     Object.assign(ev, { to: moment.to, toName, targetSeat, effect: moment.effect, pix: moment.pix });
     log(t, ctx, `${fromName} used ${moment.name} on ${toName}`, ev);
+  } else if (kind === 'show') { // v52 spectacle: the whole table watches
+    Object.assign(ev, { fx: moment.fx });
+    log(t, ctx, `${fromName} ${moment.line}`, ev);
   } else {
     Object.assign(ev, { art: moment.art, at: moment.at });
     log(t, ctx, `${fromName} lit up a ${moment.name}`, ev);

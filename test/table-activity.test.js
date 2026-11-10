@@ -112,6 +112,39 @@ test('refused gags and smokes neither consume items nor append replay entries', 
   assert.equal(own['gag-pie'], 1); assert.equal(own['tob-rollie'], 1);
 });
 
+test('spectacles: used up, logged for the whole table, one a minute, and refused ones are kept', async (t) => {
+  const s = await fixture(t); const { host, pal, code } = s; const route = `/tables/${code}`;
+  const outsider = await s.player('Cat');
+  for (const id of ['show-balloons', 'show-fireworks']) await s.post(host, '/shop/buy', { id, confirm: true });
+  await s.post(outsider, '/shop/buy', { id: 'show-balloons', confirm: true });
+  assert.equal((await s.call(host, 'GET', '/shop')).body.items.find((x) => x.id === 'show-balloons').price, 2500);
+  assert.deepEqual((await s.call(host, 'GET', route)).body.myShows.map((x) => x.id).sort(), ['show-balloons', 'show-fireworks']);
+  const bank = s.service.getPlayer(host.id).bankroll;
+  const notifications = []; const unsub = s.service.subscribe(code, (version, extra) => notifications.push({ version, ...extra }));
+  const show = (await s.post(host, `${route}/spectacle`, { item: 'show-balloons' })).show;
+  unsub();
+  assert.equal(show.fx, 'balloons'); assert.ok(notifications.some((e) => e.show?.id === show.id));
+  assert.equal(s.service.getPlayer(host.id).bankroll, bank, 'putting one on costs nothing more');
+  const entry = s.service.getTable(code).log.at(-1);
+  assert.equal(entry.text, 'Ann let go of a hundred balloons');
+  assert.deepEqual(Object.keys(entry.ev).sort(), ['k', 'id', 'from', 'fromName', 'seat', 'item', 'name', 'emoji', 'fx'].sort());
+  assert.equal(entry.ev.k, 'show');
+  assert.equal((await s.call(host, 'GET', '/shop')).body.own['show-balloons'], undefined, 'used up');
+  // one a minute per table; a refused one is kept
+  assert.equal((await s.call(host, 'POST', `${route}/spectacle`, { item: 'show-fireworks' })).status, 429);
+  s.clock.now += 61e3;
+  // not seated, then the host switch
+  assert.equal((await s.call(outsider, 'POST', `${route}/spectacle`, { item: 'show-balloons' })).status, 403);
+  await s.post(host, `${route}/gags`, { off: true });
+  assert.equal((await s.call(host, 'POST', `${route}/spectacle`, { item: 'show-fireworks' })).status, 403);
+  await s.post(host, `${route}/gags`, { off: false });
+  assert.equal((await s.call(pal, 'POST', `${route}/spectacle`, { item: 'show-fireworks' })).status, 403, 'not theirs');
+  assert.equal((await s.call(host, 'GET', '/shop')).body.own['show-fireworks'], 1);
+  assert.equal((await s.call(outsider, 'GET', '/shop')).body.own['show-balloons'], 1);
+  await s.post(host, `${route}/spectacle`, { item: 'show-fireworks' });
+  assert.equal(s.service.getTable(code).log.at(-1).text, 'Ann set off a fireworks show');
+});
+
 test('cosmetic log uses a public whitelist, keeps the existing 300-entry bound and accepts old tables', () => {
   const { t, ctx } = makeTable(['Ann', 'Bob']);
   delete t.seq; for (const e of t.log) delete e.seq;

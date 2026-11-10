@@ -5,6 +5,7 @@ import { isMuted } from './Gags.jsx';
 import { PixIcon, LowPoly } from '../store/PixIcon.jsx';
 import { Card } from '../Card.jsx';
 import { smokeSound } from './Smoke.jsx';
+import { SpectacleFx } from './Spectacle.jsx';
 
 const reducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -66,11 +67,13 @@ export function ReplayLayer({ rp }) {
   const symbol = s.k === 'win' ? '🏆' : s.k === 'say' ? '💬' : s.k === 'hand' ? '♠' : ({ fold: '↩', check: '✓', call: '●', raise: '↑', bet: '●', allin: '⚡', post: '●' }[s.a] || '•');
   return (
     <div className={`replay ${rp.reduced ? 'reduced' : ''} ${rp.paused ? 'paused' : ''}`} data-test="replay">
+      {s.k === 'show' && !rp.paused && <SpectacleFx key={s.seq} fx={s.fx} who={s.fromName} emoji={s.emoji} reduced={rp.reduced} />}
       <section className="rp-recap panel" aria-label="Table replay">
         <div className="rp-heading"><b>While you were away</b><span>{rp.i + 1} / {rp.steps.length}</span></div>
         <div key={s.seq} className={`rp-beat rp-${s.k}`} data-test={`rp-${s.k}`}>
           <div className="rp-art" aria-hidden="true">
             {s.k === 'smoke' ? <><LowPoly art={s.art} size={64} fallback={s.emoji} /><span className="rp-puff">♧</span></>
+              : s.k === 'show' ? <span className="rp-symbol rp-show-art">{s.emoji}</span>
               : s.k === 'gag' ? <PixIcon pix={s.pix} size={64} fallback={s.emoji} />
               : s.k === 'deal' ? s.cards.map((card) => <Card key={card} card={card} />)
               : <span className="rp-symbol">{symbol}</span>}
