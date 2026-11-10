@@ -11,6 +11,8 @@ export const ROOM_LINES = [
   'If anyone asks, the anvil is load-bearing.',
   'I was going to save money. Then the store had a completely ordinary rock.',
   'Quiet evening. Just me and the consequences of several small purchases.',
+  'The couch was free. I have not stopped wondering why.',
+  'I count the money every day. It is still mostly table.',
 ];
 
 export const FAUN_LINES = [
@@ -34,7 +36,7 @@ export function faunPose(seconds) {
     glance: Math.sin(seconds * 0.85) * 0.2 * peek, stride: Math.sin(seconds * 6) * 0.18 * step };
 }
 
-/** A few unhurried steps, a pause to look around, then back home. */
+/** A stroll to something in the room (`errand` counts them), a while there (`act`), then back home. */
 export function residentPose(seconds) {
   const phase = seconds % 34;
   const outward = Math.min(1, Math.max(0, (phase - 7) / 4));
@@ -43,6 +45,7 @@ export function residentPose(seconds) {
   const walking = phase > 7 && phase < 11 || phase > 19 && phase < 23;
   const stride = walking ? Math.sin(seconds * 5.5) * 0.24 * Math.sin(Math.PI * (phase < 19 ? outward : homeward)) : 0;
   return { offset: ease(outward) - ease(homeward), stride, facing: walking ? Math.sin(Math.PI * (phase < 19 ? outward : homeward)) * (phase < 19 ? 1 : -1) : 0,
+    phase, errand: Math.floor(seconds / 34), act: ease(Math.min(1, Math.max(0, phase - 11), Math.max(0, 19 - phase))),
     glance: Math.sin(seconds * 0.37) * 0.22, wave: phase > 26 && phase < 30 ? Math.sin((phase - 26) / 4 * Math.PI) : 0 };
 }
 
