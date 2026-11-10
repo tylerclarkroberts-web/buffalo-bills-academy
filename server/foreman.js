@@ -41,7 +41,7 @@ export const RANTS = {
   mud: [
     ['MUD?! You brought me MUD?!', 'Dad-gummit, I can get mud off my boots for free!'],
     ['Horse apples!', 'That bucket is ninety percent puddle, ten percent shame.'],
-    ['Son of a biscuit-eatin\' hog!', 'I paid you ten dollars for DIRT WATER.'],
+    ['Son of a biscuit-eatin\' hog!', 'I paid you good money for DIRT WATER.'],
     ['Is that... is that a PUDDLE?', 'You hauled a puddle up a mine shaft. On PURPOSE.'],
     ['Cheese and crackers!', 'That ain\'t acid, that\'s pig-wallow soup!'],
     ['Well slop my hogs!', 'You brought me the bottom of a DUCK POND!'],
@@ -52,7 +52,7 @@ export const RANTS = {
     ['Well butter a puddle!', 'I got cleaner stuff stuck to the bottom of my TRACTOR!'],
     ['Hold on. That\'s garden material!', 'This is payroll, not a POTATO PATCH!'],
     ['Great wobblin\' water trough!', 'That ain\'t a vein, that\'s a DITCH with ambitions!'],
-    ['Son of a soggy biscuit!', 'Ten dollars for muck. The PIGS would haggle!'],
+    ['Son of a soggy biscuit!', 'Paid money for muck. The PIGS would haggle!'],
     ['Look at this muddy mess!', 'I coulda stayed upstairs and wrung out a DOORMAT!'],
   ],
 };
@@ -272,11 +272,14 @@ export class Foreman {
   save() { this.store.saveDoc('foreman', this.doc); }
   pending(playerId) { return this.doc.pending[playerId] || null; }
   /** Start a lecture (reason 'quit' or 'mud'). If one is already waiting, keep it (same problem). */
-  scold(playerId, reason) {
+  scold(playerId, reason, shiftId) {
+    if (shiftId && this.doc.lastMineShift?.[playerId] === shiftId) return this.view(playerId);
     if (this.doc.pending[playerId]) return this.view(playerId);
     const lines = makeScene(reason, this.r);
-    this.doc.pending[playerId] = { id: crypto.randomBytes(9).toString('base64url'), reason, lines, problem: makeProblem(this.r), misses: 0, at: this.now() };
-    this.save(); return this.view(playerId);
+    const next = { ...this.doc, pending: { ...this.doc.pending, [playerId]: { id: crypto.randomBytes(9).toString('base64url'), reason, lines, problem: makeProblem(this.r), misses: 0, at: this.now() } },
+      ...(shiftId ? { lastMineShift: { ...this.doc.lastMineShift, [playerId]: shiftId } } : {}) };
+    this.store.saveDoc('foreman', next); this.doc = next;
+    return this.view(playerId);
   }
   view(playerId) {
     const p = this.doc.pending[playerId]; if (!p) return { pending: null };
@@ -298,5 +301,5 @@ export class Foreman {
     this.doc.bonuses[player.id] = recent; this.save();
     return { correct: true, bonus, line: pick(PRAISE, this.r), misses: p.misses, bankroll: player.bankroll };
   }
-  forget(playerId) { delete this.doc.pending[playerId]; delete this.doc.bonuses[playerId]; this.save(); }
+  forget(playerId) { delete this.doc.pending[playerId]; delete this.doc.bonuses[playerId]; if (this.doc.lastMineShift) delete this.doc.lastMineShift[playerId]; this.save(); }
 }

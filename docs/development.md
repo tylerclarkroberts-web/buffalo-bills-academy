@@ -73,6 +73,8 @@ Poker uses Server-Sent Events to trigger a refetch of each player's view; the pu
 
 `server/store.js` keeps state in memory and writes JSON under `DATA_DIR`, including `players.json`, per-table files in `tables/`, feature/session documents and avatars. Writes use a temporary file followed by rename. Room layout metadata lives separately in `rooms.json`; money, ownership and pet clocks remain in their existing systems. See [room compatibility and persistence](personal-rooms.md#api-and-persistence) before changing its schema or rolling back.
 
+Version-2 mining saves resolved deposits, bucket contents and prepared settlements in `mines.json`. Bankroll, transaction, statistics and the payment receipt commit together in `players.json`; shift-keyed receipts and Foreman markers make recovery idempotent across the separate files. Holds are memory-only. Read [Mines compatibility and recovery](acid-mines.md#persistence-and-recovery) before changing this flow or rolling back; new bucket shifts must not be processed by the legacy settlement path.
+
 Preserve the data directory. Stop the server before manual state maintenance and keep a backup. Atomic replacement is not a transaction across files, and separate processes do not share memory: multiple writers/replicas must not share one data directory. [ConquestK](conquest-integration.md#persistence-and-recovery) has additional ledger/recovery requirements.
 
 ## Validation and known baseline
@@ -89,6 +91,7 @@ Exercise actual HTTP requests, invalid input and old saved records when changing
 
 - Show-card requests to `POST /api/tables/:code/show` should include the original `handNumber`; stale requests are rejected before affecting a later hand. `which: "none"` saves dismissal without revealing more cards. Keep the legacy omitted-hand behavior covered by `test/showcards.test.js`.
 - Mine tilt controls are opt-in and require a secure context (normally HTTPS, not a phone-accessible HTTP LAN address). Sensor data stays local and unsaved; touch fallback remains available. See `client/src/mines/tilt.js` and `test/mines-tilt.test.js`; real-phone comfort and Safari support remain unverified.
+- Bucket shifts require versioned probe/extraction requests and server-confirmed collection. The [Mines API and checks](acid-mines.md#api-and-compatibility) cover late responses, stop/retry, expiry, legacy saves and settlement recovery. `npm run sim:mines -- 5000` compares repeatable legacy, unguided and ideal-route timings; it does not verify human play or the deployed bug guide.
 
 Windows temporary-file renames can fail with `EPERM`. Retry with `TEMP` and `TMP` pointing to a writable workspace-local temporary directory excluded from commits. Record the actual rerun result; an environment failure proves neither a code regression nor a passing check.
 

@@ -61,13 +61,13 @@ test('resuming a shift keeps its original egg roll', async t => {
   for (const [name, roll, egg] of [['lucky', 9999, true], ['unlucky', 10000, undefined]]) {
     const user = await login(name);
     random.roll = roll;
-    const start = await user.api('POST', '/api/mines/start', {});
+    const start = await user.api('POST', '/api/mines/start', { rulesVersion: 2 });
     assert.equal(start.status, 200);
     assert.equal(start.body.egg, egg);
     const calls = random.calls;
     random.roll = egg ? 99999 : 0;
     clock.now += 15000;
-    const resume = await user.api('POST', '/api/mines/start', {});
+    const resume = await user.api('POST', '/api/mines/start', { rulesVersion: 2 });
     assert.equal(resume.status, 200);
     assert.equal(resume.body.shiftId, start.body.shiftId);
     assert.equal(resume.body.resumed, true);
@@ -81,7 +81,7 @@ test('egg pickup allows 30 seconds plus network grace and rejects invalid or rep
   assert.equal((await anon('POST', '/api/mines/egg', { shiftId: 'missing' })).status, 401);
   for (const elapsed of [30000, 33000, 33001]) {
     const user = await login(`miner${elapsed}`);
-    const start = await user.api('POST', '/api/mines/start', {});
+    const start = await user.api('POST', '/api/mines/start', { rulesVersion: 2 });
     assert.equal(start.status, 200);
     assert.equal(start.body.egg, true);
     assert.equal((await user.api('POST', '/api/mines/egg', { shiftId: 'wrong' })).status, 409);
