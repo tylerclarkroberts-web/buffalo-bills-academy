@@ -116,12 +116,12 @@ test('canvas bugs grow every level without moving the floor or rebuilding their 
 
 test('room pets use the same level growth and stay grounded, while eggs and graves keep their size', t => {
   mockCanvas(t);
-  const scene = { furniture: { pet: { x: 2, z: -1 } }, dynamic: new THREE.Group() };
+  const scene = Object.assign(Object.create(RoomScene.prototype), { furniture: { pet: { x: 2, z: -1 } }, dynamic: new THREE.Group() });
   let floor;
   for (let level = 1; level <= 10; level++) {
     RoomScene.prototype.pet.call(scene, { stage: 'creature', species: ROSTER[0].id, level });
     const sprite = scene.dynamic.children.at(-1);
-    assert.ok(Math.abs(sprite.scale.x - 1.05 * bugScale(level)) < 1e-12);
+    assert.ok(Math.abs(sprite.scale.x - 0.85 * bugScale(level)) < 1e-12);
     assert.equal(sprite.scale.x, sprite.scale.y);
     assert.equal(sprite.position.x, 2); assert.equal(sprite.position.z, -1);
     const bottom = sprite.position.y - sprite.scale.y / 2;
@@ -132,8 +132,8 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
   for (const stage of ['egg', 'dead']) {
     RoomScene.prototype.pet.call(scene, { stage, level: 1 });
     const sprite = scene.dynamic.children.at(-1);
-    assert.deepEqual(sprite.scale.toArray(), [1.05, 1.05, 1]);
-    assert.deepEqual(sprite.position.toArray(), [2, 0.74 + 1.05 / 2, -1]);
+    assert.deepEqual(sprite.scale.toArray(), [0.85, 0.85, 1]);
+    assert.deepEqual(sprite.position.toArray(), [2, 0.74 + 0.85 / 2, -1]);
   }
   scene.dynamic.children.forEach(sprite => { sprite.material.map.dispose(); sprite.material.dispose(); });
 });

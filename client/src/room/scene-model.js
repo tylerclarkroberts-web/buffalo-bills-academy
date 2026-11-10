@@ -111,7 +111,9 @@ export function residentErrands(furniture = defaultFurniture()) {
     const place = furniture[id], rect = furnitureRect(id, place), turn = place.r * Math.PI / 2, front = [Math.round(Math.sin(turn)), Math.round(Math.cos(turn))];
     // Doors, drawers and cushions have a front; tables can be approached from whichever side is nearest.
     const sides = ['pet', 'wealth', 'floor'].includes(id) ? [[0, 1], [1, 0], [-1, 0], [0, -1]] : [front];
-    const spot = sides.map(([dx, dz]) => ({ dx, dz, x: place.x + dx * ((rect[2] - rect[0]) / 2 + 0.5), z: place.z + dz * ((rect[3] - rect[1]) / 2 + 0.45) }))
+    // Inspecting means leaning in, so stand a little further back than when sitting down or reaching for cash.
+    const gap = kind === 'inspect' ? 0.75 : 0.5;
+    const spot = sides.map(([dx, dz]) => ({ dx, dz, x: place.x + dx * ((rect[2] - rect[0]) / 2 + gap), z: place.z + dz * ((rect[3] - rect[1]) / 2 + gap - 0.05) }))
       .filter(spot => Math.hypot(spot.x - home.x, spot.z - home.z) > 0.5)
       .map(spot => ({ ...spot, path: route([home.x, home.z], [spot.x, spot.z]) })).filter(spot => spot.path)
       .sort((a, b) => a.path.length - b.path.length || Math.hypot(a.x - home.x, a.z - home.z) - Math.hypot(b.x - home.x, b.z - home.z))[0];

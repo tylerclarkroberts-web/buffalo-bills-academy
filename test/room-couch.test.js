@@ -23,7 +23,7 @@ test('the couch starts somewhere valid and the resident can walk to it, the cash
   const seat = errands[0].seat, couch = furnitureRect('couch', furniture.couch);
   assert.ok(seat[0] > couch[0] && seat[0] < couch[2] && seat[1] > couch[1] && seat[1] < couch[3], 'they sit on it, not beside it');
   assert.equal(residentErrands({ ...furniture, couch: { ...furniture.couch, off: true } }).some(errand => errand.kind === 'sit'), false);
-  const boxedIn = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.3, z: 0, r: 0 } };
+  const boxedIn = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.45, z: 0, r: 0 } };
   assert.deepEqual(residentErrands(boxedIn), []);
 });
 
@@ -35,6 +35,9 @@ test('rooms arranged on the earlier floor spread out and gain a couch only where
   assert.equal(!!upgraded.couch.off, false, 'the old desk spot is taken, so the couch finds clear floor nearby');
   assert.notDeepEqual([upgraded.couch.x, upgraded.couch.z], ROOM_FURNITURE.couch.home);
   assert.deepEqual(upgradeFurniture(undefined, defaultShelves(), defaultWallDisplays()), defaultFurniture());
+  const snug = upgradeFurniture({ ...old, pet: { x: -4.39, z: 1.65, r: 0 } }, defaultShelves(), defaultWallDisplays());
+  assert.ok(furnitureValid(snug), 'a terrarium that was tight against the wall is nudged, not reset');
+  assert.equal(snug.wardrobe.x, upgraded.wardrobe.x); assert.ok(snug.pet.x > Math.round(-4.39 * k * 100) / 100);
   const shelves = [{ ...defaultShelves()[0], spotId: 'back-low-left' }];
   assert.ok(wallMountsFit(shelves, defaultWallDisplays(), upgradeFurniture(undefined, shelves, defaultWallDisplays())), 'an old shelf keeps its place; the couch goes elsewhere');
 });

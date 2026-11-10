@@ -97,7 +97,7 @@ export function wallMountsFit(shelves, wallDisplays, furniture) {
     // Include wardrobe trim/handles, desk decorations and the taller resident's hat, regardless of current styling.
     const pad = id === 'wardrobe' ? [0.075, 0.175] : id === 'desk' ? [0, 0.075] : [0, 0];
     if (place.r % 2) pad.reverse();
-    const height = { wardrobe: 2.6, pet: 2.2, wealth: 1.8, desk: 1.7, floor: 0.9, rug: 2.95, couch: 1.15 }[id];
+    const height = { wardrobe: 2.6, pet: 1.8, wealth: 1.8, desk: 1.7, floor: 0.9, rug: 2.95, couch: 1.15 }[id];
     return [[rect[0] - pad[0], 0, rect[1] - pad[1]], [rect[2] + pad[0], height, rect[3] + pad[1]]];
   }) : [];
   return boxes.every((a, i) => boxes.slice(i + 1).every(b => !intersects(a, b)) && furnitureBoxes.every(b => !intersects(a, b)));
@@ -162,7 +162,7 @@ const S = ROOM_FLOOR_SCALE, cm = n => Math.round(n * 100) / 100;
  */
 export const ROOM_FURNITURE = {
   desk: { label: 'Writing desk', size: [1.8, 0.9], home: [cm(0.75 * S), cm(-3 * S + 1.1)], removable: true },
-  pet: { label: 'Terrarium', size: [1.6, 1.15], home: [cm(-2.15 * S), cm(1.25 * S)] },
+  pet: { label: 'Terrarium', size: [1.9, 1.3], home: [cm(-2.15 * S), cm(1.25 * S)] },
   wardrobe: { label: 'Wardrobe', size: [1.5, 0.85], home: [cm(4 * S - 0.75), cm(-3 * S + 0.5)], removable: true },
   wealth: { label: 'Cash table', size: [2.2, 1.3], home: [cm(2.25 * S), cm(1.45 * S)] },
   rug: { label: 'Rug', size: [3.5, 2.1], home: [cm(0.2 * S), cm(1.3 * S)], flat: true },
@@ -212,9 +212,9 @@ export function furnitureValid(value) {
   return Object.keys(out).every(id => furnitureFits(out, id)) ? out : null;
 }
 export const roomFurniture = value => furnitureValid(value) || defaultFurniture();
-/** Nearest free quarter-unit spot to a piece's default position, for putting stored furniture back. */
-export function freeSpot(furniture, id, shelves, wallDisplays) {
-  const [homeX, homeZ] = ROOM_FURNITURE[id].home, reach = Math.ceil(4 * S * 4) / 4;
+/** Nearest free quarter-unit spot to a piece's default position (or `near`), for putting stored furniture back. */
+export function freeSpot(furniture, id, shelves, wallDisplays, near = ROOM_FURNITURE[id].home) {
+  const [homeX, homeZ] = near, reach = Math.ceil(4 * S * 4) / 4;
   let best = null;
   for (let x = -reach; x <= reach; x += 0.25) for (let z = -reach; z <= reach; z += 0.25) {
     const distance = Math.hypot(x - homeX, z - homeZ);
@@ -229,7 +229,13 @@ export function upgradeFurniture(value, shelves, wallDisplays) {
   for (const [id, place] of Object.entries(value && typeof value === 'object' ? value : {})) spread[id] = place && typeof place === 'object' ? { ...place, x: place.x * k, z: place.z * k } : place;
   const [x, z] = ROOM_FURNITURE.couch.home, furniture = furnitureValid(spread);
   if (furniture && wallMountsFit(shelves, wallDisplays, furniture)) return furniture;
-  const stored = furnitureValid({ ...spread, couch: { x, z, r: 0, off: true } });
+  let stored = furnitureValid({ ...spread, couch: { x, z, r: 0, off: true } });
+  if (!stored && Number.isFinite(spread.pet?.x) && Number.isFinite(spread.pet?.z)) {
+    // The terrarium is wider than it was: shuffle it to the nearest clear floor rather than resetting the room.
+    const rest = furnitureValid({ ...spread, couch: { x, z, r: 0, off: true }, pet: undefined });
+    const spot = rest && freeSpot(rest, 'pet', shelves, wallDisplays, [spread.pet.x, spread.pet.z]);
+    if (spot) stored = { ...rest, pet: { ...rest.pet, ...spot } };
+  }
   if (!stored) return defaultFurniture();
   const spot = freeSpot({ ...stored, couch: { x, z, r: 0 } }, 'couch', shelves, wallDisplays);
   return spot ? { ...stored, couch: { ...spot, r: 0 } } : stored;

@@ -557,7 +557,7 @@ test('resident stroll stays on clear floor and falls back to standing when boxed
   const furniture = defaultFurniture(), route = residentStep(furniture);
   assert.ok(Math.hypot(route.x, route.z) > 0 && Math.hypot(route.x, route.z) <= 0.55);
   for (let part = 0; part <= 1; part += 0.05) assert.ok(furnitureFits({ ...furniture, rug: { ...furniture.rug, x: furniture.rug.x + route.x * part, z: furniture.rug.z + route.z * part } }, 'rug'));
-  const tight = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.3, z: 0, r: 0 } };
+  const tight = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.45, z: 0, r: 0 } };
   assert.ok(furnitureFits(tight, 'rug'));
   assert.deepEqual(residentStep(tight), { x: 0, z: 0 });
 });

@@ -579,24 +579,23 @@ export class RoomScene {
     this.table(desk, 0, 0, 1.8, 0.9, 0.9);
     box(desk, 1.5, 0.3, 0.07, '#65462e', 0, 0.67, 0.41);
     cylinder(desk, 0.035, 0.035, 0.06, '#c4a05d', 0, 0.67, 0.47).rotation.x = Math.PI / 2;
-    // A tall glass case on a low stand: brass frame, glass lid and a little landscaping for the resident.
+    // A wide, low glass case on a stand: brass frame, glass lid and a little landscaping for the resident.
     const terrarium = this.fixture();
-    this.table(terrarium, 0, 0, 1.5, 1.05, 0.5);
-    box(terrarium, 1.58, 0.08, 1.12, '#6b6a45', 0, 0.61);
-    box(terrarium, 1.5, 0.1, 1.04, '#7a5c3c', 0, 0.7);
+    this.table(terrarium, 0, 0, 1.8, 1.2, 0.5);
+    box(terrarium, 1.88, 0.08, 1.27, '#6b6a45', 0, 0.61);
+    box(terrarium, 1.8, 0.1, 1.2, '#7a5c3c', 0, 0.7);
     const glass = material('#b3d2b7', { transparent: true, opacity: 0.15, depthWrite: false });
-    mesh(terrarium, new THREE.BoxGeometry(1.54, 1.4, 1.08), glass, 0, 1.35);
-    mesh(terrarium, new THREE.BoxGeometry(1.54, 0.02, 1.08), material('#dcefe6', { transparent: true, opacity: 0.3, depthWrite: false }), 0, 2.06);
-    for (const x of [-0.77, 0.77]) for (const z of [-0.54, 0.54]) box(terrarium, 0.05, 1.44, 0.05, '#c7a66b', x, 1.35, z);
-    for (const y of [0.67, 2.07]) {
-      for (const z of [-0.54, 0.54]) box(terrarium, 1.59, 0.05, 0.05, '#c7a66b', 0, y, z);
-      for (const x of [-0.77, 0.77]) box(terrarium, 0.05, 0.05, 1.13, '#c7a66b', x, y, 0);
+    mesh(terrarium, new THREE.BoxGeometry(1.84, 1, 1.24), glass, 0, 1.15);
+    mesh(terrarium, new THREE.BoxGeometry(1.84, 0.02, 1.24), material('#dcefe6', { transparent: true, opacity: 0.3, depthWrite: false }), 0, 1.66);
+    for (const x of [-0.92, 0.92]) for (const z of [-0.62, 0.62]) box(terrarium, 0.05, 1.04, 0.05, '#c7a66b', x, 1.15, z);
+    for (const y of [0.67, 1.67]) {
+      for (const z of [-0.62, 0.62]) box(terrarium, 1.89, 0.05, 0.05, '#c7a66b', 0, y, z);
+      for (const x of [-0.92, 0.92]) box(terrarium, 0.05, 0.05, 1.29, '#c7a66b', x, y, 0);
     }
-    cylinder(terrarium, 0.05, 0.07, 0.06, '#d9bd7c', 0, 2.11);
-    mesh(terrarium, new THREE.DodecahedronGeometry(0.17, 0), material('#8a8780'), -0.48, 0.85, -0.26).scale.y = 0.7;
-    cylinder(terrarium, 0.15, 0.13, 0.05, '#8fb4b0', 0.42, 0.775, 0.3);
-    cylinder(terrarium, 0.035, 0.05, 0.75, '#5d432c', 0.5, 1.02, -0.3, 6).rotation.z = 0.5;
-    for (const [x, y, z, lean] of [[0.3, 1.2, -0.3, 0.9], [0.52, 1.32, -0.24, -0.5], [0.62, 1.05, -0.36, -1.1]]) mesh(terrarium, new THREE.ConeGeometry(0.1, 0.34, 5), material('#5f7d4a'), x, y, z).rotation.z = lean;
+    cylinder(terrarium, 0.05, 0.07, 0.06, '#d9bd7c', 0, 1.71);
+    mesh(terrarium, new THREE.DodecahedronGeometry(0.15, 0), material('#8a8780'), -0.68, 0.83, -0.4).scale.y = 0.7;
+    cylinder(terrarium, 0.13, 0.11, 0.05, '#8fb4b0', 0.68, 0.775, 0.42);
+    for (const [x, y, z, lean] of [[0.6, 0.95, -0.42, 0.7], [0.74, 1.02, -0.38, -0.4], [0.8, 0.9, -0.46, -1]]) mesh(terrarium, new THREE.ConeGeometry(0.08, 0.3, 5), material('#5f7d4a'), x, y, z).rotation.z = lean;
     this.wardrobe = this.fixture();
     this.rug = this.fixture(); this.couch = this.fixture();
     const moneyTable = this.fixture();
@@ -764,7 +763,7 @@ export class RoomScene {
     this.pet(view.pet);
     this.resident(view.owner, generation);
     this.wealth(view.wealthStage);
-    this.pick([furniture.pet.x, 1.36, furniture.pet.z], [1.65, 1.55, 1.2], { kind: 'pet' }, turn('pet'));
+    this.pick([furniture.pet.x, 1.16, furniture.pet.z], [1.95, 1.2, 1.35], { kind: 'pet' }, turn('pet'));
     if (!furniture.couch.off) this.pick([furniture.couch.x, 0.58, furniture.couch.z], [2.4, 1.1, 1], { kind: 'couch' }, turn('couch'));
     if (!furniture.wardrobe.off) this.pick([furniture.wardrobe.x, 1.3, furniture.wardrobe.z], [1.7, 2.6, 1], { kind: 'wardrobe' }, turn('wardrobe'));
     this.pick([furniture.wealth.x, 1.4, furniture.wealth.z], [2.1, 1, 1.25], { kind: 'wealth' }, turn('wealth'));
@@ -773,18 +772,60 @@ export class RoomScene {
     configureShadowObjects(this.static); configureShadowObjects(this.dynamic); this.lighting?.invalidate();
     this.setEditing(this.editing, this.selection);
   }
+  /** What the owner bought for the bug: the toy and battle gear in use, and a feeder while it runs. */
+  petThings(pet) {
+    const group = new THREE.Group(), place = this.furniture.pet;
+    group.position.set(place.x, 0.75, place.z); group.rotation.y = (place.r || 0) * Math.PI / 2; group.userData.dragId = 'pet';
+    const toy = new THREE.Group(); toy.position.set(-0.55, 0, 0.36); group.add(toy);
+    const ball = (parent, radius, color, x, y, z, detail = 1) => mesh(parent, new THREE.IcosahedronGeometry(radius, detail), material(color), x, y, z);
+    switch (pet.toy) {
+      case 'toy-twig': cylinder(toy, 0.03, 0.045, 0.6, '#6b4a30', 0, 0.26, 0, 6).rotation.z = 0.7; cylinder(toy, 0.02, 0.03, 0.3, '#6b4a30', 0.08, 0.38, 0, 6).rotation.z = -0.5; break;
+      case 'toy-pebble': ball(toy, 0.1, '#c9d6e0', 0, 0.08, 0, 0).scale.y = 0.7; break;
+      case 'toy-ball': ball(toy, 0.12, '#6b4a2c', 0, 0.12, 0); break;
+      case 'toy-maze': box(toy, 0.5, 0.02, 0.4, '#5f7d4a', 0, 0.01); for (const [x, z, w, d] of [[-0.1, 0, 0.03, 0.3], [0.1, -0.05, 0.03, 0.3], [0, 0.14, 0.24, 0.03]]) box(toy, w, 0.1, d, '#86a35f', x, 0.06, z); break;
+      case 'toy-mirror': box(toy, 0.26, 0.34, 0.03, '#c4a05d', 0, 0.2, 0).rotation.y = 0.5; box(toy, 0.2, 0.28, 0.035, '#d6ecee', 0, 0.2, 0).rotation.y = 0.5; break;
+      case 'toy-wheel': mesh(toy, new THREE.TorusGeometry(0.2, 0.035, 6, 14), material('#c8553d'), 0, 0.26, 0).rotation.y = 0.5; box(toy, 0.3, 0.05, 0.14, '#6b4a30', 0, 0.025); break;
+      case 'toy-castle': box(toy, 0.34, 0.22, 0.26, '#7d5a38', 0, 0.11); for (const x of [-0.17, 0.17]) { cylinder(toy, 0.07, 0.07, 0.34, '#6b4a30', x, 0.17, 0, 7); mesh(toy, new THREE.ConeGeometry(0.09, 0.14, 7), material('#a5433a'), x, 0.41, 0); } break;
+      case 'toy-disco': ball(toy, 0.12, '#dfe6f0', 0, 0.6, 0, 0); cylinder(toy, 0.008, 0.008, 0.26, '#8a8780', 0, 0.8, 0, 4); break;
+    }
+    const gear = new THREE.Group(); gear.position.set(0.05, 0, -0.44); group.add(gear);
+    switch (pet.gear) {
+      case 'gear-shell': cylinder(gear, 0.09, 0.09, 0.07, '#d9c8a7', 0, 0.035); cylinder(gear, 0.095, 0.095, 0.02, '#a5433a', 0, 0.08); break;
+      case 'gear-claws': box(gear, 0.28, 0.035, 0.07, '#8a8f94', 0, 0.02).rotation.y = 0.4; box(gear, 0.1, 0.045, 0.08, '#6b4a30', -0.13, 0.022, 0.055).rotation.y = 0.4; break;
+      case 'gear-boots': for (let i = 0; i < 6; i++) box(gear, 0.05, 0.07, 0.08, '#5c4028', (i % 3 - 1) * 0.09, 0.035, i < 3 ? -0.05 : 0.05); break;
+      case 'gear-helmet': ball(gear, 0.11, '#8a623c', 0, 0.05, 0).scale.y = 0.8; cylinder(gear, 0.015, 0.015, 0.06, '#5c4028', 0, 0.16, 0, 5); break;
+      case 'gear-shield': ball(gear, 0.15, '#5f8a4a', 0, 0.16, 0).scale.set(0.8, 1, 0.2); break;
+      case 'gear-mandibles': mesh(gear, new THREE.TorusGeometry(0.1, 0.022, 5, 10, Math.PI), material('#d9b23d'), 0, 0.03, 0).rotation.x = -Math.PI / 2; break;
+      case 'gear-armor': for (let i = 0; i < 3; i++) box(gear, 0.24 - i * 0.04, 0.05, 0.16, '#70767c', 0, 0.025 + i * 0.05); break;
+      case 'gear-bandage': box(gear, 0.2, 0.06, 0.08, '#eee6d6', 0, 0.03).rotation.y = 0.3; box(gear, 0.05, 0.065, 0.085, '#b8433e', 0, 0.03).rotation.y = 0.3; break;
+    }
+    if (pet.feeder) { cylinder(group, 0.11, 0.14, 0.05, '#c9b28a', 0.34, 0.025, 0.42); cylinder(group, 0.07, 0.07, 0.3, '#d6ecee', 0.34, 0.2, 0.36, 8); cylinder(group, 0.08, 0.08, 0.04, '#a5433a', 0.34, 0.37, 0.36, 8); }
+    if (toy.children.length || gear.children.length || pet.feeder) this.dynamic.add(group);
+  }
   pet(pet) {
+    this.petSprite = null;
     if (!pet) return;
     let map;
     if (pet.stage === 'creature' && BY_ID[pet.species]) map = canvasTexture(spriteCanvas(BY_ID[pet.species], pet.style, pet.level));
     else if (pet.stage === 'egg' || pet.stage === 'dead') map = paintedTexture(128, 128, ctx => {
       if (pet.stage === 'egg') drawEgg(ctx, { w: 128, h: 128, still: true }); else drawGrave(ctx, { w: 128, h: 128 });
     }, true);
-    if (map) {
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-      const size = 1.05 * (pet.stage === 'creature' ? bugScale(pet.level) : 1);
-      sprite.position.set(this.furniture.pet.x, 0.74 + size / 2, this.furniture.pet.z); sprite.scale.set(size, size, 1); this.dynamic.add(sprite);
-      sprite.userData.dragId = 'pet';
+    if (!map) return;
+    if (pet.stage === 'creature') this.petThings(pet);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
+    const size = 0.85 * (pet.stage === 'creature' ? bugScale(pet.level) : 1);
+    sprite.position.set(this.furniture.pet.x, 0.74 + size / 2, this.furniture.pet.z); sprite.scale.set(size, size, 1); this.dynamic.add(sprite);
+    sprite.userData.dragId = 'pet';
+    if (pet.stage !== 'creature') return;
+    // A bug wanders its case. A neglected one stamps about under a small red cloud of opinion.
+    const grumpy = ['peckish', 'bored', 'grubby', 'sulking'].includes(pet.mood);
+    this.petSprite = { sprite, size, grumpy, home: sprite.position.clone() };
+    if (grumpy) {
+      const mark = this.petSprite.mark = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, map: paintedTexture(16, 16, ctx => {
+        ctx.fillStyle = '#d8372f';
+        for (const [x, y, w, h] of [[3, 2, 2, 5], [3, 5, 5, 2], [11, 2, 2, 5], [8, 5, 5, 2], [3, 9, 5, 2], [3, 9, 2, 5], [8, 9, 5, 2], [11, 9, 2, 5]]) ctx.fillRect(x, y, w, h);
+      }, true) }));
+      mark.scale.set(0.24, 0.24, 1); mark.userData.dragId = 'pet'; this.dynamic.add(mark);
     }
   }
   resident(owner, generation) {
@@ -837,6 +878,8 @@ export class RoomScene {
       cylinder(headGroup, 0.2, 0.22, 0.2, hat.c || '#b89052', 0, 2);
       cylinder(headGroup, 0.222, 0.224, 0.04, '#4a3528', 0, 1.94);
     }
+    // Nod from the neck: a head pivoting at the feet swings a long way forward.
+    headGroup.position.y = 1.45; for (const part of headGroup.children) part.position.y -= 1.45;
   }
   wealth(stage) {
     const table = new THREE.Group(), group = new THREE.Group(); group.position.x = -0.15; table.add(group); this.dynamic.add(table);
@@ -900,9 +943,9 @@ export class RoomScene {
       const yaw = this.residentYaw ?? 0.35;
       this.residentYaw = t ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
       this.residentGroup.scale.y = RESIDENT_HEIGHT_SCALE * (1 + Math.sin(t * 1.5) * 0.008);
-      this.residentGroup.rotation.set(look * 0.2 + grab * 0.14, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
+      this.residentGroup.rotation.set(look * 0.06 + grab * 0.12, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
       this.residentHead.rotation.y = pose.glance * (1 - look);
-      this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * 0.22;
+      this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * 0.32;
       this.residentLegs?.forEach((leg, i) => {
         leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : -1.45 * sit;
         if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : 1.45 * sit;
@@ -913,6 +956,15 @@ export class RoomScene {
         arm.rotation.z = i ? -pose.wave * 0.65 : 0.04 * Math.sin(t * 0.8);
       });
       if (this.residentNote) this.residentNote.visible = cash && pose.phase > 13 && pose.phase < 30;
+    }
+    if (this.petSprite && !this.dragging) {
+      const { sprite, size, grumpy, home, mark } = this.petSprite, turn = (this.furniture.pet.r || 0) * Math.PI / 2, pace = grumpy ? 2.2 : 1;
+      const along = t ? (Math.sin(t * 0.31 * pace) * 0.7 + Math.sin(t * 0.83 * pace) * 0.3) * 0.34 + (grumpy ? Math.sin(t * 38) * 0.012 : 0) : 0;
+      const forward = Math.cos(t * 0.31 * pace) * 0.217 + Math.cos(t * 0.83 * pace) * 0.249 >= 0;
+      const hop = t ? Math.abs(Math.sin(t * (grumpy ? 9 : 4))) * (grumpy ? 0.05 : 0.02) : 0;
+      sprite.position.set(home.x + Math.cos(turn) * along, home.y + hop, home.z - Math.sin(turn) * along);
+      sprite.scale.x = size * (forward ? 1 : -1);
+      if (mark) { mark.position.set(sprite.position.x + 0.22, home.y + size / 2 + 0.02 + hop, sprite.position.z); mark.scale.setScalar(0.24 * (1 + (t ? Math.sin(t * 6) * 0.15 : 0))); }
     }
     if (this.faun.visible !== state.faun) this.lighting?.invalidate();
     this.faun.visible = state.faun;

@@ -7,7 +7,7 @@ My Room displays the owner's existing pet, outfit, oddities and in-game wealth i
 - Every available account's room and **exact in-game balances** are visible to any signed-in player. There is no sharing opt-in. A room link is a destination, not an access token.
 - A legacy name-only guest can use their own room but must register or sign in before visiting or being visited. Hidden, deleted and missing accounts remain unavailable.
 - Visitors see the saved layout, displayed items, visible outfit, curated pet and owner wealth. They cannot edit, equip items or care for the pet. Visits are snapshots, not shared editing or live visitor presence.
-- Visitor data excludes undisplayed possessions, unworn clothing, email, authentication details, original selfies, transactions, battle setup/replay and pet-care timing. Eggs hide their species; memorials hide feeding history and time of death. Avatars are saved drawings.
+- Visitor data excludes undisplayed possessions, unworn clothing, email, authentication details, original selfies, transactions, battle setup/replay and pet-care timing. For a living bug, visitors do see the toy and battle gear in use, whether an automatic feeder is running, and a one-word mood (a neglected bug stamps about its terrarium); they never see need levels, cooldowns or timings. Eggs hide their species; memorials hide feeding history and time of death. Avatars are saved drawings.
 - Wealth combines bankroll, chips at tables, holdings and Risk escrow. Missing/nonfinite amounts stay unavailable rather than becoming zero; negative amounts remain accurate. Figures belong to the room owner, never the visitor's session.
 
 ## Editing boundaries

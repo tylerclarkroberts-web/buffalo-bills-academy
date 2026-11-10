@@ -79,6 +79,13 @@ export class Rooms {
       }
       if (Object.keys(style).length) out.style = style;
     }
+    if (pen.stage === 'creature') {
+      // The terrarium shows the toy and battle gear in use, a running feeder and a one-word temper; never care timing.
+      const kit = this.shop.bugStyle?.(pid) || {};
+      for (const slot of ['toy', 'gear']) if (typeof kit[slot] === 'string') out[slot] = kit[slot];
+      if (pen.feederUntil > this.barn.view(pid).serverNow) out.feeder = true;
+      if (typeof pen.mood === 'string') out.mood = pen.mood;
+    }
     return out;
   }
   view(player, own) {

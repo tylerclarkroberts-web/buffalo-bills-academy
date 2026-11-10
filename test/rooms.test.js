@@ -66,6 +66,16 @@ test('visitors see displayed things, appearance and exact current worth without 
   assert.equal(rooms.owner(owner).wealthStage, 3);
 });
 
+test('the terrarium shows the toy, gear, running feeder and one-word temper, never care timing', t => {
+  const { rooms, owner, visitor, shop, setPen } = fixture(t);
+  const bug = { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 4 };
+  shop.bugStyle = () => ({ toy: 'toy-wheel', gear: 'gear-helmet', gearBonus: 0.03, toyMood: 12 });
+  setPen({ ...bug, mood: 'peckish', feederUntil: 987654322, fedAt: 5, needs: { hunger: 20 }, cool: { feed: 9 }, diesInMs: 4 });
+  assert.deepEqual(rooms.visit(visitor, owner).pet, { ...bug, toy: 'toy-wheel', gear: 'gear-helmet', feeder: true, mood: 'peckish' });
+  setPen({ ...bug, mood: 'thriving', feederUntil: 1 });
+  assert.deepEqual(rooms.visit(visitor, owner).pet, { ...bug, toy: 'toy-wheel', gear: 'gear-helmet', mood: 'thriving' });
+});
+
 test('eggs hide their species and memorials hide neglect timing', t => {
   const { rooms, owner, visitor, setPen } = fixture(t);
   setPen({ stage: 'egg', species: 'bocydium', hatchAt: 123, eggAt: 10 });
