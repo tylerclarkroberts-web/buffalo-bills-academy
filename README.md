@@ -48,6 +48,10 @@ The General Store's **Spectacles** department sells $2,500–$50,000 one-time-us
 
 **Risk bets** links to ConquestK and offers optional account linking and fixed-odds play-money bets on eligible public Classic matches. Accounts and games remain separate. New betting is disabled by default; existing bets continue recovering and settling when the integration is connected. See [ConquestK integration](docs/conquest-integration.md) for the player flow, odds, limits, deployment configuration, privacy, and recovery guarantees.
 
+## Acid Mines
+
+Leaving after a successful paid shift gets a short, grumbling send-off from the Foreman, with no math question. Mud and quitting empty-handed still trigger his usual lecture and quiz. See [Acid Mines](docs/acid-mines.md) for departure controls and pay behavior.
+
 ## Selfie avatars
 
 Choose **Change avatar** on your profile picture or from the account menu. In Profile, **Account** holds sign-in and deletion controls; **Settings** holds table preferences and Slack alerts. Each tab scrolls as one pane. [Profile and account](docs/profile-and-account.md) covers these controls, avatar access, display-name changes and save recovery.
