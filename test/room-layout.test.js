@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, defaultFurniture, furnitureFits } from '../server/catalog/room.js';
+import { defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, defaultFurniture, furnitureFits, residentRect } from '../server/catalog/room.js';
 import { layoutOf, layoutKey, addShelf, moveShelf, removeShelf, changeStyle, placeFurniture, furnitureOf } from '../client/src/room/layout.js';
 
 const room = () => ({ layoutRevision: 3, themeId: 'bunkhouse-sage', shelves: defaultShelves(), finishes: roomFinishes(),
@@ -50,7 +50,12 @@ test('furniture moves, turns and is stored only where it fits; a stored desk ret
   for (const [id, change] of [['wardrobe', { x: 99 }], ['wardrobe', { x: home.pet.x, z: home.pet.z }], ['wardrobe', { r: 1 }], ['pet', { off: true }], ['sofa', { x: 0 }], ['window', { x: 0, z: 0 }]]) {
     assert.equal(placeFurniture(saved, id, change), saved, `${id} ${JSON.stringify(change)}`);
   }
-  assert.notEqual(placeFurniture(saved, 'rug', { x: home.pet.x, z: home.pet.z }), saved, 'a rug may lie under furniture');
+  const under = placeFurniture(saved, 'rug', { x: home.pet.x + 1.6, z: home.pet.z });
+  assert.notEqual(under, saved, 'a rug may lie partly under furniture');
+  assert.deepEqual(residentRect(under.furniture).slice(0, 2), [under.furniture.rug.x - 0.45, under.furniture.rug.z - 0.35], 'the resident follows the rug');
+  assert.equal(placeFurniture(saved, 'rug', { x: home.pet.x, z: home.pet.z }), saved, 'the resident cannot be carried into furniture');
+  assert.equal(placeFurniture(under, 'wardrobe', { x: under.furniture.rug.x, z: under.furniture.rug.z }), under, 'furniture cannot land on the resident');
+  assert.notEqual(placeFurniture(under, 'wardrobe', { x: home.rug.x, z: home.rug.z + 0.3 }), under, 'the old resident spot is free once the rug moves');
   const stored = placeFurniture(saved, 'desk', { off: true });
   assert.deepEqual(stored.placements, []); assert.equal(stored.furniture.desk.off, true);
   const blocked = placeFurniture(stored, 'wardrobe', { x: home.desk.x, z: home.desk.z });

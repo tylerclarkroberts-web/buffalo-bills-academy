@@ -549,7 +549,7 @@ export class RoomScene {
     }
   }
   resident(owner, generation) {
-    const group = new THREE.Group(); group.position.set(...ROOM_FIXTURES.resident); group.rotation.y = 0.35; this.dynamic.add(group);
+    const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.y = 0.35; this.dynamic.add(group);
     const avatar = owner?.avatar, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
     for (const x of [-0.14, 0.14]) { box(group, 0.2, 0.62, 0.24, '#3f4552', x, 0.42); box(group, 0.23, 0.14, 0.38, '#30231e', x, 0.1, 0.07); }

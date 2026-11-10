@@ -72,7 +72,7 @@ export default function Room({ id }) {
   const arrangeFurniture = useCallback((id, change, done) => {
     if (!canMoveShelf.current) return;
     const current = draftRef.current, next = placeFurniture(current, id, change);
-    if (next === current) { setMsg(`${ROOM_FURNITURE[id].label} does not fit there. Keep it on clear floor, away from other furniture, the shelves, the doorway and you.`); return; }
+    if (next === current) { setMsg(`${ROOM_FURNITURE[id].label} does not fit there. Keep it on clear floor, away from other furniture, the shelves, the doorway and where you stand on the rug.`); return; }
     setDraft(next); setMsg(done || `${ROOM_FURNITURE[id].label} moved. Save room to keep it.`);
     if (change.off) setSelection({ kind: 'edit' });
   }, []);

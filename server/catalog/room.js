@@ -85,10 +85,11 @@ export const ROOM_FURNITURE = {
 const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S];
 const KEEP_CLEAR = [
   [-4 * S, -1.7 * S - 0.45, -4 * S + 1.4, -0.4 * S + 0.45], // under the shelf mounts
-  [0.2 * S - 0.45, 1.25 * S - 0.35, 0.2 * S + 0.45, 1.25 * S + 0.35], // the resident
   [4 * S - 0.8, 0.8 * S, 4 * S, 2.25 * S], // the yard doorway
 ];
 const SLACK = 0.011;
+/** The resident stands at the centre of the rug spot, wherever that is moved (even with no rug laid). */
+export const residentRect = furniture => [furniture.rug.x - 0.45, furniture.rug.z - 0.35, furniture.rug.x + 0.45, furniture.rug.z + 0.35];
 const overlaps = (a, b) => a[0] < b[2] - SLACK && b[0] < a[2] - SLACK && a[1] < b[3] - SLACK && b[1] < a[3] - SLACK;
 export function furnitureRect(id, place) {
   const [w, d] = ROOM_FURNITURE[id].size, hw = (place.r % 2 ? d : w) / 2, hd = (place.r % 2 ? w : d) / 2;
@@ -100,9 +101,12 @@ export function furnitureFits(furniture, id) {
   if (place.off) return true;
   const rect = furnitureRect(id, place), area = piece.yard ? YARD : INDOORS;
   if (rect[0] < area[0] - SLACK || rect[1] < area[1] - SLACK || rect[2] > area[2] + SLACK || rect[3] > area[3] + SLACK) return false;
-  if (piece.flat || piece.yard) return true;
-  return !KEEP_CLEAR.some(zone => overlaps(rect, zone)) && !Object.entries(ROOM_FURNITURE).some(([other, { flat, yard }]) =>
-    other !== id && !flat && !yard && !furniture[other].off && overlaps(rect, furnitureRect(other, furniture[other])));
+  if (piece.yard) return true;
+  const solid = Object.entries(ROOM_FURNITURE).filter(([other, { flat, yard }]) => other !== id && !flat && !yard && !furniture[other].off)
+    .map(([other]) => furnitureRect(other, furniture[other]));
+  // A rug may lie under furniture, but the resident standing on it needs clear floor.
+  if (piece.flat) return !solid.some(other => overlaps(residentRect(furniture), other));
+  return ![...KEEP_CLEAR, residentRect(furniture), ...solid].some(zone => overlaps(rect, zone));
 }
 export const defaultFurniture = () => Object.fromEntries(Object.entries(ROOM_FURNITURE).map(([id, piece]) => [id, { x: piece.home[0], z: piece.home[1], r: 0 }]));
 /** A complete, valid furniture map with defaults for omitted pieces, or null when anything supplied is unusable. */
