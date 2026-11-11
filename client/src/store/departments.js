@@ -2,6 +2,7 @@ export const DEPARTMENTS = [
   { id: 'appearance', label: 'Appearance', categories: ['hats', 'face', 'clothes', 'skins', 'extras'] },
   { id: 'items', label: 'Items', categories: ['gags', 'tobacco'] },
   { id: 'room', label: 'My Room', categories: ['oddities', 'unique', 'seasonal'] },
+  { id: 'mining', label: 'Mining Gear', categories: ['mine'] },
   { id: 'bugs', label: 'Bug Gear', categories: ['food', 'toys', 'bugstyle', 'bugcare', 'gear'] },
 ];
 

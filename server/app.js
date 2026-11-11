@@ -55,6 +55,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   service.avatars = avatars;
   // v34: the General Store. Avatars carry what you wear; the barn reads bug looks, toy and gear bonuses from it.
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
+  mines.owned = (id) => shop.doc.inv[id]?.own;
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
   barn.styleOf = (id) => shop.bugStyle(id);
@@ -251,6 +252,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // ----- Acid Mines -----
   api.get('/fawn', needPlayer, wrap((req) => fawn.status(accounts.ensure(req.player))));
   api.post('/fawn/claim', needPlayer, wrap((req) => fawn.claim(accounts.ensure(req.player))));
+  api.get('/mines/office', needPlayer, wrap((req) => mines.office(req.player)));
   api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
   api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));

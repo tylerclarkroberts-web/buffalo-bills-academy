@@ -147,7 +147,7 @@ export default function Store() {
                 {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}Room decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
-                  {owned && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
+                  {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
                   {!takenBy && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
