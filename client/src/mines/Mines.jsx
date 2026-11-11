@@ -643,6 +643,7 @@ function Result({ r, onAgain, onLeave, starting, fare }) {
       <h1 className="m-title">{r.title}</h1>
       <p className="m-story">{r.text}</p>
       <div className="m-pay">+${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+      {r.twin && <p className="m-twin" data-test="twin">THE OTHER FAUN WAS WAITING AT THE ELEVATOR. HE TOOK ${r.twin.took.toLocaleString('en-US', { maximumFractionDigits: 2 })} AND SAID THANK YOU.</p>}
       {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">

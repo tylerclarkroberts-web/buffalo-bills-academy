@@ -30,6 +30,8 @@ A shift's capacity is the smaller of the bucket and the shaft's limit, so big bu
 
 In a permit shaft, each pool after the first may cave in as the miner arrives, decided at clock-in from a separate random source and never sent to the browser beforehand. A cave-in spills a quarter of the bucket's current contents once; state then carries `spill` (`poolId`, `lost`). The last pool still holds whatever the bucket lacks, so a cave-in costs time, or pay if the miner clocks out early.
 
+A permit shaft may also have the other faun waiting at the elevator: 8% of shifts in Shaft 8, 12% in Shaft 12 and 15% on Earl's Level, decided at clock-in from its own random source and never sent to the browser beforehand. He takes a third of whatever the shift pays, rare finds included; the result then carries `twin` (`took`). Shaft 7 never meets him.
+
 Prices are deliberately high because the mines are the only source of new money. The owned-bug guide's feeding is not built.
 
 ## API and compatibility

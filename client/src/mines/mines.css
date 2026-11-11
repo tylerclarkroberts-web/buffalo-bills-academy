@@ -110,6 +110,7 @@ body.in-mines { background: #020402; }
 .m-story { max-width: 44ch; font-size: 24px; margin: 20px 0; }
 .m-pay { font-size: clamp(60px, 12vw, 150px); color: var(--y); text-shadow: 0 0 18px rgba(230,255,0,.7); line-height: 1; margin: 10px 0; }
 .m-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 26px; }
+.m-twin { color: #ff8a7a; max-width: 46ch; }
 .m-result.jackpot .m-pay { animation: m-jack 0.9s infinite alternate; }
 @keyframes m-jack { to { text-shadow: 0 0 30px #e6ff00, 0 0 70px #e6ff00; transform: scale(1.04); } }
 .m-result.o-aliens .m-art { color: #c9ffe0; }

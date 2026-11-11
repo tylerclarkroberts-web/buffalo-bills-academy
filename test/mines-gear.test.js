@@ -11,13 +11,13 @@ import { MINE_ITEMS, SHAFTS } from '../server/catalog/mine.js';
 
 const version = { rulesVersion: 2 };
 // payout roll 20000 = an ordinary bucket ($80 per 100 units with these pinned rolls); 0 = the motherlode.
-function fixture(t, { own = {}, payout = 20000, pool = 99999, cave = 99 } = {}) {
+function fixture(t, { own = {}, payout = 20000, pool = 99999, cave = 99, twin = 99 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-gear-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const clock = { now: 1_800_000_000_000 };
   const store = new Store(dir); const accounts = new Accounts({ store, now: () => clock.now });
   const mines = new Mines({ store, accounts, now: () => clock.now, owned: () => own,
-    randInt: (n) => (n === 100000 ? payout : 0), scareInt: (n) => n - 1, poolInt: () => pool, caveInt: () => cave, vein: () => ({ veinMs: 60000, cells: 7 }) });
+    randInt: (n) => (n === 100000 ? payout : 0), scareInt: (n) => n - 1, poolInt: () => pool, caveInt: () => cave, twinInt: () => twin, vein: () => ({ veinMs: 60000, cells: 7 }) });
   const player = store.players.miner = { id: 'miner', name: 'Miner' }; accounts.ensure(player);
   const call = (fn, s, extra) => mines[fn](player, s.shiftId, { ...version, poolId: s.currentPoolId, ...extra });
   /** Walk the chain, draining every pool, until the bucket settles. */
@@ -110,4 +110,16 @@ test('permit shafts can cave in and spill a quarter of the bucket; Shaft 7 never
   assert.deepEqual(f.call('probe', s).spill, s.spill, 'asking again does not spill again');
   const done = f.fill(s);
   assert.equal(done.result.collected, 400, 'the last pool still fills the bucket'); assert.equal(done.result.amount, 320);
+});
+
+test('the other faun takes a third of a permit-shaft cheque; Shaft 7 never meets him', (t) => {
+  const safe = fixture(t, { twin: 0 });
+  assert.equal(safe.fill(safe.start()).result.amount, 80, 'Shaft 7 ignores the roll');
+  const f = fixture(t, { own: { 'mine-permit8': 1 }, twin: 0 }); f.player.bankroll = 1000;
+  const s = f.start({ shaft: '8' });
+  assert.doesNotMatch(JSON.stringify(s), /twin/, 'he is never sent to the client ahead of time');
+  const done = f.fill(s).result;
+  assert.deepEqual(done.twin, { took: 26.66 }); assert.equal(done.amount, 53.34);
+  assert.equal(f.player.bankroll, 1000 - 40 + 53.34, 'only the reduced cheque is paid');
+  assert.equal(f.player.mining.earned, 53.34);
 });
