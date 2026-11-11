@@ -36,6 +36,7 @@ function BugThumb({ species, style, size, level }) {
 function Thumb({ x, me, eqWear, pen, size, fit }) {
   if (x.kind === 'avatar') return <Bust id={me.id} avatar={{ ...me.avatar, wear: { ...eqWear, [x.slot]: { ...lookOf(x), fit: fit?.[x.id] } } }} size={size * 0.86} still />;
   if (BUG_LOOK.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: lookOf(x) }} size={size} level={pen.level} />;
+  if (x.slot === 'gear' && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), gear: { id: x.id, shape: x.id.slice(5) } }} size={size} level={pen.level} />;
   if (x.pal) return <span className="st-pal">{x.pal.map((c) => <i key={c} style={{ background: c }} />)}</span>;
   if (x.art) return <LowPoly art={x.art} size={size} fallback={x.emoji} className="st-pix" />;
   if (x.pix) return <PixIcon pix={x.pix} size={size} fallback={x.emoji} className="st-pix" />;

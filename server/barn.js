@@ -366,10 +366,11 @@ export class Barn {
     return this.view(playerId);
   }
 
-  /** Cosmetic store looks for a bug (skin palette, hat, accessory), for drawing only. */
+  /** Store looks for a bug (skin palette, hat, accessory, equipped battle gear), for drawing only. */
   looksOf(playerId) {
     const st = this.styleOf?.(playerId) || {};
     const o = {}; for (const k of ['bugskin', 'bughat', 'bugacc']) if (st[k]) o[k] = st[k];
+    if (typeof st.gear === 'string' && st.gear.startsWith('gear-')) o.gear = { id: st.gear, shape: st.gear.slice(5) };
     return Object.keys(o).length ? o : undefined;
   }
   /** After a death: lay it to rest. The stall empties (a new egg can turn up in the mines); a small grave record stays. */
