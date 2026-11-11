@@ -1415,10 +1415,11 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
    never on anything whose JS measures with getBoundingClientRect, and never on the felt box or the
    overlays layered over it. */
 .felt-box :is(.seat.empty, .tag, .dealer-btn, .bot-tag, .auto-pop, .say-bubble, .pot, .bet, .stack-chips, .dl-plate, .rp-tag, .rp-chips) { zoom: var(--tscale, 1); }
-@media (min-width: 2400px) and (min-height: 1200px) { :root { --ui: 1.25; } }
-@media (min-width: 2880px) and (min-height: 1440px) { :root { --ui: 1.5; } }
-@media (min-width: 3360px) and (min-height: 1680px) { :root { --ui: 1.75; } }
-@media (min-width: 3800px) and (min-height: 1900px) { :root { --ui: 2; } }
+/* Keep 25% of the large-screen enlargement, matching tableScale in ui.jsx. */
+@media (min-width: 2400px) and (min-height: 1200px) { :root { --ui: 1.0625; } }
+@media (min-width: 2880px) and (min-height: 1440px) { :root { --ui: 1.125; } }
+@media (min-width: 3360px) and (min-height: 1680px) { :root { --ui: 1.1875; } }
+@media (min-width: 3800px) and (min-height: 1900px) { :root { --ui: 1.25; } }
 .topbar, .legal, .tp-wide :is(.tp-head, .tp-bottom, .tp-side) { zoom: var(--ui, 1); }
 /* the side panel's column has to widen with it, or its zoomed contents overflow (21vw is past 310px here) */
 @media (min-width: 2400px) and (min-height: 1200px) { .tp-wide { grid-template-columns: minmax(0, 1fr) calc(310px * var(--ui)); } }
