@@ -19,16 +19,18 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 | Headlamp Helmet | Longer lamp and fog distance. This is drawn by the browser only. |
 | Dowsing Rod | An arrow along the shortest walk to the current pool, and a pool that would resolve dry or as a 10-unit puddle holds 20 units instead. |
 
-| Shaft | Permit | Deposits | Most a bucket brings up | Fare |
-| --- | --- | --- | --- | --- |
-| Shaft 7 | none | 10 to 100 | 100 | free |
-| Shaft 8 | $40,000 | four times | 400 | $40 |
-| Shaft 12 | $150,000 | eight times | 800 | $80 |
-| Earl's Level | $500,000 | ten times | 1,000 | $100 |
+| Shaft | Permit | Deposits | Most a bucket brings up | Fare | Cave-in per pool |
+| --- | --- | --- | --- | --- | --- |
+| Shaft 7 | none | 10 to 100 | 100 | free | never |
+| Shaft 8 | $40,000 | four times | 400 | $40 | 4% |
+| Shaft 12 | $150,000 | eight times | 800 | $80 | 7% |
+| Earl's Level | $500,000 | ten times | 1,000 | $100 | 10% |
 
 A shift's capacity is the smaller of the bucket and the shaft's limit, so big buckets do nothing in Shaft 7. The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid and mud pay per 100 units, so a 200-unit bucket of ordinary acid pays twice the $80–$120 roll. The three rare finds pay the same for a full bucket of any size: Motherlode $10,000 (0.05%), Alien Skeletons $25,000 (0.02%) and Diamond Well $50,000 (0.01%).
 
-Prices are deliberately high because the mines are the only source of new money. Losing acid to hazards and the owned-bug guide's feeding are not built.
+In a permit shaft, each pool after the first may cave in as the miner arrives, decided at clock-in from a separate random source and never sent to the browser beforehand. A cave-in spills a quarter of the bucket's current contents once; state then carries `spill` (`poolId`, `lost`). The last pool still holds whatever the bucket lacks, so a cave-in costs time, or pay if the miner clocks out early.
+
+Prices are deliberately high because the mines are the only source of new money. The owned-bug guide's feeding is not built.
 
 ## API and compatibility
 

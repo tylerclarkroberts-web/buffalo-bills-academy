@@ -296,6 +296,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       setStatus('IT\'S SEEPING IN. WAIT FOR IT.');
       vein.current.waitUntil = Date.now() + Math.max(250, Math.min(2500, state.readyAt - state.serverNow));
     }
+    if (state.spill && state.spill.poolId !== previous.spill?.poolId) {
+      setStatus('CAVE-IN.'); setLine('THE ROOF CAME DOWN. A QUARTER OF YOUR BUCKET IS NOW FLOOR. THE REST IS STILL YOURS.');
+    }
   };
   const fail = error => {
     errorRef.current = error; setMineError(error); hold(false);
