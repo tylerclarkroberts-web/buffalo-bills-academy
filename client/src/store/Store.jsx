@@ -19,6 +19,7 @@ const CONSUMABLE = (x) => !!x.use;
 const ONCE = (x) => !!x.once; // gags (and tobacco): one at a time, used up when used
 const FITTABLE = (x) => x?.kind === 'avatar' && x.slot !== 'skin';
 const BUG_LOOK = ['bugskin', 'bughat', 'bugacc'];
+const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 'long' });
 
 function BugThumb({ species, style, size, level }) {
   const ref = useRef(null);
@@ -124,7 +125,7 @@ export default function Store() {
                 <h2>{cur.name}</h2>
                 <p className="sd-price"><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span>{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
-                {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}Room decoration · no gameplay bonus.</p>}
+                {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}Room decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
                   {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}

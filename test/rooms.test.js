@@ -86,9 +86,9 @@ test('eggs hide their species and memorials hide neglect timing', t => {
   assert.equal(rooms.visit(visitor, owner).pet, null);
 });
 
-test('all seventeen oddities have compatible positions; placement never consumes ownership', t => {
+test('all twenty-three oddities have compatible positions; placement never consumes ownership', t => {
   const { rooms, owner, shop } = fixture(t);
-  assert.equal(ROOM_ITEMS.length, 17);
+  assert.equal(ROOM_ITEMS.length, 23);
   const inventory = structuredClone(shop.doc);
   let revision = 0;
   for (const item of ROOM_ITEMS) {
@@ -398,7 +398,7 @@ test('forgetting a room resets its arrangement while the account remains visitab
   assert.equal(new Rooms(options).isOpen(owner.id), true);
   assert.deepEqual(rooms.visit(visitor, owner).placements, []);
   assert.equal(rooms.owner(owner).layoutRevision, 0);
-  assert.equal(rooms.owner(owner).owned.length, 17);
+  assert.equal(rooms.owner(owner).owned.length, 23);
 });
 
 test('wealth stages have bounded, exact boundary behavior', () => {

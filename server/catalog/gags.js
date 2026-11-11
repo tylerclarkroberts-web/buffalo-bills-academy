@@ -33,4 +33,11 @@ export const ABSURD_ITEMS = [
   ['skull', 'Buffalo Skull', 500000, '💀', 'The buffalo. Not a buffalo. Bill gets quiet when it comes up.', true],
   ['pickaxe', 'Golden Pickaxe', 1000000, '⛏️', 'Solid gold, so it bends on the first swing. The Foreman cried when he saw it. He would not say which kind.', true],
   ['deed', 'Deed to the Moon', 5000000, '🌕', 'Legally meaningless. Spiritually enormous. Hang it up and they deliver.', true],
-].map(([id, name, price, emoji, desc, unique]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : 'oddities', slot: null, ...(unique ? { unique: true } : {}) }));
+  // Seasonal (a month number): sold during that month only, kept for good. See Shop.buy.
+  ['jackolantern', 'Jack-o\'-Lantern', 800, '🎃', 'Carved by the Foreman. He says it is you. It is not flattering.', false, 10],
+  ['ghost', 'Bedsheet Ghost', 3000, '👻', 'A bedsheet with two holes. Nobody is under it. Somebody was.', false, 10],
+  ['cornucopia', 'Horn of Plenty', 600, '🌽', 'Contains three gourds and a receipt.', false, 11],
+  ['turkey', 'Pardoned Turkey', 2500, '🦃', 'Pardoned by Bill personally. He has not forgiven anyone.', false, 11],
+  ['stocking', 'One Stocking', 1000, '🧦', 'Hung with care. The lump of coal is from Shaft 7.', false, 12],
+  ['tumbletree', 'Tumbleweed Christmas Tree', 6000, '🎄', 'Rolled in one December wearing lights. Nobody had the heart.', false, 12],
+].map(([id, name, price, emoji, desc, unique, month]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : month ? 'seasonal' : 'oddities', slot: null, ...(unique ? { unique: true } : {}), ...(month ? { month } : {}) }));
