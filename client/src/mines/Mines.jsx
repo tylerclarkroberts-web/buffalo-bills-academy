@@ -458,6 +458,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     };
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
+    audio?.enter(dark);
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d, path) => {
@@ -470,7 +471,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         if (b !== lastBars) { lastBars = b; setBars(b); }
       },
       stalker, localStart: shift.localStart, reduceMotion: reduce,
-      fogFar: [17, 13, 10, 8][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 9, 7.5, 6.5][dark],
+      depth: dark, fogFar: [17, 12, 8.5, 6][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 8, 6, 4.5][dark],
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
@@ -542,7 +543,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor);
-      audio?.dread(false); // clocking out: the normal music comes back
+      audio?.dread(false); audio?.leave(); // clocking out: the normal music comes back
     };
   }, []);
 
@@ -560,12 +561,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     return () => clearTimeout(id);
   }, [visitor, audio]);
 
-  // geiger clicks: one rate per bar (1400 ms at one bar down to 90 ms at ten), so walking doesn't keep restarting the timer
+  // geiger clicks: they land at random like the real thing, on average every 1400 ms at one bar down to every 60 ms
+  // at ten. One rate per bar, so walking doesn't keep restarting the timer.
   useEffect(() => {
     if (!audio) return;
-    const ms = Math.round(1400 * (90 / 1400) ** ((bars - 1) / 9));
-    const id = setInterval(() => { if (!doomRef.current) audio.tick(bars === 10 ? 1.4 : 0.8); }, ms);
-    return () => clearInterval(id);
+    const mean = 1400 * (60 / 1400) ** ((bars - 1) / 9);
+    const wait = () => Math.max(12, -Math.log(1 - Math.random()) * mean);
+    let id = setTimeout(function click() { if (!doomRef.current) audio.tick(bars === 10 ? 1.3 : 1); id = setTimeout(click, wait()); }, wait());
+    return () => clearTimeout(id);
   }, [bars, audio]);
 
   useEffect(() => {

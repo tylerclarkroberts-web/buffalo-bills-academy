@@ -40,7 +40,7 @@ function hardHat() {
 
 const builders = {
   // A mine cart, nose-down on a stub of track with a wheel off and its last load across the floor.
-  cart(canvasTex) {
+  cart(canvasTex, oreColor = '#8dff5a') {
     const g = new THREE.Group(), iron = lam('#2e2a25', '#090807');
     const rust = lam('#ffffff', '#120a06', { map: canvasTex(32, 16, (c) => {
       px(c, '#6b4128', [0, 0, 32, 16]);
@@ -61,7 +61,7 @@ const builders = {
     const wheel = cyl(0.13, 0.05, 10), hub = cyl(0.05, 0.07, 6);
     for (const z of [0.3, -0.3]) { put(tub, wheel, iron, -0.3, -0.36, z, Math.PI / 2); put(tub, hub, rust, -0.3, -0.36, z, Math.PI / 2); }
     put(g, wheel, iron, 0.2, 0.04, 0.98); put(g, hub, rust, 0.2, 0.045, 0.98);
-    const ore = new THREE.MeshBasicMaterial({ color: '#8dff5a' });
+    const ore = new THREE.MeshBasicMaterial({ color: oreColor });
     for (const [x, z, s] of [[-0.25, 0.05, 0.08], [0, -0.08, 0.1], [0.22, 0.06, 0.09], [0.4, -0.04, 0.07]]) put(tub, new THREE.OctahedronGeometry(s, 0), ore, x, 0.27 + s * 0.4, z);
     for (const [x, z, s] of [[0.66, 0.6, 0.07], [0.8, 0.44, 0.05], [0.9, 0.7, 0.06], [1, 0.52, 0.04]]) put(g, new THREE.OctahedronGeometry(s, 0), ore, x, s, z);
     return g;
@@ -159,4 +159,4 @@ const builders = {
   },
 };
 
-export function buildFind(id, canvasTex) { return builders[id]?.(canvasTex) || null; }
+export function buildFind(id, canvasTex, oreColor) { return builders[id]?.(canvasTex, oreColor) || null; }
