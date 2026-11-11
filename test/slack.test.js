@@ -311,11 +311,13 @@ test('auto-link: lookup failures back off and the turn alert is retried; lookups
   await new Promise((r) => setTimeout(r, 120)); await s.idle();
   assert.equal(s.slack.dms.filter((d) => d.to === 'UBOB').length, 1, 'retried once Slack was back, still Bob\'s turn');
   // no retry if the turn moved on meanwhile
+  // the retry must not fire before Cat's check lands: two HTTP calls take longer than 20 ms on a slow disk
+  sa.retryMs = [200, 200];
   s.slack.down = true; sa.errAt.clear(); delete sa.state.lookups['cat@x.test'];
   { const v = await s.call(c.bob, 'GET', `/api/tables/${code}`); await s.call(c.bob, 'POST', `/api/tables/${code}/action`, { type: 'call', handNumber: v.body.hand.number }); }
   await s.idle(); s.slack.down = false; s.clock.t += 6 * 60 * 1000;
   { const v = await s.call(c.cat, 'GET', `/api/tables/${code}`); await s.call(c.cat, 'POST', `/api/tables/${code}/action`, { type: 'check', handNumber: v.body.hand.number }); }
-  await new Promise((r) => setTimeout(r, 120)); await s.idle();
+  await new Promise((r) => setTimeout(r, 300)); await s.idle();
   assert.equal(s.slack.dms.filter((d) => d.to === 'UCAT').length, 0, 'stale turn alerts are dropped');
   // in-flight dedupe and the per-minute cap
   sa.state.lookups = {}; sa.errAt.clear(); sa.recent = []; s.slack.calls.length = 0;

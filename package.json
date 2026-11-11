@@ -5,7 +5,7 @@
   "description": "Asynchronous Texas Hold'em for friends: one turn at a time, up to 24 hours per turn.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "scripts": {
     "start": "node scripts/start.mjs",
@@ -48,7 +48,7 @@
   "dependencies": {
     "@fontsource/monoton": "^5.3.0",
     "@fontsource/rye": "^5.3.0",
-    "express": "^4.21.2"
+    "express": "^5.3.0"
   },
   "devDependencies": {
     "@fontsource/anton": "^5.3.0",
@@ -58,12 +58,12 @@
     "@fontsource/vt323": "^5.3.0",
     "@fontsource/yellowtail": "^5.3.0",
     "@mediapipe/tasks-vision": "0.10.35",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.3.0",
     "delaunator": "^5.1.0",
     "pngjs": "^7.0.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "three": "^0.186.1",
-    "vite": "^5.4.11"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0",
+    "vite": "^8.3.7"
   }
 }

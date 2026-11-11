@@ -2,7 +2,7 @@
 
 ## Install and run
 
-Use Node.js 20+ from the repository root:
+Use Node.js 22.12+ from the repository root:
 
 ```sh
 npm ci
@@ -95,7 +95,7 @@ Exercise actual HTTP requests, invalid input and old saved records when changing
 
 Windows temporary-file renames can fail with `EPERM`. Retry with `TEMP` and `TMP` pointing to a writable workspace-local temporary directory excluded from commits. Record the actual rerun result; an environment failure proves neither a code regression nor a passing check.
 
-The latest recorded full run on November 10, 2026 ([PR #33](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/pull/33)) ran **419 tests: 414 passed, 5 failed**. Four failures were Doom's Windows URL-to-path errors (`C:\C:\...`); one was the Slack stale-turn alert assertion. The build passed with two duplicate `data-test` warnings in `client/src/bj/BlackjackPage.jsx`. This is historical evidence, not a current passing result or permission to ignore new failures. Put per-change commands, results and browser evidence in the PR; keep only actionable known limitations here.
+The suite has no known failures: the Doom Windows path errors and the Slack stale-turn timing race recorded in [PR #33](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/pull/33) are fixed. Treat any failure as new. Put per-change commands, results and browser evidence in the PR; keep only actionable known limitations here.
 
 ## Selfie avatar checks
 
