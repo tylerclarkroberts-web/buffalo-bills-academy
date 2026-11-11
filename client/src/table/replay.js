@@ -1,6 +1,9 @@
 // Public table history and browser-local replay progress. Never reconstruct private hands.
 const KEY = 'bba.fx';
-export function replayEnabled() { try { return JSON.parse(localStorage.getItem(KEY) || '{}').replay !== false; } catch { return true; } }
+// Switched off for now; set to true to bring it back. The recap card also played for action you had just watched and
+// held up your turn. Gags, smokes and spectacles are only ever shown in that card, so their buttons hide with it.
+export const REPLAY_ON = false;
+export function replayEnabled() { if (!REPLAY_ON) return false; try { return JSON.parse(localStorage.getItem(KEY) || '{}').replay !== false; } catch { return true; } }
 export function setReplayEnabled(on) { try { const p = JSON.parse(localStorage.getItem(KEY) || '{}'); p.replay = !!on; localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } }
 const seenKey = (code, playerId) => `bba.replay.${code}.${playerId || 'spectator'}`;
 export function seenSeq(code, playerId) { try { return Number(localStorage.getItem(seenKey(code, playerId))) || 0; } catch { return 0; } }

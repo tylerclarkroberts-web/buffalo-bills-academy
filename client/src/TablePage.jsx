@@ -18,6 +18,7 @@ import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { Showdown } from './table/Showdown.jsx';
 import { useReplay, ReplayLayer } from './table/Replay.jsx';
+import { REPLAY_ON } from './table/replay.js';
 import { bitEnabled, bitQueue, claimBit } from './table/fx.js';
 import * as music from './table/music.js';
 import { chipSpot, rectAt } from './table/chipspot.js';
@@ -186,8 +187,8 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
         <span className="hide-s">Say{compact ? ' something' : ''}</span>
       </button>
     )}
-    {open && <GagButton code={code} view={view} myId={myId} onUsed={() => { closeMenu(); load(); }} />}
-    {open && <SmokeButton code={code} view={view} onDone={() => { closeMenu(); load(); }} />}
+    {open && REPLAY_ON && <GagButton code={code} view={view} myId={myId} onUsed={() => { closeMenu(); load(); }} />}
+    {open && REPLAY_ON && <SmokeButton code={code} view={view} onDone={() => { closeMenu(); load(); }} />}
     {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => { closeMenu(); setSdPlay({ ...view.showdown, _k: Date.now() }); }} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
     <MusicButton />
     {(!view.bots || view.bots.friends) && <button className="btn small invite-btn" onClick={() => { closeMenu(); copyInvite(); }}><span className="menu-ico" aria-hidden="true">＋</span>Invite<span className="menu-label"> players</span></button>}

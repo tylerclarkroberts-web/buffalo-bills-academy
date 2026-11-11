@@ -9,7 +9,7 @@ import { FitDialog } from './avatar/FitEditor.jsx';
 import { Paged, Tabs, useWide } from './ui.jsx';
 import { money, pct, chips } from './util.js';
 import { bitEnabled, goreEnabled, setGoreEnabled, setBitEnabled } from './table/fx.js';
-import { replayEnabled, setReplayEnabled } from './table/replay.js';
+import { REPLAY_ON, replayEnabled, setReplayEnabled } from './table/replay.js';
 import * as music from './table/music.js';
 
 const OUTCOME = { motherlode: 'Motherlode', aliens: 'Alien skeletons', diamonds: 'Diamond well', dud: 'Mostly mud', normal: 'Shift' };
@@ -282,7 +282,7 @@ function TableFun() {
   return (
     <div className="account fun-card">
       <h2 className="display sl-title">At the table</h2>
-      <label className="fun-row"><input type="checkbox" data-test="settings-replay" checked={rpl} onChange={(e) => { setReplayEnabled(e.target.checked); setRpl(e.target.checked); }} /><span><b>Table replay</b> <span className="muted small hide-s">Catch up on missed actions, smokes, gags and conversation</span></span></label>
+      {REPLAY_ON && <label className="fun-row"><input type="checkbox" data-test="settings-replay" checked={rpl} onChange={(e) => { setReplayEnabled(e.target.checked); setRpl(e.target.checked); }} /><span><b>Table replay</b> <span className="muted small hide-s">Catch up on missed actions, smokes, gags and conversation</span></span></label>}
       <label className="fun-row"><input type="checkbox" checked={bit} onChange={(e) => { setBitEnabled(e.target.checked); setBit(e.target.checked); }} /><span><b>All-in bust animation</b> <span className="muted small hide-s">When someone shoves and loses, the table gives them a cartoon send-off.</span></span></label>
       <label className="fun-row"><input type="checkbox" data-test="gore" checked={gore} onChange={(e) => { setGoreEnabled(e.target.checked); setGore(e.target.checked); }} /><span><b>Fight gore</b> <span className="muted small">Cartoon blood and Guntrad's finishing moves. Off: a plain knock-out.</span></span></label>
       <label className="fun-row"><input type="checkbox" checked={m.on} onChange={(e) => music.setOn(e.target.checked)} /><span><b>Saloon piano music</b> <span className="muted small">{Math.round(m.vol * 100)}% · change it from the speaker on any table</span></span></label>
