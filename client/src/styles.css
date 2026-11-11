@@ -65,6 +65,8 @@ p { margin: 0; }
 .tabbar { display: none; }
 .legal { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 8px; padding: 5px var(--pad); font: 500 10.5px/1.35 var(--mono); color: var(--mute); border-top: 1px solid var(--line); text-align: center; }
 .legal .toana { color: var(--teal); }
+.legal .toana-door { all: unset; }
+.legal .toana-door:focus-visible { outline: 1px dashed currentColor; outline-offset: 2px; }
 .legal a { color: var(--paper-2); }
 .screen { height: 100%; min-height: 0; padding: 14px var(--pad); display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
 .center-screen { align-items: center; justify-content: center; text-align: center; }
@@ -78,7 +80,7 @@ p { margin: 0; }
   .tabbar .nv.on { background: none; color: var(--amber); box-shadow: inset 0 2px 0 var(--amber); }
   .tabbar .nv svg { width: 20px; height: 20px; }
   .legal { font-size: 9.5px; padding: 3px 8px; }
-  .legal .toana, .legal .dot, .legal .place { display: none; }
+  .legal .dot, .legal .place { display: none; }
   .hide-s { display: none !important; }
   .screen { padding: 10px var(--pad); gap: 8px; }
 }
@@ -585,7 +587,7 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
   .wordmark b { font-size: 21px; }
   .mines-btn { height: 34px; padding: 0 11px; font-size: 11px; letter-spacing: .06em; }
   .acct-chip { height: 34px; }
-  .legal .toana, .legal .dot { display: none; }
+  .legal .dot { display: none; }
 }
 @media (max-width: 400px) { .hide-xs { display: none; } .mines-btn { padding: 0 9px; gap: 5px; } .acct-chip { gap: 4px; padding-right: 7px; } .acct-chip .caret { display: none; } }
 
@@ -799,8 +801,8 @@ input, select { background: rgba(0, 0, 0, .28); }
   .raise-row .btn.small { min-width: 44px; }
   input[type=range] { min-height: 44px; }
   /* text links in the footer and sentences get a taller invisible hit area */
-  .legal a, .legal-links a { position: relative; }
-  .legal a::after, .legal-links a::after { content: ''; position: absolute; left: -6px; right: -6px; top: -14px; bottom: -14px; }
+  .legal a, .legal-links a, .legal .toana-door { position: relative; }
+  .legal a::after, .legal-links a::after, .legal .toana-door::after { content: ''; position: absolute; left: -6px; right: -6px; top: -14px; bottom: -14px; }
 }
 @media (pointer: coarse) and (max-width: 899px) {
   .topbar { height: calc(52px + env(safe-area-inset-top)); }
@@ -812,7 +814,7 @@ input, select { background: rgba(0, 0, 0, .28); }
   .topbar::after { display: none; }
   .screen { padding: 6px var(--pad); gap: 6px; }
   .legal { padding-top: 2px; font-size: 9.5px; }
-  .legal .toana, .legal .dot, .legal .place { display: none; }
+  .legal .dot, .legal .place { display: none; }
   .tabbar { display: none; }
 
   /* lobby: the sign is lovely but costs half the height */

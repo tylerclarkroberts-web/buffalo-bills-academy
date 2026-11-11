@@ -13,6 +13,7 @@ import { Foreman } from './foreman.js';
 import { Barn } from './barn.js';
 import { Shop, SMOKE } from './shop.js';
 import { Fawn } from './fawn.js';
+import { Foff } from './foff.js';
 import { Slots, SLOTS } from './slots/index.js';
 import { Blackjack } from './blackjack/index.js';
 import { Avatars } from './avatars.js';
@@ -57,6 +58,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
   mines.owned = (id) => shop.doc.inv[id]?.own;
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
+  const foff = new Foff({ store: service.store, accounts, shop, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
   barn.styleOf = (id) => shop.bugStyle(id);
   service.shop = shop;
@@ -253,6 +255,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/fawn', needPlayer, wrap((req) => fawn.status(accounts.ensure(req.player))));
   api.post('/fawn/claim', needPlayer, wrap((req) => fawn.claim(accounts.ensure(req.player))));
   api.get('/mines/office', needPlayer, wrap((req) => mines.office(req.player)));
+  api.post('/foff/claim', needPlayer, wrap((req) => foff.claim(accounts.ensure(req.player))));
+  api.post('/foff/quest', needPlayer, wrap((req) => foff.quest(accounts.ensure(req.player), String(req.body?.id || ''))));
   api.post('/mines/nephew', needPlayer, wrap((req) => mines.sendNephew(accounts.ensure(req.player))));
   api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
   api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));
@@ -292,7 +296,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
     mines.forget(p.id);
-    barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id);
+    barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();
     service.forgetPlayer(p.id); // also drops a guest's browser token, so it stops working right away
