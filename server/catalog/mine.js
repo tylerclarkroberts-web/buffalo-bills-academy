@@ -4,6 +4,7 @@
 //   rate   fill-speed multiplier (the fastest one you own counts)
 //   lamp   see farther; deeper shafts are darker
 //   rod    points the way and never leads you to a dry pool or a puddle
+//   nephew works one small shift a day on his own (Mines.sendNephew)
 const item = (x) => ({ ...x, kind: 'mine', cat: 'mine' });
 export const MINE_ITEMS = [
   { id: 'mine-bucket2', name: 'Second Bucket', price: 15000, emoji: '🪣', cap: 200, desc: 'A second bucket. You carry two now. That is the whole invention. Holds 200.' },
@@ -15,6 +16,7 @@ export const MINE_ITEMS = [
   { id: 'mine-shopvac', name: 'Shop-Vac', price: 100000, emoji: '🌪️', rate: 10, desc: 'Fills the bucket ten times as fast. Dale says it is cheating. Dale also owns one.' },
   { id: 'mine-headlamp', name: 'Headlamp Helmet', price: 25000, emoji: '⛑️', lamp: true, desc: 'A helmet with a real flashlight taped to it. You can see down the tunnel. The tunnel can see you.' },
   { id: 'mine-rod', name: 'Dowsing Rod', price: 60000, emoji: '🪄', rod: true, desc: 'A forked stick that points the way to acid and refuses, on principle, to visit a dry hole. Or a puddle. It has standards.' },
+  { id: 'mine-nephew', name: 'The Foreman\'s Nephew', price: 5000, emoji: '🧒', pix: 'nephew', nephew: true, desc: 'Works one shift a day for you, on his own. He is twelve. He is not good at it. The Foreman keeps the hiring fee.' },
   { id: 'mine-permit8', name: 'Shaft 8 Permit', price: 40000, emoji: '🎫', desc: 'Laminated. Lets you ride the elevator to Shaft 8: same as 7, but damper, with pools four times the size.' },
   { id: 'mine-permit12', name: 'Shaft 12 Permit', price: 150000, emoji: '🎟️', desc: 'Shafts 9 through 11 are not discussed. Shaft 12 has pools eight times the size and very little light.' },
   { id: 'mine-permitearl', name: 'Earl\'s Level Permit', price: 500000, emoji: '🗝️', desc: 'Nobody has met Earl. This is his level. The pools are enormous. Wipe your feet.' },

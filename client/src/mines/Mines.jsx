@@ -170,6 +170,27 @@ export default function Mines() {
   );
 }
 
+/** Once a day the Foreman's nephew works a shift for whoever hired him at the General Store. */
+function Nephew({ hired }) {
+  const [state, setState] = useState(hired), [busy, setBusy] = useState(false), [err, setErr] = useState('');
+  const send = async () => {
+    setBusy(true); setErr('');
+    try { setState((await api('POST', '/mines/nephew')).nephew); refreshSession(); } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="m-nephew">
+      {state.ready ? <button className="m-btn ghost" disabled={busy} onClick={send} data-test="nephew-send">[ SEND THE NEPHEW ]</button>
+        : <p className="m-dim" data-test="nephew">THE NEPHEW BROUGHT BACK ${state.today.amount}. {state.today.line}</p>}
+      {state.days > 0 && <details className="m-dim" data-test="nephew-record">
+        <summary>HIS RECORD · {state.days} {state.days === 1 ? 'DAY' : 'DAYS'} · ${state.total.toLocaleString('en-US')}</summary>
+        <p>BEST DAY ${state.best}{state.raise ? ` · RAISE +$${state.raise} A DAY` : ''}</p>
+        <p>{Object.entries(state.tally).map(([name, n]) => `${name} ${n}`).join(' · ')}</p>
+      </details>}
+      {err && <p role="alert">{err}</p>}
+    </div>
+  );
+}
+
 function Intro({ me, loading, onStart, starting, office, open, going, onShaft }) {
   const units = Math.min(office?.capacity || 100, going?.max || 100);
   // Signed out: the sign-in form takes the place of the orientation, so the page still fits one screen.
@@ -205,7 +226,10 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
             {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}</span></button>)}
           </div>}
+          <div className="m-go">
           {loading ? null : me ? <button className="m-btn" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
+          {me && office?.nephew && <Nephew hired={office.nephew} />}
+          </div>
         </section>
         <section className="m-box">
           <h2>&gt; WHAT'S DOWN THERE</h2>

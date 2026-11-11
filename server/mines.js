@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { makeMaze, bucketChain, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
+import { dayKey } from './fawn.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -101,6 +102,18 @@ const CAPACITY = BUCKET_CAPACITY * 1000; // Integer thousandths keep pulse frequ
 const cap = (s) => s.capacity ?? CAPACITY;
 const rate = (s) => s.rate ?? EXTRACTION_RATE;
 
+// The nephew (a General Store hire) works one shift a day by himself and brings back about what a real one pays,
+// once he has some days behind him: a $1 raise for each day worked, up to `raiseCap`. Each line adds to his record.
+export const NEPHEW_PAY = { min: 40, max: 90, raiseCap: 30 };
+const NEPHEW_LINES = [
+  ['HE FOUND A FROG. HE WOULD NOT STOP TALKING ABOUT THE FROG.', 'FROGS'],
+  ['HE SPILLED MOST OF IT ON THE WAY UP. HE SAYS THE BUCKET DID IT.', 'SPILLS'],
+  ['HE MINED FOR ELEVEN MINUTES AND ATE LUNCH FOR THE REST.', 'LUNCHES'],
+  ['HE ASKED THE ACID A LOT OF QUESTIONS. THE ACID DID NOT ANSWER.', 'QUESTIONS'],
+  ['HE CAME BACK WITH ONE SHOE. THE PAY IS FOR THE ACID, NOT THE SHOE.', 'SHOES LOST'],
+  ['THE FOREMAN IS PROUD OF HIM. THE FOREMAN IS THE ONLY ONE.', 'PROUD UNCLES'],
+];
+
 export function poolQuantity(elapsed, veinMs, roll) {
   const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
   // How long the shift has run shifts the odds from dry holes and puddles toward full pools; it never decides the
@@ -154,13 +167,36 @@ export class Mines {
   gear(playerId) {
     const own = this.owned(playerId) || {}; const has = MINE_ITEMS.filter((x) => own[x.id]);
     return { cap: Math.max(BUCKET_CAPACITY, ...has.map((x) => x.cap || 0)), rate: Math.max(1, ...has.map((x) => x.rate || 0)),
-      lamp: has.some((x) => x.lamp), rod: has.some((x) => x.rod), shafts: SHAFTS.filter((s) => !s.permit || own[s.permit]) };
+      lamp: has.some((x) => x.lamp), rod: has.some((x) => x.rod), nephew: has.some((x) => x.nephew), shafts: SHAFTS.filter((s) => !s.permit || own[s.permit]) };
   }
   /** The shift office: what you would clock in with, and every shaft with whether your permit opens it. */
   office(player) {
     const g = this.gear(player.id);
-    return { capacity: g.cap, extractionRate: EXTRACTION_RATE * g.rate, lamp: g.lamp, rod: g.rod,
+    return { capacity: g.cap, extractionRate: EXTRACTION_RATE * g.rate, lamp: g.lamp, rod: g.rod, nephew: this.nephew(player.id),
       shafts: SHAFTS.map((s) => ({ id: s.id, name: s.name, fare: s.fare, max: s.max, open: g.shafts.includes(s) })) };
+  }
+  /** Null unless hired; otherwise whether he can still go down today (the faun's UTC day), what he brought back, and
+   *  his record: days worked, total and best day, the raise he has earned, and a tally of what he did instead of mining. */
+  nephew(playerId) {
+    if (!this.gear(playerId).nephew) return null;
+    const row = this.doc.nephew?.[playerId], days = row?.days || 0, worked = row?.day === dayKey(this.now());
+    return { ready: !worked, today: worked ? { amount: row.amount, line: row.line } : null,
+      days, total: row?.total || 0, best: row?.best || 0, raise: Math.min(NEPHEW_PAY.raiseCap, days), tally: { ...row?.tally } };
+  }
+  /** One small payout a day, fixed by player and day so it cannot be re-rolled. */
+  sendNephew(player) {
+    const state = this.nephew(player.id);
+    if (!state) throw new GameError('The nephew does not work for you. The General Store handles hiring.', 403);
+    if (!state.ready) throw new GameError('The nephew has done his shift for today.', 409);
+    const day = dayKey(this.now()), h = crypto.createHash('sha256').update(`${player.id}:${day}:nephew-v1`).digest();
+    const [line, stat] = NEPHEW_LINES[h[2] % NEPHEW_LINES.length];
+    const amount = NEPHEW_PAY.min + h.readUInt16BE(0) % (NEPHEW_PAY.max - NEPHEW_PAY.min + 1) + state.raise;
+    const row = { day, amount, line, days: state.days + 1, total: state.total + amount, best: Math.max(state.best, amount), tally: { ...state.tally, [stat]: (state.tally[stat] || 0) + 1 } };
+    // Mark the day worked on disk before paying, so a crash can never pay the same day twice.
+    const next = { ...this.doc, nephew: { ...this.doc.nephew, [player.id]: row } };
+    this.store.saveDoc('mines', next); this.doc = next;
+    this.accounts.change(player, row.amount, 'mine', 'Acid Mines: the nephew\'s shift');
+    return { nephew: this.nephew(player.id), bankroll: player.bankroll };
   }
   requireVersion(request) { if (request?.rulesVersion !== 2) throw reloadRequired(); }
   current(player, shiftId) {
@@ -358,8 +394,8 @@ export class Mines {
   }
 
   forget(playerId) {
-    const next = { ...this.doc, active: { ...this.doc.active }, completed: { ...this.doc.completed } };
-    delete next.active[playerId]; delete next.completed[playerId];
+    const next = { ...this.doc, active: { ...this.doc.active }, completed: { ...this.doc.completed }, nephew: { ...this.doc.nephew } };
+    delete next.active[playerId]; delete next.completed[playerId]; delete next.nephew[playerId];
     this.store.saveDoc('mines', next); this.doc = next; this.holds.delete(playerId);
   }
 }
