@@ -8,7 +8,7 @@ One Barn slot holds an egg, living bug or unburied memorial. My Room shows that 
 - At each 24-hour checkpoint since hatching, a living bug earns 10 XP if average needs are at least 25. An active feeder adds 12 XP at that checkpoint, outside the care cap; it gives no immediate XP. Accrual settles when the server next refreshes the pet.
 - Food resets the starvation clock. An automatic feeder keeps Fed full and pauses starvation while active; Mood and Clean still decay. A feeder use adds 14 days, up to 60 days ahead; Golden Ambrosia supplies seven days. Misters, heat lamps and toys do not protect against starvation.
 - By default, death occurs after 21 days without feeding, or 21 days after feeder expiry, with the server's minimum-life grace period. An empty Fed meter alone does not kill a bug. Visiting or reopening the room does not reset these clocks. A memorial occupies the Barn until buried.
-- Buying a consumable does not apply it; **Use** spends it. Toys and gear are permanent equipment. Toys improve active Play rather than supplying passive Mood; equipped battle gear adds at most 6% attack damage. Item-specific amounts and cooldowns are shown in the shop and owned by `server/catalog/bug.js` and `server/shop.js`.
+- Buying a consumable does not apply it; **Use** spends it. Toys and gear are permanent equipment. Toys improve active Play rather than supplying passive Mood; equipped battle gear adds at most 6% attack damage and is drawn on the bug. Item-specific amounts and cooldowns are shown in the shop and owned by `server/catalog/bug.js` and `server/shop.js`.
 
 ## Leveling and moves
 
@@ -24,7 +24,7 @@ Bouts open at **level 3**, once an hour per bug. Post an open bout, or join some
 
 The XP curve is `40 * (level - 1)^2`. Level and combat growth cap at 10; XP can still accumulate. Each level after 3 adds 3 HP and 2% base attack damage. Fight XP affects subsequent bouts, not the bout awarding it.
 
-The basic attack is always available. Save up to two learned specials and a `balanced`, `aggressive` or `defensive` stance. Specials have cooldowns in the user's own turns. The Combat tab describes effects; move names do not grant hidden elemental or flying bonuses. Condition uses the lowest care need, and gear bonuses do not stack. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
+The basic attack is always available. Save up to two learned specials and a `balanced`, `aggressive` or `defensive` stance. Specials have cooldowns in the user's own turns. The Combat tab describes effects; move names do not grant hidden elemental or flying bonuses, and the fighting styles in replays (fliers, hoppers, chargers and so on) are animation only. Condition uses the lowest care need, and gear bonuses do not stack. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
 
 Bugs grow slightly through level 10, with shared size and equipped-art scaling across the Barn, room, shop and bouts. Young forms become adults at level 3 where appropriate; some species retain a similar form. These are stylized life stages, not exact biology. Replays use the historical level/form rather than today's pet.
 
