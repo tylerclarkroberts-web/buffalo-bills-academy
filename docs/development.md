@@ -2,7 +2,7 @@
 
 ## Install and run
 
-Use Node.js 20+ from the repository root:
+Use Node.js 22.12+ from the repository root:
 
 ```sh
 npm ci
@@ -95,12 +95,12 @@ Exercise actual HTTP requests, invalid input and old saved records when changing
 
 Windows temporary-file renames can fail with `EPERM`. Retry with `TEMP` and `TMP` pointing to a writable workspace-local temporary directory excluded from commits. Record the actual rerun result; an environment failure proves neither a code regression nor a passing check.
 
-The latest recorded full run on November 10, 2026 ([PR #33](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/pull/33)) ran **419 tests: 414 passed, 5 failed**. Four failures were Doom's Windows URL-to-path errors (`C:\C:\...`); one was the Slack stale-turn alert assertion. The build passed with two duplicate `data-test` warnings in `client/src/bj/BlackjackPage.jsx`. This is historical evidence, not a current passing result or permission to ignore new failures. Put per-change commands, results and browser evidence in the PR; keep only actionable known limitations here.
+The suite has no known failures: the Doom Windows path errors and the Slack stale-turn timing race recorded in [PR #33](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/pull/33) are fixed. Treat any failure as new. Put per-change commands, results and browser evidence in the PR; keep only actionable known limitations here.
 
 ## Selfie avatar checks
 
 Run `node --test test/avatar-mask.test.js test/selfie-framing.test.js test/cutout-brush.test.js test/head-segmenter.test.js test/avatar-upload.test.js test/facegate.test.js`, then build. Use synthetic or explicitly authorized test photos.
 
-Check camera/upload, framing, automatic removal, manual fallback, brush/keyboard edits, preview, save retry, cancel and page exit. Inspect actual network traffic: the model/runtime must load from this origin and only the finished PNG should upload on save. Original photos, masks and worker input stay local; leaving or successful save clears editing copies. Verify real inference, not just a model download. Preserve model notices and recheck the hash/outbound requests when upgrading; see [Selfie avatars](selfie-avatars.md#model-licensing-and-maintenance).
+Check camera/upload, framing, automatic removal, manual fallback, brush/keyboard edits, preview, save retry, cancel and page exit. Inspect actual network traffic: the model/runtime must load from this origin, only the finished PNG should upload on save, and the only third-party request should be MediaPipe's metrics post to `odml.pa.googleapis.com`. Original photos, masks and worker input stay local; leaving or successful save clears editing copies. Verify real inference, not just a model download. Preserve model notices and recheck the hash/outbound requests when upgrading; see [Selfie avatars](selfie-avatars.md#model-licensing-and-maintenance).
 
 The live deployment setup is outside this public snapshot. Building, pushing or merging does not deploy the site. Follow [Contributing](../CONTRIBUTING.md) for review and separate release coordination.

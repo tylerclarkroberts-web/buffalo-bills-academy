@@ -4,7 +4,7 @@ Play poker and blackjack, mine acid, get yelled at by the Foreman, raise bugs fo
 
 ## Run locally
 
-Requires Node.js 20+ and npm. From the repository root:
+Requires Node.js 22.12+ and npm. From the repository root:
 
 ```sh
 npm ci
