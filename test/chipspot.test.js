@@ -36,3 +36,28 @@ test('with no free spot it reports that and picks the least-covered one', () => 
   assert.equal(at.clear, false);
   assert.ok(Number.isFinite(at.x) && Number.isFinite(at.y));
 });
+
+test('with an inner oval to stay outside of, the chip keeps to the band along the rim', () => {
+  const inner = { rx: felt.rx * 0.8, ry: felt.ry * 0.8 };
+  const at = chipSpot({ from: { x: 175, y: 420 }, chip: { hw: 12, hh: 8 }, blocks: [], felt, outside: inner });
+  assert.ok(at.clear);
+  for (const [x, y] of [[at.x - 12, at.y - 8], [at.x + 12, at.y - 8], [at.x - 12, at.y + 8], [at.x + 12, at.y + 8]]) {
+    assert.ok(((x - felt.cx) / inner.rx) ** 2 + ((y - felt.cy) / inner.ry) ** 2 >= 1, 'no corner past the line');
+  }
+});
+
+test('with a side given, the chip stays on that side of the seat', () => {
+  const seat = rectAt(175, 380, 40, 30);
+  const at = chipSpot({ from: { x: 175, y: 380 }, chip, blocks: [seat], felt, side: { x: 175, y: 380, dx: -1, dy: 0 } });
+  assert.ok(at.clear && at.x <= 175);
+});
+
+test('chip piles: change stays loose, and every chip is counted', async () => {
+  const { chipPiles } = await import('../client/src/util.js');
+  const counts = (n) => chipPiles(n).map((p) => p[1]);
+  assert.deepEqual(counts(525), [5, 9, 7, 3]); // 5×1 + 9×5 + 7×25 + 3×100
+  assert.deepEqual(counts(16), [6, 2]);
+  assert.deepEqual(counts(2), [2]);
+  assert.deepEqual(counts(0), []);
+  assert.ok(chipPiles(1e9).every((p) => p[1] <= 10) && chipPiles(1e9).length <= 8);
+});
