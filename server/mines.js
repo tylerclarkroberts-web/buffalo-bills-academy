@@ -103,9 +103,10 @@ export function poolQuantity(elapsed, veinMs, roll) {
   const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
   // How long the shift has run shifts the odds from dry holes and puddles toward full pools; it never decides the
   // payout. Big finds (80, and the 100-unit gusher: a whole plain bucket from one pool) are possible from the first
-  // pool and common late. The weights hold the old pace (`npm run sim:mines`). The bands are ordered so the lowest
+  // pool and common late, and puddles are unlikely by then. The weights run about a tenth quicker than the first
+  // bucket rules (`npm run sim:mines`): there is more in the store to save up for. The bands are ordered so the lowest
   // roll is always dry and the highest always a 60.
-  const early = [7, 66, 19, 4, 1, 1, 2], mature = [1, 22, 25, 22, 8, 10, 12], amounts = [0, 10, 20, 35, 80, 100, 60];
+  const early = [7, 66, 19, 4, 1, 1, 2], mature = [1, 6, 22, 28, 8, 10, 25], amounts = [0, 10, 20, 35, 80, 100, 60];
   let remaining = roll / 1000;
   for (let i = 0; i < amounts.length; i++) {
     remaining -= early[i] + (mature[i] - early[i]) * p;
