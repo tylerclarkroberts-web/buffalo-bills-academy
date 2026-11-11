@@ -253,6 +253,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/fawn', needPlayer, wrap((req) => fawn.status(accounts.ensure(req.player))));
   api.post('/fawn/claim', needPlayer, wrap((req) => fawn.claim(accounts.ensure(req.player))));
   api.get('/mines/office', needPlayer, wrap((req) => mines.office(req.player)));
+  api.post('/mines/nephew', needPlayer, wrap((req) => mines.sendNephew(accounts.ensure(req.player))));
   api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
   api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));

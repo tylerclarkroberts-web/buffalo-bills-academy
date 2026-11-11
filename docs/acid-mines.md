@@ -17,6 +17,7 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 | Buckets (Second Bucket to Golden Bucket) | Capacity of 200, 400, 600, 800 or 1,000 units; the largest owned counts. |
 | Bendy Straw, Shop-Vac | Collection is 2 or 10 times the base five units per second; the fastest owned counts. |
 | Headlamp Helmet | Longer lamp and fog distance. This is drawn by the browser only. |
+| The Foreman's Nephew | `POST /api/mines/nephew` once a UTC day (the faun's day) pays the owner $40 to $90, fixed by player and day, plus $1 for each day he has already worked (up to $30). His record (days, total, best day and a tally of what he did instead) is kept in `mines.json`. It is not a shift: no shift count, history or mining earnings. |
 | Dowsing Rod | An arrow along the shortest walk to the current pool, and a pool that would resolve dry or as a 10-unit puddle holds 20 units instead. |
 
 | Shaft | Permit | Deposits | Most a bucket brings up | Fare | Cave-in per pool |
@@ -41,6 +42,7 @@ All endpoints require the signed-in player. New shifts use `rulesVersion: 2`; ex
 | Request | Contract |
 | --- | --- |
 | `GET /api/mines/office` | The player's capacity, extraction rate, lamp and rod, and every shaft with `fare`, `max` and whether a permit opens it. |
+| `POST /api/mines/nephew` | Send the hired nephew down for the day: 403 if not hired, 409 if he has already gone. `office` reports `nephew` (`ready`, `today`, `days`, `total`, `best`, `raise`, `tally`), or `null` when not hired. |
 | `POST /api/mines/start` | Send `{"rulesVersion":2}` to start, resume or recover a result. Optional `shaft` (`"7"`, `"8"`, `"12"`, `"earl"`; default Shaft 7) is used only for a new shift: 403 without the permit, 402 without the fare. Include `afterShiftId` to acknowledge a displayed completed result and start another shift. |
 | `POST /api/mines/probe` | Send `rulesVersion`, `shiftId`, `poolId`. Inspect the current deposit once; repeats return saved state. |
 | `POST /api/mines/extract` | Send those identifiers plus `action: "start"`, `"continue"` or `"stop"`. The server calculates collection; never send quantity or pay. |
