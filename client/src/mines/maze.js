@@ -129,6 +129,34 @@ function poolChain(maze, seed, k, bucket) {
   return chain;
 }
 
+/** Things left in the tunnels, and how often a shift has each. Rolled separately, so a shift can have none or several. */
+export const FINDS = [
+  { id: 'hat', chance: 0.3 }, { id: 'cart', chance: 0.25 }, { id: 'sign', chance: 0.2 }, { id: 'art', chance: 0.18 },
+  { id: 'cage', chance: 0.15 }, { id: 'exit', chance: 0.12 }, { id: 'chair', chance: 0.1 }, { id: 'bones', chance: 0.07 },
+];
+/**
+ * Which finds this shift has and the wall each one sits against. Seeded and client-only, like the maze: scenery,
+ * nothing the server pays for. Corners, junctions and dead ends only (beams stand in the straight runs), away from
+ * the start and off any tile in `avoid` (pools, the egg).
+ */
+export function findSpots(maze, seed, avoid = []) {
+  const r = rng((seed ^ 0xf1d5) >>> 0);
+  const picked = FINDS.filter((f) => r() < f.chance); // every roll first, so placing one never shifts another's odds
+  const { grid, dist, size } = maze, no = new Set(avoid.filter(Boolean).map((p) => `${p.x},${p.y}`));
+  const spots = [];
+  for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) {
+    if (grid[y][x] || dist[y][x] < 3 || no.has(`${x},${y}`)) continue;
+    const walls = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => grid[y + dy][x + dx]);
+    const straight = walls.length === 2 && walls[0][0] === -walls[1][0] && walls[0][1] === -walls[1][1];
+    if (walls.length && !straight) spots.push({ x, y, walls });
+  }
+  return picked.flatMap((f) => {
+    if (!spots.length) return [];
+    const [s] = spots.splice(Math.floor(r() * spots.length), 1), [dx, dy] = s.walls[Math.floor(r() * s.walls.length)];
+    return [{ id: f.id, x: s.x, y: s.y, dx, dy }];
+  });
+}
+
 /**
  * v30: where this shift's egg lies (only when the server said the shift has one). A tunnel tile 2 to 5 steps from
  * the start, tucked against a wall so it never blocks the way. Purely where to draw it: the server decided whether

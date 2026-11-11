@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { rng, distFrom, pathSteps } from './maze.js';
 import { MIN_GAP } from './stalker.js';
+import { buildFind } from './finds.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -365,6 +366,14 @@ export class MineScene {
     const light = new THREE.PointLight('#ffd890', 2.4, 3.4); light.position.set(0, 0.8, 0); g.add(light);
     g.position.set((spot.x + spot.ox) * TILE, 0, (spot.y + spot.oy) * TILE);
     this.scene.add(g); this.egg = { group: g, mesh, light, gone: 0, goneAt: 0 };
+  }
+  /** Things other people left down here (see finds.js), each against the wall its spot names. Scenery: no collision. */
+  addFinds(spots) {
+    for (const s of spots) {
+      const g = buildFind(s.id, canvasTex); if (!g) continue;
+      g.position.set((s.x + s.dx / 2) * TILE, 0, (s.y + s.dy / 2) * TILE); g.rotation.y = Math.atan2(-s.dx, -s.dy);
+      g.name = `mine-find-${s.id}`; this.scene.add(g);
+    }
   }
   eggView() {
     if (!this.egg || this.egg.gone) return { dist: 99, facing: -1 };
