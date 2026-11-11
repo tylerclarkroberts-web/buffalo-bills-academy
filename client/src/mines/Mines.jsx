@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { makeMaze, rng, veinChain, eggSpot, rodHeading, FIRST_POOL_STEPS } from './maze.js';
+import { makeMaze, rng, veinChain, eggSpot, rodHeading, geigerBars, FIRST_POOL_STEPS } from './maze.js';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
@@ -268,7 +268,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const closing = useRef(false);
   const [near, setNear] = useState(false);
   const [rod, setRod] = useState(null); // dowsing rod: eighths of a turn toward the current pool
-  const [dist, setDist] = useState(99);
+  const [bars, setBars] = useState(1);
   const [legacyProgress, setProgress] = useState(0);
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
@@ -366,7 +366,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     window.focus();
   };
   useEffect(() => {
-    let lastNear = false, lastD = 99;
+    let lastNear = false, lastBars = 1;
     const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (bucketShift) {
       client.current = createMiningClient({
@@ -399,13 +399,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     const scene = new MineScene(canvas.current, maze, {
-      onNear: (d) => {
+      onNear: (d, path) => {
         const at = d < MINE_REACH;
         if (at && !vein.current.flowing) askVein();
         const n = at && vein.current.flowing && !done.current;
         if (n) stalker.acidFound();
         if (n !== lastNear) { lastNear = n; setNear(n); if (!n) release(); }
-        if (Math.abs(d - lastD) > 0.4) { lastD = d; setDist(d); }
+        const b = geigerBars(path);
+        if (b !== lastBars) { lastBars = b; setBars(b); }
       },
       stalker, localStart: shift.localStart, reduceMotion: reduce,
       fogFar: [17, 13, 10, 8][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 9, 7.5, 6.5][dark],
@@ -497,13 +498,13 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     return () => clearTimeout(id);
   }, [visitor, audio]);
 
-  // geiger clicks: faster as you get closer
+  // geiger clicks: one rate per bar (1400 ms at one bar down to 90 ms at ten), so walking doesn't keep restarting the timer
   useEffect(() => {
     if (!audio) return;
-    const ms = Math.max(90, Math.min(1400, dist * 90));
-    const id = setInterval(() => { if (!doomRef.current) audio.tick(dist < MINE_REACH ? 1.4 : 0.8); }, ms);
+    const ms = Math.round(1400 * (90 / 1400) ** ((bars - 1) / 9));
+    const id = setInterval(() => { if (!doomRef.current) audio.tick(bars === 10 ? 1.4 : 0.8); }, ms);
     return () => clearInterval(id);
-  }, [dist, audio]);
+  }, [bars, audio]);
 
   useEffect(() => {
     const s = sceneRef.current; if (s) s.mining = holding && near && !mineError && !clockingOut;
@@ -544,7 +545,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div></div>
       <div className="m-hud tr">
-        <div className={`geiger ${dist < 4 ? 'hot' : dist < 9 ? 'warm' : ''}`}>ACID {'▮'.repeat(Math.max(1, Math.min(10, Math.round(11 - dist))))}{'▯'.repeat(Math.max(0, 10 - Math.max(1, Math.min(10, Math.round(11 - dist)))))}</div>
+        <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
         {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
           <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}</span>

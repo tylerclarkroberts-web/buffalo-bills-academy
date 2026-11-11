@@ -1,6 +1,6 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
-import { rng } from './maze.js';
+import { rng, distFrom, pathSteps } from './maze.js';
 import { MIN_GAP } from './stalker.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
@@ -410,6 +410,13 @@ export class MineScene {
     if (p) cancelAnimationFrame(this.raf); else { this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); }
   }
   distanceToPool() { return this.deposits && !this.hasPoolTarget ? 99 : Math.hypot(this.pos.x - this.poolPos.x, this.pos.y - this.poolPos.z); }
+  /** Tiles to walk to the current pool through the tunnels: what the geiger reads. Reach stays straight-line (distanceToPool). */
+  pathToPool() {
+    if (this.deposits && !this.hasPoolTarget) return 99;
+    const x = Math.round(this.poolPos.x / TILE), y = Math.round(this.poolPos.z / TILE), key = `${x},${y}`;
+    if (this.poolDistKey !== key) { this.poolDistKey = key; this.poolDist = distFrom(this.maze.grid, x, y); }
+    return pathSteps(this.poolDist, this.pos.x / TILE, this.pos.y / TILE);
+  }
   loop(now) {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
@@ -443,7 +450,7 @@ export class MineScene {
       if (d.position.y < 0) { u.v = 0; u.wait = 0.6 + Math.random() * 3; d.position.y = WALL_H; }
     }
     this.stepEgg(now);
-    this.onNear?.(this.distanceToPool());
+    this.onNear?.(this.distanceToPool(), this.pathToPool());
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   }

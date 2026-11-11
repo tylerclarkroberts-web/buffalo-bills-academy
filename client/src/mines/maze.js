@@ -74,6 +74,20 @@ export function rodHeading(grid, from, to, yaw) {
   return (Math.round(Math.atan2(right, ahead) / (Math.PI / 4)) + 8) % 8;
 }
 
+/** Tiles to walk from a point (fractional tile coords) to wherever `d` was measured from: via this tile or an open neighbour, never through rock. */
+export function pathSteps(d, fx, fy) {
+  const x = Math.round(fx), y = Math.round(fy);
+  let best = Infinity;
+  for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const s = d[y + dy]?.[x + dx];
+    if (s >= 0) best = Math.min(best, Math.hypot(fx - x - dx, fy - y - dy) + s);
+  }
+  return best;
+}
+/** Geiger bars (1-10) for a walk of `steps` tiles. Square-root scale: readable from across the mine, fine-grained up close; 10 means in reach. */
+export function geigerBars(steps, far = 48) {
+  return Math.max(1, Math.round(10 - 9 * Math.sqrt(Math.min(1, Math.max(0, steps - 0.85) / far))));
+}
 /** First pool's walking distance by maze size: a bigger mine starts you farther from the first glow. */
 export const FIRST_POOL_STEPS = { 7: 26, 9: 42, 11: 60 };
 /**
