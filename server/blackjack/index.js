@@ -3,6 +3,7 @@
 // you leave or the game ends. A human house stakes a bank from their bankroll at the start and gets back whatever is
 // left. Guntrad's bank is unlimited (it never touches anyone's bankroll).
 import crypto from 'node:crypto';
+import { cents } from '../accounts.js';
 import { GameError } from '../engine/game.js';
 import { newTable, viewFor, royalInfo, RULE_TEXT, cleanSettings, tableEdge } from './table.js';
 import { edgeReport, ruleOptions, royalMaxPay, guntradProblems, MAIN_FLOOR, ROYAL_FLOOR, ACK, MIX, EDGE_TABLE } from './edge.js';
@@ -18,8 +19,20 @@ export class Blackjack {
   constructor({ store, accounts, getPlayer, now, rng = cryptoRng, tickMs = 1000, avatars = null }) {
     Object.assign(this, { store, accounts, getPlayer, now, rng, avatars });
     this.doc = store.loadDoc('blackjack', { tables: {} }); this.doc.tables ||= {};
+    if (!this.doc.earnings) {
+      this.doc.earnings = {};
+      // Older tables reused seats without a ledger, so only their surviving cash-outs can be recovered.
+      this.doc.earningsSince = Object.keys(this.doc.tables).length ? now() : null;
+      for (const t of Object.values(this.doc.tables)) {
+        for (const s of t.seats) if (s?.left && !s.bot && Number.isFinite(s.cashedOut) && Number.isFinite(s.startChips)) this.recordEarnings(s.id, s.cashedOut - s.startChips);
+        if (t.paidOut && t.house.mode === 'player' && t.house.id && !t.house.staked && t.house.startBank > 0) this.recordEarnings(t.house.id, t.house.bank - t.house.startBank);
+      }
+      if (this.doc.earningsSince != null) this.save();
+    }
     if (tickMs) { this.timer = setInterval(() => this.tick(), tickMs); this.timer.unref?.(); }
   }
+  recordEarnings(pid, net) { this.doc.earnings[pid] = cents((this.doc.earnings[pid] || 0) + net); }
+  earnings(pid) { return { net: this.doc.earnings[pid] || 0, partial: this.doc.earningsSince != null && !(this.getPlayer(pid)?.createdAt > this.doc.earningsSince) }; }
   save() { this.store.saveDoc('blackjack', this.doc); }
   table(code) { const t = this.doc.tables[String(code || '').toUpperCase()]; if (!t) throw new GameError('No blackjack table with that code.', 404); return t; }
   mutate(t, actorId, fn) { const r = fn(); this.settleMoney(t); this.save(); this.changed(t, actorId); return r; }
@@ -43,12 +56,15 @@ export class Blackjack {
     if (t.house.mode === 'player' && t.house.id && t.house.staked) {
       const p = this.getPlayer(t.house.id);
       if (p && t.house.bank > 0) this.accounts.change(p, t.house.bank, 'blackjack', `Blackjack: house bank back (${t.code})`);
+      this.recordEarnings(t.house.id, t.house.bank - t.house.startBank);
       t.house.staked = false;
     }
   }
   cashOut(t, s) {
+    if (s.left) return;
     const p = this.getPlayer(s.id); s.left = true;
     if (p && s.chips > 0) this.accounts.change(p, s.chips, 'blackjack', `Blackjack cash-out (${t.code})`);
+    this.recordEarnings(s.id, s.chips - s.startChips);
     s.cashedOut = s.chips; s.chips = 0;
   }
 
