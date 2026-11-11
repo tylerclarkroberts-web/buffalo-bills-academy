@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { VeinTracker, MINE_REACH, LEAVE_REACH, AWAY_POLL_MS } from '../client/src/mines/vein.js';
-import { makeMaze, veinChain, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, veinChain, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { createApp } from '../server/app.js';
 
 const chain = [{ x: 5, y: 5 }, { x: 9, y: 1 }, { x: 1, y: 9 }];

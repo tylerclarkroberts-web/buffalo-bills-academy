@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { distFrom, pathSteps, geigerBars } from '../client/src/mines/maze.js';
+import { distFrom, pathSteps, geigerBars } from '../server/engine/maze.js';
 
 test('the geiger measures the walk, not the wall', () => {
   // A U-shaped tunnel: the pool is two tiles away through rock, six by foot.

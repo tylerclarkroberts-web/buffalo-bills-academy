@@ -1,6 +1,6 @@
 // Who plays, and on what. Holes are original layouts in yards (see golf-sim.js for the coordinates); the real
 // courses only lend their names, their trees and, at Pacific Grove, their ocean.
-import { rng } from '../mines/maze.js';
+import { rng } from '../../../server/engine/maze.js';
 export const KEETCH = { id: 'keetch', name: 'Keetch', look: { hair: '#d8481c', shirt: '#2f6fb0', pants: '#e3d9b4' }, ball: '#ffffff' };
 export const OBAMA = { hair: '#8a8a8a', skin: '#8d5a3b', shirt: '#1c2233', pants: '#1c2233', tie: '#2f6fb0' };
 

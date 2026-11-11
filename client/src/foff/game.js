@@ -9,7 +9,7 @@ import { BOOST, CLUBS, DT, aiStroke, angleTo, foeApply, foeSwing, applyShot, dis
 import { H, SWEET, W, WILD, camFor, drawAim, drawBall, drawGolfer, drawHole, drawMark, drawMeter, drawSwing, drawPinPointer, drawWind, paintHole, toScreen, toWorld } from './draw.js';
 import { sfx } from './sfx.js';
 import { makeSayer } from '../guntrad-core.js';
-import { rng } from '../mines/maze.js';
+import { rng } from '../../../server/engine/maze.js';
 
 const UP = 1, SWAY = 1.6;     // meter speeds: power in bars a second, the needle in half-widths a second
 /** How far off line a needle position sends it: nothing inside the gold, 1 (a full miss) at WILD, a shank beyond. */

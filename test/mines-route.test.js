@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeMaze, bucketChain, veinChain, distFrom, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, bucketChain, veinChain, distFrom, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 
 test('bucket routes are repeatable, distinct, reachable, and retain the first deposit', () => {
   for (const cells of [7, 9, 11]) for (let seed = 0; seed < 80; seed++) {

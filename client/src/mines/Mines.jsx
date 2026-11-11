@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { makeMaze, rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, FIRST_POOL_STEPS } from './maze.js';
+import { makeMaze, rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, FIRST_POOL_STEPS } from '../../../server/engine/maze.js';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 

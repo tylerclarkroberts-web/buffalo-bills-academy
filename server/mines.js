@@ -1,7 +1,7 @@
 // The Acid Mines: the only faucet in the closed economy. The server decides every payout.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { makeMaze, bucketChain, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, bucketChain, FIRST_POOL_STEPS } from './engine/maze.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
 
