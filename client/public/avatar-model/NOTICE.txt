@@ -1,12 +1,12 @@
 Selfie avatar background removal
 
-MediaPipe Tasks Vision 0.10.35
+MediaPipe Tasks Vision 1.2.2
 Copyright 2022 The MediaPipe Authors.
 Copyright 2023 The MediaPipe Authors.
 Licensed under the Apache License, Version 2.0. See LICENSE.txt.
 Upstream source: https://github.com/google-ai-edge/mediapipe
-Pinned package: https://www.npmjs.com/package/@mediapipe/tasks-vision/v/0.10.35
-Package metadata: https://registry.npmjs.org/@mediapipe/tasks-vision/0.10.35
+Pinned package: https://www.npmjs.com/package/@mediapipe/tasks-vision/v/1.2.2
+Package metadata: https://registry.npmjs.org/@mediapipe/tasks-vision/1.2.2
 The matching WebAssembly runtime and loader are emitted from this npm package
 by Vite. They are unmodified upstream assets.
 

@@ -433,7 +433,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     res.set('cache-control', 'public, max-age=86400').type('png').send(buf);
   });
   // The dealer: a low-poly cut-out made from a photo Tyler supplied. Only the low-poly version is deployed.
-  const dealerPath = dealerFile || path.join(path.dirname(new URL(import.meta.url).pathname), 'assets', 'dealer.png');
+  const dealerPath = dealerFile || path.join(import.meta.dirname, 'assets', 'dealer.png');
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
 
   mountConquest({ app, api, conquest, auth, wrap });
@@ -464,7 +464,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       res.end(hit.gz);
     });
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
-    app.get('*', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+    app.get('/{*splat}', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }

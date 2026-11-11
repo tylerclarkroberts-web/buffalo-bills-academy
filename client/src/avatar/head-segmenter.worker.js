@@ -1,4 +1,4 @@
-import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
+import { ImageSegmenter } from '@mediapipe/tasks-vision';
 import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_module_internal.js?url';
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_module_internal.wasm?url';
 import { segmentationAlpha } from './segmentation-mask.js';
@@ -6,7 +6,6 @@ import { segmentationAlpha } from './segmentation-mask.js';
 self.onmessage = async ({ data: { pixels, width, height } }) => {
   let segmenter;
   try {
-    if (!await FilesetResolver.isSimdSupported()) throw new Error('Unsupported browser');
     segmenter = await ImageSegmenter.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
       canvas: new OffscreenCanvas(1, 1),
       baseOptions: { modelAssetPath: new URL('/avatar-model/selfie_multiclass_256x256-v1.tflite', self.location.origin).href, delegate: 'CPU' },
