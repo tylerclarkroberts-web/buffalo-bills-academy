@@ -242,6 +242,62 @@ function oddity(id) {
       const paper = mesh(group, new THREE.PlaneGeometry(0.49, 0.29), new THREE.MeshBasicMaterial({ map: notes }), 0, 0.077, 0.2); paper.rotation.x = -Math.PI / 2;
       break;
     }
+    case 'odd-jackolantern': {
+      mesh(group, new THREE.SphereGeometry(0.24, 10, 8), material('#e07a28'), 0, 0.2).scale.set(1.15, 0.8, 1);
+      cylinder(group, 0.03, 0.045, 0.1, '#5a7a30', 0, 0.42, 0, 6);
+      const glow = new THREE.MeshBasicMaterial({ color: '#ffd860' });
+      for (const side of [-1, 1]) mesh(group, new THREE.CircleGeometry(0.05, 3), glow, side * 0.09, 0.25, 0.225).rotation.z = Math.PI / 2;
+      mesh(group, new THREE.BoxGeometry(0.2, 0.04, 0.02), glow, 0, 0.14, 0.225);
+      break;
+    }
+    case 'odd-ghost': {
+      cylinder(group, 0.2, 0.28, 0.6, '#f1eee4', 0, 0.3, 0, 10);
+      mesh(group, new THREE.SphereGeometry(0.2, 10, 8), material('#f1eee4'), 0, 0.6);
+      for (const side of [-1, 1]) {
+        mesh(group, new THREE.CircleGeometry(0.035, 8), material('#2a2430'), side * 0.07, 0.63, 0.19);
+        // Nobody is under it. The boots are.
+        box(group, 0.1, 0.07, 0.2, '#5c4028', side * 0.1, 0.035, 0.33);
+      }
+      break;
+    }
+    case 'odd-cornucopia': {
+      mesh(group, new THREE.ConeGeometry(0.17, 0.5, 10), material('#b07a3a'), -0.02, 0.17).rotation.z = Math.PI / 2;
+      for (const [r, color, x, z] of [[0.08, '#e07a28', 0.3, 0.05], [0.06, '#d8c040', 0.38, -0.08], [0.065, '#7a9a3a', 0.26, -0.1]]) mesh(group, new THREE.SphereGeometry(r, 8, 6), material(color), x, r, z);
+      box(group, 0.08, 0.004, 0.16, '#f6f1e2', 0.34, 0.004, 0.2).rotation.y = 0.3; // the receipt
+      break;
+    }
+    case 'odd-turkey': {
+      mesh(group, new THREE.SphereGeometry(0.22, 10, 8), material('#7a4a2a'), 0, 0.34).scale.set(1.25, 0.9, 1);
+      mesh(group, new THREE.CircleGeometry(0.3, 10, 0, Math.PI), material('#b8552a', { side: THREE.DoubleSide }), -0.24, 0.36).rotation.y = Math.PI / 2;
+      cylinder(group, 0.04, 0.05, 0.22, '#8a5a36', 0.24, 0.52, 0, 6);
+      mesh(group, new THREE.SphereGeometry(0.07, 8, 6), material('#8a5a36'), 0.26, 0.66);
+      mesh(group, new THREE.ConeGeometry(0.025, 0.08, 5), material('#e8b030'), 0.35, 0.65).rotation.z = -Math.PI / 2;
+      box(group, 0.025, 0.07, 0.025, '#c03030', 0.31, 0.59);
+      for (const side of [-1, 1]) cylinder(group, 0.012, 0.012, 0.16, '#e8b030', 0.03, 0.08, side * 0.08, 5);
+      break;
+    }
+    case 'odd-stocking': {
+      box(group, 0.2, 0.42, 0.06, '#b8362e', 0, 0.5, 0.03);
+      box(group, 0.34, 0.16, 0.06, '#b8362e', 0.07, 0.26, 0.03);
+      box(group, 0.24, 0.1, 0.075, '#f1eee4', 0, 0.74, 0.03);
+      mesh(group, new THREE.DodecahedronGeometry(0.07, 0), material('#2a2a30'), 0.02, 0.8, 0.03); // Shaft 7 coal
+      break;
+    }
+    case 'odd-tumbletree': {
+      cylinder(group, 0.14, 0.11, 0.14, '#8a5a36', 0, 0.07, 0, 8);
+      mesh(group, new THREE.IcosahedronGeometry(0.3, 1), material('#a08454', { wireframe: true }), 0, 0.44);
+      mesh(group, new THREE.IcosahedronGeometry(0.19, 0), material('#6e5a34'), 0, 0.44);
+      const lights = new THREE.InstancedMesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial(), 10);
+      for (let i = 0; i < 10; i++) {
+        const y = 1 - (2 * (i + 0.5)) / 10, r = Math.sqrt(1 - y * y), turn = i * 2.4;
+        lights.setMatrixAt(i, new THREE.Matrix4().makeTranslation(Math.cos(turn) * r * 0.3, 0.44 + y * 0.3, Math.sin(turn) * r * 0.3));
+        lights.setColorAt(i, new THREE.Color(['#e0483c', '#f0c840', '#4a8ad8', '#58b060'][i % 4]));
+      }
+      group.add(lights);
+      mesh(group, new THREE.OctahedronGeometry(0.07), material('#f0d040'), 0, 0.8);
+      group.scale.setScalar(1.3);
+      break;
+    }
   }
   return group;
 }
