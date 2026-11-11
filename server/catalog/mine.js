@@ -21,10 +21,11 @@ export const MINE_ITEMS = [
 ].map(item);
 
 /** Shafts in elevator order. `scale` multiplies every deposit, `max` is the most a bucket can bring up from there,
- *  `fare` is charged at clock-in and never refunded. Shaft 7 is free and stays exactly what it always was. */
+ *  `fare` is charged at clock-in and never refunded, `caveIn` is the percent chance that reaching a pool brings the
+ *  roof down. Shaft 7 is free, safe, and stays exactly what it always was. */
 export const SHAFTS = [
   { id: '7', name: 'SHAFT 7', scale: 1, max: 100, fare: 0, dark: 0 },
-  { id: '8', name: 'SHAFT 8', scale: 4, max: 400, fare: 40, dark: 1, permit: 'mine-permit8' },
-  { id: '12', name: 'SHAFT 12', scale: 8, max: 800, fare: 80, dark: 2, permit: 'mine-permit12' },
-  { id: 'earl', name: 'EARL\'S LEVEL', scale: 10, max: 1000, fare: 100, dark: 3, permit: 'mine-permitearl' },
+  { id: '8', name: 'SHAFT 8', scale: 4, max: 400, fare: 40, dark: 1, caveIn: 4, permit: 'mine-permit8' },
+  { id: '12', name: 'SHAFT 12', scale: 8, max: 800, fare: 80, dark: 2, caveIn: 7, permit: 'mine-permit12' },
+  { id: 'earl', name: 'EARL\'S LEVEL', scale: 10, max: 1000, fare: 100, dark: 3, caveIn: 10, permit: 'mine-permitearl' },
 ];

@@ -90,6 +90,8 @@ export function rollVein(randInt = (n) => crypto.randomInt(n)) {
   return { veinMs: ms, cells };
 }
 export const MAX_SHIFT_MS = 30 * 60 * 1000;
+/** A cave-in in a permit shaft knocks this share of what is in the bucket onto the floor. */
+export const CAVE_IN_SPILL = 0.25;
 const MAX_SHIFTS_PER_HOUR = 120;
 export const BUCKET_CAPACITY = 100;
 export const EXTRACTION_RATE = 5;
@@ -126,7 +128,7 @@ function reloadRequired() {
 }
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman, owned }) {
+  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, caveInt, vein, barn, foreman, owned }) {
     this.owned = owned || (() => ({})); // player id -> General Store items they own (wired to the shop in app.js)
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
@@ -137,6 +139,7 @@ export class Mines {
     this.veinInt = veinInt || ((n) => crypto.randomInt(n));
     this.vein = vein || (() => rollVein(this.veinInt)); // tests can pin it
     this.poolInt = poolInt || ((n) => crypto.randomInt(n));
+    this.caveInt = caveInt || ((n) => crypto.randomInt(n)); // cave-ins have their own source too: they never see the payout roll
     this.doc = store.loadDoc('mines', { active: {} });
     this.holds = new Map(); // Never resume a held button after a disconnect or restart.
   }
@@ -203,7 +206,8 @@ export class Mines {
     Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, scale: shaft.scale, capacity: Math.min(gear.cap, shaft.max) * 1000, rate: EXTRACTION_RATE * gear.rate,
       ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}), collected: 0, index: 0, outcome: rollOutcome(this.randInt),
       readyAt: now + Math.max(MIN_SHIFT_MS, poolTravelMs(chain.legs[0], true)),
-      pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null })) });
+      pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null,
+        ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn ? { cave: true } : {}) })) }); // decided now, sprung on arrival
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay, vein and visitor never see it
     // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
@@ -214,7 +218,7 @@ export class Mines {
   }
   publicShift(s, resumed) {
     return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}),
-      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
+      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
 
@@ -242,6 +246,10 @@ export class Mines {
       const scale = 1000 * (cur.scale || 1); // deeper shafts: the same deposits, several times the size
       let quantity = poolQuantity(this.now() - cur.startedAt, cur.veinMs, pool.roll) * scale;
       if (cur.rod) quantity = Math.max(quantity, 20 * scale); // the dowsing rod never walks you to a dry hole or a puddle
+      if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the last pool still tops the bucket up
+        const lost = Math.floor(next.collected * CAVE_IN_SPILL);
+        next.collected -= lost; next.spill = { poolId: pool.id, lost };
+      }
       if (i === next.pools.length - 1) quantity = Math.max(quantity, cap(next) - next.collected);
       pool.quantity = pool.remaining = quantity;
       this.advance(next, this.now()); this.commit(player.id, next);
