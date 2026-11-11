@@ -91,8 +91,8 @@ export class Rooms {
   view(player, own) {
     const saved = this.saved(player.id);
     const currentWorth = this.netWorth(player);
-    const worth = Object.fromEntries(['bankroll', 'chips', 'holdings', 'riskEscrow', 'total']
-      .filter(key => Number.isFinite(currentWorth[key])).map(key => [key, currentWorth[key]]));
+    const worth = Object.fromEntries(['bankroll', 'chips', 'holdings', 'riskEscrow', 'barnEscrow', 'total']
+      .filter(key => (own || key !== 'barnEscrow') && Number.isFinite(currentWorth[key])).map(key => [key, currentWorth[key]]));
     const out = {
       owner: { id: player.id, name: player.name, avatar: this.avatars.info(player) },
       layoutRevision: saved.layoutRevision, themeId: saved.themeId,

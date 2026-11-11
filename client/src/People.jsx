@@ -43,7 +43,7 @@ export function Profile({ id }) {
   if (p.txns) tabs.push(['money', 'Money']);
   if (self && me) tabs.push(['alerts', 'Settings'], ['account', 'Account']);
   const stats = [
-    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables${w.riskEscrow ? ` · ${money(w.riskEscrow)} Risk stakes` : ''}`],
+    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables${w.riskEscrow ? ` · ${money(w.riskEscrow)} Risk stakes` : ''}${w.barnEscrow ? ` · ${money(w.barnEscrow)} Barn stakes` : ''}`],
     ['Bankroll', money(w.bankroll), 'Spendable play money'],
     ['Poker, lifetime', money(pk.lifetimeNet, { sign: true }), `${pk.gamesPlayed ?? pk.games.length} game${(pk.gamesPlayed ?? pk.games.length) === 1 ? '' : 's'}`, cls(pk.lifetimeNet)],
     ['Hands played', chips(pk.handsPlayed), `${chips(pk.handsWon)} won`],

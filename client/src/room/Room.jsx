@@ -401,7 +401,7 @@ export default function Room({ id }) {
         {selection.kind === 'wealth' && <>
           <p className="room-worth num">{money(display.worth?.total)}</p>
           <p className="small muted">{Number.isInteger(display.wealthStage) ? WEALTH[display.wealthStage] : 'A decorative tray'} · play money only</p>
-          <dl className="room-money">{[['bankroll', 'Cash'], ['chips', 'Chips at tables'], ['holdings', 'Investments'], ['riskEscrow', 'Risk stakes']].map(([key, name]) => <div key={key}><dt>{name}</dt><dd className="num">{money(display.worth?.[key])}</dd></div>)}</dl>
+          <dl className="room-money">{[['bankroll', 'Cash'], ['chips', 'Chips at tables'], ['holdings', 'Investments'], ['riskEscrow', 'Risk stakes'], ...(display.worth?.barnEscrow ? [['barnEscrow', 'Barn stakes']] : [])].map(([key, name]) => <div key={key}><dt>{name}</dt><dd className="num">{money(display.worth?.[key])}</dd></div>)}</dl>
         </>}
         {selection.kind === 'collection' && <>
           <div className="room-spots">{anchors.map((anchor) => { const item = ROOM_ITEM[display.placements.find((p) => p.anchorId === anchor.id)?.itemId]; return <button className="room-spot" key={anchor.id} onClick={() => setSelection({ kind: 'anchor', anchorId: anchor.id })}>{item && <PixIcon pix={item.pix} size={32} />}<span>{anchor.label}<small>{item?.name || 'Empty spot'}</small></span></button>; })}</div>

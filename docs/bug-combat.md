@@ -1,87 +1,72 @@
-# Bug combat and progression
+# Barn care and combat
 
-The Barn's **Combat** tab opens fights at **level 3**. Choose a fighting style and up to two learned special moves, save the setup, then start a bout. The basic attack is always available. The server resolves the fight automatically; you can watch the result or skip its animation. Fights never wager money or harm your pet outside the bout.
+One Barn slot holds an egg, living bug or unburied memorial. My Room shows that same pet; it does not create another one or provide passive care. The server owns needs, clocks, progression and fight results.
 
-Every new fight you start awards **20 XP**, for a win, loss or draw. This is separate from the [120 care XP/day limit](bug-store-items.md#xp-and-the-daily-care-limit), with no daily fight-XP cap. The one-hour cooldown still applies. Watching or skipping a replay gives no additional XP. Being chosen as another player's opponent gives you no XP and does not change your record.
+## XP and the daily care limit
+
+- Free care in the Barn or My Room and store consumables share **120 care XP per UTC day**, resetting at 00:00 UTC. Free care and food give up to 12 XP; misters and heat lamps give up to 6. Once capped, care still improves needs and consumables are still spent.
+- At each 24-hour checkpoint since hatching, a living bug earns 10 XP if average needs are at least 25. An active feeder adds 12 XP at that checkpoint, outside the care cap; it gives no immediate XP. Accrual settles when the server next refreshes the pet.
+- Food resets the starvation clock. An automatic feeder keeps Fed full and pauses starvation while active; Mood and Clean still decay. A feeder use adds 14 days, up to 60 days ahead; Golden Ambrosia supplies seven days. Misters, heat lamps and toys do not protect against starvation.
+- By default, death occurs after 21 days without feeding, or 21 days after feeder expiry, with the server's minimum-life grace period. An empty Fed meter alone does not kill a bug. Visiting or reopening the room does not reset these clocks. A memorial occupies the Barn until buried.
+- Buying a consumable does not apply it; **Use** spends it. Toys and gear are permanent equipment. Toys improve active Play rather than supplying passive Mood; equipped battle gear adds at most 6% attack damage. Item-specific amounts and cooldowns are shown in the shop and owned by `server/catalog/bug.js` and `server/shop.js`.
 
 ## Leveling and moves
 
-| Level | Total XP | New move |
+Bouts open at **level 3**, once an hour per bug. Post an open bout, or join someone else's; there is no automatic opponent or level matching. Both players earn **20 XP**, win, lose or draw, outside the care cap, and both records update. Watching a replay gives no XP or money. Fights cannot injure the pet outside the bout. Five wins earn the title **Barn Menace**.
+
+| Level | Total XP | Unlock |
 | --- | ---: | --- |
-| 3 | 160 | Basic attack; bouts open. |
-| 4 | 360 | First technique. |
-| 6 | 1,000 | Species special. |
-| 8 | 1,960 | Alternative special. |
-| 10 | 3,240 | Capstone special. |
+| 3 | 160 | Basic attack and bouts |
+| 4 | 360 | Technique |
+| 6 | 1,000 | Species special |
+| 8 | 1,960 | Alternative special |
+| 10 | 3,240 | Capstone |
 
-Each bug has five named moves. The basic attack stays available and you can equip up to two of the four specials. At level 8 there are more learned specials than slots, so you can choose different combinations. A default setup is provided; deliberately saving fewer than two specials is also allowed. The move descriptions show what each effect does and how long its cooldown lasts.
+The XP curve is `40 * (level - 1)^2`. Level and combat growth cap at 10; XP can still accumulate. Each level after 3 adds 3 HP and 2% base attack damage. Fight XP affects subsequent bouts, not the bout awarding it.
 
-From level 3 onward, each level adds three maximum HP and 2% base attack damage. A level-3 bug has 100 HP; a level-10 bug has 121 HP and +14% base attack damage before species, condition, equipment and style effects. Levels 5, 7 and 9 therefore still improve strength. These health values belong only to a fight, not the pet's care meters or starvation clock.
+The basic attack is always available. Save up to two learned specials and a `balanced`, `aggressive` or `defensive` stance. Specials have cooldowns in the user's own turns. The Combat tab describes effects; move names do not grant hidden elemental or flying bonuses. Condition uses the lowest care need, and gear bonuses do not stack. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
 
-The XP curve is unchanged: total XP for a level is `40 * (level - 1)^2`. Each next level costs 80 XP more than the preceding step: 3→4 needs 200 XP, and 9→10 needs 680 XP. Level and combat growth stop at **10**; earned XP continues accumulating and is shown at the cap. XP from a bout affects subsequent fights, not the fight that awarded it.
+Bugs grow slightly through level 10, with shared size and equipped-art scaling across the Barn, room, shop and bouts. Young forms become adults at level 3 where appropriate; some species retain a similar form. These are stylized life stages, not exact biology. Replays use the historical level/form rather than today's pet.
 
-Bugs also grow a little at every level: a level-1 hatchling uses 77.5% of the full-size drawing scale, gaining 2.5 percentage points per level until full size at level 10. Equipped accessories grow with the body in the Barn, room terrarium, store previews and bouts. Replay size and form follow the level recorded when that fight happened. This visual growth adds no extra combat bonus beyond the level stats above and needs no new saved data.
+## Open bouts and stakes
 
-Young forms follow the species' development:
+- A stake is **$0–$10,000 in play money**, in whole cents. Posting holds the host's stake. Joining pays the same stake and resolves the fight immediately; the winner receives the whole pot. A draw refunds both stakes. There are no spectator bets or house fees.
+- One listing per player. The host can cancel for a full refund. Listings expire after one hour and are refunded when the Barn next checks them; a missing, dead or replaced host bug also invalidates the listing. Posting and cancelling award no XP and start no fight cooldown.
+- The board shows the host's bug, level, condition, gear and combat setup before joining. The host's fighter is captured when posted; the joining bug is captured when joining. Care or gear changes do not change an already-posted fighter. Cancel before changing its combat setup or joining a different bout.
+- Held stakes remain part of net worth. Cancel an open bout before deleting the account. The open board is visible to signed-in players, while wallets, payout receipts and private care history remain private.
 
-- Thirteen beetles start as curled grubs, legless weevil grubs, elongated wood-borers or segmented crawlers; the two lacewings start as wingless, jawed larvae. They change to their adult artwork at level 3.
-- The Snail-case Caddisfly starts in its coiled larval case and becomes a winged caddisfly at level 3.
-- True bugs, mantises and the Jungle Nymph use smaller versions of their existing artwork, reflecting nymph development.
-- The Railroad Worm retains its glowing segmented form: adult females are larviform.
+## Fight invariants and compatibility
 
-These are stylized life stages, not exact species/instar reconstructions. The level-3 change compresses the pupal interval; growth after that represents game progression. The shapes use broad family characteristics, with palette and equipped cosmetics retained. The distinction follows [Australian Museum's metamorphosis guide](https://australian.museum/learn/animals/insects/metamorphosis-a-remarkable-change/); larval shapes follow [University of Kentucky's identification guide](https://entomology.mgcafe.uky.edu/ef017). The caddisfly's adult wings and the Railroad Worm exception follow [NC State](https://genent.cals.ncsu.edu/insect-identification/order-trichoptera/) and [University of Florida](https://ask.ifas.ufl.edu/publication/in609). Sagra's grub shape is a family-level inference from [Sagrinae larval research](https://www.biotaxa.org/Zootaxa/article/view/zootaxa.4686.4.5/57084), not a verified reconstruction of that species.
-
-## Species strengths and move effects
-
-Species have different attack, defense and speed ratings, plus different move combinations. Attack changes direct damage, defense reduces ordinary hits, and speed affects the opening turn and evasion. All three care needs contribute to condition; the lowest need sets that small combat bonus. Equipped bug gear adds at most 6% attack damage.
-
-There is no elemental type chart or automatic flying-versus-ground bonus. Move names alone do not imply a hidden advantage; the Combat tab describes the actual effect:
-
-| Effect | What it does |
-| --- | --- |
-| Guard | Attack and halve the next incoming attack. Venom bypasses guard. |
-| Venom | On hit, deal damage at the start of the target's next two turns, bypassing armor and guard. It does not stack. |
-| Pierce | Ignore armor and half of the target's guard; stance protection still applies. |
-| Heal | Recover HP instead of attacking, only at 65% HP or lower. |
-| Weaken | On hit, reduce the target's next attack by 35%. It does not stack. |
-
-For example, the Two-spotted Assassin Bug has high attack and lower defense/speed, with venom and piercing moves. A guard can soften a direct hit, but cannot prevent venom damage. Guard and weakening are spent on the next attack even if it misses; healing and venom ticks do not consume them. Specials have cooldowns measured in the user's own turns, shown beside each move.
-
-Balanced stance rotates available specials in the saved order. Aggressive prioritizes piercing and venom and deals/takes 8% more direct damage. Defensive prioritizes healing and guarding and deals/takes 8% less direct damage. Healing and venom ticks do not receive stance damage modifiers. These are tradeoffs, not guaranteed winning builds.
-
-## Opponents and replay
-
-The server chooses another living bug within one level of yours, with at least level 3. If none is available, a stray at your level takes its place. The opponent's current species, level, condition, gear and saved setup are captured when the fight starts. Replays show that historical fight rather than recalculating it with current settings.
-
-Fights stop after a knockout or 32 alternating actions. If both bugs are still standing, the higher remaining percentage of maximum HP wins; equal percentages draw. Venom can add an event before an action, so a replay may contain more than 32 events.
-
-Changing a setup takes effect after **Save setup**. Unsaved choices must be saved or discarded before fighting. Cooldowns and locked-move checks are enforced on the server; the browser cannot choose the winner or the XP award.
-
-## Compatibility and privacy
-
-Existing pets keep their XP, names, species, needs, items and win/loss/draw records. Moves previously learned under the old level-1/3/5 schedule remain available, even if their revised normal unlock is later. New pets use the level-3/4/6/8/10 schedule. This can temporarily give an older low-level bug access to a move a new bug has not learned yet; both still use the same two-special limit.
-
-Old saved replays remain watchable with their original 100-HP presentation and receive no retroactive XP. New replays store their initial maximum HP, move events, XP award and before/after levels. A replay can expose the opponent's fighting style and equipped moves as part of that bout. A room visitor still receives only the existing pet appearance/level projection, not private care history, saved battle setup or replay.
+- Both bugs must be alive, at least level 3 and off their one-hour fight cooldown when joining. Any two eligible levels may fight; the board shows the difference before players commit.
+- A fight ends at knockout or 32 alternating actions. Surviving bugs compare remaining HP percentages; equal percentages draw. Venom events can make a replay longer than 32 events.
+- Existing bugs retain previously learned moves from the old level-1/3/5 schedule, even before the revised unlock level. The two-special limit still applies.
+- Old replays retain their original 100-HP presentation and earn no retroactive XP. New replays include maximum HP, moves, the XP award and before/after levels. Opponent stance and equipped moves may be visible in the replay; room visitors do not receive battle setup, replay or private care history.
 
 ## API and persistence
 
-All Barn routes require the existing authenticated player/session or supported legacy bearer token. They act on that player's pet; a request cannot nominate another owner.
+Barn routes require the existing session or supported legacy bearer token and operate on that player's pet; requests cannot nominate another owner.
 
-- `GET /api/barn` returns the current pen and server time. A live creature now includes five `abilities` with stable IDs, unlock flags and descriptions, `battle`, `combat`, `arenaLevel: 3` and `boutXp: 20`. Reading a pen can settle ordinary passive bonuses but never issues fight rewards.
-- `PATCH /api/barn/battle` saves a fighting style and at most two unlocked special IDs. Both fields are required; unknown fields, duplicate IDs, the basic move, unknown moves and locked moves return 400. Missing/unhatched/dead pets return 409. The response is the updated Barn view.
-- `POST /api/barn/bout` creates and persists a new fight and its 20-XP award together. There is no client-supplied reward or result. Empty barns return 404, eggs/dead/below-level-3 pets return 409, and an active cooldown returns 429. Successful responses include `pen.lastBout` with `version: 2`, `maxHp`, `xpEarned`, `levelBefore`, `levelAfter`, the participants, rounds and result.
+| Route | Contract |
+| --- | --- |
+| `GET /api/barn` | Current pen, board, own open bout, bankroll and server time. Reads settle passive bonuses, expired refunds and any already-committed fight receipt; they never start fights. |
+| `PATCH /api/barn/battle` | Save both `stance` and `specials`; reject unknown fields, duplicates, basic/unknown/locked moves or more than two specials (400), and missing/unhatched/dead pets (409). |
+| `POST /api/barn/bouts` | `{ "stake": 25 }` posts an open bout. Invalid amount/extra fields: 400; insufficient funds: 402; empty Barn: 404; egg/dead/below-level-3 or another open stake: 409; cooldown: 429. Reposting the same open stake returns the existing listing. |
+| `POST /api/barn/bouts/:id/join` | Empty body. Accept the posted stake and resolve for both players. Unavailable/self/own open bout: 409; insufficient funds: 402. A participant retry returns the saved result without another payout or XP award. |
+| `DELETE /api/barn/bouts/:id` | Cancel your own open bout and refund. Another player's listing: 404. Retrying the most recent cancellation is harmless. |
+| `POST /api/barn/bout` | Retired automatic matchmaking endpoint; returns 409 directing the caller to the board. |
 
-Example setup, once its moves are learned:
+Example setup, once those moves are learned:
 
 ```json
-{
-  "stance": "balanced",
-  "specials": ["technique", "signature"]
-}
+{ "stance": "balanced", "specials": ["technique", "signature"] }
 ```
 
-Valid styles are `balanced`, `aggressive` and `defensive`. Special IDs are `technique`, `signature`, `tactic` and `capstone`; `basic` cannot occupy a special slot. An empty `specials` array keeps only the basic attack.
+Special IDs are `technique`, `signature`, `tactic` and `capstone`; an empty array keeps only the basic attack. The response is the updated Barn view.
 
-The existing `barn.json` document stores optional `battle`, `combatVersion` and `legacyAbilities` fields on creature records, plus the expanded `lastBout`. No database or new environment variable is required. Setup and bout commits persist before replacing the in-memory pen; a failed write does not consume the new fight's cooldown or participation XP. Passive accrual before the attempt is independent. Repeated submissions inside the hour are rejected by the existing server cooldown, and replay is read-only.
+`barn.json` retains the pet's optional `battle`, `combatVersion` and `legacyAbilities` fields and `lastBout`. Version-2 bouts include `maxHp`, `xpEarned`, `levelBefore` and `levelAfter`. Version-3 bouts add the bout ID, stake, payout and net result, with rounds oriented to each participant. Old replays still work.
 
-See [Development and troubleshooting](development.md) for local validation and deployment limitations.
+`players.json` stores `barnBouts.open` with the held stake and fighter snapshot. On joining, both wallets, transaction logs and `barnBouts.lastBout` reward receipts commit together through `commitPlayerDrafts`. Only then does each pet receive XP, its record entry, cooldown and replay. `barn.json` saves `settledBoutId` with those changes; refreshing after a failed pet write or restart applies a pending receipt exactly once. The receipt is tied to that bug's birth time and is not applied to a replacement pet. A player must catch up before entering another fight, so the latest receipt suffices. A failed wallet write leaves the listing and wallets unchanged. Preserve **both files** for backup/restore; do not roll back to code that ignores held stakes or reward receipts.
+
+## Checks
+
+Use the focused Barn/combat/API tests when changing these rules; see [Development](development.md). Check two-player joining, refunds, duplicate joins, failed writes, receipt recovery and legacy pets/replays. Browser checks should cover locked moves, posting/joining/cancelling, stale listings, save failures and replay without duplicate rewards. Pure tests do not establish device rendering or exhaustive game balance.
