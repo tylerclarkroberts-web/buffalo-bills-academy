@@ -197,7 +197,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const gamesFor = (pid, publicOnly = false) => service.store.allTables().filter((t) => t.ledger[pid] && (!publicOnly || t.visibility === 'public')).map((t) => {
     const l = t.ledger[pid];
     const i = t.seats.findIndex((s) => s && s.playerId === pid);
-    const onTable = i >= 0 ? t.seats[i].stack + (t.hand?.players?.[i]?.total || 0) : 0;
+    const hp = t.hand?.players?.[i];
+    const onTable = i >= 0 ? t.seats[i].stack + (hp?.playerId === pid ? (hp.total || 0) + (t.hand.blinds?.[i] || 0) : 0) : 0;
     return { code: t.code, name: t.name, status: t.status, economy: !!t.econ, buyIn: l.buyIn, cashOut: l.cashOut, onTable, net: onTable + l.cashOut - l.buyIn, createdAt: t.createdAt, hands: t.handNumber };
   }).sort((a, b) => b.createdAt - a.createdAt);
   const profile = (p, { self }) => {
@@ -225,15 +226,33 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     return profile(p, { self: req.player?.id === p.id });
   }));
   api.get('/leaderboard', wrap(async (req) => {
+    const sort = req.query.sort ?? 'wealth';
+    const direction = req.query.direction ?? 'desc';
+    if (!['wealth', 'earnings', 'mining', 'poker', 'blackjack', 'slots', 'investing'].includes(sort) || !['asc', 'desc'].includes(direction)) {
+      throw new GameError('Choose a leaderboard category and sort direction.', 400);
+    }
     await market.quotes().catch(() => null); // refresh prices (cached 60s)
     const rows = Object.values(service.store.players)
       .filter((p) => !p.hidden && typeof p.bankroll === 'number' && (googleOn ? (p.google || p.login) : true))
       .map((p) => {
         const { riskEscrow: _privateRiskEscrow, ...worth } = netWorth(p);
-        return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...worth, hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 };
+        const blackjack = bj.earnings(p.id);
+        const slotLife = slots.doc.players[p.id]?.life;
+        const earnings = {
+          mining: p.mining?.earned || 0,
+          poker: cents(gamesFor(p.id).filter((g) => g.economy).reduce((sum, g) => sum + g.net, 0)),
+          blackjack: blackjack.net,
+          slots: cents((slotLife?.won || 0) - (slotLife?.wagered || 0)),
+          investing: p.invest?.realized || 0,
+        };
+        earnings.total = cents(Object.values(earnings).reduce((sum, value) => sum + value, 0));
+        return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...worth, earnings, blackjackPartial: blackjack.partial, hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 };
       })
-      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn };
+      .sort((a, b) => {
+        const value = (r) => sort === 'wealth' ? r.total : r.earnings[sort === 'earnings' ? 'total' : sort];
+        return (direction === 'asc' ? 1 : -1) * (value(a) - value(b)) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+      });
+    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction };
   }));
 
   // ----- Acid Mines -----
