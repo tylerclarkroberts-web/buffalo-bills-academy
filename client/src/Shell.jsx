@@ -123,7 +123,8 @@ export function Shell({ path, children }) {
       </header>
       <main id="main" className="stage">{children}<Fawn /></main>
       <footer className="legal">
-        <span className="toana hide-s">{TOANA}</span><span className="dot hide-s">·</span>
+        {/* The course name is a door. It is not supposed to look like one. */}
+        <span className="toana">{TOANA.split('Toana Vista')[0]}<button type="button" className="toana-door" onClick={() => navigate('/foff')}>Toana Vista</button>.</span><span className="dot hide-s">·</span>
         <span>Play money only. Not affiliated with any casino, resort or golf course.</span>
         <span><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></span>
       </footer>
