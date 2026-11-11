@@ -60,18 +60,23 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
   box(parent, w + 0.12, h + 0.12, 0.08, '#805c30', 0, 0.45, 0);
   box(parent, w + 0.04, h + 0.04, 0.09, '#c39b52', 0, 0.45, 0.01);
   const map = paintedTexture(512, Math.round(512 * h / w), (ctx, width, height) => {
-    const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' ? '#345d80' : '#76572d';
+    const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' ? '#345d80' : pix === 'charter' ? '#5a2f2a' : '#76572d';
     ctx.fillStyle = pix === 'railroad' ? '#e5e8ce' : '#efe0b7'; ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = ink; ctx.lineWidth = 5; ctx.strokeRect(14, 14, width - 28, height - 28);
     ctx.lineWidth = 1; ctx.strokeRect(24, 24, width - 48, height - 48);
     ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.font = 'bold 28px Georgia';
-    ctx.fillText({ deed: 'DEED TO THE MOON', sheriffbadge: 'FISHING LICENCE', railroad: 'RAILROAD SHARE' }[pix], width / 2, 68);
-    ctx.font = '15px Georgia'; ctx.fillText({ deed: 'LUNAR LAND REGISTRY', sheriffbadge: 'TERRITORY ANGLING OFFICE', railroad: 'GREAT BASIN & PACIFIC' }[pix], width / 2, 94);
+    ctx.fillText({ deed: 'DEED TO THE MOON', sheriffbadge: 'FISHING LICENCE', railroad: 'RAILROAD SHARE', charter: 'FOUNDING CHARTER' }[pix], width / 2, 68);
+    ctx.font = '15px Georgia'; ctx.fillText({ deed: 'LUNAR LAND REGISTRY', sheriffbadge: 'TERRITORY ANGLING OFFICE', railroad: 'GREAT BASIN & PACIFIC', charter: 'EST. EVENTUALLY' }[pix], width / 2, 94);
     const cy = height * 0.47;
     if (pix === 'deed') {
       ctx.fillStyle = '#cfb96f'; ctx.beginPath(); ctx.arc(256, cy, 55, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#b39a56';
       for (const [x, y, r] of [[238, -20, 11], [278, 12, 16], [241, 27, 7]]) { ctx.beginPath(); ctx.arc(x, cy + y, r, 0, Math.PI * 2); ctx.fill(); }
+    } else if (pix === 'charter') {
+      // Three clauses nobody finished, Bill's signature, and the witness's hoofprint.
+      for (const [y, w] of [[-60, 300], [-36, 330], [-12, 190]]) ctx.fillRect((width - w) / 2, cy + y, w, 4);
+      ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(120, cy + 45); ctx.bezierCurveTo(160, cy, 190, cy + 80, 240, cy + 35); ctx.stroke();
+      ctx.beginPath(); ctx.arc(360, cy + 38, 24, Math.PI * 0.85, Math.PI * 2.15); ctx.lineWidth = 11; ctx.stroke();
     } else if (pix === 'sheriffbadge') {
       ctx.beginPath(); ctx.ellipse(250, cy, 68, 25, 0, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.moveTo(300, cy); ctx.lineTo(345, cy - 31); ctx.lineTo(345, cy + 31); ctx.closePath(); ctx.fill();
@@ -82,13 +87,30 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
       ctx.fillStyle = '#e5e8ce'; ctx.fillRect(279, cy - 43, 26, 22);
     }
     ctx.fillStyle = ink; ctx.font = '18px Georgia';
-    ctx.fillText({ deed: 'One very impressive acre.', sheriffbadge: 'Valid for the season of 1887.', railroad: 'One share. No railroad.' }[pix], width / 2, height * 0.72);
+    ctx.fillText({ deed: 'One very impressive acre.', sheriffbadge: 'Valid for the season of 1887.', railroad: 'One share. No railroad.', charter: 'Witnessed by a horse.' }[pix], width / 2, height * 0.72);
     ctx.font = 'italic 15px Georgia'; ctx.fillText('Buffalo Bill\'s Academy', width / 2, height * 0.8);
     ctx.fillStyle = '#9d3935'; ctx.beginPath(); ctx.arc(width - 69, height - 66, 25, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#edcf8a'; ctx.font = 'bold 13px Georgia'; ctx.fillText(pix === 'deed' ? 'SEAL' : 'VOID', width - 69, height - 61);
+    ctx.fillStyle = '#edcf8a'; ctx.font = 'bold 13px Georgia'; ctx.fillText(pix === 'deed' || pix === 'charter' ? 'SEAL' : 'VOID', width - 69, height - 61);
     ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = '13px Georgia'; ctx.fillText('No. 000001', 43, height - 43);
   });
   mesh(parent, new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map }), 0, 0.45, 0.06);
+}
+/** Delivered with the deed: tied to a yard fence post so it does not wander off again. */
+function moon() {
+  const group = new THREE.Group(); group.name = 'the-moon';
+  const S = ROOM_FLOOR_SCALE, post = new THREE.Vector3(6.35 * S, 0.78, -2.9 * S), centre = new THREE.Vector3(6.35 * S + 0.5, 3.1, -2.9 * S - 0.7);
+  const geometry = new THREE.IcosahedronGeometry(1.15, 1).toNonIndexed(), colors = [];
+  for (let i = 0; i < geometry.attributes.position.count; i++) {
+    const face = Math.floor(i / 3), color = new THREE.Color(face % 7 === 3 || face % 11 === 5 ? '#b9b39f' : '#ece7d2').multiplyScalar(0.92 + (face % 4) * 0.027);
+    colors.push(color.r, color.g, color.b);
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  mesh(group, geometry, material('#ffffff', { vertexColors: true }), centre.x, centre.y, centre.z);
+  const rope = centre.clone().sub(post), length = rope.length() - 1.1;
+  const line = cylinder(group, 0.018, 0.018, length, '#b99a62', 0, 0, 0, 5);
+  line.position.copy(post).addScaledVector(rope.clone().normalize(), length / 2);
+  line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rope.normalize());
+  return group;
 }
 function oddity(id) {
   const group = new THREE.Group(); group.name = id;
@@ -96,6 +118,26 @@ function oddity(id) {
     case 'odd-deed': frame(group, 'deed'); break;
     case 'odd-sheriffbadge': frame(group, 'sheriffbadge', 0.9, 0.65); break;
     case 'odd-railroad': frame(group, 'railroad', 0.9, 0.7); break;
+    case 'odd-charter': frame(group, 'charter', 0.75, 0.9); break;
+    case 'odd-skull': {
+      box(group, 0.7, 0.84, 0.04, '#5c4028', 0, 0.45, -0.03);
+      mesh(group, new THREE.SphereGeometry(0.2, 10, 8), material('#e8dfc8'), 0, 0.55, 0.07).scale.set(1, 1.05, 0.55);
+      cylinder(group, 0.13, 0.065, 0.36, '#ded3b8', 0, 0.27, 0.06, 8).scale.z = 0.6;
+      for (const side of [-1, 1]) {
+        mesh(group, new THREE.ConeGeometry(0.05, 0.34, 6), material('#cfc3a4'), side * 0.3, 0.66, 0.05).rotation.z = side * -1.05;
+        mesh(group, new THREE.CircleGeometry(0.045, 8), material('#3a2c2c'), side * 0.085, 0.53, 0.182);
+      }
+      break;
+    }
+    case 'odd-pickaxe': {
+      // Stuck in a rock, awaiting a rightful swinger. It has been pulled out several times. It is put back.
+      const stone = mesh(group, new THREE.DodecahedronGeometry(0.36, 0), material('#77797f'), 0, 0.2); stone.scale.set(1.2, 0.6, 0.9);
+      const tool = new THREE.Group(); tool.position.set(0.05, 0.26, 0); tool.rotation.z = 0.2; group.add(tool);
+      cylinder(tool, 0.03, 0.035, 0.9, '#8a5a2c', 0, 0.45, 0, 8);
+      box(tool, 0.14, 0.1, 0.09, '#e8c040', 0, 0.88);
+      for (const side of [-1, 1]) mesh(tool, new THREE.ConeGeometry(0.05, 0.34, 6), material('#e8c040'), side * 0.22, 0.86).rotation.z = side * -1.75;
+      break;
+    }
     case 'odd-horseshoe': {
       box(group, 0.8, 0.86, 0.04, '#5c4028', 0, 0.42, -0.03); box(group, 0.7, 0.76, 0.045, '#7d5a38', 0, 0.42, -0.028);
       const arc = mesh(group, new THREE.TorusGeometry(0.24, 0.055, 6, 16, Math.PI), material('#b5a77f'), 0, 0.35, 0);
@@ -760,6 +802,7 @@ export class RoomScene {
       const size = anchorId === 'window' ? [2.8, 2.25, 2.05] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : [1.25, shelf ? 0.22 : 0.9, 0.8];
       this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId }, rotation);
     }
+    if (view.placements?.some(place => place.itemId === 'odd-deed')) this.dynamic.add(moon());
     this.pet(view.pet);
     this.resident(view.owner, generation);
     this.wealth(view.wealthStage);

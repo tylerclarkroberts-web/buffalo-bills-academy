@@ -85,6 +85,7 @@ export default function Store() {
   };
   const owned = cur ? v.own[cur.id] || 0 : 0;
   const wearing = cur && cur.slot && v.eq[cur.slot] === cur.id;
+  const takenBy = cur && !owned ? v.taken?.[cur.id] : null; // one of a kind, and somebody else got there first
   return (
     <div className="screen store" data-test="store">
       <div className="store-wrap panel">
@@ -104,7 +105,7 @@ export default function Store() {
                 <span className="sc-pic"><Thumb x={x} me={me} eqWear={eqWear} pen={pen} size={64} fit={fits} /></span>
                 <span className="sc-name">{x.name}</span>
                 {x.adult && <span className="sc-adult" title={v.tobaccoNotice}>18+</span>}
-                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : money(x.price)}</span>
+                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : money(x.price)}</span>
               </button>
             ))}
           </div>
@@ -123,10 +124,11 @@ export default function Store() {
                 <h2>{cur.name}</h2>
                 <p className="sd-price"><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span>{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
-                {cur.kind === 'absurd' && <p className="small muted">Room decoration · no gameplay bonus.</p>}
+                {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}Room decoration · no gameplay bonus.</p>}
+                {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
                   {owned && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
-                  {(!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
+                  {!takenBy && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
                   {owned && FITTABLE(cur) ? <button className={`btn ${fitOpen ? '' : 'ghost'}`} onClick={() => setFitOpen(!fitOpen)} aria-pressed={fitOpen} data-test="store-fit">{fitOpen ? 'Done' : 'Adjust fit'}</button> : null}
