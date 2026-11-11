@@ -1,5 +1,6 @@
 // Barn bouts (v31): replays a bout the server already decided (pen.lastBout). Nothing here can change the result.
 import React, { useEffect, useRef, useState } from 'react';
+import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { drawBug } from './sprite.js';
 import { voice, sfx } from './sfx.js';
@@ -71,6 +72,7 @@ export default function Bout({ bout, replay = false, reduced, onClose }) {
   const hp = step ? bout.rounds[step - 1].hp : maxHp;
   const line = step ? bout.rounds[step - 1].line : `${bout.you.name} squares up to ${bout.them.name}.`;
   const verdict = { won: `${bout.you.name} wins! A ribbon for the stall.`, lost: `${bout.them.name} wins. ${bout.you.name} will sulk about it.`, draw: 'A draw. Both of them claim victory.' }[bout.result];
+  const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
   return (
     <dialog ref={dialog} className="bout" data-test="bout" data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Barn bout replay' : 'Barn bout'} onCancel={(e) => { e.preventDefault(); onClose(); }}>
       <div className="bout-top">
@@ -83,7 +85,7 @@ export default function Bout({ bout, replay = false, reduced, onClose }) {
         ))}
       </div>
       <div className="bout-ring"><canvas ref={ref} className="barn-canvas" data-test="bout-canvas" /></div>
-      <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <><b>{verdict}</b>{bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP. Replaying adds no XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}</> : line}</div>
+      <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <><b>{verdict}</b>{bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}{bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}{replay && <p className="small muted">Replay only. No extra XP or money.</p>}</> : line}</div>
       <div className="bout-acts">
         {!done && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
         {done && <button ref={closeButton} className="btn small" onClick={onClose} data-test="bout-close">Back to the stall</button>}

@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
+import { xpFor } from '../server/engine/creatures.js';
 import { defaultShelves, roomFinishes, defaultWallDisplays, defaultFurniture, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
 // The couch is put away where a test needs the open back-left wall.
+const visitorWorth = ({ barnEscrow: _privateStake, ...worth }) => worth;
 const noCouch = () => ({ ...defaultFurniture(), couch: { ...defaultFurniture().couch, off: true } });
 
 async function fixture(t) {
@@ -50,7 +52,7 @@ test('room endpoints allow signed-in visits immediately and distinguish legacy g
   const roomVisit = await visitor.api('GET', `/api/players/${owner.id}/room`);
   assert.equal(roomVisit.status, 200);
   assert.equal(roomVisit.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(roomVisit.body.worth, mine.body.worth);
+  assert.deepEqual(roomVisit.body.worth, visitorWorth(mine.body.worth));
   const legacy = await anon('POST', '/api/players', { name: 'Guest' });
   assert.equal(legacy.status, 200);
   const guest = client({ authorization: `Bearer ${legacy.body.token}` });
@@ -79,7 +81,7 @@ test('visitors receive displayed possessions and exact worth without unrelated p
   assert.equal((await visitor.api('GET', `/api/players/${owner.id}/profile`)).body.roomVisitAvailable, true);
   assert.equal((await anon('GET', `/api/players/${owner.id}/profile`)).body.roomVisitAvailable, false);
   assert.equal(visit.body.wealthStage, 2);
-  assert.deepEqual(visit.body.worth, (await owner.api('GET', '/api/me')).body.worth);
+  assert.deepEqual(visit.body.worth, visitorWorth((await owner.api('GET', '/api/me')).body.worth));
   const next = await owner.api('PATCH', '/api/room/layout', { ...layout, expectedRevision: 1, placements: [] });
   assert.equal(next.status, 200);
   assert.equal((await visitor.api('GET', `/api/players/${owner.id}/room`)).status, 200);
@@ -192,7 +194,24 @@ test('the wealth display follows total worth when wallet money moves to poker ch
   assert.equal(after.total, before.total);
   const visit = (await visitor.api('GET', `/api/players/${owner.id}/room`)).body;
   assert.equal(visit.wealthStage, 2);
-  assert.deepEqual(visit.worth, after, 'visitor amounts refresh from the authoritative balances');
+  assert.deepEqual(visit.worth, visitorWorth(after), 'visitor amounts refresh from the authoritative balances');
+});
+
+test('held bout stakes preserve room worth while the stake breakdown stays owner-only', async t => {
+  const { service, owner, visitor } = await fixture(t);
+  const barn = service.barn;
+  barn.layEgg(owner.id);
+  barn.doc.pens[owner.id].hatchAt = service.now() - 1;
+  barn.view(owner.id); barn.doc.pens[owner.id].xp = xpFor(3); barn.save();
+  const opened = await owner.api('POST', '/api/barn/bouts', { stake: 100 });
+  assert.equal(opened.status, 200, JSON.stringify(opened.body));
+  const mine = (await owner.api('GET', '/api/room')).body;
+  const visit = (await visitor.api('GET', `/api/players/${owner.id}/room`)).body;
+  assert.equal(mine.worth.bankroll, 900); assert.equal(mine.worth.barnEscrow, 100);
+  assert.equal(mine.worth.total, 1000); assert.equal(visit.worth.total, 1000);
+  assert.equal(Object.hasOwn(visit.worth, 'barnEscrow'), false);
+  assert.deepEqual(visit.worth, visitorWorth(mine.worth));
+  assert.equal(visit.wealthStage, mine.wealthStage);
 });
 
 test('deleted and hidden players have no visitable room or remaining saved room record', async t => {

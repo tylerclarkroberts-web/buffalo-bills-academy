@@ -104,3 +104,47 @@ test('levels without a new move still improve combat strength', () => {
   }
   assert.ok(score / 600 > 0.5 && score / 600 < 0.8, `adjacent-level score ${score / 600}`);
 });
+
+test('only piercing capstones advertise the 5% critical chance', () => {
+  for (const bug of ROSTER) for (const move of movesFor(bug.id, 10)) {
+    const eligible = move.id === 'capstone' && move.effect === 'pierce';
+    assert.equal(move.criticalChance, eligible ? 0.05 : undefined);
+    assert.equal(move.description.includes('5% chance'), eligible);
+    if (eligible) assert.equal(movesFor(bug.id, 9).find(m => m.id === move.id).unlocked, false);
+  }
+});
+
+test('rare seeded criticals leave 1 HP, keep normal knockouts and never heal or affect other moves', () => {
+  const a = fighter('bocydium', ['capstone']), b = fighter('bocydium', ['capstone']);
+  let criticals = 0, firstHits = 0, firstCriticals = 0, capstoneKnockouts = 0, oneHpKnockouts = 0;
+  for (let seed = 0; seed < 1000; seed++) {
+    const bout = simulateBout(a, b, `critical-${seed}`);
+    assert.deepEqual(bout, simulateBout(a, b, `critical-${seed}`));
+    const first = bout.rounds[0];
+    if (first.hit) { firstHits++; if (first.critical) firstCriticals++; }
+    let previous = bout.maxHp;
+    for (const event of bout.rounds) {
+      const target = 1 - event.by;
+      assert.equal(event.hp[target], previous[target] - event.dmg);
+      assert.ok(event.dmg >= 0 && event.hp[target] >= 0);
+      if (event.critical) {
+        criticals++;
+        assert.equal(event.moveId, 'capstone'); assert.equal(event.effect, 'pierce'); assert.equal(event.hit, true);
+        assert.ok(previous[target] > 1); assert.equal(event.hp[target], 1);
+        assert.match(event.line, /critical hit.*1 HP/);
+      }
+      if (event.hp[target] === 0) {
+        assert.equal(event.critical, false, 'a normal knockout must not become a critical that restores 1 HP');
+        if (event.moveId === 'capstone') capstoneKnockouts++;
+        if (previous[target] === 1) oneHpKnockouts++;
+      }
+      previous = event.hp;
+    }
+  }
+  assert.ok(criticals > 0 && capstoneKnockouts > 0 && oneHpKnockouts > 0);
+  assert.ok(firstCriticals / firstHits > 0.03 && firstCriticals / firstHits < 0.07, `first-hit critical rate: ${firstCriticals / firstHits}`);
+  for (let seed = 0; seed < 100; seed++) {
+    const bout = simulateBout(fighter('ceroplophana', ['signature', 'capstone']), fighter('platymeris', ['technique', 'signature']), seed);
+    assert.ok(bout.rounds.every(event => !event.critical), 'ordinary piercing, healing and venom cannot critically reduce HP to 1');
+  }
+});

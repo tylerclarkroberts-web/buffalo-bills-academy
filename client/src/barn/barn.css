@@ -16,6 +16,7 @@
 .barn-care > * { flex-shrink: 0; }
 .barn-name { margin: 0; font-family: var(--display); color: var(--gold); font-size: clamp(20px, 2.6vw, 30px); line-height: 1.05; }
 .barn-kind { margin: 0; color: var(--paper-2); }
+.barn-title { color: var(--gold); }
 .barn-blurb { margin: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .barn-needs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
 .barn-need { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 6px; }
@@ -84,6 +85,8 @@
 .bout-ring { position: relative; min-height: 0; border-radius: 12px; overflow: hidden; background: repeating-linear-gradient(0deg, transparent 0 82%, rgba(200,160,74,.35) 82% 100%), radial-gradient(80% 60% at 50% 45%, #6a4a2a, #2a160c 80%); }
 .bout-line { margin: 0; min-height: 2.6em; text-align: center; font-size: 14px; }
 .bout-xp { margin: 5px 0 0; color: var(--gold); font-size: 13px; }
+.bout-payment { margin: 5px 0 0; font-weight: 600; color: var(--gold); }
+.bout-line > .small { margin: 4px 0 0; }
 .bout-acts { display: flex; justify-content: center; }
 .barn-bouts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .barn-bouts .btn { min-height: 40px; flex-direction: column; gap: 0; padding: 4px 16px; } .barn-bouts .btn small { font: 500 10px var(--mono); opacity: .75; }
@@ -136,3 +139,25 @@
 .barn-measure { overflow: visible; }
 .barn-page dl { grid-template-columns: 7.2em 1fr; }
 @media (max-height: 500px) { .barn-abil li { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+
+.barn-board { gap: 12px; }
+.barn-board h3 { margin: 0; font-family: var(--display); color: var(--gold); font-size: 19px; }
+.barn-post { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.barn-post label { display: grid; flex: 1 1 100px; gap: 5px; font-size: 13px; }
+.barn-post input { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px; border: 1px solid #7a4a2a; border-radius: 6px; background: #2a160c; color: var(--paper-2); font: inherit; }
+.barn-post > p { flex-basis: 100%; }
+.barn-board .btn, .barn-tabs button { min-height: 44px; }
+.barn-waiting { display: grid; gap: 8px; padding: 10px 0; border-block: 1px solid #7a4a2a; }
+.barn-waiting .btn { justify-self: start; }
+.barn-open-bouts { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.barn-open-bouts li { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid #7a4a2a; }
+.barn-open-bouts .btn { justify-self: start; }
+.barn-listing-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; overflow-wrap: anywhere; }
+.barn-opponent-setup summary { cursor: pointer; min-height: 44px; display: list-item; align-content: center; font-size: 13px; }
+.barn-opponent-setup p { margin: 4px 0; }
+.barn-post input:focus-visible, .barn-opponent-setup summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.barn-board .btn { white-space: normal; text-align: center; }
+@media (max-width: 420px) { .barn-tabs { gap: 0; } .barn-tabs button { padding-inline: 7px; letter-spacing: .02em; } }
+@media (max-width: 760px) and (min-height: 501px) { .barn-body-bouts { grid-template-rows: minmax(96px, 24%) 1fr; } }
+@media (max-height: 500px) { .bout { height: calc(100dvh - 24px); } }
+@media (prefers-reduced-motion: reduce) { .barn-bar i { transition: none; } }

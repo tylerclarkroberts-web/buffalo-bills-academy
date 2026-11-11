@@ -1,13 +1,11 @@
-// Barn bouts: deterministic combat, level 3+, XP for participation, one an hour, no money at stake.
+// Barn combat is deterministic; player-joined wager flows are covered in barn-combat-api.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { simulateBout, MAX_ROUNDS } from '../server/engine/bout.js';
-import { Barn, BOUT_COOLDOWN_MS, BOUT_XP } from '../server/barn.js';
-import { ROSTER, xpFor } from '../server/engine/creatures.js';
+import { ROSTER } from '../server/engine/creatures.js';
 
 const A = { species: ROSTER[0].id, name: 'A', level: 5, mood: 60 };
 const B = { species: ROSTER[1].id, name: 'B', level: 5, mood: 60 };
-const mem = () => { const d = {}; return { loadDoc: (k, f) => d[k] || f, saveDoc: (k, v) => { d[k] = JSON.parse(JSON.stringify(v)); } }; };
 
 test('bout sim is deterministic and keeps combat events and HP bounded', () => {
   const r1 = simulateBout(A, B, 'seed-1'), r2 = simulateBout(A, B, 'seed-1');
@@ -30,32 +28,6 @@ test('equal-level basic-only bouts retain balanced species traits and no locked 
     worst = Math.max(worst, Math.abs(w / N - 0.5));
   }
   assert.ok(worst < 0.15, `worst pair ${worst}`);
-});
-
-test('Barn.bout: level gate, cooldown, record, stored replay, stray when alone, no money anywhere', () => {
-  const clock = { t: 1_700_000_000_000 };
-  const store = mem();
-  const b = new Barn({ store, now: () => clock.t, incubateMs: 1000, eggInt: (n) => (n === 100000 ? 0 : 3 % n) });
-  b.layEgg('p1');
-  assert.throws(() => b.bout('p1'), /Eggs do not fight/);
-  clock.t += 2000; b.view('p1');
-  assert.throws(() => b.bout('p1'), /level 3/);
-  assert.throws(() => b.bout('nobody'), /empty/);
-  b.doc.pens.p1.xp = xpFor(3);
-  const v = b.bout('p1').pen;
-  assert.equal(v.record.w + v.record.l + v.record.d, 1);
-  assert.ok(v.lastBout.them.stray, 'no nearby-level bug is available, so a stray turns up');
-  assert.deepEqual(simulateBout(v.lastBout.you, v.lastBout.them, v.lastBout.seed).rounds, v.lastBout.rounds, 'the stored log is exactly the seeded sim');
-  assert.equal(v.xp, xpFor(3) + BOUT_XP);
-  assert.ok(v.boutCoolMs > 0);
-  assert.throws(() => b.bout('p1'), /icing/);
-  // A second rancher within one level: they meet, and only the challenger's record moves.
-  b.layEgg('p2'); clock.t += 2000; b.view('p2'); b.doc.pens.p2.xp = xpFor(4);
-  const v2 = b.bout('p2').pen;
-  assert.equal(v2.lastBout.them.stray, false); assert.equal(v2.lastBout.them.name, b.doc.pens.p1.name);
-  assert.equal(b.view('p1').pen.record.w + b.view('p1').pen.record.l + b.view('p1').pen.record.d, 1);
-  clock.t += BOUT_COOLDOWN_MS; assert.ok(b.bout('p1').pen.lastBout);
-  assert.ok(!JSON.stringify(store.loadDoc('barn', {})).match(/bankroll|chips|\$/));
 });
 
 test('BARN_TEST_XP only works with dev login', async () => {

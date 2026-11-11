@@ -49,7 +49,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const barnTest = !!config.devLogin;
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
-  const barn = new Barn({ store: service.store, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
+  const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman });
   const avatars = new Avatars({ dir: service.store.dir, store: service.store, now: service.now });
@@ -95,7 +95,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const holdings = market.holdingsValue(p);
     const chips = service.chipsInPlay(p.id);
     const riskEscrow = conquest.escrow(p);
-    return { bankroll: p.bankroll, holdings, chips, riskEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow) };
+    const barnEscrow = barn.escrow(p);
+    return { bankroll: p.bankroll, holdings, chips, riskEscrow, barnEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow + barnEscrow) };
   };
   const rooms = new Rooms({ store: service.store, shop, barn, avatars, netWorth });
   service.rooms = rooms;
@@ -106,7 +107,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
-  const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id), minBuyIn: minBuyIn() });
+  const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
   // Adds `me.broke` to a table view: busted here, can't afford a rebuy, nothing left anywhere.
   const tableView = (code, p) => {
     const v = service.view(code, p);
@@ -114,7 +115,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     let broke = false;
     if (p && s) {
       accounts.ensure(p);
-      broke = bustedAndBroke({ busted: s.busted, econ: v.econ, bankroll: p.bankroll, holdings: market.holdingsValue(p), buyIn: v.settings.buyIn, otherChips: service.chipsInPlay(p.id, v.code) });
+      broke = bustedAndBroke({ busted: s.busted, econ: v.econ, bankroll: p.bankroll, holdings: market.holdingsValue(p), buyIn: v.settings.buyIn, otherChips: service.chipsInPlay(p.id, v.code) + barn.escrow(p) });
     }
     v.me = { ...v.me, broke };
     Object.assign(v, shop.tableInfo(v.code, p?.id));
@@ -135,7 +136,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (!legacy || legacy.id === me.id) return { merged: false, me: meView(me) };
     if (legacy.google || legacy.login) throw new GameError('That player already belongs to another account.', 409);
     if (!req.sessionId || !(me.google || me.login)) throw new GameError('Sign in first.', 401);
-    const fresh = !conquest.hasHistory(me) && !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
+    const fresh = !me.barnBouts && !conquest.hasHistory(me) && !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
     if (!fresh) return { merged: false, me: meView(me), reason: 'Your signed-in account already has history, so the old player was left as is.' };
     rooms.forget(me.id);
     if (me.google) legacy.google = me.google;
@@ -213,7 +214,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const port = market.portfolio(p);
     const unrealized = Object.values(port.holdings).reduce((a, h) => a + (h.unrealized || 0), 0);
     const worth = netWorth(p);
-    if (!self) delete worth.riskEscrow;
+    if (!self) { delete worth.riskEscrow; delete worth.barnEscrow; }
     return {
       id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), kind: p.kind || 'guest', since: p.createdAt,
       ...(self ? { email: p.login?.email || p.google?.email || null, username: p.login?.username || null, txns: (p.txns || []).slice(-40).reverse() } : {}),
@@ -235,7 +236,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const rows = Object.values(service.store.players)
       .filter((p) => !p.hidden && typeof p.bankroll === 'number' && (googleOn ? (p.google || p.login) : true))
       .map((p) => {
-        const { riskEscrow: _privateRiskEscrow, ...worth } = netWorth(p);
+        const { riskEscrow: _privateRiskEscrow, barnEscrow: _privateBarnEscrow, ...worth } = netWorth(p);
         return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...worth, hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 };
       })
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
@@ -262,6 +263,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''))));
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
+  api.post('/barn/bouts', needPlayer, wrap((req) => barn.openBout(req.player.id, req.body)));
+  api.post('/barn/bouts/:id/join', needPlayer, wrap((req) => barn.joinBout(req.player.id, req.params.id, req.body)));
+  api.delete('/barn/bouts/:id', needPlayer, wrap((req) => barn.cancelBout(req.player.id, req.params.id)));
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
   api.post('/mines/quit', needPlayer, wrap((req) => mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
@@ -277,6 +281,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // Refused while seated at an open table (chips there are real bankroll money). Removes the player record,
   // their sessions, avatar file and any mine shift. Table ledgers keep the name for past results.
   function deletePlayer(p) {
+    barn.expireBouts();
+    if (p.barnBouts?.open) throw new GameError('Cancel your open barn bout before deleting your account.', 409);
     if (conquest.hasPending(p)) throw new GameError('Wait for your Risk bets to settle before deleting your account.', 409);
     if (conquest.data(p).link?.active) throw new GameError('Unlink ConquestK on the Risk bets page before deleting your account.', 409);
     if (conquest.data(p).pendingLink || conquest.linkChanges.has(p.id)) throw new GameError('Finish or unlink your pending ConquestK account link before deleting your account.', 409);
