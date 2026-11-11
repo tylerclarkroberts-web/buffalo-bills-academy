@@ -26,11 +26,11 @@ The original photo stays in local editing canvases while you frame, correct and 
 
 The existing `POST /api/me/avatar` contract is unchanged: a photo avatar sends `{ "kind": "photo", "png": "data:image/png;base64,..." }` containing the finished 240×300 PNG. It does not send the original photo, editing mask or worker input. Generated avatars continue to send a seed. The server stores the finished avatar and metadata through the existing avatar service; no migration or automatic replacement of old avatars is needed.
 
-The segmentation model and runtime are served from this application. There is no external image-processing service. The pinned library was inspected for outbound logging; browser network checks must still verify actual requests when changing this implementation or dependency version.
+The segmentation model and runtime are served from this application. There is no external image-processing service. The one outbound request is MediaPipe's own: each cutout posts performance and usage metrics about the library (not the photo, mask or result) to `https://odml.pa.googleapis.com/v1/log`. The privacy page says so. Browser network checks must still verify actual requests when changing this implementation or dependency version; worker requests do not show in the page's network list, so wrap `fetch` in the worker to see them.
 
 ## Model, licensing and maintenance
 
-The implementation pins `@mediapipe/tasks-vision` **0.10.35** and Google's **SelfieMulticlass 256×256, float32, version 1** model. It uses CPU image inference in a module worker, retaining hair, face skin and accessories inside the shared head outline, while removing background, body skin and clothes. The finished PNG and 3D triangles are clipped to the edited mask.
+The implementation pins `@mediapipe/tasks-vision` **1.2.2** and Google's **SelfieMulticlass 256×256, float32, version 1** model. It uses CPU image inference in a module worker, retaining hair, face skin and accessories inside the shared head outline, while removing background, body skin and clothes. The finished PNG and 3D triangles are clipped to the edited mask.
 
 The model is 16,371,837 bytes and is checked in at `client/public/avatar-model/selfie_multiclass_256x256-v1.tflite`:
 
@@ -38,6 +38,6 @@ The model is 16,371,837 bytes and is checked in at `client/public/avatar-model/s
 SHA-256 c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0
 ```
 
-Vite emits the matching module WASM loader and binary from the pinned npm package. Both the model and MediaPipe library use Apache-2.0; preserve [LICENSE.txt](../client/public/avatar-model/LICENSE.txt) and [NOTICE.txt](../client/public/avatar-model/NOTICE.txt). Sources, versions and the model hash are recorded in that notice. Do not upgrade to a different library build without checking its loading behavior, outbound requests and notices. Stable releases from 1.0.0 (checked: 1.0.0 and 1.2.2) create a metrics logger that posts to `odml.pa.googleapis.com` whenever a task is created, with no documented opt-out, and their README requires user consent for it; that breaks the no-outbound-requests promise above, so the pin stays at 0.10.35.
+Vite emits the matching module WASM loader and binary from the pinned npm package. Both the model and MediaPipe library use Apache-2.0; preserve [LICENSE.txt](../client/public/avatar-model/LICENSE.txt) and [NOTICE.txt](../client/public/avatar-model/NOTICE.txt). Sources, versions and the model hash are recorded in that notice. Do not upgrade to a different library build without checking its loading behavior, outbound requests and notices. Releases from 1.0.0 send the metrics described above with no documented opt-out, and the package README makes the app responsible for telling users; keep the privacy page accurate.
 
 The [official model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf) describes expected limitations. [Google's Image Segmenter guide](https://developers.google.com/edge/mediapipe/solutions/vision/image_segmenter) documents the labels and task API. [Development and troubleshooting](development.md#selfie-avatar-checks) lists regression and browser checks. These references do not establish live-site deployment or real-device performance.
