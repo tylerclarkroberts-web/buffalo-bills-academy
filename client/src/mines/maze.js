@@ -58,6 +58,22 @@ export function distFrom(grid, sx, sy) {
   }
   return d;
 }
+/**
+ * Dowsing rod: which way to turn to follow the shortest walk from one tile to another, in eighths of a turn
+ * clockwise from straight ahead (0 = ahead, 2 = right, 4 = behind, 6 = left). Null when you are standing on it.
+ */
+export function rodHeading(grid, from, to, yaw) {
+  const d = distFrom(grid, to.x, to.y);
+  let best = null, bestD = d[from.y]?.[from.x] >= 0 ? d[from.y][from.x] : Infinity;
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const v = d[from.y + dy]?.[from.x + dx];
+    if (v >= 0 && v < bestD) { bestD = v; best = [dx, dy]; }
+  }
+  if (!best) return null;
+  const ahead = -Math.sin(yaw) * best[0] - Math.cos(yaw) * best[1], right = Math.cos(yaw) * best[0] - Math.sin(yaw) * best[1];
+  return (Math.round(Math.atan2(right, ahead) / (Math.PI / 4)) + 8) % 8;
+}
+
 /** First pool's walking distance by maze size: a bigger mine starts you farther from the first glow. */
 export const FIRST_POOL_STEPS = { 7: 26, 9: 42, 11: 60 };
 /**

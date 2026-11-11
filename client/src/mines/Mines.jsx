@@ -2,12 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { makeMaze, rng, veinChain, eggSpot, FIRST_POOL_STEPS } from './maze.js';
+import { makeMaze, rng, veinChain, eggSpot, rodHeading, FIRST_POOL_STEPS } from './maze.js';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
-import { MineScene, MINE_REACH } from './scene.js';
+import { MineScene, MINE_REACH, TILE } from './scene.js';
 import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
 import DoomRoom from './DoomRoom.jsx';
@@ -80,6 +80,10 @@ export default function Mines() {
   const exitShift = useRef(null);
   const [sound, setSound] = useState(false);
   const [lecture, setLecture] = useState(null); // server-held quiz, or a local paid-shift farewell
+  const [office, setOffice] = useState(null); // gear and shaft permits (server/mines.js office)
+  const [shaft, setShaft] = useState(null); // null = the deepest shaft your permits open
+  const open = office?.shafts.filter((s) => s.open) || [];
+  const going = open.find((s) => s.id === shaft) || open[open.length - 1] || null;
   const audio = useRef(null);
   if (!audio.current) audio.current = new MineAudio();
 
@@ -88,6 +92,7 @@ export default function Mines() {
     document.body.classList.add('in-mines');
     return () => { document.body.classList.remove('in-mines'); audio.current?.dispose(); };
   }, []);
+  useEffect(() => { if (me) api('GET', '/mines/office').then(setOffice).catch(() => {}); }, [!!me]);
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
   useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
   function complete(v) {
@@ -120,11 +125,12 @@ export default function Mines() {
     setErr('');
     try {
       const afterShiftId = result?.shiftId || readMineReceipt(me?.id);
-      const s = await api('POST', '/mines/start', { rulesVersion: 2, ...(afterShiftId ? { afterShiftId } : {}) });
+      const s = await api('POST', '/mines/start', { rulesVersion: 2, ...(going ? { shaft: going.id } : {}), ...(afterShiftId ? { afterShiftId } : {}) });
       if (s.result || Object.hasOwn(s, 'pending')) { complete(s); return; }
       setShift({ ...s, localStart: Date.now() - (s.serverNow - s.startedAt) });
       setResult(null);
       setPhase('play');
+      if (going?.fare) refreshSession(); // the elevator fare just left the bankroll in the header
     } catch (e) {
       if (e.code === 'foreman') { const v = await api('GET', '/mines/foreman').catch(() => null); if (v?.pending) { setLecture(v.pending); return; } }
       setErr(e.message);
@@ -147,23 +153,24 @@ export default function Mines() {
       <div inert={lecture ? '' : undefined} aria-hidden={!!lecture || undefined}>
         <header className="m-top">
           <button className="m-link" disabled={starting || leaving} onClick={leave}>◄ SURFACE</button>
-          <span className="m-brand">ACID MINE CO.<span className="m-dim m-shaft"> · SHAFT 7</span></span>
+          <span className="m-brand">ACID MINE CO.<span className="m-dim m-shaft"> · {(phase === 'play' && office?.shafts.find((s) => s.id === shift?.shaft) || going)?.name || 'SHAFT 7'}</span></span>
           <span className="m-right">
             {me && <span className="m-bank">${me.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>}
             <button className="m-link" onClick={toggleSound} aria-pressed={sound}>{sound ? '♪ ON' : '♪ OFF'}<span className="sr-only"> sound</span></button>
           </span>
         </header>
         {err && <div className="m-err" role="alert" onClick={() => setErr('')}>! {err}</div>}
-        {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} starting={starting} />}
+        {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} starting={starting} office={office} open={open} going={going} onShaft={setShaft} />}
         {phase === 'play' && shift && <Shift key={shift.shiftId} shift={shift} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} onComplete={complete} exitShift={exitShift} onLeaving={setLeaving} />}
-        {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} />}
+        {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} fare={going?.fare} />}
       </div>
       {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); navigate('/'); }} />}
     </div>
   );
 }
 
-function Intro({ me, loading, onStart, starting }) {
+function Intro({ me, loading, onStart, starting, office, open, going, onShaft }) {
+  const units = Math.min(office?.capacity || 100, going?.max || 100);
   // Signed out: the sign-in form takes the place of the orientation, so the page still fits one screen.
   const [signing, setSigning] = useState(false);
   if (signing && !me) {
@@ -191,9 +198,12 @@ function Intro({ me, loading, onStart, starting }) {
             <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
-            <li>One bucket. 100 units. Clock out with what you've got, or fill it for automatic pay.</li>
+            <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
           </ol>
           <p className="m-dim">Acid seeps in over time. Later finds tend to be fuller. Payroll weighs the bucket when you finish.</p>
+          {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
+            {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}</span></button>)}
+          </div>}
           {loading ? null : me ? <button className="m-btn" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
         </section>
         <section className="m-box">
@@ -204,6 +214,7 @@ function Intro({ me, loading, onStart, starting }) {
             <li><b>???</b> Old-timers whisper about a motherlode, a well full of something shiny, and things that are not from here.</li>
           </ul>
           <p className="m-dim">Nobody knows the odds. Payroll will not say. Every shift pays something.</p>
+          {me && <button className="m-link" onClick={() => navigate('/store')}>BIGGER BUCKETS AND DEEPER SHAFTS: GENERAL STORE ►</button>}
         </section>
       </div>
     </main>
@@ -231,6 +242,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const [clockingOut, setClockingOut] = useState(false);
   const closing = useRef(false);
   const [near, setNear] = useState(false);
+  const [rod, setRod] = useState(null); // dowsing rod: eighths of a turn toward the current pool
   const [dist, setDist] = useState(99);
   const [legacyProgress, setProgress] = useState(0);
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
@@ -355,6 +367,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       } catch { v.waitUntil = Date.now() + 3000; } finally { v.asking = false; }
     };
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
+    const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d) => {
@@ -366,6 +379,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         if (Math.abs(d - lastD) > 0.4) { lastD = d; setDist(d); }
       },
       stalker, localStart: shift.localStart, reduceMotion: reduce,
+      fogFar: [17, 13, 10, 8][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 9, 7.5, 6.5][dark],
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
@@ -418,6 +432,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     const tick = setInterval(() => {
       setElapsed(Date.now() - shift.localStart);
+      if (shift.rod) {
+        const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
+        setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
+      }
       const dv = scene.doorView(); const n = dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
       if (eggRef.current === 'there') {
@@ -498,8 +516,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div></div>
       <div className="m-hud tr">
         <div className={`geiger ${dist < 4 ? 'hot' : dist < 9 ? 'warm' : ''}`}>ACID {'▮'.repeat(Math.max(1, Math.min(10, Math.round(11 - dist))))}{'▯'.repeat(Math.max(0, 10 - Math.max(1, Math.min(10, Math.round(11 - dist)))))}</div>
+        {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
         {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
-          <span>BUCKET {Math.floor(bucket.collected)} / {bucket.capacity}</span>
+          <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}</span>
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
         </div>}
         <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
@@ -580,7 +599,7 @@ function MovePad({ apply }) {
   );
 }
 
-function Result({ r, onAgain, onLeave, starting }) {
+function Result({ r, onAgain, onLeave, starting, fare }) {
   const big = ['motherlode', 'aliens', 'diamonds'].includes(r.outcome);
   return (
     <main className={`m-result o-${r.outcome} ${big ? 'jackpot' : ''}`}>
@@ -593,7 +612,7 @@ function Result({ r, onAgain, onLeave, starting }) {
       {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">
-        <button className="m-btn" disabled={starting} onClick={onAgain}>[ ANOTHER SHIFT ]</button>
+        <button className="m-btn" disabled={starting} onClick={onAgain}>[ ANOTHER SHIFT{fare ? ` · $${fare} FARE` : ''} ]</button>
         <button className="m-btn ghost" disabled={starting} onClick={onLeave}>[ BACK TO THE CARD ROOM ]</button>
       </div>
     </main>

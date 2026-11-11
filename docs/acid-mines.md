@@ -8,20 +8,43 @@ The existing hidden vein-time roll now controls gradual availability. The first 
 
 Only server-confirmed progress survives interruption. Release, cancellation, focus loss, hidden pages, Doom and reload stop extraction. An unfinished shift resumes when clocking in again. After a version-2 shift's 30-minute expiry, the next mining interaction settles its contents rather than discarding them. Existing legacy shifts retain their original rules until they finish or expire.
 
+## Gear and shafts
+
+Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, the **Mine gear** tab). They are bought once, never equipped, and read at clock-in; a shift keeps the gear it started with. Without any, a shift is exactly the plain Shaft 7 bucket above.
+
+| Gear | Effect |
+| --- | --- |
+| Buckets (Second Bucket to Golden Bucket) | Capacity of 200, 400, 600, 800 or 1,000 units; the largest owned counts. |
+| Bendy Straw, Shop-Vac | Collection is 2 or 10 times the base five units per second; the fastest owned counts. |
+| Headlamp Helmet | Longer lamp and fog distance. This is drawn by the browser only. |
+| Dowsing Rod | An arrow along the shortest walk to the current pool, and a pool that would resolve dry holds the smallest deposit instead. |
+
+| Shaft | Permit | Deposits | Most a bucket brings up | Fare |
+| --- | --- | --- | --- | --- |
+| Shaft 7 | none | 20, 35, 60 | 100 | free |
+| Shaft 8 | $40,000 | four times | 400 | $40 |
+| Shaft 12 | $150,000 | eight times | 800 | $80 |
+| Earl's Level | $500,000 | ten times | 1,000 | $100 |
+
+A shift's capacity is the smaller of the bucket and the shaft's limit, so big buckets do nothing in Shaft 7. The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid and mud pay per 100 units, so a 200-unit bucket of ordinary acid pays twice the $80–$120 roll. The three rare finds stay at $10,000 for a full bucket of any size.
+
+Prices are deliberately high because the mines are the only source of new money. Losing acid to hazards and the owned-bug guide's feeding are not built.
+
 ## API and compatibility
 
 All endpoints require the signed-in player. New shifts use `rulesVersion: 2`; existing legacy shifts keep their old request/response contract.
 
 | Request | Contract |
 | --- | --- |
-| `POST /api/mines/start` | Send `{"rulesVersion":2}` to start, resume or recover a result. Include `afterShiftId` to acknowledge a displayed completed result and start another shift. |
+| `GET /api/mines/office` | The player's capacity, extraction rate, lamp and rod, and every shaft with `fare`, `max` and whether a permit opens it. |
+| `POST /api/mines/start` | Send `{"rulesVersion":2}` to start, resume or recover a result. Optional `shaft` (`"7"`, `"8"`, `"12"`, `"earl"`; default Shaft 7) is used only for a new shift: 403 without the permit, 402 without the fare. Include `afterShiftId` to acknowledge a displayed completed result and start another shift. |
 | `POST /api/mines/probe` | Send `rulesVersion`, `shiftId`, `poolId`. Inspect the current deposit once; repeats return saved state. |
 | `POST /api/mines/extract` | Send those identifiers plus `action: "start"`, `"continue"` or `"stop"`. The server calculates collection; never send quantity or pay. |
 | `POST /api/mines/quit` | Send `rulesVersion` and `shiftId` to settle collected material or issue an empty-bucket lecture. |
 | `POST /api/mines/finish` | Retains legacy completion; it cannot bypass version-2 collection. |
 | `POST /api/mines/egg` | Retains the existing `shiftId` pickup contract and 30-second opportunity with a three-second request allowance. |
 
-Public version-2 state retains the shift's identity, seed, clock, maze size, scare and egg information. It adds `rulesVersion`, `capacity`, `collected`, `extractionRate`, `currentPoolId`, `readyAt` and `pools`. Each pool has `id`, `x`, `y`, nullable `quantity` and nullable `remaining`; null means uninspected. API quantities are units. `readyAt` exposes only the minimum arrival/first-20-second floor, never the hidden maturation time.
+Public version-2 state retains the shift's identity, seed, clock, maze size, scare and egg information. It adds `rulesVersion`, `capacity`, `collected`, `extractionRate`, `shaft`, `lamp`, `rod`, `currentPoolId`, `readyAt` and `pools`. Each pool has `id`, `x`, `y`, nullable `quantity` and nullable `remaining`; null means uninspected. API quantities are units. `readyAt` exposes only the minimum arrival/first-20-second floor, never the hidden maturation time.
 
 Clock-in, probe, extraction and quit can return `{result: ...}` or `{pending: ...}` during completion/recovery instead of active state. Results include the existing payout fields plus `shiftId`, `collected` and `capacity`; mud can include `foreman`. Empty departures return the pending lecture. Do not assume every successful clock-in response contains a playable shift.
 
