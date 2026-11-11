@@ -92,6 +92,8 @@ export function rollVein(randInt = (n) => crypto.randomInt(n)) {
 export const MAX_SHIFT_MS = 30 * 60 * 1000;
 /** A cave-in in a permit shaft knocks this share of what is in the bucket onto the floor. */
 export const CAVE_IN_SPILL = 0.25;
+/** The other faun waits at the elevator of a permit shaft and helps himself to this share of the cheque. */
+export const TWIN_CUT = 1 / 3;
 const MAX_SHIFTS_PER_HOUR = 120;
 export const BUCKET_CAPACITY = 100;
 export const EXTRACTION_RATE = 5;
@@ -128,7 +130,7 @@ function reloadRequired() {
 }
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, caveInt, vein, barn, foreman, owned }) {
+  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, caveInt, twinInt, vein, barn, foreman, owned }) {
     this.owned = owned || (() => ({})); // player id -> General Store items they own (wired to the shop in app.js)
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
@@ -140,6 +142,7 @@ export class Mines {
     this.vein = vein || (() => rollVein(this.veinInt)); // tests can pin it
     this.poolInt = poolInt || ((n) => crypto.randomInt(n));
     this.caveInt = caveInt || ((n) => crypto.randomInt(n)); // cave-ins have their own source too: they never see the payout roll
+    this.twinInt = twinInt || ((n) => crypto.randomInt(n)); // ...and so does the other faun
     this.doc = store.loadDoc('mines', { active: {} });
     this.holds = new Map(); // Never resume a held button after a disconnect or restart.
   }
@@ -204,7 +207,8 @@ export class Mines {
     const maze = makeMaze(shift.seed, shift.cells || 7, FIRST_POOL_STEPS[shift.cells || 7]);
     const chain = bucketChain(maze, shift.seed);
     Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, scale: shaft.scale, capacity: Math.min(gear.cap, shaft.max) * 1000, rate: EXTRACTION_RATE * gear.rate,
-      ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}), collected: 0, index: 0, outcome: rollOutcome(this.randInt),
+      ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}),
+      ...(shaft.twin && this.twinInt(100) < shaft.twin ? { twin: true } : {}), collected: 0, index: 0, outcome: rollOutcome(this.randInt),
       readyAt: now + Math.max(MIN_SHIFT_MS, poolTravelMs(chain.legs[0], true)),
       pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null,
         ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn ? { cave: true } : {}) })) }); // decided now, sprung on arrival
@@ -347,6 +351,10 @@ export class Mines {
       const result = cur.collected > 0 ? { ...r, shiftId: cur.id, collected: cur.collected / 1000, capacity: full / 1000,
         amount: Math.round(r.amount * 100 * cur.collected / per) / 100,
         ...(r.outcome === 'dud' && cur.collected < full ? { text: 'Mostly mud. The foreman pays for what you brought and questions your judgment.' } : {}) } : null;
+      if (result && cur.twin) { // decided at clock-in, never sent to the browser, met only on the way out
+        const took = Math.floor(result.amount * 100 * TWIN_CUT) / 100;
+        result.amount = Math.round((result.amount - took) * 100) / 100; result.twin = { took };
+      }
       cur = { ...cur, settlement: { shiftId: cur.id, result, reason: result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt } };
       this.commit(player.id, cur);
     }
