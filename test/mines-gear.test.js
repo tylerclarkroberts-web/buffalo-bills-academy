@@ -11,13 +11,13 @@ import { MINE_ITEMS, SHAFTS } from '../server/catalog/mine.js';
 
 const version = { rulesVersion: 2 };
 // payout roll 20000 = an ordinary bucket ($80 per 100 units with these pinned rolls); 0 = the motherlode.
-function fixture(t, { own = {}, payout = 20000, pool = 99999 } = {}) {
+function fixture(t, { own = {}, payout = 20000, pool = 99999, cave = 99 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-gear-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const clock = { now: 1_800_000_000_000 };
   const store = new Store(dir); const accounts = new Accounts({ store, now: () => clock.now });
   const mines = new Mines({ store, accounts, now: () => clock.now, owned: () => own,
-    randInt: (n) => (n === 100000 ? payout : 0), scareInt: (n) => n - 1, poolInt: () => pool, vein: () => ({ veinMs: 60000, cells: 7 }) });
+    randInt: (n) => (n === 100000 ? payout : 0), scareInt: (n) => n - 1, poolInt: () => pool, caveInt: () => cave, vein: () => ({ veinMs: 60000, cells: 7 }) });
   const player = store.players.miner = { id: 'miner', name: 'Miner' }; accounts.ensure(player);
   const call = (fn, s, extra) => mines[fn](player, s.shiftId, { ...version, poolId: s.currentPoolId, ...extra });
   /** Walk the chain, draining every pool, until the bucket settles. */
@@ -94,4 +94,20 @@ test('the dowsing rod never finds a dry pool', (t) => {
   const f = fixture(t, { own: { 'mine-rod': 1 }, pool: 0 }); s = f.start();
   assert.equal(s.rod, true);
   f.clock.now = s.readyAt; assert.equal(f.call('probe', s).pools[0].quantity, 20);
+});
+
+test('permit shafts can cave in and spill a quarter of the bucket; Shaft 7 never does', (t) => {
+  const safe = fixture(t, { cave: 0 }); let s = safe.start();
+  assert.equal(safe.fill(s).result.amount, 80, 'Shaft 7 ignores the cave-in roll');
+  const f = fixture(t, { own: { 'mine-permit8': 1, 'mine-goldbucket': 1 }, cave: 0 }); s = f.start({ shaft: '8' });
+  assert.doesNotMatch(JSON.stringify(s), /"cave"/, 'the trap is never sent to the client');
+  f.clock.now = s.readyAt; s = f.call('probe', s);
+  assert.equal(s.spill, undefined, 'an empty bucket has nothing to spill');
+  while (s.currentPoolId === 'p0') { f.call('extract', s, { action: 'start' }); f.clock.now += 500; s = f.call('extract', s, { action: 'continue' }); }
+  const carried = s.collected;
+  f.clock.now = Math.max(f.clock.now, s.readyAt); s = f.call('probe', s);
+  assert.deepEqual(s.spill, { poolId: 'p1', lost: carried * 0.25 }); assert.equal(s.collected, carried * 0.75);
+  assert.deepEqual(f.call('probe', s).spill, s.spill, 'asking again does not spill again');
+  const done = f.fill(s);
+  assert.equal(done.result.collected, 400, 'the last pool still fills the bucket'); assert.equal(done.result.amount, 320);
 });
