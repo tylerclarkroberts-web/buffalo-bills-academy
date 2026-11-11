@@ -40,4 +40,10 @@ export const ABSURD_ITEMS = [
   ['turkey', 'Pardoned Turkey', 2500, '🦃', 'Pardoned by Bill personally. He has not forgiven anyone.', false, 11],
   ['stocking', 'One Stocking', 1000, '🧦', 'Hung with care. The lump of coal is from Shaft 7.', false, 12],
   ['tumbletree', 'Tumbleweed Christmas Tree', 6000, '🎄', 'Rolled in one December wearing lights. Nobody had the heart.', false, 12],
-].map(([id, name, price, emoji, desc, unique, month]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : month ? 'seasonal' : 'oddities', slot: null, ...(unique ? { unique: true } : {}), ...(month ? { month } : {}) }));
+  // Not for sale (the last `true`): handed out by server/foff.js, and in the store only once you have one.
+  ['medal', 'Presidential Medal of Freedom', 0, '🎖️', 'Presented on the eighteenth at Black Horse. For golf. Nobody has checked.', false, 0, true],
+  ['flipflop', 'A Single Wet Flip-Flop', 0, '🩴', 'Fished out of a cold plunge in San Francisco. The other one went home with a sasquatch.', false, 0, true],
+  ['drone', 'Bagpipe Drone', 0, '🎵', 'Came off a man in a kilt at dawn. It still hums if you leave it alone.', false, 0, true],
+  ['abalone', 'Abalone Shell', 0, '🐚', 'Forty dollars of shellfish, eaten. This is the part you keep.', false, 0, true],
+  ['boardingpass', 'Boarding Pass', 0, '🎫', 'SFO, Sunday. Twelve seats, one sasquatch, a minute to spare.', false, 0, true],
+].map(([id, name, price, emoji, desc, unique, month, award]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : month ? 'seasonal' : 'oddities', slot: null, ...(unique ? { unique: true } : {}), ...(month ? { month } : {}), ...(award ? { award: true } : {}) }));

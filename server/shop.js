@@ -74,7 +74,7 @@ export class Shop {
   view(p) {
     const iv = this.inv(p.id); const hatched = this.hatched(p.id);
     const month = shopMonth(this.now());
-    const items = CATALOG.filter((x) => (hatched || x.kind !== 'bug') && (!x.month || x.month === month || iv.own[x.id]));
+    const items = CATALOG.filter((x) => (hatched || x.kind !== 'bug') && (!x.month || x.month === month || iv.own[x.id]) && (!x.award || iv.own[x.id]));
     const tabs = TABS.filter((t) => (hatched || !t.bug) && (t.id !== 'seasonal' || items.some((x) => x.cat === 'seasonal')));
     this.accounts.ensure(p);
     // who holds each one-of-a-kind item (a name only; hidden and departed owners stay anonymous)
@@ -84,6 +84,7 @@ export class Shop {
   buy(p, id, { confirm = false } = {}) {
     const x = ITEM[id];
     if (!x) throw new GameError('The shopkeeper has never heard of that.', 404);
+    if (x.award) throw new GameError('That one has to be earned.', 409);
     const iv = this.inv(p.id);
     if (x.kind === 'bug' && !this.hatched(p.id)) throw new GameError('Bug supplies are for folks with a hatched bug.', 409);
     if (ONCE(x)) { if (iv.own[id]) throw new GameError('One at a time: use the one you have first.', 409); }

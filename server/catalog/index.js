@@ -27,7 +27,7 @@ const ids = new Set();
 for (const x of CATALOG) {
   if (ids.has(x.id)) throw new Error(`duplicate catalog id ${x.id}`);
   ids.add(x.id);
-  if (!(Number.isInteger(x.price) && x.price > 0 && x.price <= MAX_PRICE)) throw new Error(`bad price ${x.id}`);
+  if (!(Number.isInteger(x.price) && (x.price > 0 || x.award) && x.price <= MAX_PRICE)) throw new Error(`bad price ${x.id}`); // awards are free and not for sale
   if (!TABS.some((t) => t.id === x.cat)) throw new Error(`bad tab ${x.id}`);
   if (x.slot && ![...AVATAR_SLOTS, ...BUG_SLOTS].includes(x.slot)) throw new Error(`bad slot ${x.id}`);
 }
