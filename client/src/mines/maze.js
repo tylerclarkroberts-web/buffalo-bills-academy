@@ -74,6 +74,20 @@ export function rodHeading(grid, from, to, yaw) {
   return (Math.round(Math.atan2(right, ahead) / (Math.PI / 4)) + 8) % 8;
 }
 
+/** Tiles to walk from a point (fractional tile coords) to wherever `d` was measured from: via this tile or an open neighbour, never through rock. */
+export function pathSteps(d, fx, fy) {
+  const x = Math.round(fx), y = Math.round(fy);
+  let best = Infinity;
+  for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const s = d[y + dy]?.[x + dx];
+    if (s >= 0) best = Math.min(best, Math.hypot(fx - x - dx, fy - y - dy) + s);
+  }
+  return best;
+}
+/** Geiger bars (1-10) for a walk of `steps` tiles. Square-root scale: readable from across the mine, fine-grained up close; 10 means in reach. */
+export function geigerBars(steps, far = 48) {
+  return Math.max(1, Math.round(10 - 9 * Math.sqrt(Math.min(1, Math.max(0, steps - 0.85) / far))));
+}
 /** First pool's walking distance by maze size: a bigger mine starts you farther from the first glow. */
 export const FIRST_POOL_STEPS = { 7: 26, 9: 42, 11: 60 };
 /**
@@ -113,6 +127,34 @@ function poolChain(maze, seed, k, bucket) {
   }
   chain.legs = chain.map((p, i) => (i ? distFrom(grid, chain[i - 1].x, chain[i - 1].y)[p.y][p.x] : maze.steps));
   return chain;
+}
+
+/** Things left in the tunnels, and how often a shift has each. Rolled separately, so a shift can have none or several. */
+export const FINDS = [
+  { id: 'hat', chance: 0.3 }, { id: 'cart', chance: 0.25 }, { id: 'sign', chance: 0.2 }, { id: 'art', chance: 0.18 },
+  { id: 'cage', chance: 0.15 }, { id: 'exit', chance: 0.12 }, { id: 'chair', chance: 0.1 }, { id: 'bones', chance: 0.07 },
+];
+/**
+ * Which finds this shift has and the wall each one sits against. Seeded and client-only, like the maze: scenery,
+ * nothing the server pays for. Corners, junctions and dead ends only (beams stand in the straight runs), away from
+ * the start and off any tile in `avoid` (pools, the egg).
+ */
+export function findSpots(maze, seed, avoid = []) {
+  const r = rng((seed ^ 0xf1d5) >>> 0);
+  const picked = FINDS.filter((f) => r() < f.chance); // every roll first, so placing one never shifts another's odds
+  const { grid, dist, size } = maze, no = new Set(avoid.filter(Boolean).map((p) => `${p.x},${p.y}`));
+  const spots = [];
+  for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) {
+    if (grid[y][x] || dist[y][x] < 3 || no.has(`${x},${y}`)) continue;
+    const walls = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => grid[y + dy][x + dx]);
+    const straight = walls.length === 2 && walls[0][0] === -walls[1][0] && walls[0][1] === -walls[1][1];
+    if (walls.length && !straight) spots.push({ x, y, walls });
+  }
+  return picked.flatMap((f) => {
+    if (!spots.length) return [];
+    const [s] = spots.splice(Math.floor(r() * spots.length), 1), [dx, dy] = s.walls[Math.floor(r() * s.walls.length)];
+    return [{ id: f.id, x: s.x, y: s.y, dx, dy }];
+  });
 }
 
 /**
