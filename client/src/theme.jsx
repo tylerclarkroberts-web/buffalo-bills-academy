@@ -1,6 +1,7 @@
 // Identity for Buffalo Bill's Academy: wordmark, copy, Neon Bill, chips, avatars.
 // Everything here is original artwork drawn in code.
 import React, { useMemo } from 'react';
+import { chipPiles } from './util.js';
 
 export const VENUE = { name: "Buffalo Bill's Academy", short: "Buffalo Bill's", place: 'West Wendover, Nevada' };
 export const TABLE_NAMES = [
@@ -159,13 +160,14 @@ export function Avatar({ id = '', name = '', picture, size = 32 }) {
   return <span className="avatar" style={{ width: size, height: size, '--av': AV[h % AV.length], fontSize: size * 0.4 }} aria-hidden="true">{initials}</span>;
 }
 
-export const CHIP_COLORS = [[1000, '#e8b04a'], [500, '#7c5cff'], [100, '#151515'], [25, '#1f8a5b'], [5, '#e0352b'], [1, '#f2ede4']];
-export function chipBreakdown(amount, max = 5) {
-  const out = []; let left = amount;
-  for (const [v, c] of CHIP_COLORS) { while (left >= v && out.length < max) { out.push(c); left -= v; } }
-  return out.length ? out : [CHIP_COLORS[CHIP_COLORS.length - 1][1]];
-}
-export function ChipStack({ amount, max = 5 }) {
-  const list = chipBreakdown(amount, max).reverse();
-  return <span className="chipstack" aria-hidden="true">{list.map((c, i) => <span key={i} className="chip" style={{ '--c': c, '--i': i }} />)}</span>;
+/**
+ * Piles of chips for an amount. heap: two rows, one in front of the other, for a player's whole stack: 'side' has
+ * full piles (the band along the rim is wide at the sides), 'end' short ones (it is thin at the top and bottom).
+ */
+export function ChipStack({ amount, heap }) {
+  const piles = chipPiles(amount, heap === 'end' ? 5 : 10);
+  const row = (list, cls) => <span className={cls} aria-hidden="true">{list.map(([c, n], i) => <span key={i} className="chip-pile">{Array.from({ length: n }, (_, j) => <span key={j} className="chip" style={{ '--c': c }} />)}</span>)}</span>;
+  if (!heap) return row(piles, 'chipstack');
+  const front = Math.floor(piles.length / 2); // small change in front, big chips behind
+  return <span className={`chipstack heap ${heap}`} aria-hidden="true">{row(piles.slice(front), 'chip-row')}{row(piles.slice(0, front), 'chip-row front')}</span>;
 }

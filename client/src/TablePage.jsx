@@ -427,6 +427,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
   // v50: crowded tables (7+ seats) get smaller busts and tighter pills so neighbouring seats never touch
   const crowd = N > 6;
   const k = tableScale(w, h); // v51: big screens grow the 1080p caps with the felt
+  const roomy = !tall && w >= 900 * k && h >= 540 * k; // space on the felt for each player's stack of chips
   // Phones: the face is how you tell who is who, so an upright felt spends its width on busts (the other players'
   // face-down cards tuck in behind them, see .felt-box.tall in styles.css) instead of on empty rail.
   const bust = Math.round(Math.max(24, Math.min(62 * k, w / (tall ? (crowd ? 9.4 : 6.4) : (crowd ? 18 : 15)), h / (crowd ? (tall ? 9.2 : 9.5) : (tall ? 8.7 : 7.2)))));
@@ -446,12 +447,14 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
     const ang = (seatDeg((seat - mySeat + N) % N, N) * Math.PI) / 180;
     return { x: geo.cx + geo.rx * Math.cos(ang), y: geo.cy + geo.ry * Math.sin(ang) };
   };
-  // Upright phone felt: each bet chip takes the free spot nearest its seat, clear of every seat, the board, the pot
-  // and the other chips (table/chipspot.js). The rectangles are measured from the page before it paints, so real
-  // name lengths and chip sizes count. Wide felts keep the fixed positions used below.
+  // Phones and small windows: each bet chip takes the free spot nearest its seat, clear of every seat, the board,
+  // the pot and the other chips (table/chipspot.js). The rectangles are measured from the page before it paints, so
+  // real name lengths and chip sizes count. A roomy felt puts bets on the straight line from seat to pot instead
+  // (see betX below), and the same search then gives each player's whole stack the nearest spot in the band between
+  // the rim and the inner gold line, below a seat at the side and left of one at the bottom. Keys: s<seat> stack, b<seat> bet.
   const [betSpots, setBetSpots] = useState({});
-  const betKey = tall && hand && w > 0
-    ? `${w}x${h}:${bust}:${cw}:${mySeat}:${hand.board.length}:${hand.pot}:${view.seats.map((s) => (s ? `${s.bet || 0}/${s.name}/${s.stack}/${s.folded ? 1 : 0}${s.allIn ? 1 : 0}` : '-')).join(',')}`
+  const betKey = w > 0 && (roomy || hand)
+    ? `${w}x${h}:${bust}:${cw}:${mySeat}:${button}:${hand?.board.length}:${hand?.pot}:${hand?.toAct}:${view.seats.map((s, i) => (s ? `${s.bet || 0}/${s.name}/${s.stack}/${s.folded ? 1 : 0}${s.allIn ? 1 : 0}${s.hasCards ? 1 : 0}${s.cards ? 1 : 0}${shown[i]?.cards ? 1 : 0}${s.sittingOut ? 1 : 0}${s.waiting ? 1 : 0}${s.say?.text ? 1 : 0}` : '-')).join(',')}:${hold ? 1 : 0}`
     : '';
   useLayoutEffect(() => {
     const root = box.current;
@@ -459,16 +462,39 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
     const o = root.getBoundingClientRect();
     const rel = (el, pad) => { const r = el.getBoundingClientRect(); return { x0: r.left - o.left - pad, x1: r.right - o.left + pad, y0: r.top - o.top - pad, y1: r.bottom - o.top + pad }; };
     const blocks = [];
-    root.querySelectorAll('.seat-top, .seat-plate, .seat-tags, .seat.empty, .board, .pot, .dl-plate').forEach((el) => { const r = rel(el, 3); if (r.x1 - r.x0 > 8) blocks.push(r); });
-    const felt = { cx: (geo.cx * w) / 100, cy: (geo.cy * h) / 100, rx: (geo.frx * w) / 100, ry: (geo.fry * h) / 100 };
+    root.querySelectorAll(`.seat-top, .seat-plate, .seat-tags, .seat.empty, .dealer-btn, .board, .pot, .dl-plate${roomy ? ', .bet' : ''}`).forEach((el) => { const r = rel(el, 3); if (r.x1 - r.x0 > 8 || el.classList.contains('dealer-btn')) blocks.push(r); });
+    const seatBlocks = blocks.length;
+    const oval = (f) => ({ cx: (geo.cx * w) / 100, cy: (geo.cy * h) / 100, rx: (geo.frx * f * w) / 100, ry: (geo.fry * f * h) / 100 });
+    const LINE = 0.86; // the inner gold line: .felt::before is inset 7% a side
     const next = {};
-    root.querySelectorAll('.bet[data-seat]').forEach((el) => {
+    const place = (sel, key, opts) => root.querySelectorAll(sel).forEach((el) => {
       const i = Number(el.dataset.seat), r = el.getBoundingClientRect(), q = xy(i);
       const chip = { hw: r.width / 2 + 1, hh: r.height / 2 + 1 };
-      const at = chipSpot({ from: { x: (q.x * w) / 100, y: (q.y * h) / 100 }, chip, blocks, felt });
+      const { sides = [null], ...o } = opts(i, q), from = { x: (q.x * w) / 100, y: (q.y * h) / 100 };
+      // a stack tries its preferred sides in turn, and must end up next to its own seat: otherwise it stays hidden
+      // rather than sit by someone else. A bet just takes what it gets.
+      let at = null;
+      for (const side of sides) {
+        at = chipSpot({ from, chip, blocks, ...o, side });
+        if (key !== 's' || (at.clear && Math.hypot(at.x - from.x, at.y - from.y) <= bust * 3)) break;
+        at = null;
+      }
+      if (!at) return;
       blocks.push(rectAt(at.x, at.y, chip.hw, chip.hh));
-      next[i] = { x: +((at.x / w) * 100).toFixed(2), y: +((at.y / h) * 100).toFixed(2) };
+      next[key + i] = { x: +((at.x / w) * 100).toFixed(2), y: +((at.y / h) * 100).toFixed(2) };
     });
+    if (roomy) {
+      place('.stack-chips[data-seat]', 's', (i, q) => {
+        const a = (seatDeg((i - mySeat + N) % N, N) * Math.PI) / 180, x = (q.x * w) / 100, y = (q.y * h) / 100;
+        // seats down the sides keep their chips below them (under the bust if the felt reaches that far, else level
+        // with it); a seat in the middle of the bottom keeps them on its left. Last resort: wherever is nearest.
+        const sides = Math.abs(Math.cos(a)) < 0.35 ? [{ x, y, dx: -1, dy: 0 }] : [{ x, y: y + bust * 0.8, dx: 0, dy: 1 }, { x, y, dx: 0, dy: 1 }];
+        return { felt: oval(0.985), outside: oval(LINE + 0.01), core: 0.7, sides: [...sides, null] };
+      });
+      // all or nothing: one player's chips on show and another's not reads as the other being broke
+      if (Object.keys(next).length < root.querySelectorAll('.stack-chips[data-seat]').length) { for (const key of Object.keys(next)) delete next[key]; blocks.length = seatBlocks; }
+    }
+    else place('.bet[data-seat]', 'b', () => ({ felt: oval(1) }));
     setBetSpots((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   }, [betKey]);
   // themes (multi-table view only): anime emotes on the busts, and the geisha's tea every 5 hands
@@ -487,7 +513,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
   }, [theme, handNo, code]);
   const lastLine = !hand && view.lastHand ? view.lastHand.winners.map((x) => `${x.name} won ${chips(x.amount)}${x.hand ? ` with ${x.hand}` : ''}`).join(' · ') : '';
   return (
-    <div className={`felt-box ${tall ? 'tall' : ''} ${crowd ? 'crowd' : ''}`} ref={box} style={{ '--bust': `${bust}px`, '--cw': `${cw}px`, '--tscale': k.toFixed(3) }}>
+    <div className={`felt-box ${tall ? 'tall' : ''} ${crowd ? 'crowd' : ''} ${roomy ? 'roomy' : ''}`} ref={box} style={{ '--bust': `${bust}px`, '--cw': `${cw}px`, '--tscale': k.toFixed(3), '--band': `${((0.14 * geo.fry * h) / 100 / k).toFixed(1)}px`, '--band-w': `${((0.14 * geo.frx * w) / 100 / k).toFixed(1)}px` }}>
       {w > 0 && <>
         {theme === 'arcade' && <FeltConsoles size={Math.max(30, Math.round(bust * 0.95))} />}
         <div className={`dealer-spot ${rp.on && rp.step.k === 'deal' && !rp.reduced ? 'dealing' : ''}`} style={{ height: `${tall ? (crowd ? 28 : 25) : 34}%` }}><Dealer /></div>
@@ -495,7 +521,8 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
           <div className="felt-logo script" aria-hidden="true">{theme === 'anime' ? 'バッファロー・ビル' : theme === 'arcade' ? 'Free Play' : "Buffalo Bill's"}</div>
         </div>
         <DealerPlate style={{ top: `${geo.cy - geo.fry}%` }} />
-        <div className="center-area" style={{ top: `${geo.cy + (tall ? 2 : 0)}%` }}>
+        {/* the board sits up toward the dealer (never under his plate), which leaves the middle of the felt to the pot */}
+        <div className="center-area" style={{ top: tall ? `${geo.cy - 9}%` : `max(calc(${geo.cy - geo.fry}% + 34px * var(--tscale)), calc(${geo.cy - 5}% - var(--cw) * 1.4 - 14px))` }}>
           <div className="board">
             {[0, 1, 2, 3, 4].map((i) => {
               const board = hand ? hand.board : view.lastHand?.board || [];
@@ -504,7 +531,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
               return board[i] ? <Card key={i} card={board[i]} /> : <EmptyCard key={i} />;
             })}
           </div>
-          <div className="pot">{hand ? <><ChipStack amount={rp.on && rp.frame.pot != null ? rp.frame.pot : hand.pot} max={6} /> Pot <b>{chips(rp.on && rp.frame.pot != null ? rp.frame.pot : hand.pot)}</b></> : view.status === 'lobby' ? 'Waiting to start' : view.lastHand ? <span className="last-line">Hand #{view.lastHand.number}: {lastLine}</span> : ''}</div>
+          <div className="pot">{hand ? <><ChipStack amount={rp.on && rp.frame.pot != null ? rp.frame.pot : hand.pot} /><span>Pot <b>{chips(rp.on && rp.frame.pot != null ? rp.frame.pot : hand.pot)}</b></span></> : view.status === 'lobby' ? <span>Waiting to start</span> : view.lastHand ? <span className="last-line">Hand #{view.lastHand.number}: {lastLine}</span> : ''}</div>
         </div>
         {Array.from({ length: N }, (_, seat) => {
           const pos = (seat - mySeat + N) % N;
@@ -524,8 +551,11 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
           const toAct = hand?.toAct === seat;
           const reveal = shown[seat]?.cards;
           const cards = isMe && s.cards ? s.cards : reveal || null;
-          const spot = betSpots[seat];
-          const betX = spot ? spot.x : geo.cx + geo.rx * 0.6 * Math.cos(ang), betY = spot ? spot.y : geo.cy + geo.ry * 0.55 * Math.sin(ang);
+          const spot = roomy ? null : betSpots[`b${seat}`], home = betSpots[`s${seat}`];
+          // roomy felt: the bet sits on the line from the seat to the pot, just inside the gold line, never closer than the seat's own cards allow
+          const ray = Math.hypot(geo.rx * w * Math.cos(ang), geo.ry * h * Math.sin(ang)) / 100;
+          const out = roomy && ray ? 1 - Math.max(0.3, (Math.abs(Math.cos(ang)) * (bust + 40 * k) + Math.abs(Math.sin(ang)) * (bust / 2 + 38 * k)) / ray) : 0;
+          const betX = spot ? spot.x : geo.cx + geo.rx * (out || 0.52) * Math.cos(ang), betY = spot ? spot.y : geo.cy + geo.ry * (out || 0.42) * Math.sin(ang);
           const state = winners.has(seat) ? 'win' : s.folded ? 'folded' : toAct ? 'toact' : '';
           return (
             <React.Fragment key={seat}>
@@ -556,9 +586,11 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
                   {reveal && shown[seat]?.hand && <span className="tag">{shown[seat].hand}</span>}
                 </div>
               </div>
+              {/* the whole stack, behind the gold line as near its seat as it can get (placed above; hidden until then). Only when the felt has the room; otherwise the plate number does the job */}
+              {roomy && s.stack > 0 && <div className="stack-chips" data-seat={seat} style={{ left: `${home ? home.x : x}%`, top: `${home ? home.y : y}%`, visibility: home ? 'visible' : 'hidden' }}><ChipStack amount={s.stack} heap={Math.abs(Math.sin(ang)) < 0.8 ? 'side' : 'end'} /></div>}
               {hand && s.bet > 0 && !rp.on && (
                 <div className="bet" data-seat={seat} style={{ left: `${betX}%`, top: `${betY}%` }}>
-                  <ChipStack amount={s.bet} max={4} />
+                  <ChipStack amount={s.bet} />
                   {hand.sbSeat === seat && hand.street === 'preflop' && s.bet <= view.settings.smallBlind ? 'SB ' : ''}
                   {hand.bbSeat === seat && hand.street === 'preflop' && s.bet === view.settings.bigBlind ? 'BB ' : ''}
                   {chips(s.bet)}

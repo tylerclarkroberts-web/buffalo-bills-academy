@@ -14,7 +14,24 @@ export function formatDuration(sec) {
   return `${sec} seconds`;
 }
 export const chips = (n) => Number(n).toLocaleString();
-export const signed = (n) => (n > 0 ? `+${chips(n)}` : n < 0 ? `−${chips(-n)}` : '0');
+const DENOMS = [[1, '#f2ede4'], [5, '#e0352b'], [25, '#1f8a5b'], [100, '#151515'], [500, '#7c5cff'], [1000, '#e8b04a']];
+/**
+ * An amount as piles of chips on the felt: [[colour, count], ...], smallest chip first, `cap` chips to a pile.
+ * Each colour keeps its change plus one bigger chip broken down, so 525 is four real piles instead of two chips.
+ */
+export function chipPiles(amount, cap = 10) {
+  const out = []; let left = Math.max(0, Math.floor(amount));
+  DENOMS.forEach(([v, c], i) => {
+    const up = DENOMS[i + 1]?.[0];
+    // ponytail: the top chip stops at three piles, so past ~30k the picture stops growing. Add a bigger chip if tables get there.
+    let n = up ? (left % up) / v : Math.min(left / v, cap * 3);
+    if (up && left - n * v >= up && n + up / v <= cap) n += up / v;
+    left -= n * v;
+    for (; n > 0; n -= cap) out.push([c, Math.min(n, cap)]);
+  });
+  return out;
+}
+export const signed =(n) => (n > 0 ? `+${chips(n)}` : n < 0 ? `−${chips(-n)}` : '0');
 export const money = (n, { sign = false } = {}) => {
   if (n === null || n === undefined || Number.isNaN(n)) return '—';
   const abs = Math.abs(n);
