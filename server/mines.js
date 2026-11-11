@@ -107,7 +107,7 @@ export class Mines {
     const now = this.now();
     const cur = this.doc.active[player.id];
     if (this.foreman?.pending(player.id)) { const e = new GameError('The foreman is waiting on an answer before you clock in again.', 409); e.code = 'foreman'; throw e; }
-    if (cur && now - cur.startedAt < MAX_SHIFT_MS) return this.publicShift(cur, true);
+    if (cur && now - cur.startedAt < MAX_SHIFT_MS) return this.publicShift(cur, true, player.id);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
     const shift = { id: crypto.randomBytes(12).toString('base64url'), seed: crypto.randomInt(2 ** 31), startedAt: now, ...rollScare(this.scareInt), ...this.vein() };
@@ -115,10 +115,29 @@ export class Mines {
     this.doc.active[player.id] = shift;
     this.accounts.touchMining(player, { recentStarts: [...recent, now] });
     this.save();
-    return this.publicShift(shift, false);
+    return this.publicShift(shift, false, player.id);
   }
-  publicShift(s, resumed) {
-    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}) }; // (scareAt: shifts started before v19)
+  /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
+  guideBug(playerId) {
+    if (!this.barn) return null;
+    try {
+      // Prefer the public view (hatches eggs, applies style). Fall back to the raw pen if view throws on a corrupt row.
+      let pen = null, style = null;
+      try {
+        const v = this.barn.view(playerId);
+        pen = v?.pen || null;
+        style = pen?.style || null;
+      } catch {
+        const raw = this.barn.doc?.pens?.[playerId];
+        if (raw?.stage === 'creature') pen = { stage: 'creature', species: raw.species, name: raw.name, speciesName: raw.species };
+      }
+      if (!pen || pen.stage !== 'creature') return null;
+      return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
+    } catch { return null; }
+  }
+  publicShift(s, resumed, playerId) {
+    const bug = playerId != null ? this.guideBug(playerId) : null;
+    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}) }; // (scareAt: shifts started before v19)
   }
 
   /** Standing at a pool: is the acid there yet? Only ever says yes / seeping / no, never the vein time. */

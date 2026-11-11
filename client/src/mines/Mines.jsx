@@ -8,6 +8,7 @@ const EGG_MS = 10000; // v30: an egg (when the server put one in this shift) lie
 import { MineScene, MINE_REACH } from './scene.js';
 import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
+import { BugGuide } from './bugGuide.js';
 import DoomRoom from './DoomRoom.jsx';
 import Foreman from './Foreman.jsx';
 import './mines.css';
@@ -157,6 +158,7 @@ function Intro({ me, loading, onStart }) {
             <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · on phones, the stick</span></li>
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
             <li>Find the glowing pool. Dry? The vein moved deeper. Hold <b>MINE</b> when it's in.</li>
+            <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
             <li>Get paid. Clock in again. Repeat for weeks.</li>
           </ol>
           <p className="m-dim">Shifts last at least 20 seconds. Some last a lot longer. One shift at a time. Pay goes straight into your bankroll.</p>
@@ -230,6 +232,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   useEffect(() => {
     let lastNear = false, lastD = 99;
     const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
+    const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
+    // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
+    const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
     // At a pool: ask the server if the acid is in yet (it alone knows when). Dry: the vein moves on to the next
     // pool in the chain and this one stays behind as a crater. Seeping (or no pools left): wait here and ask again.
     const askVein = async () => {
@@ -241,27 +247,31 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
         if (r.flowing) { v.flowing = true; setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
         if (r.seeping || v.i >= chain.length - 1) { v.waitUntil = Date.now() + 2500; setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
         v.i += 1; const p = chain[v.i];
-        maze.pool = p; stalker.pool = p; sceneRef.current?.setPool(p.x, p.y);
+        maze.pool = p; stalker.pool = p; bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
         setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
         setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
       } catch { v.waitUntil = Date.now() + 3000; } finally { v.asking = false; }
     };
-    // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
-    const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d) => {
         const at = d < MINE_REACH;
         if (at && !vein.current.flowing) askVein();
         const n = at && vein.current.flowing;
-        if (n) stalker.acidFound();
+        if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
         if (n !== lastNear) { lastNear = n; setNear(n); }
         if (Math.abs(d - lastD) > 0.4) { lastD = d; setDist(d); }
       },
-      stalker, localStart: shift.localStart, reduceMotion: reduce,
+      stalker, bugGuide, localStart: shift.localStart, reduceMotion: reduce,
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
         if (e === 'vanish') { visitorHere.current = false; setVisitor(false); audio?.dread(false); setLine('THE ACID GLOWS. HE\'S GONE.'); dreadEl.current?.style.setProperty('--dread', '0'); }
+        if (e === 'bug-appear') {
+          const nm = shift.bug?.name || 'Your bug';
+          setLine(`${nm.toUpperCase()} KNOWS THE WAY. FOLLOW IT TO THE ACID.`);
+          setStatus('YOUR BUG IS LEADING. FOLLOW IT.');
+        }
+        if (e === 'bug-done') setLine('YOUR BUG SETTLES BY THE GLOW. THE ACID IS HERE.');
       },
     });
     sceneRef.current = scene;

@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { rng } from './maze.js';
 import { MIN_GAP } from './stalker.js';
+import { BY_ID } from '../../../server/engine/creatures.js';
+import { spriteCanvas } from '../barn/sprite.js';
 
 const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -103,9 +105,9 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, localStart, reduceMotion = false, onDread, onEvent } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, localStart, reduceMotion = false, onDread, onEvent } = {}) {
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
-    this.stalker = stalker || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
+    this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
@@ -209,6 +211,7 @@ export class MineScene {
     }
 
     if (this.stalker) { this.visitor = buildVisitor(); this.scene.add(this.visitor.group); this.fade = 0; this.flick = 0; this.nextFlick = 1; this.lastDread = -1; }
+    if (this.bugGuide?.armed) this.addBugGuide(this.bugGuide.bug);
     this.pos = new THREE.Vector2(maze.start.x * TILE, maze.start.y * TILE);
     this.yaw = -maze.facing - Math.PI / 2; this.pitch = 0;
     this.input = { f: 0, s: 0, t: 0 };
@@ -266,6 +269,43 @@ export class MineScene {
     if (Math.abs(this.camera.fov - fov) > 0.02) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     if (Math.abs(level - this.lastDread) > 0.02) { this.lastDread = level; this.onDread?.(level); }
   }
+
+  /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
+  addBugGuide(bug) {
+    const g = new THREE.Group();
+    const species = BY_ID[bug?.species];
+    let mesh;
+    if (species) {
+      const c = spriteCanvas(species, bug.style || null);
+      const tex = new THREE.CanvasTexture(c);
+      tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    } else {
+      // fallback low-poly beetle if the species sheet is missing
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: '#c8e06a' }));
+      mesh.scale.set(1.4, 0.7, 1);
+    }
+    mesh.position.y = 0.55; g.add(mesh);
+    const glow = new THREE.PointLight('#b6ff7a', 1.6, 3.2); glow.position.set(0, 0.7, 0); g.add(glow);
+    g.visible = false; this.scene.add(g);
+    this.bugMesh = { group: g, mesh, glow };
+  }
+  updateBugGuide(now, dt) {
+    const bg = this.bugGuide, m = this.bugMesh; if (!bg || !m) return;
+    bg.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart });
+    while (bg.events.length) this.onEvent?.(bg.events.shift() === 'appear' ? 'bug-appear' : 'bug-done');
+    const g = m.group;
+    if (!bg.present) { g.visible = false; return; }
+    g.visible = true;
+    const bob = this.reduce ? 0 : Math.sin(bg.bob) * 0.06;
+    g.position.set(bg.x, bob, bg.z);
+    // billboard: face the camera so the pixel bug stays readable on phones
+    g.rotation.y = this.yaw;
+    m.glow.intensity = 1.2 + (this.reduce ? 0 : 0.5 * Math.sin(now / 280));
+    if (!this.reduce && bg.moving) m.mesh.rotation.z = Math.sin(now / 90) * 0.18;
+    else m.mesh.rotation.z *= 0.85;
+  }
   /** The vein moved on: leave a dry crater where the glow was and light up the next pool. */
   setPool(x, y) {
     const crater = new THREE.Mesh(new THREE.CircleGeometry(0.9, 16), new THREE.MeshBasicMaterial({ color: '#2a2a1e' }));
@@ -274,6 +314,7 @@ export class MineScene {
     this.poolPos.copy(to);
     this.poolMesh.position.copy(to).setY(0.02); this.poolLight.position.copy(to).setY(0.6);
     for (const c of this.crystals) { c.position.x += dx; c.position.z += dz; }
+    this.bugGuide?.setPool({ x, y });
   }
   /** v30: this shift's egg (only when the server put one in it). Against a wall, never in the way: no collision. */
   addEgg(spot) {
@@ -348,6 +389,7 @@ export class MineScene {
       this.bob += dt * 9; this.onStep?.();
     } else this.pushing = false;
     if (this.stalker) this.updateVisitor(now, dt);
+    if (this.bugGuide) this.updateBugGuide(now, dt);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;
     this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
