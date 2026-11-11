@@ -231,7 +231,7 @@ export class Mines {
       this.requireVersion(request); return this.completionView(player, last);
     }
     if (this.foreman?.pending(player.id)) { const e = new GameError('The foreman is waiting on an answer before you clock in again.', 409); e.code = 'foreman'; throw e; }
-    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true); }
+    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true, player.id); }
     this.requireVersion(request);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
@@ -254,10 +254,29 @@ export class Mines {
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
     this.store.commitPlayerDrafts([draft]);
     this.commit(player.id, shift); this.holds.delete(player.id);
-    return this.publicShift(shift, false);
+    return this.publicShift(shift, false, player.id);
   }
-  publicShift(s, resumed) {
-    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}),
+  /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
+  guideBug(playerId) {
+    if (!this.barn) return null;
+    try {
+      // Prefer the public view (hatches eggs, applies style). Fall back to the raw pen if view throws on a corrupt row.
+      let pen = null, style = null;
+      try {
+        const v = this.barn.view(playerId);
+        pen = v?.pen || null;
+        style = pen?.style || null;
+      } catch {
+        const raw = this.barn.doc?.pens?.[playerId];
+        if (raw?.stage === 'creature') pen = { stage: 'creature', species: raw.species, name: raw.name, speciesName: raw.species };
+      }
+      if (!pen || pen.stage !== 'creature') return null;
+      return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
+    } catch { return null; }
+  }
+  publicShift(s, resumed, playerId) {
+    const bug = playerId != null ? this.guideBug(playerId) : null;
+    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
