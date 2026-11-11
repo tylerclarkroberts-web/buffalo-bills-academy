@@ -276,15 +276,48 @@ function overlay(ctx, grid, shape) {
   x = Math.max(0, Math.min(SPRITE - pw, x)); y = Math.max(0, Math.min(SPRITE - ph, y));
   w.p.forEach((row, r) => [...row].forEach((ch, c) => { if (ch !== '.') { ctx.fillStyle = w.k[ch]; ctx.fillRect(x + c, y + r, 1, 1); } }));
 }
+// v35: battle gear shows too, fitted to the sprite's own body (its centre run of pixels) and leg tips.
+const bodyRun = (grid, y) => { if (!grid[y]?.[31]) return null; let a = 31, b = 32; while (a > 0 && grid[y][a - 1]) a--; while (b < SPRITE - 1 && grid[y][b + 1]) b++; return [a, b]; };
+const legTip = (grid, y0, y1) => { let best = null; for (let y = Math.max(0, y0); y <= Math.min(SPRITE - 1, y1); y++) { const x = grid[y].findIndex(Boolean); if (x >= 0 && x < 31 && (!best || x < best[0])) best = [x, y]; } return best; };
+function stamp(ctx, p, k, x, y, mirror = false) {
+  p.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '.') return; ctx.fillStyle = k[ch]; ctx.fillRect(x + c, y + r, 1, 1); if (mirror) ctx.fillRect(SPRITE - 1 - x - c, y + r, 1, 1); }));
+}
+export const GEAR_SHAPES = ['shell', 'claws', 'boots', 'helmet', 'shield', 'mandibles', 'armor', 'bandage'];
+function gearOverlay(ctx, grid, shape) {
+  const b = bounds(grid), h = b.bot - b.top, at = (f) => b.top + Math.round(h * f);
+  let head = b.top; while (head < b.bot && (bodyRun(grid, head)?.reduce((l, r) => r - l) ?? 0) < 5) head++;
+  switch (shape) {
+    case 'armor': { // legs join the body run on some rows, so plates stop at the body's usual width
+      const widths = []; for (let y = at(0.35); y <= at(0.85); y++) { const run = bodyRun(grid, y); if (run) widths.push(run[1] - run[0]); }
+      const half = Math.ceil((widths.sort((p, q) => p - q)[widths.length >> 1] || 8) / 2);
+      for (let band = 0; band < 3; band++) for (let i = 0; i < 3; i++) {
+        const y = at(0.4) + band * 5 + i, run = bodyRun(grid, y); if (!run || run[1] - run[0] < 4) continue;
+        const l = Math.max(run[0], 32 - half) + 1, r = Math.min(run[1], 31 + half) - 1;
+        ctx.fillStyle = ['#e2e6ea', '#a2a8b0', '#5e646c'][i]; ctx.fillRect(l, y, r - l + 1, 1);
+        if (i === 1) { ctx.fillStyle = '#fff6c0'; ctx.fillRect(l + 1, y, 1, 1); ctx.fillRect(r - 1, y, 1, 1); }
+      } break;
+    }
+    case 'shell': [[-6, 0.46], [5, 0.6], [-3, 0.78]].forEach(([dx, f]) => { const x = 32 + dx, y = at(f); if (grid[y]?.[x]) stamp(ctx, ['..w..', '..w..', 'wwyww', '..w..', '..w..'], { w: '#fff2b0', y: '#ffffff' }, x - 2, y - 2); }); break;
+    case 'boots': [[0.22, 0.45], [0.46, 0.68], [0.69, 1]].forEach(([f0, f1]) => { const t = legTip(grid, at(f0), at(f1)); if (t) stamp(ctx, ['.BB', '.Bb', 'bbb', 'sss'], { B: '#d08848', b: '#9a5226', s: '#3a2010' }, t[0] - 1, t[1] - 2, true); }); break;
+    case 'claws': { const t = legTip(grid, b.top, at(0.42)); if (t) stamp(ctx, ['s...', 'ss..', '.sS.', '.sSS', '..SS'], { s: '#f4f8fc', S: '#8a929c' }, t[0] - 2, t[1] - 3, true); break; }
+    case 'mandibles': stamp(ctx, ['g..........g', 'gg........gg', 'Ggg......ggG', '.GGg....gGG.', '..GGg..gGG..'], { g: '#ffe070', G: '#b08a20' }, 26, head - 4); break;
+    case 'helmet': stamp(ctx, ['.....ss.....', '...kkkkkk...', '.kkKkKkKkkk.', 'kKkKkKkKkKkk', 'kkkkkkkkkkkk', '.hhhhhhhhhh.'], { k: '#9a6e40', K: '#5c4028', s: '#4a3018', h: '#c89a5a' }, 26, head - 3); break;
+    case 'shield': { const t = legTip(grid, at(0.38), at(0.52)) || [b.l, at(0.42)];
+      stamp(ctx, ['...gg...', '..gggg..', '.ggVggg.', 'gggVgggG', 'ggggVggG', 'gggVgggG', '.ggVggG.', '..gVgG..', '...gG...', '...s....', '...s....'], { g: '#7cc050', G: '#3e7a2a', V: '#d8f0b0', s: '#5c4028' }, Math.max(0, t[0] - 5), t[1] - 4); break; }
+    case 'bandage': stamp(ctx, ['......ww', '.....wpw', '....wppw', '...wrrw.', '..wrrw..', '.wppw...', 'wpw.....', 'ww......'], { w: '#f4ecdc', p: '#e0b098', r: '#c8433e' }, 33, at(0.48)); break;
+    default: break;
+  }
+}
 /** The bug's 64x64 sprite, cached by species, life stage and look, then scaled with its accessories. */
 export function spriteCanvas(bug, style, level) {
-  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}`;
+  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}`;
   if (cache.has(key)) return cache.get(key);
   const b = style?.bugskin?.pal ? { ...bug, look: { ...(bug.look || {}), pal: style.bugskin.pal } } : bug;
   const grid = spriteGrid(b, level);
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(SPRITE, SPRITE) : Object.assign(document.createElement('canvas'), { width: SPRITE, height: SPRITE });
   const x = c.getContext('2d');
   paintSprite(x, grid, 0, 0, SPRITE);
+  if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape);
   if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape);
   if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
   cache.set(key, c);

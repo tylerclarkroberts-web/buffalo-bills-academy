@@ -153,7 +153,7 @@ export default function Barn() {
     skew.current = r.serverNow - Date.now(); setB(r);
     const last = r.pen?.lastBout;
     const id = last?.id || last?.at || null;
-    if (seenBout.current !== undefined && id && id !== seenBout.current) { setReplay(false); setBout(last); sfx.bell(); }
+    if (seenBout.current !== undefined && id && id !== seenBout.current) { setReplay(false); setBout(last); }
     seenBout.current = id;
     if (wallet.current !== undefined && wallet.current !== r.bankroll) refreshSession();
     wallet.current = r.bankroll;
@@ -313,7 +313,7 @@ export default function Barn() {
             </div>
           </div>
         )}
-        {bout && <Bout key={bout.id || bout.at} bout={bout} replay={replay} reduced={reduced} onClose={() => { setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`))?.focus()); }} />}
+        {bout && <Bout key={bout.id || bout.at} bout={bout} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>
