@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { makeMaze, rng, veinChain, eggSpot, rodHeading, FIRST_POOL_STEPS } from './maze.js';
+import { makeMaze, rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, FIRST_POOL_STEPS } from './maze.js';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
@@ -33,6 +33,67 @@ const LINES = [
   'SAFETY NOTICE: IF YOU SEE SOMEONE PALE IN THE TUNNELS, WAVE. HE IS SHY.',
   'XP +1. THERE IS NO XP. KEEP DIGGING.',
   'ACHIEVEMENT LOCKED: SEEING THE SUN.',
+  'SAFETY NOTICE: THE HILLS DO NOT HAVE EYES. STOP ASKING.',
+  'TIP: THE BUCKET GOES UNDER THE ACID.',
+  'NEAREST TOWN: WENDOVER. NEAREST HELP: NO.',
+  'FOREMAN: "LESS LOOKING AROUND, MORE ACID, SPORT."',
+  'THE CANARY QUIT. IT LEFT A NOTE. THE NOTE WAS SCREAMING.',
+  'RUMOR: THE LAST CREW IS STILL ON THE CLOCK.',
+  'SAFETY NOTICE: THE ACID IS NOT FOR YOUR SKIN, EYES, OR CURIOSITY.',
+  'IT HAS BEEN 0 DAYS SINCE SOMEONE COUNTED THE MINERS.',
+  'THIS MINE HAS BEEN IN OPERATION SINCE 1966. B.C.',
+  'FOREMAN: "I DON\'T PAY YOU TO WALK. I BARELY PAY YOU TO MINE."',
+  'COMPANY POLICY: TEETH FOUND ON SHIFT BELONG TO THE COMPANY.',
+  'GRIND REPORT: YOU ARE 0.3% CLOSER TO A SECOND HAT.',
+  'A CHILD IS LAUGHING DOWN THE TUNNEL. NO CHILDREN ARE ON PAYROLL.',
+  'SOMEONE SCRATCHED TALLY MARKS BY THE DOOR. THEY STOP AT 4,000.',
+  'YOUR HEADLAMP FLICKERED. IT IS FINE. IT SAW SOMETHING, IS ALL.',
+  'THE WALLS ARE SWEATING. DO NOT TAKE IT PERSONALLY.',
+  'WORKERS\' COMP IS A TOWEL. THE TOWEL IS MISSING.',
+  'FOREMAN: "I HAVE SEEN MUD WITH MORE HUSTLE."',
+  'ACHIEVEMENT LOCKED: ALL ORIGINAL FINGERS.',
+  'SAFETY NOTICE: THE EMERGENCY EXIT IS A PAINTING OF AN EMERGENCY EXIT.',
+  'TIP: LEFT IS THE OTHER RIGHT.',
+  'RUMOR: A MINER TOOK A WRONG TURN IN \'87. HE STILL CASHES HIS CHECKS.',
+  'SOMEONE DREW A FAMILY ON THE WALL. THERE ARE TOO MANY OF THEM.',
+  'THE COMPANY STORE NOW SELLS EYEWASH. ONE EYE PER CUSTOMER.',
+  'XP +0. SOMETHING ELSE LEVELED UP.',
+  'NOTICE: THE BREAK ROOM IS BEING USED BY SOMETHING ELSE.',
+  'THE "0 DAYS" SIGN HAS NEVER NEEDED CHANGING.',
+  'FOREMAN: "YOU CALL THAT WALKING?"',
+  'TIP: ACID BURNS. THIS HAS BEEN YOUR TRAINING.',
+  'SAFETY NOTICE: BOOTS FOUND IN THE TUNNELS ARE OCCUPIED.',
+  'THE MINE CART WENT BY AGAIN. THERE ARE NO TRACKS.',
+  'YOUR BUCKET HAS A SMALL HOLE. SO DOES YOUR CONTRACT.',
+  'TIP: IF YOU ARE READING THIS, YOU ARE NOT MINING.',
+  'FOREMAN: "THAT BUCKET BETTER COME BACK HEAVIER THAN IT LEFT."',
+  'THERE IS A LAWN CHAIR DOWN HERE. IT IS FACING YOU.',
+  'PAYROLL REMINDER: HAZARD PAY IS A FEELING.',
+  'SAFETY NOTICE: DO NOT WHISTLE. SOMETHING DOWN HERE KNOWS THE HARMONY.',
+  'NOTICE: THE VENDING MACHINE ONLY TAKES TEETH.',
+  'RUMOR: THE FOREMAN HAS NEVER BEEN SEEN LEAVING.',
+  'EMPLOYEE OF THE MONTH: [REDACTED]. THIRD MONTH RUNNING. STILL MISSING.',
+  'YOU FOUND A HARD HAT. IT IS WARM. PUT IT BACK.',
+  'TIP: DEAD ENDS ARE WHERE THE TUNNEL STOPS.',
+  'A DISTANT VOICE: "IS IT LUNCH?" IT HAS NOT BEEN LUNCH IN YEARS.',
+  'THE AIR DOWN HERE IS 40% AIR.',
+  'FOREMAN: "BREAKS ARE A SURFACE THING."',
+  'GRIND REPORT: PRODUCTIVITY UP. HEADCOUNT DOWN. UNRELATED.',
+  'THE PREVIOUS MINER LEFT YOU A NOTE. IT SAYS "DON\'T."',
+  'MORALE IS HIGH. MORALE IS MANDATORY.',
+  'YOU FOUND A CASINO CHIP. THE CASINO BURNED DOWN IN 1962.',
+  'REMINDER: SUNLIGHT IS A PERK, NOT A RIGHT.',
+  'TIP: HOLD THE BUCKET BY THE HANDLE. THAT IS WHAT IT IS FOR.',
+  'THE ACID LOOKED AT YOU FIRST.',
+  'A DISTANT VOICE: "HEY." JUST "HEY." KEEP WALKING.',
+  'A DISTANT VOICE: "YOU DROPPED THIS." YOU DID NOT DROP ANYTHING.',
+];
+// Only while the visitor is on shift with you.
+const VISITOR_LINES = [
+  'SAFETY NOTICE: THAT IS NOT A CO-WORKER. CO-WORKERS BLINK.',
+  'SAFETY NOTICE: DO NOT FEED HIM.',
+  'IF HE WAVES BACK, THAT IS BETWEEN YOU AND HIM.',
+  'THE GEIGER IS CLICKING IN MORSE. IT SAYS "BEHIND."',
 ];
 const ART = {
   motherlode: String.raw`
@@ -270,7 +331,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const closing = useRef(false);
   const [near, setNear] = useState(false);
   const [rod, setRod] = useState(null); // dowsing rod: eighths of a turn toward the current pool
-  const [dist, setDist] = useState(99);
+  const [bars, setBars] = useState(1);
   const [legacyProgress, setProgress] = useState(0);
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
@@ -368,7 +429,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     window.focus();
   };
   useEffect(() => {
-    let lastNear = false, lastD = 99;
+    let lastNear = false, lastBars = 1;
     const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (bucketShift) {
       client.current = createMiningClient({
@@ -399,6 +460,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     };
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
+    audio?.enter(dark);
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
@@ -422,16 +484,17 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       } catch { v.fail(Date.now()); }
     };
     const scene = new MineScene(canvas.current, maze, {
-      onNear: (d) => {
+      onNear: (d, path) => {
         const at = d < MINE_REACH;
         if (at && !vein.current.flowing) askVein();
         const n = at && vein.current.flowing && !done.current;
         if (n) stalker.acidFound();
         if (n !== lastNear) { lastNear = n; setNear(n); if (!n) release(); }
-        if (Math.abs(d - lastD) > 0.4) { lastD = d; setDist(d); }
+        const b = geigerBars(path);
+        if (b !== lastBars) { lastBars = b; setBars(b); }
       },
       stalker, localStart: shift.localStart, reduceMotion: reduce,
-      fogFar: [17, 13, 10, 8][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 9, 7.5, 6.5][dark],
+      depth: dark, fogFar: [17, 12, 8.5, 6][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 8, 6, 4.5][dark],
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
@@ -447,6 +510,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     sceneRef.current = scene;
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
+    scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
       eggRef.current = 'taking'; setEggNear(false);
@@ -501,14 +565,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         else { const ev = scene.eggView(); setEggNear(ev.dist < 1.9 && ev.facing > 0.4); }
       }
     }, 250);
-    const flavor = setInterval(() => { if (!visitorHere.current) setLine(LINES[Math.floor(Math.random() * LINES.length)]); }, 6500);
+    const flavor = setInterval(() => { const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
       client.current?.dispose(); exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor);
-      audio?.dread(false); // clocking out: the normal music comes back
+      audio?.dread(false); audio?.leave(); // clocking out: the normal music comes back
     };
   }, []);
 
@@ -526,13 +590,15 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     return () => clearTimeout(id);
   }, [visitor, audio]);
 
-  // geiger clicks: faster as you get closer
+  // geiger clicks: they land at random like the real thing, on average every 1400 ms at one bar down to every 60 ms
+  // at ten. One rate per bar, so walking doesn't keep restarting the timer.
   useEffect(() => {
     if (!audio) return;
-    const ms = Math.max(90, Math.min(1400, dist * 90));
-    const id = setInterval(() => { if (!doomRef.current) audio.tick(dist < MINE_REACH ? 1.4 : 0.8); }, ms);
-    return () => clearInterval(id);
-  }, [dist, audio]);
+    const mean = 1400 * (60 / 1400) ** ((bars - 1) / 9);
+    const wait = () => Math.max(12, -Math.log(1 - Math.random()) * mean);
+    let id = setTimeout(function click() { if (!doomRef.current) audio.tick(bars === 10 ? 1.3 : 1); id = setTimeout(click, wait()); }, wait());
+    return () => clearTimeout(id);
+  }, [bars, audio]);
 
   useEffect(() => {
     const s = sceneRef.current; if (s) s.mining = holding && near && !mineError && !clockingOut;
@@ -573,7 +639,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div></div>
       <div className="m-hud tr">
-        <div className={`geiger ${dist < 4 ? 'hot' : dist < 9 ? 'warm' : ''}`}>ACID {'▮'.repeat(Math.max(1, Math.min(10, Math.round(11 - dist))))}{'▯'.repeat(Math.max(0, 10 - Math.max(1, Math.min(10, Math.round(11 - dist)))))}</div>
+        <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
         {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
           <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}</span>
