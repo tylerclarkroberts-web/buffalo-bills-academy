@@ -3,6 +3,7 @@
 // through Accounts.change without `force`, so a balance can never go below zero; no refunds, no selling, no trading.
 // One-of-a-kind items (`unique`) have a single owner recorded in `doc.unique`; buy() checks and writes it in one
 // synchronous step, so two buyers can never both get the Moon.
+// Seasonal items (`month`) are on the shelf during that calendar month only; what you bought stays yours.
 // Gags (v36, formerly pranks) are one-time-use cartoon table effects with rate limits, a per-player opt-out and a
 // per-table host switch. Avatar items can be re-fitted per player (nudge + size), stored here and drawn everywhere.
 import { GameError } from './engine/game.js';
@@ -26,6 +27,9 @@ const FIT_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'acc']; // not 'skin' 
 const CONSUMABLE = (x) => !!x.use;
 /** One-time-use items (gags, tobacco): you can hold at most one of each, and using it uses it up. */
 export const ONCE = (x) => !!x?.once;
+/** The shop's calendar runs on Mountain time, so Halloween stock lasts through Halloween night. */
+export const shopMonth = (ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', month: 'numeric' }).format(ms));
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 /** What a client needs to draw an equipped item (no catalog on the client): avatar look, bug palette or bug overlay. */
@@ -69,12 +73,13 @@ export class Shop {
   /** What the store page needs. Bug tabs and items only once your egg has hatched. */
   view(p) {
     const iv = this.inv(p.id); const hatched = this.hatched(p.id);
-    const tabs = TABS.filter((t) => hatched || !t.bug);
-    const items = CATALOG.filter((x) => hatched || x.kind !== 'bug');
+    const month = shopMonth(this.now());
+    const items = CATALOG.filter((x) => (hatched || x.kind !== 'bug') && (!x.month || x.month === month || iv.own[x.id]));
+    const tabs = TABS.filter((t) => (hatched || !t.bug) && (t.id !== 'seasonal' || items.some((x) => x.cat === 'seasonal')));
     this.accounts.ensure(p);
     // who holds each one-of-a-kind item (a name only; hidden and departed owners stay anonymous)
     const taken = Object.fromEntries(Object.entries(this.doc.unique).map(([id, pid]) => { const o = this.store.players?.[pid]; return [id, o && !o.hidden ? o.name : 'somebody']; }));
-    return { tabs, items, taken, own: iv.own, eq: iv.eq, hatched, bankroll: p.bankroll, noGags: !!iv.noGags, noSmoke: !!iv.noSmoke, tobaccoNotice: TOBACCO_NOTICE, confirmOver: CONFIRM_OVER, serverNow: this.now(), used: iv.used, fit: iv.fit, fitLimits: FIT };
+    return { tabs, items, taken, own: iv.own, eq: iv.eq, hatched, bankroll: p.bankroll, noGags: !!iv.noGags, noSmoke: !!iv.noSmoke, tobaccoNotice: TOBACCO_NOTICE, confirmOver: CONFIRM_OVER, serverNow: this.now(), month, used: iv.used, fit: iv.fit, fitLimits: FIT };
   }
   buy(p, id, { confirm = false } = {}) {
     const x = ITEM[id];
@@ -84,6 +89,7 @@ export class Shop {
     if (ONCE(x)) { if (iv.own[id]) throw new GameError('One at a time: use the one you have first.', 409); }
     else if (CONSUMABLE(x)) { if ((iv.own[id] || 0) >= MAX_STACK) throw new GameError(`You can only hold ${MAX_STACK} of those.`, 409); }
     else if (iv.own[id]) throw new GameError('You already own that.', 409);
+    if (x.month && x.month !== shopMonth(this.now())) throw new GameError(`The shopkeeper packed those away. Back in ${MONTHS[x.month - 1]}.`, 409);
     if (x.unique && this.doc.unique[id]) throw new GameError('There was only ever the one, and it is spoken for.', 409);
     if (x.price > CONFIRM_OVER && confirm !== true) throw new GameError(`That costs $${x.price.toLocaleString('en-US')}. Please confirm.`, 428);
     this.accounts.requireFunds(p, x.price, x.name);

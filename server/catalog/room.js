@@ -250,8 +250,9 @@ const TYPES = {
   lamp: 'shelf', wagon: 'outdoor', vaccine: 'shelf', anvil: 'floor', deed: 'wall', spittoon: 'floor',
   rock: 'shelf', telegraph: 'desk', snakeoil: 'shelf', piano: 'shelf', horseshoe: 'wall', sheriffbadge: 'wall',
   bigrock: 'floor', railroad: 'wall', charter: 'wall', skull: 'wall', pickaxe: 'floor',
+  jackolantern: 'shelf', ghost: 'floor', cornucopia: 'shelf', turkey: 'floor', stocking: 'wall', tumbletree: 'floor',
 };
-const SURFACES = { lamp: ['shelf', 'desk'], telegraph: ['desk', 'shelf'], piano: ['shelf', 'desk'] };
+const SURFACES = { lamp: ['shelf', 'desk'], telegraph: ['desk', 'shelf'], piano: ['shelf', 'desk'], jackolantern: ['shelf', 'desk'], cornucopia: ['shelf', 'desk'], turkey: ['floor', 'desk'], tumbletree: ['floor', 'desk'] };
 export const ROOM_ITEMS = ABSURD_ITEMS.map(item => ({ ...item, roomType: TYPES[item.pix], roomTypes: SURFACES[item.pix] || [TYPES[item.pix]] }));
 export const ROOM_ITEM = Object.fromEntries(ROOM_ITEMS.map(item => [item.id, item]));
 
