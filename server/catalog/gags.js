@@ -19,7 +19,6 @@ export const ABSURD_ITEMS = [
   ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. Park it in the yard beside your room. Still no horse included.'],
   ['vaccine', 'Smallpox Vaccine', 900, '💉', 'Smallpox was declared eradicated in 1980. You are, however, extra prepared.'],
   ['anvil', 'Anvil', 450, '⚒️', 'Falls on no one. Very heavy on your floor.'],
-  ['deed', 'Deed to the Moon', 20000, '🌕', 'Legally meaningless. Spiritually enormous.'],
   ['spittoon', 'Brass Spittoon', 150, '🏺', 'Polished. Unused. Let\'s keep it that way.'],
   ['rock', 'A Rock', 25, '🪨', 'It is a rock. It is your rock.'],
   ['telegraph', 'Telegraph Key', 300, '📟', 'Taps out STOP STOP STOP to nobody.'],
@@ -29,4 +28,9 @@ export const ABSURD_ITEMS = [
   ['sheriffbadge', 'Expired Fishing Licence', 60, '🎣', 'Valid in 1887 only.'],
   ['bigrock', 'A Second, Bigger Rock', 4000, '🪨', 'Your first rock has a sibling now. It is bigger. It is still a rock.'],
   ['railroad', 'Railroad Share Certificate', 10000, '📜', 'One share of the Great Basin & Pacific. The railroad went bankrupt in 1893.'],
-].map(([id, name, price, emoji, desc]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: 'oddities', slot: null }));
+  // One of a kind (`true`): the store has exactly one, and whoever buys it first has it. See Shop.buy.
+  ['charter', 'The Academy\'s Founding Charter', 250000, '📜', 'The original. Signed by Bill, witnessed by a horse. Nobody has read past the first line.', true],
+  ['skull', 'Buffalo Skull', 500000, '💀', 'The buffalo. Not a buffalo. Bill gets quiet when it comes up.', true],
+  ['pickaxe', 'Golden Pickaxe', 1000000, '⛏️', 'Solid gold, so it bends on the first swing. The Foreman cried when he saw it. He would not say which kind.', true],
+  ['deed', 'Deed to the Moon', 5000000, '🌕', 'Legally meaningless. Spiritually enormous. Hang it up and they deliver.', true],
+].map(([id, name, price, emoji, desc, unique]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : 'oddities', slot: null, ...(unique ? { unique: true } : {}) }));
