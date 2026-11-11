@@ -1,6 +1,6 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
-import { rng, distFrom, pathSteps } from './maze.js';
+import { rng, distFrom, pathSteps } from '../../../server/engine/maze.js';
 import { MIN_GAP } from './stalker.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';

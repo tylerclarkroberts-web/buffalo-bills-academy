@@ -1,7 +1,7 @@
 // Deterministic pacing estimate, not a playtest or verification of the deployed bug guide.
 import assert from 'node:assert/strict';
 import { rollVein, SEEP_MS, MIN_SHIFT_MS, poolQuantity, BUCKET_CAPACITY, EXTRACTION_RATE } from '../server/mines.js';
-import { makeMaze, veinChain, bucketChain, FIRST_POOL_STEPS, rng } from '../client/src/mines/maze.js';
+import { makeMaze, veinChain, bucketChain, FIRST_POOL_STEPS, rng } from '../server/engine/maze.js';
 
 const N = Number(process.argv[2] || 5000);
 assert.ok(Number.isInteger(N) && N > 0 && N <= 100000, 'Use an integer from 1 to 100000 shifts.');

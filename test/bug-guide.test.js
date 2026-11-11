@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { makeMaze, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { BugGuide, pathBetween, stepToward } from '../client/src/mines/bugGuide.js';
 import { bfs, tileOf, TILE } from '../client/src/mines/stalker.js';
 import { createApp } from '../server/app.js';
