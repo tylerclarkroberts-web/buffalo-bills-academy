@@ -9,6 +9,7 @@ import { MineScene, MINE_REACH } from './scene.js';
 import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
 import { BugGuide } from './bugGuide.js';
+import { VeinTracker } from './vein.js';
 import DoomRoom from './DoomRoom.jsx';
 import Foreman from './Foreman.jsx';
 import './mines.css';
@@ -157,7 +158,7 @@ function Intro({ me, loading, onStart }) {
           <ol>
             <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · on phones, the stick</span></li>
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
-            <li>Find the glowing pool. Dry? The vein moved deeper. Hold <b>MINE</b> when it's in.</li>
+            <li>Find the pool. Dry? The vein moved deeper. When it glows, the acid's in: hold <b>MINE</b>.</li>
             <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
             <li>Get paid. Clock in again. Repeat for weeks.</li>
           </ol>
@@ -201,7 +202,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
   const cells = FIRST_POOL_STEPS[shift.cells] ? shift.cells : 7;
   const maze = useRef(makeMaze(shift.seed, cells, FIRST_POOL_STEPS[cells])).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
-  const vein = useRef({ i: 0, flowing: false, asking: false, waitUntil: 0 });
+  const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker(chain);
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
@@ -236,27 +237,30 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
-    // At a pool: ask the server if the acid is in yet (it alone knows when). Dry: the vein moves on to the next
-    // pool in the chain and this one stays behind as a crater. Seeping (or no pools left): wait here and ask again.
-    const askVein = async () => {
+    // v67: the vein tracker owns "is the acid in?". Pools are drawn damp until the server says it's in, then glow;
+    // a glowing pool in reach always shows MINE. At a pool: ask (dry: the vein moves on and this one stays a crater;
+    // seeping or no pools left: wait and ask again). Walking: ask now and then so the pool lights up when it comes in.
+    const askVein = async (kind) => {
       const v = vein.current;
-      if (v.asking || v.flowing || Date.now() < v.waitUntil) return;
-      v.asking = true;
+      v.begin(kind);
       try {
         const r = await api('POST', '/mines/probe', { shiftId: shift.shiftId });
-        if (r.flowing) { v.flowing = true; setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
-        if (r.seeping || v.i >= chain.length - 1) { v.waitUntil = Date.now() + 2500; setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
-        v.i += 1; const p = chain[v.i];
-        maze.pool = p; stalker.pool = p; bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
-        setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
-        setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
-      } catch { v.waitUntil = Date.now() + 3000; } finally { v.asking = false; }
+        const out = v.settle(r, Date.now());
+        if (out.flowing) { sceneRef.current?.setAcid(true); setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
+        if (out.seeping) { setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
+        if (out.moved) {
+          const p = out.moved;
+          maze.pool = p; stalker.pool = p; bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
+          setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
+          setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
+        }
+      } catch { v.fail(Date.now()); }
     };
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d) => {
-        const at = d < MINE_REACH;
-        if (at && !vein.current.flowing) askVein();
-        const n = at && vein.current.flowing;
+        const v = vein.current; v.reach(d);
+        const kind = v.wantProbe(Date.now()); if (kind) askVein(kind);
+        const n = v.canMine();
         if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
         if (n !== lastNear) { lastNear = n; setNear(n); }
         if (Math.abs(d - lastD) > 0.4) { lastD = d; setDist(d); }
@@ -274,7 +278,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
         if (e === 'bug-done') setLine('YOUR BUG SETTLES BY THE GLOW. THE ACID IS HERE.');
       },
     });
-    sceneRef.current = scene;
+    sceneRef.current = scene; scene.setAcid(vein.current.flowing);
     if (eggRef.current) { const spot = eggSpot(maze, shift.seed); if (spot && Date.now() - shift.localStart < EGG_MS) scene.addEgg(spot); else eggRef.current = null; }
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
@@ -382,7 +386,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit }) {
       {near && (
         <div className="m-mine">
           <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>
-          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}>
+          <button className={`m-btn big ${holding ? 'on' : ''}`} onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); setHolding(true); }} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onLostPointerCapture={() => setHolding(false)} onContextMenu={(e) => e.preventDefault()}>
             {progress >= 1 ? 'BUCKET FULL' : holding ? 'MINING…' : 'HOLD TO MINE'}
           </button>
           <div className="m-dim small">or hold SPACE</div>

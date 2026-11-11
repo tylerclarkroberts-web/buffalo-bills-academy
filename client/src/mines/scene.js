@@ -167,9 +167,11 @@ export class MineScene {
     const poolMesh = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), new THREE.MeshBasicMaterial({ map: this.poolTex, color: '#b6ff7a' }));
     poolMesh.rotation.x = -Math.PI / 2; poolMesh.position.copy(this.poolPos).setY(0.02); this.scene.add(poolMesh);
     this.poolMesh = poolMesh; this.crystals = [];
-    this.poolLight = new THREE.PointLight('#7dff3a', 14, 9, 1.4); this.poolLight.position.copy(this.poolPos).setY(0.6); this.scene.add(this.poolLight);
+    this.poolLight = new THREE.PointLight('#7dff3a', 14, 9, 1.4);
+    this.acid = true; // v67: setAcid(false) draws the pool damp until the server says the acid is in
+    this.poolLight.position.copy(this.poolPos).setY(0.6); this.scene.add(this.poolLight);
     // crystals around the pool
-    const crystalMat = new THREE.MeshBasicMaterial({ color: '#8dff5a' });
+    const crystalMat = new THREE.MeshBasicMaterial({ color: '#8dff5a' }); this.crystalMat = crystalMat;
     for (let k = 0; k < 7; k++) {
       const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.08 + r() * 0.12, 0), crystalMat);
       const a = r() * Math.PI * 2; c.position.set(this.poolPos.x + Math.cos(a) * (0.95 + r() * 0.15), 0.1, this.poolPos.z + Math.sin(a) * (0.95 + r() * 0.15)); c.scale.y = 2.2; this.scene.add(c); this.crystals.push(c);
@@ -306,6 +308,13 @@ export class MineScene {
     if (!this.reduce && bg.moving) m.mesh.rotation.z = Math.sin(now / 90) * 0.18;
     else m.mesh.rotation.z *= 0.85;
   }
+  /** v67: 'acid' = glowing, minable; 'damp' = dark wet rock, not in yet. What you see is what you can mine. */
+  setAcid(on) {
+    on = !!on; if (on === this.acid) return; this.acid = on;
+    this.poolMesh.material.color.set(on ? '#b6ff7a' : '#262b1c');
+    this.poolLight.color.set(on ? '#7dff3a' : '#8a8a5a');
+    this.crystalMat.color.set(on ? '#8dff5a' : '#3a4030');
+  }
   /** The vein moved on: leave a dry crater where the glow was and light up the next pool. */
   setPool(x, y) {
     const crater = new THREE.Mesh(new THREE.CircleGeometry(0.9, 16), new THREE.MeshBasicMaterial({ color: '#2a2a1e' }));
@@ -396,8 +405,8 @@ export class MineScene {
     const dread = this.dreadLevel || 0;
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
     this.lamp.intensity = 16 + Math.sin(now / 90) * 0.6 + dip; // a tired headlamp (more tired when he's near)
-    this.poolLight.intensity = 11 + Math.sin(now / 380) * 4;
-    this.poolTex.offset.set(now / 9000, now / 13000);
+    this.poolLight.intensity = this.acid ? 11 + Math.sin(now / 380) * 4 : 1.6;
+    if (this.acid) this.poolTex.offset.set(now / 9000, now / 13000);
     if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }
     for (const d of this.drops) {
       const u = d.userData;
@@ -416,4 +425,4 @@ export class MineScene {
     this.renderer.dispose();
   }
 }
-export const MINE_REACH = 1.9;
+export { MINE_REACH } from './vein.js';
