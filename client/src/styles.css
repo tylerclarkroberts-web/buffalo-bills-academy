@@ -418,7 +418,6 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .board-help { font-size: 12px; }
 .board-help summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .board-help > div { position: absolute; z-index: 2; top: 100%; left: 0; right: 0; max-height: 40vh; overflow: auto; color: var(--paper-2); background: var(--ink-2); border: 1px solid var(--line-2); border-radius: 8px; display: grid; gap: 8px; padding: 12px; }
-.board-partial { flex: none; }
 .board-list .paged-box { overflow-y: auto; }
 .board-list .brow .worth.pos { color: var(--pos); }
 .board-list .brow .worth.neg { color: var(--neg); }

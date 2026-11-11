@@ -174,7 +174,6 @@ export function Leaderboard() {
       .catch((e) => { if (current) setErr(e.message); });
     return () => { current = false; };
   }, [sort, direction, retry]);
-  const partial = d?.rows.some((r) => r.blackjackPartial) && (sources || sort === 'earnings' || sort === 'blackjack');
   return (
     <div className="screen leaderboard">
       <div className="page-head">
@@ -190,23 +189,21 @@ export function Leaderboard() {
             <p>Net worth is cash, coins, poker chips and unsettled Risk and barn stakes.</p>
             <p>Recorded earnings add these five sources. Bets and buy-ins are deducted; losses count too.</p>
             <p>Mines: completed shifts. Poker: bankroll-backed table net, including chips still in play and fight stakes paid into pots. Blackjack: cashed-out sessions, including playing the house. Slots: payouts minus bets. Investing: profit or loss on sold coins.</p>
-            <p>Starting money, gifts, Foreman bonuses, direct Guntrad payments, other bets and shop spending are excluded. Blackjack marked * has partial old history; active blackjack sessions count after cash-out.</p>
+            <p>Starting money, gifts, Foreman bonuses, direct Guntrad payments, other bets and shop spending are excluded. Active blackjack sessions count after cash-out.</p>
           </div>
         </details>
       </div>
-      {partial && <p className="small muted board-partial">* Partial old blackjack history; see “What counts?”</p>}
       {err ? <div className="row wrap"><p className="error" role="alert">{err}</p><button className="btn small" onClick={() => setRetry((n) => n + 1)}>Retry</button></div> : !d ? <p className="muted" role="status">Loading…</p> : (
         <Paged items={d.rows} rowH={sources ? (wide || shortLand ? 108 : 150) : (wide || shortLand ? 62 : 74)} gap={4} className={`board-list ${sources ? 'with-sources' : ''}`} resetKey={`${sort}:${direction}:${sources}`}
           empty={<p className="muted">Nobody has played yet.</p>}
           render={(r, i) => {
             const value = sort === 'wealth' ? r.total : r.earnings[sort === 'earnings' ? 'total' : sort];
-            const marked = r.blackjackPartial && (sort === 'earnings' || sort === 'blackjack');
             return <button className={`brow ${r.id === d.me ? 'me' : ''}`} onClick={() => navigate(r.id === d.me ? '/profile' : `/players/${r.id}`)}>
               <span className="rank">{String(i + 1).padStart(2, '0')}</span>
               <Bust id={r.id} avatar={r.avatar} size={wide ? 44 : 32} still={!wide} />
               <span className="who-cell"><span className="nm">{r.name}</span><span className="brk">{sort === 'wealth' ? `${money(r.bankroll)} cash · ${money(r.holdings)} coins${r.chips ? ` · ${money(r.chips)} chips` : ''}` : `${money(r.total)} net worth`}</span></span>
-              <span className={`worth ${sort === 'wealth' ? '' : cls(value)}`}>{money(value, { sign: sort !== 'wealth' })}{marked && <><span aria-hidden="true">*</span><span className="sr-only"> (partial blackjack history)</span></>}</span>
-              {sources && <span className="board-sources">{EARNING_SOURCES.map(([key, label]) => <span key={key}><span>{label}{key === 'blackjack' && r.blackjackPartial ? '*' : ''}</span><b className={cls(r.earnings[key])}>{money(r.earnings[key], { sign: true })}</b></span>)}</span>}
+              <span className={`worth ${sort === 'wealth' ? '' : cls(value)}`}>{money(value, { sign: sort !== 'wealth' })}</span>
+              {sources && <span className="board-sources">{EARNING_SOURCES.map(([key, label]) => <span key={key}><span>{label}</span><b className={cls(r.earnings[key])}>{money(r.earnings[key], { sign: true })}</b></span>)}</span>}
             </button>;
           }} />
       )}
