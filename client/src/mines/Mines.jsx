@@ -14,6 +14,7 @@ import DoomRoom from './DoomRoom.jsx';
 import Foreman from './Foreman.jsx';
 import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
+import { SHAFTS } from '../../../server/catalog/mine.js';
 import './mines.css';
 
 const LINES = [
@@ -289,7 +290,8 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       setLine(dry ? DRY_LINES[state.pools.findIndex(p => p.id === state.currentPoolId) % DRY_LINES.length] : 'YOU HAVE REMOVED THE WET FROM THIS HOLE.');
     } else if (pool?.remaining) {
       setStatus('FIND THE ACID POOL');
-      if (previous.pools.find(p => p.id === pool.id)?.quantity == null) setLine('THE ACID IS IN. TAKE WHAT YOU CAN CARRY.');
+      if (previous.pools.find(p => p.id === pool.id)?.quantity == null) setLine(pool.quantity >= state.capacity ? 'A GUSHER. ONE HOLE, ONE WHOLE BUCKET. TELL NOBODY.'
+        : pool.quantity <= 10 * (SHAFTS.find(s => s.id === state.shaft)?.scale || 1) ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : 'THE ACID IS IN. TAKE WHAT YOU CAN CARRY.');
     } else {
       setStatus('IT\'S SEEPING IN. WAIT FOR IT.');
       vein.current.waitUntil = Date.now() + Math.max(250, Math.min(2500, state.readyAt - state.serverNow));

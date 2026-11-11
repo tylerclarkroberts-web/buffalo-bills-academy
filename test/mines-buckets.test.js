@@ -50,9 +50,9 @@ function fixture(t, { payout = 20000, pool = 99999, veinMs = 60000 } = {}) {
 }
 
 test('deposit maturation uses the fixed early/mature weights and bounded travel floors', () => {
-  for (const [elapsed, expected] of [[0, [60000, 30000, 8000, 2000]], [50000, [32500, 22500, 24000, 21000]], [100000, [5000, 15000, 40000, 40000]]]) {
-    const counts = [0, 0, 0, 0];
-    for (let roll = 0; roll < 100000; roll++) counts[[0, 20, 35, 60].indexOf(poolQuantity(elapsed, 100000, roll))]++;
+  for (const [elapsed, expected] of [[0, [7000, 66000, 19000, 4000, 2000, 1000, 1000]], [50000, [4000, 44000, 22000, 13000, 7000, 4500, 5500]], [100000, [1000, 22000, 25000, 22000, 12000, 8000, 10000]]]) {
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    for (let roll = 0; roll < 100000; roll++) counts[[0, 10, 20, 35, 60, 80, 100].indexOf(poolQuantity(elapsed, 100000, roll))]++;
     assert.deepEqual(counts, expected);
   }
   assert.equal(poolQuantity(1e9, 20000, 99999), 60);
@@ -153,7 +153,7 @@ test('a drained target advances once, and a late stop cannot mine or skip the ne
   assert.equal(result.collected, 100); assert.equal(result.amount, 80);
 });
 
-for (const [payout, outcome, full] of [[0, 'motherlode', 10000], [50, 'aliens', 10000], [100, 'diamonds', 10000], [150, 'dud', 10], [20000, 'normal', 80]]) {
+for (const [payout, outcome, full] of [[0, 'motherlode', 10000], [50, 'aliens', 25000], [70, 'diamonds', 50000], [150, 'dud', 10], [20000, 'normal', 80]]) {
   test(`partial ${outcome} payout is proportional and its hidden roll survives resume`, t => {
     const f = fixture(t, { payout });
     let s = f.collect(f.wet(), 20);
@@ -162,7 +162,7 @@ for (const [payout, outcome, full] of [[0, 'motherlode', 10000], [50, 'aliens', 
     assert.equal(end.result.outcome, outcome); assert.equal(end.result.amount, full * 0.2);
     assert.equal(end.result.collected, 20); assert.equal(f.rolls, rolls);
     assert.equal(f.player.bankroll, 1000 + full * 0.2);
-    assert.equal(f.player.mining.jackpots, full === 10000 ? 1 : 0);
+    assert.equal(f.player.mining.jackpots, full >= 10000 ? 1 : 0);
     assert.equal(end.result.foreman?.reason, outcome === 'dud' ? 'mud' : undefined);
   });
 }

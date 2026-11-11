@@ -4,7 +4,7 @@
 
 A version-2 shift uses one map and one 100-unit bucket across several deposits. Holding Mine collects five units per second; release preserves confirmed contents. Clock out pays for a partial bucket, and a full bucket settles automatically. The hidden full-bucket outcome is saved once: partial payment is that amount multiplied by collected units / 100, rounded to cents, including mud and jackpots. Empty departures are unpaid and retain the Foreman's quiz; mud retains its quiz; other paid departures use the farewell.
 
-The existing hidden vein-time roll now controls gradual availability. The first 20 seconds cannot resolve a pool; afterward, later first inspections are more likely to find larger deposits. A pool resolves once and never grows, refills or rerolls. Ordinary quantities are 20, 35 or 60 units; the final pool contains at least the remaining bucket capacity. Dry pools advance the target immediately, wet pools only when drained. Keep timing and probability details out of player controls. Quality tiers, equipment upgrades and manual target skipping are deferred.
+The existing hidden vein-time roll now controls gradual availability. The first 20 seconds cannot resolve a pool; afterward, later first inspections are more likely to find larger deposits and less likely to find a dry pool (7% at the start, 1% once matured). A pool resolves once and never grows, refills or rerolls. Ordinary quantities are 10, 20, 35, 60, 80 or 100 units; a 100-unit gusher is 1% at the start and 10% once matured; the final pool contains at least the remaining bucket capacity. Dry pools advance the target immediately, wet pools only when drained. Keep timing and probability details out of player controls. Quality tiers, equipment upgrades and manual target skipping are deferred.
 
 Only server-confirmed progress survives interruption. Release, cancellation, focus loss, hidden pages, Doom and reload stop extraction. An unfinished shift resumes when clocking in again. After a version-2 shift's 30-minute expiry, the next mining interaction settles its contents rather than discarding them. Existing legacy shifts retain their original rules until they finish or expire.
 
@@ -17,16 +17,16 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 | Buckets (Second Bucket to Golden Bucket) | Capacity of 200, 400, 600, 800 or 1,000 units; the largest owned counts. |
 | Bendy Straw, Shop-Vac | Collection is 2 or 10 times the base five units per second; the fastest owned counts. |
 | Headlamp Helmet | Longer lamp and fog distance. This is drawn by the browser only. |
-| Dowsing Rod | An arrow along the shortest walk to the current pool, and a pool that would resolve dry holds the smallest deposit instead. |
+| Dowsing Rod | An arrow along the shortest walk to the current pool, and a pool that would resolve dry or as a 10-unit puddle holds 20 units instead. |
 
 | Shaft | Permit | Deposits | Most a bucket brings up | Fare |
 | --- | --- | --- | --- | --- |
-| Shaft 7 | none | 20, 35, 60 | 100 | free |
+| Shaft 7 | none | 10 to 100 | 100 | free |
 | Shaft 8 | $40,000 | four times | 400 | $40 |
 | Shaft 12 | $150,000 | eight times | 800 | $80 |
 | Earl's Level | $500,000 | ten times | 1,000 | $100 |
 
-A shift's capacity is the smaller of the bucket and the shaft's limit, so big buckets do nothing in Shaft 7. The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid and mud pay per 100 units, so a 200-unit bucket of ordinary acid pays twice the $80–$120 roll. The three rare finds stay at $10,000 for a full bucket of any size.
+A shift's capacity is the smaller of the bucket and the shaft's limit, so big buckets do nothing in Shaft 7. The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid and mud pay per 100 units, so a 200-unit bucket of ordinary acid pays twice the $80–$120 roll. The three rare finds pay the same for a full bucket of any size: Motherlode $10,000 (0.05%), Alien Skeletons $25,000 (0.02%) and Diamond Well $50,000 (0.01%).
 
 Prices are deliberately high because the mines are the only source of new money. Losing acid to hazards and the owned-bug guide's feeding are not built.
 
