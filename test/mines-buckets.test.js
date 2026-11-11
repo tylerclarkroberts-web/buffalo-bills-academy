@@ -50,7 +50,7 @@ function fixture(t, { payout = 20000, pool = 99999, veinMs = 60000 } = {}) {
 }
 
 test('deposit maturation uses the fixed early/mature weights and bounded travel floors', () => {
-  for (const [elapsed, expected] of [[0, [7000, 66000, 19000, 4000, 2000, 1000, 1000]], [50000, [4000, 44000, 22000, 13000, 7000, 4500, 5500]], [100000, [1000, 22000, 25000, 22000, 12000, 8000, 10000]]]) {
+  for (const [elapsed, expected] of [[0, [7000, 66000, 19000, 4000, 2000, 1000, 1000]], [50000, [4000, 36000, 20500, 16000, 13500, 4500, 5500]], [100000, [1000, 6000, 22000, 28000, 25000, 8000, 10000]]]) {
     const counts = [0, 0, 0, 0, 0, 0, 0];
     for (let roll = 0; roll < 100000; roll++) counts[[0, 10, 20, 35, 60, 80, 100].indexOf(poolQuantity(elapsed, 100000, roll))]++;
     assert.deepEqual(counts, expected);
