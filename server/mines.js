@@ -5,17 +5,18 @@ import { makeMaze, bucketChain, FIRST_POOL_STEPS } from '../client/src/mines/maz
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
-// Probabilities are out of 100,000 so 0.05% is exact.
+// Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
+// the bigger the envelope, the rarer it is.
 export const OUTCOMES = [
   { id: 'motherlode', odds: 50, amount: 10000, title: 'THE MOTHERLODE',
     text: 'Your pick goes through the wall and the whole tunnel glows. Fifty tons of premium acid. Payroll does not believe you. Payroll pays anyway.' },
-  { id: 'aliens', odds: 50, amount: 10000, title: 'ALIEN SKELETONS',
+  { id: 'aliens', odds: 20, amount: 25000, title: 'ALIEN SKELETONS',
     text: 'Three long skulls, one tiny saucer, zero explanation. Two agents in black suits appear behind you, hand you an envelope of cash and say you saw nothing. You saw nothing.' },
-  { id: 'diamonds', odds: 50, amount: 10000, title: 'A DIAMOND WELL',
+  { id: 'diamonds', odds: 10, amount: 50000, title: 'A DIAMOND WELL',
     text: 'An old wishing well at the bottom of a shaft, packed with uncut diamonds and a hand-drawn treasure map. Some kids got here first in the 80s. They left you plenty.' },
   { id: 'dud', odds: 10000, amount: 10, title: 'MOSTLY MUD',
     text: 'It was a puddle. The foreman pays you $10 out of pity and tells you to get back in there.' },
-  { id: 'normal', odds: 89850, min: 80, max: 120, title: 'SHIFT COMPLETE',
+  { id: 'normal', odds: 89920, min: 80, max: 120, title: 'SHIFT COMPLETE',
     text: null },
 ];
 const NORMAL_LINES = [
@@ -100,7 +101,12 @@ const rate = (s) => s.rate ?? EXTRACTION_RATE;
 
 export function poolQuantity(elapsed, veinMs, roll) {
   const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
-  const early = [60, 30, 8, 2], mature = [5, 15, 40, 40], amounts = [0, 20, 35, 60];
+  // How long the shift has run shifts the odds from dry holes and puddles toward full pools; it never decides the
+  // payout. Big finds (80, and the 100-unit gusher: a whole plain bucket from one pool) are possible from the first
+  // pool and common late, and puddles are unlikely by then. The weights run about a tenth quicker than the first
+  // bucket rules (`npm run sim:mines`): there is more in the store to save up for. The bands are ordered so the lowest
+  // roll is always dry and the highest always a 60.
+  const early = [7, 66, 19, 4, 1, 1, 2], mature = [1, 6, 22, 28, 8, 10, 25], amounts = [0, 10, 20, 35, 80, 100, 60];
   let remaining = roll / 1000;
   for (let i = 0; i < amounts.length; i++) {
     remaining -= early[i] + (mature[i] - early[i]) * p;
@@ -235,7 +241,7 @@ export class Mines {
       const next = structuredClone(cur), pool = next.pools[i];
       const scale = 1000 * (cur.scale || 1); // deeper shafts: the same deposits, several times the size
       let quantity = poolQuantity(this.now() - cur.startedAt, cur.veinMs, pool.roll) * scale;
-      if (!quantity && cur.rod) quantity = 20 * scale; // the dowsing rod never walks you to a dry hole
+      if (cur.rod) quantity = Math.max(quantity, 20 * scale); // the dowsing rod never walks you to a dry hole or a puddle
       if (i === next.pools.length - 1) quantity = Math.max(quantity, cap(next) - next.collected);
       pool.quantity = pool.remaining = quantity;
       this.advance(next, this.now()); this.commit(player.id, next);
