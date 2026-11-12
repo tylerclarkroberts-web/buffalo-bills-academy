@@ -109,7 +109,7 @@ export function Shell({ path, children }) {
       <a href="#main" className="sr-only">Skip to content</a>
       <header className="topbar">
         {!compactNav && <Link to="/" className="wordmark" aria-label={`${VENUE.name}, the card room`}><Mark size={24} /><b className="script">{VENUE.short}</b><span className="hide-xs">Academy</span></Link>}
-        <Link to="/?tab=tables" className="btn small tables-link"><Ico k="tables" />Tables</Link>
+        {compactNav && <Link to="/?tab=tables" className="btn small tables-link"><Ico k="tables" />Tables</Link>}
         <div className="tb-right">
           {compactNav ? <GamesMenu me={me} /> : <>
           <Link to="/conquest" className="barn-btn" title="ConquestK and play-money Risk bets"><Ico k="board" /><span>Risk bets</span></Link>
