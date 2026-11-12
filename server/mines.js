@@ -116,6 +116,23 @@ const NEPHEW_LINES = [
   ['THE FOREMAN IS PROUD OF HIM. THE FOREMAN IS THE ONLY ONE.', 'PROUD UNCLES'],
 ];
 
+/**
+ * How much of the bucket an acid deposit fills, from that pool's stored roll (0..99999).
+ * 5% of rolls fill 1% of capacity, 25% fill the bucket entirely, 50% fill it halfway,
+ * and 20% fill a uniform random 1–100%. The amount is clamped to remaining space.
+ * Clock-in stores the roll, so a later probe cannot be rerolled or client-supplied.
+ */
+export function acidFillAmount(capacity, roll, remaining = capacity) {
+  const r = Math.max(0, Math.min(99999, Number(roll) | 0));
+  let pct;
+  if (r < 5000) pct = 1;
+  else if (r < 30000) pct = 100;
+  else if (r < 80000) pct = 50;
+  else pct = Math.floor((r - 80000) / 200) + 1; // 80000..99999 → 1..100 evenly
+  const amount = (capacity * pct) / 100;
+  return Math.max(0, Math.min(amount, remaining));
+}
+
 export function poolQuantity(elapsed, veinMs, roll) {
   const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
   // How long the shift has run shifts the odds from dry holes and puddles toward full pools; it never decides the
@@ -302,15 +319,12 @@ export class Mines {
       const i = this.target(cur, request.poolId);
       if (i < cur.index || cur.pools[i].quantity !== null || this.now() < cur.readyAt) return this.publicShift(cur, true);
       const next = structuredClone(cur), pool = next.pools[i];
-      const scale = 1000 * (cur.scale || 1); // deeper shafts: the same deposits, several times the size
-      let quantity = poolQuantity(this.now() - cur.startedAt, cur.veinMs, pool.roll) * scale;
-      if (cur.rod) quantity = Math.max(quantity, 20 * scale); // the dowsing rod never walks you to a dry hole or a puddle
-      if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the last pool still tops the bucket up
+      if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the fill roll is then clamped to what's left
         const lost = Math.floor(next.collected * CAVE_IN_SPILL);
         next.collected -= lost; next.spill = { poolId: pool.id, lost };
       }
-      if (i === next.pools.length - 1) quantity = Math.max(quantity, cap(next) - next.collected);
-      pool.quantity = pool.remaining = quantity;
+      // Acid fill is a share of this shift's bucket, not the old time-based sizes or shaft scale.
+      pool.quantity = pool.remaining = acidFillAmount(cap(next), pool.roll, cap(next) - next.collected);
       this.advance(next, this.now()); this.commit(player.id, next);
       return this.publicShift(next, true);
     }

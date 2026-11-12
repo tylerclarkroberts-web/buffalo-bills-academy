@@ -6,11 +6,11 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Foreman } from '../server/foreman.js';
-import { Mines, MAX_SHIFT_MS, poolQuantity, poolTravelMs } from '../server/mines.js';
+import { Mines, MAX_SHIFT_MS, poolQuantity, poolTravelMs, acidFillAmount } from '../server/mines.js';
 import { createApp } from '../server/app.js';
 
 const version = { rulesVersion: 2 };
-function fixture(t, { payout = 20000, pool = 99999, veinMs = 60000 } = {}) {
+function fixture(t, { payout = 20000, pool = 30000, veinMs = 60000 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-buckets-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const clock = { now: 1_800_000_000_000 };
@@ -61,8 +61,64 @@ test('deposit maturation uses the fixed early/mature weights and bounded travel 
   assert.ok(poolTravelMs(26) < 26 * 2.2 / 3.6 * 1000);
 });
 
+test('acid fill rolls follow 5/25/50/20 and clamp to the remaining bucket', () => {
+  const cap = 100;
+  const counts = { one: 0, full: 0, half: 0, random: 0 };
+  const random = Array(101).fill(0);
+  for (let roll = 0; roll < 100000; roll++) {
+    const units = acidFillAmount(cap, roll);
+    if (roll < 5000) { assert.equal(units, 1); counts.one++; }
+    else if (roll < 30000) { assert.equal(units, 100); counts.full++; }
+    else if (roll < 80000) { assert.equal(units, 50); counts.half++; }
+    else {
+      const pct = Math.floor((roll - 80000) / 200) + 1;
+      assert.equal(units, pct);
+      counts.random++;
+      random[pct]++;
+    }
+  }
+  assert.deepEqual(counts, { one: 5000, full: 25000, half: 50000, random: 20000 });
+  for (let pct = 1; pct <= 100; pct++) assert.equal(random[pct], 200, `random band pct ${pct}`);
+  // Boundary rolls used by other tests.
+  assert.equal(acidFillAmount(100, 0), 1);
+  assert.equal(acidFillAmount(100, 4999), 1);
+  assert.equal(acidFillAmount(100, 5000), 100);
+  assert.equal(acidFillAmount(100, 29999), 100);
+  assert.equal(acidFillAmount(100, 30000), 50);
+  assert.equal(acidFillAmount(100, 79999), 50);
+  assert.equal(acidFillAmount(100, 80000), 1);
+  assert.equal(acidFillAmount(100, 99999), 100);
+  // A 200-unit bucket: halfway is 100, a full roll is 200, a 1% roll is 2.
+  assert.equal(acidFillAmount(200, 0), 2);
+  assert.equal(acidFillAmount(200, 30000), 100);
+  assert.equal(acidFillAmount(200, 5000), 200);
+  // Remaining space wins: a full roll into a 60-unit gap only adds 60.
+  assert.equal(acidFillAmount(100, 5000, 40), 40);
+  assert.equal(acidFillAmount(100, 30000, 10), 10);
+  assert.equal(acidFillAmount(100, 0, 0), 0);
+  // Internal thousandths stay exact on ordinary bucket sizes.
+  assert.equal(acidFillAmount(100000, 0), 1000);
+  assert.equal(acidFillAmount(100000, 30000), 50000);
+  assert.equal(acidFillAmount(100000, 5000), 100000);
+});
+
+test('a probed acid deposit uses the stored fill roll, not a client amount or a reroll', t => {
+  const f = fixture(t, { pool: 5000 }); // 25% band: fills the bucket entirely
+  let s = f.start();
+  f.clock.now = s.readyAt;
+  s = f.probe(s);
+  assert.equal(s.pools[0].quantity, 100);
+  assert.equal(s.currentPoolId, 'p0');
+  const again = f.mines.probe(f.player, s.shiftId, { ...version, poolId: 'p0', quantity: 1, remaining: 1, roll: 0 });
+  assert.equal(again.pools[0].quantity, 100, 'a second probe cannot change a resolved deposit');
+  const rolls = f.rolls;
+  f.reload();
+  assert.equal(f.start().pools[0].quantity, 100);
+  assert.equal(f.rolls, rolls, 'resume does not roll a new fill');
+});
+
 test('new clients handshake; probes respect travel and never reveal hidden rolls or reroll pools', t => {
-  const f = fixture(t, { pool: 0 });
+  const f = fixture(t, { pool: 0 }); // 5% band: the deposit fills 1% of the bucket
   assert.throws(() => f.mines.start(f.player), e => e.code === 'mine_reload');
   let s = f.start();
   assert.ok(s.readyAt >= s.startedAt + 20000);
@@ -73,8 +129,13 @@ test('new clients handshake; probes respect travel and never reveal hidden rolls
   f.clock.now = s.readyAt;
   const original = s;
   s = f.probe(s);
-  assert.equal(s.pools[0].quantity, 0); assert.equal(s.currentPoolId, 'p1');
-  assert.deepEqual(f.probe(original), s, 'a duplicate old probe does not skip another target');
+  assert.equal(s.pools[0].quantity, 1); assert.equal(s.currentPoolId, 'p0');
+  assert.deepEqual(f.probe(original), s, 'a duplicate old probe does not skip another target or reroll it');
+  f.pulse(s, 'start');
+  s = f.pulse(s, 'stop', 200);
+  assert.equal(s.pools[0].remaining, 0);
+  assert.equal(s.collected, 1);
+  assert.equal(s.currentPoolId, 'p1');
   assert.equal(f.probe(s).pools[1].quantity, null, 'arrival at the next pool is still required');
   const rolls = f.rolls;
   f.reload();
@@ -116,19 +177,19 @@ test('server pulses preserve partial work, reject skipped pools, and never credi
   assert.equal(f.player.bankroll, 1000);
 });
 
-test('every dry chain has one finite final deposit and a full bucket automatically pays exactly once', t => {
-  const f = fixture(t, { pool: 0 });
+test('a deposit that fills the bucket entirely settles automatically and pays exactly once', t => {
+  const f = fixture(t, { pool: 5000 }); // 25% band: one hole, one whole bucket
   let s = f.wet();
-  assert.equal(s.currentPoolId, s.pools.at(-1).id);
-  assert.equal(s.pools.at(-1).quantity, 100);
-  const lastId = s.currentPoolId, shiftId = s.shiftId;
+  assert.equal(s.currentPoolId, 'p0');
+  assert.equal(s.pools[0].quantity, 100);
+  const poolId = s.currentPoolId, shiftId = s.shiftId;
   f.pulse(s, 'start');
   for (let i = 0; i < 39; i++) s = f.pulse(s, 'continue', 500);
   assert.equal(s.collected, 97.5);
   const end = f.pulse(s, 'continue', 1000);
   assert.equal(end.result.collected, 100); assert.equal(end.result.amount, 80);
   assert.equal(f.player.bankroll, 1080); assert.equal(f.player.mining.shifts, 1);
-  assert.deepEqual(f.mines.extract(f.player, shiftId, { ...version, poolId: lastId, action: 'stop' }), end);
+  assert.deepEqual(f.mines.extract(f.player, shiftId, { ...version, poolId, action: 'stop' }), end);
   assert.deepEqual(f.mines.quit(f.player, shiftId, version), end);
   assert.deepEqual(f.start(), end, 'reload recovers a lost paid result');
   const next = f.start({ afterShiftId: shiftId });
@@ -140,15 +201,17 @@ test('every dry chain has one finite final deposit and a full bucket automatical
 test('a drained target advances once, and a late stop cannot mine or skip the next target', t => {
   const f = fixture(t);
   const first = f.wet();
-  let s = f.collect(first, 60);
-  assert.equal(s.collected, 60); assert.equal(s.currentPoolId, 'p1');
+  assert.equal(first.pools[0].quantity, 50, 'default fixture roll is a halfway fill');
+  let s = f.collect(first, 50);
+  assert.equal(s.collected, 50); assert.equal(s.currentPoolId, 'p1');
   assert.equal(s.pools[0].remaining, 0);
   const late = f.mines.extract(f.player, s.shiftId, { ...version, poolId: first.currentPoolId, action: 'stop' });
   assert.deepEqual(late, s);
   assert.equal(f.probe(first).pools[0].remaining, 0, 'a drained pool never refills');
   f.clock.now = s.readyAt; s = f.probe(s);
+  assert.equal(s.pools[1].quantity, 50);
   f.pulse(s, 'start');
-  for (let i = 0; i < 15; i++) s = f.pulse(s, 'continue', 500);
+  for (let i = 0; i < 19; i++) s = f.pulse(s, 'continue', 500);
   const result = f.pulse(s, 'continue', 1000).result;
   assert.equal(result.collected, 100); assert.equal(result.amount, 80);
 });

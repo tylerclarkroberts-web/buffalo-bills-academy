@@ -494,6 +494,11 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           setStatus('YOUR BUG IS LEADING. FOLLOW IT.');
         }
         if (e === 'bug-done') setLine('YOUR BUG SETTLES BY THE GLOW. THE ACID IS HERE.');
+        if (e === 'bug-retarget') {
+          const nm = shift.bug?.name || 'Your bug';
+          setLine(`${nm.toUpperCase()} FOUND THE NEXT GLOW. FOLLOW IT.`);
+          setStatus('YOUR BUG IS LEADING. FOLLOW IT.');
+        }
       },
     });
     sceneRef.current = scene;

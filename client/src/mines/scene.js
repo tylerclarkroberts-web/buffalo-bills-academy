@@ -334,7 +334,10 @@ export class MineScene {
   updateBugGuide(now, dt) {
     const bg = this.bugGuide, m = this.bugMesh; if (!bg || !m) return;
     bg.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart });
-    while (bg.events.length) this.onEvent?.(bg.events.shift() === 'appear' ? 'bug-appear' : 'bug-done');
+    while (bg.events.length) {
+      const ev = bg.events.shift();
+      this.onEvent?.(ev === 'appear' ? 'bug-appear' : ev === 'retarget' ? 'bug-retarget' : 'bug-done');
+    }
     const g = m.group;
     if (!bg.present) { g.visible = false; return; }
     g.visible = true;

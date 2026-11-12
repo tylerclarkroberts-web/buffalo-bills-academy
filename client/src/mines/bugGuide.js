@@ -1,6 +1,6 @@
 // Your Barn bug as a mine guide: flies/crawls ahead along the tunnels toward the current acid pool.
 // Pure logic (no three.js) so node --test can drive it. Only active when the player brought a living
-// hatched barn bug. It waits if you fall behind, and retargets when the vein moves to a new pool.
+// hatched barn bug. It waits if you fall behind, settles when you reach the current acid, and leads on again when the vein moves to the next pool.
 import { bfs, tileOf, TILE } from './stalker.js';
 
 export const APPEAR_AFTER_MS = 4000; // brief delay so it doesn't hand you the route at clock-in
@@ -67,7 +67,18 @@ export class BugGuide {
 
   get present() { return this.state === 'guiding'; }
 
-  setPool(p) { if (p) { this.pool = p; this.next = null; this.repath = 0; } }
+  setPool(p) {
+    if (!p) return;
+    const changed = !this.pool || this.pool.x !== p.x || this.pool.y !== p.y;
+    this.pool = p;
+    this.next = null;
+    this.repath = 0;
+    // After a deposit is collected, the vein names the next acid: leave "done" and lead there.
+    if (changed && this.armed && this.state === 'done') {
+      this.state = 'guiding';
+      this.events.push('retarget');
+    }
+  }
 
   acidFound() {
     if (this.state === 'guiding') { this.state = 'done'; this.events.push('done'); }
