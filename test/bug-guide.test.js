@@ -135,3 +135,34 @@ test('BugGuide reaches the pool on a real maze seed', () => {
   assert.equal(tx, maze.pool.x);
   assert.equal(ty, maze.pool.y);
 });
+
+test('BugGuide retargets to the next acid after the current one is collected', () => {
+  const maze = { grid: G, pool: { x: 7, y: 1 }, start: { x: 1, y: 1 } };
+  const g = new BugGuide(maze, { armed: true, afterMs: 0, bug: { species: 'candela', name: 'Pip' } });
+  const follow = (fromX, fromZ, destX, destY) => {
+    let x = fromX, z = fromZ;
+    for (let i = 0; i < 2000; i++) {
+      g.update(0.05, { t: i * 0.05, x, z, yaw: 0, elapsedMs: 1 + i * 50 });
+      const [tx, ty] = tileOf(g.x, g.z);
+      // stay on the bug's heels so it does not pause waiting for the miner
+      x = g.x; z = g.z;
+      if (tx === destX && ty === destY) return true;
+    }
+    return false;
+  };
+  g.update(0.01, { t: 0, x: TILE, z: TILE, yaw: 0, elapsedMs: 1 });
+  assert.equal(g.state, 'guiding');
+  assert.equal(follow(TILE, TILE, 7, 1), true, 'reaches the first acid');
+  g.acidFound();
+  assert.equal(g.state, 'done');
+  assert.equal(g.events.includes('done'), true);
+  const [atX, atZ] = [g.x, g.z];
+  // A later pulse with no new pool must not wake the guide (mining the current hole).
+  g.setPool({ x: 7, y: 1 });
+  assert.equal(g.state, 'done', 'same pool does not resume the guide');
+  g.setPool({ x: 1, y: 5 });
+  assert.equal(g.state, 'guiding', 'a new remaining acid wakes the guide');
+  assert.equal(g.events.at(-1), 'retarget');
+  assert.equal(follow(atX, atZ, 1, 5), true, 'leads on to the next acid');
+});
+
