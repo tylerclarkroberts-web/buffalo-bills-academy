@@ -2,12 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { makeMaze, rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, FIRST_POOL_STEPS } from './maze.js';
+import { makeMaze, rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, FIRST_POOL_STEPS } from '../../../server/engine/maze.js';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
-import { MineScene, MINE_REACH, TILE } from './scene.js';
+import { MineScene, TILE } from './scene.js';
 import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
 import { BugGuide } from './bugGuide.js';
@@ -284,6 +284,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>Follow the clicks. The closer the acid, the faster they come.</li>
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
             <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
+            <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
           </ol>
           <p className="m-dim">Acid seeps in over time. Later finds tend to be fuller. Payroll weighs the bucket when you finish.</p>
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
@@ -441,23 +442,6 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       if (pool) maze.pool = pool;
       vein.current.flowing = !!pool?.remaining;
     }
-    // At a pool: ask the server if the acid is in yet (it alone knows when). Dry: the vein moves on to the next
-    // pool in the chain and this one stays behind as a crater. Seeping (or no pools left): wait here and ask again.
-    const askVein = async () => {
-      const v = vein.current;
-      if (v.asking || v.flowing || Date.now() < v.waitUntil || closing.current || done.current || errorRef.current || doomRef.current) return;
-      v.asking = true;
-      try {
-        if (bucketShift) { await client.current.probe(bucketRef.current.currentPoolId); return; }
-        const r = await api('POST', '/mines/probe', { shiftId: shift.shiftId });
-        if (r.flowing) { v.flowing = true; setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
-        if (r.seeping || v.i >= chain.length - 1) { v.waitUntil = Date.now() + 2500; setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
-        v.i += 1; const p = chain[v.i];
-        maze.pool = p; stalker.pool = p; sceneRef.current?.setPool(p.x, p.y);
-        setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
-        setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
-      } catch { v.waitUntil = Date.now() + 3000; } finally { v.asking = false; }
-    };
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
     audio?.enter(dark);
@@ -469,8 +453,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     // seeping or no pools left: wait and ask again). Walking: ask now and then so the pool lights up when it comes in.
     const askVein = async (kind) => {
       const v = vein.current;
+      if (closing.current || done.current || errorRef.current || doomRef.current) return;
       v.begin(kind);
       try {
+        if (bucketShift) { await client.current.probe(bucketRef.current.currentPoolId); return; } // accept() reads the answer
         const r = await api('POST', '/mines/probe', { shiftId: shift.shiftId });
         const out = v.settle(r, Date.now());
         if (out.flowing) { sceneRef.current?.setAcid(true); setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
@@ -481,19 +467,20 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
           setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
         }
-      } catch { v.fail(Date.now()); }
+      } catch { v.fail(Date.now()); } finally { v.asking = false; }
     };
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d, path) => {
-        const at = d < MINE_REACH;
-        if (at && !vein.current.flowing) askVein();
-        const n = at && vein.current.flowing && !done.current;
-        if (n) stalker.acidFound();
+        const v = vein.current; v.reach(d);
+        // Bucket shifts only ask at the pool: there a probe is the look that reveals the deposit.
+        const kind = v.wantProbe(Date.now()); if (kind === 'pool' || (kind && !bucketShift)) askVein(kind);
+        const n = v.canMine() && !done.current;
+        if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
         if (n !== lastNear) { lastNear = n; setNear(n); if (!n) release(); }
         const b = geigerBars(path);
         if (b !== lastBars) { lastBars = b; setBars(b); }
       },
-      stalker, localStart: shift.localStart, reduceMotion: reduce,
+      stalker, bugGuide, localStart: shift.localStart, reduceMotion: reduce,
       depth: dark, fogFar: [17, 12, 8.5, 6][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 8, 6, 4.5][dark],
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
@@ -508,6 +495,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       },
     });
     sceneRef.current = scene;
+    if (!bucketShift) scene.setAcid(vein.current.flowing);
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
     scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
@@ -655,7 +643,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       {near && (
         <div className="m-mine">
           {!bucketShift && <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>}
-          <button className={`m-btn big ${holding ? 'on' : ''}`} disabled={!!mineError || clockingOut} onPointerDown={(e) => { e.preventDefault(); hold(true); }} onPointerUp={release} onPointerCancel={release} onPointerLeave={release} onContextMenu={(e) => e.preventDefault()}
+          <button className={`m-btn big ${holding ? 'on' : ''}`} disabled={!!mineError || clockingOut} onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); hold(true); }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={(e) => e.preventDefault()}
             onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); hold(true); } }}
             onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); release(); } }} onBlur={release}>
             {progress >= 1 ? 'BUCKET FULL' : holding ? 'MINING…' : 'HOLD TO MINE'}

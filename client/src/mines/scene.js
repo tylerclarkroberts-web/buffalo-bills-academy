@@ -1,8 +1,10 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
-import { rng, distFrom, pathSteps } from './maze.js';
+import { rng, distFrom, pathSteps } from '../../../server/engine/maze.js';
 import { MIN_GAP } from './stalker.js';
 import { buildFind } from './finds.js';
+import { BY_ID } from '../../../server/engine/creatures.js';
+import { spriteCanvas } from '../barn/sprite.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -137,7 +139,7 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0 } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0 } = {}) {
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
     this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
@@ -202,9 +204,10 @@ export class MineScene {
     const poolMesh = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), new THREE.MeshBasicMaterial({ map: this.poolTex, color: '#ffffff' }));
     poolMesh.rotation.x = -Math.PI / 2; poolMesh.position.copy(this.poolPos).setY(0.02); this.scene.add(poolMesh);
     this.poolMesh = poolMesh; this.crystals = [];
-    this.poolLight = new THREE.PointLight(acid('#7dff3a'), 14, 9, 1.4); this.poolLight.position.copy(this.poolPos).setY(0.6); this.scene.add(this.poolLight);
+    this.poolLight = new THREE.PointLight(acid('#7dff3a'), 14, 9, 1.4); this.acidIn = true; // v67: setAcid(false) draws the pool damp until the server says the acid is in
+    this.poolLight.position.copy(this.poolPos).setY(0.6); this.scene.add(this.poolLight);
     // crystals around the pool
-    const crystalMat = new THREE.MeshBasicMaterial({ color: acid('#8dff5a') });
+    const crystalMat = new THREE.MeshBasicMaterial({ color: acid('#8dff5a') }); this.crystalMat = crystalMat;
     for (let k = 0; k < 7; k++) {
       const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.08 + r() * 0.12, 0), crystalMat);
       const a = r() * Math.PI * 2; c.position.set(this.poolPos.x + Math.cos(a) * (0.95 + r() * 0.15), 0.1, this.poolPos.z + Math.sin(a) * (0.95 + r() * 0.15)); c.scale.y = 2.2; this.scene.add(c); this.crystals.push(c);
@@ -345,10 +348,10 @@ export class MineScene {
   }
   /** v67: 'acid' = glowing, minable; 'damp' = dark wet rock, not in yet. What you see is what you can mine. */
   setAcid(on) {
-    on = !!on; if (on === this.acid) return; this.acid = on;
-    this.poolMesh.material.color.set(on ? '#b6ff7a' : '#262b1c');
-    this.poolLight.color.set(on ? '#7dff3a' : '#8a8a5a');
-    this.crystalMat.color.set(on ? '#8dff5a' : '#3a4030');
+    on = !!on; if (on === this.acidIn) return; this.acidIn = on;
+    this.poolMesh.material.color.set(on ? '#ffffff' : '#262b1c');
+    this.poolLight.color.set(on ? this.acid('#7dff3a') : '#8a8a5a');
+    this.crystalMat.color.set(on ? this.acid('#8dff5a') : '#3a4030');
   }
   /** The vein moved on: leave a dry crater where the glow was and light up the next pool. */
   setPool(x, y) {
@@ -421,6 +424,7 @@ export class MineScene {
       this.poolLight.position.copy(this.poolPos).setY(0.6);
       this.maze.pool = { x: target.x, y: target.y };
       if (this.stalker) this.stalker.pool = this.maze.pool;
+      this.bugGuide?.setPool(this.maze.pool);
     }
   }
   /** v30: this shift's egg (only when the server put one in it). Against a wall, never in the way: no collision. */
@@ -518,8 +522,8 @@ export class MineScene {
     const dread = this.dreadLevel || 0;
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
     this.lamp.intensity = 16 + Math.sin(now / 90) * 0.6 + dip; // a tired headlamp (more tired when he's near)
-    this.poolLight.intensity = 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4);
-    if (!this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
+    this.poolLight.intensity = this.acidIn ? 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4) : 1.6;
+    if (this.acidIn && !this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
     if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }
     for (const d of this.drops) {
       const u = d.userData;

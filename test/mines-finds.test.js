@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeMaze, bucketChain, findSpots, FINDS, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, bucketChain, findSpots, FINDS, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 
 test('finds sit against real walls, off the pools and away from the start', () => {
   const seen = new Map();

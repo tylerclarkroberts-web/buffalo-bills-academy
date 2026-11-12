@@ -1,7 +1,7 @@
 // The thing in the Acid Mines tunnels: when it may appear, how it follows, and that the acid makes it go away.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeMaze, rng } from '../client/src/mines/maze.js';
+import { makeMaze, rng } from '../server/engine/maze.js';
 import { Stalker, isCorner, fastCornerTurn, bfs, tileOf, TILE, SPAWN_AFTER_MS, MIN_GAP, PLAYER_SPEED, FAST_TURN_RAD } from '../client/src/mines/stalker.js';
 
 // A hand-drawn bit of tunnel: an L-corner at (3,1), a long corridor down x=3, a junction at (3,5).
