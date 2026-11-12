@@ -7,7 +7,7 @@ import { roomFaun } from './faun.js';
 import { RoomActivity, residentPose, faunPose } from './activity.js';
 import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from './lighting.js';
 import { pixGrid } from '../store/pixart.js';
-import { spriteCanvas, drawGrave } from '../barn/sprite.js';
+import { spriteCanvas, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks } from '../avatar/genbust.js';
 import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
@@ -60,13 +60,13 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
   box(parent, w + 0.12, h + 0.12, 0.08, '#805c30', 0, 0.45, 0);
   box(parent, w + 0.04, h + 0.04, 0.09, '#c39b52', 0, 0.45, 0.01);
   const map = paintedTexture(512, Math.round(512 * h / w), (ctx, width, height) => {
-    const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' ? '#345d80' : pix === 'charter' ? '#5a2f2a' : '#76572d';
+    const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' || pix === 'medal' || pix === 'boardingpass' ? '#345d80' : pix === 'charter' ? '#5a2f2a' : '#76572d';
     ctx.fillStyle = pix === 'railroad' ? '#e5e8ce' : '#efe0b7'; ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = ink; ctx.lineWidth = 5; ctx.strokeRect(14, 14, width - 28, height - 28);
     ctx.lineWidth = 1; ctx.strokeRect(24, 24, width - 48, height - 48);
     ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.font = 'bold 28px Georgia';
-    ctx.fillText({ deed: 'DEED TO THE MOON', sheriffbadge: 'FISHING LICENCE', railroad: 'RAILROAD SHARE', charter: 'FOUNDING CHARTER' }[pix], width / 2, 68);
-    ctx.font = '15px Georgia'; ctx.fillText({ deed: 'LUNAR LAND REGISTRY', sheriffbadge: 'TERRITORY ANGLING OFFICE', railroad: 'GREAT BASIN & PACIFIC', charter: 'EST. EVENTUALLY' }[pix], width / 2, 94);
+    ctx.fillText({ deed: 'DEED TO THE MOON', sheriffbadge: 'FISHING LICENCE', railroad: 'RAILROAD SHARE', medal: 'MEDAL OF FREEDOM', boardingpass: 'BOARDING PASS', charter: 'FOUNDING CHARTER' }[pix], width / 2, 68);
+    ctx.font = '15px Georgia'; ctx.fillText({ deed: 'LUNAR LAND REGISTRY', sheriffbadge: 'TERRITORY ANGLING OFFICE', railroad: 'GREAT BASIN & PACIFIC', medal: 'THE EIGHTEENTH AT BLACK HORSE', boardingpass: 'SAN FRANCISCO · SUNDAY', charter: 'EST. EVENTUALLY' }[pix], width / 2, 94);
     const cy = height * 0.47;
     if (pix === 'deed') {
       ctx.fillStyle = '#cfb96f'; ctx.beginPath(); ctx.arc(256, cy, 55, 0, Math.PI * 2); ctx.fill();
@@ -77,6 +77,17 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
       for (const [y, w] of [[-60, 300], [-36, 330], [-12, 190]]) ctx.fillRect((width - w) / 2, cy + y, w, 4);
       ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(120, cy + 45); ctx.bezierCurveTo(160, cy, 190, cy + 80, 240, cy + 35); ctx.stroke();
       ctx.beginPath(); ctx.arc(360, cy + 38, 24, Math.PI * 0.85, Math.PI * 2.15); ctx.lineWidth = 11; ctx.stroke();
+    } else if (pix === 'boardingpass') { // an aeroplane, more or less
+      ctx.fillRect(176, cy - 12, 150, 28); ctx.fillRect(326, cy - 4, 22, 16); ctx.fillRect(170, cy - 42, 22, 44);
+      ctx.beginPath(); ctx.moveTo(236, cy + 10); ctx.lineTo(296, cy + 10); ctx.lineTo(250, cy + 50); ctx.lineTo(226, cy + 50); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#efe0b7'; for (let i = 0; i < 8; i++) ctx.fillRect(200 + i * 15, cy - 5, 8, 8);
+    } else if (pix === 'medal') { // a ribbon, a gold disc and one star
+      ctx.fillRect(226, cy - 70, 60, 58); ctx.fillStyle = '#efe0b7'; ctx.fillRect(246, cy - 70, 20, 58);
+      ctx.fillStyle = '#d8a820'; ctx.beginPath(); ctx.arc(256, cy + 22, 46, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f0d060'; ctx.beginPath(); ctx.arc(256, cy + 22, 36, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d8a820'; ctx.beginPath();
+      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 11 : 26; ctx.lineTo(256 + Math.cos(a) * r, cy + 22 + Math.sin(a) * r); }
+      ctx.closePath(); ctx.fill();
     } else if (pix === 'sheriffbadge') {
       ctx.beginPath(); ctx.ellipse(250, cy, 68, 25, 0, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.moveTo(300, cy); ctx.lineTo(345, cy - 31); ctx.lineTo(345, cy + 31); ctx.closePath(); ctx.fill();
@@ -87,10 +98,10 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
       ctx.fillStyle = '#e5e8ce'; ctx.fillRect(279, cy - 43, 26, 22);
     }
     ctx.fillStyle = ink; ctx.font = '18px Georgia';
-    ctx.fillText({ deed: 'One very impressive acre.', sheriffbadge: 'Valid for the season of 1887.', railroad: 'One share. No railroad.', charter: 'Witnessed by a horse.' }[pix], width / 2, height * 0.72);
+    ctx.fillText({ deed: 'One very impressive acre.', sheriffbadge: 'Valid for the season of 1887.', railroad: 'One share. No railroad.', medal: 'For golf.', boardingpass: 'Twelve seats. One sasquatch.', charter: 'Witnessed by a horse.' }[pix], width / 2, height * 0.72);
     ctx.font = 'italic 15px Georgia'; ctx.fillText('Buffalo Bill\'s Academy', width / 2, height * 0.8);
     ctx.fillStyle = '#9d3935'; ctx.beginPath(); ctx.arc(width - 69, height - 66, 25, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#edcf8a'; ctx.font = 'bold 13px Georgia'; ctx.fillText(pix === 'deed' || pix === 'charter' ? 'SEAL' : 'VOID', width - 69, height - 61);
+    ctx.fillStyle = '#edcf8a'; ctx.font = 'bold 13px Georgia'; ctx.fillText(pix === 'deed' || pix === 'medal' || pix === 'charter' ? 'SEAL' : 'VOID', width - 69, height - 61);
     ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = '13px Georgia'; ctx.fillText('No. 000001', 43, height - 43);
   });
   mesh(parent, new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map }), 0, 0.45, 0.06);
@@ -136,6 +147,27 @@ function oddity(id) {
       cylinder(tool, 0.03, 0.035, 0.9, '#8a5a2c', 0, 0.45, 0, 8);
       box(tool, 0.14, 0.1, 0.09, '#e8c040', 0, 0.88);
       for (const side of [-1, 1]) mesh(tool, new THREE.ConeGeometry(0.05, 0.34, 6), material('#e8c040'), side * 0.22, 0.86).rotation.z = side * -1.75;
+      break;
+    }
+    case 'odd-medal': frame(group, 'medal', 0.8, 0.9); break;
+    case 'odd-boardingpass': frame(group, 'boardingpass', 0.9, 0.7); break;
+    case 'odd-flipflop': { // one flip-flop, in the puddle it came with
+      cylinder(group, 0.32, 0.32, 0.008, '#7cc4f0', 0, 0.004);
+      box(group, 0.26, 0.05, 0.6, '#f08ab0', 0, 0.035, 0);
+      box(group, 0.22, 0.03, 0.03, '#fff6e4', 0, 0.1, -0.1); box(group, 0.03, 0.07, 0.03, '#fff6e4', 0, 0.085, -0.19);
+      break;
+    }
+    case 'odd-drone': { // the long pipe off a set of bagpipes, stood on end
+      box(group, 0.3, 0.04, 0.22, '#3f8f8f', 0, 0.02);
+      cylinder(group, 0.035, 0.05, 0.7, '#22242c', 0, 0.39);
+      for (const y of [0.22, 0.5]) cylinder(group, 0.06, 0.06, 0.04, '#f3ecd2', 0, y);
+      cylinder(group, 0.08, 0.05, 0.08, '#f3ecd2', 0, 0.76);
+      break;
+    }
+    case 'odd-abalone': { // rough outside, an oil slick inside
+      const shell = mesh(group, new THREE.SphereGeometry(0.28, 12, 8), material('#5a4030'), 0, 0.1, 0); shell.scale.set(1.15, 0.36, 0.8);
+      const pearl = mesh(group, new THREE.SphereGeometry(0.24, 12, 8), material('#b9a0e8'), 0, 0.15, 0); pearl.scale.set(1.1, 0.2, 0.72);
+      const sheen = mesh(group, new THREE.SphereGeometry(0.12, 10, 6), material('#7cc4f0'), -0.08, 0.175, 0.02); sheen.scale.set(1.1, 0.15, 0.7);
       break;
     }
     case 'odd-horseshoe': {
@@ -905,14 +937,14 @@ export class RoomScene {
     this.petSprite = null;
     if (!pet) return;
     let map;
-    if (pet.stage === 'creature' && BY_ID[pet.species]) map = canvasTexture(spriteCanvas(BY_ID[pet.species], pet.style));
+    if (pet.stage === 'creature' && BY_ID[pet.species]) map = canvasTexture(spriteCanvas(BY_ID[pet.species], pet.style, pet.level));
     else if (pet.stage === 'egg' || pet.stage === 'dead') map = paintedTexture(128, 128, ctx => {
       if (pet.stage === 'egg') drawEgg(ctx, { w: 128, h: 128, still: true }); else drawGrave(ctx, { w: 128, h: 128 });
     }, true);
     if (!map) return;
     if (pet.stage === 'creature') this.petThings(pet);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-    const size = 0.85;
+    const size = 0.85 * (pet.stage === 'creature' ? bugScale(pet.level) : 1);
     sprite.position.set(this.furniture.pet.x, 0.74 + size / 2, this.furniture.pet.z); sprite.scale.set(size, size, 1); this.dynamic.add(sprite);
     sprite.userData.dragId = 'pet';
     if (pet.stage !== 'creature') return;

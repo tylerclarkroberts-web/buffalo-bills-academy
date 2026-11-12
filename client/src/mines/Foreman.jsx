@@ -1,6 +1,7 @@
 // v45: the Foreman's rage cutscene. Visual-novel style: his lines type out with a grunt per few letters (no voice),
 // tap or NEXT to advance, a yell shakes the screen. Then a mental-arithmetic problem held by the server; a wrong
-// answer gets a jab and a new problem. Music and grunts only play when the mines ♪ toggle is on.
+// answer gets a jab and a new problem. Paid departures end after the dialogue, without math.
+// Music and grunts only play when the mines ♪ toggle is on.
 import React, { useEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
 import { reducedMotion } from '../themes/store.js';
@@ -12,6 +13,7 @@ const isYell = (s) => /!/.test(s) && s.replace(/[^A-Za-z]/g, '').replace(/[a-z]/
 const CPS = 38;
 
 export default function Foreman({ pending, sound, onDone }) {
+  const farewell = pending.reason === 'paid';
   const canvas = useRef(null), scene = useRef(null), audio = useRef(null), input = useRef(null);
   const still = useRef(reducedMotion()).current;
   const [lines] = useState(pending.lines);
@@ -52,6 +54,7 @@ export default function Foreman({ pending, sound, onDone }) {
     if (typing) { setShown(text.length); return; }
     if (stage !== 'talk') return;
     if (idx + 1 < lines.length) { setIdx(idx + 1); say(lines[idx + 1]); }
+    else if (farewell) onDone();
     else { setStage('math'); setAnswer(''); say(problem.word ? 'Word problem. Listen close, sport:' : `Quick now: what's ${problem.text}?`); setTimeout(() => input.current?.focus(), 80); }
   }
   async function submit(e) {
@@ -67,12 +70,12 @@ export default function Foreman({ pending, sound, onDone }) {
 
   const who = 'THE FOREMAN';
   return (
-    <div className={`fm ${shake && !still ? 'shaking' : ''}`} data-stage={stage} role="dialog" aria-label="The foreman">
+    <div className={`fm ${shake && !still ? 'shaking' : ''}`} data-stage={stage} role="dialog" aria-modal="true" aria-label="The foreman">
       <canvas ref={canvas} className="fm-stage" aria-hidden="true" onClick={next} />
       <div className="fm-box" onClick={stage === 'talk' ? next : undefined} onKeyDown={undefined}>
         <div className="fm-who">{who}{stage === 'talk' && <span className="fm-count">{idx + 1}/{lines.length}</span>}</div>
         <p className="fm-line" aria-live="polite">{text.slice(0, shown)}<span className="fm-ghost">{text.slice(shown)}</span></p>
-        {stage === 'talk' && <button className="m-btn fm-next" onClick={(e) => { e.stopPropagation(); next(); }}>{typing ? '[ SKIP ]' : '[ NEXT ▸ ]'}</button>}
+        {stage === 'talk' && <button autoFocus className="m-btn fm-next" onClick={(e) => { e.stopPropagation(); next(); }}>{typing ? '[ SKIP ]' : farewell && idx === lines.length - 1 ? '[ BACK HOME ]' : '[ NEXT ▸ ]'}</button>}
         {stage === 'math' && (
           <form className="fm-math" onSubmit={submit}>
             <label htmlFor="fm-ans" className={`fm-q ${problem.word ? 'word' : ''}`} data-test="fm-q">{problem.word ? problem.text : `${problem.text} =`}</label>

@@ -4,11 +4,20 @@ Bug departments unlock after your egg hatches. Select an item to read its effect
 
 Buying a consumable puts it in your inventory. Its effect starts when you press **Use**, and that spends one copy. All need meters stop at 100, so using a boost near full gives a smaller increase. Need boosts have no fixed expiry: the meter gradually falls again.
 
+## XP and the daily care limit
+
+The Barn's Care tab and the owner's My Room care controls show the **120 care XP per UTC day** limit. The Barn care panel scrolls when needed on small screens so its explanation and actions stay reachable. It resets at **00:00 UTC**, not local midnight or 24 hours after your last action. Free Feed, Play and Mist in either place, store food, Auto-Misters and Cosy Heat Lamps all share this allowance.
+
+- Free care and store food award up to **12 care XP** per use; misters and heat lamps award up to **6**. If fewer points remain, you receive only those points.
+- Once the allowance is used, care still improves needs and food still resets the starvation clock, but these actions give no more XP until the reset. Consumables are still spent.
+- Daily bonuses are extra: at each 24-hour checkpoint since hatching, a living bug earns **10 XP** if its average Fed, Mood and Clean is at least 25. An active feeder adds **12 XP** at that checkpoint, regardless of the care allowance. The feeder gives no immediate XP on use; its first bonus arrives at the next checkpoint after activation, which can be less than 24 hours later. Accrued bonuses are applied when the server next refreshes the bug.
+- [Barn fights](bug-combat.md) award **20 XP** for every new fight you start, win, lose or draw, outside the care allowance. Fights open at level 3, once an hour. There is no daily fight-XP cap. Replays do not award XP again.
+
 ## Bug care
 
 | Item | What happens when used | How long / limits |
 | --- | --- | --- |
-| Automatic Feeder | Sets Fed to 100 and keeps it full; pauses the starvation clock. The bug earns 12 XP for each full day the feeder covers, on top of the usual day XP. | 14 days per use. Another use adds 14 days to the remaining time, with no more than 60 days ahead. No use cooldown. The Barn shows the end date. Mood and Clean still decay. |
+| Automatic Feeder | Sets Fed to 100 and keeps it full; pauses the starvation clock. Adds 12 XP at each daily checkpoint while active, outside the care XP cap; no immediate XP on use. | 14 days per use. Another use adds 14 days to the remaining time, with no more than 60 days ahead. No use cooldown. The Barn shows the end date. Mood and Clean still decay. |
 | Auto-Mister | Adds 40 Clean immediately, with up to 6 care XP. | Single use, one instant mist. Clean falls 1.4 points/hour, so a full 40-point boost takes about 28 hours 34 minutes to decay. Wait 30 minutes between misters. |
 | Cosy Heat Lamp | Adds 40 Mood immediately, with up to 6 care XP. | Single use, one instant boost. Mood falls 1.6 points/hour, so a full 40-point boost takes 25 hours to decay. Wait 30 minutes between lamps. |
 
@@ -31,7 +40,7 @@ Food increases Fed by the amount below and resets the starvation clock. All stor
 | Bug Banquet | 100 |
 | Golden Ambrosia | 100, then kept full for 7 days |
 
-Fed normally falls 0.6 points/hour. Food has no timed protection, except Golden Ambrosia: it also works as a 7-day automatic feeder (same 60-days-ahead limit, same 12 XP per covered day). The feeding clock restarts when food is used. A bug can die after 21 days without feeding, or 21 days after its feeder runs out. A low Fed meter alone does not determine death.
+Fed normally falls 0.6 points/hour. Food has no timed protection, except Golden Ambrosia: it also works as a 7-day automatic feeder (same 60-days-ahead limit, same 12 XP at each covered daily checkpoint), in addition to its immediate food care XP. The feeding clock restarts when food is used. A bug can die after 21 days without feeding, or 21 days after its feeder runs out. A low Fed meter alone does not determine death.
 
 ## Bug toys
 
@@ -52,6 +61,6 @@ Toys are permanent purchases. Equip one toy at a time; each free **Play** action
 
 Style items are permanent cosmetics. Equip one shell colour, one hat and one accessory together. They stay until swapped or taken off, and do not alter species, needs, XP or battle strength. The first purchase in an empty equipment slot is equipped automatically; later purchases can be worn from the detail panel.
 
-Battle gear is also permanent, with one gear slot. It adds the listed 1–6% damage (Six Tiny Boots: 2.5%) while equipped in Barn bouts, capped at 6%. Gear bonuses do not stack. Bouts unlock at level 5 and have a one-hour cooldown, with no money or XP at stake. Store items do not change poker cards or odds.
+Battle gear is also permanent, with one gear slot. It adds the listed 1–6% attack damage (Six Tiny Boots: 2.5%) while equipped in Barn bouts, capped at 6%. Gear bonuses do not stack. Bouts unlock at level 3 and have a one-hour cooldown, with no money at stake and 20 participation XP. See [Bug combat](bug-combat.md) for moves, fighting styles, strengths and progression. Store items do not change poker cards or odds.
 
 These explanations reflect `server/catalog/bug.js`, `server/shop.js`, `server/barn.js` and `server/engine/bout.js`. Prices, effects, caps and cooldowns are enforced on the server; changing this wording does not change the game rules.

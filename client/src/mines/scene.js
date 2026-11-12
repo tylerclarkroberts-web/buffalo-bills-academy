@@ -1,11 +1,30 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
-import { rng } from './maze.js';
+import { rng, distFrom, pathSteps } from '../../../server/engine/maze.js';
 import { MIN_GAP } from './stalker.js';
+import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { spriteCanvas } from '../barn/sprite.js';
 
-const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
+export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
+
+// How each shaft looks, in elevator order (7, 8, 12, Earl's Level): the deeper the permit, the worse the place.
+// `rock` multiplies the grey speckle in the wall and floor textures. The acid stays green everywhere. How far you
+// can see is the caller's business (fogFar, lampReach): a headlamp changes that, never the colour of the rock.
+// `acid` is the colour the shaft's acid leans toward: still acid-green, with something of the rock in it.
+const LOOKS = [
+  { bg: '#020402', ambient: '#3a5a2a', ambientI: 0.55, lamp: '#d9ffc2', rock: [1, 1.1, 0.9], rockBase: '#1b1f18', floorBase: '#10130e', ceil: '#7a8a70', beam: '#3b2f1d' },
+  { bg: '#010405', ambient: '#1f4a55', ambientI: 0.42, acid: '#4fd0ff', lamp: '#c8f2ff', rock: [0.7, 1.05, 1.2], rockBase: '#141d20', floorBase: '#0b1113', ceil: '#6a868c', beam: '#2a2c26' }, // damper
+  { bg: '#050301', ambient: '#5e4318', ambientI: 0.3, acid: '#ffc832', lamp: '#ffe2a8', rock: [1.45, 1.05, 0.5], rockBase: '#231a0e', floorBase: '#150f08', ceil: '#8a7350', beam: '#2e2416' }, // sulphur
+  { bg: '#050101', ambient: '#571a1a', ambientI: 0.18, acid: '#ff4a2a', lamp: '#ffc4b0', rock: [1.5, 0.45, 0.45], rockBase: '#200d0d', floorBase: '#120707', ceil: '#7a4a4a', beam: '#1c1210' }, // Earl's
+];
+
+/** A shaft's own shade of acid: the usual green pulled part of the way toward the shaft's colour. */
+function acidOf(look) {
+  const to = look.acid && new THREE.Color(look.acid);
+  return (hex) => { const c = new THREE.Color(hex); return to ? c.lerp(to, 0.4) : c; };
+}
+const plainAcid = acidOf({});
 
 function canvasTex(w, h, draw, { repeat = [1, 1] } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -16,22 +35,24 @@ function canvasTex(w, h, draw, { repeat = [1, 1] } = {}) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-function rockTexture(r) {
+function rockTexture(r, look, acid = plainAcid) {
+  const [tr, tg, tb] = look.rock;
   return canvasTex(64, 64, (g, w, h) => {
-    g.fillStyle = '#1b1f18'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 900; i++) { const v = 18 + Math.floor(r() * 40); g.fillStyle = `rgb(${v},${v + 6},${v - 4})`; g.fillRect(Math.floor(r() * w), Math.floor(r() * h), 1 + Math.floor(r() * 3), 1 + Math.floor(r() * 2)); }
+    g.fillStyle = look.rockBase; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) { const v = 18 + Math.floor(r() * 40); g.fillStyle = `rgb(${Math.round(v * tr)},${Math.round(v * tg)},${Math.round(v * tb)})`; g.fillRect(Math.floor(r() * w), Math.floor(r() * h), 1 + Math.floor(r() * 3), 1 + Math.floor(r() * 2)); }
     for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(0, Math.floor(r() * h), w, 1); }
     for (let i = 0; i < 4; i++) { // acid streaks
-      const x = Math.floor(r() * w); let y = 0; g.fillStyle = 'rgba(120,255,60,.55)';
+      const x = Math.floor(r() * w); let y = 0; g.globalAlpha = 0.55; g.fillStyle = `#${acid('#78ff3c').getHexString()}`;
       const len = 10 + r() * 40; for (; y < len; y++) g.fillRect(x + (r() < 0.1 ? 1 : 0), y, 1, 1);
-      g.fillStyle = 'rgba(170,255,90,.8)'; g.fillRect(x - 1, y, 3, 2);
+      g.globalAlpha = 0.8; g.fillStyle = `#${acid('#aaff5a').getHexString()}`; g.fillRect(x - 1, y, 3, 2); g.globalAlpha = 1;
     }
   });
 }
-function floorTexture(r) {
+function floorTexture(r, look) {
+  const [tr, tg, tb] = look.rock;
   return canvasTex(64, 64, (g, w, h) => {
-    g.fillStyle = '#10130e'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 700; i++) { const v = 12 + Math.floor(r() * 26); g.fillStyle = `rgb(${v},${v + 4},${v})`; g.fillRect(Math.floor(r() * w), Math.floor(r() * h), 2, 1); }
+    g.fillStyle = look.floorBase; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 700; i++) { const v = 12 + Math.floor(r() * 26); g.fillStyle = `rgb(${Math.round(v * tr)},${Math.round(v * tg)},${Math.round(v * tb)})`; g.fillRect(Math.floor(r() * w), Math.floor(r() * h), 2, 1); }
     g.fillStyle = 'rgba(30,40,24,.9)'; g.fillRect(28, 0, 2, h); g.fillRect(36, 0, 2, h); // rails
   });
 }
@@ -55,13 +76,26 @@ function doorTexture() {
     g.fillStyle = 'rgba(80,40,10,.35)'; for (let i = 0; i < 6; i++) g.fillRect(Math.floor(Math.random() * w), 100 + Math.floor(Math.random() * 20), 1, 8); // rust runs
   });
 }
-function poolTexture() {
+function poolTexture(acid = plainAcid) {
+  const lo = acid('#28c814'), hi = acid('#a0ff3c');
   return canvasTex(64, 64, (g, w, h) => {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const v = Math.sin(x * 0.4) + Math.sin(y * 0.33 + x * 0.1) + Math.sin((x + y) * 0.21);
-      const k = (v + 3) / 6; g.fillStyle = `rgb(${Math.floor(40 + 120 * k)},${Math.floor(200 + 55 * k)},${Math.floor(20 + 40 * k)})`; g.fillRect(x, y, 1, 1);
+      g.fillStyle = `#${lo.clone().lerp(hi, (v + 3) / 6).getHexString()}`; g.fillRect(x, y, 1, 1);
     }
   });
+}
+
+function disposeMeshes(root, textures = true) {
+  const resources = new Set();
+  root.traverse((o) => {
+    if (o.geometry) resources.add(o.geometry);
+    for (const material of [].concat(o.material || [])) {
+      resources.add(material);
+      if (textures && material.map) resources.add(material.map);
+    }
+  });
+  for (const resource of resources) resource.dispose();
 }
 
 // The visitor: bald, pale, hollow-eyed, a long black coat, arms that hang too low and fingers that go on too
@@ -105,7 +139,7 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, localStart, reduceMotion = false, onDread, onEvent } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0 } = {}) {
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
     this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
@@ -113,30 +147,33 @@ export class MineScene {
     this.renderer.setPixelRatio(1);
     this.scale = 0.34; // render small, upscale with pixelated CSS for the CRT look
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#020402');
-    this.scene.fog = new THREE.Fog('#020402', 2.5, 17);
+    const look = LOOKS[depth] || LOOKS[0], acid = this.acid = acidOf(look);
+    this.scene.background = new THREE.Color(look.bg);
+    this.scene.fog = new THREE.Fog(look.bg, 2.5, fogFar); // deeper shafts are darker; a headlamp pushes it back
     this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 60);
     this.scene.add(this.camera);
-    this.scene.add(new THREE.AmbientLight('#3a5a2a', 0.55));
-    this.lamp = new THREE.PointLight('#d9ffc2', 18, 11, 1.6);
+    this.scene.add(new THREE.AmbientLight(look.ambient, look.ambientI));
+    this.lamp = new THREE.PointLight(look.lamp, 18, lampReach, 1.6);
     this.camera.add(this.lamp);
 
     const { grid, size } = maze;
-    const wallMat = new THREE.MeshLambertMaterial({ map: rockTexture(r) });
+    const wallMat = new THREE.MeshLambertMaterial({ map: rockTexture(r, look, acid) });
+    this.wallMaterial = wallMat;
     let n = 0; for (const row of grid) for (const v of row) n += v;
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(TILE, WALL_H, TILE), wallMat, n);
     const m = new THREE.Matrix4(); let i = 0;
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (grid[y][x]) { m.makeTranslation(x * TILE, WALL_H / 2, y * TILE); walls.setMatrixAt(i++, m); }
     this.scene.add(walls);
-    const floorT = floorTexture(r); floorT.repeat.set(size, size);
+    const floorT = floorTexture(r, look); floorT.repeat.set(size, size);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(size * TILE, size * TILE), new THREE.MeshLambertMaterial({ map: floorT }));
     floor.rotation.x = -Math.PI / 2; floor.position.set((size - 1) * TILE / 2, 0, (size - 1) * TILE / 2); this.scene.add(floor);
-    const ceilT = rockTexture(r); ceilT.repeat.set(size, size);
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(size * TILE, size * TILE), new THREE.MeshLambertMaterial({ map: ceilT, color: '#7a8a70' }));
+    this.floor = floor;
+    const ceilT = rockTexture(r, look, acid); ceilT.repeat.set(size, size);
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(size * TILE, size * TILE), new THREE.MeshLambertMaterial({ map: ceilT, color: look.ceil }));
     ceil.rotation.x = Math.PI / 2; ceil.position.set(floor.position.x, WALL_H, floor.position.z); this.scene.add(ceil);
 
     // Support beams every few tiles of open corridor, and hazard signs on some walls.
-    const beamMat = new THREE.MeshLambertMaterial({ color: '#3b2f1d' });
+    const beamMat = new THREE.MeshLambertMaterial({ color: look.beam });
     const hazMat = new THREE.MeshBasicMaterial({ map: hazardTexture(), transparent: false });
     for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) {
       if (grid[y][x]) continue;
@@ -163,15 +200,14 @@ export class MineScene {
     // The acid pool.
     const { pool } = maze;
     this.poolPos = new THREE.Vector3(pool.x * TILE, 0, pool.y * TILE);
-    this.poolTex = poolTexture(); this.poolTex.repeat.set(2, 2);
-    const poolMesh = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), new THREE.MeshBasicMaterial({ map: this.poolTex, color: '#b6ff7a' }));
+    this.poolTex = poolTexture(acid); this.poolTex.repeat.set(2, 2);
+    const poolMesh = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), new THREE.MeshBasicMaterial({ map: this.poolTex, color: '#ffffff' }));
     poolMesh.rotation.x = -Math.PI / 2; poolMesh.position.copy(this.poolPos).setY(0.02); this.scene.add(poolMesh);
     this.poolMesh = poolMesh; this.crystals = [];
-    this.poolLight = new THREE.PointLight('#7dff3a', 14, 9, 1.4);
-    this.acid = true; // v67: setAcid(false) draws the pool damp until the server says the acid is in
+    this.poolLight = new THREE.PointLight(acid('#7dff3a'), 14, 9, 1.4); this.acidIn = true; // v67: setAcid(false) draws the pool damp until the server says the acid is in
     this.poolLight.position.copy(this.poolPos).setY(0.6); this.scene.add(this.poolLight);
     // crystals around the pool
-    const crystalMat = new THREE.MeshBasicMaterial({ color: '#8dff5a' }); this.crystalMat = crystalMat;
+    const crystalMat = new THREE.MeshBasicMaterial({ color: acid('#8dff5a') }); this.crystalMat = crystalMat;
     for (let k = 0; k < 7; k++) {
       const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.08 + r() * 0.12, 0), crystalMat);
       const a = r() * Math.PI * 2; c.position.set(this.poolPos.x + Math.cos(a) * (0.95 + r() * 0.15), 0.1, this.poolPos.z + Math.sin(a) * (0.95 + r() * 0.15)); c.scale.y = 2.2; this.scene.add(c); this.crystals.push(c);
@@ -199,7 +235,7 @@ export class MineScene {
 
     // Dripping acid: small glowing drops that fall from the ceiling and respawn.
     this.drops = [];
-    const dropGeo = new THREE.SphereGeometry(0.035, 4, 3); const dropMat = new THREE.MeshBasicMaterial({ color: '#a8ff5e' });
+    const dropGeo = new THREE.SphereGeometry(0.035, 4, 3); const dropMat = new THREE.MeshBasicMaterial({ color: acid('#a8ff5e') });
     const open = []; for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) if (!grid[y][x]) open.push([x, y]);
     for (let k = 0; k < 70; k++) {
       const [x, y] = open[Math.floor(r() * open.length)];
@@ -207,9 +243,11 @@ export class MineScene {
       d.userData = { x: x * TILE + (r() - 0.5) * TILE * 0.8, z: y * TILE + (r() - 0.5) * TILE * 0.8, v: 0, wait: r() * 3 };
       d.position.set(d.userData.x, WALL_H, d.userData.z); this.scene.add(d); this.drops.push(d);
     }
+    this.puddleGlints = [];
     for (const [x, y] of open) if (r() < 0.06) { // puddle glints
-      const p = new THREE.Mesh(new THREE.CircleGeometry(0.18 + r() * 0.2, 8), new THREE.MeshBasicMaterial({ color: '#3c8a1c' }));
+      const p = new THREE.Mesh(new THREE.CircleGeometry(0.18 + r() * 0.2, 8), new THREE.MeshBasicMaterial({ color: acid('#3c8a1c') }));
       p.rotation.x = -Math.PI / 2; p.position.set(x * TILE + (r() - 0.5), 0.015, y * TILE + (r() - 0.5)); this.scene.add(p);
+      p.userData.tile = `${x},${y}`; this.puddleGlints.push(p);
     }
 
     if (this.stalker) { this.visitor = buildVisitor(); this.scene.add(this.visitor.group); this.fade = 0; this.flick = 0; this.nextFlick = 1; this.lastDread = -1; }
@@ -310,10 +348,10 @@ export class MineScene {
   }
   /** v67: 'acid' = glowing, minable; 'damp' = dark wet rock, not in yet. What you see is what you can mine. */
   setAcid(on) {
-    on = !!on; if (on === this.acid) return; this.acid = on;
-    this.poolMesh.material.color.set(on ? '#b6ff7a' : '#262b1c');
-    this.poolLight.color.set(on ? '#7dff3a' : '#8a8a5a');
-    this.crystalMat.color.set(on ? '#8dff5a' : '#3a4030');
+    on = !!on; if (on === this.acidIn) return; this.acidIn = on;
+    this.poolMesh.material.color.set(on ? '#ffffff' : '#262b1c');
+    this.poolLight.color.set(on ? this.acid('#7dff3a') : '#8a8a5a');
+    this.crystalMat.color.set(on ? this.acid('#8dff5a') : '#3a4030');
   }
   /** The vein moved on: leave a dry crater where the glow was and light up the next pool. */
   setPool(x, y) {
@@ -324,6 +362,70 @@ export class MineScene {
     this.poolMesh.position.copy(to).setY(0.02); this.poolLight.position.copy(to).setY(0.6);
     for (const c of this.crystals) { c.position.x += dx; c.position.z += dz; }
     this.bugGuide?.setPool({ x, y });
+  }
+  /** Finite deposits share their liquid texture; confirmations only move the liquid surface. */
+  setDeposits(pools, currentPoolId) {
+    this.deposits ||= new Map();
+    this.poolMesh.visible = false;
+    for (const crystal of this.crystals) crystal.visible = false;
+    const visible = pools.filter((p) => p.quantity !== null || p.id === currentPoolId);
+    const ids = new Set(visible.map((p) => p.id));
+    for (const [id, deposit] of this.deposits) if (!ids.has(id)) {
+      this.scene.remove(deposit.group); disposeMeshes(deposit.group, false); this.deposits.delete(id);
+    }
+    for (const pool of visible) {
+      let deposit = this.deposits.get(pool.id);
+      if (!deposit) {
+        const group = new THREE.Group(); group.name = `mine-deposit-${pool.id}`;
+        const wall = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.68, 1, 20, 1, true), new THREE.MeshLambertMaterial({ map: this.wallMaterial.map, color: '#66704c', emissive: '#111a08', side: THREE.BackSide }));
+        const bottom = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshLambertMaterial({ color: '#28321c', emissive: '#0b1506' }));
+        const rim = new THREE.Mesh(new THREE.RingGeometry(1, 1.08, 20), new THREE.MeshLambertMaterial({ color: '#53643a', emissive: '#172509' }));
+        const liquid = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ map: this.poolTex, color: '#ffffff' }));
+        for (const mesh of [bottom, rim, liquid]) mesh.rotation.x = -Math.PI / 2;
+        rim.position.y = 0.012;
+        group.add(wall, bottom, rim, liquid); this.scene.add(group);
+        deposit = { group, wall, bottom, rim, liquid }; this.deposits.set(pool.id, deposit);
+      }
+      const units = pool.quantity > 0 ? pool.quantity : 35;
+      const radius = 0.48 + Math.min(100, units) * 0.0052;
+      const depth = pool.quantity === 0 ? 0.18 : 0.16 + Math.min(100, units) * 0.005;
+      const fraction = pool.quantity === null ? 0.6 : pool.quantity > 0 ? Math.max(0, Math.min(1, pool.remaining / pool.quantity)) : 0;
+      deposit.radius = radius; deposit.depth = depth;
+      deposit.group.position.set(pool.x * TILE, 0, pool.y * TILE);
+      deposit.wall.scale.set(radius, depth, radius); deposit.wall.position.y = -depth / 2;
+      deposit.bottom.scale.setScalar(radius * 0.68); deposit.bottom.position.y = -depth + 0.005;
+      deposit.rim.scale.setScalar(radius);
+      deposit.liquid.position.y = -depth + 0.015 + fraction * (depth - 0.07);
+      deposit.liquid.scale.setScalar(radius * (0.68 + 0.32 * (deposit.liquid.position.y + depth) / depth) * 0.98);
+      deposit.liquid.visible = pool.quantity === null || pool.remaining > 0;
+      deposit.liquid.material.color.set(pool.quantity === null ? '#8a9a6a' : '#ffffff'); // not looked at yet: duller
+    }
+    const floorKey = visible.map((p) => `${p.id}:${p.x},${p.y}:${this.deposits.get(p.id).radius}`).join('|');
+    if (floorKey !== this.depositFloorKey) {
+      this.depositFloorKey = floorKey;
+      const extent = this.maze.size * TILE, half = extent / 2, center = (this.maze.size - 1) * TILE / 2;
+      const shape = new THREE.Shape();
+      shape.moveTo(-half, -half); shape.lineTo(half, -half); shape.lineTo(half, half); shape.lineTo(-half, half); shape.closePath();
+      for (const pool of visible) {
+        const hole = new THREE.Path();
+        hole.absarc(pool.x * TILE - center, center - pool.y * TILE, this.deposits.get(pool.id).radius, 0, Math.PI * 2, true);
+        shape.holes.push(hole);
+      }
+      const geometry = new THREE.ShapeGeometry(shape, 5), position = geometry.attributes.position, uv = geometry.attributes.uv;
+      for (let i = 0; i < position.count; i++) uv.setXY(i, position.getX(i) / extent + 0.5, position.getY(i) / extent + 0.5);
+      this.floor.geometry.dispose(); this.floor.geometry = geometry;
+      const tiles = new Set(visible.map((p) => `${p.x},${p.y}`));
+      for (const glint of this.puddleGlints || []) glint.visible = !tiles.has(glint.userData.tile);
+    }
+    const target = pools.find((p) => p.id === currentPoolId);
+    this.hasPoolTarget = !!target; this.poolLight.visible = !!target;
+    if (target) {
+      this.poolPos.set(target.x * TILE, 0, target.y * TILE);
+      this.poolLight.position.copy(this.poolPos).setY(0.6);
+      this.maze.pool = { x: target.x, y: target.y };
+      if (this.stalker) this.stalker.pool = this.maze.pool;
+      this.bugGuide?.setPool(this.maze.pool);
+    }
   }
   /** v30: this shift's egg (only when the server put one in it). Against a wall, never in the way: no collision. */
   addEgg(spot) {
@@ -336,6 +438,14 @@ export class MineScene {
     const light = new THREE.PointLight('#ffd890', 2.4, 3.4); light.position.set(0, 0.8, 0); g.add(light);
     g.position.set((spot.x + spot.ox) * TILE, 0, (spot.y + spot.oy) * TILE);
     this.scene.add(g); this.egg = { group: g, mesh, light, gone: 0, goneAt: 0 };
+  }
+  /** Things other people left down here (see finds.js), each against the wall its spot names. Scenery: no collision. */
+  addFinds(spots) {
+    for (const s of spots) {
+      const g = buildFind(s.id, canvasTex, (this.acid || plainAcid)('#8dff5a')); if (!g) continue;
+      g.position.set((s.x + s.dx / 2) * TILE, 0, (s.y + s.dy / 2) * TILE); g.rotation.y = Math.atan2(-s.dx, -s.dy);
+      g.name = `mine-find-${s.id}`; this.scene.add(g);
+    }
   }
   eggView() {
     if (!this.egg || this.egg.gone) return { dist: 99, facing: -1 };
@@ -380,7 +490,14 @@ export class MineScene {
     this.paused = p;
     if (p) cancelAnimationFrame(this.raf); else { this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); }
   }
-  distanceToPool() { return Math.hypot(this.pos.x - this.poolPos.x, this.pos.y - this.poolPos.z); }
+  distanceToPool() { return this.deposits && !this.hasPoolTarget ? 99 : Math.hypot(this.pos.x - this.poolPos.x, this.pos.y - this.poolPos.z); }
+  /** Tiles to walk to the current pool through the tunnels: what the geiger reads. Reach stays straight-line (distanceToPool). */
+  pathToPool() {
+    if (this.deposits && !this.hasPoolTarget) return 99;
+    const x = Math.round(this.poolPos.x / TILE), y = Math.round(this.poolPos.z / TILE), key = `${x},${y}`;
+    if (this.poolDistKey !== key) { this.poolDistKey = key; this.poolDist = distFrom(this.maze.grid, x, y); }
+    return pathSteps(this.poolDist, this.pos.x / TILE, this.pos.y / TILE);
+  }
   loop(now) {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
@@ -405,8 +522,8 @@ export class MineScene {
     const dread = this.dreadLevel || 0;
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
     this.lamp.intensity = 16 + Math.sin(now / 90) * 0.6 + dip; // a tired headlamp (more tired when he's near)
-    this.poolLight.intensity = this.acid ? 11 + Math.sin(now / 380) * 4 : 1.6;
-    if (this.acid) this.poolTex.offset.set(now / 9000, now / 13000);
+    this.poolLight.intensity = this.acidIn ? 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4) : 1.6;
+    if (this.acidIn && !this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
     if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }
     for (const d of this.drops) {
       const u = d.userData;
@@ -415,13 +532,13 @@ export class MineScene {
       if (d.position.y < 0) { u.v = 0; u.wait = 0.6 + Math.random() * 3; d.position.y = WALL_H; }
     }
     this.stepEgg(now);
-    this.onNear?.(this.distanceToPool());
+    this.onNear?.(this.distanceToPool(), this.pathToPool());
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   }
   dispose() {
     cancelAnimationFrame(this.raf);
-    this.scene.traverse((o) => { o.geometry?.dispose(); const m = o.material; if (m) { m.map?.dispose(); m.dispose(); } });
+    disposeMeshes(this.scene);
     this.renderer.dispose();
   }
 }

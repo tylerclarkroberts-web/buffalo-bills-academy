@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { makeMaze, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { BugGuide, pathBetween, stepToward } from '../client/src/mines/bugGuide.js';
 import { bfs, tileOf, TILE } from '../client/src/mines/stalker.js';
 import { createApp } from '../server/app.js';
@@ -82,12 +82,13 @@ test('BugGuide stays dormant without a living bug', () => {
   assert.equal(g.present, false);
 });
 
+const V2 = { rulesVersion: 2 }; // bucket shifts: every mine request names the rules it speaks
 test('clock-in includes bug only when the barn holds a living creature', async () => {
   // Fresh player, forceEgg so the first shift also lays an egg; incubate 1ms so we can hatch.
   const s = await boot({ BARN_INCUBATE_MS: '1', BARN_TEST_EGG: '1' });
   try {
     const a = await login(s.base, 'guide-a@test');
-    const start1 = await a.post('/api/mines/start');
+    const start1 = await a.post('/api/mines/start', V2);
     assert.equal(start1.status, 200);
     // First clock-in: no living creature yet (egg may be on the floor).
     assert.equal(start1.body.bug, undefined);
@@ -96,18 +97,27 @@ test('clock-in includes bug only when the barn holds a living creature', async (
       assert.equal(egg.status, 200);
     }
     s.clock.t += 50; // hatch while still on shift
-    s.clock.t += 25_000; // past vein
-    const done1 = await a.post('/api/mines/finish', { shiftId: start1.body.shiftId });
+    // Draw a little acid before clocking out: an empty bucket earns a Foreman's lecture, which blocks the next clock-in.
+    let shift = start1.body;
+    for (let k = 0; !shift.pools.find((p) => p.id === shift.currentPoolId)?.remaining && k < 400; k++) {
+      s.clock.t = Math.max(s.clock.t + 2500, shift.readyAt || 0);
+      shift = (await a.post('/api/mines/probe', { ...V2, shiftId: shift.shiftId, poolId: shift.currentPoolId })).body;
+    }
+    const poolId = shift.currentPoolId;
+    await a.post('/api/mines/extract', { ...V2, shiftId: shift.shiftId, poolId, action: 'start' });
+    s.clock.t += 1000;
+    const drawn = await a.post('/api/mines/extract', { ...V2, shiftId: shift.shiftId, poolId, action: 'stop' });
+    const done1 = drawn.body.result ? drawn : await a.post('/api/mines/quit', { ...V2, shiftId: shift.shiftId });
     assert.equal(done1.status, 200, JSON.stringify(done1.body));
     const barn = await a.get('/api/barn');
     assert.equal(barn.body.pen?.stage, 'creature', JSON.stringify(barn.body.pen));
-    const start2 = await a.post('/api/mines/start');
+    const start2 = await a.post('/api/mines/start', { ...V2, afterShiftId: shift.shiftId }); // acknowledges the last pay slip
     assert.equal(start2.status, 200, JSON.stringify(start2.body));
     assert.ok(start2.body.bug, 'living barn bug rides along on clock-in');
     assert.equal(start2.body.bug.species, barn.body.pen.species);
     assert.equal(start2.body.bug.name, barn.body.pen.name);
     s.clock.t += 25_000;
-    await a.post('/api/mines/finish', { shiftId: start2.body.shiftId });
+    await a.post('/api/mines/quit', { ...V2, shiftId: start2.body.shiftId });
   } finally { await s.stop(); }
 });
 

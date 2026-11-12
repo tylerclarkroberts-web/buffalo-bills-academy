@@ -1,6 +1,6 @@
 // The Barn (v30): one egg or creature per account, raised in real time. The server decides everything:
 // whether a mine shift has an egg (mines.js), which creature is inside (rolled at pickup, hidden until it hatches),
-// when it hatches, how its needs decay, and its level. No money in or out here, no selling and no trading.
+// when it hatches, how its needs decay, and its level. Bouts stake play money; bugs cannot be sold or traded.
 // v33: residents are real bugs (engine/bugs.js); old hybrid rows are migrated once, quietly, on load.
 // v33: bugs can die of neglect, tamagotchi-style, but only slowly: STARVE_MS (21 days) after the last feed (or the
 // end of an automatic feeder's run). Warnings start at 7 days. Death is computed from stored times, never a timer,
@@ -8,10 +8,12 @@
 // stall is empty and a new egg can turn up in the mines.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, ABILITY_LEVELS, levelFor, xpFor } from './engine/creatures.js';
+import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
 import { simulateBout } from './engine/bout.js';
+import { movesFor, battleFor, combatStats, STANCES } from './engine/bug-combat.js';
+import { cents } from './accounts.js';
 
-export const EGG_CHANCE = 6000; // out of 100,000 shifts (6%), for players with an empty barn
+export const EGG_CHANCE = 10000; // out of 100,000 shifts (10%), for players with an empty barn
 export const DEFAULT_INCUBATE_MS = 3 * 24 * 3600e3;
 // Needs decay gently: from full to empty in about a week (hunger, v33: was 2 days), 2.5 days (mood) and 3 days
 // (cleanliness). Hunger is only the gauge; what kills is time since the last feed (STARVE_MS), not the gauge at zero.
@@ -26,21 +28,24 @@ export const CARE = {
   clean: { stat: 'clean', gain: 45, cooldownMs: 40 * 60e3, word: 'hosed down' },
 };
 export const CARE_XP = 12;   // per care action...
-export const CARE_XP_PER_DAY = 120; // ...up to this much a day (UTC), so a week of steady care reaches level 5
+export const CARE_XP_PER_DAY = 120; // ...shared with store care, per UTC day
 export const DAY_XP = 10;    // per full day since hatching, while it's not neglected
 export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action, inside the same daily cap
 export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
-export const BOUT_LEVEL = 5;
+export const BOUT_LEVEL = 3;
+export const BOUT_XP = 20;
 export const BOUT_COOLDOWN_MS = 60 * 60e3; // one bout an hour
+export const BOUT_OPEN_MS = 60 * 60e3;
+export const MAX_BOUT_STAKE = 10000;
 const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
 
 export class Barn {
-  constructor({ store, now, incubateMs, eggInt, forceEgg = false, startXp = 0, starveMs } = {}) {
+  constructor({ store, accounts, now, incubateMs, eggInt, forceEgg = false, startXp = 0, starveMs } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
     this.starveMs = Number(starveMs) > 0 ? Number(starveMs) : STARVE_MS; this.k = this.starveMs / STARVE_MS;
-    this.store = store; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
+    this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
     this.incubateMs = Number(incubateMs) > 0 ? Number(incubateMs) : DEFAULT_INCUBATE_MS;
     this.eggInt = eggInt || ((n) => crypto.randomInt(n)); // its own random source: never the mine's pay or vein ones
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
@@ -52,6 +57,10 @@ export class Barn {
   migrate() {
     let n = 0; const now = this.now();
     for (const [id, pen] of Object.entries(this.doc.pens)) {
+      if (pen.stage === 'creature' && !pen.combatVersion) {
+        pen.legacyAbilities = [1, 3, 5].filter((level) => levelFor(pen.xp) >= level).length;
+        pen.combatVersion = 1; n++;
+      }
       if (BY_ID[pen.species]) continue;
       const bug = ROSTER[this.eggInt(ROSTER.length)];
       pen.oldSpecies = pen.species; pen.species = bug.id; pen.migratedAt = now; n++;
@@ -82,6 +91,11 @@ export class Barn {
     return WARN_MS.filter((w) => since >= w * this.k).length;
   }
   save() { this.store.saveDoc('barn', this.doc); }
+  commitPen(playerId, pen) {
+    const next = { ...this.doc, pens: { ...this.doc.pens, [playerId]: pen } };
+    this.store.saveDoc('barn', next);
+    this.doc = next;
+  }
   has(playerId) { return !!this.doc.pens[playerId]; }
 
   /** At clock-in: does this shift have an egg in it? Only ever for a player whose barn is empty. */
@@ -112,7 +126,7 @@ export class Barn {
     if (pen.stage !== 'egg' || now < pen.hatchAt) return false;
     const at = pen.hatchAt;
     const name = this.newName(playerId, BY_ID[pen.species]);
-    Object.assign(pen, { stage: 'creature', name, bornAt: at, fedAt: at, xp: this.startXp, dayXpAt: at, cool: {},
+    Object.assign(pen, { stage: 'creature', name, bornAt: at, fedAt: at, xp: this.startXp, dayXpAt: at, cool: {}, combatVersion: 1,
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 80, at }])) });
     return true;
   }
@@ -127,6 +141,7 @@ export class Barn {
     }
   }
   refresh(playerId) {
+    this.applyBoutReward(playerId);
     const pen = this.doc.pens[playerId]; if (!pen) return null;
     const now = this.now();
     let dirty = this.hatchIfDue(playerId, pen, now);
@@ -141,6 +156,11 @@ export class Barn {
   }
 
   view(playerId) {
+    this.expireBouts();
+    return { ...this.petView(playerId), ...this.board(playerId) };
+  }
+
+  petView(playerId) {
     const pen = this.refresh(playerId);
     const now = this.now();
     if (!pen) return { pen: null, serverNow: now };
@@ -155,8 +175,11 @@ export class Barn {
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, style: this.looksOf(playerId) || null, gearBonus: this.styleOf?.(playerId).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= 10 ? null : xpFor(level + 1),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
-      abilities: c.abilities.map((name, i) => ({ name, level: ABILITY_LEVELS[i], unlocked: level >= ABILITY_LEVELS[i] })),
-      arena: level >= BOUT_LEVEL, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
+      abilities: movesFor(c.id, level, pen.legacyAbilities || 0),
+      battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
+      combat: { ...combatStats(level), stats: c.stats },
+      arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
+      title: pen.record?.w >= 5 ? 'Barn Menace' : null,
       boutCoolMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now), lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -190,12 +213,36 @@ export class Barn {
     return this.view(playerId);
   }
 
-  /**
-   * A bout: the server picks the opponent (another rancher's level-5+ creature at random, or a travelling stray when
-   * there isn't one), rolls a seed, runs the deterministic sim and stores the log so it replays the same everywhere.
-   * Cosmetic: no money, no XP. Only the challenger's record changes; the other rancher is never notified.
-   */
-  bout(playerId) {
+  /** Save an owned bug's unlocked moves; settings and fight rewards persist before becoming visible. */
+  setBattle(playerId, settings) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)
+      || Object.keys(settings).some((key) => !['stance', 'specials'].includes(key))
+      || typeof settings.stance !== 'string' || !Object.hasOwn(STANCES, settings.stance)
+      || !Array.isArray(settings.specials) || settings.specials.length > 2
+      || new Set(settings.specials).size !== settings.specials.length) throw new GameError('Choose a fighting style and up to two different unlocked specials.', 400);
+    const pen = this.refresh(playerId);
+    if (!pen || pen.stage !== 'creature') throw new GameError('You need a hatched bug for that.', 409);
+    this.expireBouts();
+    if (this.store.players?.[playerId]?.barnBouts?.open) throw new GameError('Cancel your open bout before changing its setup.', 409);
+    const unlocked = movesFor(pen.species, levelFor(pen.xp), pen.legacyAbilities || 0).filter((move) => move.unlocked && move.id !== 'basic');
+    if (settings.specials.some((id) => !unlocked.some((move) => move.id === id))) throw new GameError('Choose only special moves your bug has learned.', 400);
+    this.commitPen(playerId, { ...pen, battle: { stance: settings.stance, specials: [...settings.specials] } });
+    return this.view(playerId);
+  }
+
+  bout() {
+    throw new GameError('Choose an open bout or post your own on the bout board.', 409);
+  }
+
+  fighter(playerId, pen) {
+    const level = levelFor(pen.xp);
+    return { species: pen.species, name: pen.name, level,
+      mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
+      gear: this.styleOf?.(playerId).gearBonus || 0, style: this.looksOf(playerId),
+      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
+  }
+
+  ready(playerId) {
     const pen = this.refresh(playerId);
     if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
     if (pen.stage === 'dead') throw new GameError('It is resting. For good.', 409);
@@ -204,31 +251,126 @@ export class Barn {
     const level = levelFor(pen.xp);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
     if (now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
-    const low = (n) => Math.round(Math.min(n.hunger, n.mood, n.clean));
-    const rivals = Object.entries(this.doc.pens).filter(([id, p]) => id !== playerId && p.stage === 'creature' && now < this.deathAt(p) && levelFor(p.xp) >= BOUT_LEVEL);
-    let them;
-    if (rivals.length) {
-      const [id, p] = rivals[this.eggInt(rivals.length)];
-      them = { species: p.species, name: p.name, level: levelFor(p.xp), mood: low(this.needs(p, now)), stray: false, gear: this.styleOf?.(id).gearBonus || 0, style: this.looksOf(id) };
-    } else {
-      const k = ROSTER[this.eggInt(ROSTER.length)];
-      them = { species: k.id, name: `Stray ${k.name}`, level: BOUT_LEVEL, mood: 60, stray: true };
+    return pen;
+  }
+
+  escrow(player) { return player?.barnBouts?.open?.stake || 0; }
+
+  board(playerId) {
+    const player = this.store.players?.[playerId];
+    const bouts = Object.values(this.store.players || {}).flatMap(p => {
+      const open = p.barnBouts?.open;
+      if (!open) return [];
+      const { petBornAt: _petBornAt, ...shown } = open;
+      return [{ ...shown, hostName: p.name }];
+    }).sort((a, b) => a.openedAt - b.openedAt);
+    return { bouts, openBout: bouts.find(bout => bout.hostId === playerId) || null,
+      bankroll: player?.bankroll ?? null, maxStake: MAX_BOUT_STAKE };
+  }
+
+  /** The wallet receipt commits with the payout; the pet catches up once even after a restart. */
+  applyBoutReward(playerId) {
+    const receipt = this.store.players?.[playerId]?.barnBouts?.lastBout;
+    const pen = this.doc.pens[playerId];
+    if (!receipt || !pen || pen.settledBoutId === receipt.id || pen.bornAt !== receipt.petBornAt) return;
+    const { petBornAt: _petBornAt, ...replay } = receipt;
+    const next = structuredClone(pen);
+    next.xp += receipt.xpEarned;
+    next.record ||= { w: 0, l: 0, d: 0 };
+    next.record[receipt.result === 'won' ? 'w' : receipt.result === 'lost' ? 'l' : 'd']++;
+    next.boutAt = receipt.at;
+    next.lastBout = replay;
+    next.settledBoutId = receipt.id;
+    this.commitPen(playerId, next);
+  }
+
+  refundOpen(player) {
+    const open = player.barnBouts.open;
+    const draft = { ...player, barnBouts: { ...player.barnBouts, open: null, closedId: open.id } };
+    if (open.stake) this.accounts.change(draft, open.stake, 'barn-refund', 'Barn bout: stake returned', { save: false });
+    this.store.commitPlayerDrafts([draft]);
+  }
+
+  expireBouts() {
+    for (const player of Object.values(this.store.players || {})) {
+      const open = player.barnBouts?.open;
+      if (!open) continue;
+      const pen = this.doc.pens[player.id];
+      if (this.now() >= open.expiresAt || !pen || pen.stage !== 'creature' || pen.bornAt !== open.petBornAt || this.now() >= this.deathAt(pen)) this.refundOpen(player);
     }
-    const you = { species: pen.species, name: pen.name, level, mood: low(this.needs(pen, now)), gear: this.styleOf?.(playerId).gearBonus || 0, style: this.looksOf(playerId) };
-    const seed = `${now}:${this.eggInt(1e9)}`;
-    const { rounds, winner } = simulateBout(you, them, seed);
-    pen.record ||= { w: 0, l: 0, d: 0 };
-    pen.record[winner === 0 ? 'w' : winner === 1 ? 'l' : 'd'] += 1;
-    pen.boutAt = now;
-    pen.lastBout = { at: now, seed, you, them, rounds, result: winner === 0 ? 'won' : winner === 1 ? 'lost' : 'draw' };
-    this.save();
+  }
+
+  openBout(playerId, body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'stake')
+      || typeof body.stake !== 'number' || !Number.isFinite(body.stake) || body.stake < 0 || body.stake > MAX_BOUT_STAKE || cents(body.stake) !== body.stake) {
+      throw new GameError(`Choose a stake from $0 to $${MAX_BOUT_STAKE}, in whole cents.`, 400);
+    }
+    this.expireBouts();
+    const player = this.accounts.ensure(this.store.players[playerId]);
+    if (player.barnBouts?.open) {
+      if (player.barnBouts.open.stake !== body.stake) throw new GameError('Cancel your open bout before posting another.', 409);
+      return this.view(playerId);
+    }
+    const pen = this.ready(playerId);
+    this.accounts.requireFunds(player, body.stake, 'this bout');
+    const now = this.now();
+    const open = { id: crypto.randomUUID(), hostId: playerId, fighter: this.fighter(playerId, pen),
+      petBornAt: pen.bornAt, stake: body.stake, openedAt: now, expiresAt: now + BOUT_OPEN_MS };
+    const draft = { ...player, barnBouts: { ...player.barnBouts, open } };
+    if (open.stake) this.accounts.change(draft, -open.stake, 'barn-stake', 'Barn bout: stake held', { save: false });
+    this.store.commitPlayerDrafts([draft]);
     return this.view(playerId);
   }
 
-  /** Cosmetic store looks for a bug (skin palette, hat, accessory), for drawing only. */
+  cancelBout(playerId, id) {
+    this.expireBouts();
+    const player = this.store.players[playerId];
+    if (player.barnBouts?.closedId === id) return this.view(playerId);
+    if (player.barnBouts?.open?.id !== id) throw new GameError('That is not your open bout.', 404);
+    this.refundOpen(player);
+    return this.view(playerId);
+  }
+
+  joinBout(playerId, id, body = {}) {
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) throw new GameError('Join the posted stake as shown.', 400);
+    this.expireBouts();
+    const player = this.accounts.ensure(this.store.players[playerId]);
+    if (player.barnBouts?.lastBout?.id === id) return this.view(playerId);
+    const host = Object.values(this.store.players).find(p => p.barnBouts?.open?.id === id);
+    if (!host) throw new GameError('That bout has already filled, expired or been cancelled.', 409);
+    if (host.id === playerId) throw new GameError('Your bug cannot fight itself. It has tried.', 409);
+    if (player.barnBouts?.open) throw new GameError('Cancel your open bout before joining another.', 409);
+    const hostPen = this.ready(host.id), guestPen = this.ready(playerId);
+    const open = host.barnBouts.open, stake = open.stake, now = this.now();
+    this.accounts.requireFunds(player, stake, 'this bout');
+    const fighters = [open.fighter, this.fighter(playerId, guestPen)];
+    const seed = `${now}:${this.eggInt(1e9)}`;
+    const { rounds, winner, maxHp } = simulateBout(...fighters, seed);
+    const drafts = [host, player].map((p, side) => {
+      const pen = side === 0 ? hostPen : guestPen;
+      const payout = winner === null ? stake : winner === side ? cents(stake * 2) : 0;
+      const receipt = { version: 3, id, at: now, seed, petBornAt: pen.bornAt,
+        you: fighters[side], them: fighters[1 - side],
+        rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
+        maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned: BOUT_XP,
+        levelBefore: levelFor(pen.xp), levelAfter: levelFor(pen.xp + BOUT_XP),
+        result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', stake, payout, net: cents(payout - stake) };
+      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, lastBout: receipt } };
+      if (side === 1 && stake) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
+      if (payout) this.accounts.change(draft, payout, winner === null ? 'barn-refund' : 'barn-win', winner === null ? 'Barn bout: draw, stake returned' : 'Barn bout: won the pot', { save: false });
+      return draft;
+    });
+    // Both wallets and their reward receipts must land in the same atomic players.json write.
+    this.store.commitPlayerDrafts(drafts);
+    this.applyBoutReward(host.id);
+    return this.view(playerId);
+  }
+
+  /** Store looks for a bug (skin palette, hat, accessory, equipped battle gear), for drawing only. */
   looksOf(playerId) {
     const st = this.styleOf?.(playerId) || {};
     const o = {}; for (const k of ['bugskin', 'bughat', 'bugacc']) if (st[k]) o[k] = st[k];
+    if (typeof st.gear === 'string' && st.gear.startsWith('gear-')) o.gear = { id: st.gear, shape: st.gear.slice(5) };
     return Object.keys(o).length ? o : undefined;
   }
   /** After a death: lay it to rest. The stall empties (a new egg can turn up in the mines); a small grave record stays. */

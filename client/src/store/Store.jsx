@@ -22,20 +22,21 @@ const FITTABLE = (x) => x?.kind === 'avatar' && x.slot !== 'skin';
 const BUG_LOOK = ['bugskin', 'bughat', 'bugacc'];
 const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 'long' });
 
-function BugThumb({ species, style, size }) {
+function BugThumb({ species, style, size, level }) {
   const ref = useRef(null);
   useEffect(() => {
     const c = ref.current; const bug = BY_ID[species]; if (!c || !bug) return;
     const d = Math.min(2, window.devicePixelRatio || 1); c.width = c.height = Math.round(size * d);
-    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style });
-  }, [species, JSON.stringify(style), size]);
+    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style, level });
+  }, [species, JSON.stringify(style), size, level]);
   return <canvas ref={ref} className="st-bug" style={{ width: size, height: size }} aria-hidden="true" />;
 }
 
 /** The little picture on a card or on the counter. Avatar items are shown on your own bust. */
 function Thumb({ x, me, eqWear, pen, size, fit }) {
   if (x.kind === 'avatar') return <Bust id={me.id} avatar={{ ...me.avatar, wear: { ...eqWear, [x.slot]: { ...lookOf(x), fit: fit?.[x.id] } } }} size={size * 0.86} still />;
-  if (BUG_LOOK.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: lookOf(x) }} size={size} />;
+  if (BUG_LOOK.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: lookOf(x) }} size={size} level={pen.level} />;
+  if (x.slot === 'gear' && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), gear: { id: x.id, shape: x.id.slice(5) } }} size={size} level={pen.level} />;
   if (x.pal) return <span className="st-pal">{x.pal.map((c) => <i key={c} style={{ background: c }} />)}</span>;
   if (x.art) return <LowPoly art={x.art} size={size} fallback={x.emoji} className="st-pix" />;
   if (x.pix) return <PixIcon pix={x.pix} size={size} fallback={x.emoji} className="st-pix" />;
@@ -146,7 +147,7 @@ export default function Store() {
                 {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}Room decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
-                  {owned && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
+                  {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
                   {!takenBy && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}

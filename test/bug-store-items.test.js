@@ -63,7 +63,42 @@ test('each food grants its stated Fed amount; food cooldown and care XP are shar
   }
 });
 
-test('Golden Ambrosia keeps the bowl full for 7 days; a feeder pays 12 XP per full day it runs', () => {
+test('free and store care share 120 XP per UTC day; needs still improve at the cap', () => {
+  for (const resetWith of ['free', 'store']) {
+    const { clock, barn, shop, player, pen, setNeeds, own } = setup();
+    for (let i = 0; i < 9; i++) {
+      barn.care(player.id, 'feed'); clock.now += CARE.feed.cooldownMs;
+    }
+    assert.equal(pen.xp, 108);
+    own('mister'); shop.use(player, 'mister'); assert.equal(pen.xp, 114);
+    barn.care(player.id, 'play'); assert.equal(pen.xp, 120, 'only the remaining 6 XP are awarded');
+    setNeeds(20);
+    barn.care(player.id, 'clean');
+    own('heatlamp'); shop.use(player, 'heatlamp');
+    own('food-leaf', 2); shop.use(player, 'food-leaf');
+    assert.deepEqual(barn.needs(pen, clock.now), { hunger: 40, mood: 60, clean: 65 });
+    assert.equal(pen.xp, 120); assert.equal(pen.xpToday, 120);
+    clock.now = 11 * DAY; // UTC midnight, one millisecond before the first hatch-day bonus
+    if (resetWith === 'free') barn.care(player.id, 'feed');
+    else shop.use(player, 'food-leaf');
+    assert.equal(pen.xp, 132); assert.equal(pen.xpToday, 12);
+    assert.equal(pen.xpDay, 11);
+  }
+});
+
+test('feeder XP starts at the next hatch-day checkpoint and is outside the care cap', () => {
+  const { clock, barn, shop, player, pen, setNeeds, own } = setup();
+  clock.now += 12 * HOUR; setNeeds(100); own('feeder');
+  shop.use(player, 'feeder'); assert.equal(pen.xp, 0, 'using a feeder gives no immediate XP');
+  clock.now = pen.bornAt + DAY - 1;
+  assert.equal(barn.view(player.id).pen.xp, 0, 'no passive XP before the checkpoint');
+  pen.xpDay = Math.floor(clock.now / DAY); pen.xpToday = 120;
+  clock.now += 1;
+  assert.equal(barn.view(player.id).pen.xp, 10 + 12, 'day and feeder bonuses still accrue at the care cap');
+  assert.equal(pen.xpToday, 120, 'passive bonuses do not consume care XP');
+});
+
+test('Golden Ambrosia keeps the bowl full for 7 days; a feeder pays 12 XP per covered hatch-day checkpoint', () => {
   const { clock, barn, shop, player, pen, setNeeds, own } = setup();
   setNeeds(10); own('food-ambrosia'); own('feeder');
   assert.match(item('food-ambrosia').desc, /7 days/);
@@ -108,7 +143,7 @@ test('toys are reusable Play bonuses; equipment slots replace rather than stack'
   own('gear-armor'); own('gear-bandage');
   shop.equip(player, { id: 'gear-armor' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.06);
   shop.equip(player, { id: 'gear-bandage' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.01);
-  assert.ok(item('gear-boots').desc.includes('+2.5% damage'));
+  assert.ok(item('gear-boots').desc.includes('+2.5% attack damage'));
   const before = structuredClone(pen);
   for (const id of ['bugskin-ruby', 'bugwear-tophat', 'bugwear-bow']) { own(id); shop.equip(player, { id }); }
   assert.deepEqual(pen, before, 'cosmetics do not change needs, XP or species');
