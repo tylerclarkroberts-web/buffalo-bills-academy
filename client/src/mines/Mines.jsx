@@ -281,7 +281,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
           <ol>
             <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
             <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
-            <li>Follow the clicks. The closer the acid, the faster they come.</li>
+            <li>Follow the clicks. Closer is faster; facing the right tunnel gives them a little boost.</li>
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
             <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
             <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
@@ -333,6 +333,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const [near, setNear] = useState(false);
   const [rod, setRod] = useState(null); // dowsing rod: eighths of a turn toward the current pool
   const [bars, setBars] = useState(1);
+  const geiger = useRef({ bars: 1, facing: 0 });
   const [legacyProgress, setProgress] = useState(0);
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
@@ -470,14 +471,15 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       } catch { v.fail(Date.now()); } finally { v.asking = false; }
     };
     const scene = new MineScene(canvas.current, maze, {
-      onNear: (d, path) => {
+      onNear: (d, path, facing) => {
         const v = vein.current; v.reach(d);
         // Bucket shifts only ask at the pool: there a probe is the look that reveals the deposit.
         const kind = v.wantProbe(Date.now()); if (kind === 'pool' || (kind && !bucketShift)) askVein(kind);
         const n = v.canMine() && !done.current;
         if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
         if (n !== lastNear) { lastNear = n; setNear(n); if (!n) release(); }
-        const b = geigerBars(path);
+        geiger.current = { bars: geigerBars(path), facing };
+        const b = geigerBars(path, 48, facing);
         if (b !== lastBars) { lastBars = b; setBars(b); }
       },
       stalker, bugGuide, localStart: shift.localStart, reduceMotion: reduce,
@@ -579,14 +581,17 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   }, [visitor, audio]);
 
   // geiger clicks: they land at random like the real thing, on average every 1400 ms at one bar down to every 60 ms
-  // at ten. One rate per bar, so walking doesn't keep restarting the timer.
+  // at ten, with a small directional boost. Read live values so turning never restarts the timer.
   useEffect(() => {
     if (!audio) return;
-    const mean = 1400 * (60 / 1400) ** ((bars - 1) / 9);
-    const wait = () => Math.max(12, -Math.log(1 - Math.random()) * mean);
-    let id = setTimeout(function click() { if (!doomRef.current) audio.tick(bars === 10 ? 1.3 : 1); id = setTimeout(click, wait()); }, wait());
+    const wait = () => {
+      const { bars, facing } = geiger.current;
+      const mean = 1400 * (60 / 1400) ** ((bars - 1) / 9) / (1 + 0.2 * facing);
+      return Math.max(12, -Math.log(1 - Math.random()) * mean);
+    };
+    let id = setTimeout(function click() { if (!doomRef.current) audio.tick(geiger.current.bars === 10 ? 1.3 : 1); id = setTimeout(click, wait()); }, wait());
     return () => clearTimeout(id);
-  }, [bars, audio]);
+  }, [audio]);
 
   useEffect(() => {
     const s = sceneRef.current; if (s) s.mining = holding && near && !mineError && !clockingOut;

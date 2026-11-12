@@ -1,6 +1,6 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
-import { rng, distFrom, pathSteps } from '../../../server/engine/maze.js';
+import { rng, distFrom, pathSteps, geigerFacing } from '../../../server/engine/maze.js';
 import { MIN_GAP } from './stalker.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -498,6 +498,10 @@ export class MineScene {
     if (this.poolDistKey !== key) { this.poolDistKey = key; this.poolDist = distFrom(this.maze.grid, x, y); }
     return pathSteps(this.poolDist, this.pos.x / TILE, this.pos.y / TILE);
   }
+  facingToPool() {
+    if (this.deposits && !this.hasPoolTarget) return 0;
+    return geigerFacing(this.poolDist, this.pos.x / TILE, this.pos.y / TILE, this.yaw);
+  }
   loop(now) {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
@@ -532,7 +536,7 @@ export class MineScene {
       if (d.position.y < 0) { u.v = 0; u.wait = 0.6 + Math.random() * 3; d.position.y = WALL_H; }
     }
     this.stepEgg(now);
-    this.onNear?.(this.distanceToPool(), this.pathToPool());
+    this.onNear?.(this.distanceToPool(), this.pathToPool(), this.facingToPool());
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   }
