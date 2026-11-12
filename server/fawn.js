@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 
-const CIG = 'filtered';
+const CIG = 'tob-filtered'; // the Smoke Shop's Filtered Cigarette (catalog/tobacco.js)
 
 export function dayKey(now) {
   const d = new Date(now);

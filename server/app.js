@@ -177,7 +177,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   tableAction('sitout', (c, p, b) => service.sitOut(c, p, b.sitOut !== false));
   tableAction('autocheck', (c, p, b) => service.autoCheck(c, p, b.on !== false)); // v42
   tableAction('leave', (c, p) => service.leave(c, p));
-  tableAction('show', (c, p, b) => service.show(c, p, b.which));
+  tableAction('show', (c, p, b) => service.show(c, p, b.which, b.handNumber));
   tableAction('showdown-seen', (c, p, b) => service.showdownSeen(c, p, b.number)); // v49
   tableAction('say', (c, p, b) => service.say(c, p, typeof b.text === 'string' ? b.text : ''));
   tableAction('close', (c, p) => service.close(c, p));

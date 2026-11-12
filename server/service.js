@@ -317,7 +317,7 @@ export class PokerService {
   sitOut(code, player, sitOut) { return this.mutate(code, (t, ctx) => G.setSittingOut(t, player.id, sitOut, ctx), player.id); }
   leave(code, player) { return this.mutate(code, (t, ctx) => G.leaveTable(t, player.id, ctx), player.id); }
   showdownSeen(code, player, number) { return this.mutate(code, (t) => G.markShowdownSeen(t, player.id, number), player.id); }
-  show(code, player, which) { return this.mutate(code, (t, ctx) => G.showCards(t, player.id, which, ctx), player.id); }
+  show(code, player, which, handNumber) { return this.mutate(code, (t, ctx) => G.showCards(t, player.id, which, ctx, handNumber), player.id); }
   /** Speech bubble: seated players only, 10 edits a minute each (in memory; resets on restart, which is fine). */
   say(code, player, text) {
     const t = this.getTable(code);

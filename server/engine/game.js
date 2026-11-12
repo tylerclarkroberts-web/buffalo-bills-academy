@@ -564,10 +564,13 @@ export function markShowdownSeen(t, playerId, number) {
   return t;
 }
 
-export function showCards(t, playerId, which, ctx) {
+export function showCards(t, playerId, which, ctx, handNumber) {
   const m = t.muck;
   if (!m || !t.lastHand || t.lastHand.number !== m.number) throw new GameError('There are no cards to show');
   if (m.playerId !== playerId) throw new GameError('Only the winner can show their cards');
+  if (handNumber !== undefined && Number(handNumber) !== m.number) throw new GameError('That hand is over');
+  // A saved decision also closes the prompt on other devices and after a page remount.
+  if (which === 'none') { t.muck = null; return t; }
   const pick = which === 'both' || which === undefined ? [0, 1] : [0, 1].includes(Number(which)) && which !== null && which !== '' ? [Number(which)] : null;
   if (!pick) throw new GameError('Choose which card to show');
   m.shown = [...new Set([...m.shown, ...pick])].sort();

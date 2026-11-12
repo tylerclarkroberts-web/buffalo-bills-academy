@@ -10,7 +10,8 @@ const when = (t) => new Date(t).toLocaleString();
 
 function countdown(deadline, now) {
   const seconds = Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const tail = `${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  return seconds >= 3600 ? `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${tail}` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function Market({ market, now, link, canBet, busy, ownBet, onQuote }) {
@@ -20,9 +21,11 @@ function Market({ market, now, link, canBet, busy, ownBet, onQuote }) {
   const [stake, setStake] = useState('10');
   const selected = choices.find((p) => p.userId === outcome) || choices[0];
   const open = market.status === 'open' && Date.parse(market.closesAt) > now;
+  const hostCanStart = market.startPolicy === 'host_or_deadline';
   const submit = (e) => { e.preventDefault(); onQuote({ marketId: market.id, outcomeUserId: selected?.userId, stakeCents: Math.round(Number(stake) * 100) }); };
   return <article className="risk-market">
-    <div className="risk-market-head"><div><h2>{market.gameName}</h2><a href={market.gameUrl}>Open match in ConquestK ↗</a></div><span className="risk-clock">{open ? `Closes in ${countdown(market.closesAt, now)}` : market.terminal ? 'Finished' : 'Betting closed'}</span></div>
+    <div className="risk-market-head"><div><h2>{market.gameName}</h2><a href={market.gameUrl}>Open match in ConquestK ↗</a></div><span className="risk-clock">{open ? `${hostCanStart ? 'Automatic start' : 'Closes'} in ${countdown(market.closesAt, now)}` : market.terminal ? 'Finished' : 'Betting closed'}</span></div>
+    {open && hostCanStart && <p className="small muted">The host can start at any time. Betting closes when play starts; this is the latest automatic start.</p>}
     <div className="risk-outcomes" aria-label="Fixed odds">
       {market.outcomes.map((p) => <div key={p.userId}><span>{p.name}<small>CR {p.rating}</small></span><b>{p.oddsHundredths ? `${(p.oddsHundredths / 100).toFixed(2)}×` : 'Unavailable'}</b></div>)}
     </div>
@@ -74,6 +77,8 @@ export default function Conquest() {
   const link = () => run(async () => { const r = await api('POST', '/conquest/link', {}); window.location.assign(r.authorizeUrl); });
   const unlink = () => run(async () => { await api('POST', '/conquest/unlink', {}); setNotice('Your accounts are unlinked.'); await refresh(); });
   const eligible = data?.markets.filter((m) => m.status === 'open' || m.status === 'closed' || m.status === 'started') || [];
+  const quotedMarket = data?.markets.find((m) => m.id === quote?.marketId);
+  const quoteClosed = !!quote && (!quotedMarket || quotedMarket.status !== 'open' || Date.parse(quotedMarket.closesAt) <= now);
   return <div className="screen risk-page">
     <div className="risk-heading"><div><p className="kicker">The Academy sportsbook · Play money only</p><h1 className="display h2">Conquest<span className="script neon-pink">K</span></h1><p>Back a winner before the first turn.</p></div><a className="btn light" href={data?.conquestUrl || 'https://conquestk.com'}>Play ConquestK ↗</a></div>
     {error && <div className="error" role="alert">{error}</div>}
@@ -90,12 +95,14 @@ export default function Conquest() {
         <h2>Review your bet</h2><p><b>{quote.outcomeName}</b> to win {quote.gameName}</p>
         <dl><div><dt>Stake</dt><dd>{cash(quote.stakeCents)}</dd></div><div><dt>Fixed odds</dt><dd>{(quote.oddsHundredths / 100).toFixed(2)}×</dd></div><div><dt>Total return if you win</dt><dd>{cash(quote.grossCents)}</dd></div><div><dt>Net profit if you win</dt><dd>{cash(quote.grossCents - quote.stakeCents)}</dd></div></dl>
         <p className="small">Total return includes your stake. A loss returns $0; a void refunds the stake. No changes or cancellation after placing. This quote expires in {countdown(quote.expiresAt, now)}.</p>
-        <div className="row"><button className="btn light" disabled={busy || Date.parse(quote.expiresAt) <= now} onClick={place}>{busy ? 'Placing…' : `Place ${cash(quote.stakeCents)} bet`}</button><button className="btn ghost" disabled={busy} onClick={() => setQuote(null)}>Back</button></div>
+        {quotedMarket?.startPolicy === 'host_or_deadline' && <p className="small">Betting can close before this quote expires if the host starts the match.</p>}
+        {quoteClosed && <p className="risk-notice" role="status">Betting has closed for this match. This quote can no longer be placed.</p>}
+        <div className="row"><button className="btn light" disabled={busy || quoteClosed || Date.parse(quote.expiresAt) <= now} onClick={place}>{busy ? 'Placing…' : `Place ${cash(quote.stakeCents)} bet`}</button><button className="btn ghost" disabled={busy} onClick={() => setQuote(null)}>Back</button></div>
       </section>}
       <section aria-label="Matches"><h2>Matches</h2>{eligible.length ? <div className="risk-markets">{eligible.map((m) => <Market key={m.id} market={m} now={now} link={data.link} canBet={data.canBet && data.connected} busy={busy} ownBet={data.bets.find((b) => b.marketId === m.id && b.state !== 'rejected')} onQuote={review} />)}</div>
-        : <p className="muted">No matches are taking bets. A two-minute betting window opens when an eligible public Classic match fills with human players.</p>}</section>
+        : <p className="muted">No matches are taking bets. Eligible public Classic matches open betting when the human roster fills: two minutes for quick games, or until the host starts a 24-hour-turn game, up to 24 hours.</p>}</section>
       <section aria-label="Your bet history"><h2>Your bets</h2>{data.bets.length ? <div className="risk-history">{data.bets.map((b) => <article key={b.id}><div><b>{b.gameName}</b><p>{b.outcomeName} · {cash(b.stakeCents)} at {(b.oddsHundredths / 100).toFixed(2)}×</p><small>{when(b.createdAt)}</small></div><div><strong>{status[b.state]}</strong><p>{b.state === 'won' ? `${cash(b.grossCents)} returned` : ['void', 'rejected'].includes(b.state) ? `${cash(b.stakeCents)} refunded` : ['pending', 'accepted'].includes(b.state) ? `${cash(b.grossCents)} possible total return` : '$0 returned'}</p><a href={b.gameUrl}>Open match ↗</a></div></article>)}</div> : <p className="muted">Your bets will appear here. Other players cannot see your bet history.</p>}</section>
-      <details className="risk-rules"><summary>How the odds and limits work</summary><p>Odds use the players’ Conquest Rankings when the market opens. They are estimates, not proven win probabilities. Fair returns receive a 5% haircut and are rounded down; odds are capped at 20×. Outcomes below 1.01× are unavailable.</p><p>Stake $1–$100 once per match, with a maximum $1,000 total return. House limits may reduce availability. Players may only back themselves; spectators may back any listed player. Bets close before play and never change the match or its rating.</p><p>Changed rosters or settings, cancelled or invalid matches, failed starts, and games without a valid winner within 30 days are voided. Connection delays do not cancel a bet. No purchases, transfers, or cash withdrawals; all balances are play money.</p></details>
+      <details className="risk-rules"><summary>How the odds and limits work</summary><p>Odds use the players’ Conquest Rankings when the market opens. They are estimates, not proven win probabilities. Fair returns receive a 5% haircut and are rounded down; odds are capped at 20×. Outcomes below 1.01× are unavailable.</p><p>Stake $1–$100 once per match, with a maximum $1,000 total return. House limits may reduce availability. Players may only back themselves; spectators may back any listed player. Bets close before play and never change the match or its rating.</p><p>Games with 5- or 10-minute turns keep a two-minute betting window. For 24-hour turns, the host can start immediately after the roster fills; otherwise the match starts automatically after 24 hours. Betting closes as soon as it starts.</p><p>Changed rosters or settings, cancelled or invalid matches, failed starts, and games without a valid winner within 30 days are voided. Connection delays do not cancel a bet. No purchases, transfers, or cash withdrawals; all balances are play money.</p></details>
     </>}
   </div>;
 }
