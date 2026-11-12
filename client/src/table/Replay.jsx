@@ -1,10 +1,9 @@
-// One ordered recap of saved public activity. Progress advances only after a visible beat or Skip.
-import React, { useEffect, useState } from 'react';
-import { pickReplay, stepMs, replayEnabled, seenSeq, markSeen } from './replay.js';
+// Live and missed activity share one timeline; only completed visible beats advance the cursor.
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { pickReplay, stepMs, replayEnabled, seenSeq, markSeen, replayView } from './replay.js';
 import { isMuted } from './Gags.jsx';
-import { PixIcon, LowPoly } from '../store/PixIcon.jsx';
-import { Card } from '../Card.jsx';
 import { smokeSound } from './Smoke.jsx';
+export { ReplayLayer } from './ReplayLayer.jsx';
 
 const reducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -15,8 +14,12 @@ export function useReplay(code, view, ready) {
   const [queue, setQueue] = useState(null);
   const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(() => !document.hidden);
+  const away = useRef(true);
+  const initialized = useRef(null);
+  const timing = useRef({ key: null, remaining: 0 });
+  const sounded = useRef(null);
   useEffect(() => {
-    const change = () => setVisible(!document.hidden);
+    const change = () => { if (document.hidden) away.current = true; setVisible(!document.hidden); };
     document.addEventListener('visibilitychange', change);
     return () => document.removeEventListener('visibilitychange', change);
   }, []);
@@ -27,62 +30,67 @@ export function useReplay(code, view, ready) {
   const options = `${enabled}.${noGags}.${noSmoke}.${muted}`;
   const rp = queue?.scope === scope && queue.options === options ? queue : null;
   const maxSeq = (view?.log || []).reduce((n, e) => Math.max(n, e.seq || 0), 0);
+  const latest = useRef(maxSeq); latest.current = maxSeq;
   const unread = pickReplay(view?.log, { seen, noGags, noSmoke, muted: isMuted });
-  const pending = enabled && (!!rp || unread.length > 0);
+  const pending = enabled && (!!rp || (seen > 0 && unread.length > 0));
   const on = ready && visible && !!rp;
   const playing = on && !paused;
   const acknowledge = (seq) => { markSeen(code, seq, playerId); setProgress({ scope, seq }); };
 
-  useEffect(() => {
-    if (!view || !ready || !visible || rp) return;
-    if (!enabled || !unread.length) { if (maxSeq > seen) acknowledge(maxSeq); return; }
-    setQueue({ scope, options, steps: unread, i: 0, end: maxSeq, reduced: reducedMotion() });
+  useLayoutEffect(() => {
+    if (!view) return;
+    if (!ready || !visible) {
+      away.current = true;
+      if (rp && !rp.catchup) setQueue({ ...rp, catchup: true });
+      return;
+    }
+    const first = initialized.current !== scope;
+    if (first) away.current = true;
+    initialized.current = scope;
+    if (!enabled || (first && !seen)) {
+      // First visit starts at the live table; returning visitors resume their saved cursor.
+      if (maxSeq > seen) acknowledge(maxSeq);
+      if (queue) setQueue(null);
+      away.current = false;
+      return;
+    }
+    if (rp) return;
+    if (!unread.length) {
+      if (maxSeq > seen) acknowledge(maxSeq);
+      away.current = false;
+      return;
+    }
+    setQueue({ scope, options, steps: unread, i: 0, end: maxSeq, reduced: reducedMotion(), catchup: away.current });
+    setPaused(false);
   }, [scope, options, maxSeq, seen, ready, visible, rp]);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing) {
+      // Hidden surfaces remount their animations, so finish that whole beat when they return.
+      if (!on) timing.current.key = null;
+      return;
+    }
     const step = rp.steps[rp.i];
+    const key = `${scope}.${options}.${step.seq}`;
+    if (timing.current.key !== key) timing.current = { key, remaining: stepMs(step, rp.reduced) };
+    const started = performance.now();
     const timer = setTimeout(() => {
       if (document.hidden) return;
       const done = rp.i + 1 === rp.steps.length;
       acknowledge(done ? rp.end : step.seq);
+      if (done && latest.current <= rp.end) away.current = false;
       setQueue(done ? null : { ...rp, i: rp.i + 1 });
-    }, stepMs(step, rp.reduced));
-    return () => clearTimeout(timer);
-  }, [rp, playing]);
+    }, timing.current.remaining);
+    return () => { clearTimeout(timer); timing.current.remaining = Math.max(0, timing.current.remaining - (performance.now() - started)); };
+  }, [rp, playing, on]);
 
   useEffect(() => {
-    if (playing && rp.steps[rp.i].k === 'smoke') smokeSound();
-  }, [rp, playing]);
+    const key = rp && `${scope}.${rp.steps[rp.i].seq}`;
+    if (playing && rp.steps[rp.i].k === 'smoke' && sounded.current !== key) { sounded.current = key; smokeSound(); }
+  }, [rp?.steps[rp.i]?.seq, playing]);
 
-  const skip = () => { if (rp) { acknowledge(rp.end); setQueue(null); setPaused(false); } };
-  return { on, pending, visible, paused, togglePause: () => setPaused((p) => !p), ...(rp || {}), step: rp?.steps[rp.i], skip };
-}
-
-/** Historical facts stay in their own card, never painted as the current hand or its occupants. */
-export function ReplayLayer({ rp }) {
-  if (!rp.on) return null;
-  const s = rp.step;
-  const symbol = s.k === 'win' ? '🏆' : s.k === 'say' ? '💬' : s.k === 'hand' ? '♠' : ({ fold: '↩', check: '✓', call: '●', raise: '↑', bet: '●', allin: '⚡', post: '●' }[s.a] || '•');
-  return (
-    <div className={`replay ${rp.reduced ? 'reduced' : ''} ${rp.paused ? 'paused' : ''}`} data-test="replay">
-      <section className="rp-recap panel" aria-label="Table replay">
-        <div className="rp-heading"><b>While you were away</b><span>{rp.i + 1} / {rp.steps.length}</span></div>
-        <div key={s.seq} className={`rp-beat rp-${s.k}`} data-test={`rp-${s.k}`}>
-          <div className="rp-art" aria-hidden="true">
-            {s.k === 'smoke' ? <><LowPoly art={s.art} size={64} fallback={s.emoji} /><span className="rp-puff">♧</span></>
-              : s.k === 'gag' ? <PixIcon pix={s.pix} size={64} fallback={s.emoji} />
-              : s.k === 'deal' ? s.cards.map((card) => <Card key={card} card={card} />)
-              : <span className="rp-symbol">{symbol}</span>}
-          </div>
-          <p role="status" aria-live="polite">{s.text}</p>
-          <span className="muted small">{s.hand ? `Hand #${s.hand} · ` : ''}{new Date(s.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-        </div>
-        <div className="rp-controls">
-          <button type="button" className="btn small" aria-pressed={rp.paused} onClick={rp.togglePause}>{rp.paused ? 'Resume' : 'Pause'}</button>
-          <button type="button" className="btn small" data-test="rp-skip" onClick={rp.skip}>Skip replay</button>
-        </div>
-      </section>
-    </div>
-  );
+  const skip = () => { acknowledge(maxSeq); setQueue(null); setPaused(false); away.current = false; };
+  const step = rp?.steps[rp.i];
+  return { enabled, on, pending, visible, seen, paused, togglePause: () => setPaused((p) => !p), ...(rp || {}), step, skip,
+    view: step ? replayView(view, step.frame) : view };
 }

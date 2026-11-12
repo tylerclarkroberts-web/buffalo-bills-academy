@@ -52,7 +52,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const skew = useRef(0);
   const versionRef = useRef(-1);
   const wasMyTurn = useRef(false);
-  // While the table replay is off (REPLAY_ON), gags and smokes play live on the felt again instead of in its recap card.
+  // Standalone social effects remain available when this viewer switches replay off.
   const [pushed, setPushed] = useState([]); // v36: gag events pushed live (also in the view for a few seconds)
   const addGag = useCallback((e) => setPushed((l) => [...l.slice(-8), { ...e, shownAt: Date.now() }]), []);
   const [smokes, setSmokes] = useState([]); // v37: tobacco moments pushed live (the view has the last 24h too)
@@ -99,9 +99,10 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     if (!view?.showdown || view.showdownSeen || view.me?.seat === null || view.me?.seat === undefined) return;
     const key = `bba.sd.${code}.${view.showdown.number}`;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* private mode */ }
-    setSdPlay(view.showdown);
+    // The timeline has already revealed these cards and awarded the pot on the felt.
+    if (!rp.enabled || !view.log.some((e) => e.frame && e.ev?.k === 'win' && e.hand === sdNo)) setSdPlay(view.showdown);
     api('POST', `/tables/${code}/showdown-seen`, { number: view.showdown.number }).catch(() => {});
-  }, [sdNo, view?.showdownSeen, code, tableVisible, rp.visible, rp.pending, fightMode, sdPlay]);
+  }, [sdNo, view?.showdownSeen, code, tableVisible, rp.visible, rp.pending, rp.enabled, fightMode, sdPlay]);
   const watch = useFightWatchPill(view, myId);
   const takeView = useCallback((v) => { skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); }, []);
   const mySeat = view?.me?.seat;
@@ -140,6 +141,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   }, [myTurn, view?.name, view?.hand?.number, code]);
 
   async function post(path, body) {
+    if (rp.pending) rp.skip();
     try {
       const v = await api('POST', `/tables/${code}/${path}`, body); skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); setErr('');
       if (['join', 'rebuy', 'leave'].includes(path)) refreshSession();
@@ -194,7 +196,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     )}
     {open && <GagButton code={code} view={view} myId={myId} onEvent={addGag} onUsed={() => { closeMenu(); load(); }} />}
     {open && <SmokeButton code={code} view={view} onDone={(e) => { closeMenu(); addSmoke(e); load(); }} />}
-    {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => { closeMenu(); setSdPlay({ ...view.showdown, _k: Date.now() }); }} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
+    {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => { rp.skip(); closeMenu(); setSdPlay({ ...view.showdown, _k: Date.now() }); }} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
     <MusicButton />
     {(!view.bots || view.bots.friends) && <button className="btn small invite-btn" onClick={() => { closeMenu(); copyInvite(); }}><span className="menu-ico" aria-hidden="true">＋</span>Invite<span className="menu-label"> players</span></button>}
   </>;
@@ -221,12 +223,12 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const stage = (
     <div className="tp-stage">
       {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => setSdPlay(null)} />}
-      <TableFelt code={code} view={view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSit={!seated && me && view.status !== 'closed' ? join : null} onSay={seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+      <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
       {errBox}
-      {!REPLAY_ON && !pane && <SmokeLayer events={[...(view.smokes || []), ...smokes.filter((e) => !(view.smokes || []).some((x) => x.id === e.id))]} skew={skew.current} off={!!(view.smokeOff || view.noSmoke)} />}
-      {!REPLAY_ON && <GagLayer events={[...(view.gags || []).map((e) => ({ ...e, shownAt: Date.now() - Math.max(0, view.serverNow - e.at) })), ...pushed]} />}
+      {!rp.enabled && !pane && <SmokeLayer events={[...(view.smokes || []), ...smokes.filter((e) => !(view.smokes || []).some((x) => x.id === e.id))]} skew={skew.current} off={!!(view.smokeOff || view.noSmoke)} />}
+      {!rp.enabled && <GagLayer events={[...(view.gags || []).map((e) => ({ ...e, shownAt: Date.now() - Math.max(0, view.serverNow - e.at) })), ...pushed]} />}
       {toast && <div className="toast">{toast}</div>}
       {offerUp && <FightOffer key={offerKey} refund={offer.refund} stake={offer.stake} quip={offerQuip(offerKey)} armMs={pane ? 700 : 450}
         clock={offerClock(view, mySeat, now)}
@@ -374,7 +376,7 @@ function Bottom({ blocked, replaying, view, me, seated, myTurn, now, code, invit
   if (view.status === 'playing' && !offerShow) {
     out.push(
       <div key="t" className={`turnbar ${myTurn ? 'mine' : ''}`} aria-live="polite">
-        {myTurn && replaying ? <><b>Your turn · skip replay to act</b> <span className={`clock ${left < 60000 ? 'urgent' : ''}`}>{formatLeft(left)} left</span></> : myTurn ? <><b>Your turn.</b> <span className={`clock ${left < 60000 ? 'urgent' : ''}`}>{formatLeft(left)} left</span></>
+        {myTurn ? <><b>{replaying ? 'Your turn · actions return to live' : 'Your turn.'}</b> <span className={`clock ${left < 60000 ? 'urgent' : ''}`}>{formatLeft(left)} left</span></>
           : hand && toActName && view.seats[toActSeat]?.bot ? <>🤖 <b>{toActName}</b> is thinking…</>
           : hand && toActName ? <>Waiting for <b>{toActName}</b> <span className="clock">{formatLeft(left)}</span></>
           : view.nextHandAt ? <>Next hand starting…</>
@@ -384,7 +386,7 @@ function Bottom({ blocked, replaying, view, me, seated, myTurn, now, code, invit
       </div>,
     );
   }
-  if (myTurn && view.legal && !replaying) out.push(<ActionBar key="a" view={view} onAct={(a) => post('action', { ...a, handNumber: hand.number })} />);
+  if (myTurn && view.legal) out.push(<ActionBar key="a" view={view} onAct={(a) => post('action', { ...a, handNumber: hand.number })} />);
   // while the fight prompt is up, the bottom stays readable (the clock keeps ticking) but can't be tapped
   return <div className="tp-bottom" inert={blocked ? '' : undefined} aria-hidden={blocked || undefined}>{out}</div>;
 }
@@ -422,7 +424,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
   const hand = view.hand;
   const mySeat = view.me.seat ?? 0;
   const shown = (!hand && view.lastHand?.shown) || {};
-  const winners = new Set((!hand && view.lastHand?.winners?.map((w) => w.seat)) || []);
+  const winners = new Set((!hand && view.lastHand?.winners?.filter((w) => w.playerId === view.seats[w.seat]?.playerId).map((w) => w.seat)) || []);
   const button = hand ? hand.buttonSeat : view.buttonSeat;
   const box = useRef(null);
   const { w, h } = useSize(box);
@@ -529,7 +531,8 @@ function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
           <div className="board">
             {[0, 1, 2, 3, 4].map((i) => {
               const board = hand ? hand.board : view.lastHand?.board || [];
-              return board[i] ? <Card key={i} card={board[i]} /> : <EmptyCard key={i} />;
+              const fresh = rp.on && rp.step.k === 'deal' && i >= board.length - rp.step.cards.length && i < board.length;
+              return board[i] ? <span key={`${hand?.number || view.lastHand?.number}:${i}:${board[i]}`} className={fresh ? 'replay-fresh' : undefined} style={fresh ? { '--deal-index': i - board.length + rp.step.cards.length } : undefined}><Card card={board[i]} /></span> : <EmptyCard key={i} />;
             })}
           </div>
           <div className="pot">{hand ? <><ChipStack amount={hand.pot} /><span>Pot <b>{chips(hand.pot)}</b></span></> : view.status === 'lobby' ? <span>Waiting to start</span> : view.lastHand ? <span className="last-line">Hand #{view.lastHand.number}: {lastLine}</span> : ''}</div>
@@ -551,7 +554,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
           const isMe = seat === view.me.seat;
           const toAct = hand?.toAct === seat;
           const reveal = shown[seat]?.cards;
-          const cards = isMe && s.cards ? s.cards : reveal || null;
+          const cards = s.cards || reveal || null;
           const spot = roomy ? null : betSpots[`b${seat}`], home = betSpots[`s${seat}`];
           // roomy felt: the bet sits on the line from the seat to the pot, just inside the gold line, never closer than the seat's own cards allow
           const ray = Math.hypot(geo.rx * w * Math.cos(ang), geo.ry * h * Math.sin(ang)) / 100;
@@ -600,7 +603,7 @@ function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
             </React.Fragment>
           );
         })}
-        <ReplayLayer rp={rp} />
+        <ReplayLayer rp={rp} xy={xy} geo={geo} />
         {tea !== null && theme === 'anime' && !hold && (
           <GeishaTea key={String(tea)} stops={view.seats.map((s, i) => (s ? xy(i) : null)).filter(Boolean)} center={{ x: geo.cx, y: geo.cy }} onDone={() => setTea(null)} />
         )}
