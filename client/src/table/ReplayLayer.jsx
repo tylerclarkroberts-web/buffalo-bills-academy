@@ -2,6 +2,7 @@ import React from 'react';
 import { PixIcon, LowPoly } from '../store/PixIcon.jsx';
 import { TIP } from '../store/lowpoly.js';
 import { Dealer } from './Dealer.jsx';
+import { SpectacleFx } from './Spectacle.jsx';
 import { stepMs } from './replay.js';
 
 const at = (p) => ({ left: `${p.x}%`, top: `${p.y}%` });
@@ -67,6 +68,8 @@ export function ReplayLayer({ rp, xy, geo }) {
         <span className="sm-wisp">{[0, 1, 2, 3, 4].map((i) => <i key={i} style={{ '--i': i }} />)}</span>
       </div>
     </div>;
+  } else if (s.k === 'show') {
+    effect = <SpectacleFx fx={s.fx} who={s.fromName} emoji={s.emoji} reduced={still} paused={rp.paused} />;
   } else if (s.k === 'say') {
     if (!seats.some((seat) => seat?.playerId === s.from && seat.say?.text)) effect = <div className="rp-say" style={at(p)}><b>{s.fromName}</b><span>{s.message || s.text}</span></div>;
   } else if (s.k === 'reveal') {

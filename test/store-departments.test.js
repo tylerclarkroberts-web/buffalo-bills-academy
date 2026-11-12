@@ -26,9 +26,10 @@ test('department categories preserve server order, labels and metadata', () => {
   const tabs = [
     { id: 'tobacco', label: 'Smoke Shop', adult: true },
     { id: 'hats', label: 'Hats' },
+    { id: 'spectacles', label: 'Today’s spectacles' },
     { id: 'gags', label: 'Pocket nonsense' },
   ];
   const visible = categoriesFor(department('items'), tabs);
-  assert.deepEqual(visible, [tabs[0], tabs[2]]);
+  assert.deepEqual(visible, [tabs[0], tabs[2], tabs[3]]);
   assert.equal(visible[0], tabs[0], 'server category objects are passed through intact');
 });

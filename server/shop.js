@@ -20,6 +20,8 @@ export const GAG = { senderGapMs: 15e3, pairGapMs: 45e3, targetPerMin: 4, showMs
 /** v37 tobacco moments: one per table per minute; extra ones queue (up to 5 ahead); kept 24h so a first-time
  *  viewer still sees each one once. showMs is how long the cartoon plays. */
 export const SMOKE = { gapMs: 60e3, keepMs: 24 * 3600e3, maxAhead: 5, showMs: 9000 };
+/** v52 spectacles: one per table per minute (no queue: a refused one is kept), and how long the overlay plays. */
+export const SHOW = { gapMs: 60e3, showMs: 6000 };
 export const FIT = { min: 0.4, max: 2.5, move: 24 };   // fit editor: size 40%..250%, nudge +-24 head units
 const FIT_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'acc']; // not 'skin' (a shirt colour has nothing to place)
 const CONSUMABLE = (x) => !!x.use;
@@ -47,6 +49,7 @@ export class Shop {
     this.migrate();
     this.gags = new Map(); // table code -> recent gag events (memory only; they're gone in seconds anyway)
     this.gagLog = new Map();
+    this.showAt = new Map(); // table code -> when its last spectacle played (memory only, like the gag rate limits)
   }
   /** v36: pranks became one-time-use gags. Old prank ids are renamed (rubber chicken -> spaghetti noodle) and
    *  capped at one of each; the old opt-out carries over. Idempotent; runs on every boot. */
@@ -169,6 +172,7 @@ export class Shop {
     const mine = (kind, f) => (viewerId ? CATALOG.filter((x) => x.kind === kind && iv?.own[x.id]).map(f) : []);
     return {
       gagsOff: !!this.doc.tablesOff[code], gags: list, myGags: mine('gag', (x) => ({ id: x.id, name: x.name, emoji: x.emoji, pix: x.pix })), noGags: !!iv?.noGags,
+      myShows: mine('spectacle', (x) => ({ id: x.id, name: x.name, emoji: x.emoji, fx: x.fx, price: x.price })),
       smokeOff: !!this.doc.smokeOff[code], smokes: this.smokesAt(code), mySmokes: mine('tobacco', (x) => ({ id: x.id, name: x.name, emoji: x.emoji, art: x.art })), noSmoke: !!iv?.noSmoke, smokeGapMs: SMOKE.gapMs,
     };
   }
@@ -204,6 +208,23 @@ export class Shop {
     this.doc.smokes[t.code] = [...list, ev].slice(-40);
     this.save();
     return ev;
+  }
+  /** v52: put on a spectacle at a table you're seated at. It is used up and everyone at the table sees it once.
+   *  It follows the gag switches: the host's per-table switch, and it is hidden (not refused) for players who opted
+   *  out. One per table per minute. Every check runs first, so a refused one is kept. Touches nothing else. */
+  spectacle(t, p, { item }) {
+    const x = ITEM[item];
+    if (!x || x.kind !== 'spectacle') throw new GameError('That isn\'t a spectacle.', 400);
+    const iv = this.doc.inv[p.id];
+    if (!iv?.own[item]) throw new GameError('Buy one in the Spectacles department of the General Store first. It\'s one-time use.', 403);
+    if (this.doc.tablesOff[t.code]) throw new GameError('The host has turned gags and spectacles off at this table.', 403);
+    if (!t.seats.some((s) => s && s.playerId === p.id)) throw new GameError('Take a seat first.', 403);
+    if (t.status === 'closed') throw new GameError('This table is closed.', 409);
+    const now = this.now(); const last = this.showAt.get(t.code) || -Infinity;
+    if (now - last < SHOW.gapMs) throw new GameError(`One spectacle at a time. The crew needs ${Math.ceil((SHOW.gapMs - (now - last)) / 1000)} more seconds to sweep up.`, 429);
+    this.showAt.set(t.code, now);
+    delete iv.own[item]; this.save(); // one-time use
+    return { id: `v${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`, at: now, from: p.id, fromName: p.name, item: x.id, name: x.name, emoji: x.emoji, fx: x.fx, line: x.line };
   }
   setTableOff(t, p, off) {
     if (t.hostId !== p.id) throw new GameError('Only the host can change that.', 403);

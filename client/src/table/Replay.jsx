@@ -26,7 +26,7 @@ export function useReplay(code, view, ready) {
   const seen = Math.max(seenSeq(code, playerId), progress?.scope === scope ? progress.seq : 0);
   const enabled = replayEnabled();
   const noGags = !!(view?.noGags || view?.gagsOff), noSmoke = !!(view?.noSmoke || view?.smokeOff);
-  const muted = (view?.log || []).filter((e) => e.ev?.k === 'gag' && isMuted(e.ev.from)).map((e) => e.seq).join(',');
+  const muted = (view?.log || []).filter((e) => ['gag', 'show'].includes(e.ev?.k) && isMuted(e.ev.from)).map((e) => e.seq).join(',');
   const options = `${enabled}.${noGags}.${noSmoke}.${muted}`;
   const rp = queue?.scope === scope && queue.options === options ? queue : null;
   const maxSeq = (view?.log || []).reduce((n, e) => Math.max(n, e.seq || 0), 0);

@@ -13,7 +13,7 @@ export function markSeen(code, seq, playerId) { try { if (seq > seenSeq(code, pl
  */
 export function pickReplay(log, { seen = 0, noGags = false, noSmoke = false, muted = () => false } = {}) {
   return (log || []).filter((e) => Number.isInteger(e.seq) && e.seq > seen && e.frame)
-    .filter((e) => !(e.ev?.k === 'gag' && (noGags || muted(e.ev.from))) && !(e.ev?.k === 'smoke' && noSmoke))
+    .filter((e) => !(e.ev?.k === 'gag' && (noGags || muted(e.ev.from))) && !(e.ev?.k === 'smoke' && noSmoke) && !(e.ev?.k === 'show' && (noGags || muted(e.ev.from))))
     .map((e) => ({ k: 'notice', ...e.ev, message: e.ev?.text, seq: e.seq, hand: e.hand, text: e.text, t: e.t, frame: e.frame }));
 }
 
@@ -29,6 +29,7 @@ export function replayView(live, frame) {
 
 /** Match the on-table animations, skipping the hours between asynchronous turns. */
 export function stepMs(step, reduced = false) {
+  if (step.k === 'show') return reduced ? 2600 : 5600;
   if (step.k === 'smoke') return reduced ? 2200 : 8600;
   if (step.k === 'gag') return 2600;
   if (step.k === 'deal') return step.cards?.length === 3 ? 1500 : 1100;
