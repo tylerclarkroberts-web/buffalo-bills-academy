@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { rng, distFrom, pathSteps, geigerFacing } from '../../../server/engine/maze.js';
 import { MIN_GAP } from './stalker.js';
+import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { spriteCanvas } from '../barn/sprite.js';
@@ -139,9 +140,9 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0 } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, faun, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0 } = {}) {
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
-    this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
+    this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.faun = faun || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
@@ -251,6 +252,7 @@ export class MineScene {
     }
 
     if (this.stalker) { this.visitor = buildVisitor(); this.scene.add(this.visitor.group); this.fade = 0; this.flick = 0; this.nextFlick = 1; this.lastDread = -1; }
+    if (this.faun) { this.faunMesh = buildFaun(); this.scene.add(this.faunMesh.group); }
     if (this.bugGuide?.armed) this.addBugGuide(this.bugGuide.bug);
     this.pos = new THREE.Vector2(maze.start.x * TILE, maze.start.y * TILE);
     this.yaw = -maze.facing - Math.PI / 2; this.pitch = 0;
@@ -276,7 +278,7 @@ export class MineScene {
       const tx = Math.round((x + ox) / TILE), tz = Math.round((z + oz) / TILE);
       if (g[tz]?.[tx] !== 0) return true;
     }
-    return !!this.stalker?.blocks(x, z, RADIUS); // he takes up room: walk around him
+    return !!this.stalker?.blocks(x, z, RADIUS) || !!this.faun?.blocks(x, z, RADIUS); // they take up room: walk around them
   }
   updateVisitor(now, dt) {
     const st = this.stalker, v = this.visitor;
@@ -308,6 +310,21 @@ export class MineScene {
     const fov = this.baseFov + (this.reduce ? 0 : level * 5 + Math.sin(now / 900) * 1.2 * level);
     if (Math.abs(this.camera.fov - fov) > 0.02) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     if (Math.abs(level - this.lastDread) > 0.02) { this.lastDread = level; this.onDread?.(level); }
+  }
+
+  updateFaun(now, dt) {
+    const fn = this.faun, m = this.faunMesh; if (!fn || !m) return;
+    fn.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart, pushing: this.pushing });
+    while (fn.events.length) {
+      const ev = fn.events.shift();
+      this.onEvent?.(ev === 'appear' ? 'faun-appear' : ev === 'bleat' ? 'faun-bleat' : ev === 'yield' ? 'faun-yield' : ev);
+    }
+    const g = m.group;
+    if (!fn.present) { g.visible = false; return; }
+    g.visible = true;
+    g.position.set(fn.x, 0, fn.z);
+    g.rotation.y = fn.facing;
+    trotFaun(m, now, fn.moving, this.reduce);
   }
 
   /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
@@ -364,7 +381,7 @@ export class MineScene {
     this.poolPos.copy(to);
     this.poolMesh.position.copy(to).setY(0.02); this.poolLight.position.copy(to).setY(0.6);
     for (const c of this.crystals) { c.position.x += dx; c.position.z += dz; }
-    this.bugGuide?.setPool({ x, y });
+    this.bugGuide?.setPool({ x, y }); this.faun?.setPool({ x, y });
   }
   /** Finite deposits share their liquid texture; confirmations only move the liquid surface. */
   setDeposits(pools, currentPoolId) {
@@ -427,6 +444,7 @@ export class MineScene {
       this.poolLight.position.copy(this.poolPos).setY(0.6);
       this.maze.pool = { x: target.x, y: target.y };
       if (this.stalker) this.stalker.pool = this.maze.pool;
+      this.faun?.setPool(this.maze.pool);
       this.bugGuide?.setPool(this.maze.pool);
     }
   }
@@ -518,10 +536,11 @@ export class MineScene {
       const bx = this.blocked(this.pos.x + dx, this.pos.y), bz = this.blocked(this.pos.x, this.pos.y + dz);
       if (!bx) this.pos.x += dx;
       if (!bz) this.pos.y += dz;
-      this.pushing = f > 0 && (bx || bz) && !!this.stalker?.blocks(this.pos.x + dx * 4, this.pos.y + dz * 4, RADIUS);
+      this.pushing = f > 0 && (bx || bz) && !!(this.stalker?.blocks(this.pos.x + dx * 4, this.pos.y + dz * 4, RADIUS) || this.faun?.blocks(this.pos.x + dx * 4, this.pos.y + dz * 4, RADIUS));
       this.bob += dt * 9; this.onStep?.();
     } else this.pushing = false;
     if (this.stalker) this.updateVisitor(now, dt);
+    if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;
     this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);

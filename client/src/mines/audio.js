@@ -182,5 +182,37 @@ export class MineAudio {
       o.connect(g); g.connect(this.master); o.start(t + at); o.stop(t + at + 0.25);
     }
   }
+  /** A loud goat bleat. Goes through the master gain, so the sound toggle silences it. Louder than a drip. */
+  bleat() {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 720; bp.Q.value = 3.4;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.9, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.55, t + 0.18);
+    g.gain.setValueAtTime(0.55, t + 0.28);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+    bp.connect(lp); lp.connect(g); g.connect(this.master);
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(340, t);
+    o.frequency.exponentialRampToValueAtTime(250, t + 0.1);
+    o.frequency.setValueAtTime(300, t + 0.16);
+    o.frequency.exponentialRampToValueAtTime(200, t + 0.7);
+    const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 8.5;
+    const lg = c.createGain(); lg.gain.value = 22;
+    lfo.connect(lg); lg.connect(o.frequency);
+    // a second, slightly higher voice makes the "meh-eh-eh" nasal
+    const o2 = c.createOscillator(); o2.type = 'square';
+    o2.frequency.setValueAtTime(510, t);
+    o2.frequency.exponentialRampToValueAtTime(380, t + 0.7);
+    const g2 = c.createGain(); g2.gain.value = 0.18;
+    o2.connect(g2); g2.connect(bp);
+    o.connect(bp);
+    o.start(t); o.stop(t + 0.8);
+    o2.start(t); o2.stop(t + 0.8);
+    lfo.start(t); lfo.stop(t + 0.8);
+  }
   dispose() { clearTimeout(this.dripTimer); try { this.ctx?.close(); } catch { /* ignore */ } }
 }
