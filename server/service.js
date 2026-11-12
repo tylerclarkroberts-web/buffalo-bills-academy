@@ -179,6 +179,9 @@ export class PokerService {
     const t = this.getTable(code);
     const avatars = {};
     for (const s of t.seats) if (s?.playerId) avatars[s.playerId] = s.bot ? botAvatar(t, s.playerId) : this.avatars ? this.avatars.info(this.store.players[s.playerId]) : null;
+    for (const e of t.log) for (const s of e.frame?.seats || []) if (s?.playerId && !(s.playerId in avatars)) {
+      avatars[s.playerId] = s.bot ? botAvatar(t, s.playerId) : this.avatars && this.store.players[s.playerId] ? this.avatars.info(this.store.players[s.playerId]) : null;
+    }
     for (const l of t.lastHand?.allInLosers || []) if (!(l.playerId in avatars) && this.store.players[l.playerId]) avatars[l.playerId] = this.avatars ? this.avatars.info(this.store.players[l.playerId]) : null;
     const v = { ...G.viewFor(t, player?.id ?? null, this.now()), visibility: t.visibility === 'public' ? 'public' : 'private', econ: !!t.econ, avatars };
     if (t.bots) { v.bots = { count: t.bots.count, friends: t.bots.friends }; for (const st of v.seats) if (st && t.seats[st.seat]?.bot) st.bot = true; }

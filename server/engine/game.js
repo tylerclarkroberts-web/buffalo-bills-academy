@@ -55,13 +55,42 @@ export function normalizeSettings(input = {}) {
 
 // ---------- helpers ----------
 const n = (t) => t.settings.maxPlayers;
-function log(t, ctx, text, ev) {
+// Public, immutable table pictures: never copy the deck, hole cards, private settings or the log itself.
+function replayFrame(t, { revealed = {}, finished = null } = {}) {
+  const h = finished ? null : t.hand;
+  const last = finished || (!h && t.lastHand?.number === t.handNumber ? t.lastHand : null);
+  const shown = {};
+  for (const [seat, s] of Object.entries(last?.shown || {})) {
+    const playerId = s.playerId || (t.lastShowdown?.number === last.number && t.lastShowdown.reveals?.find((r) => r.seat === +seat)?.playerId)
+      || last.winners?.find((w) => w.seat === +seat)?.playerId;
+    if (playerId && t.seats[seat]?.playerId === playerId) shown[seat] = { playerId, name: s.name, cards: s.cards.slice(), hand: s.hand, voluntary: !!s.voluntary };
+  }
+  return {
+    status: t.status, handNumber: t.handNumber, buttonSeat: t.buttonSeat,
+    seats: t.seats.map((s, seat) => {
+      if (!s) return null;
+      const p = h?.players[seat];
+      const cards = (h ? revealed[seat] : shown[seat])?.cards;
+      return { seat, playerId: s.playerId, name: s.name, stack: s.stack, bot: !!s.bot,
+        sittingOut: !!s.sittingOut, leaving: !!s.leaving, waiting: !!s.waiting, busted: s.stack === 0 && (!p || p.folded),
+        inHand: !!p, folded: !!p?.folded, allIn: !!p?.allIn, bet: h ? p?.bet || 0 : 0,
+        hasCards: !!p && !p.folded, cards: cards ? cards.slice() : null,
+        say: s.say ? { text: s.say.text, at: s.say.at } : null };
+    }),
+    hand: h ? { number: h.number, street: h.street, board: h.board.slice(), buttonSeat: h.buttonSeat,
+      sbSeat: h.sbSeat, bbSeat: h.bbSeat, pot: potTotal(h), toAct: h.toAct, deadline: null } : null,
+    lastHand: last ? { number: last.number, board: last.board.slice(), endedAt: last.endedAt, shown,
+      winners: (last.winners || []).map((w) => ({ seat: w.seat, playerId: w.playerId, name: w.name, amount: w.amount, hand: w.hand })) } : null,
+  };
+}
+function log(t, ctx, text, ev, frame = replayFrame(t)) {
   // v43: every entry gets a sequence number; game moves also carry a structured, public-only event (ev) that the
   // client replays as animation. ev never holds hole cards except at showdown, where the text already shows them.
   if (!Number.isInteger(t.seq)) t.seq = t.log.length;
   t.seq += 1;
   const e = { t: ctx.now, hand: t.handNumber, seq: t.seq, text };
   if (ev) e.ev = ev;
+  if (frame) e.frame = frame;
   t.log.push(e);
   if (t.log.length > MAX_LOG) t.log.splice(0, t.log.length - MAX_LOG);
 }
@@ -81,8 +110,22 @@ export function recordTableMoment(t, kind, moment, ctx) {
     log(t, ctx, `${fromName} ${moment.line}`, ev);
   } else {
     Object.assign(ev, { art: moment.art, at: moment.at });
+    if (ev.at > ctx.now) {
+      flushSmokes(t, ctx);
+      // The shop admits at most five scheduled smokes; only their public fields are retained here.
+      t.pendingSmokes = [...(t.pendingSmokes || []), ev].slice(-5);
+      return;
+    }
     log(t, ctx, `${fromName} lit up a ${moment.name}`, ev);
   }
+}
+function flushSmokes(t, ctx) {
+  const due = (t.pendingSmokes || []).filter((s) => s.at <= ctx.now).sort((a, b) => a.at - b.at);
+  if (!due.length) return false;
+  t.pendingSmokes = t.pendingSmokes.filter((s) => s.at > ctx.now);
+  if (!t.pendingSmokes.length) delete t.pendingSmokes;
+  for (const smoke of due) recordTableMoment(t, 'smoke', smoke, ctx);
+  return true;
 }
 function seatOf(t, playerId) { return t.seats.findIndex((s) => s && s.playerId === playerId); }
 function requireSeat(t, playerId) {
@@ -449,6 +492,8 @@ function autoAct(t, seat, ctx, why) {
 
 /** Server timer hook: apply the timeout rule if the current player's deadline has passed. Returns true if anything changed. */
 export function tick(t, ctx) {
+  if (t.status === 'closed') return false;
+  if (flushSmokes(t, ctx)) return true;
   if (t.status !== 'playing') return false;
   if (t.fight?.status === 'running' && t.fight.expiresAt <= ctx.now) { settleFight(t, 'lose', 'ran out of time', ctx); return true; }
   const h = t.hand;
@@ -483,11 +528,14 @@ export function tick(t, ctx) {
 
 /** When the server should next call tick() for this table (ms epoch), or null. */
 export function nextWakeAt(t) {
-  if (t.status !== 'playing') return null;
+  if (t.status === 'closed') return null;
+  const smoke = (t.pendingSmokes || []).reduce((at, s) => at === null ? s.at : Math.min(at, s.at), null);
+  if (t.status !== 'playing') return smoke;
   const idle = [t.nextHandAt, t.awayClockAt].filter((x) => x);
   const w = t.hand ? t.hand.deadline : idle.length ? Math.min(...idle) : null;
   const f = t.fight?.status === 'running' ? t.fight.expiresAt : null;
-  return f !== null && (w === null || f < w) ? f : w;
+  const wakes = [w, f, smoke].filter((at) => at !== null);
+  return wakes.length ? Math.min(...wakes) : null;
 }
 
 // ---------- end of hand ----------
@@ -496,10 +544,12 @@ function finishUncontested(t, ctx) {
   const [w] = liveSeats(h);
   const amount = potTotal(h);
   t.seats[w].stack += amount;
-  log(t, ctx, `${t.seats[w].name} wins ${amount} (everyone else folded)`, { k: 'win', wins: [{ seat: w, amt: amount }] });
+  const result = { winners: [{ seat: w, playerId: h.players[w].playerId, name: t.seats[w].name, amount, hand: null }], shown: {}, pots: [{ amount, winners: [w] }] };
+  log(t, ctx, `${t.seats[w].name} wins ${amount} (everyone else folded)`, { k: 'win', wins: [{ seat: w, amt: amount }] },
+    replayFrame(t, { finished: { number: h.number, board: h.board, endedAt: ctx.now, ...result } }));
   const hole = h.players[w].hole.slice();
   const fold = { number: h.number, kind: 'fold', endedAt: ctx.now, winner: { seat: w, playerId: h.players[w].playerId, name: t.seats[w].name }, amount }; // v49: no cards
-  wrapUp(t, ctx, { winners: [{ seat: w, playerId: h.players[w].playerId, name: t.seats[w].name, amount, hand: null }], shown: {}, pots: [{ amount, winners: [w] }] });
+  wrapUp(t, ctx, result);
   // Won without a showdown: the cards stay hidden unless the winner chooses to show them (showCards).
   // Kept off lastHand so they are never sent to anyone until then.
   t.lastShowdown = fold;
@@ -526,8 +576,11 @@ export function showCards(t, playerId, which, ctx, handNumber) {
   m.shown = [...new Set([...m.shown, ...pick])].sort();
   const cards = m.shown.map((i) => m.cards[i]);
   const name = t.lastHand.winners[0].name;
-  t.lastHand.shown = { ...(t.lastHand.shown || {}), [m.seat]: { name, cards, hand: null, voluntary: true } };
-  log(t, ctx, `${name} shows ${pick.map((i) => m.cards[i]).join(' ')} from hand #${m.number} (didn't have to)`);
+  t.lastHand.shown = { ...(t.lastHand.shown || {}), [m.seat]: { playerId, name, cards, hand: null, voluntary: true } };
+  // A previous hand's cards must not be drawn on the current hand or a replacement occupant.
+  const frame = !t.hand && t.seats[m.seat]?.playerId === playerId ? replayFrame(t) : null;
+  log(t, ctx, `${name} shows ${pick.map((i) => m.cards[i]).join(' ')} from hand #${m.number} (didn't have to)`,
+    { k: 'reveal', number: m.number, seat: m.seat, playerId, cards: cards.slice(), voluntary: true }, frame);
   if (m.shown.length === 2) t.muck = null;
   return t;
 }
@@ -557,21 +610,27 @@ function showdown(t, ctx) {
     potResults.push({ amount: pot.amount, winners, uncalled: pot.eligible.length === 1 });
     potSplits.push({ label: pot.eligible.length === 1 ? 'Uncalled bet' : idx === 0 ? 'Main pot' : `Side pot ${idx}`, amount: pot.amount, uncalled: pot.eligible.length === 1, winners: winners.map((w) => ({ seat: w, amount: split[w] })) });
     const label = pot.eligible.length === 1 ? 'Uncalled bet returned to' : idx === 0 ? 'Main pot' : `Side pot ${idx}`;
-    if (pot.eligible.length === 1) log(t, ctx, `${label} ${t.seats[winners[0]].name}: ${pot.amount}`);
-    else log(t, ctx, `${label} (${pot.amount}): ${winners.map((w) => `${t.seats[w].name} wins ${split[w]} with ${evals[w].name}`).join('; ')}`);
+    // Keep the pot breakdown in the log; visual playback reveals cards before announcing the winner.
+    if (pot.eligible.length === 1) log(t, ctx, `${label} ${t.seats[winners[0]].name}: ${pot.amount}`, undefined, null);
+    else log(t, ctx, `${label} (${pot.amount}): ${winners.map((w) => `${t.seats[w].name} wins ${split[w]} with ${evals[w].name}`).join('; ')}`, undefined, null);
   });
-  for (const [seat, amt] of Object.entries(won)) t.seats[seat].stack += amt;
-  log(t, ctx, 'Pot pushed', { k: 'win', wins: Object.entries(won).map(([seat, amt]) => ({ seat: +seat, amt })), showdown: true });
   t.lastShowdown = showdownRecord(t, h, live, evals, potSplits, ctx);
   const shown = {};
-  for (const i of live) shown[i] = { name: t.seats[i].name, cards: h.players[i].hole, hand: evals[i].name, best: evals[i].cards };
-  for (const i of live) log(t, ctx, `${t.seats[i].name} shows ${h.players[i].hole.join(' ')} (${evals[i].name})`);
-  wrapUp(t, ctx, {
+  for (const i of t.lastShowdown.order) {
+    shown[i] = { playerId: h.players[i].playerId, name: t.seats[i].name, cards: h.players[i].hole.slice(), hand: evals[i].name, best: evals[i].cards.slice() };
+    log(t, ctx, `${t.seats[i].name} shows ${h.players[i].hole.join(' ')} (${evals[i].name})`,
+      { k: 'reveal', number: h.number, seat: i, playerId: h.players[i].playerId, cards: shown[i].cards.slice(), handName: evals[i].name }, replayFrame(t, { revealed: shown }));
+  }
+  for (const [seat, amt] of Object.entries(won)) t.seats[seat].stack += amt;
+  const result = {
     winners: Object.entries(won).map(([seat, amount]) => ({ seat: +seat, playerId: h.players[seat].playerId, name: t.seats[seat].name, amount, hand: evals[seat].name })),
     shown, pots: potResults,
     // all-in players who won nothing at showdown (the table's "busted" bit plays for each of them)
     allInLosers: live.filter((i) => h.players[i].allIn && !won[i]).map((i) => ({ seat: i, playerId: h.players[i].playerId, name: t.seats[i].name })),
-  });
+  };
+  log(t, ctx, 'Pot pushed', { k: 'win', wins: Object.entries(won).map(([seat, amt]) => ({ seat: +seat, amt })), showdown: true },
+    replayFrame(t, { finished: { number: h.number, board: h.board, endedAt: ctx.now, ...result } }));
+  wrapUp(t, ctx, result);
 }
 
 /**
@@ -608,11 +667,11 @@ function wrapUp(t, ctx, result) {
 function removeSeat(t, i, ctx) {
   const s = t.seats[i];
   ledger(t, s).cashOut += s.stack;
+  t.seats[i] = null;
   if (s.afkBoot && t.status !== 'closed') {
     log(t, ctx, `${s.name} was away for ${AFK_BOOT_AFTER} turns and left the table with ${s.stack} chips (the seat is open; they can rejoin any time)`);
     (t.afkMoved ||= {})[s.playerId] = { at: ctx.now, turns: AFK_BOOT_AFTER, chips: s.stack };
   } else log(t, ctx, `${s.name} left the table with ${s.stack} chips`);
-  t.seats[i] = null;
 }
 
 function inLiveHand(t, seat) {
@@ -665,13 +724,14 @@ export function closeTable(t, hostId, ctx) {
   if (hostId !== t.hostId) throw new GameError('Only the host can close the table', 403);
   if (t.status === 'closed') return;
   if (t.hand) { // abandon the hand: everyone gets back what they put in
+    const number = t.hand.number;
     t.hand.players.forEach((p, i) => { if (p) t.seats[i].stack += p.total + blindOf(t.hand, i); });
     if (t.hand.dead) { const i = seatOf(t, t.hand.deadBy); if (i >= 0) t.seats[i].stack += t.hand.dead; else if (t.ledger[t.hand.deadBy]) t.ledger[t.hand.deadBy].cashOut += t.hand.dead; }
-    log(t, ctx, `Hand #${t.hand.number} was cancelled and bets were returned`);
     t.hand = null;
+    log(t, ctx, `Hand #${number} was cancelled and bets were returned`);
   }
   if (t.fight?.status === 'running') { t.fight.status = 'cancelled'; t.fight.endedAt = ctx.now; }
-  t.status = 'closed'; t.nextHandAt = null;
+  t.status = 'closed'; t.nextHandAt = null; delete t.pendingSmokes;
   t.seats.forEach((s, i) => { if (s) removeSeat(t, i, ctx); });
   log(t, ctx, 'The host closed the table');
 }
@@ -696,9 +756,10 @@ export function setSay(t, playerId, text, ctx) {
   const i = seatOf(t, playerId);
   if (i < 0) throw new GameError('Take a seat to talk at this table', 403);
   const clean = cleanSay(text);
-  if (clean && clean !== t.seats[i].say?.text) log(t, ctx, `${t.seats[i].name}: ${clean}`, { k: 'say', from: playerId, fromName: t.seats[i].name, seat: i, text: clean });
+  const changed = clean && clean !== t.seats[i].say?.text;
   if (clean) t.seats[i].say = { text: clean, at: ctx.now };
   else delete t.seats[i].say;
+  if (changed) log(t, ctx, `${t.seats[i].name}: ${clean}`, { k: 'say', from: playerId, fromName: t.seats[i].name, seat: i, text: clean });
   return t.seats[i].say || null;
 }
 

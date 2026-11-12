@@ -52,12 +52,12 @@ function GoldRush() {
 const FX = { balloons: Balloons, fireworks: Fireworks, blimp: Blimp, stampede: Stampede, ufo: Ufo, goldrush: GoldRush };
 export const SHOW_FX = Object.keys(FX);
 
-/** The full-screen show. Reduced motion: a still badge instead (the replay card already says what happened). */
-export function SpectacleFx({ fx, who, emoji, reduced }) {
+/** The full-screen show. Reduced motion: a still badge; its controller announces the event. */
+export function SpectacleFx({ fx, who, emoji, reduced, paused = false }) {
   const Fx = FX[fx];
   if (!Fx) return null;
   return createPortal(
-    <div className={`spectacle show-${fx} ${reduced ? 'still' : ''}`} aria-hidden="true" data-test="spectacle-fx" data-fx={fx}>
+    <div className={`spectacle show-${fx} ${reduced ? 'still' : ''} ${paused ? 'paused' : ''}`} aria-hidden="true" data-test="spectacle-fx" data-fx={fx}>
       {reduced ? <span className="sw-still">{emoji}</span> : <Fx who={who} />}
     </div>, document.body);
 }
