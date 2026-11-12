@@ -118,7 +118,7 @@ export function createGame(canvas, emit) {
     m = MATCHES.find((x) => x.id === id) || MATCHES[0]; L = LINES[m.id]; say = makeSayer(L.barks); who = [KEETCH, ...m.foes];
     clearTimeout(barkTimer); clearTimeout(cardTimer); clearTimeout(restTimer);
     Object.assign(g, { phase: 'aim', talk: [], charge: 0, armed: false, first: !!L.firstGood, result: null, bark: null, guest: false, anim: null,
-      card: who.map(() => []), q: who.map(() => ({ mulligans: 3 })) });
+      card: who.map(() => []), foeState: who.map(() => ({ mulligans: 3 })) });
     tee(0);
     if (!again) talk(L.intro);
   }
@@ -186,10 +186,10 @@ export function createGame(canvas, emit) {
   function nextFoe() {
     const i = g.queue.shift();
     if (i == null) return address();
-    const out = foeSwing(g.hole, g.st[i], who[i], rnd, g.wind, g.q[i]);
+    const out = foeSwing(g.hole, g.st[i], who[i], rnd, g.wind, g.foeState[i]);
     if (!g.fast) { if (out.spec.putt) sfx.putt(); else sfx.thwack(); }
     fly(i, out.res, out.spec, false, () => {
-      foeApply(g.st[i], out, g.q[i]);
+      foeApply(g.st[i], out, g.foeState[i]);
       if (out.res.holed && !g.fast) sfx.cup();
       if (out.mulligan) { bark('mulligan'); g.queue.unshift(i); } // that one never happened, and he is up again
       else if ((out.res.hazard || out.mad || g.st[i].pickedUp) && !g.bark && rnd() < 0.7) bark(who[i].id);
@@ -197,7 +197,7 @@ export function createGame(canvas, emit) {
     });
   }
   function holeOut() {
-    g.st.forEach((s, i) => { if (i) while (!s.holed) aiStroke(g.hole, s, who[i], rnd, g.wind, g.q[i]); g.card[i][g.hi] = s.strokes; }); // nobody waits for Landon
+    g.st.forEach((s, i) => { if (i) while (!s.holed) aiStroke(g.hole, s, who[i], rnd, g.wind, g.foeState[i]); g.card[i][g.hi] = s.strokes; }); // nobody waits for Landon
     push();
     cardTimer = setTimeout(() => { g.phase = 'card'; push(); }, 1100);
   }
