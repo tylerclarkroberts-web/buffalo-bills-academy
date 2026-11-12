@@ -314,7 +314,7 @@ export function FightScreen({ mode, code, view, offer, onClose, onView, myId }) 
     : { cls: 'lost', title: 'Guntrad wins', line: `Practice: no money moved.${v.reason ? ` ${cap(v.reason)}.` : ''}` })
     : v && (v.status === 'won'
     ? { cls: 'won', title: mode === 'watch' ? `${run?.name} beat Guntrad!` : 'You beat Guntrad!', line: `The house covers the ${money(v.paid ?? refund)} big blind.` }
-    : v.status === 'lost' ? { cls: 'lost', title: mode === 'watch' ? `Guntrad beat ${run?.name}` : 'Guntrad wins', line: `${money(v.stake ?? 0)} (5% of ${mode === 'watch' ? 'their' : 'your'} cash) ${v.into === 'house' ? 'went to the house (the hand had ended)' : 'went into the pot'}.${v.reason ? ` ${cap(v.reason)}.` : ''}` }
+    : v.status === 'lost' ? { cls: 'lost', title: mode === 'watch' ? `Guntrad beat ${run?.name}` : 'Guntrad wins', line: `${money(v.stake ?? 0)} (5% of ${mode === 'watch' ? 'their' : 'your'} cash, at most 10 big blinds) ${v.into === 'house' ? 'went to the house (the hand had ended)' : 'went into the pot'}.${v.reason ? ` ${cap(v.reason)}.` : ''}` }
     : v.status === 'running' ? { cls: '', title: 'Still deciding…', line: 'The house is checking the replay.' }
     : v.status === 'cancelled' ? { cls: '', title: 'Fight called off', line: 'The table closed. No money moved.' }
     : { cls: 'lost', title: 'Fight not counted', line: 'If it is not settled, it counts as a loss when its clock runs out.' });

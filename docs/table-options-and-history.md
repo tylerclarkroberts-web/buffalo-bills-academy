@@ -19,7 +19,7 @@ Each checkbox change saves automatically and shows a saving status. Changes appl
 
 Current cards, bets, stacks, action order, deadlines, and each player’s current-hand checkbox are preserved. An explicit personal choice made between hands still overrides the table default for that player’s next hand. Bots continue to make their own decisions rather than inheriting automatic free checks.
 
-These controls do not edit blinds, buy-ins, seat capacity, turn limits, rebuy limits, or visibility. Closed tables cannot be changed. Existing host controls for gags, the Smoke Shop, and closing the table retain their current behavior.
+These controls do not edit blinds, buy-ins, seat capacity, turn limits, rebuy limits, or visibility. Closed tables cannot be changed. Existing host controls for gags, the Smoke Shop, and closing the table retain their current behavior. The gag switch, now labelled **Turn gags & spectacles off**, also refuses [table spectacles](spectacles.md).
 
 ## Find open or finished rooms
 

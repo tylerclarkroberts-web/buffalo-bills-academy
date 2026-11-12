@@ -100,11 +100,13 @@ export function Profile({ id }) {
         </div>
         {self && !editing && (
           <div className="pf-actions">
+            <button className="btn small" onClick={() => navigate('/room')}>My Room</button>
             {me?.avatar?.wear && <button className="btn small" onClick={() => api('GET', '/shop').then(setFitShop).catch((e) => setErr(e.message))} data-test="profile-fit">Fit accessories</button>}
             <button ref={renameButton} className="btn small" onClick={() => { setName(p.name); setRenameError(''); setRenameStatus(''); setEditing(true); }}>Rename</button>
             <button className="btn small ghost" onClick={() => signOut().then(() => navigate('/'))}>Sign out</button>
           </div>
         )}
+        {!self && p.roomVisitAvailable && <Link className="btn small" to={`/rooms/${p.id}`}>Visit room</Link>}
       </div>
       {fitShop && me && <FitDialog me={me} shop={fitShop} onClose={() => setFitShop(null)} onSaved={setFitShop} />}
       <Tabs label="Profile" value={tab} onChange={setTab} tabs={tabs} />

@@ -1,14 +1,16 @@
-// v34: the General Store. Play money only. One screen, no scrolling: tabs down the side, a page of items sized to
-// fit the screen (pager, never a scrollbar), and a counter on the right with a try-on and the buy button.
+// v34: the General Store. Play money only. Item pages fit the shelf; the counter scrolls when its description,
+// try-on and buttons need more space.
 // The server decides everything (prices, what you own, what you can afford); this page only shows it.
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { SignIn } from '../Home.jsx';
+import { navigate } from '../App.jsx';
 import { Bust } from '../avatar/Bust.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { drawBug } from '../barn/sprite.js';
 import { PixIcon, LowPoly } from './PixIcon.jsx';
 import { FitControls, useFitSaver } from '../avatar/FitEditor.jsx';
+import { DEPARTMENTS, categoriesFor } from './departments.js';
 import './store.css';
 
 const money = (n) => `$${Number(n).toLocaleString('en-US')}`;
@@ -18,6 +20,7 @@ const CONSUMABLE = (x) => !!x.use;
 const ONCE = (x) => !!x.once; // gags (and tobacco): one at a time, used up when used
 const FITTABLE = (x) => x?.kind === 'avatar' && x.slot !== 'skin';
 const BUG_LOOK = ['bugskin', 'bughat', 'bugacc'];
+const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 'long' });
 
 function BugThumb({ species, style, size }) {
   const ref = useRef(null);
@@ -43,6 +46,7 @@ export default function Store() {
   const { me } = useSession();
   const [v, setV] = useState(null);
   const [pen, setPen] = useState(null);
+  const [departmentId, setDepartmentId] = useState('appearance');
   const [tab, setTab] = useState('hats');
   const [pg, setPg] = useState(0);
   const [sel, setSel] = useState(null);
@@ -68,12 +72,15 @@ export default function Store() {
     });
     ro.observe(el); return () => ro.disconnect();
   }, [!!v]);
-  const items = useMemo(() => (v ? v.items.filter((x) => x.cat === tab) : []), [v, tab]);
+  const department = DEPARTMENTS.find((d) => d.id === departmentId);
+  const categories = categoriesFor(department, v?.tabs || []);
+  const category = categories.find((t) => t.id === tab) || categories[0];
+  const items = useMemo(() => (v ? v.items.filter((x) => x.cat === category?.id) : []), [v, category?.id]);
   const per = fit.cols * fit.rows; const pages = Math.max(1, Math.ceil(items.length / per));
   useEffect(() => { if (pg >= pages) setPg(pages - 1); }, [pages]);
-  useEffect(() => { setPg(0); }, [tab]);
+  useEffect(() => { setPg(0); setSel(null); }, [departmentId, category?.id]);
   if (!me) return <div className="screen store"><div className="store-empty panel"><h1 className="western">General Store</h1><p>Sign in to shop.</p><SignIn /></div></div>;
-  if (!v) return <div className="screen store"><div className="store-empty muted">{err || 'Unlocking the front door…'}</div></div>;
+  if (!v) return <div className="screen store"><div className="store-empty muted" role="status">{err || 'Unlocking the front door…'}{err && <p><button className="btn ghost" onClick={() => { setErr(''); load().catch((e) => setErr(e.message)); }}>Try again</button></p>}</div></div>;
   const eqWear = Object.fromEntries(Object.entries(v.eq).map(([slot, id]) => [slot, { ...lookOf(v.items.find((i) => i.id === id) || { id }), fit: fits[id] }]).filter(([s]) => !BUG_LOOK.includes(s)));
   const cur = sel && v.items.find((x) => x.id === sel);
   const shown = items.slice(pg * per, pg * per + per);
@@ -84,6 +91,9 @@ export default function Store() {
   };
   const owned = cur ? v.own[cur.id] || 0 : 0;
   const wearing = cur && cur.slot && v.eq[cur.slot] === cur.id;
+  const takenBy = cur && !owned ? v.taken?.[cur.id] : null; // one of a kind, and somebody else got there first
+  const changeCategory = (id) => { setTab(id); setSel(null); setPg(0); setMsg(''); setErr(''); setFitOpen(false); };
+  const changeDepartment = (id) => { setDepartmentId(id); changeCategory(null); };
   return (
     <div className="screen store" data-test="store">
       <div className="store-wrap panel">
@@ -91,27 +101,38 @@ export default function Store() {
           <h1 className="western">General Store</h1>
           <span className="store-cash" data-test="store-cash">{money(v.bankroll)}</span>
         </header>
-        <nav className="store-tabs" role="tablist" aria-label="Departments">
-          {v.tabs.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => { setTab(t.id); setSel(null); }} data-test={`stab-${t.id}`}>{t.label}</button>)}
-          {!v.hatched && <span className="store-locked muted" data-test="store-bug-locked">Bug supplies unlock when your egg hatches.</span>}
-        </nav>
+        <div className="store-navigation">
+          <nav className="store-departments" aria-label="Store departments">
+            {DEPARTMENTS.map((d) => <button key={d.id} aria-pressed={departmentId === d.id} className={departmentId === d.id ? 'on' : ''} onClick={() => changeDepartment(d.id)} data-test={`sdept-${d.id}`}>{d.label}</button>)}
+          </nav>
+          <div className="store-pickers">
+            <label>Department<select value={departmentId} onChange={(e) => changeDepartment(e.target.value)}>{DEPARTMENTS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select></label>
+            <label>Category<select value={category?.id || ''} disabled={!categories.length} onChange={(e) => changeCategory(e.target.value)}>{categories.length ? categories.map((t) => <option key={t.id} value={t.id}>{t.label}</option>) : <option value="">Locked</option>}</select></label>
+          </div>
+        </div>
         <section className="store-shelf">
-          {tab === 'tobacco' && <p className="store-notice" role="note" data-test="store-tobacco-notice"><b>18+</b> {v.tobaccoNotice} Cartoon only; play money only.</p>}
+          <div className="store-browse">
+            <nav className="store-subcategories" aria-label={`${department.label} categories`}>
+              {categories.length > 1 ? categories.map((t) => <button key={t.id} aria-pressed={category.id === t.id} className={category.id === t.id ? 'on' : ''} onClick={() => changeCategory(t.id)} data-test={`stab-${t.id}`}>{t.label}</button>) : <h2 className="store-category-title">{category?.label || department.label}</h2>}
+            </nav>
+            {category?.id === 'tobacco' && <p className="store-notice" role="note" data-test="store-tobacco-notice"><b>18+</b> {v.tobaccoNotice} Cartoon only; play money only.</p>}
+          </div>
           <div className="store-grid" ref={gridRef} style={{ gridTemplateColumns: `repeat(${fit.cols}, 1fr)`, gridTemplateRows: `repeat(${fit.rows}, 1fr)` }} data-test="store-grid">
+            {!items.length && <p className="store-no-items muted" role="status" data-test={departmentId === 'bugs' && !v.hatched ? 'store-bug-locked' : 'store-no-items'}>{departmentId === 'bugs' && !v.hatched ? 'Bug supplies unlock when your egg hatches.' : 'Nothing on this shelf right now.'}</p>}
             {shown.map((x) => (
               <button key={x.id} className={`store-card t-${TIER(x.price)} ${sel === x.id ? 'sel' : ''} ${v.own[x.id] ? 'own' : ''}`} onClick={() => { setSel(x.id); setMsg(''); setErr(''); setFitOpen(false); }} data-test="store-item" data-id={x.id}>
                 <span className="sc-pic"><Thumb x={x} me={me} eqWear={eqWear} pen={pen} size={64} fit={fits} /></span>
                 <span className="sc-name">{x.name}</span>
                 {x.adult && <span className="sc-adult" title={v.tobaccoNotice}>18+</span>}
-                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : money(x.price)}</span>
+                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : money(x.price)}</span>
               </button>
             ))}
           </div>
-          <div className="store-pager">
+          {!!items.length && <div className="store-pager">
             <button className="btn ghost small" onClick={() => setPg(Math.max(0, pg - 1))} disabled={pg === 0} aria-label="Previous page" data-test="store-prev">‹</button>
             <span className="small num" data-test="store-count">{pg + 1} / {pages}</span>
             <button className="btn ghost small" onClick={() => setPg(Math.min(pages - 1, pg + 1))} disabled={pg >= pages - 1} aria-label="Next page" data-test="store-next">›</button>
-          </div>
+          </div>}
         </section>
         <aside className={`store-counter ${cur ? 'open' : ''}`} data-test="store-detail">
           {cur ? (
@@ -122,8 +143,11 @@ export default function Store() {
                 <h2>{cur.name}</h2>
                 <p className="sd-price"><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span>{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
+                {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}Room decoration · no gameplay bonus.</p>}
+                {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
-                  {(!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
+                  {owned && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
+                  {!takenBy && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
                   {owned && FITTABLE(cur) ? <button className={`btn ${fitOpen ? '' : 'ghost'}`} onClick={() => setFitOpen(!fitOpen)} aria-pressed={fitOpen} data-test="store-fit">{fitOpen ? 'Done' : 'Adjust fit'}</button> : null}
