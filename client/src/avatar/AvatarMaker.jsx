@@ -19,7 +19,7 @@ export default function AvatarMaker({ next = '/', retake = false }) {
   const [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null), [cutout, setCutout] = useState(null), [framing, setFraming] = useState(null);
   const [seed, setSeed] = useState(() => Math.random().toString(36).slice(2, 10));
-  const src = useRef(null), cutCanvas = useRef(null), pending = useRef(null), alive = useRef(true), fileRef = useRef(null);
+  const src = useRef(null), cutCanvas = useRef(null), pending = useRef(null), alive = useRef(true), fileRef = useRef(null), heading = useRef(null);
   function stopCutout() { pending.current?.abort(); pending.current = null; }
   function wipe() {
     stopCutout();
@@ -28,6 +28,7 @@ export default function AvatarMaker({ next = '/', retake = false }) {
   }
   useEffect(() => {
     alive.current = true; document.title = "Add your face · Buffalo Bill's Academy";
+    heading.current?.focus();
     return () => { alive.current = false; wipe(); };
   }, []);
   function discard() { wipe(); setResult(null); setCutout(null); setFraming(null); setBusy(false); setStage('choose'); }
@@ -105,7 +106,7 @@ export default function AvatarMaker({ next = '/', retake = false }) {
     <div className={'welcome screen st-' + stage}>
       <div className="wl-copy">
         <p className="kicker">{retake ? 'Your avatar' : 'Step 2 of 2 · Sign in'}</p>
-        <h1 className="display wl-title">Add your <span className="script">face</span></h1>
+        <h1 ref={heading} tabIndex={-1} className="display wl-title">Add your <span className="script">face</span></h1>
         <p className="wl-lede">Take a selfie or pick a photo. Remove its background, then make a low-poly head for the card table.</p>
         {err && <div className="error" role="alert" onClick={() => setErr('')}>{err}</div>}
         {stage === 'choose' && <div className="wl-actions">
