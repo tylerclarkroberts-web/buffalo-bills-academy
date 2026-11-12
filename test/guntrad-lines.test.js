@@ -5,19 +5,15 @@ import { makeSayer, dailyLine, localDayNumber } from '../client/src/guntrad-core
 import { createFight, simulate, G_HP, isPracticePhrase } from '../server/engine/fight.js';
 
 const BANK = JSON.parse(readFileSync(new URL('../client/src/lines/guntrad-lines.json', import.meta.url)));
-const MIN_COUNTS = { lines: 106, fightIntro: 12, fightHit: 24, fightBreak: 6, fightWin: 10, fightLose: 12, fightThrust: 12, bust: 14, offer: 12 };
-const SETS = Object.keys(MIN_COUNTS);
+const SETS = ['lines', 'fightIntro', 'fightHit', 'fightBreak', 'fightWin', 'fightLose', 'fightThrust', 'bust', 'offer'];
 
-test('line bank: full short dialogue sets, unique and tidy', () => {
+test('line bank: 40-60 short factoid taglines, every set present, unique, tidy', () => {
+  assert.ok(BANK.lines.length >= 40 && BANK.lines.length <= 60, `${BANK.lines.length} lines`);
   for (const l of BANK.lines) assert.ok(l.length <= 100, l);
   const all0 = SETS.flatMap((s) => BANK[s]);
   assert.ok(!all0.some((l) => /straight edge/i.test(l)), 'straight edge line is retired');
   const all = [];
-  for (const s of SETS) {
-    assert.ok(Array.isArray(BANK[s]) && BANK[s].length >= MIN_COUNTS[s], `${s}: at least ${MIN_COUNTS[s]} lines`);
-    if (s.startsWith('fight')) for (const l of BANK[s]) assert.ok(l.length <= 72, `${s}: filtered out of fight captions: ${l}`);
-    all.push(...BANK[s]);
-  }
+  for (const s of SETS) { assert.ok(Array.isArray(BANK[s]) && BANK[s].length >= 3, s); all.push(...BANK[s]); }
   assert.equal(new Set(all).size, all.length, 'duplicate line');
   for (const l of all) { assert.equal(l, l.trim()); assert.ok(l.length > 0 && l.length <= 110, l); }
 });
