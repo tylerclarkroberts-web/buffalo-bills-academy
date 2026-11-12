@@ -1,6 +1,7 @@
 // v52: Hold'em-style oval felt for blackjack — seats with Bust avatars, Guntrad dealing.
 import React, { useRef } from 'react';
 import { Bust } from '../avatar/Bust.jsx';
+import { SeatBuddy } from '../table/TableBug.jsx';
 import { Card } from '../Card.jsx';
 import { useSize } from '../ui.jsx';
 import { Dealer, DealerPlate } from '../table/Dealer.jsx';
@@ -36,7 +37,7 @@ function HandCards({ cards, small, freshFrom, reduced }) {
  * `shown` from useDealReveal limits how many cards are painted. Tap calls onTap (speed).
  */
 export function BjArena({
-  v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, onTap, reduced, onSit,
+  v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, onTap, reduced, onSit, bugPose,
 }) {
   const box = useRef(null);
   const { w, h } = useSize(box);
@@ -120,7 +121,9 @@ export function BjArena({
               >
                 {s ? (
                   <>
-                    <Bust id={s.id || `bj-seat-${i}`} avatar={av} size={bust} state={turnSeat === i ? 'toact' : ''} still={reduced} title={s.name} />
+                    <SeatBuddy bug={s.bug} playerId={s.id || `bj-seat-${i}`} size={Math.round(bust * 0.52)} reduced={reduced} myAction={!!(s.me && turnSeat === i)} busy={!!dealing} pose={bugPose}>
+                      <Bust id={s.id || `bj-seat-${i}`} avatar={av} size={bust} state={turnSeat === i ? 'toact' : ''} still={reduced} title={s.name} />
+                    </SeatBuddy>
                     <div className="bj-pill">
                       <b>{s.bot ? '🤖 ' : ''}{s.name}</b>
                       <span className="mono">{money(s.chips)}</span>

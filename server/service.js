@@ -7,6 +7,7 @@ import * as F from './engine/fight.js';
 import { BotDriver } from './bots/driver.js';
 import { lookOf } from './shop.js';
 import { checkUsername, normUsername } from './passwords.js';
+import { attachSeatBugs } from './tableBug.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid typos
 const MAX_TIMER = 2 ** 31 - 1;
@@ -187,6 +188,7 @@ export class PokerService {
     if (t.bots) { v.bots = { count: t.bots.count, friends: t.bots.friends }; for (const st of v.seats) if (st && t.seats[st.seat]?.bot) st.bot = true; }
     if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id), t.settings.bigBlind);
     if (v.fight && this.avatars && !(v.fight.playerId in avatars) && this.store.players[v.fight.playerId]) avatars[v.fight.playerId] = this.avatars.info(this.store.players[v.fight.playerId]);
+    attachSeatBugs(v.seats, this.barn);
     return v;
   }
   tablesFor(player) {

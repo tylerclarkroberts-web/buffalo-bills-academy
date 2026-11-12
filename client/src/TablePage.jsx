@@ -12,6 +12,7 @@ import { ChipStack, VENUE } from './theme.jsx';
 import { SignIn } from './Home.jsx';
 import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
+import { SeatBuddy } from './table/TableBug.jsx';
 import { GagLayer, GagButton } from './table/Gags.jsx';
 import { SmokeLayer, SmokeButton } from './table/Smoke.jsx';
 import { ShowButton } from './table/Spectacle.jsx';
@@ -416,7 +417,7 @@ function seatDeg(pos, N) {
   return 270 + gap + (span * (k + 0.5)) / N;
 }
 
-function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
+export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) {
   // v42: a quick "✓ auto-check" pop over a seat for checks the table made in the last few seconds
   const autoPops = {};
   for (const e of view.log || []) { const m = / checks \(auto-check\)$/.exec(e.text); if (m && e.t > (view.serverNow || 0) - 3000) autoPops[e.text.slice(0, m.index)] = e.t; }
@@ -566,7 +567,9 @@ function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
               <div data-pid={s.playerId} className={`seat ${bit && !hold && bit.seat === seat && bit.playerId === s.playerId ? 'in-bit' : ''} ${isMe ? 'me' : ''} ${toAct ? 'toact' : ''} ${s.folded ? 'folded' : ''} ${winners.has(seat) ? 'winner' : ''} ${s.say?.text ? 'has-say' : ''}`} style={style}>
                 {s.say?.text && <SayBubble text={s.say.text} name={s.name} below={y < 34} align={x < 24 ? 'l' : x > 76 ? 'r' : 'c'} />}
                 <div className="seat-top" {...(isMe && onSay ? { role: 'button', tabIndex: 0, onClick: onSay, onKeyDown: (e) => e.key === 'Enter' && onSay(), 'aria-label': 'Your seat: say something', title: 'Say something' } : {})}>
-                  <Bust id={s.playerId} avatar={view.avatars?.[s.playerId]} size={bust} state={state} title={s.name} />
+                  <SeatBuddy bug={s.bug} playerId={s.playerId} size={Math.round(bust * 0.52)} myAction={!!(isMe && toAct)} busy={!!hold} pose={bugPose}>
+                    <Bust id={s.playerId} avatar={view.avatars?.[s.playerId]} size={bust} state={state} title={s.name} />
+                  </SeatBuddy>
                   <Emotes kinds={emotes[seat]} />
                   <div className="seat-cards">
                     {cards ? cards.map((c) => <Card key={c} card={c} size="sm" />)
