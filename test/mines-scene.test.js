@@ -69,6 +69,23 @@ test('unresolved future pools stay hidden while guidance follows the current dep
   assert.equal(disposed, 1, 'repeating state does not rebuild the floor');
 });
 
+test('geiger direction follows target changes and clears when no deposit remains', () => {
+  const mine = fixture();
+  mine.maze.grid = Array.from({ length: 7 }, (_, y) => Array.from({ length: 7 }, (_, x) => y === 3 && x > 0 && x < 6 ? 0 : 1));
+  mine.pos.set(3 * 2.2, 3 * 2.2); mine.yaw = -Math.PI / 2;
+  mine.setDeposits([pool('east', 5, 20), pool('west', 1, null)], 'east');
+  assert.equal(mine.pathToPool(), 2); assert.equal(mine.facingToPool(), 1);
+  const firstDistances = mine.poolDist;
+  mine.yaw += Math.PI;
+  assert.equal(mine.pathToPool(), 2); assert.equal(mine.facingToPool(), -1);
+  assert.equal(mine.poolDist, firstDistances, 'turning reuses the distance map');
+  mine.setDeposits([pool('east', 5, 20, 0), pool('west', 1, 20)], 'west');
+  assert.equal(mine.pathToPool(), 2); assert.equal(mine.facingToPool(), 1);
+  assert.notEqual(mine.poolDist, firstDistances, 'new target refreshes the distance map');
+  mine.setDeposits([pool('east', 5, 20, 0), pool('west', 1, 20, 0)], null);
+  assert.equal(mine.pathToPool(), 99); assert.equal(mine.facingToPool(), 0);
+});
+
 test('scene disposal releases shared deposit textures and materials once', t => {
   const previousCancel = globalThis.cancelAnimationFrame;
   globalThis.cancelAnimationFrame = () => {};

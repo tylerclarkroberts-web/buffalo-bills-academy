@@ -84,9 +84,24 @@ export function pathSteps(d, fx, fy) {
   }
   return best;
 }
-/** Geiger bars (1-10) for a walk of `steps` tiles. Square-root scale: readable from across the mine, fine-grained up close; 10 means in reach. */
-export function geigerBars(steps, far = 48) {
-  return Math.max(1, Math.round(10 - 9 * Math.sqrt(Math.min(1, Math.max(0, steps - 0.85) / far))));
+/** Facing the next tunnel toward the pool, not its bearing through rock; equal routes both count. */
+export function geigerFacing(d, fx, fy, yaw) {
+  const x = Math.round(fx), y = Math.round(fy), here = d[y]?.[x];
+  if (!(here > 0)) return 0;
+  let facing = -1, found = false;
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const next = d[y + dy]?.[x + dx];
+    if (next >= 0 && next < here) {
+      facing = Math.max(facing, -Math.sin(yaw) * dx - Math.cos(yaw) * dy);
+      found = true;
+    }
+  }
+  return found ? facing : 0;
+}
+/** Distance dominates; facing nudges the meter without hiding an in-reach pool or declaring one early. */
+export function geigerBars(steps, far = 48, facing = 0) {
+  const level = 10 - 9 * Math.sqrt(Math.min(1, Math.max(0, steps - 0.85) / far));
+  return Math.round(level) === 10 ? 10 : Math.max(1, Math.min(9, Math.round(level + 0.6 * facing)));
 }
 /** First pool's walking distance by maze size: a bigger mine starts you farther from the first glow. */
 export const FIRST_POOL_STEPS = { 7: 26, 9: 42, 11: 60 };
