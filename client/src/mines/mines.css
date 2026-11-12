@@ -218,3 +218,53 @@ body.in-mines { background: #020402; }
 .m-doom-clock { font-size: 15px; letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-doom-frame { flex: 1; width: 100%; border: 0; display: block; background: #050505; }
 @media (max-width: 420px) { .m-doom-clock { display: none; } }
+
+/* v71: the shared mine */
+.m-pay.lost { color: #ff6a5a; text-shadow: 0 0 18px rgba(255,80,60,.6); }
+.m-others { color: #ffd36a; font-size: .85em; margin-top: 2px; }
+.m-stab .m-btn { background: #c41e1e; color: #fff; box-shadow: 0 0 18px rgba(255,40,40,.5), inset 0 -4px 0 rgba(0,0,0,.25); }
+
+/* v71: bug battles, Game Boy style. Four greens, chunky pixels, fits a phone screen with no scrolling. */
+.gb { --g0: #0f380f; --g1: #306230; --g2: #8bac0f; --g3: #9bbc0f; position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(5,12,5,.86);
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+.gb-screen { width: min(480px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--g3); color: var(--g0); border: 4px solid var(--g0); box-shadow: 0 0 0 6px #8b8f86, 0 0 0 10px #3a3c38;
+  font: 700 clamp(13px, 3.8vw, 17px)/1.25 ui-monospace, 'Courier New', monospace; letter-spacing: .02em; image-rendering: pixelated; overflow: hidden; }
+.gb-field { position: relative; flex: 0 1 auto; aspect-ratio: 10 / 7; min-height: 180px; max-height: 52dvh; }
+.gb-sprite { position: absolute; width: 34%; aspect-ratio: 1; image-rendering: pixelated; }
+.gb-sprite:not(.back) { right: 6%; top: 6%; }
+.gb-sprite.back { left: 6%; bottom: 4%; width: 38%; }
+.gb-card { position: absolute; width: 54%; }
+.gb-card.foe { left: 4%; top: 6%; border-left: 3px solid var(--g0); border-bottom: 3px solid var(--g0); padding: 0 0 4px 6px; }
+.gb-card.you { right: 4%; bottom: 8%; border-right: 3px solid var(--g0); border-bottom: 3px solid var(--g0); padding: 0 6px 4px 0; text-align: right; }
+.gb-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gb-lv, .gb-owner, .gb-num { font-size: .85em; }
+.gb-owner { color: var(--g1); }
+.gb-hp { display: flex; align-items: center; gap: 4px; margin: 2px 0; }
+.gb-hp b { font-size: .75em; background: var(--g0); color: var(--g3); padding: 0 3px; }
+.gb-hp span { flex: 1; height: 8px; border: 2px solid var(--g0); border-radius: 4px; background: var(--g3); overflow: hidden; }
+.gb-hp i { display: block; height: 100%; background: var(--g1); transition: width .5s steps(12); }
+.gb-hp i.mid { background: var(--g2); outline: 1px solid var(--g1); }
+.gb-hp i.low { background: var(--g0); }
+.gb-text { min-height: 3.9em; margin: 0 6px; padding: 8px 10px; border: 4px double var(--g0); border-radius: 6px; background: var(--g3); white-space: pre-line; }
+.gb-menu { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 6px; }
+.gb-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.gb-move, .gb-btn { font: inherit; color: var(--g0); background: var(--g3); border: 3px solid var(--g0); border-radius: 4px; min-height: 44px; padding: 4px 6px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: manipulation; }
+.gb-move { font-size: .92em; }
+.gb-move.on, .gb-move:focus-visible, .gb-btn:focus-visible { background: var(--g2); outline: none; }
+.gb-move:disabled { color: var(--g1); border-color: var(--g1); cursor: default; }
+.gb-info { display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; gap: 4px; min-width: 6.5em; font-size: .85em; border: 3px solid var(--g0); border-radius: 4px; padding: 4px; }
+.gb-btn { text-align: center; }
+.gb-btn.ghost { background: var(--g2); }
+.gb-btn.small { min-height: 40px; font-size: .95em; }
+.gb-over { padding: 6px 10px 10px; display: grid; gap: 6px; text-align: center; }
+.gb-over p { margin: 0; }
+.gb-big { font-size: 1.4em; }
+.gb-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gb-blink { animation: gb-blink 1s steps(2) infinite; }
+@keyframes gb-blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .gb-blink { animation: none; } .gb-hp i { transition: none; } }
+@media (orientation: landscape) and (max-height: 500px) {
+  .gb-screen { width: min(760px, 100%); display: grid; grid-template-columns: 1.1fr 1fr; grid-template-rows: auto 1fr; }
+  .gb-field { grid-row: 1 / span 2; max-height: none; height: 100%; aspect-ratio: auto; }
+  .gb-text { margin: 6px 6px 0; }
+}

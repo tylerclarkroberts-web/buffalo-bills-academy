@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { BugBattle } from './BugBattle.jsx';
+import { createPvpClient, pvpAmbush, pvpForfeit, pvpMove } from './pvpClient.js';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
@@ -97,6 +99,17 @@ const VISITOR_LINES = [
   'THE GEIGER IS CLICKING IN MORSE. IT SAYS "BEHIND."',
 ];
 const ART = {
+  ambushed: String.raw`
+      _____
+     /     \    tap
+    | x   x |  tap
+     \  ^  /
+      |||||`,
+  defeated: String.raw`
+    ___________
+   | GAME OVER |
+   |  ~  .  ~  |
+   |___________|`,
   motherlode: String.raw`
         .    *    .
      .  /\  /\  /\   .
@@ -286,6 +299,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
             <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
             <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow.</li>
+            <li><b>One mine a day, shared.</b> Everyone on shift walks the same tunnels. Sneak up behind someone to <b>assassinate</b> them for their acid and $20–$100. Meet face to face and your <b>bugs battle</b> — the winner also takes the loser's smokes.</li>
           </ol>
           <p className="m-dim">Acid seeps in over time. Later finds tend to be fuller. Payroll weighs the bucket when you finish.</p>
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
@@ -363,6 +377,16 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const [tiltActive, setTiltActive] = useState(false);
   const tiltActiveRef = useRef(false);
   const keys = useRef(new Set()).current;
+  // v71: the shared mine. Other miners, a back you could stab, and a bug battle in progress.
+  const [others, setOthers] = useState(0);
+  const [prey, setPrey] = useState(null);
+  const preyRef = useRef(null);
+  const [battle, setBattle] = useState(null);
+  const battleRef = useRef(null);
+  const dismissed = useRef(new Set());
+  const afterBattle = useRef(null); // a finished shift that waits until you have read the battle's last line
+  const pvp = useRef(null);
+  const pvpSend = (path, body) => api('POST', path, { rulesVersion: 2, shiftId: shift.shiftId, ...body });
   const accept = state => {
     if (state.result || Object.hasOwn(state, 'pending')) {
       done.current = true; hold(false); onComplete(state); return;
@@ -405,9 +429,53 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     if (closing.current || done.current) return;
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
+  const freeze = () => { release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
+  const showBattle = (b) => {
+    if (!b || dismissed.current.has(b.id)) return;
+    if (!battleRef.current) { freeze(); audio?.dread(false); }
+    battleRef.current = b; setBattle(b);
+  };
+  const onPvp = (v) => {
+    if (done.current) return;
+    if (v.ended) {
+      if (v.battle && !dismissed.current.has(v.battle.id)) { afterBattle.current = v; showBattle(v.battle); return; }
+      if (battleRef.current) { afterBattle.current = v; return; }
+      if (v.result || Object.hasOwn(v, 'pending')) accept(v);
+      return;
+    }
+    sceneRef.current?.setOthers(v.others || []); setOthers(v.others?.length || 0);
+    const p = v.battle ? null : v.ambush; if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
+    if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);
+    if (v.battle) showBattle(v.battle);
+    else if (battleRef.current && !battleRef.current.over) { battleRef.current = null; setBattle(null); } // restart: the battle is gone
+    if (v.notice) {
+      const n = v.notice;
+      setLine(n.kind === 'ambush' ? `YOU GOT ${n.loser.toUpperCase()} FROM BEHIND. +$${n.cash}, +${Math.floor(n.gained)} ACID.` : `${n.loser.toUpperCase()}'S BUG IS DOWN. +$${n.cash}, +${Math.floor(n.gained)} ACID${n.tobacco?.length ? `, ${n.tobacco.length} SMOKE${n.tobacco.length > 1 ? 'S' : ''}` : ''}.`);
+      if (v.shift) { if (battleRef.current && (v.shift.result || Object.hasOwn(v.shift, 'pending'))) afterBattle.current = v.shift; else accept(v.shift); }
+    }
+  };
+  const stab = async () => {
+    const target = preyRef.current; if (!target || battleRef.current || done.current) return;
+    preyRef.current = null; setPrey(null);
+    try {
+      const r = await pvpAmbush(pvpSend, target.id);
+      const raid = r.raid;
+      if (raid) { audio?.chunk(); setLine(`YOU GOT ${raid.loser.toUpperCase()} FROM BEHIND. +$${raid.cash}${raid.cashCapped ? ' (THEY HIT THEIR DAILY LOSS CAP)' : ''}, +${Math.floor(raid.gained)} ACID${raid.spilled ? ` (${Math.floor(raid.spilled)} SPILLED: BUCKET FULL)` : ''}.`); }
+      const { raid: _raid, ...state } = r; void _raid;
+      if (state.pools || state.result || Object.hasOwn(state, 'pending')) accept(state);
+    } catch (e) { setLine(String(e.message || 'TOO LATE.').toUpperCase()); }
+  };
+  const battleMove = async (i) => { const b = battleRef.current; if (!b) return; try { await pvpMove(pvpSend, b.id, i); pvp.current?.beat(); } catch (e) { setLine(String(e.message).toUpperCase()); } };
+  const battleForfeit = async () => { try { await pvpForfeit(pvpSend); } catch { /* the next heartbeat tells */ } pvp.current?.beat(); };
+  const battleDone = () => {
+    const b = battleRef.current; if (b) dismissed.current.add(b.id);
+    battleRef.current = null; setBattle(null);
+    const end = afterBattle.current; afterBattle.current = null;
+    if (end && (end.result || Object.hasOwn(end, 'pending'))) accept(end);
+  };
   const move = (f, t) => {
     const s = sceneRef.current;
-    if (!s || doomRef.current) return;
+    if (!s || doomRef.current || battleRef.current) return;
     s.input.f = f; s.input.t = t; s.input.s = 0;
   };
   const setTiltMode = (active) => {
@@ -520,6 +588,13 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         setLine('YOU POCKET THE EGG. IT IS WARM. IT KICKED. IT LIVES IN YOUR BARN NOW.');
       } catch { eggRef.current = 'gone'; scene.removeEgg('sink'); }
     };
+    if (bucketShift) {
+      pvp.current = createPvpClient({
+        send: pvpSend, onView: onPvp,
+        pose: () => (doomRef.current || done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw }),
+        onError: (e) => { if (e.code === 'mine_reload') fail(e); },
+      });
+    }
     window.__acidMine = scene; // handy for debugging and automated screenshots; the server still decides everything
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
@@ -530,11 +605,13 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       scene.input.t = (keys.has('arrowright') || keys.has('e') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
     };
     const down = (e) => {
+      if (battleRef.current) return;
       if (doomRef.current || closing.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
       if (k === 'f' && doorRef.current) { openDoor.current(); return; }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
+      if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
       keys.add(k); sync();
@@ -567,7 +644,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     }, 250);
     const flavor = setInterval(() => { const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
-      client.current?.dispose(); exitShift.current = null;
+      client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
@@ -640,7 +717,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   return (
     <div className="m-play">
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
-      <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div></div>
+      <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{others > 0 && <div className="m-others" data-test="others">⛏ {others} OTHER MINER{others > 1 ? 'S' : ''} DOWN HERE</div>}</div>
       <div className="m-hud tr">
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
@@ -655,7 +732,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
       </div>}
       <div className="m-ticker" aria-live="polite">{line}</div>
-      {near && (
+      {prey && !battle && !doom && (
+        <div className="m-door-prompt m-stab" data-test="ambush-prompt">
+          <span className="m-dim">{prey.name.toUpperCase()} HASN'T SEEN YOU.</span>
+          <button className="m-btn" onClick={stab} data-test="ambush">[ ASSASSINATE ]</button>
+          <span className="m-dim small">or press X · takes their acid and $20–$100</span>
+        </div>
+      )}
+      {near && !prey && (
         <div className="m-mine">
           {!bucketShift && <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>}
           <button className={`m-btn big ${holding ? 'on' : ''}`} disabled={!!mineError || clockingOut} onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); hold(true); }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={(e) => e.preventDefault()}
@@ -666,14 +750,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           <div className="m-dim small">or hold SPACE</div>
         </div>
       )}
-      {eggNear && !doom && !near && (
+      {eggNear && !doom && !near && !prey && (
         <div className="m-door-prompt" data-test="egg-prompt">
           <span className="m-dim">AN EGG. STILL WARM.</span>
           <button className="m-btn" onClick={() => grabEgg.current()} data-test="egg-take">[ PICK IT UP ]</button>
           <span className="m-dim small">or press G</span>
         </div>
       )}
-      {doorNear && !doom && !near && !eggNear && (
+      {doorNear && !doom && !near && !eggNear && !prey && (
         <div className="m-door-prompt" data-test="door-prompt">
           <span className="m-dim">A DOOR. WARM AIR UNDER IT.</span>
           <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
@@ -682,8 +766,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
       {doom && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
-      <div className="m-movement" inert={doom ? '' : undefined} aria-hidden={doom || undefined}>
-        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom} />
+      {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
+      <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
+        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
         {!tiltActive && <MovePad apply={move} />}
       </div>
     </div>
@@ -735,7 +820,8 @@ function Result({ r, onAgain, onLeave, starting, fare }) {
       <pre className="m-art" aria-hidden="true">{ART[r.outcome]}</pre>
       <h1 className="m-title">{r.title}</h1>
       <p className="m-story">{r.text}</p>
-      <div className="m-pay">+${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+      {r.pvp ? <div className="m-pay lost" data-test="pvp-loss">−${r.pvp.cash.toLocaleString('en-US')}</div> : <div className="m-pay">+${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>}
+      {r.pvp && <p className="m-twin" data-test="pvp-receipt">{r.pvp.by.toUpperCase()} TOOK {r.pvp.cash ? `$${r.pvp.cash}` : 'NO CASH (YOU HIT TODAY\'S LOSS CAP)'}{r.pvp.acid ? `, ${Math.floor(r.pvp.acid)} ACID` : ''}{r.pvp.tobacco?.length ? ` AND YOUR ${r.pvp.tobacco.map((t) => t.toUpperCase()).join(', ')}` : ''}. NO PAY FOR THIS SHIFT.</p>}
       {r.twin && <p className="m-twin" data-test="twin">THE OTHER FAUN WAS WAITING AT THE ELEVATOR. HE TOOK ${r.twin.took.toLocaleString('en-US', { maximumFractionDigits: 2 })} AND SAID THANK YOU.</p>}
       {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>

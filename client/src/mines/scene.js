@@ -6,6 +6,7 @@ import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { spriteCanvas } from '../barn/sprite.js';
+import { OtherMiners } from './miners.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -260,8 +261,11 @@ export class MineScene {
     this.bob = 0; this.mining = false; this.t0 = performance.now(); this.last = this.t0;
     this.resize();
     this.loop = this.loop.bind(this);
+    this.miners = new OtherMiners(this.scene, { reduceMotion: this.reduce });
     this.raf = requestAnimationFrame(this.loop);
   }
+  /** v71: the other miners on today's shift, as the server last reported them. */
+  setOthers(list) { this.miners?.set(list); }
   resize() {
     const c = this.renderer.domElement;
     const w = c.clientWidth || window.innerWidth, h = c.clientHeight || window.innerHeight;
@@ -542,6 +546,7 @@ export class MineScene {
     if (this.stalker) this.updateVisitor(now, dt);
     if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
+    this.miners?.update(dt, now, this.yaw);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;
     this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
@@ -564,6 +569,7 @@ export class MineScene {
   }
   dispose() {
     cancelAnimationFrame(this.raf);
+    this.miners?.dispose();
     disposeMeshes(this.scene);
     this.renderer.dispose();
   }

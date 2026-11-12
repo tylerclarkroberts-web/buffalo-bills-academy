@@ -4,6 +4,7 @@ import { GameError } from './engine/game.js';
 import { makeMaze, bucketChain, FIRST_POOL_STEPS } from './engine/maze.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
+import { mineDay, dailyLayout } from './engine/daily-maze.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -167,7 +168,7 @@ function reloadRequired() {
 }
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, caveInt, twinInt, vein, barn, foreman, owned }) {
+  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, caveInt, twinInt, vein, barn, foreman, owned, layout }) {
     this.owned = owned || (() => ({})); // player id -> General Store items they own (wired to the shop in app.js)
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
@@ -180,6 +181,11 @@ export class Mines {
     this.poolInt = poolInt || ((n) => crypto.randomInt(n));
     this.caveInt = caveInt || ((n) => crypto.randomInt(n)); // cave-ins have their own source too: they never see the payout roll
     this.twinInt = twinInt || ((n) => crypto.randomInt(n)); // ...and so does the other faun
+    // The day's tunnels (engine/daily-maze.js): every miner who clocks in on the same Mountain-time day gets the same
+    // maze and the same acid spots. A test that pins `vein` keeps the maze size it asked for; the seed is still the day's.
+    this.pinnedCells = !!vein;
+    this.layout = layout || ((now) => dailyLayout(mineDay(now)));
+    this.busy = () => false; // set by the PvP module: no mining while your bug is mid-battle
     this.doc = store.loadDoc('mines', { active: {} });
     this.holds = new Map(); // Never resume a held button after a disconnect or restart.
   }
@@ -263,7 +269,9 @@ export class Mines {
     const shaft = request.shaft == null ? SHAFTS[0] : gear.shafts.find((s) => s.id === String(request.shaft));
     if (!shaft) throw new GameError('The elevator operator wants to see a permit for that shaft.', 403);
     if (shaft.fare) this.accounts.requireFunds(player, shaft.fare, `the elevator to ${shaft.name}`);
-    const shift = { id: crypto.randomBytes(12).toString('base64url'), seed: crypto.randomInt(2 ** 31), startedAt: now, ...rollScare(this.scareInt), ...this.vein() };
+    const day = this.layout(now);
+    const shift = { id: crypto.randomBytes(12).toString('base64url'), startedAt: now, ...rollScare(this.scareInt), ...this.vein(), seed: day.seed, day: day.day };
+    if (!this.pinnedCells || !shift.cells) shift.cells = day.cells; // the day decides how big the mine is
     const maze = makeMaze(shift.seed, shift.cells || 7, FIRST_POOL_STEPS[shift.cells || 7]);
     const chain = bucketChain(maze, shift.seed);
     Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, scale: shaft.scale, capacity: Math.min(gear.cap, shaft.max) * 1000, rate: EXTRACTION_RATE * gear.rate,
@@ -300,7 +308,7 @@ export class Mines {
   }
   publicShift(s, resumed, playerId) {
     const bug = playerId != null ? this.guideBug(playerId) : null;
-    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
@@ -350,6 +358,7 @@ export class Mines {
     const i = this.target(cur, request.poolId);
     if (i < cur.index) return this.publicShift(cur, true);
     if (now < cur.readyAt || cur.pools[i].remaining === null) throw new GameError('Reach and inspect the pool before mining.', 425);
+    if (this.busy(player.id)) { this.holds.delete(player.id); throw new GameError('Your bug is mid-battle. Mining can wait.', 409); }
     const hold = this.holds.get(player.id);
     const live = hold?.shiftId === shiftId && hold.poolId === request.poolId && now >= hold.at && now - hold.at <= PULSE_GAP_MS;
     if (request.action === 'start') {
@@ -439,6 +448,47 @@ export class Mines {
     if (receipt.reason) this.foreman?.scold(player.id, receipt.reason, cur.id);
     this.commit(player.id, null, receipt);
     return this.completionView(player, receipt);
+  }
+
+  /** The live shift for a player as the browser sees it, settling a full or expired bucket first. */
+  stateFor(player) {
+    const cur = this.doc.active[player.id];
+    if (!cur || cur.rulesVersion !== 2) return null;
+    if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
+    return this.publicShift(cur, true, player.id);
+  }
+
+  /**
+   * PvP (server/pvp.js): the loser's shift ends with a receipt that pays nothing and the winner's bucket takes the
+   * loser's acid (capped by the winner's space; the rest spills). One mines.json write, recorded under the raid's id
+   * so a retry after a crash cannot apply it twice. Money and tobacco are moved by their own owners.
+   */
+  applyRaid(rec) {
+    if (this.doc.raids?.[rec.id]) return this.doc.raids[rec.id];
+    const next = { ...this.doc, active: { ...this.doc.active }, completed: { ...this.doc.completed }, raids: { ...this.doc.raids } };
+    const lost = next.active[rec.loser], won = next.active[rec.winner];
+    let taken = 0, gained = 0;
+    if (lost && lost.id === rec.loserShift && lost.rulesVersion === 2 && !lost.settlement) {
+      taken = lost.collected;
+      delete next.active[rec.loser];
+      const battle = rec.kind === 'battle';
+      next.completed[rec.loser] = { shiftId: lost.id, reason: null, at: rec.at, ms: rec.at - lost.startedAt, pvp: rec.id,
+        result: { outcome: battle ? 'defeated' : 'ambushed', shiftId: lost.id, amount: 0, collected: 0, capacity: cap(lost) / 1000,
+          title: battle ? 'YOUR BUG LOST' : 'AMBUSHED',
+          text: battle ? `${rec.winnerName}'s bug beat yours fair and square. They took your bucket${rec.tobacco?.length ? ' and your smokes' : ''}. Your bug will live. Your pride is on a feeding tube.`
+            : `${rec.winnerName} crept up behind you in the dark. You never saw them. Payroll does not cover this.`,
+          pvp: { kind: rec.kind, by: rec.winnerName, cash: rec.cash, acid: taken / 1000, tobacco: rec.tobaccoNames || [] } } };
+    }
+    if (won && won.id === rec.winnerShift && won.rulesVersion === 2 && !won.settlement) {
+      gained = Math.max(0, Math.min(taken, cap(won) - won.collected));
+      if (gained) next.active[rec.winner] = { ...won, collected: won.collected + gained };
+    }
+    const out = { acid: taken / 1000, gained: gained / 1000, spilled: (taken - gained) / 1000 };
+    next.raids[rec.id] = out;
+    const ids = Object.keys(next.raids); if (ids.length > 300) for (const id of ids.slice(0, ids.length - 300)) delete next.raids[id];
+    this.store.saveDoc('mines', next); this.doc = next;
+    this.holds.delete(rec.loser);
+    return out;
   }
 
   forget(playerId) {

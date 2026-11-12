@@ -163,6 +163,26 @@ export class Shop {
     return out;
   }
   /** A deleted account's one-of-a-kind items go back on the shelf. */
+  /** Tobacco a player is holding (unused, so still theirs to lose in a mine bug battle). */
+  tobaccoOf(pid) { const iv = this.doc.inv[pid]; return iv ? CATALOG.filter((x) => x.kind === 'tobacco' && iv.own[x.id]).map((x) => x.id) : []; }
+  /**
+   * A mine bug battle's spoils (server/pvp.js): the loser's tobacco goes to the winner in one shop.json write, keyed by
+   * the raid so it never moves twice. You can only hold one of each, so a duplicate is smoked on the spot instead.
+   */
+  applyRaid(rec) {
+    this.doc.raids ||= {};
+    if (this.doc.raids[rec.id]) return this.doc.raids[rec.id];
+    const from = this.doc.inv[rec.loser], to = this.inv(rec.winner), moved = [], smoked = [];
+    for (const id of rec.tobacco || []) {
+      if (!from?.own[id] || ITEM[id]?.kind !== 'tobacco') continue;
+      delete from.own[id];
+      if (to.own[id]) smoked.push(id); else { to.own[id] = 1; moved.push(id); }
+    }
+    this.doc.raids[rec.id] = { moved, smoked };
+    const ids = Object.keys(this.doc.raids); if (ids.length > 300) for (const id of ids.slice(0, ids.length - 300)) delete this.doc.raids[id];
+    this.save();
+    return this.doc.raids[rec.id];
+  }
   forget(pid) { delete this.doc.inv[pid]; for (const [id, owner] of Object.entries(this.doc.unique)) if (owner === pid) delete this.doc.unique[id]; this.save(); }
 
   // ----- gags (one-time use) -----

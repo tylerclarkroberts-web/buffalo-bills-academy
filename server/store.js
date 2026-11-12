@@ -52,6 +52,7 @@ export class Store {
       p.conquest = draft.conquest;
       if (Object.hasOwn(draft, 'mining')) p.mining = draft.mining;
       if (Object.hasOwn(draft, 'barnBouts')) p.barnBouts = draft.barnBouts;
+      if (Object.hasOwn(draft, 'pvp')) p.pvp = draft.pvp;
     }
   }
   /** Extra JSON documents (sessions, mines, prices) live next to players.json on the same volume. */
