@@ -397,7 +397,7 @@ export class MineScene {
       deposit.rim.scale.setScalar(radius);
       deposit.liquid.position.y = -depth + 0.015 + fraction * (depth - 0.07);
       deposit.liquid.scale.setScalar(radius * (0.68 + 0.32 * (deposit.liquid.position.y + depth) / depth) * 0.98);
-      deposit.liquid.visible = pool.quantity === null || pool.remaining > 0;
+      deposit.liquid.visible = pool.quantity !== null && pool.remaining > 0; // damp (no liquid) until the server has filled it in: what you see is what you can mine
       deposit.liquid.material.color.set(pool.quantity === null ? '#8a9a6a' : '#ffffff'); // not looked at yet: duller
     }
     const floorKey = visible.map((p) => `${p.id}:${p.x},${p.y}:${this.deposits.get(p.id).radius}`).join('|');

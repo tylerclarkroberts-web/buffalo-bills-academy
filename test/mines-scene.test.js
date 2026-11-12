@@ -85,3 +85,18 @@ test('scene disposal releases shared deposit textures and materials once', t => 
   assert.equal(counts.get(mine.poolTex), 1);
   for (const count of counts.values()) assert.equal(count, 1);
 });
+
+test('acid you can see is always minable: an unfilled pool shows no liquid until the server fills it', () => {
+  const mine = fixture();
+  // current pool the server has not filled in yet (quantity null): basin only, no liquid
+  mine.setDeposits([pool('a', 3, null)], 'a');
+  const deposit = mine.deposits.get('a');
+  assert.ok(deposit, 'the basin of the current pool is drawn');
+  assert.equal(deposit.liquid.visible, false, 'no acid before the pool is ready to mine');
+  // once the server fills it, the acid appears
+  mine.setDeposits([pool('a', 3, 40)], 'a');
+  assert.equal(deposit.liquid.visible, true, 'filled pool shows its acid');
+  // and disappears once it is drained
+  mine.setDeposits([pool('a', 3, 40, 0)], 'a');
+  assert.equal(deposit.liquid.visible, false, 'drained pool shows no acid');
+});
