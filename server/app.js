@@ -27,8 +27,9 @@ import { SlackClient, SlackAlerts } from './slack.js';
 import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js';
 import { Conquest, mountConquest } from './conquest.js';
 import { Rooms } from './rooms.js';
+import { Pvp, PVP } from './pvp.js';
 
-export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
+export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
   const config = authConfig(env);
   if (devLogin !== undefined) config.devLogin = devLogin;
@@ -59,6 +60,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
   mines.owned = (id) => shop.doc.inv[id]?.own;
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
+  // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
+  if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
+  const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt });
+  const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
+  pvpSweep.unref?.();
   const foff = new Foff({ store: service.store, accounts, shop, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
   barn.styleOf = (id) => shop.bugStyle(id);
@@ -71,7 +77,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   service.blackjack = bj;
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
-  service.market = market; service.mines = mines; service.barn = barn; service.sessions = sessions;
+  service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.sessions = sessions;
   const guestAllowed = config.allowGuest;
   const slack = new SlackAlerts({ service, publicUrl: env.PUBLIC_URL || 'https://buffalobillsacademy.com',
     client: new SlackClient({ token: env.SLACK_BOT_TOKEN, baseUrl: env.SLACK_API_URL || undefined, fetchImpl: slackFetch || fetchImpl || globalThis.fetch, retryDelayMs: slackRetryMs ?? 1500 }), ...(slackSendRetryMs ? { retryMs: slackSendRetryMs } : {}) });
@@ -291,7 +297,12 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/bouts/:id/join', needPlayer, wrap((req) => barn.joinBout(req.player.id, req.params.id, req.body)));
   api.delete('/barn/bouts/:id', needPlayer, wrap((req) => barn.cancelBout(req.player.id, req.params.id)));
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
-  api.post('/mines/quit', needPlayer, wrap((req) => mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body)));
+  api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
+  // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
+  api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
+  api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
+  api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
+  api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
@@ -315,7 +326,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    mines.forget(p.id);
+    pvp.forget(p.id); mines.forget(p.id);
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();
@@ -468,6 +479,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  const shutdown = () => { clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
   return { app, service, shutdown, bj };
 }

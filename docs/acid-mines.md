@@ -73,6 +73,26 @@ Failed stages leave recoverable state. Receipts replay lost responses without an
 
 After displaying a result, the browser stores only its shift ID in the account-scoped localStorage key `acidMine.seenResult:<playerId>`. A later clock-in passes it as `afterShiftId`; no amount, bucket or balance is stored locally. If storage is unavailable or the response was never displayed, the server can replay the saved result. No database, dependency or environment setting is added.
 
+## The daily mine and miner-vs-miner (v71)
+
+**One mine a day.** A shift's maze seed is `daySeed(mineDay(now))` (`server/engine/daily-maze.js`): the calendar day in America/Denver, so it changes at Denver midnight (DST-safe), and everyone who clocks in that day walks the same tunnels with the deposits in the same places. The maze size follows the old per-shift mix (7/9/11 cells at 51/23/26%), and a day whose bucket chain would have fewer than five pools is re-dug deterministically (`${day}#k`). A shift keeps the maze it started with across midnight. Tests that pin `vein` keep their size. Everything else is unchanged: each *shift* still rolls its own vein time, fill table (5/25/50/20), cave-ins, visitor/faun encounter (faun 20%, never with Nosferatu) and egg; acid you can see is always mineable; the bug guide retargets; a full bucket ends the shift.
+
+**Deposits are per player.** The pools are in the same places for everyone, but each shift has its own amounts. A shared, first-come drain would let the first miner of the day empty everyone's pools; taking other people's acid is what ambushes and battles are for.
+
+**Presence.** The page posts `POST /api/mines/pvp/tick` about every 250 ms with `{rulesVersion: 2, shiftId, x, y, yaw, fresh?}` (tile units). The server keeps positions in memory only, rejects a spot inside rock or further than ~2.5 tiles/s from the last accepted one (answering `snap`), and lets `fresh: true` (a page reload) restart at the elevator. A miner who has not reported for 4 s is not in the tunnels as far as anyone can tell. The answer lists up to 12 other miners on today's maze (`id`, `name`, `avatar`, `x`, `y`, `yaw`, `bug`, `shield`, `cooling`), `ambush` (`{id, name}` when you can stab someone right now), your own `shield`, and `battle` when you are in one. After your shift ends, it answers `{ended: true, ...result}`.
+
+**Seeing.** You see someone within 5 tiles, inside a 100° cone ahead, with a clear line through tunnel (not rock), or by bumping into them. "Has seen you" lasts 4 s.
+
+**Ambush.** `POST /api/mines/pvp/ambush {target}` succeeds only if the server agrees: touching (≤0.75 tile), you are behind them (inside the 180° half behind their facing), and they have not seen you in the last 4 s. The victim's shift ends at once with an AMBUSHED receipt (no pay, not counted as a shift, the fare is lost). The attacker takes all the acid in the victim's bucket (anything past their own capacity is spilled) and $20–$100, never more than the victim has.
+
+**Bug battle.** Two miners who have both seen each other and touch go straight into a battle (`server/engine/gb-battle.js`): Game Boy Gen-1 style, four moves, PP, four types (SHELL > CLAW > SAP > ODD > SHELL), Gen-1 damage and crit formulas, and turn order by speed (a coin flip on ties). Every roll is made on the server. Each bug's moves are its barn moves: a normal jab, a typed hit, a brace and its special. A player with no living hatched bug fights with the Foreman's loaner, *Gerald (on loan)*, a level 1 onymacris. Mining and movement stop during a battle. `POST /api/mines/pvp/move {battleId, move}` picks a move. Each turn has 20 s; a side that has not picked gets a random legal move. Not being heard from for 15 s, clocking out, or `POST /api/mines/pvp/forfeit` loses the battle. The winner takes the loser's acid, $20–$100 (clamped as above) and every tobacco product they own; one the winner already has is smoked instead. Battles live in memory: a server restart ends them with no winner and nothing taken.
+
+**Who can be touched.** Nobody in their first 15 s on shift or within 2.5 tiles of the elevator. No guest, account under 24 hours old, or player with fewer than 3 finished shifts can be touched, and none of them can touch anyone either. You can't target yourself. The same two players can only raid each other once every 2 hours, and a player loses cash at most 3 times per Denver day (after that, acid and smokes can still go, but not money).
+
+**Money.** Bankroll is the app's play money. Every raid is one atomic `players.json` write for both players, with `pvp` ledger lines ("Acid Mines: ambushed X" / "ambushed by X" / "won a bug battle against X" / "lost a bug battle to X") and the raid id on both players so a retry can't pay twice. `pvp.json` keeps raid records (30 days), pair cooldowns and daily losses. A raid is saved before any money moves and then applied in steps (mine, money, shop); after a crash, `recover()` finishes those steps on restart.
+
+Run `PLAYWRIGHT_DIR=<dir with playwright-core> OUT=<dir> node scripts/e2e-pvp.mjs` after `npm run build` for the three-browser check. It uses the `PVP_TEST=1` / `PVP_TEST_GRACE_MS` hooks, which only work with `DEV_LOGIN`.
+
 ## Checks and deployment boundary
 
 Run the focused checks, frontend build and full suite from the repository root:
