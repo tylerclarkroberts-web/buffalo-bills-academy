@@ -10,6 +10,7 @@ import { api } from '../api.js';
 import { LowPoly } from '../store/PixIcon.jsx';
 import { TIP } from '../store/lowpoly.js';
 import { reducedMotion } from '../themes/store.js';
+import { REPLAY_ON } from './replay.js';
 
 export const SHOW_MS = 8600, STILL_MS = 5000;
 const SEEN_KEY = 'bba.smokeSeen', VOICE_KEY = 'bba.smokeVoice';
@@ -128,7 +129,7 @@ export function SmokeButton({ code, view, onDone }) {
         <div className="gag-pop panel" role="dialog" aria-label="Light up" data-test="smoke-pop">
           <div className="pp-items">{mine.map((x) => <button key={x.id} className="btn small" onClick={() => light(x.id)} data-test="smoke-item" data-id={x.id}><LowPoly art={x.art} size={18} fallback="🚬" /> <span>{x.name}</span></button>)}</div>
           {err && <p className="small err" data-test="smoke-err">{err}</p>}
-          <p className="small muted">One-time use. Saved in the table replay so others can catch it when they return. For adult players. Tobacco causes cancer and is highly addictive.</p>
+          <p className="small muted">One-time use. {REPLAY_ON ? 'Saved in the table replay so others can catch it when they return.' : 'Guntrad brings the lighter; everyone at the table sees it once.'} For adult players. Tobacco causes cancer and is highly addictive.</p>
         </div>
       )}
     </span>
