@@ -1,7 +1,8 @@
 // Public table history and browser-local replay progress. Never reconstruct private hands.
 const KEY = 'bba.fx';
 // Switched off for now; set to true to bring it back. The recap card also played for action you had just watched and
-// held up your turn. Gags, smokes and spectacles are only ever shown in that card, so their buttons hide with it.
+// held up your turn. While it is off, gags and smokes play live on the felt (TablePage), as they did before the card;
+// spectacles are only ever shown in the card, so their button hides with it.
 export const REPLAY_ON = false;
 export function replayEnabled() { if (!REPLAY_ON) return false; try { return JSON.parse(localStorage.getItem(KEY) || '{}').replay !== false; } catch { return true; } }
 export function setReplayEnabled(on) { try { const p = JSON.parse(localStorage.getItem(KEY) || '{}'); p.replay = !!on; localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } }

@@ -12,8 +12,8 @@ import { ChipStack, VENUE } from './theme.jsx';
 import { SignIn } from './Home.jsx';
 import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
-import { GagButton } from './table/Gags.jsx';
-import { SmokeButton } from './table/Smoke.jsx';
+import { GagLayer, GagButton } from './table/Gags.jsx';
+import { SmokeLayer, SmokeButton } from './table/Smoke.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { Showdown } from './table/Showdown.jsx';
@@ -52,6 +52,11 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const skew = useRef(0);
   const versionRef = useRef(-1);
   const wasMyTurn = useRef(false);
+  // While the table replay is off (REPLAY_ON), gags and smokes play live on the felt again instead of in its recap card.
+  const [pushed, setPushed] = useState([]); // v36: gag events pushed live (also in the view for a few seconds)
+  const addGag = useCallback((e) => setPushed((l) => [...l.slice(-8), { ...e, shownAt: Date.now() }]), []);
+  const [smokes, setSmokes] = useState([]); // v37: tobacco moments pushed live (the view has the last 24h too)
+  const addSmoke = useCallback((e) => setSmokes((l) => (l.some((x) => x.id === e.id) ? l : [...l.slice(-20), e])), []);
 
   const load = useCallback(async () => {
     try {
@@ -72,7 +77,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     let es;
     try {
       es = new EventSource(`/api/tables/${code}/events`);
-      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke) load(); } catch { /* ignore */ } };
+      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.gag) addGag(d.gag); if (d.smoke) addSmoke(d.smoke); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke) load(); } catch { /* ignore */ } };
     } catch { /* no SSE */ }
     const poll = setInterval(load, 20000);
     const vis = () => { if (!document.hidden) load(); };
@@ -187,8 +192,8 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
         <span className="hide-s">Say{compact ? ' something' : ''}</span>
       </button>
     )}
-    {open && REPLAY_ON && <GagButton code={code} view={view} myId={myId} onUsed={() => { closeMenu(); load(); }} />}
-    {open && REPLAY_ON && <SmokeButton code={code} view={view} onDone={() => { closeMenu(); load(); }} />}
+    {open && <GagButton code={code} view={view} myId={myId} onEvent={addGag} onUsed={() => { closeMenu(); load(); }} />}
+    {open && <SmokeButton code={code} view={view} onDone={(e) => { closeMenu(); addSmoke(e); load(); }} />}
     {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => { closeMenu(); setSdPlay({ ...view.showdown, _k: Date.now() }); }} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
     <MusicButton />
     {(!view.bots || view.bots.friends) && <button className="btn small invite-btn" onClick={() => { closeMenu(); copyInvite(); }}><span className="menu-ico" aria-hidden="true">＋</span>Invite<span className="menu-label"> players</span></button>}
@@ -220,6 +225,8 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
       {errBox}
+      {!REPLAY_ON && !pane && <SmokeLayer events={[...(view.smokes || []), ...smokes.filter((e) => !(view.smokes || []).some((x) => x.id === e.id))]} skew={skew.current} off={!!(view.smokeOff || view.noSmoke)} />}
+      {!REPLAY_ON && <GagLayer events={[...(view.gags || []).map((e) => ({ ...e, shownAt: Date.now() - Math.max(0, view.serverNow - e.at) })), ...pushed]} />}
       {toast && <div className="toast">{toast}</div>}
       {offerUp && <FightOffer key={offerKey} refund={offer.refund} stake={offer.stake} quip={offerQuip(offerKey)} armMs={pane ? 700 : 450}
         clock={offerClock(view, mySeat, now)}
