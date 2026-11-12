@@ -67,7 +67,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const slots = new Slots({ store: service.store, accounts, now: service.now, force: barnTest && ['toot', 'stash', 'free'].includes(env.SLOTS_TEST_FORCE) ? env.SLOTS_TEST_FORCE : null });
   service.slots = slots;
   // v44 blackjack (play money). BJ_TICK_MS=0 disables the clock (tests drive it).
-  const bj = new Blackjack({ store: service.store, accounts, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.BJ_TICK_MS !== undefined ? Number(env.BJ_TICK_MS) : 1000, avatars });
+  const bj = new Blackjack({ store: service.store, accounts, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.BJ_TICK_MS !== undefined ? Number(env.BJ_TICK_MS) : 1000, avatars, barn });
   service.blackjack = bj;
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });

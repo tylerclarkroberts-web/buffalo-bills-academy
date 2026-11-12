@@ -9,6 +9,7 @@ import { newTable, viewFor, royalInfo, RULE_TEXT, cleanSettings, tableEdge } fro
 import { edgeReport, ruleOptions, royalMaxPay, guntradProblems, MAIN_FLOOR, ROYAL_FLOOR, ACK, MIX, EDGE_TABLE } from './edge.js';
 import * as G from './game.js';
 import { GUNTRAD_RULES, RULE_CHOICES, LIMITS, ROYAL } from './rules.js';
+import { attachSeatBugs } from '../tableBug.js';
 
 const edgeSummary = (t) => { const e = tableEdge(t); return { main: { edge: e.main.edge, tone: e.main.tone }, side: Object.fromEntries(Object.entries(e.side).map(([k, v]) => [k, { edge: v.edge, tone: v.tone }])), needsAck: e.needsAck, grandfathered: !!e.grandfathered }; };
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -16,8 +17,8 @@ const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const stats0 = () => ({ rounds: 0, wagered: 0, won: 0, lost: 0, bj: 0, biggest: 0 });
 
 export class Blackjack {
-  constructor({ store, accounts, getPlayer, now, rng = cryptoRng, tickMs = 1000, avatars = null }) {
-    Object.assign(this, { store, accounts, getPlayer, now, rng, avatars });
+  constructor({ store, accounts, getPlayer, now, rng = cryptoRng, tickMs = 1000, avatars = null, barn = null }) {
+    Object.assign(this, { store, accounts, getPlayer, now, rng, avatars, barn });
     this.doc = store.loadDoc('blackjack', { tables: {} }); this.doc.tables ||= {};
     if (!this.doc.earnings) {
       this.doc.earnings = {};
@@ -87,6 +88,7 @@ export class Blackjack {
       return { ...seat, avatar };
     });
     v.avatars = avatars;
+    attachSeatBugs(v.seats, this.barn, (s) => s.id);
     return v;
   }
   info() {

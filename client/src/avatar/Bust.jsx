@@ -43,7 +43,7 @@ export function avatarSrc(id, avatar) { return avatar?.kind === 'photo' ? `/api/
  * id: player id (seed + photo url). avatar: {kind, v, seed} from the server. size: px width.
  * state: '' | 'win' | 'folded' | 'toact'. still: no animation. phase: animation offset (0..1).
  */
-export function Bust({ id, avatar, size = 64, state = '', still = false, phase, title, src: srcOverride }) {
+export function Bust({ id, avatar, size = 64, state = '', still = false, relaxed = false, phase, title, src: srcOverride }) {
   const seed = avatar?.seed || id || 'x';
   const L = useMemo(() => looks(seed), [seed]);
   const src = srcOverride || avatarSrc(id, avatar);
@@ -51,7 +51,7 @@ export function Bust({ id, avatar, size = 64, state = '', still = false, phase, 
   const ph = phase ?? (h % 1000) / 1000;
   const style = { width: size, height: size * 1.1, '--dur': `${5.5 + (h % 7) * 0.45}s`, '--delay': `${-ph * 9}s`, '--blink': `${3.8 + (h % 5) * 0.7}s` };
   return (
-    <div className={`bust ${still ? 'still' : ''} ${state}`} style={style} title={title} aria-hidden={title ? undefined : 'true'} role={title ? 'img' : undefined} aria-label={title}>
+    <div className={`bust ${still ? 'still' : ''} ${state}${relaxed ? ' relaxed' : ''}`} style={style} title={title} aria-hidden={title ? undefined : 'true'} role={title ? 'img' : undefined} aria-label={title}>
       <svg viewBox="0 0 100 110" className="b-body"><rect x="42" y="62" width="16" height="22" fill={shade(L.skin, -0.25)} /><Shoulders shirt={shirtOf(avatar?.wear, L.shirt)} seed={seed} /><BodyWear wear={avatar?.wear} /></svg>
       <div className="b-head">
         {src ? <img src={src} alt="" draggable="false" className="b-photo" /> : <GenHead seed={seed} />}
