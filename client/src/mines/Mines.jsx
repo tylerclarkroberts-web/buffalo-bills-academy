@@ -10,6 +10,7 @@ const EGG_MS = 30000; // an egg (when the server put one in this shift) lies nea
 import { MineScene, TILE } from './scene.js';
 import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
+import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
 import DoomRoom from './DoomRoom.jsx';
@@ -447,6 +448,8 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
     audio?.enter(dark);
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
+    // The faun never shares a shift with the visitor; the server already guaranteed that.
+    const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
     // v67: the vein tracker owns "is the acid in?". Pools are drawn damp until the server says it's in, then glow;
@@ -464,7 +467,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         if (out.seeping) { setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
         if (out.moved) {
           const p = out.moved;
-          maze.pool = p; stalker.pool = p; bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
+          maze.pool = p; stalker.pool = p; faun?.setPool(p); bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
           setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
           setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
         }
@@ -482,7 +485,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         const b = geigerBars(path, 48, facing);
         if (b !== lastBars) { lastBars = b; setBars(b); }
       },
-      stalker, bugGuide, localStart: shift.localStart, reduceMotion: reduce,
+      stalker, bugGuide, faun, localStart: shift.localStart, reduceMotion: reduce,
       depth: dark, fogFar: [17, 12, 8.5, 6][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 8, 6, 4.5][dark],
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
@@ -499,6 +502,8 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           setLine(`${nm.toUpperCase()} FOUND THE NEXT GLOW. FOLLOW IT.`);
           setStatus('YOUR BUG IS LEADING. FOLLOW IT.');
         }
+        if (e === 'faun-appear') setLine('A FAUN TROTTED IN BEHIND YOU. HE IS BLEATING.');
+        if (e === 'faun-bleat') audio?.bleat();
       },
     });
     sceneRef.current = scene;

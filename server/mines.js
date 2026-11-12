@@ -53,14 +53,21 @@ export function rollOutcome(randInt = (n) => crypto.randomInt(n)) {
 
 export const MIN_SHIFT_MS = 20000;
 
-// The visitor (internal, not shown to players): about 28% of shifts get one, decided by the server when the shift
-// starts, from its own random source. He can't show up before SCARE_AFTER_MS into the shift, and then only when the
-// player takes a corner fast (the client's job: client/src/mines/stalker.js). He's harmless: pay and timing ignore him.
+// Encounters (internal, not shown to players), decided by the server when the shift starts, from its own random
+// source, never the payout one. About 28% of shifts get the visitor; about 20% get the faun; they never share a
+// shift (the visitor's rate is unchanged: the faun is rolled only from the remaining 72%). The visitor can't show
+// up before SCARE_AFTER_MS, and then only when the player takes a corner fast (client/src/mines/stalker.js). The
+// faun trots in a couple of seconds after clock-in and follows for the rest of the shift (client/src/mines/faunFollower.js).
+// Both are harmless: pay and timing ignore them.
 export const SCARE_CHANCE = 28000; // out of 100,000
+export const FAUN_CHANCE = 20000; // out of 100,000: overall 20% of shifts, never the same shift as the visitor
 export const SCARE_AFTER_MS = 30000;
 export const EGG_WINDOW_MS = 30000; // an egg (when there is one) lies near the start for the first 30 s of the shift
+// One roll, two mutually exclusive encounters. 0..27999 the visitor (28%), 28000..47999 the faun (20%), else neither.
 export function rollScare(randInt = (n) => crypto.randomInt(n)) {
-  return { scare: randInt(100000) < SCARE_CHANCE };
+  const r = randInt(100000);
+  if (r < SCARE_CHANCE) return { scare: true, faun: false };
+  return { scare: false, faun: (r - SCARE_CHANCE) < FAUN_CHANCE };
 }
 // The vein (internal, not shown to players): how long this shift's acid takes to show up. The server rolls it at
 // clock-in from its own random source (never the payout one). Legacy shifts wait for it; v2 deposits mature toward it.
@@ -293,7 +300,7 @@ export class Mines {
   }
   publicShift(s, resumed, playerId) {
     const bug = playerId != null ? this.guideBug(playerId) : null;
-    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
+    return { shiftId: s.id, seed: s.seed, startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }

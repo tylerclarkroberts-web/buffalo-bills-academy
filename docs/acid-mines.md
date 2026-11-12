@@ -33,6 +33,8 @@ In a permit shaft, each pool after the first may cave in as the miner arrives, d
 
 A permit shaft may also have the other faun waiting at the elevator: 8% of shifts in Shaft 8, 12% in Shaft 12 and 15% on Earl's Level, decided at clock-in from its own random source and never sent to the browser beforehand. He takes a third of whatever the shift pays, rare finds included; the result then carries `twin` (`took`). Shaft 7 never meets him.
 
+About 20% of shifts (any shaft) also have the faun follow you in the tunnels, decided at clock-in from the same encounter roll as the visitor: 28% visitor, 20% faun, never both. Public state carries `faun: true` when he is on the shift. He is solid, bleats, and yields if he would trap you; pay and vein timing ignore him.
+
 Prices are deliberately high because the mines are the only source of new money. The owned-bug guide's feeding is not built.
 
 ## API and compatibility
@@ -50,7 +52,7 @@ All endpoints require the signed-in player. New shifts use `rulesVersion: 2`; ex
 | `POST /api/mines/finish` | Retains legacy completion; it cannot bypass version-2 collection. |
 | `POST /api/mines/egg` | Retains the existing `shiftId` pickup contract and 30-second opportunity with a three-second request allowance. |
 
-Public version-2 state retains the shift's identity, seed, clock, maze size, scare and egg information. It adds `rulesVersion`, `capacity`, `collected`, `extractionRate`, `shaft`, `lamp`, `rod`, `currentPoolId`, `readyAt` and `pools`. Each pool has `id`, `x`, `y`, nullable `quantity` and nullable `remaining`; null means uninspected. API quantities are units. `readyAt` exposes only the minimum arrival/first-20-second floor, never the hidden maturation time.
+Public version-2 state retains the shift's identity, seed, clock, maze size, scare, faun and egg information. `faun` is `true` on about 20% of shifts and never set on a scare shift. It adds `rulesVersion`, `capacity`, `collected`, `extractionRate`, `shaft`, `lamp`, `rod`, `currentPoolId`, `readyAt` and `pools`. Each pool has `id`, `x`, `y`, nullable `quantity` and nullable `remaining`; null means uninspected. API quantities are units. `readyAt` exposes only the minimum arrival/first-20-second floor, never the hidden maturation time.
 
 Clock-in, probe, extraction and quit can return `{result: ...}` or `{pending: ...}` during completion/recovery instead of active state. Results include the existing payout fields plus `shiftId`, `collected` and `capacity`; mud can include `foreman`. Empty departures return the pending lecture. Do not assume every successful clock-in response contains a playable shift.
 
@@ -76,7 +78,7 @@ After displaying a result, the browser stores only its shift ID in the account-s
 Run the focused checks, frontend build and full suite from the repository root:
 
 ```sh
-node --test test/mines-buckets.test.js test/mines-route.test.js test/mines-client.test.js test/mines-scene.test.js test/mines-eggs.test.js test/mines-controls.test.js test/mines-tilt.test.js test/foreman.test.js test/conquest-store.test.js
+node --test test/mines-buckets.test.js test/mines-route.test.js test/mines-client.test.js test/mines-scene.test.js test/mines-eggs.test.js test/mines-controls.test.js test/mines-tilt.test.js test/mines-faun.test.js test/foreman.test.js test/conquest-store.test.js
 npm run build
 npm test
 npm run sim:mines -- 5000
