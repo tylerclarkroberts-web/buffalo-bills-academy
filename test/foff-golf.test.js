@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MATCHES } from '../client/src/foff/course.js';
 import { CLUBS, MAX_STROKES, aiHole, aimPoint, angleTo, applyShot, dist, lieAt, pickClub, powerFor, shoot, slopeAt, swingSpec, teeUp } from '../client/src/foff/golf-sim.js';
-import { rng } from '../client/src/mines/maze.js';
+import { rng } from '../server/engine/maze.js';
 
 const [h1, h2] = MATCHES[0].holes;
 const club = (id) => CLUBS.find((c) => c.id === id);

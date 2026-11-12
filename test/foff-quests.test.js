@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { MATCHES } from '../client/src/foff/course.js';
 import { QUESTS, TRIP } from '../client/src/foff/quests.js';
 import { INTRO, OUTRO } from '../client/src/foff/scenes.js';
-import { rng } from '../client/src/mines/maze.js';
+import { rng } from '../server/engine/maze.js';
 
 const sfx = new Proxy({}, { get: () => () => {} });
 const ctx = new Proxy({}, { get: (_, k) => (k === 'canvas' ? {} : () => {}), set: () => true }); // a canvas that draws nothing

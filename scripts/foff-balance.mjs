@@ -1,7 +1,7 @@
 // Foff's Bachelor Party: how each skill level scores on each match, for tuning. `node scripts/foff-balance.mjs [rounds]`
 import { MATCHES } from '../client/src/foff/course.js';
 import { aiHole, windFor } from '../client/src/foff/golf-sim.js';
-import { rng } from '../client/src/mines/maze.js';
+import { rng } from '../server/engine/maze.js';
 
 const rounds = Number(process.argv[2]) || 500;
 for (const m of MATCHES) {
