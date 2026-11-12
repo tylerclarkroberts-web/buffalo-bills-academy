@@ -22,6 +22,11 @@ export function useSize(ref) {
   return s;
 }
 
+// Seat, card and label sizes on the poker table were tuned in a 1920×1080 browser window, where the felt
+// is about 1530×740 CSS px between turns. Keep a quarter of the extra growth on bigger felts (1440p, 4K),
+// matching the gentler --ui scaling in styles.css; 1080p and smaller stay at 1. CSS gets it as --tscale.
+export const tableScale = (w, h) => 1 + (Math.max(1, Math.min(w / 1530, h / 740)) - 1) * .25;
+
 export function Tabs({ tabs, value, onChange, className = '', label }) {
   return (
     <div className={`tabs ${className}`} role="tablist" aria-label={label}>

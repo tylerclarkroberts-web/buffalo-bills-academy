@@ -8,9 +8,10 @@ function rng(seed) { let a = seed >>> 0 || 1; return () => { a = (a + 0x6d2b79f5
 /**
  * img: {width, height, data: RGBA bytes}. Options:
  *  cell: grid spacing in px; edges: number of edge points; detail: [{x,y,w,h,cell}] regions with finer grid.
+ *  minCoverage: minimum opaque sample fraction; 0 keeps thin cutouts for a later precise mask clip.
  * Returns { width, height, tris: Float32Array of [x0,y0,x1,y1,x2,y2,r,g,b,a] * n }.
  */
-export function lowPoly(img, { cell = 18, edges = 600, detail = [], seed = 7, alphaCut = 128 } = {}) {
+export function lowPoly(img, { cell = 18, edges = 600, detail = [], seed = 7, alphaCut = 128, minCoverage = 0.5 } = {}) {
   const { width: W, height: H, data } = img;
   const rand = rng(seed);
   const lum = new Float32Array(W * H);
@@ -58,7 +59,7 @@ export function lowPoly(img, { cell = 18, edges = 600, detail = [], seed = 7, al
       a += al; cnt++;
       if (al >= alphaCut) { r += data[i]; g += data[i + 1]; b += data[i + 2]; opaque++; }
     }
-    if (opaque * 2 < cnt) continue; // mostly transparent: drop the triangle (cut-out edge)
+    if (!opaque || opaque / cnt < minCoverage) continue; // mostly transparent: drop the triangle (cut-out edge)
     out.push(ax, ay, bx, by, cx, cy, r / opaque, g / opaque, b / opaque, 255);
   }
   return { width: W, height: H, tris: Float32Array.from(out) };

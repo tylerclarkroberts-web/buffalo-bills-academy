@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { GameError } from './engine/game.js';
+import { GameError, recordTableMoment } from './engine/game.js';
 import { BUGS } from './engine/bugs.js';
 import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
@@ -12,7 +12,9 @@ import { Mines } from './mines.js';
 import { Foreman } from './foreman.js';
 import { Barn } from './barn.js';
 import { Shop, SMOKE } from './shop.js';
+import { ITEM } from './catalog/index.js';
 import { Fawn } from './fawn.js';
+import { Foff } from './foff.js';
 import { Slots, SLOTS } from './slots/index.js';
 import { Blackjack } from './blackjack/index.js';
 import { Avatars } from './avatars.js';
@@ -24,8 +26,9 @@ import { verifyPassword } from './passwords.js';
 import { SlackClient, SlackAlerts } from './slack.js';
 import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js';
 import { Conquest, mountConquest } from './conquest.js';
+import { Rooms } from './rooms.js';
 
-export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
+export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs } = {}) {
   const service = new PokerService({ dataDir, now });
   const config = authConfig(env);
   if (devLogin !== undefined) config.devLogin = devLogin;
@@ -47,14 +50,16 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const barnTest = !!config.devLogin;
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
-  const barn = new Barn({ store: service.store, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
+  const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
-  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, vein, barn, foreman });
+  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman });
   const avatars = new Avatars({ dir: service.store.dir, store: service.store, now: service.now });
   service.avatars = avatars;
   // v34: the General Store. Avatars carry what you wear; the barn reads bug looks, toy and gear bonuses from it.
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
+  mines.owned = (id) => shop.doc.inv[id]?.own;
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
+  const foff = new Foff({ store: service.store, accounts, shop, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
   barn.styleOf = (id) => shop.bugStyle(id);
   service.shop = shop;
@@ -92,8 +97,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const holdings = market.holdingsValue(p);
     const chips = service.chipsInPlay(p.id);
     const riskEscrow = conquest.escrow(p);
-    return { bankroll: p.bankroll, holdings, chips, riskEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow) };
+    const barnEscrow = barn.escrow(p);
+    return { bankroll: p.bankroll, holdings, chips, riskEscrow, barnEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow + barnEscrow) };
   };
+  const rooms = new Rooms({ store: service.store, shop, barn, avatars, netWorth });
+  service.rooms = rooms;
   const meView = (p) => {
     accounts.ensure(p);
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
@@ -101,7 +109,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
-  const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id), minBuyIn: minBuyIn() });
+  const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
   // Adds `me.broke` to a table view: busted here, can't afford a rebuy, nothing left anywhere.
   const tableView = (code, p) => {
     const v = service.view(code, p);
@@ -109,7 +117,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     let broke = false;
     if (p && s) {
       accounts.ensure(p);
-      broke = bustedAndBroke({ busted: s.busted, econ: v.econ, bankroll: p.bankroll, holdings: market.holdingsValue(p), buyIn: v.settings.buyIn, otherChips: service.chipsInPlay(p.id, v.code) });
+      broke = bustedAndBroke({ busted: s.busted, econ: v.econ, bankroll: p.bankroll, holdings: market.holdingsValue(p), buyIn: v.settings.buyIn, otherChips: service.chipsInPlay(p.id, v.code) + barn.escrow(p) });
     }
     v.me = { ...v.me, broke };
     Object.assign(v, shop.tableInfo(v.code, p?.id));
@@ -130,8 +138,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (!legacy || legacy.id === me.id) return { merged: false, me: meView(me) };
     if (legacy.google || legacy.login) throw new GameError('That player already belongs to another account.', 409);
     if (!req.sessionId || !(me.google || me.login)) throw new GameError('Sign in first.', 401);
-    const fresh = !conquest.hasHistory(me) && !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
+    const fresh = !me.barnBouts && !conquest.hasHistory(me) && !service.store.allTables().some((t) => t.ledger[me.id]) && (me.txns || []).every((x) => x.type === 'start') && !Object.keys(me.holdings || {}).length;
     if (!fresh) return { merged: false, me: meView(me), reason: 'Your signed-in account already has history, so the old player was left as is.' };
+    rooms.forget(me.id);
     if (me.google) legacy.google = me.google;
     if (me.login) legacy.login = me.login;
     legacy.kind = me.kind;
@@ -168,7 +177,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   tableAction('sitout', (c, p, b) => service.sitOut(c, p, b.sitOut !== false));
   tableAction('autocheck', (c, p, b) => service.autoCheck(c, p, b.on !== false)); // v42
   tableAction('leave', (c, p) => service.leave(c, p));
-  tableAction('show', (c, p, b) => service.show(c, p, b.which));
+  tableAction('show', (c, p, b) => service.show(c, p, b.which, b.handNumber));
   tableAction('showdown-seen', (c, p, b) => service.showdownSeen(c, p, b.number)); // v49
   tableAction('say', (c, p, b) => service.say(c, p, typeof b.text === 'string' ? b.text : ''));
   tableAction('close', (c, p) => service.close(c, p));
@@ -197,7 +206,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const gamesFor = (pid, publicOnly = false) => service.store.allTables().filter((t) => t.ledger[pid] && (!publicOnly || t.visibility === 'public')).map((t) => {
     const l = t.ledger[pid];
     const i = t.seats.findIndex((s) => s && s.playerId === pid);
-    const onTable = i >= 0 ? t.seats[i].stack + (t.hand?.players?.[i]?.total || 0) : 0;
+    const hp = t.hand?.players?.[i];
+    const onTable = i >= 0 ? t.seats[i].stack + (hp?.playerId === pid ? (hp.total || 0) + (t.hand.blinds?.[i] || 0) : 0) : 0;
     return { code: t.code, name: t.name, status: t.status, economy: !!t.econ, buyIn: l.buyIn, cashOut: l.cashOut, onTable, net: onTable + l.cashOut - l.buyIn, createdAt: t.createdAt, hands: t.handNumber };
   }).sort((a, b) => b.createdAt - a.createdAt);
   const profile = (p, { self }) => {
@@ -207,7 +217,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const port = market.portfolio(p);
     const unrealized = Object.values(port.holdings).reduce((a, h) => a + (h.unrealized || 0), 0);
     const worth = netWorth(p);
-    if (!self) delete worth.riskEscrow;
+    if (!self) { delete worth.riskEscrow; delete worth.barnEscrow; }
     return {
       id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), kind: p.kind || 'guest', since: p.createdAt,
       ...(self ? { email: p.login?.email || p.google?.email || null, username: p.login?.username || null, txns: (p.txns || []).slice(-40).reverse() } : {}),
@@ -222,35 +232,69 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/players/:id/profile', wrap((req) => {
     const p = service.getPlayer(req.params.id);
     if (!p || p.hidden) throw new GameError('No such player', 404);
-    return profile(p, { self: req.player?.id === p.id });
+    return { ...profile(p, { self: req.player?.id === p.id }), roomVisitAvailable: !!((req.player?.google || req.player?.login) && rooms.isOpen(p.id)) };
   }));
   api.get('/leaderboard', wrap(async (req) => {
+    const sort = req.query.sort ?? 'wealth';
+    const direction = req.query.direction ?? 'desc';
+    if (!['wealth', 'earnings', 'mining', 'poker', 'blackjack', 'slots', 'investing'].includes(sort) || !['asc', 'desc'].includes(direction)) {
+      throw new GameError('Choose a leaderboard category and sort direction.', 400);
+    }
     await market.quotes().catch(() => null); // refresh prices (cached 60s)
     const rows = Object.values(service.store.players)
       .filter((p) => !p.hidden && typeof p.bankroll === 'number' && (googleOn ? (p.google || p.login) : true))
       .map((p) => {
-        const { riskEscrow: _privateRiskEscrow, ...worth } = netWorth(p);
-        return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...worth, hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 };
+        const { riskEscrow: _privateRiskEscrow, barnEscrow: _privateBarnEscrow, ...worth } = netWorth(p);
+        const blackjack = bj.earnings(p.id);
+        const slotLife = slots.doc.players[p.id]?.life;
+        const earnings = {
+          mining: p.mining?.earned || 0,
+          poker: cents(gamesFor(p.id).filter((g) => g.economy).reduce((sum, g) => sum + g.net, 0)),
+          blackjack: blackjack.net,
+          slots: cents((slotLife?.won || 0) - (slotLife?.wagered || 0)),
+          investing: p.invest?.realized || 0,
+        };
+        earnings.total = cents(Object.values(earnings).reduce((sum, value) => sum + value, 0));
+        return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...worth, earnings, blackjackPartial: blackjack.partial, hands: p.stats?.handsPlayed || 0, shifts: p.mining?.shifts || 0 };
       })
-      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn };
+      .sort((a, b) => {
+        const value = (r) => sort === 'wealth' ? r.total : r.earnings[sort === 'earnings' ? 'total' : sort];
+        return (direction === 'asc' ? 1 : -1) * (value(a) - value(b)) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+      });
+    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction };
   }));
+
+  // Room views are permission-checked snapshots, never reusable public profile/store responses.
+  api.use('/room', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  api.get('/room', needPlayer, wrap((req) => rooms.owner(req.player)));
+  api.patch('/room/layout', needPlayer, wrap((req) => rooms.saveLayout(req.player, req.body)));
+  api.get('/players/:id/room', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); }, needPlayer,
+    wrap((req) => rooms.visit(req.player, service.getPlayer(req.params.id))));
 
   // ----- Acid Mines -----
   api.get('/fawn', needPlayer, wrap((req) => fawn.status(accounts.ensure(req.player))));
   api.post('/fawn/claim', needPlayer, wrap((req) => fawn.claim(accounts.ensure(req.player))));
-  api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player))));
-  api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  api.get('/mines/office', needPlayer, wrap((req) => mines.office(req.player)));
+  api.post('/foff/claim', needPlayer, wrap((req) => foff.claim(accounts.ensure(req.player))));
+  api.post('/foff/quest', needPlayer, wrap((req) => foff.quest(accounts.ensure(req.player), String(req.body?.id || ''))));
+  api.post('/mines/nephew', needPlayer, wrap((req) => mines.sendNephew(accounts.ensure(req.player))));
+  api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
+  api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));
+  api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/egg', needPlayer, wrap((req) => mines.takeEgg(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
   // ----- the Barn (v30) -----
   api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id)));
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''))));
+  api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
+  api.post('/barn/bouts', needPlayer, wrap((req) => barn.openBout(req.player.id, req.body)));
+  api.post('/barn/bouts/:id/join', needPlayer, wrap((req) => barn.joinBout(req.player.id, req.params.id, req.body)));
+  api.delete('/barn/bouts/:id', needPlayer, wrap((req) => barn.cancelBout(req.player.id, req.params.id)));
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
-  api.post('/mines/quit', needPlayer, wrap((req) => mines.quit(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  api.post('/mines/quit', needPlayer, wrap((req) => mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
-  api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
 
   // ----- investing (play money) -----
   api.get('/market', wrap(async (req) => ({ quotes: await market.quotes(), portfolio: req.player ? market.portfolio(accounts.ensure(req.player)) : null, bankroll: req.player?.bankroll ?? null })));
@@ -261,15 +305,18 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // Refused while seated at an open table (chips there are real bankroll money). Removes the player record,
   // their sessions, avatar file and any mine shift. Table ledgers keep the name for past results.
   function deletePlayer(p) {
+    barn.expireBouts();
+    if (p.barnBouts?.open) throw new GameError('Cancel your open barn bout before deleting your account.', 409);
     if (conquest.hasPending(p)) throw new GameError('Wait for your Risk bets to settle before deleting your account.', 409);
     if (conquest.data(p).link?.active) throw new GameError('Unlink ConquestK on the Risk bets page before deleting your account.', 409);
     if (conquest.data(p).pendingLink || conquest.linkChanges.has(p.id)) throw new GameError('Finish or unlink your pending ConquestK account link before deleting your account.', 409);
     if (conquest.hasRetainedHistory(p)) throw new GameError('Risk account history must be retained. Contact the Academy operator to anonymize your account.', 409);
     const seated = service.store.allTables().some((t) => t.status !== 'closed' && t.seats.some((x) => x && x.playerId === p.id)) || bj.seatedOpen(p.id);
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
+    rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    if (mines.doc.active[p.id]) { delete mines.doc.active[p.id]; mines.save(); }
-    barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id);
+    mines.forget(p.id);
+    barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();
     service.forgetPlayer(p.id); // also drops a guest's browser token, so it stops working right away
@@ -335,6 +382,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const fireGag = wrap((req) => {
     const t = service.getTable(req.params.code);
     const ev = shop.gag(t, req.player, { item: String(req.body?.item || ''), target: String(req.body?.target || '') });
+    service.mutate(t.code, (tb, ctx) => recordTableMoment(tb, 'gag', { ...ev, name: ITEM[ev.item].name }, ctx), req.player.id);
     service.push(t.code, { gag: ev });
     return { ok: true, gag: ev };
   });
@@ -349,8 +397,17 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/tables/:code/smoke', needPlayer, wrap((req) => {
     const t = service.getTable(req.params.code);
     const ev = shop.smoke(t, req.player, { item: String(req.body?.item || '') });
+    service.mutate(t.code, (tb, ctx) => recordTableMoment(tb, 'smoke', ev, ctx), req.player.id);
     service.push(t.code, { smoke: ev });
     return { ok: true, smoke: ev };
+  }));
+  // v52: spectacles (one-time use, the whole table watches; follows the gag switches).
+  api.post('/tables/:code/spectacle', needPlayer, wrap((req) => { // (not /show: that one shows your cards)
+    const t = service.getTable(req.params.code);
+    const ev = shop.spectacle(t, req.player, { item: String(req.body?.item || '') });
+    service.mutate(t.code, (tb, ctx) => recordTableMoment(tb, 'show', ev, ctx), req.player.id);
+    service.push(t.code, { show: ev });
+    return { ok: true, show: ev };
   }));
   api.post('/tables/:code/tobacco', needPlayer, wrap((req) => {
     const t = service.getTable(req.params.code);
@@ -376,7 +433,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     res.set('cache-control', 'public, max-age=86400').type('png').send(buf);
   });
   // The dealer: a low-poly cut-out made from a photo Tyler supplied. Only the low-poly version is deployed.
-  const dealerPath = dealerFile || path.join(path.dirname(new URL(import.meta.url).pathname), 'assets', 'dealer.png');
+  const dealerPath = dealerFile || path.join(import.meta.dirname, 'assets', 'dealer.png');
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
 
   mountConquest({ app, api, conquest, auth, wrap });
@@ -407,7 +464,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       res.end(hit.gz);
     });
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
-    app.get('*', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+    app.get('/{*splat}', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }

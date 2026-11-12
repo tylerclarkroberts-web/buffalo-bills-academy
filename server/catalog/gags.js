@@ -1,5 +1,5 @@
 // General Store catalog, part 2: gags (v36, formerly "pranks": used once at a table, cartoon only) and absurd
-// things that do nothing. Gags never touch cards, chips, turns or timers, reveal nothing, and can be turned off
+// room decorations without gameplay bonuses. Gags never touch cards, chips, turns or timers, reveal nothing, and can be turned off
 // (Settings, host switch). Each gag is ONE-TIME USE: you hold at most one of each, and firing it uses it up.
 // `pix` names the original pixel-art icon the client draws (client/src/store/pixicons.js); `emoji` is a text fallback.
 export const GAG_ITEMS = [
@@ -9,16 +9,16 @@ export const GAG_ITEMS = [
   { id: 'gag-spaghetti', name: 'Uncooked Spaghetti Noodle', price: 120, effect: 'noodle', emoji: '🍝', desc: 'One single dry spaghetti noodle, brandished with intent. Taps a seat — tik — and snaps in half. Not al dente. Not even close.' },
   { id: 'gag-pie', name: 'Cream Pie', price: 300, effect: 'pie', emoji: '🥧', desc: 'Cartoon pie, splat, gone in two seconds. No calories.' },
   { id: 'gag-tumbleweed', name: 'Tumbleweed', price: 25, effect: 'tumbleweed', emoji: '🌾', desc: 'Rolls a tumbleweed past someone who is taking too long.' },
+  { id: 'gag-mariachi', name: 'Mariachi Trio', price: 4000, effect: 'mariachi', emoji: '🎺', desc: 'Three tiny musicians serenade a seat for a few seconds. A shower of notes, no song you could name. Never touches the cards.' },
 ].map((x) => ({ kind: 'gag', cat: 'gags', slot: null, once: true, pix: x.id.slice(4), ...x }));
 /** v36 migration: old prank ids -> gag ids (the rubber chicken became the spaghetti noodle). */
 export const GAG_RENAME = { 'prank-squirt': 'gag-squirt', 'prank-soaker': 'gag-soaker', 'prank-confetti': 'gag-confetti', 'prank-chicken': 'gag-spaghetti', 'prank-pie': 'gag-pie', 'prank-tumbleweed': 'gag-tumbleweed' };
 
 export const ABSURD_ITEMS = [
   ['lamp', 'Oil Lamp', 60, '🪔', 'Lights nothing. Requires oil you do not have.'],
-  ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. It lives in a field somewhere. You will never see it.'],
+  ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. Park it in the yard beside your room. Still no horse included.'],
   ['vaccine', 'Smallpox Vaccine', 900, '💉', 'Smallpox was declared eradicated in 1980. You are, however, extra prepared.'],
-  ['anvil', 'Anvil', 450, '⚒️', 'Falls on no one. Very heavy in your inventory.'],
-  ['deed', 'Deed to the Moon', 20000, '🌕', 'Legally meaningless. Spiritually enormous.'],
+  ['anvil', 'Anvil', 450, '⚒️', 'Falls on no one. Very heavy on your floor.'],
   ['spittoon', 'Brass Spittoon', 150, '🏺', 'Polished. Unused. Let\'s keep it that way.'],
   ['rock', 'A Rock', 25, '🪨', 'It is a rock. It is your rock.'],
   ['telegraph', 'Telegraph Key', 300, '📟', 'Taps out STOP STOP STOP to nobody.'],
@@ -26,4 +26,24 @@ export const ABSURD_ITEMS = [
   ['piano', 'Player Piano Roll', 750, '🎹', 'Plays a tune on a piano you do not own.'],
   ['horseshoe', 'Lucky Horseshoe', 2500, '🧲', 'Does not change your luck. The deck is shuffled by a machine that does not care.'],
   ['sheriffbadge', 'Expired Fishing Licence', 60, '🎣', 'Valid in 1887 only.'],
-].map(([id, name, price, emoji, desc]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: 'oddities', slot: null }));
+  ['bigrock', 'A Second, Bigger Rock', 4000, '🪨', 'Your first rock has a sibling now. It is bigger. It is still a rock.'],
+  ['railroad', 'Railroad Share Certificate', 10000, '📜', 'One share of the Great Basin & Pacific. The railroad went bankrupt in 1893.'],
+  // One of a kind (`true`): the store has exactly one, and whoever buys it first has it. See Shop.buy.
+  ['charter', 'The Academy\'s Founding Charter', 250000, '📜', 'The original. Signed by Bill, witnessed by a horse. Nobody has read past the first line.', true],
+  ['skull', 'Buffalo Skull', 500000, '💀', 'The buffalo. Not a buffalo. Bill gets quiet when it comes up.', true],
+  ['pickaxe', 'Golden Pickaxe', 1000000, '⛏️', 'Solid gold, so it bends on the first swing. The Foreman cried when he saw it. He would not say which kind.', true],
+  ['deed', 'Deed to the Moon', 5000000, '🌕', 'Legally meaningless. Spiritually enormous. Hang it up and they deliver.', true],
+  // Seasonal (a month number): sold during that month only, kept for good. See Shop.buy.
+  ['jackolantern', 'Jack-o\'-Lantern', 800, '🎃', 'Carved by the Foreman. He says it is you. It is not flattering.', false, 10],
+  ['ghost', 'Bedsheet Ghost', 3000, '👻', 'A bedsheet with two holes. Nobody is under it. Somebody was.', false, 10],
+  ['cornucopia', 'Horn of Plenty', 600, '🌽', 'Contains three gourds and a receipt.', false, 11],
+  ['turkey', 'Pardoned Turkey', 2500, '🦃', 'Pardoned by Bill personally. He has not forgiven anyone.', false, 11],
+  ['stocking', 'One Stocking', 1000, '🧦', 'Hung with care. The lump of coal is from Shaft 7.', false, 12],
+  ['tumbletree', 'Tumbleweed Christmas Tree', 6000, '🎄', 'Rolled in one December wearing lights. Nobody had the heart.', false, 12],
+  // Not for sale (the last `true`): handed out by server/foff.js, and in the store only once you have one.
+  ['medal', 'Presidential Medal of Freedom', 0, '🎖️', 'Presented on the eighteenth at Black Horse. For golf. Nobody has checked.', false, 0, true],
+  ['flipflop', 'A Single Wet Flip-Flop', 0, '🩴', 'Fished out of a cold plunge in San Francisco. The other one went home with a sasquatch.', false, 0, true],
+  ['drone', 'Bagpipe Drone', 0, '🎵', 'Came off a man in a kilt at dawn. It still hums if you leave it alone.', false, 0, true],
+  ['abalone', 'Abalone Shell', 0, '🐚', 'Forty dollars of shellfish, eaten. This is the part you keep.', false, 0, true],
+  ['boardingpass', 'Boarding Pass', 0, '🎫', 'SFO, Sunday. Twelve seats, one sasquatch, a minute to spare.', false, 0, true],
+].map(([id, name, price, emoji, desc, unique, month, award]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : month ? 'seasonal' : 'oddities', slot: null, ...(unique ? { unique: true } : {}), ...(month ? { month } : {}), ...(award ? { award: true } : {}) }));

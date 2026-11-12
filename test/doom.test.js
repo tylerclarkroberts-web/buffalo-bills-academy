@@ -8,7 +8,7 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { createApp } from '../server/app.js';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.resolve(import.meta.dirname, '..');
 const DOOM = path.join(ROOT, 'client/public/doom');
 const FREEDOOM_MD5 = 'b93be13d05148dd01614bc205a03648e'; // Freedoom: Phase 1 v0.13.0, unmodified
 

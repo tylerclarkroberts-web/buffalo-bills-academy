@@ -78,3 +78,63 @@ test('same username is a no-op; display name rename still works', async (t) => {
   assert.equal(r.body.name, 'Carol');
   assert.equal(r.body.username, 'carol_x');
 });
+
+test('rejected display name keeps the old name; retry returns the canonical saved name', async (t) => {
+  const s = await boot(); t.after(s.stop);
+  const a = client(s.base);
+  let r = await a.post('/auth/register', { username: 'dana_x', password: 'salsa on the porch', name: 'Dana' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  for (const name of ['', '   ', '<>']) {
+    r = await a.patch('/api/me', { name });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'Please enter a name');
+    assert.equal((await a.get('/api/me')).body.name, 'Dana');
+  }
+  r = await a.patch('/api/me', { name: '  <Dana New>  ' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.name, 'Dana New');
+  const saved = (await a.get('/api/me')).body;
+  assert.equal(saved.name, r.body.name);
+  assert.equal(saved.username, 'dana_x');
+});
+
+test('table seats and standings follow a display-name change, and a handle change when no separate name was chosen', async (t) => {
+  const s = await boot(); t.after(s.stop);
+  const a = client(s.base);
+  let r = await a.post('/auth/register', { username: 'erin_x', password: 'salsa on the porch' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.name ?? (await a.get('/api/me')).body.name, 'erin_x');
+  r = await a.post('/api/tables', { name: 'Rename room', settings: { buyIn: 100 } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const code = r.body.code;
+  const shown = async () => {
+    const v = (await a.get(`/api/tables/${code}`)).body;
+    return { seat: v.seats[v.me.seat].name, standing: v.standings.find((x) => x.playerId === v.me.playerId).name, version: v.version };
+  };
+  const before = await shown();
+  assert.equal(before.seat, 'erin_x');
+
+  // never chose a display name: the new handle is the new table name, with the capitals they typed
+  r = await a.patch('/api/me', { username: 'Erin.New' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.username, 'erin.new');
+  assert.equal(r.body.name, 'Erin.New');
+  let now = await shown();
+  assert.deepEqual([now.seat, now.standing], ['Erin.New', 'Erin.New']);
+  assert.ok(now.version > before.version, 'open tables are told to refresh');
+
+  // a chosen display name reaches the table too, and then stays put when the handle changes
+  r = await a.patch('/api/me', { name: 'Big Slick' });
+  assert.equal(r.status, 200);
+  now = await shown();
+  assert.deepEqual([now.seat, now.standing], ['Big Slick', 'Big Slick']);
+  r = await a.patch('/api/me', { username: 'erin_three' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.name, 'Big Slick');
+  assert.equal((await shown()).seat, 'Big Slick');
+
+  // a rejected handle changes nothing
+  r = await a.patch('/api/me', { username: 'x' });
+  assert.equal(r.status, 400);
+  assert.equal((await a.get('/api/me')).body.username, 'erin_three');
+});

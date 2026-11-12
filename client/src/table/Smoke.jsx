@@ -10,6 +10,7 @@ import { api } from '../api.js';
 import { LowPoly } from '../store/PixIcon.jsx';
 import { TIP } from '../store/lowpoly.js';
 import { reducedMotion } from '../themes/store.js';
+import { REPLAY_ON } from './replay.js';
 
 export const SHOW_MS = 8600, STILL_MS = 5000;
 const SEEN_KEY = 'bba.smokeSeen', VOICE_KEY = 'bba.smokeVoice';
@@ -46,6 +47,8 @@ function flick() {
     const g = c.createGain(); g.gain.value = 0.18; src.connect(f).connect(g).connect(c.destination); src.start();
   } catch { /* no audio */ }
 }
+
+export function smokeSound() { sayHellYeah(); flick(); }
 
 function seatBox(pid) {
   const el = pid && document.querySelector(`.seat[data-pid="${CSS.escape(pid)}"] .seat-top`);
@@ -109,27 +112,24 @@ export function SmokeLayer({ events, skew = 0, off = false }) {
 /** "Light up": for a seated player holding at least one tobacco item. Using one uses it up. */
 export function SmokeButton({ code, view, onDone }) {
   const [open, setOpen] = useState(false);
-  const [err, setErr] = useState(''); const [note, setNote] = useState('');
+  const [err, setErr] = useState('');
   const mine = view.mySmokes || [];
   if (!mine.length || view.smokeOff) return null;
   const light = async (item) => {
     setErr('');
     try {
       const r = await api('POST', `/tables/${code}/smoke`, { item });
-      const wait = Math.round((r.smoke.at - r.smoke.made) / 1000);
-      setNote(wait > 0 ? `Guntrad's on his way in about ${wait}s.` : ''); setOpen(false); onDone?.(r.smoke);
-      if (wait > 0) setTimeout(() => setNote(''), 6000);
+      setOpen(false); onDone?.(r.smoke);
     } catch (e) { setErr(e.message); }
   };
   return (
     <span className="gag-wrap">
       <button className="btn small smoke-btn" onClick={() => setOpen(!open)} aria-expanded={open} title="Light up (one-time use, cartoon only)" data-test="smoke-btn"><LowPoly art={mine[0].art} size={18} fallback="🚬" /><span className="hide-s">Light up</span></button>
-      {note && <span className="small muted smoke-note" data-test="smoke-note">{note}</span>}
       {open && (
         <div className="gag-pop panel" role="dialog" aria-label="Light up" data-test="smoke-pop">
           <div className="pp-items">{mine.map((x) => <button key={x.id} className="btn small" onClick={() => light(x.id)} data-test="smoke-item" data-id={x.id}><LowPoly art={x.art} size={18} fallback="🚬" /> <span>{x.name}</span></button>)}</div>
           {err && <p className="small err" data-test="smoke-err">{err}</p>}
-          <p className="small muted">One-time use. Guntrad brings the lighter; everyone at the table sees it once. For adult players. Tobacco causes cancer and is highly addictive.</p>
+          <p className="small muted">One-time use. {REPLAY_ON ? 'Saved in the table replay so others can catch it when they return.' : 'Guntrad brings the lighter; everyone at the table sees it once.'} For adult players. Tobacco causes cancer and is highly addictive.</p>
         </div>
       )}
     </span>

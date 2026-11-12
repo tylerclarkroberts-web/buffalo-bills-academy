@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
+import { Shop } from '../server/shop.js';
 
 async function boot(now) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-fawn-'));
@@ -54,6 +55,28 @@ test('odds across many players roughly match the brief (cash ~50%, cig ~10%, moo
     assert.ok(tallies.cig > 20 && tallies.cig < 70, `cig ${tallies.cig}`);
     assert.ok(tallies.moon > 100 && tallies.moon < 200, `moon ${tallies.moon}`);
     assert.ok(tallies.jackpot + tallies.rare < 30, `rares ${tallies.jackpot}+${tallies.rare}`);
+  } finally { s.stop(); }
+});
+
+test('the cigarette lands in the Smoke Shop stash as a real, usable catalog item', async () => {
+  const s = await boot(Date.UTC(2026, 10, 6, 12));
+  try {
+    let ck;
+    for (let i = 0; i < 200 && !ck; i++) { const c = await s.login(`C${i}`); if ((await s.call(c, 'POST', '/api/fawn/claim')).body.gift.kind === 'cig') ck = c; }
+    assert.ok(ck, 'no cigarette in 200 claims');
+    const shop = (await s.call(ck, 'GET', '/api/shop')).body;
+    const held = shop.items.filter((x) => x.kind === 'tobacco' && shop.own[x.id]).map((x) => x.id);
+    assert.deepEqual(held, ['tob-filtered']);
+    assert.equal(shop.own.filtered, undefined);
+  } finally { s.stop(); }
+});
+
+test('old faun cigarettes stored as "filtered" are repaired on load, capped at one', async () => {
+  const s = await boot(Date.UTC(2026, 10, 6, 12));
+  try {
+    s.service.store.saveDoc('shop', { inv: { a: { own: { filtered: 1 } }, b: { own: { filtered: 1, 'tob-filtered': 1 } } } });
+    const { inv } = new Shop({ store: s.service.store }).doc;
+    for (const id of ['a', 'b']) assert.deepEqual(inv[id].own, { 'tob-filtered': 1 });
   } finally { s.stop(); }
 });
 

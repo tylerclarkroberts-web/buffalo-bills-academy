@@ -1,52 +1,138 @@
-// v43: client replay selection/timing (pure).
+// Public replay selection, readable timing and browser-local progress.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickReplay, stepMs, frameAt } from '../client/src/table/replay.js';
+import { pickReplay, stepMs, seenSeq, markSeen, replayView } from '../client/src/table/replay.js';
 import * as G from '../server/engine/game.js';
 import { makeTable, act } from './helpers.js';
 
-function table() {
+const history = [
+  { seq: 1, hand: 1, t: 1000, text: 'Hand #1', ev: { k: 'hand' } },
+  { seq: 2, hand: 1, t: 1100, text: 'Ann calls 10', ev: { k: 'act', seat: 0, a: 'call', amt: 10 } },
+  { seq: 3, hand: 1, t: 1200, text: 'Bob splashes Ann', ev: { k: 'gag', from: 'bob', to: 'ann', pix: 'squirt' } },
+  { seq: 4, hand: 1, t: 1300, text: 'Cat joined the table' },
+  { seq: 5, hand: 1, t: 1400, text: 'Ann wins 30', ev: { k: 'win', wins: [{ seat: 0, amt: 30 }] } },
+  { seq: 6, hand: 2, t: 1500, text: 'Hand #2', ev: { k: 'hand' } },
+  { seq: 7, hand: 2, t: 1600, text: 'Ann lights a cigar', ev: { k: 'smoke', from: 'ann', art: 'cigar' } },
+  { seq: 8, hand: 2, t: 1700, text: 'Cat says: Nice hand!', ev: { k: 'say', from: 'cat', message: 'Nice hand!' } },
+  { seq: 9, hand: 2, t: 1800, text: 'Flop: As Kh Qd', ev: { k: 'deal', cards: ['As', 'Kh', 'Qd'] } },
+].map((e) => ({ ...e, frame: { seats: [], hand: null, lastHand: null } }));
+
+test('selection retains recorded public frames across hands in log order', () => {
+  const original = structuredClone(history);
+  const steps = pickReplay(history);
+  assert.deepEqual(steps.map((s) => s.seq), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(steps.map((s) => s.k), ['hand', 'act', 'gag', 'notice', 'win', 'hand', 'smoke', 'say', 'deal']);
+  assert.deepEqual(steps[3], { k: 'notice', seq: 4, hand: 1, t: 1300, text: 'Cat joined the table', message: undefined, frame: history[3].frame });
+  assert.equal(steps[7].text, 'Cat says: Nice hand!');
+  assert.deepEqual(steps[8].cards, ['As', 'Kh', 'Qd']);
+  assert.deepEqual(history, original, 'selection must not change saved history');
+});
+
+test('taking an action does not discard that action or earlier unseen actions', () => {
+  const { t } = makeTable(['Ann', 'Bob', 'Cat']);
+  G.startGame(t, t.hostId, { now: 1000 });
+  const seen = t.log.at(-1).seq;
+  act(t, 'Ann', 'call'); act(t, 'Bob', 'call'); act(t, 'Cat', 'check');
+  const steps = pickReplay(t.log, { seen });
+  assert.deepEqual(steps.map((s) => s.k + ':' + (s.a || s.street)), ['act:call', 'act:call', 'act:check', 'deal:flop']);
+  assert.deepEqual(steps.slice(0, 3).map((s) => t.seats[s.seat].name), ['Ann', 'Bob', 'Cat']);
+});
+
+test('returning after another hand starts retains the earlier hand actions', () => {
   const { t, ctx } = makeTable(['Ann', 'Bob', 'Cat']);
   G.startGame(t, t.hostId, ctx);
-  return { t, ctx };
+  const seen = t.log.at(-1).seq;
+  act(t, 'Ann', 'fold'); act(t, 'Bob', 'fold');
+  ctx.now += 10 * 3600e3;
+  G.tick(t, ctx);
+  assert.equal(t.handNumber, 2);
+  const steps = pickReplay(t.log, { seen });
+  assert.deepEqual(steps.slice(0, 3).map((s) => [s.hand, s.k, s.a]), [[1, 'act', 'fold'], [1, 'act', 'fold'], [1, 'win', undefined]]);
+  assert.ok(steps.some((s) => s.hand === 2 && s.k === 'hand'));
+});
+
+test('social opt-outs and sender mutes preserve the rest of the public history', () => {
+  assert.deepEqual(pickReplay(history, { noGags: true }).map((s) => s.seq), [1, 2, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(pickReplay(history, { noSmoke: true }).map((s) => s.seq), [1, 2, 3, 4, 5, 6, 8, 9]);
+  assert.deepEqual(pickReplay(history, { noSmoke: true, muted: (id) => id === 'bob' }).map((s) => s.seq), [1, 2, 4, 5, 6, 8, 9]);
+  assert.deepEqual(pickReplay(history, { muted: (id) => id === 'ann' }).map((s) => s.seq), [1, 2, 3, 4, 5, 6, 7, 8, 9], 'gag sender mutes do not hide tobacco, speech or poker');
+});
+
+test('selection resumes after the cursor and tolerates missing or expired history', () => {
+  assert.deepEqual(pickReplay(history, { seen: 5 }).map((s) => s.seq), [6, 7, 8, 9]);
+  assert.deepEqual(pickReplay(history.slice(6), { seen: 2 }).map((s) => s.seq), [7, 8, 9], 'retention gaps do not block newer entries');
+  assert.deepEqual(pickReplay(history, { seen: 9 }), []);
+  assert.deepEqual(pickReplay(undefined), []);
+  assert.deepEqual(pickReplay([{ text: 'legacy entry' }, { seq: '10' }, { seq: 1.5 }]), []);
+  assert.deepEqual(pickReplay([{ seq: 10, ev: { k: 'act', a: 'fold' } }]), [], 'old saves cannot fabricate a historical table');
+});
+
+function storage(t, value) {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value });
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    else delete globalThis.localStorage;
+  });
 }
-test('player sees what happened since their own last action, not their own moves', () => {
-  const { t } = table();
-  act(t, 'Ann', 'call'); act(t, 'Bob', 'call'); act(t, 'Cat', 'check');
-  const bob = t.seats.findIndex((s) => s.name === 'Bob');
-  // flop: Bob (SB) first
-  act(t, 'Bob', 'bet', 40); act(t, 'Cat', 'call');
-  const r = pickReplay(t.log, { mySeat: t.seats.findIndex((s) => s.name === 'Ann'), handNo: t.handNumber });
-  assert.deepEqual(r.map((s) => s.k + ':' + (s.a || s.street)), ['act:call', 'act:check', 'deal:flop', 'act:bet', 'act:call']);
-  const rb = pickReplay(t.log, { mySeat: bob, handNo: t.handNumber });
-  assert.deepEqual(rb.map((s) => s.a), ['call']);
+
+test('saved progress resumes by player and table without moving backwards', (t) => {
+  const values = new Map([['bba.replay.ABCDEF', '999']]);
+  storage(t, { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) });
+  assert.equal(seenSeq('ABCDEF', 'ann'), 0, 'legacy unscoped cursors must not hide another player\'s history');
+  markSeen('ABCDEF', 4, 'ann');
+  assert.deepEqual(pickReplay(history, { seen: seenSeq('ABCDEF', 'ann') }).map((s) => s.seq), [5, 6, 7, 8, 9]);
+  markSeen('ABCDEF', 2, 'ann');
+  markSeen('ABCDEF', 4, 'ann');
+  assert.equal(seenSeq('ABCDEF', 'ann'), 4);
+  assert.equal(seenSeq('ABCDEF', 'bob'), 0);
+  assert.equal(seenSeq('OTHER1', 'ann'), 0);
+  assert.equal(seenSeq('ABCDEF'), 0);
+  markSeen('ABCDEF', 6);
+  markSeen('OTHER1', 8, 'ann');
+  markSeen('ABCDEF', 9, 'bob');
+  assert.equal(seenSeq('ABCDEF'), 6);
+  assert.equal(seenSeq('OTHER1', 'ann'), 8);
+  assert.equal(seenSeq('ABCDEF', 'bob'), 9);
+  assert.equal(seenSeq('ABCDEF', 'ann'), 4);
 });
-test('spectator first look: current hand from the start; then only new events', () => {
-  const { t } = table();
-  act(t, 'Ann', 'call');
-  const r = pickReplay(t.log, { handNo: t.handNumber });
-  assert.deepEqual(r.map((s) => s.a), ['post', 'post', 'call']);
-  const last = r.at(-1).seq;
-  act(t, 'Bob', 'fold');
-  assert.deepEqual(pickReplay(t.log, { seen: last, handNo: t.handNumber }).map((s) => s.a), ['fold']);
+
+test('unavailable browser storage leaves history replayable without throwing', (t) => {
+  storage(t, {
+    getItem() { throw new Error('Storage blocked'); },
+    setItem() { throw new Error('Storage blocked'); },
+  });
+  assert.equal(seenSeq('ABCDEF', 'ann'), 0);
+  assert.doesNotThrow(() => markSeen('ABCDEF', 7, 'ann'));
+  assert.deepEqual(pickReplay(history, { seen: seenSeq('ABCDEF', 'ann') }).map((s) => s.seq), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
 });
-test('returning after hours: condensed to the last pot push + this hand', () => {
-  const { t, ctx } = table();
-  act(t, 'Ann', 'fold'); act(t, 'Bob', 'fold');  // hand 1 over; Ann last acted (fold)
-  ctx.now += 10 * 3600e3; G.tick(t, ctx); if (!t.hand) { ctx.now += 60e3; G.tick(t, ctx); }
-  const ann = t.seats.findIndex((s) => s.name === 'Ann');
-  const r = pickReplay(t.log, { mySeat: ann, handNo: t.handNumber });
-  assert.ok(r[0].k === 'win' && r[0].hand === t.handNumber - 1, 'starts with the previous pot push');
-  assert.ok(r.slice(1).every((s) => s.hand === t.handNumber));
+
+test('timing leaves readable beats for text, social events and reduced motion', () => {
+  assert.equal(stepMs({ k: 'act', text: 'Ann checks' }), 900);
+  assert.equal(stepMs({ k: 'notice' }, true), 1600);
+  for (const k of ['smoke', 'gag']) assert.ok(stepMs({ k, text: 'Hi' }) >= 1600);
+  assert.ok(stepMs({ k: 'say', text: 'a'.repeat(80) }) > stepMs({ k: 'say', text: 'Hi' }));
+  for (const reduced of [false, true]) assert.equal(stepMs({ k: 'notice', text: 'a'.repeat(200) }, reduced), 3500);
 });
-test('timing: 0.5-0.8 s per action, about 4 s total cap', () => {
-  assert.equal(stepMs(1), 800); assert.ok(stepMs(5) >= 500 && stepMs(5) <= 800);
-  for (const n of [6, 10, 20, 40]) assert.ok(stepMs(n) * n <= 4000 + 220 * n * (stepMs(n) === 220) , `n=${n}`);
-  assert.ok(stepMs(10) * 10 <= 4000);
-});
-test('frame: board grows one deal at a time; pot follows the events', () => {
-  const steps = [{ k: 'act', a: 'call', pot: 30 }, { k: 'deal', street: 'flop', cards: ['a', 'b', 'c'], board: 3, pot: 30 }, { k: 'act', a: 'bet', pot: 70 }];
-  assert.deepEqual(frameAt(steps, 0, 3, 70), { board: 0, pot: 30 });
-  assert.deepEqual(frameAt(steps, 1, 3, 70), { board: 3, pot: 30 });
-  assert.deepEqual(frameAt(steps, 2, 3, 70), { board: 3, pot: 70 });
+
+test('historical display follows identity and hand, never borrowing another hand or occupant cards', () => {
+  const live = { me: { playerId: 'ann', seat: 1 }, hand: { number: 2 }, seats: [
+    { playerId: 'bob', cards: null }, { playerId: 'ann', cards: ['As', 'Kh'] },
+  ], legal: { canCheck: true }, log: [{ seq: 8 }], showdown: { number: 1 } };
+  const frame = { hand: { number: 1 }, seats: [{ playerId: 'ann', inHand: true, stack: 90 }, { playerId: 'cat', inHand: true, stack: 80 }] };
+  const before = structuredClone({ live, frame });
+  const old = replayView(live, frame);
+  assert.equal(old.me.seat, 0);
+  assert.equal(old.seats[0].cards, undefined, 'older private cards are unavailable');
+  assert.equal(old.seats[1].playerId, 'cat', 'seat reuse must not substitute today\'s player');
+  assert.equal(old.legal, null);
+  assert.equal(old.showdown, null);
+  assert.deepEqual(old.log, []);
+  const same = replayView(live, { ...frame, hand: { number: 2 } });
+  assert.deepEqual(same.seats[0].cards, ['As', 'Kh']);
+  assert.equal(same.seats[1].cards, undefined);
+  const spectator = replayView({ ...live, me: { playerId: null, seat: null } }, frame);
+  assert.equal(spectator.me.seat, null);
+  assert.equal(spectator.seats[0].cards, undefined);
+  assert.deepEqual({ live, frame }, before, 'display composition must not mutate live or retained history');
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { guntradSays } from './guntrad.js';
 
 // One Guntrad quip per big blind offer (stable across re-renders).
@@ -14,13 +14,17 @@ import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
 import { GagLayer, GagButton } from './table/Gags.jsx';
 import { SmokeLayer, SmokeButton } from './table/Smoke.jsx';
+import { ShowButton } from './table/Spectacle.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { Showdown } from './table/Showdown.jsx';
-import { useReplay, ReplayLayer, useReplayActive } from './table/Replay.jsx';
+import { useReplay, ReplayLayer } from './table/Replay.jsx';
+import { REPLAY_ON } from './table/replay.js';
 import { bitEnabled, bitQueue, claimBit } from './table/fx.js';
 import * as music from './table/music.js';
-import { Paged, Tabs, useShortLand, useSize, useWide } from './ui.jsx';
+import { chipSpot, rectAt } from './table/chipspot.js';
+import { betPresets, betToSlider, clampBet, sliderToBet, stepBet, SLIDER_MAX } from './table/betsize.js';
+import { Paged, Tabs, tableScale, useShortLand, useSize, useWide } from './ui.jsx';
 import { showBroke, showBrokeOnce, clearBrokeSeen } from './Broke.jsx';
 import { FightScreen, useFightWatchPill } from './fight/FightScreen.jsx';
 import { FightOffer } from './fight/FightOffer.jsx';
@@ -40,6 +44,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const [tab, setTab] = useState('table');
   const [side, setSide] = useState('players');
   const [sayOpen, setSayOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [fightMode, setFightMode] = useState(null); // null | 'play' | 'watch' | 'practice'
   const [resultSeen, setResultSeen] = useState(() => new Set());
   const { me } = useSession();
@@ -48,6 +53,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const skew = useRef(0);
   const versionRef = useRef(-1);
   const wasMyTurn = useRef(false);
+  // Standalone social effects remain available when this viewer switches replay off.
   const [pushed, setPushed] = useState([]); // v36: gag events pushed live (also in the view for a few seconds)
   const addGag = useCallback((e) => setPushed((l) => [...l.slice(-8), { ...e, shownAt: Date.now() }]), []);
   const [smokes, setSmokes] = useState([]); // v37: tobacco moments pushed live (the view has the last 24h too)
@@ -72,7 +78,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     let es;
     try {
       es = new EventSource(`/api/tables/${code}/events`);
-      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.gag) addGag(d.gag); if (d.smoke) addSmoke(d.smoke); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke) load(); } catch { /* ignore */ } };
+      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.gag) addGag(d.gag); if (d.smoke) addSmoke(d.smoke); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke || d.show) load(); } catch { /* ignore */ } };
     } catch { /* no SSE */ }
     const poll = setInterval(load, 20000);
     const vis = () => { if (!document.hidden) load(); };
@@ -87,13 +93,17 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   // it also plays the next time they open the table after an async hand), and Replay is always there.
   const [sdPlay, setSdPlay] = useState(null);
   const sdNo = view?.showdown?.number ?? null;
+  const tableVisible = pane ? focused : wide || land || tab === 'table';
+  const rp = useReplay(code, view, tableVisible && !fightMode && !sdPlay && !sayOpen);
   useEffect(() => {
+    if (!tableVisible || !rp.visible || rp.pending || fightMode || sdPlay) return;
     if (!view?.showdown || view.showdownSeen || view.me?.seat === null || view.me?.seat === undefined) return;
     const key = `bba.sd.${code}.${view.showdown.number}`;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* private mode */ }
-    setSdPlay(view.showdown);
+    // The timeline has already revealed these cards and awarded the pot on the felt.
+    if (!rp.enabled || !view.log.some((e) => e.frame && e.ev?.k === 'win' && e.hand === sdNo)) setSdPlay(view.showdown);
     api('POST', `/tables/${code}/showdown-seen`, { number: view.showdown.number }).catch(() => {});
-  }, [sdNo, view?.showdownSeen, code]);
+  }, [sdNo, view?.showdownSeen, code, tableVisible, rp.visible, rp.pending, rp.enabled, fightMode, sdPlay]);
   const watch = useFightWatchPill(view, myId);
   const takeView = useCallback((v) => { skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); }, []);
   const mySeat = view?.me?.seat;
@@ -104,7 +114,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const offerKey = offer ? `${code}.${offer.hand}` : '';
   const [passed, setPassed] = useState(() => new Set());
   const offerOpen = !!offer && !passed.has(offerKey) && !fightMode;
-  const offerUp = offerOpen && offerTurn; // in the multi view only one table's prompt shows at a time
+  const offerUp = offerOpen && offerTurn && !rp.pending && !sdPlay && tableVisible && rp.visible; // catch-up before prompts
   useEffect(() => { if (pane && view) onStatus?.(code, { myTurn, deadline: myTurn ? view.hand?.deadline ?? null : null, name: view.name, seated: view.me?.seat !== null && view.me?.seat !== undefined, offer: offerOpen ? offerKey : null }); }, [pane, myTurn, view?.hand?.deadline, view?.name, view?.me?.seat, code, offerOpen, offerKey]);
   // Busted out here with nothing left anywhere: the house has a suggestion.
   const bustBroke = !!view?.me?.broke;
@@ -132,6 +142,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   }, [myTurn, view?.name, view?.hand?.number, code]);
 
   async function post(path, body) {
+    if (rp.pending) rp.skip();
     try {
       const v = await api('POST', `/tables/${code}/${path}`, body); skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); setErr('');
       if (['join', 'rebuy', 'leave'].includes(path)) refreshSession();
@@ -168,36 +179,58 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const hand = view.hand;
   const players = view.seats.filter(Boolean);
 
+  // Phones (upright or on their side) have no room for a row of icon buttons next to the table name: they clipped
+  // the title. There the same controls live in one labelled Menu; wide screens keep them inline.
+  const compact = !wide || land;
+  const open = seated && view.status !== 'closed';
+  const closeMenu = () => setMenuOpen(false);
+  const rules = (view.settings.skipPreflop || view.settings.autoCheck) && <span className="rule-badges" data-test="rule-badges"><span>Defaults:</span>{view.settings.skipPreflop && <span className="rule-badge" title="Future hands start at the flop; changing this default leaves the current hand unchanged" data-test="badge-skip">Flop start</span>}{view.settings.autoCheck && <span className="rule-badge" title="Future hands default to checking when free; players can override their own setting" data-test="badge-autocheck">Auto-check</span>}</span>;
+  const kind = view.bots ? '🤖 Bot table · practice chips' : view.econ === false ? 'Practice chips' : '';
+  const access = view.bots ? '' : view.visibility === 'public' ? 'Public · listed in the lobby' : 'Private · anyone with the invite link can join';
+  const stakes = <>Blinds {chips(view.settings.smallBlind)}/{chips(view.settings.bigBlind)} · Buy-in {money(view.settings.buyIn)} · {formatDuration(view.settings.turnSeconds)} a turn</>;
+  const controls = <>
+    {open && (
+      <button className={`btn small say-btn ${view.seats[mySeat]?.say ? 'live' : ''}`} onClick={() => { closeMenu(); setSayOpen(compact ? true : !sayOpen); }} aria-expanded={compact ? undefined : sayOpen} aria-label="Say something (speech bubble)" title="Say something">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+        <span className="hide-s">Say{compact ? ' something' : ''}</span>
+      </button>
+    )}
+    {open && <GagButton code={code} view={view} myId={myId} onEvent={addGag} onUsed={() => { closeMenu(); load(); }} />}
+    {open && <SmokeButton code={code} view={view} onDone={(e) => { closeMenu(); addSmoke(e); load(); }} />}
+    {open && REPLAY_ON && <ShowButton code={code} view={view} onDone={() => { closeMenu(); load(); }} />}
+    {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => { rp.skip(); closeMenu(); setSdPlay({ ...view.showdown, _k: Date.now() }); }} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
+    <MusicButton />
+    {(!view.bots || view.bots.friends) && <button className="btn small invite-btn" onClick={() => { closeMenu(); copyInvite(); }}><span className="menu-ico" aria-hidden="true">＋</span>Invite<span className="menu-label"> players</span></button>}
+  </>;
   const head = (
-    <div className="tp-head">
+    <div className={`tp-head ${compact ? 'compact' : ''}`}>
       <div className="tp-title">
-        <p className="kicker"><Link to="/?tab=tables">← Tables</Link> / <span className="mono">{code}</span>{view.bots ? <span className="tp-botlabel"> · 🤖 Bot table · practice chips</span> : view.econ === false ? ' · practice chips' : ''}{(view.settings.skipPreflop || view.settings.autoCheck) && <span className="rule-badges" data-test="rule-badges"><span>Defaults:</span>{view.settings.skipPreflop && <span className="rule-badge" title="Future hands start at the flop; changing this default leaves the current hand unchanged" data-test="badge-skip">Flop start</span>}{view.settings.autoCheck && <span className="rule-badge" title="Future hands default to checking when free; players can override their own setting" data-test="badge-autocheck">Auto-check</span>}</span>}</p>
+        <p className="kicker"><Link to="/?tab=tables">← Tables</Link> / <span className="mono">{code}</span>{!compact && <>{kind && <span className="tp-botlabel"> · {kind}</span>}{rules}</>}</p>
         <h1 className="display">{view.name}</h1>
-        {!view.bots && <p className="small muted">{view.visibility === 'public' ? 'Public · listed in the lobby' : 'Private · anyone with the invite link can join'}</p>}
+        {!compact && access && <p className="small muted">{access}</p>}
       </div>
-      <p className="meta hide-s">Blinds {chips(view.settings.smallBlind)}/{chips(view.settings.bigBlind)} · Buy-in {money(view.settings.buyIn)} · {formatDuration(view.settings.turnSeconds)} a turn</p>
-      {seated && view.status !== 'closed' && (
-        <button className={`btn small say-btn ${view.seats[mySeat]?.say ? 'live' : ''}`} onClick={() => setSayOpen(!sayOpen)} aria-expanded={sayOpen} aria-label="Say something (speech bubble)" title="Say something">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
-          <span className="hide-s">Say</span>
-        </button>
-      )}
-      {seated && view.status !== 'closed' && <GagButton code={code} view={view} myId={myId} onEvent={addGag} onUsed={load} />}
-      {seated && view.status !== 'closed' && <SmokeButton code={code} view={view} onDone={(e) => { addSmoke(e); load(); }} />}
-      {view.showdown && <button type="button" className="btn small sd-replay" onClick={() => setSdPlay({ ...view.showdown, _k: Date.now() })} data-test="sd-replay" title="Replay last showdown" aria-label="Replay last showdown"><span aria-hidden="true">↺</span><span className="hide-s"> Replay last showdown</span></button>}
-      <MusicButton />
-      {(!view.bots || view.bots.friends) && <button className="btn small" onClick={copyInvite}>Invite</button>}
+      {!compact && <p className="meta hide-s">{stakes}</p>}
+      {compact ? (
+        <TableMenu open={menuOpen} setOpen={setMenuOpen}>
+          {controls}
+          <div className="tp-menu-info small muted" data-test="table-menu-info">
+            <p>{stakes}</p>
+            {(kind || access) && <p>{kind || access}</p>}
+            {rules && <p>{rules}</p>}
+          </div>
+        </TableMenu>
+      ) : controls}
     </div>
   );
   const stage = (
     <div className="tp-stage">
       {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => setSdPlay(null)} />}
-      <TableFelt code={code} view={view} now={now} hold={!!sdPlay} onSit={!seated && me && view.status !== 'closed' ? join : null} onSay={seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+      <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
       {errBox}
-      {!pane && <SmokeLayer events={[...(view.smokes || []), ...smokes.filter((e) => !(view.smokes || []).some((x) => x.id === e.id))]} skew={skew.current} off={!!(view.smokeOff || view.noSmoke)} />}
-      <GagLayer events={[...(view.gags || []).map((e) => ({ ...e, shownAt: Date.now() - Math.max(0, view.serverNow - e.at) })), ...pushed]} />
+      {!rp.enabled && !pane && <SmokeLayer events={[...(view.smokes || []), ...smokes.filter((e) => !(view.smokes || []).some((x) => x.id === e.id))]} skew={skew.current} off={!!(view.smokeOff || view.noSmoke)} />}
+      {!rp.enabled && <GagLayer events={[...(view.gags || []).map((e) => ({ ...e, shownAt: Date.now() - Math.max(0, view.serverNow - e.at) })), ...pushed]} />}
       {toast && <div className="toast">{toast}</div>}
       {offerUp && <FightOffer key={offerKey} refund={offer.refund} stake={offer.stake} quip={offerQuip(offerKey)} armMs={pane ? 700 : 450}
         clock={offerClock(view, mySeat, now)}
@@ -205,7 +238,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
         onDecline={() => { setPassed(new Set([...passed, offerKey])); post('fight/decline'); }} />}
     </div>
   );
-  const bottom = <Bottom blocked={offerUp} view={view} me={me} seated={seated} myTurn={myTurn} now={now} code={code} inviteUrl={inviteUrl} copyInvite={copyInvite} join={join} post={post} players={players} />;
+  const bottom = <Bottom blocked={offerUp || !!sdPlay} replaying={rp.pending} view={view} me={me} seated={seated} myTurn={myTurn} now={now} code={code} inviteUrl={inviteUrl} copyInvite={copyInvite} join={join} post={post} players={players} />;
   const panels = {
     players: <Standings view={view} />,
     log: <HandLog view={view} />,
@@ -274,8 +307,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   );
 }
 
-function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyInvite, join, post, players }) {
-  const replaying = useReplayActive(code); // v43: the action buttons wait for the turn replay
+function Bottom({ blocked, replaying, view, me, seated, myTurn, now, code, inviteUrl, copyInvite, join, post, players }) {
   const hand = view.hand;
   const toActSeat = hand?.toAct ?? null;
   const toActName = toActSeat !== null ? view.seats[toActSeat]?.name : null;
@@ -323,9 +355,7 @@ function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyI
     ));
   }
   const show = view.me.canShow;
-  const [hidden, setHidden] = useState(() => new Set());
-  const showKey = show ? `${code}.${show.number}` : '';
-  const offerShow = show && !myTurn && !hidden.has(showKey);
+  const offerShow = show && !myTurn;
   if (offerShow) {
     // Won without a showdown: optionally show the table. Takes the turnbar's place, so the layout never grows.
     const left2 = [0, 1].filter((i) => !show.shown.includes(i));
@@ -333,9 +363,9 @@ function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyI
       <div key="s" className="bar showbar" role="group" aria-label="Show your cards">
         <span className="sb-text">You took hand #{show.number} without a showdown. <span className="hide-xs">Show the table?</span></span>
         <div className="sb-btns">
-          {left2.length === 2 && <button className="btn small primary" onClick={() => post('show', { which: 'both' })}>Show both</button>}
-          {left2.map((i) => <button key={i} className="btn small" onClick={() => post('show', { which: i })} aria-label={`Show ${cardText(show.cards[i])} only`}>Show {cardText(show.cards[i])}</button>)}
-          <button className="btn small ghost" onClick={() => setHidden(new Set([...hidden, showKey]))}>{show.shown.length ? 'Done' : 'Keep hidden'}</button>
+          {left2.length === 2 && <button className="btn small primary" onClick={() => post('show', { which: 'both', handNumber: show.number })}>Show both</button>}
+          {left2.map((i) => <button key={i} className="btn small" onClick={() => post('show', { which: i, handNumber: show.number })} aria-label={`Show ${cardText(show.cards[i])} only`}>Show {cardText(show.cards[i])}</button>)}
+          <button className="btn small ghost" onClick={() => post('show', { which: 'none', handNumber: show.number })}>{show.shown.length ? 'Done' : 'Keep hidden'}</button>
         </div>
       </div>,
     );
@@ -346,7 +376,7 @@ function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyI
   if (view.status === 'playing' && !offerShow) {
     out.push(
       <div key="t" className={`turnbar ${myTurn ? 'mine' : ''}`} aria-live="polite">
-        {myTurn && replaying ? <><b>Catching you up…</b> <span className="muted">your turn is next</span></> : myTurn ? <><b>Your turn.</b> <span className={`clock ${left < 60000 ? 'urgent' : ''}`}>{formatLeft(left)} left</span></>
+        {myTurn ? <><b>{replaying ? 'Your turn · actions return to live' : 'Your turn.'}</b> <span className={`clock ${left < 60000 ? 'urgent' : ''}`}>{formatLeft(left)} left</span></>
           : hand && toActName && view.seats[toActSeat]?.bot ? <>🤖 <b>{toActName}</b> is thinking…</>
           : hand && toActName ? <>Waiting for <b>{toActName}</b> <span className="clock">{formatLeft(left)}</span></>
           : view.nextHandAt ? <>Next hand starting…</>
@@ -356,7 +386,7 @@ function Bottom({ blocked, view, me, seated, myTurn, now, code, inviteUrl, copyI
       </div>,
     );
   }
-  if (myTurn && view.legal && !replaying) out.push(<ActionBar key="a" view={view} onAct={(a) => post('action', { ...a, handNumber: hand.number })} />);
+  if (myTurn && view.legal) out.push(<ActionBar key="a" view={view} onAct={(a) => post('action', { ...a, handNumber: hand.number })} />);
   // while the fight prompt is up, the bottom stays readable (the clock keeps ticking) but can't be tapped
   return <div className="tp-bottom" inert={blocked ? '' : undefined} aria-hidden={blocked || undefined}>{out}</div>;
 }
@@ -386,25 +416,28 @@ function seatDeg(pos, N) {
   return 270 + gap + (span * (k + 0.5)) / N;
 }
 
-function TableFelt({ code, view, now, onSit, onSay, hold }) {
+function TableFelt({ code, view, now, onSit, onSay, hold, rp }) {
   // v42: a quick "✓ auto-check" pop over a seat for checks the table made in the last few seconds
   const autoPops = {};
   for (const e of view.log || []) { const m = / checks \(auto-check\)$/.exec(e.text); if (m && e.t > (view.serverNow || 0) - 3000) autoPops[e.text.slice(0, m.index)] = e.t; }
   const N = view.settings.maxPlayers;
   const hand = view.hand;
-  const rp = useReplay(code, view); // v43
   const mySeat = view.me.seat ?? 0;
   const shown = (!hand && view.lastHand?.shown) || {};
-  const winners = new Set((!hand && view.lastHand?.winners?.map((w) => w.seat)) || []);
+  const winners = new Set((!hand && view.lastHand?.winners?.filter((w) => w.playerId === view.seats[w.seat]?.playerId).map((w) => w.seat)) || []);
   const button = hand ? hand.buttonSeat : view.buttonSeat;
   const box = useRef(null);
   const { w, h } = useSize(box);
   const tall = w && h ? w / h < 1.25 : false;
   // v50: crowded tables (7+ seats) get smaller busts and tighter pills so neighbouring seats never touch
   const crowd = N > 6;
-  const bust = Math.round(Math.max(24, Math.min(62, w / (tall ? (crowd ? 12 : 9) : (crowd ? 18 : 15)), h / (crowd ? (tall ? 10.5 : 9.5) : 7.2))));
-  const cw = Math.round(Math.max(24, Math.min(54, w / (tall ? 12.5 : 15), h / 6.4))); // v50: a bit smaller on phones so side seats clear the board
-  const geo = tall ? (N > 6 ? { cx: 50, cy: 58, rx: 42, ry: 38, frx: 38, fry: 31 } : { cx: 50, cy: 57, rx: 41, ry: 32, frx: 40, fry: 30 }) : { cx: 50, cy: 57, rx: 43, ry: 31, frx: 39, fry: 29 };
+  const k = tableScale(w, h); // v51: big screens grow the 1080p caps with the felt
+  const roomy = !tall && w >= 900 * k && h >= 540 * k; // space on the felt for each player's stack of chips
+  // Phones: the face is how you tell who is who, so an upright felt spends its width on busts (the other players'
+  // face-down cards tuck in behind them, see .felt-box.tall in styles.css) instead of on empty rail.
+  const bust = Math.round(Math.max(24, Math.min(62 * k, w / (tall ? (crowd ? 9.4 : 6.4) : (crowd ? 18 : 15)), h / (crowd ? (tall ? 9.2 : 9.5) : (tall ? 8.7 : 7.2)))));
+  const cw = Math.round(Math.max(24, Math.min(54 * k, w / (tall ? 12.5 : 15), h / 6.4))); // v50: a bit smaller on phones so side seats clear the board
+  const geo = tall ? (N > 6 ? { cx: 50, cy: 58, rx: 42, ry: 38, frx: 38, fry: 31 } : { cx: 50, cy: 55, rx: 41, ry: 34, frx: 40, fry: 32 }) : { cx: 50, cy: 57, rx: 43, ry: 31, frx: 39, fry: 29 };
   // the all-in-loser bit: once per losing all-in, for everyone at the table, unless switched off in Profile
   const [bit, setBit] = useState(null);
   const nowRef = useRef(now); nowRef.current = now;
@@ -419,40 +452,90 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
     const ang = (seatDeg((seat - mySeat + N) % N, N) * Math.PI) / 180;
     return { x: geo.cx + geo.rx * Math.cos(ang), y: geo.cy + geo.ry * Math.sin(ang) };
   };
+  // Phones and small windows: each bet chip takes the free spot nearest its seat, clear of every seat, the board,
+  // the pot and the other chips (table/chipspot.js). The rectangles are measured from the page before it paints, so
+  // real name lengths and chip sizes count. A roomy felt puts bets on the straight line from seat to pot instead
+  // (see betX below), and the same search then gives each player's whole stack the nearest spot in the band between
+  // the rim and the inner gold line, below a seat at the side and left of one at the bottom. Keys: s<seat> stack, b<seat> bet.
+  const [betSpots, setBetSpots] = useState({});
+  const betKey = w > 0 && (roomy || hand)
+    ? `${w}x${h}:${bust}:${cw}:${mySeat}:${button}:${hand?.board.length}:${hand?.pot}:${hand?.toAct}:${view.seats.map((s, i) => (s ? `${s.bet || 0}/${s.name}/${s.stack}/${s.folded ? 1 : 0}${s.allIn ? 1 : 0}${s.hasCards ? 1 : 0}${s.cards ? 1 : 0}${shown[i]?.cards ? 1 : 0}${s.sittingOut ? 1 : 0}${s.waiting ? 1 : 0}${s.say?.text ? 1 : 0}` : '-')).join(',')}:${hold ? 1 : 0}`
+    : '';
+  useLayoutEffect(() => {
+    const root = box.current;
+    if (!betKey || !root) { setBetSpots((prev) => (Object.keys(prev).length ? {} : prev)); return; }
+    const o = root.getBoundingClientRect();
+    const rel = (el, pad) => { const r = el.getBoundingClientRect(); return { x0: r.left - o.left - pad, x1: r.right - o.left + pad, y0: r.top - o.top - pad, y1: r.bottom - o.top + pad }; };
+    const blocks = [];
+    root.querySelectorAll(`.seat-top, .seat-plate, .seat-tags, .seat.empty, .dealer-btn, .board, .pot, .dl-plate${roomy ? ', .bet' : ''}`).forEach((el) => { const r = rel(el, 3); if (r.x1 - r.x0 > 8 || el.classList.contains('dealer-btn')) blocks.push(r); });
+    const seatBlocks = blocks.length;
+    const oval = (f) => ({ cx: (geo.cx * w) / 100, cy: (geo.cy * h) / 100, rx: (geo.frx * f * w) / 100, ry: (geo.fry * f * h) / 100 });
+    const LINE = 0.86; // the inner gold line: .felt::before is inset 7% a side
+    const next = {};
+    const place = (sel, key, opts) => root.querySelectorAll(sel).forEach((el) => {
+      const i = Number(el.dataset.seat), r = el.getBoundingClientRect(), q = xy(i);
+      const chip = { hw: r.width / 2 + 1, hh: r.height / 2 + 1 };
+      const { sides = [null], ...o } = opts(i, q), from = { x: (q.x * w) / 100, y: (q.y * h) / 100 };
+      // a stack tries its preferred sides in turn, and must end up next to its own seat: otherwise it stays hidden
+      // rather than sit by someone else. A bet just takes what it gets.
+      let at = null;
+      for (const side of sides) {
+        at = chipSpot({ from, chip, blocks, ...o, side });
+        if (key !== 's' || (at.clear && Math.hypot(at.x - from.x, at.y - from.y) <= bust * 3)) break;
+        at = null;
+      }
+      if (!at) return;
+      blocks.push(rectAt(at.x, at.y, chip.hw, chip.hh));
+      next[key + i] = { x: +((at.x / w) * 100).toFixed(2), y: +((at.y / h) * 100).toFixed(2) };
+    });
+    if (roomy) {
+      place('.stack-chips[data-seat]', 's', (i, q) => {
+        const a = (seatDeg((i - mySeat + N) % N, N) * Math.PI) / 180, x = (q.x * w) / 100, y = (q.y * h) / 100;
+        // seats down the sides keep their chips below them (under the bust if the felt reaches that far, else level
+        // with it); a seat in the middle of the bottom keeps them on its left. Last resort: wherever is nearest.
+        const sides = Math.abs(Math.cos(a)) < 0.35 ? [{ x, y, dx: -1, dy: 0 }] : [{ x, y: y + bust * 0.8, dx: 0, dy: 1 }, { x, y, dx: 0, dy: 1 }];
+        return { felt: oval(0.985), outside: oval(LINE + 0.01), core: 0.7, sides: [...sides, null] };
+      });
+      // all or nothing: one player's chips on show and another's not reads as the other being broke
+      if (Object.keys(next).length < root.querySelectorAll('.stack-chips[data-seat]').length) { for (const key of Object.keys(next)) delete next[key]; blocks.length = seatBlocks; }
+    }
+    else place('.bet[data-seat]', 'b', () => ({ felt: oval(1) }));
+    setBetSpots((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  }, [betKey]);
   // themes (multi-table view only): anime emotes on the busts, and the geisha's tea every 5 hands
   const theme = useActiveTheme();
   const emotes = theme === 'anime' ? emotesFor(view) : {};
   const [tea, setTea] = useState(null);
   const handNo = hand?.number ?? null;
   useEffect(() => {
-    if (theme !== 'anime' || tea) return;
+    if (theme !== 'anime' || tea || hold) return;
     const force = TEA_NOW;
     const n = force ? `now.${handNo}` : teaDue(handNo) ? handNo : null;
     if (n === null) return;
     const key = `bba.tea.${code}.${n}`;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* private mode */ }
     setTea(n);
-  }, [theme, handNo, code]);
+  }, [theme, handNo, code, hold]);
   const lastLine = !hand && view.lastHand ? view.lastHand.winners.map((x) => `${x.name} won ${chips(x.amount)}${x.hand ? ` with ${x.hand}` : ''}`).join(' · ') : '';
   return (
-    <div className={`felt-box ${tall ? 'tall' : ''} ${crowd ? 'crowd' : ''}`} ref={box} style={{ '--bust': `${bust}px`, '--cw': `${cw}px` }}>
+    <div className={`felt-box ${tall ? 'tall' : ''} ${crowd ? 'crowd' : ''} ${roomy ? 'roomy' : ''}`} ref={box} style={{ '--bust': `${bust}px`, '--cw': `${cw}px`, '--tscale': k.toFixed(3), '--band': `${((0.14 * geo.fry * h) / 100 / k).toFixed(1)}px`, '--band-w': `${((0.14 * geo.frx * w) / 100 / k).toFixed(1)}px` }}>
       {w > 0 && <>
         {theme === 'arcade' && <FeltConsoles size={Math.max(30, Math.round(bust * 0.95))} />}
-        <div className={`dealer-spot ${rp.on && rp.step.k === 'deal' && !rp.reduced ? 'dealing' : ''}`} style={{ height: `${tall ? 30 : 34}%` }}><Dealer /></div>
+        <div className="dealer-spot" style={{ height: `${tall ? (crowd ? 28 : 25) : 34}%` }}><Dealer /></div>
         <div className="felt" style={{ left: `${geo.cx - geo.frx}%`, right: `${100 - geo.cx - geo.frx}%`, top: `${geo.cy - geo.fry}%`, bottom: `${100 - geo.cy - geo.fry}%` }}>
           <div className="felt-logo script" aria-hidden="true">{theme === 'anime' ? 'バッファロー・ビル' : theme === 'arcade' ? 'Free Play' : "Buffalo Bill's"}</div>
         </div>
         <DealerPlate style={{ top: `${geo.cy - geo.fry}%` }} />
-        <div className="center-area" style={{ top: `${geo.cy + (tall ? 2 : 0)}%` }}>
+        {/* the board sits up toward the dealer (never under his plate), which leaves the middle of the felt to the pot */}
+        <div className="center-area" style={{ top: tall ? `${geo.cy - 9}%` : `max(calc(${geo.cy - geo.fry}% + 34px * var(--tscale)), calc(${geo.cy - 5}% - var(--cw) * 1.4 - 14px))` }}>
           <div className="board">
             {[0, 1, 2, 3, 4].map((i) => {
               const board = hand ? hand.board : view.lastHand?.board || [];
-              if (rp.on && i >= rp.frame.board) return <EmptyCard key={i} />;
-              if (rp.on && rp.fresh.includes(i)) return <span key={`${i}-${rp.step.seq}`} className="rp-in" style={{ animationDelay: `${rp.ms * (0.55 + rp.fresh.indexOf(i) * 0.33)}ms` }}><Card card={board[i]} /></span>;
-              return board[i] ? <Card key={i} card={board[i]} /> : <EmptyCard key={i} />;
+              const fresh = rp.on && rp.step.k === 'deal' && i >= board.length - rp.step.cards.length && i < board.length;
+              return board[i] ? <span key={`${hand?.number || view.lastHand?.number}:${i}:${board[i]}`} className={fresh ? 'replay-fresh' : undefined} style={fresh ? { '--deal-index': i - board.length + rp.step.cards.length } : undefined}><Card card={board[i]} /></span> : <EmptyCard key={i} />;
             })}
           </div>
-          <div className="pot">{hand ? <><ChipStack amount={rp.on && rp.frame.pot != null ? rp.frame.pot : hand.pot} max={6} /> Pot <b>{chips(rp.on && rp.frame.pot != null ? rp.frame.pot : hand.pot)}</b></> : view.status === 'lobby' ? 'Waiting to start' : view.lastHand ? <span className="last-line">Hand #{view.lastHand.number}: {lastLine}</span> : ''}</div>
+          <div className="pot">{hand ? <><ChipStack amount={hand.pot} /><span>Pot <b>{chips(hand.pot)}</b></span></> : view.status === 'lobby' ? <span>Waiting to start</span> : view.lastHand ? <span className="last-line">Hand #{view.lastHand.number}: {lastLine}</span> : ''}</div>
         </div>
         {Array.from({ length: N }, (_, seat) => {
           const pos = (seat - mySeat + N) % N;
@@ -471,12 +554,16 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
           const isMe = seat === view.me.seat;
           const toAct = hand?.toAct === seat;
           const reveal = shown[seat]?.cards;
-          const cards = isMe && s.cards ? s.cards : reveal || null;
-          const betX = geo.cx + geo.rx * 0.6 * Math.cos(ang), betY = geo.cy + geo.ry * 0.55 * Math.sin(ang);
+          const cards = s.cards || reveal || null;
+          const spot = roomy ? null : betSpots[`b${seat}`], home = betSpots[`s${seat}`];
+          // roomy felt: the bet sits on the line from the seat to the pot, just inside the gold line, never closer than the seat's own cards allow
+          const ray = Math.hypot(geo.rx * w * Math.cos(ang), geo.ry * h * Math.sin(ang)) / 100;
+          const out = roomy && ray ? 1 - Math.max(0.3, (Math.abs(Math.cos(ang)) * (bust + 40 * k) + Math.abs(Math.sin(ang)) * (bust / 2 + 38 * k)) / ray) : 0;
+          const betX = spot ? spot.x : geo.cx + geo.rx * (out || 0.52) * Math.cos(ang), betY = spot ? spot.y : geo.cy + geo.ry * (out || 0.42) * Math.sin(ang);
           const state = winners.has(seat) ? 'win' : s.folded ? 'folded' : toAct ? 'toact' : '';
           return (
             <React.Fragment key={seat}>
-              <div data-pid={s.playerId} className={`seat ${rp.on && (rp.step.seat === seat || rp.step.wins?.some((w) => w.seat === seat)) && !rp.reduced ? 'rp-on' : ''} ${bit && bit.seat === seat && bit.playerId === s.playerId ? 'in-bit' : ''} ${isMe ? 'me' : ''} ${toAct ? 'toact' : ''} ${s.folded ? 'folded' : ''} ${winners.has(seat) ? 'winner' : ''} ${s.say?.text ? 'has-say' : ''}`} style={style}>
+              <div data-pid={s.playerId} className={`seat ${bit && !hold && bit.seat === seat && bit.playerId === s.playerId ? 'in-bit' : ''} ${isMe ? 'me' : ''} ${toAct ? 'toact' : ''} ${s.folded ? 'folded' : ''} ${winners.has(seat) ? 'winner' : ''} ${s.say?.text ? 'has-say' : ''}`} style={style}>
                 {s.say?.text && <SayBubble text={s.say.text} name={s.name} below={y < 34} align={x < 24 ? 'l' : x > 76 ? 'r' : 'c'} />}
                 <div className="seat-top" {...(isMe && onSay ? { role: 'button', tabIndex: 0, onClick: onSay, onKeyDown: (e) => e.key === 'Enter' && onSay(), 'aria-label': 'Your seat: say something', title: 'Say something' } : {})}>
                   <Bust id={s.playerId} avatar={view.avatars?.[s.playerId]} size={bust} state={state} title={s.name} />
@@ -503,9 +590,11 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
                   {reveal && shown[seat]?.hand && <span className="tag">{shown[seat].hand}</span>}
                 </div>
               </div>
-              {hand && s.bet > 0 && !rp.on && (
-                <div className="bet" style={{ left: `${betX}%`, top: `${betY}%` }}>
-                  <ChipStack amount={s.bet} max={4} />
+              {/* the whole stack, behind the gold line as near its seat as it can get (placed above; hidden until then). Only when the felt has the room; otherwise the plate number does the job */}
+              {roomy && s.stack > 0 && <div className="stack-chips" data-seat={seat} style={{ left: `${home ? home.x : x}%`, top: `${home ? home.y : y}%`, visibility: home ? 'visible' : 'hidden' }}><ChipStack amount={s.stack} heap={Math.abs(Math.sin(ang)) < 0.8 ? 'side' : 'end'} /></div>}
+              {hand && s.bet > 0 && (
+                <div className="bet" data-seat={seat} style={{ left: `${betX}%`, top: `${betY}%` }}>
+                  <ChipStack amount={s.bet} />
                   {hand.sbSeat === seat && hand.street === 'preflop' && s.bet <= view.settings.smallBlind ? 'SB ' : ''}
                   {hand.bbSeat === seat && hand.street === 'preflop' && s.bet === view.settings.bigBlind ? 'BB ' : ''}
                   {chips(s.bet)}
@@ -515,10 +604,10 @@ function TableFelt({ code, view, now, onSit, onSay, hold }) {
           );
         })}
         <ReplayLayer rp={rp} xy={xy} geo={geo} />
-        {tea !== null && theme === 'anime' && (
+        {tea !== null && theme === 'anime' && !hold && (
           <GeishaTea key={String(tea)} stops={view.seats.map((s, i) => (s ? xy(i) : null)).filter(Boolean)} center={{ x: geo.cx, y: geo.cy }} onDone={() => setTea(null)} />
         )}
-        {bit && (() => {
+        {bit && !hold && (() => {
           const seated = view.seats[bit.seat]?.playerId === bit.playerId;
           const loser = { ...bit, ...(seated ? xy(bit.seat) : { x: geo.cx, y: 100 }) };
           const punchers = view.seats.map((s, i) => (s && s.playerId !== bit.playerId ? { playerId: s.playerId, name: s.name, ...xy(i) } : null)).filter(Boolean);
@@ -568,6 +657,24 @@ function SayBox({ current, onClose, onSave, onPractice }) {
   );
 }
 
+/** A − / + button: one tap moves one step; holding it keeps going. */
+function StepButton({ label, text, onStep, disabled }) {
+  const hold = useRef({});
+  const fn = useRef(onStep); fn.current = onStep;
+  const stop = () => { clearTimeout(hold.current.t); clearInterval(hold.current.i); };
+  useEffect(() => stop, []);
+  const start = (e) => {
+    if (e.button || disabled) return;
+    stop(); fn.current();
+    hold.current.t = setTimeout(() => { hold.current.i = setInterval(() => fn.current(), 90); }, 380);
+  };
+  return (
+    <button type="button" className="btn small step" disabled={disabled} aria-label={label} title={label}
+      onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop} onContextMenu={(e) => e.preventDefault()}
+      onClick={(e) => { if (e.detail === 0) onStep(); /* keyboard and assistive tech: no pointer events */ }}>{text}</button>
+  );
+}
+
 function ActionBar({ view, onAct }) {
   const L = view.legal;
   const hand = view.hand;
@@ -576,23 +683,22 @@ function ActionBar({ view, onAct }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => { setAmount(L.minRaiseTo || 0); setRaising(false); }, [hand.number, hand.street, L.minRaiseTo]);
   const go = async (a) => { setBusy(true); await onAct(a); setBusy(false); };
-  const clamp = (v) => Math.max(L.minRaiseTo, Math.min(L.maxRaiseTo, Math.round(v)));
-  const potAfterCall = hand.pot + L.toCall;
-  const presets = L.canRaise ? [
-    ['Min', L.minRaiseTo],
-    ['½ Pot', clamp(L.currentBet + potAfterCall / 2)],
-    ['Pot', clamp(L.currentBet + potAfterCall)],
-    ['All-in', L.maxRaiseTo],
-  ] : [];
+  const min = L.minRaiseTo, max = L.maxRaiseTo;
+  const clamp = (v) => clampBet(v, min, max);
+  // One small blind is the finest step worth a button; the amount box still takes any whole number.
+  const fine = Math.max(1, view.settings.smallBlind), coarse = Math.max(fine, view.settings.bigBlind);
+  const presets = L.canRaise ? betPresets({ min, max, pot: hand.pot, toCall: L.toCall, currentBet: L.currentBet, step: fine }) : [];
   const verb = L.isBet ? 'Bet' : 'Raise to';
-  const allInOnly = L.canRaise && L.minRaiseTo === L.maxRaiseTo;
+  const allInOnly = L.canRaise && min === max;
+  const value = clamp(amount);
+  const nudge = (dir, step) => setAmount((a) => stepBet(a, dir, step, min, max));
   const raiseBtn = (
-    <button className="btn raise-btn" disabled={busy} onClick={() => go(amount >= L.maxRaiseTo || allInOnly ? { type: 'allin' } : { type: 'raise', amount: clamp(amount) })}>
-      {amount >= L.maxRaiseTo || allInOnly ? `All-in ${chips(L.maxRaiseTo)}` : `${verb} ${chips(clamp(amount))}`}
+    <button className="btn raise-btn" disabled={busy} onClick={() => go(value >= max || allInOnly ? { type: 'allin' } : { type: 'raise', amount: value })}>
+      {value >= max || allInOnly ? `All-in ${chips(max)}` : `${verb} ${chips(value)}`}
     </button>
   );
   return (
-    <div className="actionbar">
+    <div className={`actionbar ${raising ? 'raising' : ''}`}>
       <div className="mycards">{view.seats[view.me.seat].cards?.map((c) => <Card key={c} card={c} size="lg" />)}</div>
       {!raising ? (
         <div className="actions">
@@ -603,18 +709,48 @@ function ActionBar({ view, onAct }) {
           {L.canRaise && (allInOnly ? raiseBtn : <button className="btn raise-btn" disabled={busy} onClick={() => setRaising(true)}>{L.isBet ? 'Bet…' : 'Raise…'}</button>)}
         </div>
       ) : (
-        <div className="raise">
-          <div className="raise-row">
-            {presets.map(([label, v]) => <button key={label} className={`btn small ${amount === v ? 'on' : ''}`} onClick={() => setAmount(v)}>{label}</button>)}
-            <input type="number" className="amount" min={L.minRaiseTo} max={L.maxRaiseTo} value={amount} onChange={(e) => setAmount(+e.target.value)} onBlur={() => setAmount(clamp(amount || 0))} aria-label="Raise amount" />
+        <div className="raise" role="group" aria-label={L.isBet ? 'Choose your bet' : 'Choose your raise'}>
+          <div className="raise-row presets">
+            {presets.map(([label, v]) => <button key={label} type="button" className={`btn small ${value === v ? 'on' : ''}`} aria-pressed={value === v} onClick={() => setAmount(v)}>{label}</button>)}
           </div>
-          <div className="raise-row">
-            <button className="btn small" onClick={() => setRaising(false)} aria-label="Back">←</button>
-            <input type="range" min={L.minRaiseTo} max={L.maxRaiseTo} step={1} value={amount} onChange={(e) => setAmount(+e.target.value)} aria-label="Raise slider" />
+          <div className="raise-row stepper">
+            <StepButton text={`−${chips(coarse)}`} label={`${chips(coarse)} less`} disabled={value <= min} onStep={() => nudge(-1, coarse)} />
+            {coarse > fine && <StepButton text={`−${chips(fine)}`} label={`${chips(fine)} less`} disabled={value <= min} onStep={() => nudge(-1, fine)} />}
+            <input type="number" inputMode="numeric" pattern="[0-9]*" className="amount" min={min} max={max} step={1} value={amount} enterKeyHint="done"
+              onChange={(e) => setAmount(e.target.value === '' ? '' : +e.target.value)} onBlur={() => setAmount(value)} onFocus={(e) => e.target.select()}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} aria-label={`${verb.replace(' to', '')} amount, ${chips(min)} to ${chips(max)}`} />
+            {coarse > fine && <StepButton text={`+${chips(fine)}`} label={`${chips(fine)} more`} disabled={value >= max} onStep={() => nudge(1, fine)} />}
+            <StepButton text={`+${chips(coarse)}`} label={`${chips(coarse)} more`} disabled={value >= max} onStep={() => nudge(1, coarse)} />
+          </div>
+          <div className="raise-row confirm">
+            <button type="button" className="btn small back" onClick={() => setRaising(false)} aria-label="Back to fold, call and raise">←</button>
+            <input type="range" min={0} max={SLIDER_MAX} step={1} value={betToSlider(value, min, max)} onChange={(e) => setAmount(sliderToBet(+e.target.value, min, max, fine))}
+              aria-label="Amount slider" aria-valuetext={chips(value)} />
             {raiseBtn}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Phone header: one labelled menu instead of a row of icon buttons. Its rows are the same controls the wide header shows. */
+function TableMenu({ open, setOpen, children }) {
+  const box = useRef(null), trigger = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const outside = (e) => { if (!box.current?.contains(e.target)) setOpen(false); };
+    const key = (e) => { if (e.key === 'Escape') { setOpen(false); trigger.current?.focus(); } };
+    document.addEventListener('pointerdown', outside);
+    window.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', key); };
+  }, [open, setOpen]);
+  return (
+    <div className="tp-menu-wrap" ref={box}>
+      <button type="button" ref={trigger} className={`btn small tp-menu-btn ${open ? 'on' : ''}`} aria-expanded={open} aria-controls="table-menu" onClick={() => setOpen(!open)} data-test="table-menu-btn">
+        Menu <span aria-hidden="true">▾</span>
+      </button>
+      {open && <div id="table-menu" className="tp-menu" role="group" aria-label="Table menu" data-test="table-menu">{children}</div>}
     </div>
   );
 }
@@ -656,7 +792,7 @@ function Info({ view, post, seated, code }) {
         </fieldset>}
         <div className="row wrap">
           {'Notification' in window && Notification.permission === 'default' && <button className="btn small" onClick={() => Notification.requestPermission()}>Notify me on my turn</button>}
-          {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('gags', { off: !view.gagsOff })} data-test="host-gags">{view.gagsOff ? 'Allow gags (host)' : 'Turn gags off (host)'}</button>}
+          {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('gags', { off: !view.gagsOff })} data-test="host-gags">{view.gagsOff ? 'Allow gags & spectacles (host)' : 'Turn gags & spectacles off (host)'}</button>}
           {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => post('tobacco', { off: !view.smokeOff })} data-test="host-smoke">{view.smokeOff ? 'Allow Smoke Shop (host)' : 'Turn Smoke Shop off (host)'}</button>}
           {view.me.isHost && view.status !== 'closed' && <button className="btn small" onClick={() => window.confirm('Close this table for everyone? Any hand in progress is cancelled and bets are returned.') && post('close')}>Close table (host)</button>}
         </div>
@@ -672,7 +808,7 @@ function Standings({ view }) {
       header={<div className="st-row st-head"><span>Name</span><span>Chips</span><span>In</span><span>Net</span></div>}
       render={(p) => (
         <div className={`st-row ${p.seated ? '' : 'muted'}`}>
-          <span className="st-name"><Bust id={p.playerId} avatar={view.avatars?.[p.playerId]} size={26} still />{p.name}{p.playerId === view.hostId ? <i className="muted"> · host</i> : ''}{!p.seated ? <i className="muted"> (left)</i> : ''}</span>
+          <span className="st-name"><Bust id={p.playerId} avatar={view.avatars?.[p.playerId]} size={26} still /><span className="st-who" title={p.name}>{p.name}</span>{p.playerId === view.hostId ? <i className="muted"> · host</i> : ''}{!p.seated ? <i className="muted"> (left)</i> : ''}</span>
           <span className="num">{chips(p.seated ? p.stack : p.cashOut)}</span>
           <span className="num">{chips(p.buyIn)}</span>
           <span className={`num ${p.net >= 0 ? 'pos' : 'neg'}`}>{signed(p.net)}</span>
@@ -746,6 +882,7 @@ export function MusicButton() {
           {st.on ? <><path d="M16 9.5a3.5 3.5 0 0 1 0 5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" /><path d="M18.5 7a7 7 0 0 1 0 10" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" /></>
             : <path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
         </svg>
+        <span className="menu-label">Music · {st.on ? 'on' : 'off'}</span>
       </button>
       {open && (
         <div className="music-pop" role="dialog" aria-label={st.set === 'jp' ? '8-bit Japan' : 'Saloon piano'}>

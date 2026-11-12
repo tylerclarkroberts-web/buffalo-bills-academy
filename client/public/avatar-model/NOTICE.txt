@@ -1,0 +1,23 @@
+Selfie avatar background removal
+
+MediaPipe Tasks Vision 1.2.2
+Copyright 2022 The MediaPipe Authors.
+Copyright 2023 The MediaPipe Authors.
+Licensed under the Apache License, Version 2.0. See LICENSE.txt.
+Upstream source: https://github.com/google-ai-edge/mediapipe
+Pinned package: https://www.npmjs.com/package/@mediapipe/tasks-vision/v/1.2.2
+Package metadata: https://registry.npmjs.org/@mediapipe/tasks-vision/1.2.2
+The matching WebAssembly runtime and loader are emitted from this npm package
+by Vite. They are unmodified upstream assets.
+
+SelfieMulticlass 256x256, float32, version 1
+Author: Adel Ahmadyan, Google, as attributed in the upstream model card.
+Licensed under the Apache License, Version 2.0. See LICENSE.txt.
+Model card: https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf
+Original download: https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite
+Local filename: selfie_multiclass_256x256-v1.tflite
+Size: 16371837 bytes
+SHA-256: c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0
+The model is redistributed without modification.
+
+Apache License text: https://www.apache.org/licenses/LICENSE-2.0.txt

@@ -4,9 +4,9 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 
-const CIG = 'filtered';
+const CIG = 'tob-filtered'; // the Smoke Shop's Filtered Cigarette (catalog/tobacco.js)
 
-function dayKey(now) {
+export function dayKey(now) {
   const d = new Date(now);
   return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
 }

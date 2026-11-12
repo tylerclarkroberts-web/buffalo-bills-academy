@@ -2,7 +2,7 @@
 
 ## Install and run
 
-Run from the repository root with Node.js 20+:
+Use Node.js 22.12+ from the repository root:
 
 ```sh
 npm ci
@@ -10,98 +10,103 @@ npm run build
 npm run server
 ```
 
-Open http://localhost:3000. Stop a foreground server with Ctrl+C. On Windows, `npm.cmd` avoids PowerShell execution-policy problems with `npm.ps1`.
+Open http://localhost:3000. Stop with Ctrl+C. On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.
 
 | Command | Behavior |
 | --- | --- |
-| `npm ci` | Installs the committed lockfile’s dependencies. |
+| `npm ci` | Installs the committed lockfile's dependencies. |
 | `npm run build` | Builds `client/` into `dist/`. |
-| `npm run server` | Starts Express and serves the existing `dist/` build on port 3000 by default. It does not build the frontend. |
-| `npm start` | Installs packages if Vite is missing, builds if the built index is missing or `client/` is newer, then starts the server. Explicitly rebuild after dependency or build-configuration changes. |
-| `npm run dev` | Starts the watched API server on 3000 and Vite hot reload on 5173. See the authentication limitation below. |
-| `npm test` | Runs the checked-in `test/*.test.js` files with Node’s native test runner. |
+| `npm run server` | Serves the existing build on port 3000; it does not build. |
+| `npm start` | Installs if Vite is missing, builds if the index is missing or `client/` is newer, then starts. Rebuild explicitly after dependency/configuration changes. |
+| `npm run dev` | Watched API server on 3000 and Vite on 5173; see the login limitation below. |
+| `npm test` | Runs `test/*.test.js` with Node's native test runner. |
 
-Many historical `e2e:*` aliases reference scripts omitted from the public source snapshot. Check that a script exists before relying on it. There is no separate lint command configured.
+Many historical `e2e:*` aliases name scripts omitted from this snapshot. Check that the script exists before using an alias. There is no separate lint command.
 
 ### Development authentication on port 5173
 
-`vite.config.js` currently proxies `/api` to port 3000, but the browser also uses `/auth/*` for login, registration, logout, and password changes. Those routes are not proxied. A local check found `/api/health` working on 5173 while `POST /auth/login` returned 404.
-
-Use the built frontend on port 3000 for a complete local flow until this proxy issue is fixed. A working health check alone does not verify login. This is a documented existing issue; the public-table feature does not change Vite configuration.
+Vite proxies `/api` but not `/auth/*`; login, registration, logout and password changes therefore fail on 5173. Use the built frontend on 3000 for a complete local flow. A working health endpoint does not verify login.
 
 ## Environment configuration
 
-The app reads process environment variables. It does not load `.env` files automatically. [.env.example](../.env.example) lists the optional integration names without credentials.
+The app reads the shell environment; it does not load `.env` files automatically. [.env.example](../.env.example) lists optional integration settings without credentials.
 
 | Variable | Purpose / default |
 | --- | --- |
-| `PORT` | HTTP port; defaults to `3000`. |
-| `DATA_DIR` | Local data directory; defaults to repository `data/`. |
-| `STATIC_DIR` | Built frontend directory; defaults to repository `dist/`. |
-| `PUBLIC_URL` | Public origin used for canonical redirects and OAuth URLs. Leave unset for ordinary local testing. |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` | Enable optional Google login when all three are configured. Supply your own random session secret and configure the public callback URL. |
-| `SLACK_BOT_TOKEN` | Enables optional Slack integration; leave unset when testing without Slack. |
+| `PORT` | HTTP port; `3000`. |
+| `DATA_DIR` | Local data directory; repository `data/`. |
+| `STATIC_DIR` | Built frontend directory; repository `dist/`. |
+| `PUBLIC_URL` | Public origin for redirects and OAuth. Leave unset for ordinary local testing. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET` | Optional Google login requires all three, a random session secret and the configured callback. |
+| `SLACK_BOT_TOKEN` | Optional Slack integration; leave unset when testing without Slack. |
 | `DEV_LOGIN` | `1` enables development sign-in and test hooks. Leave unset outside local testing. |
-| `ALLOW_GUEST` | `0` disables guest-player creation. Username accounts do not require Google setup. |
-| `CONQUESTK_URL`, `CONQUESTK_SERVICE_TOKEN` | Optional ConquestK service origin and dedicated integration credential; see [ConquestK integration](conquest-integration.md). |
-| `CONQUESTK_BETTING_ENABLED`, `CONQUESTK_PILOT_PLAYER_IDS` | New-bet rollout switch (default disabled) and optional Academy player allowlist. Existing-bet recovery stays enabled. |
+| `ALLOW_GUEST` | `0` disables guest creation. Username accounts need no Google setup. |
+| `CONQUESTK_URL`, `CONQUESTK_SERVICE_TOKEN` | Optional ConquestK origin and dedicated server credential; see [integration setup and recovery](conquest-integration.md). |
+| `CONQUESTK_BETTING_ENABLED`, `CONQUESTK_PILOT_PLAYER_IDS` | New-bet switch (disabled by default) and optional player allowlist. Existing-bet recovery stays enabled. |
 
-For a local alternate port in PowerShell:
+Google OAuth's callback is `<PUBLIC_URL>/auth/google/callback`; when `PUBLIC_URL` is unset, it uses the request origin.
+
+For an alternate local port in PowerShell:
 
 ```powershell
 $env:PORT = '3001'
 npm.cmd run server
 ```
 
-Unset inherited integration credentials for isolated local testing. Never commit credentials, personal photos, session data, or production game state. The [.gitignore](../.gitignore) excludes local data, environment files, dependencies, and builds.
+Unset inherited integration credentials for isolated testing. Never commit credentials, private photos, sessions or production game state. [.gitignore](../.gitignore) excludes local data, environment files, dependencies and builds.
 
 ## Code map
 
 | Area | Entry points |
 | --- | --- |
-| React startup and routing | `client/src/main.jsx`, `App.jsx`, `Shell.jsx` |
-| Lobby and table creation | `client/src/Home.jsx` |
-| Browser HTTP/session helpers | `client/src/api.js` |
-| Poker screen | `client/src/TablePage.jsx`, `client/src/table/` |
-| Express startup, routes, feature wiring | `server/index.js`, `server/app.js` |
-| Poker orchestration and timers | `server/service.js` |
-| Poker rules, cards, evaluation, pots | `server/engine/` |
-| Blackjack | `server/blackjack/`, `client/src/bj/` |
-| Other games | Matching slots, mines, barn, store, and avatar modules under `server/` and `client/src/` |
-| Shared play-money bankroll | `server/accounts.js` |
-| Accounts and sessions | `server/auth.js`, `server/passwords.js` |
-| Persistence | `server/store.js` |
-| ConquestK account links and Risk bets | `server/conquest.js`, `client/src/Conquest.jsx`, `test/conquest.test.js` |
+| Client routing, navigation and lobby | `client/src/main.jsx`, `App.jsx`, `Shell.jsx`, `Home.jsx`; HTTP/session helpers in `api.js`. |
+| Server wiring, accounts and storage | `server/index.js`, `app.js`, `auth.js`, `accounts.js`, `store.js`. |
+| Poker | `server/service.js`, `server/engine/`, `client/src/TablePage.jsx`, `client/src/table/`. |
+| Other games | Matching blackjack, slots, mines and barn modules under `server/` and `client/src/`; bug rules in `server/engine/bug-combat.js` and `bout.js`. |
+| Rooms | `server/rooms.js`, `server/catalog/room.js`, `client/src/room/`. |
+| Selfies | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`. |
+| ConquestK | `server/conquest.js`, `client/src/Conquest.jsx`, `test/conquest*.test.js`. |
 
-The frontend uses browser-history routing. Poker table updates use Server-Sent Events to trigger a refetch of each player’s view; the public lobby instead polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
+Poker uses Server-Sent Events to trigger a refetch of each player's view; the public lobby polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
+
+New poker log entries include compact public table frames for visual catch-up, within the existing 300-entry limit. Frames keep historical occupants and chip counts, never decks or private hole cards; publicly shown cards appear only from their reveal onward. Old entries without frames remain readable in the log and are not reconstructed for playback.
+
+Queued tobacco moments keep a bounded public `pendingSmokes` list in the table until their scheduled time. The normal table timer records each due moment with its current public frame, including in lobbies and after restart; closing the table cancels pending moments. The shop's inventory and legacy tobacco history remain separate.
 
 ## Local persistence
 
-`server/store.js` loads state into process memory and writes JSON files, including `players.json`, per-table files under `tables/`, and additional feature/session documents. Avatars also live under the data directory. Writes use a temporary file followed by a rename.
+`server/store.js` keeps state in memory and writes JSON under `DATA_DIR`, including `players.json`, per-table files in `tables/`, feature/session documents and avatars. Writes use a temporary file followed by rename. Room layout metadata lives separately in `rooms.json`; money, ownership and pet clocks remain in their existing systems. See [room compatibility and persistence](personal-rooms.md#api-and-persistence) before changing its schema or rolling back.
 
-Keep the data directory to preserve local state. Stop the server before manually inspecting or changing saved state, and keep a copy before intentional maintenance. Atomic file replacement does not provide a transaction spanning multiple files, and separate server processes do not share an in-memory store. Do not assume this design supports multiple concurrent replicas against one data directory.
+Blackjack earnings in `blackjack.json` accumulate net results when a player cashes out or a human house returns its bank; active sessions are excluded. Older saves recover surviving cash-out records and returned house results, but replaced seats cannot be recovered, so older totals may be incomplete. Keep the earnings fields when maintaining or restoring this file.
+
+Version-2 mining saves resolved deposits, bucket contents and prepared settlements in `mines.json`. Bankroll, transaction, statistics and the payment receipt commit together in `players.json`; shift-keyed receipts and Foreman markers make recovery idempotent across the separate files. Holds are memory-only. Read [Mines compatibility and recovery](acid-mines.md#persistence-and-recovery) before changing this flow or rolling back; new bucket shifts must not be processed by the legacy settlement path.
+
+Preserve the data directory. Stop the server before manual state maintenance and keep a backup. Atomic replacement is not a transaction across files, and separate processes do not share memory: multiple writers/replicas must not share one data directory. [ConquestK](conquest-integration.md#persistence-and-recovery) has additional ledger/recovery requirements.
 
 ## Validation and known baseline
 
-Build the frontend and run tests appropriate to the change. For public-table discovery and account deletion:
+Run focused tests for the changed behavior, build for frontend changes, and use the full suite for cross-cutting changes. For example:
 
 ```sh
 node --test test/public-tables.test.js test/delete-account.test.js
+npm run build
+npm test
 ```
 
-For UI changes, check both desktop and mobile, including a short/narrow viewport, loading and empty states, and the primary interaction. For API or persistence changes, exercise the actual HTTP boundary, invalid input, and existing saved records where relevant.
+Exercise actual HTTP requests, invalid input and old saved records when changing API or persistence behavior. For UI changes, check the main interaction, loading/empty/error states, keyboard access, desktop and narrow/short mobile layouts. Poker/blackjack sizing changes also need 1440p and 4K checks at 100% scaling. Model tests and browser emulation do not establish physical-phone, Safari or GPU performance.
 
-For host settings, `node --test test/host-settings.test.js test/v42.test.js test/game.test.js` covers the new update path alongside existing auto-check and poker rules. See [Host options and room history](table-options-and-history.md) for the host controls and lobby filter checks.
+- Show-card requests to `POST /api/tables/:code/show` should include the original `handNumber`; stale requests are rejected before affecting a later hand. `which: "none"` saves dismissal without revealing more cards. Keep the legacy omitted-hand behavior covered by `test/showcards.test.js`.
+- Mine tilt controls are opt-in and require a secure context (normally HTTPS, not a phone-accessible HTTP LAN address). Sensor data stays local and unsaved; touch fallback remains available. See `client/src/mines/tilt.js` and `test/mines-tilt.test.js`; real-phone comfort and Safari support remain unverified.
+- Bucket shifts require versioned probe/extraction requests and server-confirmed collection. The [Mines API and checks](acid-mines.md#api-and-compatibility) cover late responses, stop/retry, expiry, legacy saves and settlement recovery. `npm run sim:mines -- 5000` compares repeatable legacy, unguided and ideal-route timings; it does not verify human play or the deployed bug guide.
 
-During verification of host options and room filters on November 8, 2026, using Node 24.19.0/npm 11.17.0 on Windows:
+Windows temporary-file renames can fail with `EPERM`. Retry with `TEMP` and `TMP` pointing to a writable workspace-local temporary directory excluded from commits. Record the actual rerun result; an environment failure proves neither a code regression nor a passing check.
 
-- `npm run build` passed.
-- Public-table and account-deletion tests: 6 passed.
-- Host-settings, existing speed-option, and poker-engine tests: 30 passed.
-- Full suite: 194 tests, 189 passed, 5 failed.
-- Four Doom tests failed before their assertions because their URL-to-path conversion produced `C:\C:\...` paths on Windows.
-- The Slack stale-alert test failed its existing assertion and also failed in isolation.
+The suite has no known failures: the Doom Windows path errors and the Slack stale-turn timing race recorded in [PR #33](https://github.com/tylerclarkroberts-web/buffalo-bills-academy/pull/33) are fixed. Treat any failure as new. Put per-change commands, results and browser evidence in the PR; keep only actionable known limitations here.
 
-These are recorded observations, not permanent expected failures. Report the current result on every relevant PR, investigate new failures, and update this section when the baseline changes. Do not describe the full suite as passing while failures remain.
+## Selfie avatar checks
 
-The public source snapshot does not contain the live deployment setup. Building, pushing, or merging here does not deploy the production site. See [Contributing](../CONTRIBUTING.md) for the review and documentation workflow.
+Run `node --test test/avatar-mask.test.js test/selfie-framing.test.js test/cutout-brush.test.js test/head-segmenter.test.js test/avatar-upload.test.js test/facegate.test.js`, then build. Use synthetic or explicitly authorized test photos.
+
+Check camera/upload, framing, automatic removal, manual fallback, brush/keyboard edits, preview, save retry, cancel and page exit. Inspect actual network traffic: the model/runtime must load from this origin, only the finished PNG should upload on save, and the only third-party request should be MediaPipe's metrics post to `odml.pa.googleapis.com`. Original photos, masks and worker input stay local; leaving or successful save clears editing copies. Verify real inference, not just a model download. Preserve model notices and recheck the hash/outbound requests when upgrading; see [Selfie avatars](selfie-avatars.md#model-licensing-and-maintenance).
+
+The live deployment setup is outside this public snapshot. Building, pushing or merging does not deploy the site. Follow [Contributing](../CONTRIBUTING.md) for review and separate release coordination.

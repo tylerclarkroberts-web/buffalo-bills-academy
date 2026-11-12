@@ -5,10 +5,10 @@ h2{font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:#2ee6d6;ma
 .k{font:12px ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:#7fa6a2}nav{margin-top:36px;font-size:14px}`;
 const UPDATED = 'October 29, 2026';
 
-function page(title, body) {
+function page(title, body, updated = UPDATED) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} · Buffalo Bill's Academy</title><link rel="icon" href="/favicon.svg"><style>${STYLE}</style></head>
-<body><main><p class="k">Buffalo Bill's Academy · updated ${UPDATED}</p><h1>${title}</h1>${body}
+<body><main><p class="k">Buffalo Bill's Academy · updated ${updated}</p><h1>${title}</h1>${body}
 <nav><a href="/">Back to the card room</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></nav></main></body></html>`;
 }
 
@@ -25,13 +25,13 @@ export const PRIVACY_HTML = page('Privacy', `
 <li><b>A sign-in cookie</b> that keeps you logged in. No advertising or tracking cookies.</li>
 </ul>
 <h2>Your face photo</h2>
-<p>The selfie or photo you use for your avatar is never uploaded or stored. It is turned into a low-poly drawing inside your own browser and thrown away straight after; only the finished drawing is sent to the server.</p>
+<p>Your original selfie or photo stays in this browser while you frame it, remove its background and edit the cutout. Background removal runs on your device using a model downloaded from this site. The background-removal library (Google's MediaPipe) sends Google performance and usage metrics about the library itself each time it runs; it does not send your photo. Only the finished low-poly drawing is sent to the server when you save; the original photo is not uploaded or stored on the server. The app clears its local editing copies after a successful save, when you cancel or retake, and when you leave the avatar page. This does not delete the original file in your photo library. Anything left in the saved drawing is visible in your avatar.</p>
 <h2>What we don't do</h2>
 <p>We don't sell or share your data, show ads, or use it for anything except running the game. Other players can see your display name, avatar and game stats (for example on the leaderboard). Your email is shown only to you.</p>
 <h2>Deleting your data</h2>
 <p>You can retake or replace your avatar from your profile at any time. For account removal, contact the person who invited you. Accounts with ConquestK link or Risk bet history require operator-assisted anonymization after outstanding bets settle; linked IDs and wager receipts must be retained to preserve account bindings and prevent duplicate payments.</p>
 <h2>No real money</h2>
-<p>Everything in the game is play money with no cash value. Not affiliated with any casino, resort or golf course.</p>`);
+<p>Everything in the game is play money with no cash value. Not affiliated with any casino, resort or golf course.</p>`, 'November 10, 2026');
 
 export const TERMS_HTML = page('Terms', `
 <p>By using Buffalo Bill's Academy you agree to these short terms.</p>

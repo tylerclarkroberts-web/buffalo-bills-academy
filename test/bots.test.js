@@ -127,9 +127,9 @@ test('bot table over HTTP: practice chips, bots play, no leaks, friends refused,
 });
 
 test('mines: each finished shift stores its duration and a running total, and the profile does not show it', () => {
-  const store = { players: {}, savePlayers() {}, savePlayer() {} };
+  const store = { players: {}, savePlayers() {}, savePlayer() {}, commitPlayerDrafts(drafts) { for (const draft of drafts) Object.assign(this.players[draft.id], draft); } };
   const acc = new Accounts({ store, now: () => 1 });
-  const p = { id: 'x', name: 'X' }; acc.ensure(p);
+  const p = { id: 'x', name: 'X' }; store.players[p.id] = p; acc.ensure(p);
   acc.recordShift(p, { outcome: 'paid', title: 'Paid', amount: 5, at: 10, ms: 61000 });
   acc.recordShift(p, { outcome: 'scared', title: 'Scared', amount: 0, at: 20, ms: 22500 });
   assert.equal(p.mining.totalMs, 83500); assert.equal(p.mining.history[0].ms, 61000); assert.equal(p.mining.history[1].ms, 22500);

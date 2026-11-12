@@ -15,9 +15,12 @@ const Store = lazy(() => import('./store/Store.jsx'));
 const Slots = lazy(() => import('./slots/SlotsPage.jsx'));
 const Blackjack = lazy(() => import('./bj/BlackjackPage.jsx'));
 const Conquest = lazy(() => import('./Conquest.jsx'));
+const Room = lazy(() => import('./room/Room.jsx'));
+const Foff = lazy(() => import('./foff/Foff.jsx'));
 
 export function navigate(path, { replace = false } = {}) {
   if (path === window.location.pathname + window.location.search) return;
+  if (!window.dispatchEvent(new CustomEvent('bba:navigate', { detail: { path }, cancelable: true }))) return;
   window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
@@ -51,23 +54,26 @@ export default function App() {
     if (to) navigate(to, { replace: true });
   }, [me?.id, me?.hasAvatar, path]);
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
+  if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // unlisted on purpose
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);
+  const room = path.match(/^\/rooms\/([\w-]+)\/?$/);
   let page;
   if (path.startsWith('/welcome') || path.startsWith('/profile/face')) {
     const next = safeNext(query.get('next') || (path.startsWith('/profile') ? '/profile' : '/'));
     page = <Suspense fallback={<div className="screen" />}><AvatarMaker next={next} retake={path.startsWith('/profile')} /></Suspense>;
-  } else if (t) page = <TablePage code={t[1].toUpperCase()} />;
+  } else if (t) page = <TablePage key={`${t[1].toUpperCase()}.${me?.id || 'spectator'}`} code={t[1].toUpperCase()} />;
   else if (path.startsWith('/multi')) page = <Suspense fallback={<div className="screen" />}><Multi wanted={(query.get('t') || '').split(',').filter(Boolean)} /></Suspense>;
   else if (path.startsWith('/conquest')) page = <Suspense fallback={<div className="screen muted">Loading Risk bets…</div>}><Conquest /></Suspense>;
-  else if (path.startsWith('/profile')) page = <Profile />;
-  else if (p) page = <Profile id={p[1]} />;
+  else if (path === '/room' || room) page = <Suspense fallback={<div className="screen muted">Opening the bunkhouse…</div>}><Room key={`${room?.[1] || 'mine'}.${me?.id || 'visitor'}`} id={room?.[1]} /></Suspense>;
+  else if (path.startsWith('/profile')) page = <Profile key={`${me?.id || 'signed-out'}.self`} />;
+  else if (p) page = <Profile key={`${me?.id || 'signed-out'}.${p[1]}`} id={p[1]} />;
   else if (path.startsWith('/leaderboard')) page = <Leaderboard />;
   else if (path.startsWith('/invest')) page = <Invest />;
   else if (path.startsWith('/store')) page = <Suspense fallback={<div className="screen" />}><Store /></Suspense>;
   else if (path === '/bj' || path.startsWith('/bj/')) page = <Suspense fallback={<div className="screen" />}><Blackjack code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;
   else if (path.startsWith('/slots')) page = <Suspense fallback={<div className="screen" />}><Slots /></Suspense>;
   else if (path.startsWith('/barn')) page = <Suspense fallback={<div className="screen" />}><Barn /></Suspense>;
-  else page = <Home tab={query.get('tab') || undefined} />; // '/' and old '/lobby' links: the card room lobby
+  else page = <Home key={me?.id || 'signed-out'} tab={query.get('tab') || undefined} />; // '/' and old '/lobby' links: the card room lobby
   return <Shell path={path}>{page}</Shell>;
 }

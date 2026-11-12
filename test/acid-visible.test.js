@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { VeinTracker, MINE_REACH, LEAVE_REACH, AWAY_POLL_MS } from '../client/src/mines/vein.js';
-import { makeMaze, veinChain, FIRST_POOL_STEPS } from '../client/src/mines/maze.js';
+import { makeMaze, veinChain, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { createApp } from '../server/app.js';
 
 const chain = [{ x: 5, y: 5 }, { x: 9, y: 1 }, { x: 1, y: 9 }];
@@ -69,7 +69,10 @@ test('errors back off and never flip what is drawn', () => {
   assert.equal(v.look, 'damp'); assert.equal(v.wantProbe(100), null); assert.equal(v.wantProbe(3000), 'pool');
 });
 
-test('end to end with the real server: once the pool glows, finish pays (no 425), on every maze size', async () => {
+test('end to end with the real server: once a pool shows acid, mining it is allowed (no 425) and pays, on every maze size', async () => {
+  // Bucket shifts (rules v2): the server only fills a pool in once you reach and inspect it, so the invariant is
+  // "a pool the server reports as holding acid can be mined the moment you are in reach".
+  const V2 = { rulesVersion: 2 };
   for (const [veinMs, cells] of [[20000, 7], [60000, 9], [200000, 11]]) {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-acidvis-'));
     const clock = { t: 1_700_000_000_000 };
@@ -79,19 +82,27 @@ test('end to end with the real server: once the pool glows, finish pays (no 425)
     try {
       const lr = await fetch(base + '/auth/dev', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Vis', email: `vis${cells}@x.test` }) });
       const cookie = lr.headers.get('set-cookie').split(';')[0];
-      const post = async (u, b) => { const x = await fetch(base + u, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(b || {}) }); return { status: x.status, body: await x.json() }; };
-      const s = (await post('/api/mines/start')).body;
-      const maze = makeMaze(s.seed, s.cells, FIRST_POOL_STEPS[s.cells]);
-      const v = new VeinTracker(veinChain(maze, s.seed));
-      // walk: alternate "at the pool" and "walking", 2.5 s of game time per step, until it glows
-      for (let k = 0; v.look !== 'acid' && k < 400; k++) {
-        clock.t += 2500; v.reach(k % 3 === 0 ? 0.5 : 7);
-        const kind = v.wantProbe(clock.t); if (!kind) continue;
-        v.begin(kind); v.settle((await post('/api/mines/probe', { shiftId: s.shiftId })).body, clock.t);
+      const post = async (u, b) => { const x = await fetch(base + u, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(b || {}) }); return { status: x.status, body: await x.json() }; }
+      let s = (await post('/api/mines/start', V2)).body;
+      const v = new VeinTracker(s.pools);
+      const current = () => s.pools.find((p) => p.id === s.currentPoolId);
+      // walk pool to pool, inspecting each on arrival, until one holds acid
+      for (let k = 0; !current()?.remaining && k < 400; k++) {
+        clock.t = Math.max(clock.t + 2500, s.readyAt || 0); v.reach(0.5);
+        assert.equal(v.wantProbe(clock.t), 'pool');
+        const ask = await post('/api/mines/probe', { ...V2, shiftId: s.shiftId, poolId: s.currentPoolId });
+        assert.equal(ask.status, 200, JSON.stringify(ask.body)); s = ask.body;
       }
+      v.flowing = !!current()?.remaining;
       assert.equal(v.look, 'acid');
       v.reach(0.5); assert.equal(v.canMine(), true);
-      const f = await post('/api/mines/finish', { shiftId: s.shiftId });
+      const poolId = s.currentPoolId;
+      const hold = await post('/api/mines/extract', { ...V2, shiftId: s.shiftId, poolId, action: 'start' });
+      assert.equal(hold.status, 200, JSON.stringify(hold.body));
+      clock.t += 1000;
+      const drawn = await post('/api/mines/extract', { ...V2, shiftId: s.shiftId, poolId, action: 'stop' });
+      assert.equal(drawn.status, 200, JSON.stringify(drawn.body));
+      const f = drawn.body.result ? drawn : await post('/api/mines/quit', { ...V2, shiftId: s.shiftId });
       assert.equal(f.status, 200, JSON.stringify(f.body));
     } finally { r.shutdown(); server.closeAllConnections?.(); await new Promise((res) => server.close(res)); }
   }

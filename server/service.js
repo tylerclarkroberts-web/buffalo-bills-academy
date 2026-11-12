@@ -92,13 +92,22 @@ export class PokerService {
   renamePlayer(player, name) {
     player.name = cleanName(name);
     this.store.savePlayers();
+    // Every table that knows this player: their seat, and their standings row if they have left.
     for (const t of this.store.allTables()) {
-      const s = t.seats.find((x) => x && x.playerId === player.id);
-      if (s) this.mutate(t.code, (tb) => { tb.seats.find((x) => x && x.playerId === player.id).name = player.name; if (tb.ledger[player.id]) tb.ledger[player.id].name = player.name; });
+      const seated = t.seats.some((x) => x && x.playerId === player.id && x.name !== player.name);
+      const listed = t.ledger?.[player.id] && t.ledger[player.id].name !== player.name;
+      if (!seated && !listed) continue;
+      this.mutate(t.code, (tb) => {
+        for (const s of tb.seats) if (s && s.playerId === player.id) s.name = player.name;
+        if (tb.ledger[player.id]) tb.ledger[player.id].name = player.name;
+      });
     }
     return { id: player.id, name: player.name };
   }
-  /** Change the login handle (@username). Display name is separate (renamePlayer). Sessions stay on player id. */
+  /**
+   * Change the login handle (@username). Sessions stay on player id. The display name is separate (renamePlayer),
+   * but a player who never chose one is still shown under their handle, so in that case the name follows the handle.
+   */
   changeUsername(player, raw) {
     const username = normUsername(raw);
     const err = checkUsername(username);
@@ -106,6 +115,7 @@ export class PokerService {
     if (player.login?.username === username) return { username };
     const taken = this.loginTaken({ username }, player.id);
     if (taken) throw new G.GameError(taken, 409);
+    const followed = !!player.login?.username && String(player.name).trim().toLowerCase() === player.login.username;
     if (!player.login) {
       player.login = { username, email: player.google?.email || null, hash: null, changedAt: this.now() };
     } else {
@@ -113,6 +123,7 @@ export class PokerService {
       player.login.changedAt = this.now();
     }
     this.store.savePlayers();
+    if (followed) this.renamePlayer(player, String(raw).trim());
     return { username };
   }
 
@@ -168,10 +179,13 @@ export class PokerService {
     const t = this.getTable(code);
     const avatars = {};
     for (const s of t.seats) if (s?.playerId) avatars[s.playerId] = s.bot ? botAvatar(t, s.playerId) : this.avatars ? this.avatars.info(this.store.players[s.playerId]) : null;
+    for (const e of t.log) for (const s of e.frame?.seats || []) if (s?.playerId && !(s.playerId in avatars)) {
+      avatars[s.playerId] = s.bot ? botAvatar(t, s.playerId) : this.avatars && this.store.players[s.playerId] ? this.avatars.info(this.store.players[s.playerId]) : null;
+    }
     for (const l of t.lastHand?.allInLosers || []) if (!(l.playerId in avatars) && this.store.players[l.playerId]) avatars[l.playerId] = this.avatars ? this.avatars.info(this.store.players[l.playerId]) : null;
     const v = { ...G.viewFor(t, player?.id ?? null, this.now()), visibility: t.visibility === 'public' ? 'public' : 'private', econ: !!t.econ, avatars };
     if (t.bots) { v.bots = { count: t.bots.count, friends: t.bots.friends }; for (const st of v.seats) if (st && t.seats[st.seat]?.bot) st.bot = true; }
-    if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id));
+    if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id), t.settings.bigBlind);
     if (v.fight && this.avatars && !(v.fight.playerId in avatars) && this.store.players[v.fight.playerId]) avatars[v.fight.playerId] = this.avatars.info(this.store.players[v.fight.playerId]);
     return v;
   }
@@ -183,6 +197,7 @@ export class PokerService {
         return {
           code: t.code, name: t.name, status: t.status, visibility: t.visibility === 'public' ? 'public' : 'private', players: t.seats.filter(Boolean).length, maxPlayers: t.settings.maxPlayers,
           seated: seat >= 0, myTurn: !!t.hand && t.hand.toAct === seat && seat >= 0, deadline: t.hand && t.hand.toAct === seat ? t.hand.deadline : null,
+          turn: G.turnSummary(t, player.id),
           handNumber: t.handNumber, isHost: t.hostId === player.id, createdAt: t.createdAt, bots: !!t.bots,
           ready: t.seats.filter((_, i) => G.eligibleForHand(t, i)).length, // players who could be dealt in (2+ to start)
           afkMoved: seat < 0 && t.status !== 'closed' ? t.afkMoved?.[player.id] || null : null, // moved out after missed turns
@@ -302,7 +317,7 @@ export class PokerService {
   sitOut(code, player, sitOut) { return this.mutate(code, (t, ctx) => G.setSittingOut(t, player.id, sitOut, ctx), player.id); }
   leave(code, player) { return this.mutate(code, (t, ctx) => G.leaveTable(t, player.id, ctx), player.id); }
   showdownSeen(code, player, number) { return this.mutate(code, (t) => G.markShowdownSeen(t, player.id, number), player.id); }
-  show(code, player, which) { return this.mutate(code, (t, ctx) => G.showCards(t, player.id, which, ctx), player.id); }
+  show(code, player, which, handNumber) { return this.mutate(code, (t, ctx) => G.showCards(t, player.id, which, ctx, handNumber), player.id); }
   /** Speech bubble: seated players only, 10 edits a minute each (in memory; resets on restart, which is fine). */
   say(code, player, text) {
     const t = this.getTable(code);

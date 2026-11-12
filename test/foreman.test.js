@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { RANTS, CLOSERS, ESCALATION, JABS, PRAISE, makeProblem, makeScene, sceneLength, GENERATORS, BONUS, BONUS_PER_HOUR } from '../server/foreman.js';
+import { PAID_RANTS, paidFarewell } from '../client/src/mines/paidFarewell.js';
 async function boot(opts = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-foreman-'));
   const clock = { t: 1_700_000_000_000 };
@@ -12,21 +13,42 @@ async function boot(opts = {}) {
   const server = await new Promise((res) => { const s = r.app.listen(0, () => res(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const stop = async () => { r.shutdown(); server.closeAllConnections?.(); await new Promise((res) => server.close(res)); };
-  return { base, clock, stop, dataDir };
+  return { base, clock, stop, dataDir, service: r.service };
 }
 async function login(base, email) {
   const r = await fetch(base + '/auth/dev', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Digger', email }) });
   const cookie = r.headers.get('set-cookie').split(';')[0];
   const req = async (m, u, b) => { const x = await fetch(base + u, { method: m, headers: { 'content-type': 'application/json', cookie }, body: b ? JSON.stringify(b) : undefined }); return { status: x.status, body: await x.json() }; };
-  return { post: (u, b) => req('POST', u, b || {}), get: (u) => req('GET', u), del: (u, b) => req('DELETE', u, b) };
+  return { post: (u, b) => req('POST', u, { ...(/^\/api\/mines\/(start|quit|finish)$/.test(u) ? { rulesVersion: 2 } : {}), ...b }), get: (u) => req('GET', u), del: (u, b) => req('DELETE', u, b) };
 }
 // v48: problems are word/multi-step, so tests read the held answer from the server's own doc (never sent to clients)
 let DATA = null; const held = (pendId) => { const d = JSON.parse(fs.readFileSync(DATA + '/foreman.json', 'utf8')); return Object.values(d.pending).find((x) => x.id === pendId).problem.answer; };
 
 test('lines: farmer swears only, no real profanity anywhere', () => {
-  const all = [...Object.values(RANTS).flat(2), ...ESCALATION, ...CLOSERS, ...JABS, ...PRAISE].join(' \n ').toLowerCase();
+  const all = [...Object.values(RANTS).flat(2), ...ESCALATION, ...CLOSERS, ...JABS, ...PRAISE, ...PAID_RANTS.flat()].join(' \n ').toLowerCase();
   for (const w of ['fuck', 'shit', 'damn', 'hell', 'bitch', 'ass ', 'bastard', 'crap', 'piss', 'goddam', 'dick', 'cock']) assert.ok(!all.includes(w), w);
   for (const w of ['dad-gummit', 'biscuit-eatin', 'cow-patties', 'horse apples', 'dagnabbit', 'sack of feed corn']) assert.ok(all.includes(w), w);
+});
+test('paid departures: short, quieter scenes without a problem for normal pay and jackpots', () => {
+  for (const outcome of ['normal', 'motherlode', 'aliens', 'diamonds']) {
+    const result = { outcome, amount: outcome === 'normal' ? 100 : 10000, bankroll: 12000 };
+    const before = structuredClone(result);
+    for (let i = 0; i < PAID_RANTS.length; i++) {
+      const scene = paidFarewell(result, () => (i + 0.5) / PAID_RANTS.length);
+      assert.equal(scene.reason, 'paid');
+      assert.deepEqual(scene.lines, PAID_RANTS[i]);
+      assert.equal(scene.lines.length, 3);
+      assert.equal(new Set(scene.lines).size, 3);
+      assert.ok(!('problem' in scene));
+      for (const line of scene.lines) assert.doesNotMatch(line, /[A-Z]{4,}|[!?]{2,}/, 'no shouted tirade');
+    }
+    assert.deepEqual(result, before, 'farewells do not change payout data');
+  }
+});
+test('paid departures do not replace mud lectures or run without a payout', () => {
+  for (const result of [null, undefined, { outcome: 'dud', amount: 10 }, { outcome: 'normal', amount: 0 }]) {
+    assert.equal(paidFarewell(result), null);
+  }
 });
 // independent re-derivation of every generator's answer from its text
 const derive = (t) => {
@@ -72,7 +94,9 @@ test('quit: no pay, the foreman blocks clock-in until a right answer; wrong answ
     const pend = q.body.pending; assert.equal(pend.reason, 'quit'); assert.ok(pend.lines.length >= 4 && pend.lines.length <= 20); assert.ok(!('answer' in pend.problem));
     assert.equal((await u.get('/api/me')).body.bankroll, bank0, 'quitting pays nothing');
     const st = await u.post('/api/mines/start'); assert.equal(st.status, 409); assert.equal(st.body.code, 'foreman');
-    assert.equal((await u.post('/api/mines/finish', { shiftId: sh.shiftId })).status, 409, 'the quit shift cannot be paid later');
+    const retry = await u.post('/api/mines/finish', { shiftId: sh.shiftId });
+    assert.equal(retry.status, 200); assert.equal(retry.body.pending.id, pend.id, 'the quit receipt repeats its lecture without paying');
+    assert.equal((await u.get('/api/me')).body.bankroll, bank0);
     assert.equal((await u.post('/api/mines/foreman/answer', { id: pend.id, answer: 'twelve' })).status, 400);
     assert.equal((await u.post('/api/mines/foreman/answer', { id: 'x', answer: 1 })).status, 409);
     const w = await u.post('/api/mines/foreman/answer', { id: pend.id, answer: held(pend.id) + 1 });
@@ -104,6 +128,8 @@ test('mud: a dud shift pays its $10 and then the foreman wants a word; delete cl
   const s = await boot({ randInt: (n) => (n === 100000 ? 50 * 3 : 0) }); try {
     const u = await login(s.base, 'm@example.com');
     const sh = (await u.post('/api/mines/start')).body; s.clock.t += 21000;
+    // An already-active legacy shift keeps its original mud result and finish contract.
+    delete Object.values(s.service.mines.doc.active)[0].rulesVersion; s.service.mines.save();
     const f = await u.post('/api/mines/finish', { shiftId: sh.shiftId });
     assert.equal(f.body.outcome, 'dud'); assert.equal(f.body.amount, 10); assert.equal(f.body.foreman.reason, 'mud');
     assert.equal((await u.post('/api/mines/start')).status, 409);

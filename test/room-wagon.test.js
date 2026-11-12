@@ -1,0 +1,52 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import { coveredWagon } from '../client/src/room/wagon.js';
+import { ROOM_POSITIONS, ROOM_FLOOR_SCALE, makeRoomCamera } from '../client/src/room/scene-model.js';
+
+test('the covered wagon stays inside its yard footprint with four grounded spoked wheels', () => {
+  const wagon = coveredWagon(), bounds = new THREE.Box3().setFromObject(wagon);
+  assert.ok(bounds.min.x >= -0.82 && bounds.max.x <= 0.82);
+  assert.ok(bounds.min.z >= -0.53 && bounds.max.z <= 0.53);
+  assert.ok(bounds.min.y >= -1e-6 && bounds.max.y <= 1.35);
+  const wheels = wagon.children.filter(child => child.name === 'wagon-wheel');
+  assert.equal(wheels.length, 4);
+  assert.equal(new Set(wheels.map(wheel => `${wheel.position.x},${wheel.position.z}`)).size, 4);
+  for (const wheel of wheels) {
+    const wheelBounds = new THREE.Box3().setFromObject(wheel);
+    assert.ok(Math.abs(wheelBounds.min.y) < 1e-6, 'all four tires meet the ground');
+    const ray = new THREE.Raycaster(new THREE.Vector3(wheel.position.x + 0.07, wheel.position.y + 0.15, 1), new THREE.Vector3(0, 0, -1));
+    assert.equal(ray.intersectObject(wheel, true).length, 0, 'there is open space between the spokes');
+  }
+  wagon.scale.setScalar(1.65); wagon.rotation.y = -0.16; wagon.position.set(...ROOM_POSITIONS.window);
+  const placed = new THREE.Box3().setFromObject(wagon);
+  assert.ok(placed.min.x > 4.25 * ROOM_FLOOR_SCALE && placed.max.x < 8.45 * ROOM_FLOOR_SCALE && placed.min.z > -3 * ROOM_FLOOR_SCALE && placed.max.z < 3 * ROOM_FLOOR_SCALE, 'the actual scaled and rotated model stays on the enlarged side yard');
+  for (const aspect of [320 / 280, 390 / 280, 846 / 380, 844 / 300]) for (const rotation of [0, 90, 180, 270]) {
+    const camera = makeRoomCamera(aspect, { rotation });
+    for (const x of [placed.min.x, placed.max.x]) for (const y of [placed.min.y, placed.max.y]) for (const z of [placed.min.z, placed.max.z]) {
+      const p = new THREE.Vector3(x, y, z).project(camera);
+      assert.ok(Math.abs(p.x) < 1 && Math.abs(p.y) < 1 && Math.abs(p.z) < 1, 'the complete wagon remains framed through a full turn');
+    }
+  }
+});
+
+test('the canopy is open at both ends, shaded on both sides, and bounded in rendering cost', () => {
+  const wagon = coveredWagon(); wagon.updateMatrixWorld(true);
+  const cover = wagon.getObjectByName('wagon-canopy');
+  const cloth = wagon.getObjectByName('wagon-cloth'), radii = [];
+  const positions = cloth.geometry.attributes.position;
+  for (let i = 0; i < positions.count; i++) radii.push(Math.hypot(positions.getX(i), positions.getZ(i)));
+  assert.ok(Math.max(...radii) - Math.min(...radii) > 0.005, 'cloth drapes subtly between its hoops');
+  assert.ok(wagon.getObjectByName('wagon-ironwork'));
+  for (const direction of [-1, 1]) {
+    const ray = new THREE.Raycaster(new THREE.Vector3(-direction * 2, 1.02, 0), new THREE.Vector3(direction, 0, 0));
+    assert.equal(ray.intersectObject(cover, true).length, 0, 'the interior sightline crosses both open ends');
+  }
+  const overhead = new THREE.Raycaster(new THREE.Vector3(0, 2, 0), new THREE.Vector3(0, -1, 0));
+  const hit = overhead.intersectObject(cover, true)[0];
+  assert.ok(hit && hit.point.y > 1.2, 'canvas covers the top of the wagon');
+  assert.equal(hit.object.material.side, THREE.DoubleSide);
+  let meshes = 0, triangles = 0;
+  wagon.traverse(object => { if (object.isMesh) { meshes++; triangles += (object.geometry.index?.count || object.geometry.attributes.position.count) / 3; } });
+  assert.ok(meshes <= 75 && triangles <= 7000, `bounded model: ${meshes} meshes, ${triangles} triangles`);
+});

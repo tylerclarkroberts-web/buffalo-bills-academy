@@ -1,15 +1,15 @@
 import { voiceOn, setVoiceOn } from './table/Smoke.jsx';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useSession, rename, signOut, changePassword, changeUsername, linkGoogleUrl, refreshSession } from './api.js';
 import { navigate, goToMines } from './App.jsx';
 import { SignIn } from './Home.jsx';
 import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
 import { FitDialog } from './avatar/FitEditor.jsx';
-import { Paged, Tabs, useWide } from './ui.jsx';
+import { Paged, Tabs, useWide, useMedia } from './ui.jsx';
 import { money, pct, chips } from './util.js';
 import { bitEnabled, goreEnabled, setGoreEnabled, setBitEnabled } from './table/fx.js';
-import { replayEnabled, setReplayEnabled } from './table/replay.js';
+import { REPLAY_ON, replayEnabled, setReplayEnabled } from './table/replay.js';
 import * as music from './table/music.js';
 
 const OUTCOME = { motherlode: 'Motherlode', aliens: 'Alien skeletons', diamonds: 'Diamond well', dud: 'Mostly mud', normal: 'Shift' };
@@ -23,6 +23,10 @@ export function Profile({ id }) {
   const [p, setP] = useState(null);
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameStatus, setRenameStatus] = useState('');
+  const renamePending = useRef(false), renameInput = useRef(null), renameButton = useRef(null), restoreRenameFocus = useRef(false);
   const [fitShop, setFitShop] = useState(null); // v36: the accessory fit editor (needs the shop view)
   const [name, setName] = useState('');
   const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('link') ? 'account' : 'overview'));
@@ -33,6 +37,26 @@ export function Profile({ id }) {
     api('GET', self ? '/profile' : `/players/${id}/profile`).then(setP).catch((e) => setErr(e.message));
   }, [id, me?.id, me?.bankroll, me?.avatar?.v, loading]);
   useEffect(() => { document.title = `${p?.name || 'Profile'} · Buffalo Bill's Academy`; }, [p?.name]);
+  useLayoutEffect(() => {
+    if (editing && !renaming) renameInput.current?.focus();
+    else if (!editing && restoreRenameFocus.current) { renameButton.current?.focus(); restoreRenameFocus.current = false; }
+  }, [editing, renaming, renameError]);
+  function cancelRename() {
+    if (renamePending.current) return;
+    setRenameError(''); setName(p.name); restoreRenameFocus.current = true; setEditing(false);
+  }
+  async function saveName(e) {
+    e.preventDefault();
+    if (renamePending.current) return;
+    if (!name.trim()) { setRenameError('Please enter a name.'); renameInput.current?.focus(); return; }
+    renamePending.current = true; setRenaming(true); setRenameError('');
+    try {
+      const saved = await rename(name);
+      setP((current) => ({ ...current, name: saved.name }));
+      setRenameStatus('Display name saved.'); restoreRenameFocus.current = true; setEditing(false);
+    } catch (error) { setRenameError(error.message); }
+    finally { renamePending.current = false; setRenaming(false); }
+  }
 
   if (!loading && self && !me) return <div className="screen center-screen"><h1 className="display h2">Sign in</h1><p className="lede">Sign in to see your bankroll, results and stats.</p><SignIn next="/profile" /></div>;
   if (err) return <div className="screen center-screen"><div className="error">{err}</div></div>;
@@ -43,7 +67,7 @@ export function Profile({ id }) {
   if (p.txns) tabs.push(['money', 'Money']);
   if (self && me) tabs.push(['alerts', 'Settings'], ['account', 'Account']);
   const stats = [
-    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables${w.riskEscrow ? ` · ${money(w.riskEscrow)} Risk stakes` : ''}`],
+    ['Net worth', money(w.total), `${money(w.bankroll)} cash · ${money(w.holdings)} coins · ${money(w.chips)} on tables${w.riskEscrow ? ` · ${money(w.riskEscrow)} Risk stakes` : ''}${w.barnEscrow ? ` · ${money(w.barnEscrow)} Barn stakes` : ''}`],
     ['Bankroll', money(w.bankroll), 'Spendable play money'],
     ['Poker, lifetime', money(pk.lifetimeNet, { sign: true }), `${pk.gamesPlayed ?? pk.games.length} game${(pk.gamesPlayed ?? pk.games.length) === 1 ? '' : 's'}`, cls(pk.lifetimeNet)],
     ['Hands played', chips(pk.handsPlayed), `${chips(pk.handsWon)} won`],
@@ -55,30 +79,40 @@ export function Profile({ id }) {
   return (
     <div className="screen profile">
       <div className="pf-head">
-        <Bust id={p.id} avatar={p.avatar} size={wide ? 84 : 58} />
+        {self && me ? <button type="button" className="btn ghost pf-avatar" aria-label="Change avatar" onClick={() => navigate('/profile/face')}>
+          <span aria-hidden="true"><Bust id={p.id} avatar={p.avatar} size={wide ? 84 : 58} /></span>
+          <span>Change avatar</span>
+        </button> : <Bust id={p.id} avatar={p.avatar} size={wide ? 84 : 58} />}
         <div className="pf-id">
           <p className="kicker">{self ? 'Your profile' : 'Player'} · since {new Date(p.since).toLocaleDateString([], { month: 'short', year: 'numeric' })}</p>
           {editing ? (
-            <form className="row" onSubmit={async (e) => { e.preventDefault(); try { await rename(name); setEditing(false); setP({ ...p, name }); } catch (e2) { setErr(e2.message); } }}>
-              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} autoFocus aria-label="Display name" /><button className="btn small light">Save</button>
+            <form className="pf-rename" onSubmit={saveName} aria-busy={renaming} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancelRename(); } }}>
+              <div className="row wrap">
+                <input ref={renameInput} value={name} onChange={(e) => { setName(e.target.value); setRenameError(''); }} maxLength={20} readOnly={renaming} aria-label="Display name" aria-invalid={!!renameError} aria-describedby={renameError ? 'rename-error' : undefined} />
+                <button className="btn small light" disabled={renaming}>{renaming ? 'Saving…' : 'Save'}</button>
+                <button type="button" className="btn small ghost" disabled={renaming} onClick={cancelRename}>Cancel</button>
+              </div>
+              {renameError && <p className="error small" id="rename-error" role="alert">{renameError}</p>}
             </form>
           ) : <h1 className="display pf-name">{p.name}</h1>}
+          <p className="small ok" role="status">{renameStatus}</p>
           {self && p.email && <p className="small muted hide-s">{p.email}</p>}
         </div>
         {self && !editing && (
           <div className="pf-actions">
-            <button className="btn small" onClick={() => navigate('/profile/face')}>Retake photo</button>
+            <button className="btn small" onClick={() => navigate('/room')}>My Room</button>
             {me?.avatar?.wear && <button className="btn small" onClick={() => api('GET', '/shop').then(setFitShop).catch((e) => setErr(e.message))} data-test="profile-fit">Fit accessories</button>}
-            <button className="btn small" onClick={() => { setName(p.name); setEditing(true); }}>Rename</button>
+            <button ref={renameButton} className="btn small" onClick={() => { setName(p.name); setRenameError(''); setRenameStatus(''); setEditing(true); }}>Rename</button>
             <button className="btn small ghost" onClick={() => signOut().then(() => navigate('/'))}>Sign out</button>
           </div>
         )}
+        {!self && p.roomVisitAvailable && <Link className="btn small" to={`/rooms/${p.id}`}>Visit room</Link>}
       </div>
       {fitShop && me && <FitDialog me={me} shop={fitShop} onClose={() => setFitShop(null)} onSaved={setFitShop} />}
       <Tabs label="Profile" value={tab} onChange={setTab} tabs={tabs} />
       <div className="pf-body">
         {tab === 'account' && me && <Account me={me} />}
-        {tab === 'alerts' && me && <div className="pf-settings"><UsernameHandle me={me} /><TableFun /><SlackAlerts me={me} /></div>}
+        {tab === 'alerts' && me && <div className="pf-settings"><TableFun /><SlackAlerts me={me} /></div>}
         {tab === 'overview' && (
           <Paged items={stats} rowH={wide ? 92 : 64} gap={8} cols={wide ? 4 : 2} className={`stats ${wide ? 'grid4' : 'grid2'}`}
             render={([label, value, sub, c]) => <div className="stat"><div className="label">{label}</div><div className={`value ${c || ''}`}>{value}</div><div className="sub">{sub}</div></div>} />
@@ -119,29 +153,59 @@ export function Profile({ id }) {
   );
 }
 
+const EARNING_SOURCES = [['mining', 'Mines'], ['poker', 'Poker'], ['blackjack', 'Blackjack'], ['slots', 'Slots'], ['investing', 'Investing']];
+const BOARD_METRICS = [['wealth', 'Net worth'], ['earnings', 'Recorded earnings'], ...EARNING_SOURCES];
+
 export function Leaderboard() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
+  const [sort, setSort] = useState('wealth');
+  const [direction, setDirection] = useState('desc');
+  const [sources, setSources] = useState(false);
+  const [retry, setRetry] = useState(0);
   const wide = useWide();
-  useEffect(() => { document.title = "Leaderboard · Buffalo Bill's Academy"; api('GET', '/leaderboard').then(setD).catch((e) => setErr(e.message)); }, []);
+  const shortLand = useMedia('(orientation: landscape) and (max-height: 520px) and (min-width: 600px)');
+  useEffect(() => {
+    document.title = "Leaderboard · Buffalo Bill's Academy";
+    let current = true;
+    setD(null); setErr('');
+    api('GET', `/leaderboard?sort=${sort}&direction=${direction}`)
+      .then((data) => { if (current) setD(data); })
+      .catch((e) => { if (current) setErr(e.message); });
+    return () => { current = false; };
+  }, [sort, direction, retry]);
   return (
-    <div className="screen board">
+    <div className="screen leaderboard">
       <div className="page-head">
         <h1 className="display h2">Leader<span className="script neon-pink">board</span></h1>
-        <p className="kicker">Net worth = cash + coins + chips on tables + unsettled Risk stakes</p>
       </div>
-      {err && <div className="error">{err}</div>}
-      {!d ? <p className="muted">Loading…</p> : (
-        <Paged items={d.rows} rowH={wide ? 62 : 56} gap={4} className="board-list"
+      <div className="board-controls">
+        <label className="field"><span>Rank by</span><select value={sort} onChange={(e) => setSort(e.target.value)}>{BOARD_METRICS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+        <label className="field"><span>Order</span><select value={direction} onChange={(e) => setDirection(e.target.value)}><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></label>
+        <label className="board-sources-toggle"><input type="checkbox" checked={sources} onChange={(e) => setSources(e.target.checked)} />Show sources</label>
+        <details className="board-help">
+          <summary>What counts?</summary>
+          <div>
+            <p>Net worth is cash, coins, poker chips and unsettled Risk and barn stakes.</p>
+            <p>Recorded earnings add these five sources. Bets and buy-ins are deducted; losses count too.</p>
+            <p>Mines: completed shifts. Poker: bankroll-backed table net, including chips still in play and fight stakes paid into pots. Blackjack: cashed-out sessions, including playing the house. Slots: payouts minus bets. Investing: profit or loss on sold coins.</p>
+            <p>Starting money, gifts, Foreman bonuses, direct Guntrad payments, other bets and shop spending are excluded. Active blackjack sessions count after cash-out.</p>
+          </div>
+        </details>
+      </div>
+      {err ? <div className="row wrap"><p className="error" role="alert">{err}</p><button className="btn small" onClick={() => setRetry((n) => n + 1)}>Retry</button></div> : !d ? <p className="muted" role="status">Loading…</p> : (
+        <Paged items={d.rows} rowH={sources ? (wide || shortLand ? 108 : 150) : (wide || shortLand ? 62 : 74)} gap={4} className={`board-list ${sources ? 'with-sources' : ''}`} resetKey={`${sort}:${direction}:${sources}`}
           empty={<p className="muted">Nobody has played yet.</p>}
-          render={(r, i) => (
-            <button className={`brow ${r.id === d.me ? 'me' : ''}`} onClick={() => navigate(r.id === d.me ? '/profile' : `/players/${r.id}`)}>
+          render={(r, i) => {
+            const value = sort === 'wealth' ? r.total : r.earnings[sort === 'earnings' ? 'total' : sort];
+            return <button className={`brow ${r.id === d.me ? 'me' : ''}`} onClick={() => navigate(r.id === d.me ? '/profile' : `/players/${r.id}`)}>
               <span className="rank">{String(i + 1).padStart(2, '0')}</span>
-              <Bust id={r.id} avatar={r.avatar} size={wide ? 44 : 38} still={!wide} />
-              <span className="who-cell"><span className="nm">{r.name}</span><span className="brk">{money(r.bankroll)} cash · {money(r.holdings)} coins{r.chips ? ` · ${money(r.chips)} chips` : ''}</span></span>
-              <span className="worth">{money(r.total)}</span>
-            </button>
-          )} />
+              <Bust id={r.id} avatar={r.avatar} size={wide ? 44 : 32} still={!wide} />
+              <span className="who-cell"><span className="nm">{r.name}</span><span className="brk">{sort === 'wealth' ? `${money(r.bankroll)} cash · ${money(r.holdings)} coins${r.chips ? ` · ${money(r.chips)} chips` : ''}` : `${money(r.total)} net worth`}</span></span>
+              <span className={`worth ${sort === 'wealth' ? '' : cls(value)}`}>{money(value, { sign: sort !== 'wealth' })}</span>
+              {sources && <span className="board-sources">{EARNING_SOURCES.map(([key, label]) => <span key={key}><span>{label}</span><b className={cls(r.earnings[key])}>{money(r.earnings[key], { sign: true })}</b></span>)}</span>}
+            </button>;
+          }} />
       )}
     </div>
   );
@@ -156,15 +220,14 @@ function UsernameHandle({ me }) {
   const [err, setErr] = useState('');
   useEffect(() => { setU(me.username || ''); }, [me.username]);
   const dirty = u.trim().toLowerCase() !== (me.username || '');
-  const save = async (e) => {
-    e?.preventDefault?.();
+  const run = async (fn, done) => {
     setErr(''); setMsg(''); setBusy(true);
-    try {
-      await changeUsername(u);
-      setMsg('Handle saved.');
-    } catch (e2) { setErr(e2.message); }
+    try { await fn(); setMsg(done); } catch (e2) { setErr(e2.message); }
     finally { setBusy(false); }
   };
+  const save = (e) => { e?.preventDefault?.(); run(() => changeUsername(u), 'Handle saved.'); };
+  // Tables show the display name. It follows the handle until you pick a different one; after that, offer to match them.
+  const differs = !!me.username && me.name.trim().toLowerCase() !== me.username;
   return (
     <form className="account handle-card" data-test="settings-username" onSubmit={save}>
       <h2 className="display sl-title">Username handle</h2>
@@ -175,9 +238,15 @@ function UsernameHandle({ me }) {
       </label>
       <div className="row gap">
         <button className="btn small light" disabled={busy || !u.trim() || !dirty} data-test="settings-username-save">{busy ? 'Saving…' : 'Save handle'}</button>
-        {msg && <span className="small ok" data-test="settings-username-ok">{msg}</span>}
+        {msg && <span className="small ok" role="status" data-test="settings-username-ok">{msg}</span>}
         {err && <span className="error small" role="alert">{err}</span>}
       </div>
+      <p className="small muted handle-shown" data-test="settings-shown-as">
+        At tables you appear as <b>{me.name}</b>.{' '}
+        {differs
+          ? <button type="button" className="linkish" disabled={busy} onClick={() => run(() => rename(me.username), 'Table name updated.')} data-test="settings-use-handle">Use {me.username} instead</button>
+          : me.username ? 'Changing your handle changes this name too.' : null}
+      </p>
     </form>
   );
 }
@@ -188,7 +257,7 @@ function Account({ me }) {
   const [cur, setCur] = useState(''); const [nxt, setNxt] = useState('');
   const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
   return (
-    <div className="account">
+    <div className="account pf-account">
       {linkMsg && <p className="notice">{linkMsg}</p>}
       <UsernameHandle me={me} />
       <div className="acct-rows">
@@ -245,11 +314,11 @@ function TableFun() {
   return (
     <div className="account fun-card">
       <h2 className="display sl-title">At the table</h2>
-      <label className="fun-row"><input type="checkbox" data-test="settings-replay" checked={rpl} onChange={(e) => { setReplayEnabled(e.target.checked); setRpl(e.target.checked); }} /><span><b>Turn replay</b> <span className="muted small hide-s">Watch what everyone did since your last move before your turn</span></span></label>
+      {REPLAY_ON && <label className="fun-row"><input type="checkbox" data-test="settings-replay" checked={rpl} onChange={(e) => { setReplayEnabled(e.target.checked); setRpl(e.target.checked); }} /><span><b>Table replay</b> <span className="muted small hide-s">Catch up on missed actions, smokes, gags and conversation</span></span></label>}
       <label className="fun-row"><input type="checkbox" checked={bit} onChange={(e) => { setBitEnabled(e.target.checked); setBit(e.target.checked); }} /><span><b>All-in bust animation</b> <span className="muted small hide-s">When someone shoves and loses, the table gives them a cartoon send-off.</span></span></label>
       <label className="fun-row"><input type="checkbox" data-test="gore" checked={gore} onChange={(e) => { setGoreEnabled(e.target.checked); setGore(e.target.checked); }} /><span><b>Fight gore</b> <span className="muted small">Cartoon blood and Guntrad's finishing moves. Off: a plain knock-out.</span></span></label>
       <label className="fun-row"><input type="checkbox" checked={m.on} onChange={(e) => music.setOn(e.target.checked)} /><span><b>Saloon piano music</b> <span className="muted small">{Math.round(m.vol * 100)}% · change it from the speaker on any table</span></span></label>
-      {pr !== null && <label className="fun-row"><input type="checkbox" data-test="settings-gags" checked={pr} onChange={(e) => { const on = e.target.checked; setPr(on); api('POST', '/me/gags', { optOut: !on }).catch(() => setPr(!on)); }} /><span><b>Allow Gags?</b> <span className="muted small">Squirt guns, pies, confetti and dry noodles from the General Store. Harmless, and they never show your cards.</span></span></label>}
+      {pr !== null && <label className="fun-row"><input type="checkbox" data-test="settings-gags" checked={pr} onChange={(e) => { const on = e.target.checked; setPr(on); api('POST', '/me/gags', { optOut: !on }).catch(() => setPr(!on)); }} /><span><b>Allow Gags?</b> <span className="muted small">Squirt guns, pies, confetti and dry noodles from the General Store, plus table spectacles like fireworks and stampedes. Harmless, and they never show your cards.</span></span></label>}
       {sm !== null && <label className="fun-row"><input type="checkbox" data-test="settings-smoke" checked={sm} onChange={(e) => { const on = e.target.checked; setSm(on); api('POST', '/me/smoke', { optOut: !on }).catch(() => setSm(!on)); }} /><span><b>Show Smoke Shop moments at tables</b> <span className="muted small">When a player lights up (cartoon only), Guntrad comes over with the lighter. Off: you won't see them.</span></span></label>}
       <label className="fun-row"><input type="checkbox" data-test="settings-voice" checked={vo} onChange={(e) => { setVoiceOn(e.target.checked); setVo(e.target.checked); }} /><span><b>Guntrad's voice</b> <span className="muted small">His "hell yeah" and the lighter sound.</span></span></label>
     </div>
