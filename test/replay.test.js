@@ -1,7 +1,7 @@
 // Public replay selection, readable timing and browser-local progress.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickReplay, stepMs, seenSeq, markSeen } from '../client/src/table/replay.js';
+import { pickReplay, stepMs, seenSeq, markSeen, replayView } from '../client/src/table/replay.js';
 import * as G from '../server/engine/game.js';
 import { makeTable, act } from './helpers.js';
 
@@ -15,14 +15,14 @@ const history = [
   { seq: 7, hand: 2, t: 1600, text: 'Ann lights a cigar', ev: { k: 'smoke', from: 'ann', art: 'cigar' } },
   { seq: 8, hand: 2, t: 1700, text: 'Cat says: Nice hand!', ev: { k: 'say', from: 'cat', message: 'Nice hand!' } },
   { seq: 9, hand: 2, t: 1800, text: 'Flop: As Kh Qd', ev: { k: 'deal', cards: ['As', 'Kh', 'Qd'] } },
-];
+].map((e) => ({ ...e, frame: { seats: [], hand: null, lastHand: null } }));
 
-test('first visit replays every retained public entry across hands in log order', () => {
+test('selection retains recorded public frames across hands in log order', () => {
   const original = structuredClone(history);
   const steps = pickReplay(history);
   assert.deepEqual(steps.map((s) => s.seq), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   assert.deepEqual(steps.map((s) => s.k), ['hand', 'act', 'gag', 'notice', 'win', 'hand', 'smoke', 'say', 'deal']);
-  assert.deepEqual(steps[3], { k: 'notice', seq: 4, hand: 1, t: 1300, text: 'Cat joined the table' });
+  assert.deepEqual(steps[3], { k: 'notice', seq: 4, hand: 1, t: 1300, text: 'Cat joined the table', message: undefined, frame: history[3].frame });
   assert.equal(steps[7].text, 'Cat says: Nice hand!');
   assert.deepEqual(steps[8].cards, ['As', 'Kh', 'Qd']);
   assert.deepEqual(history, original, 'selection must not change saved history');
@@ -64,6 +64,7 @@ test('selection resumes after the cursor and tolerates missing or expired histor
   assert.deepEqual(pickReplay(history, { seen: 9 }), []);
   assert.deepEqual(pickReplay(undefined), []);
   assert.deepEqual(pickReplay([{ text: 'legacy entry' }, { seq: '10' }, { seq: 1.5 }]), []);
+  assert.deepEqual(pickReplay([{ seq: 10, ev: { k: 'act', a: 'fold' } }]), [], 'old saves cannot fabricate a historical table');
 });
 
 function storage(t, value) {
@@ -108,8 +109,30 @@ test('unavailable browser storage leaves history replayable without throwing', (
 
 test('timing leaves readable beats for text, social events and reduced motion', () => {
   assert.equal(stepMs({ k: 'act', text: 'Ann checks' }), 900);
-  assert.equal(stepMs({ k: 'notice' }, true), 1400);
+  assert.equal(stepMs({ k: 'notice' }, true), 1600);
   for (const k of ['smoke', 'gag']) assert.ok(stepMs({ k, text: 'Hi' }) >= 1600);
   assert.ok(stepMs({ k: 'say', text: 'a'.repeat(80) }) > stepMs({ k: 'say', text: 'Hi' }));
   for (const reduced of [false, true]) assert.equal(stepMs({ k: 'notice', text: 'a'.repeat(200) }, reduced), 3500);
+});
+
+test('historical display follows identity and hand, never borrowing another hand or occupant cards', () => {
+  const live = { me: { playerId: 'ann', seat: 1 }, hand: { number: 2 }, seats: [
+    { playerId: 'bob', cards: null }, { playerId: 'ann', cards: ['As', 'Kh'] },
+  ], legal: { canCheck: true }, log: [{ seq: 8 }], showdown: { number: 1 } };
+  const frame = { hand: { number: 1 }, seats: [{ playerId: 'ann', inHand: true, stack: 90 }, { playerId: 'cat', inHand: true, stack: 80 }] };
+  const before = structuredClone({ live, frame });
+  const old = replayView(live, frame);
+  assert.equal(old.me.seat, 0);
+  assert.equal(old.seats[0].cards, undefined, 'older private cards are unavailable');
+  assert.equal(old.seats[1].playerId, 'cat', 'seat reuse must not substitute today\'s player');
+  assert.equal(old.legal, null);
+  assert.equal(old.showdown, null);
+  assert.deepEqual(old.log, []);
+  const same = replayView(live, { ...frame, hand: { number: 2 } });
+  assert.deepEqual(same.seats[0].cards, ['As', 'Kh']);
+  assert.equal(same.seats[1].cards, undefined);
+  const spectator = replayView({ ...live, me: { playerId: null, seat: null } }, frame);
+  assert.equal(spectator.me.seat, null);
+  assert.equal(spectator.seats[0].cards, undefined);
+  assert.deepEqual({ live, frame }, before, 'display composition must not mutate live or retained history');
 });

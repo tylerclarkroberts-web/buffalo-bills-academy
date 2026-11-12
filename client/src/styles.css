@@ -1275,27 +1275,67 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 }
 @media (max-height: 400px) { .nt-speed legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .nt-speed .nt-check { min-height: 24px; } }
 
-/* Public activity recap: history is separate from the live cards and pot. */
-.replay { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; padding: 8px; background: rgba(15,7,12,.5); }
-.rp-recap { width: min(calc(380px * var(--ui, 1)), 100%); max-height: 100%; overflow: auto; padding: clamp(10px, 2vw, calc(20px * var(--ui, 1))); font-size: calc(14px * var(--ui, 1)); text-align: center; background: #23151e; color: #fff3dd; box-shadow: 0 8px 40px #0009; }
-.rp-heading { display: flex; justify-content: space-between; gap: 12px; font-size: .86em; color: #f2c65a; }
-.rp-heading span { white-space: nowrap; font-family: var(--mono); }
-.rp-beat { padding: 12px 0; }
-.rp-beat p { margin: 8px 0; line-height: 1.45; overflow-wrap: anywhere; }
-.rp-art { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; height: calc(64px * var(--ui, 1)); --cw: calc(38px * var(--ui, 1)); }
-.rp-art > img { width: calc(64px * var(--ui, 1)); height: calc(64px * var(--ui, 1)); }
-.rp-symbol { font-size: 2.7em; color: #f2c65a; }
-.rp-gag .rp-art > * { animation: rp-toss .6s ease-out both; }
-.rp-puff { position: absolute; left: calc(50% + 18px); color: #ddd; font-size: 32px; animation: rp-puff 1.4s ease-out infinite; }
-.rp-controls { display: flex; justify-content: center; gap: 8px; margin-top: 4px; }
-.rp-controls button { min-height: calc(36px * var(--ui, 1)); font-size: .92em; }
-.rp-beat .small { font-size: .86em; }
-@keyframes rp-toss { from { transform: translateX(-40px) rotate(-20deg); } to { transform: none; } }
-@keyframes rp-puff { from { opacity: .8; transform: translateY(0) scale(.5); } to { opacity: 0; transform: translateY(-30px) scale(1.4); } }
+/* Public activity plays on its own historical felt, with one controller for poker and social effects. */
+.replay { position: absolute; inset: 0; z-index: 30; pointer-events: none; --rp-pot-y: calc(var(--rp-board-y) + var(--cw) * 1.4 + 16px); }
+.rp-effects { position: absolute; inset: 0; }
+.felt-box.tall .replay { --rp-board-y: var(--rp-tall-board-y) !important; }
+.felt-box.roomy .replay { --rp-pot-y: calc(var(--rp-board-y) + var(--cw) * 1.95 + 16px); }
+.rp-controls { position: absolute; bottom: 4px; right: 4px; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 8px); padding: 3px 5px 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: rgba(23,8,18,.94); box-shadow: 0 2px 12px #0006; pointer-events: auto; white-space: nowrap; }
+.rp-progress { font: 600 11px var(--mono); color: var(--amber); }
+.rp-controls .btn { min-height: 44px; padding: 4px 10px; font-size: 12px; }
+.rp-tag { position: absolute; transform: translate(-50%, -160%); padding: 3px 9px; border-radius: 999px; border: 1px solid var(--amber); background: #201016; color: #ffe9a0; font: 700 12px var(--mono); white-space: nowrap; box-shadow: 0 2px 8px #0008; animation: rp-tag .2s ease-out both; }
+.rp-tag.fold { color: #dbc8d1; border-color: #806977; } .rp-tag.allin { color: #fff; border-color: var(--coral); background: #78253e; }
+.rp-tag.auto { color: var(--teal); border-color: var(--teal); }
+@keyframes rp-tag { from { opacity: 0; transform: translate(-50%, -110%) scale(.8); } to { opacity: 1; transform: translate(-50%, -160%) scale(1); } }
+.rp-chips, .rp-muck, .rp-card.rp-burn, .rp-card.rp-deal { position: absolute; left: var(--x0); top: var(--y0); transform: translate(-50%, -50%); animation: rp-slide var(--d, 600ms) cubic-bezier(.3,.7,.3,1) forwards; }
+@keyframes rp-slide { from { left: var(--x0); top: var(--y0); } to { left: var(--x1); top: var(--y1); } }
+.rp-chips { display: flex; flex-direction: column-reverse; align-items: center; }
+.rp-chips i { display: block; width: 18px; height: 5px; margin-top: -1px; border-radius: 50%; background: #e94b4b; border: 1px solid #ffd27a; }
+.rp-chips i:nth-child(2n) { background: #fff7e6; }
+.rp-chips b { font: 800 13px var(--mono); color: #ffe9a0; text-shadow: 0 1px 2px #000; margin-bottom: 2px; }
+.rp-chips.big i { width: 26px; height: 7px; } .rp-chips.big { animation-timing-function: cubic-bezier(.6,0,.2,1.3); }
+.rp-chips.still { animation: none; left: var(--x1); top: var(--y1); }
+.rp-card { display: block; width: calc(var(--cw, 36px) * .7); aspect-ratio: 5 / 7; border-radius: 4px; background: repeating-linear-gradient(45deg, #7a1730 0 4px, #5b1023 4px 8px); border: 1.5px solid #f2c65a; }
+.rp-muck { display: flex; animation: rp-slide var(--d) ease-in forwards, rp-fade var(--d) ease-in forwards; }
+.rp-muck .rp-card { transform: rotate(-18deg); } .rp-muck .rp-card + .rp-card { margin-left: -60%; transform: rotate(14deg); }
+@keyframes rp-fade { 60% { opacity: 1; } to { opacity: 0; } }
+.rp-card.rp-burn { animation: rp-slide var(--d) ease-out forwards, rp-fade var(--d) ease-in forwards; }
+.rp-card.rp-deal { opacity: 0; animation: rp-slide var(--d) ease-out forwards, rp-flight var(--d) linear both; }
+@keyframes rp-flight { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
+.rp-street { position: absolute; transform: translate(-50%, -50%); font: 700 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: #ffe9a0; text-shadow: 0 1px 3px #000; }
+.rp-knock { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid #9fe7d8; animation: rp-knock .4s ease-out 2 both; }
+@keyframes rp-knock { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+.replay-fresh { animation: rp-flip .24s ease-out calc(640ms + var(--deal-index, 0) * 150ms) both; }
+@keyframes rp-flip { from { opacity: 0; transform: translateY(-5px) rotateY(90deg); } to { opacity: 1; transform: none; } }
+.felt-box:has(> .replay[data-kind=hand]:not(.reduced)) .seat-cards { animation: rp-hole-reveal 1ms linear 700ms both; }
+@keyframes rp-hole-reveal { from { opacity: 0; } to { opacity: 1; } }
+.felt-box:has(> .replay:is([data-kind=deal], [data-kind=hand]):not(.reduced)) > .dealer-spot .dealer-fig { animation: rp-deal-bob .32s ease-in-out 3 alternate; }
+@keyframes rp-deal-bob { from { transform: translateY(0) rotate(0); } to { transform: translateY(4%) rotate(-2.5deg); } }
+.rp-notice { position: absolute; left: 50%; bottom: 54px; transform: translateX(-50%); max-width: min(340px, 88%); padding: 4px 10px; border-radius: 8px; background: #201016e8; color: var(--paper); font: 600 12px/1.4 var(--mono); text-align: center; }
+.rp-say { position: absolute; transform: translate(-50%, calc(-100% - var(--bust) * .35)); max-width: min(210px, 45%); width: max-content; display: grid; gap: 3px; padding: 7px 10px; border-radius: 12px; border: 2px solid #2a0d1a; background: #fbf4ea; color: #2a0d1a; font-size: 12px; overflow-wrap: anywhere; }
+.rp-say b { color: #863453; font-size: 10px; }
+.replay .gag-fx, .replay .smoke-moment, .replay .sm-item, .replay .sm-bubble { position: absolute; }
+.replay .gag-fx, .replay .sm-item { margin-top: calc(var(--bust) * -.15); }
+.replay .gag-fx .pf-name { max-width: 180px; white-space: normal; text-align: center; }
+.replay .pf-from { width: clamp(44px, var(--bust), 80px); height: clamp(44px, var(--bust), 80px); }
+.replay .pf-from img { width: clamp(44px, var(--bust), 80px); height: auto; }
+.replay .sm-item { width: clamp(44px, calc(var(--bust) * .9), 84px); height: clamp(44px, calc(var(--bust) * .9), 84px); }
+.rp-smoke-dealer { height: 34%; animation: rp-visit 8.6s ease-in-out both; }
+.felt-box.tall .rp-smoke-dealer { height: 25%; } .felt-box.tall.crowd .rp-smoke-dealer { height: 28%; }
+.rp-smoke-dealer .dealer-fig { animation: gt-bob .36s ease-in-out .6s 5 alternate, gt-bob .36s ease-in-out 5.6s 5 alternate; }
+.felt-box:has(> .replay .rp-smoke:not(.still)) > .dealer-spot { visibility: hidden; }
+@keyframes rp-visit {
+  0%, 7%, 88%, 100% { left: 50%; top: 0; transform: translateX(-50%); }
+  29%, 64% { left: var(--visit-x); top: var(--visit-y); transform: translateX(-50%) scale(.62); }
+  33%, 60% { left: var(--visit-x); top: var(--visit-y); transform: translateX(-50%) scale(.62) rotate(-6deg); }
+}
 .replay.reduced *, .replay.reduced *::before, .replay.reduced *::after { animation: none !important; }
-.replay.paused * { animation-play-state: paused !important; }
-@media (prefers-reduced-motion: reduce) { .rp-beat, .rp-gag .rp-art > *, .rp-puff { animation: none; } }
-@media (max-height: 520px) { .rp-recap { padding: 8px 12px; } .rp-beat { padding: 4px 0; } .rp-art { height: 42px; } .rp-art > img { width: 40px; height: 40px; } .rp-art .card { max-height: 42px; } }
+.replay.reduced .pf-from, .replay.reduced .pf-name, .replay.reduced .pf-snap { opacity: 1; }
+.replay.paused *, .replay.paused *::before, .replay.paused *::after, .spectacle.paused, .spectacle.paused *, .spectacle.paused *::before, .spectacle.paused *::after { animation-play-state: paused !important; }
+.felt-box:has(> .replay.paused) .replay-fresh, .felt-box:has(> .replay.paused) .seat-cards, .felt-box:has(> .replay.paused) > .dealer-spot .dealer-fig { animation-play-state: paused; }
+.felt-box:has(> .replay.reduced) .replay-fresh { animation: none; }
+@media (prefers-reduced-motion: reduce) { .replay *, .replay *::before, .replay *::after, .replay-fresh, .felt-box:has(> .replay) .seat-cards, .felt-box:has(> .replay) > .dealer-spot .dealer-fig { animation: none !important; } }
+@media (max-width: 600px) { .felt-box.tall .rp-controls { flex-direction: column; align-items: stretch; gap: 2px; padding: 5px; border-radius: 14px; } .rp-progress { font-size: 10px; text-align: center; } }
 /* v43: per-hand "Check if free" box in the turn bar, right above the action buttons */
 .turnbar .pre-check { margin-left: auto; min-height: 0; font-size: 12.5px; white-space: nowrap; align-self: center; }
 .turnbar .clock + .pre-check, .turnbar .pre-check { flex: none; }

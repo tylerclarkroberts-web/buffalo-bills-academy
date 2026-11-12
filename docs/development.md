@@ -69,6 +69,10 @@ Unset inherited integration credentials for isolated testing. Never commit crede
 
 Poker uses Server-Sent Events to trigger a refetch of each player's view; the public lobby polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
 
+New poker log entries include compact public table frames for visual catch-up, within the existing 300-entry limit. Frames keep historical occupants and chip counts, never decks or private hole cards; publicly shown cards appear only from their reveal onward. Old entries without frames remain readable in the log and are not reconstructed for playback.
+
+Queued tobacco moments keep a bounded public `pendingSmokes` list in the table until their scheduled time. The normal table timer records each due moment with its current public frame, including in lobbies and after restart; closing the table cancels pending moments. The shop's inventory and legacy tobacco history remain separate.
+
 ## Local persistence
 
 `server/store.js` keeps state in memory and writes JSON under `DATA_DIR`, including `players.json`, per-table files in `tables/`, feature/session documents and avatars. Writes use a temporary file followed by rename. Room layout metadata lives separately in `rooms.json`; money, ownership and pet clocks remain in their existing systems. See [room compatibility and persistence](personal-rooms.md#api-and-persistence) before changing its schema or rolling back.
