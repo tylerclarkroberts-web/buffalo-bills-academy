@@ -20,7 +20,7 @@ import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { Showdown } from './table/Showdown.jsx';
 import { useReplay, ReplayLayer } from './table/Replay.jsx';
-import { REPLAY_ON } from './table/replay.js';
+import { REPLAY_ON, cinematicPlays } from './table/replay.js';
 import { bitEnabled, bitQueue, claimBit } from './table/fx.js';
 import * as music from './table/music.js';
 import { chipSpot, rectAt } from './table/chipspot.js';
@@ -34,6 +34,9 @@ import { useActiveTheme, TEA_NOW } from './themes/store.js';
 import { emotesFor, teaDue, THEMES } from './themes/theme-core.js';
 import { Emotes, GeishaTea, FeltConsoles } from './themes/decor.jsx';
 
+// The cinematic showdown starts once per hand in a browser session; the server remembers it for the player.
+const sdKey = (code, number) => `bba.sd.${code}.${number}`;
+const sdStarted = (code, number) => { try { return !!sessionStorage.getItem(sdKey(code, number)); } catch { return false; } };
 
 // pane = one of several tables in the multi-table view (/multi): a compact layout, no side panels, and the page-level
 // bits (music, tab title, "last table") are left to the multi view. Only the focused pane takes taps; tapping an
@@ -95,16 +98,15 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const [sdPlay, setSdPlay] = useState(null);
   const sdNo = view?.showdown?.number ?? null;
   const tableVisible = pane ? focused : wide || land || tab === 'table';
-  const rp = useReplay(code, view, tableVisible && !fightMode && !sdPlay && !sayOpen);
+  const sdDue = view?.showdown && !view.showdownSeen && view.me?.seat !== null && view.me?.seat !== undefined && !sdStarted(code, sdNo) ? view.showdown : null;
+  const sdHand = (sdPlay || sdDue)?.kind === 'showdown' ? (sdPlay || sdDue).number : null; // the timeline stops here for the cinematic
+  const rp = useReplay(code, view, { shown: tableVisible && !fightMode, busy: !!sdPlay || sayOpen, showdown: sdHand });
   useEffect(() => {
-    if (!tableVisible || !rp.visible || rp.pending || fightMode || sdPlay) return;
-    if (!view?.showdown || view.showdownSeen || view.me?.seat === null || view.me?.seat === undefined) return;
-    const key = `bba.sd.${code}.${view.showdown.number}`;
-    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* private mode */ }
-    // The timeline has already revealed these cards and awarded the pot on the felt.
-    if (!rp.enabled || !view.log.some((e) => e.frame && e.ev?.k === 'win' && e.hand === sdNo)) setSdPlay(view.showdown);
-    api('POST', `/tables/${code}/showdown-seen`, { number: view.showdown.number }).catch(() => {});
-  }, [sdNo, view?.showdownSeen, code, tableVisible, rp.visible, rp.pending, rp.enabled, fightMode, sdPlay]);
+    if (!sdDue || !tableVisible || !rp.visible || rp.pending || fightMode || sdPlay) return;
+    try { sessionStorage.setItem(sdKey(code, sdDue.number), '1'); } catch { /* private mode */ }
+    if (cinematicPlays(sdDue, view.log, rp.enabled)) setSdPlay(sdDue);
+    api('POST', `/tables/${code}/showdown-seen`, { number: sdDue.number }).catch(() => {});
+  }, [sdNo, !!sdDue, code, tableVisible, rp.visible, rp.pending, rp.enabled, fightMode, sdPlay]);
   const watch = useFightWatchPill(view, myId);
   const takeView = useCallback((v) => { skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); }, []);
   const mySeat = view?.me?.seat;
@@ -225,7 +227,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   );
   const stage = (
     <div className="tp-stage">
-      {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => setSdPlay(null)} />}
+      {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => { rp.afterShowdown(); setSdPlay(null); }} />}
       <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
