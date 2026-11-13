@@ -166,12 +166,14 @@ export default function Foff() {
 }
 
 function Card({ card }) {
+  // Whoever keeps their own card: what really happened stays on it, crossed out, next to what they wrote.
+  const fix = (took, wrote) => (took > wrote ? <><s><span className="sr-only">took </span>{took}</s> <span className="sr-only">wrote </span>{wrote}</> : wrote);
   return (
     <table className="foff-card" data-test="foff-card">
       <thead><tr><th scope="col">HOLE</th>{card.pars.map((_, i) => <th scope="col" key={i}>{i + 1}</th>)}<th scope="col">TOT</th></tr></thead>
       <tbody>
         <tr className="foff-dim"><th scope="row">Par</th>{card.pars.map((p, i) => <td key={i}>{p}</td>)}<td>{sum(card.pars)}</td></tr>
-        {card.names.map((n, k) => <tr key={n}><th scope="row">{n}</th>{card.pars.map((_, i) => <td key={i}>{card.rows[k][i] ?? '·'}</td>)}<td>{sum(card.rows[k])}</td></tr>)}
+        {card.names.map((n, k) => <tr key={n}><th scope="row">{n}</th>{card.pars.map((_, i) => <td key={i}>{card.rows[k][i] == null ? '·' : fix(card.took[k][i], card.rows[k][i])}</td>)}<td>{fix(sum(card.took[k]), sum(card.rows[k]))}</td></tr>)}
       </tbody>
     </table>
   );

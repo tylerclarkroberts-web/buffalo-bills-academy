@@ -128,18 +128,16 @@ export function applyShot(g, res) {
 }
 
 const SKIP = ['water', 'sand', 'trees']; // nobody aims at these on purpose
+/** The hole's line of play, a point every five yards or so from the tee to the pin. */
+const line = (hole) => hole.path.slice(1).flatMap((b, i) => {
+  const a = hole.path[i], n = Math.ceil(dist(a, b) / 5);
+  return Array.from({ length: n + 1 }, (_, k) => [lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)]);
+});
 /** Where a sensible golfer aims: the pin if it is in reach, otherwise as far up the hole's line as the club goes. */
 export function aimPoint(hole, from, reach) {
   const toPin = dist(from, hole.pin);
   if (toPin <= reach) return hole.pin;
-  let best = null;
-  for (let i = 1; i < hole.path.length; i++) {
-    const a = hole.path[i - 1], b = hole.path[i], n = Math.ceil(dist(a, b) / 5);
-    for (let k = 0; k <= n; k++) {
-      const p = [lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n)];
-      if (dist(from, p) <= reach && dist(p, hole.pin) < toPin && !SKIP.includes(lieAt(hole, p))) best = p; // later points are further up the hole
-    }
-  }
+  const best = line(hole).findLast((p) => dist(from, p) <= reach && dist(p, hole.pin) < toPin && !SKIP.includes(lieAt(hole, p))); // later points are further up the hole
   return best || [from[0] + (hole.pin[0] - from[0]) * reach / toPin, from[1] + (hole.pin[1] - from[1]) * reach / toPin];
 }
 
@@ -166,21 +164,41 @@ export function aiSwing(hole, g, skill, rnd, wind = [0, 0], { wild = 1, long = f
   return { club, spec, duff, aim: angleTo(g.pos, target), power: clamp(power * (1 + gauss() * lerp(0.25, 0.08, t)) * (duff ? 0.25 : 1), 0.05, 1), err: clamp(gauss() * lerp(1.2, 0.45, t) * wild, -1.5, 1.5) };
 }
 
-// Friends are { skill, quirk? }: 'rage' swings worse after a bad one, 'long' has that driver, 'mulligan' takes
-// a bad one again while `q.mulligans` (the caller's count for the match) lasts. A bare number is just a skill.
+// Friends are { skill, quirk? }: 'rage' swings worse after a bad one, 'long' has that driver, and 'cheat' is
+// Kashely, who plays ranch rules. A bare number is just a skill. Ranch rules, all of them in plain sight:
+// he tees off RANCH yards up the hole; anything that misses the short grass he takes again while `q.mulligans`
+// (the caller's count for the match) lasts, and after that it turns up on the fairway (`kick`); a putt inside GIMME
+// is good; he keeps his own card (cardScore, `q.pencil` times a match); and he marks Keetch's ball (markBack).
+// scripts/foff-balance.mjs says what these cost: he is meant to be harder than the last nine, and still beatable.
+const RANCH = 60, GIMME = 4, MARK = 2; // yards
 const bad = (res) => !!res.hazard || res.lie === 'trees' || res.lie === 'sand';
+const cheats = (foe) => foe?.quirk === 'cheat';
+/** Where a friend tees off. The ranch tees are wherever Kashely is standing. */
+export const foeTee = (hole, foe) => (cheats(foe) ? { ...teeUp(hole), pos: aimPoint(hole, hole.tee, RANCH) } : teeUp(hole));
+/** What a friend writes down for a hole. Kashely's pencil makes a hole he did not birdie one better. */
+export function cardScore(foe, strokes, par, q = {}) {
+  if (!cheats(foe) || strokes < par || !(q.pencil > 0)) return strokes;
+  q.pencil--; return strokes - 1;
+}
+/** Kashely marks Keetch's ball on the green and puts it back MARK yards further from the hole, if that is still green. */
+export function markBack(hole, pos) {
+  const d = dist(pos, hole.pin), p = [0, 1].map((i) => pos[i] + (pos[i] - hole.pin[i]) * MARK / d);
+  return d > 0 && lieAt(hole, p) === 'green' ? p : null;
+}
 /** A friend's swing and what came of it, not yet on the card. */
 export function foeSwing(hole, g, foe, rnd, wind, q = {}) {
   const f = typeof foe === 'number' ? { skill: foe } : foe;
+  if (cheats(f) && g.lie === 'green' && dist(g.pos, hole.pin) <= GIMME) return { spec: { putt: true }, gimme: true, res: { curve: [g.pos], land: g.pos, drift: [0, 0], rest: hole.pin.slice(), lie: 'green', holed: true, penalty: 0 } };
   const s = aiSwing(hole, g, f.skill, rnd, wind, { wild: f.quirk === 'rage' && g.mad ? 2.5 : 1, long: f.quirk === 'long' });
-  const res = shoot(hole, g.pos, s.spec, { ...s, wind }), mulligan = f.quirk === 'mulligan' && bad(res) && q.mulligans > 0;
-  return { spec: s.spec, res, mulligan, mad: f.quirk === 'rage' && (bad(res) || s.duff) };
+  const res = shoot(hole, g.pos, s.spec, { ...s, wind }), off = cheats(f) && (bad(res) || res.lie === 'rough'), mulligan = off && q.mulligans > 0;
+  const end = res.curve.at(-1), to = off && !mulligan && line(hole).filter((p) => lieAt(hole, p) === 'fairway').sort((a, b) => dist(a, end) - dist(b, end))[0];
+  return { spec: s.spec, res, mulligan, kick: to ? { rest: to, lie: 'fairway', penalty: 0 } : null, mad: f.quirk === 'rage' && (bad(res) || s.duff) };
 }
-/** Put it on the card, unless it was a mulligan, which never happened. */
+/** Put it on the card, unless it was a mulligan, which never happened. A kicked ball counts from where it was kicked to. */
 export function foeApply(g, out, q = {}) {
   if (out.mulligan) { q.mulligans--; return g; }
   g.mad = out.mad;
-  return applyShot(g, out.res);
+  return applyShot(g, out.kick ? { ...out.res, ...out.kick } : out.res);
 }
 export function aiStroke(hole, g, foe, rnd, wind, q) {
   const out = foeSwing(hole, g, foe, rnd, wind, q);
@@ -188,7 +206,7 @@ export function aiStroke(hole, g, foe, rnd, wind, q) {
   return out.res;
 }
 export function aiHole(hole, foe, rnd, wind, q) {
-  const g = teeUp(hole);
+  const g = foeTee(hole, foe);
   while (!g.holed) aiStroke(hole, g, foe, rnd, wind, q);
   return g.strokes;
 }

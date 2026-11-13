@@ -1,8 +1,14 @@
 // Foff's Bachelor Party: how each skill level scores on each match, for tuning. `node scripts/foff-balance.mjs [rounds]`
 import { MATCHES } from '../client/src/foff/course.js';
-import { aiHole, windFor } from '../client/src/foff/golf-sim.js';
+import { aiHole, aiStroke, cardScore, markBack, teeUp, windFor } from '../client/src/foff/golf-sim.js';
 import { rng } from '../server/engine/maze.js';
 
+/** Keetch's stand-in plays a hole. Against Kashely his ball gets marked back the first time it is on the green. */
+function play(h, skill, rnd, wind, marked) {
+  const g = teeUp(h);
+  while (!g.holed) { aiStroke(h, g, skill, rnd, wind); if (!marked && !g.holed && g.lie === 'green') { marked = true; g.pos = markBack(h, g.pos) || g.pos; } }
+  return g.strokes;
+}
 const rounds = Number(process.argv[2]) || 500;
 for (const m of MATCHES) {
   const par = m.holes.reduce((s, h) => s + h.par, 0);
@@ -11,10 +17,10 @@ for (const m of MATCHES) {
   for (const skill of [1, 2, 5, 6, 7, 8, 10]) {
     const rnd = rng(skill * 7919), per = m.holes.map(() => 0); let total = 0, wins = 0;
     for (let r = 0; r < rounds; r++) {
-      let mine = 0; const foes = m.foes.map(() => 0), q = m.foes.map(() => ({ mulligans: 3 }));
+      let mine = 0; const foes = m.foes.map(() => 0), q = m.foes.map(() => ({ mulligans: 3, pencil: 1 }));
       m.holes.forEach((h, i) => {
-        const wind = windFor(rnd, m.wind), s = aiHole(h, skill, rnd, wind);
-        mine += s; per[i] += s; m.foes.forEach((f, k) => { foes[k] += aiHole(h, f, rnd, wind, q[k]); });
+        const wind = windFor(rnd, m.wind), s = play(h, skill, rnd, wind, !m.foes.some((f) => f.quirk === 'cheat'));
+        mine += s; per[i] += s; m.foes.forEach((f, k) => { foes[k] += cardScore(f, aiHole(h, f, rnd, wind, q[k]), h.par, q[k]); });
       });
       total += mine; if (foes.every((f) => mine < f)) wins++;
     }

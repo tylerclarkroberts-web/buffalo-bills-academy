@@ -5,7 +5,7 @@ import { KEETCH, MATCHES, OBAMA } from './course.js';
 import { LINES } from './lines.js';
 import { INTRO, OUTRO } from './scenes.js';
 import { DONE, NOPE, QUESTS } from './quests.js';
-import { BOOST, CLUBS, DT, aiStroke, angleTo, foeApply, foeSwing, applyShot, dist, lieAt, pickClub, powerFor, shoot, swingSpec, teeUp, windFor } from './golf-sim.js';
+import { BOOST, CLUBS, DT, aiStroke, angleTo, cardScore, foeApply, foeSwing, foeTee, applyShot, dist, lieAt, markBack, pickClub, powerFor, shoot, swingSpec, windFor } from './golf-sim.js';
 import { H, SWEET, W, WILD, camFor, drawAim, drawBall, drawGolfer, drawHole, drawMark, drawMeter, drawSwing, drawPinPointer, drawWind, paintHole, toScreen, toWorld } from './draw.js';
 import { sfx } from './sfx.js';
 import { makeSayer } from '../guntrad-core.js';
@@ -53,7 +53,7 @@ export function createGame(canvas, emit) {
       putt: !!g.spec.putt, ticks: [far(reach() / 2), far(reach())], inReach: ideal() != null,
       wind: { mph: Math.round(Math.hypot(...g.wind)), deg: Math.round(Math.atan2(g.wind[0], g.wind[1]) * 180 / Math.PI) },
       charge: g.charge, armed: g.armed, talk: g.talk[0] || null, bark: g.bark || null,
-      card: { names: who.map((w) => w.name), pars: m.holes.map((h) => h.par), rows: g.card.map((r) => r.slice()) }, result: g.result, next: L.next,
+      card: { names: who.map((w) => w.name), pars: m.holes.map((h) => h.par), rows: g.card.map((r) => r.slice()), took: g.took.map((r) => r.slice()) }, result: g.result, next: L.next,
       match: m.id, finale: !!m.finale,
     });
   }
@@ -96,9 +96,9 @@ export function createGame(canvas, emit) {
     if (!g.talk.length) { const then = g.after; g.after = null; then?.(); }
     push();
   }
-  function bark(set) {
+  function bark(set, n) { // a # in the line is the measurement that goes with it
     if (!L.barks[set]) return;
-    const line = say(set), cut = line.indexOf(': ');
+    const line = say(set).replace('#', n), cut = line.indexOf(': ');
     g.bark = { who: line.slice(0, cut), text: line.slice(cut + 2) };
     clearTimeout(barkTimer); barkTimer = setTimeout(() => { g.bark = null; push(); }, 2800);
   }
@@ -118,14 +118,14 @@ export function createGame(canvas, emit) {
     m = MATCHES.find((x) => x.id === id) || MATCHES[0]; L = LINES[m.id]; say = makeSayer(L.barks); who = [KEETCH, ...m.foes];
     clearTimeout(barkTimer); clearTimeout(cardTimer); clearTimeout(restTimer);
     Object.assign(g, { phase: 'aim', talk: [], charge: 0, armed: false, first: !!L.firstGood, result: null, bark: null, guest: false, anim: null,
-      card: who.map(() => []), foeState: who.map(() => ({ mulligans: 3 })) });
+      card: who.map(() => []), took: who.map(() => []), foeState: who.map(() => ({ mulligans: 3, pencil: 1 })) });
     tee(0);
     if (!again) talk(L.intro);
   }
   function tee(i) {
     g.hi = i; g.hole = m.holes[i]; g.tex = paintHole(g.hole); g.wind = windFor(rnd, m.wind);
-    g.st = who.map(() => teeUp(g.hole)); g.shown = g.st.map((s) => s.pos.slice()); g.cam = null; g.aim = 0;
-    address();
+    g.st = who.map((w) => foeTee(g.hole, w)); g.shown = g.st.map((s) => s.pos.slice()); g.cam = null; g.aim = 0; g.marked = false;
+    bark('tee'); address();
   }
   function setClub(ix) {
     const me = g.st[0];
@@ -155,6 +155,8 @@ export function createGame(canvas, emit) {
       air: spec.putt ? 0 : (0.5 + d / 220) * quick, run: Math.max(0.2, (res.curve.length - 1) * DT) * quick };
     g.phase = ix ? 'foes' : 'fly'; push();
   }
+  /** A ball that moves without being hit: along the ground from a to b, slowly enough to watch. */
+  const slide = (ix, a, b, done) => fly(ix, { curve: Array.from({ length: 51 }, (_, k) => mix(a, b, ease(k / 50))), land: a, drift: [0, 0] }, { putt: true }, false, done);
   /** Through the air on a path the wind bends, then a couple of bounces, then along the ground the way the sim rolled it. */
   function ballAt(a) {
     if (a.t < a.air) {
@@ -182,22 +184,36 @@ export function createGame(canvas, emit) {
     go();
   }
   /** Everyone still playing the hole takes one swing, then it is Keetch again. */
-  function foes() { g.fast = false; g.queue = who.map((_, i) => i).filter((i) => i && !g.st[i].holed); nextFoe(); }
+  function foes() {
+    g.fast = false; g.queue = who.map((_, i) => i).filter((i) => i && !g.st[i].holed);
+    const me = g.st[0], back = !g.marked && me.lie === 'green' && who.some((w) => w.quirk === 'cheat') && markBack(g.hole, me.pos);
+    if (!back) return nextFoe();
+    g.marked = true; bark('mark'); // once a hole Kashely marks Keetch's ball, and it goes back somewhere else
+    slide(0, me.pos, back, () => { me.pos = back; restTimer = setTimeout(nextFoe, 600); });
+  }
   function nextFoe() {
     const i = g.queue.shift();
     if (i == null) return address();
     const out = foeSwing(g.hole, g.st[i], who[i], rnd, g.wind, g.foeState[i]);
-    if (!g.fast) { if (out.spec.putt) sfx.putt(); else sfx.thwack(); }
+    if (out.gimme) { const ft = Math.max(1, Math.round(dist(g.st[i].pos, g.hole.pin) * 3)); bark('gimme', ft === 1 ? '1 foot' : ft + ' feet'); } // he picks it up
+    else if (!g.fast) { if (out.spec.putt) sfx.putt(); else sfx.thwack(); }
     fly(i, out.res, out.spec, false, () => {
-      foeApply(g.st[i], out, g.foeState[i]);
-      if (out.res.holed && !g.fast) sfx.cup();
-      if (out.mulligan) { bark('mulligan'); g.queue.unshift(i); } // that one never happened, and he is up again
-      else if ((out.res.hazard || out.mad || g.st[i].pickedUp) && !g.bark && rnd() < 0.7) bark(who[i].id);
-      if (g.fast) nextFoe(); else restTimer = setTimeout(nextFoe, 600);
+      const settle = () => {
+        foeApply(g.st[i], out, g.foeState[i]);
+        if (out.res.holed && !out.gimme && !g.fast) sfx.cup();
+        if (out.mulligan) { bark('mulligan'); g.queue.unshift(i); } // that one never happened, and he is up again
+        else if ((out.res.hazard || out.mad || g.st[i].pickedUp) && !g.bark && rnd() < 0.7) bark(who[i].id);
+        if (g.fast) nextFoe(); else restTimer = setTimeout(nextFoe, 600);
+      };
+      if (!out.kick) return settle();
+      bark('kick'); slide(i, out.res.curve.at(-1), out.kick.rest, settle); // out of mulligans: it turns up on the fairway
     });
   }
   function holeOut() {
-    g.st.forEach((s, i) => { if (i) while (!s.holed) aiStroke(g.hole, s, who[i], rnd, g.wind, g.foeState[i]); g.card[i][g.hi] = s.strokes; }); // nobody waits for Landon
+    g.st.forEach((s, i) => { // nobody waits for Landon
+      if (i) while (!s.holed) aiStroke(g.hole, s, who[i], rnd, g.wind, g.foeState[i]);
+      g.took[i][g.hi] = s.strokes; g.card[i][g.hi] = cardScore(who[i], s.strokes, g.hole.par, g.foeState[i]); // what happened, and what got written down
+    });
     push();
     cardTimer = setTimeout(() => { g.phase = 'card'; push(); }, 1100);
   }

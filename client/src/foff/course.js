@@ -14,7 +14,7 @@ const F = {
   foff: { name: 'Foff', skill: 6, ball: '#ffd84a', look: { bald: true, hat: 'umbrella', beard: '#7a5a3a', shades: true, shirt: '#22242c', pants: '#22242c', shorts: true, sandals: true } },
   tcut: { name: 'Tcut', skill: 6, quirk: 'rage', ball: '#f1a0a0', look: { hair: '#e6c86a', shirt: '#f1dcd8', pants: '#3a3f4a', shorts: true, h: 7, w: 4 } },
   korn: { name: 'Korn', skill: 7, quirk: 'long', ball: '#9adf6a', look: { hair: '#4a3020', cap: '#1b1b22', beard: '#4a3020', shirt: '#f3f6fa', pants: '#6a1c2a', shorts: true, h: -4, w: 4 } },
-  kashely: { name: 'Kashely', skill: 8, quirk: 'mulligan', ball: '#d8a860', look: { hair: '#3a2a1c', hat: 'cowboy', shirt: '#22242c', pants: '#c9b384', shorts: true } },
+  kashely: { name: 'Kashely', skill: 8, quirk: 'cheat', ball: '#d8a860', look: { hair: '#3a2a1c', hat: 'cowboy', shirt: '#22242c', pants: '#c9b384', shorts: true } },
   joejack: { name: 'Mr. Joe Jack', skill: 10, ball: '#e2483d', look: { hair: '#5a4030', cap: '#d83a34', beard: '#5a4030', shirt: '#e6dcf0', pants: '#22242c', shorts: true, w: 2 } },
   steeze: { name: 'Steeze', skill: 10, ball: '#b9a0e8', look: { hair: '#1c1612', shirt: '#ffffff', pants: '#1b1b22', h: 7, w: -2 } },
 };
