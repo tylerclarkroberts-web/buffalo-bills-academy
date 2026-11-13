@@ -1,6 +1,7 @@
-// Shared by framing, cutout correction, the saved picture and its 3D mesh.
+// Shared by framing and cutout correction; the saved picture and its 3D mesh are the kept head enlarged to fill it.
 const CX = 0.5, CY = 0.47, RX = 0.43, RY = 0.46;
 const taper = (y) => y > CY ? 0.92 - (y - CY) * 0.5 : 1;
+const inside = (nx, ny) => ((nx - CX) / (RX * taper(ny))) ** 2 + ((ny - CY) / RY) ** 2 <= 1;
 
 export function headPath(width, height) {
   const angles = [0, 1e-7, Math.PI - 1e-7, Math.PI];
@@ -12,23 +13,45 @@ export function headPath(width, height) {
   return `M${points.join('L')}Z`;
 }
 
-/** Optional alpha is one byte per pixel: 0 removed, 255 kept. */
-export function headMask(width, height, alpha) {
+/** Optional alpha is one byte per pixel: 0 removed, 255 kept. outlined = false keeps an already fitted head (fitHead) whole. */
+export function headMask(width, height, alpha, outlined = true) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) throw new Error('Invalid head size');
   if (alpha != null && (!(alpha instanceof Uint8Array || alpha instanceof Uint8ClampedArray) || alpha.length !== width * height)) throw new Error('Invalid head mask');
   const mask = new Uint8ClampedArray(width * height);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const ny = (y + 0.5) / height, nx = (x + 0.5) / width;
-    const inside = ((nx - CX) / (RX * taper(ny))) ** 2 + ((ny - CY) / RY) ** 2 <= 1;
     const i = y * width + x;
-    if (inside && (alpha == null || alpha[i] >= 128)) mask[i] = 255;
+    if ((!outlined || inside(nx, ny)) && (alpha == null || alpha[i] >= 128)) mask[i] = 255;
   }
   return mask;
 }
 
-/** Intersect the image's transparency, subject mask and framing outline in place. */
-export function applyHeadMask(img, alpha) {
-  const mask = headMask(img.width, img.height, alpha);
+/**
+ * A cutout keeps only as much head as the framing caught, so a loose frame used to save a neck-sized head.
+ * Returns the part of the frame to redraw across the whole frame so the kept area spans the outline's
+ * height or width, and the mask redrawn the same way. The enlarged head is not cut to the outline's curve again.
+ */
+export function fitHead(width, height, alpha) {
+  let x0 = width, y0 = height, x1 = 0, y1 = 0;
+  for (let i = 0; i < alpha.length; i++) if (alpha[i] >= 128) {
+    const x = i % width, y = (i - x) / width;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1);
+  }
+  if (x1 <= x0) return { crop: { x: 0, y: 0, w: width, h: height }, alpha };
+  // ponytail: fits the box around everything kept, so a stray kept speck holds the zoom back until it is erased.
+  const zoom = Math.min(2 * RX * width / (x1 - x0), 2 * RY * height / (y1 - y0));
+  const crop = { x: (x0 + x1) / 2 - CX * width / zoom, y: (y0 + y1) / 2 - CY * height / zoom, w: width / zoom, h: height / zoom };
+  const out = new Uint8ClampedArray(width * height);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const u = Math.floor(crop.x + (x + 0.5) / zoom), v = Math.floor(crop.y + (y + 0.5) / zoom);
+    if (u >= 0 && v >= 0 && u < width && v < height && alpha[v * width + u] >= 128) out[y * width + x] = 255;
+  }
+  return { crop, alpha: out };
+}
+
+/** Intersect the image's transparency, subject mask and (unless already fitted) framing outline in place. */
+export function applyHeadMask(img, alpha, outlined = true) {
+  const mask = headMask(img.width, img.height, alpha, outlined);
   if (img.data.length !== mask.length * 4) throw new Error('Invalid head image');
   for (let i = 0; i < mask.length; i++) img.data[i * 4 + 3] = mask[i] = mask[i] && img.data[i * 4 + 3] >= 128 ? 255 : 0;
   return mask;

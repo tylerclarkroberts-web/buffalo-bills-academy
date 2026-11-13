@@ -87,7 +87,8 @@ export default function AvatarMaker({ next = '/', retake = false }) {
     await new Promise((r) => setTimeout(r, 30));
     if (!alive.current || pending.current !== controller) return;
     try {
-      const r = stylize(cutout.canvas, { x: 0, y: 0, w: OUT_W, h: OUT_H }, cutout.alpha);
+      // From the photo, not the 240×300 editing copy: the head is enlarged to fill the outline.
+      const r = stylize(src.current, frameCrop(src.current.width, src.current.height, framing), cutout.alpha);
       setResult(r); setStage('preview');
     } catch { setErr('Something went wrong making your avatar. Try adjusting the cutout.'); }
     if (alive.current && pending.current === controller) { pending.current = null; setBusy(false); }

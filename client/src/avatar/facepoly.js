@@ -1,13 +1,13 @@
 // Turns a cropped face into a stylized avatar, entirely in the browser.
 import { lowPoly, rasterize } from '../lowpoly.js';
-import { applyHeadMask, clipHeadTriangles } from './head-mask.js';
+import { applyHeadMask, clipHeadTriangles, fitHead } from './head-mask.js';
 
 export const OUT_W = 240, OUT_H = 300;
 
 /** Pure pixel/mesh conversion: both outputs use the same edited head mask. */
-export function buildHead(img, alpha) {
+export function buildHead(img, alpha, outlined = true) {
   const { width, height } = img;
-  const mask = applyHeadMask(img, alpha);
+  const mask = applyHeadMask(img, alpha, outlined);
   const poly = clipHeadTriangles(lowPoly(img, {
     cell: 22, edges: 420, seed: 5, minCoverage: 0,
     detail: [{ x: width * 0.2, y: height * 0.25, w: width * 0.6, h: height * 0.5, cell: 11 }],
@@ -24,14 +24,21 @@ export function buildHead(img, alpha) {
   return { width, height, tris: poly.tris, pixels };
 }
 
-/** src: canvas/image/video, crop: {x,y,w,h}; optional alpha is 240×300 kept/removed pixels. */
+/** src: canvas/image/video, crop: {x,y,w,h}; optional alpha is 240×300 kept/removed pixels of that crop, refitted to fill the outline. */
 export function stylize(src, crop, alpha) {
   const c = document.createElement('canvas');
   c.width = OUT_W; c.height = OUT_H;
   const g = c.getContext('2d', { willReadFrequently: true });
-  g.drawImage(src, crop.x, crop.y, crop.w, crop.h, 0, 0, OUT_W, OUT_H);
+  if (alpha) {
+    const fit = fitHead(OUT_W, OUT_H, alpha), kx = crop.w / OUT_W, ky = crop.h / OUT_H;
+    crop = { x: crop.x + fit.crop.x * kx, y: crop.y + fit.crop.y * ky, w: fit.crop.w * kx, h: fit.crop.h * ky };
+    alpha = fit.alpha;
+  }
+  // Drawn through a transform because the fitted crop can hang off the photo, which Safari will not take as a source rectangle.
+  g.setTransform(OUT_W / crop.w, 0, 0, OUT_H / crop.h, -crop.x * OUT_W / crop.w, -crop.y * OUT_H / crop.h);
+  g.drawImage(src, 0, 0); g.resetTransform();
   const img = g.getImageData(0, 0, OUT_W, OUT_H);
-  const { tris, pixels } = buildHead(img, alpha);
+  const { tris, pixels } = buildHead(img, alpha, !alpha);
   img.data.set(pixels); g.putImageData(img, 0, 0);
   const png = c.toDataURL('image/png');
   img.data.fill(0); pixels.fill(0); // forget intermediate photo and rendered pixels
