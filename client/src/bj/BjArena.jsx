@@ -32,6 +32,16 @@ function HandCards({ cards, small, freshFrom, reduced }) {
   );
 }
 
+/** Continuous play: someone else's own game, as one card-free line (round, what's riding, last result). */
+function LaneTag({ l, i }) {
+  const what = l.phase === 'over' ? 'done' : l.bet > 0 ? `${money(l.bet)} in play` : 'betting';
+  return (
+    <span className={`bj-lane ${l.bet > 0 ? 'live' : ''}`} data-test={`bj-lane-${i}`}>
+      <span>R{l.no} · {what}</span>{l.lastNet != null && <em className={l.lastNet > 0 ? 'up' : l.lastNet < 0 ? 'down' : ''}>last {l.lastNet > 0 ? '+' : l.lastNet < 0 ? '−' : '±'}{money(Math.abs(l.lastNet))}</em>}
+    </span>
+  );
+}
+
 /**
  * Oval arena: Guntrad + dealer hand at top; seats around the rail with Bust avatars.
  * `shown` from useDealReveal limits how many cards are painted. Tap calls onTap (speed).
@@ -102,7 +112,8 @@ export function BjArena({
             </div>
             <div className="bj-house-meta">
               <span className="mono small">{v.house.mode === 'guntrad' ? 'Bank ∞' : `Bank ${money(v.house.bank)}`}</span>
-              <span className="mono small dim" data-test="bj-deck">Deck {v.deckLeft}/52</span>
+              {v.continuous && <span className="mono small dim" data-test="bj-live">{Object.values(v.lanes || {}).filter((l) => l.bet > 0).length} live</span>}
+              {!(v.continuous && v.mySeat < 0) && <span className="mono small dim" data-test="bj-deck">Deck {v.deckLeft}/52</span>}
             </div>
           </div>
 
@@ -151,6 +162,7 @@ export function BjArena({
                       })}
                       {!hs.length && b && !b.out && <span className="bj-bet big" data-test="bj-betchip">{money(b.bet)}</span>}
                       {b?.out && <span className="small dim">sitting out</span>}
+                      {v.continuous && !s.me && v.lanes?.[i] && <LaneTag l={v.lanes[i]} i={i} />}
                     </div>
                     {res.length > 0 && (
                       <div className="bj-pay" aria-live="polite">

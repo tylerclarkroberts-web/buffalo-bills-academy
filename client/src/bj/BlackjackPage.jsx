@@ -65,7 +65,7 @@ export function BetBar({ min, max, royal, bet, setBet, side, setSide, onBet, onS
             <button type="button" aria-label={`more ${k}`} data-test={`bj-side-${k}-more`} disabled={a >= Math.min(bet, 25)} onClick={() => stepSide(k, 1)}>+</button>
           </span>); })}
         <button className="btn primary" disabled={!can} onClick={() => onBet(bet, { match: sideCap('match'), pairs: sideCap('pairs') })} data-test="bj-deal">Bet ${bet}{sideCap('match') + sideCap('pairs') ? ` +$${sideCap('match') + sideCap('pairs')}` : ''}</button>
-        <button className="btn ghost small" onClick={onSitout} data-test="bj-sitout">Sit out</button>
+        {onSitout && <button className="btn ghost small" onClick={onSitout} data-test="bj-sitout">Sit out</button>}
       </div>
     </div>
   );
@@ -122,7 +122,7 @@ function BjLobby({ me }) {
   const [house, setHouse] = useState('guntrad');
   const [rules, setRules] = useState(null);
   const [royal, setRoyal] = useState(null);
-  const [money_, setMoney] = useState({ minBet: 5, maxBetX: 20, buyIn: 500, houseBank: 1000, turnSec: 86400, maxSeats: 5, bots: 1 }); // v51: one bot by default so Open & deal is one tap
+  const [money_, setMoney] = useState({ minBet: 5, maxBetX: 20, buyIn: 500, houseBank: 1000, turnSec: 86400, maxSeats: 5, bots: 1, continuous: false }); // v51: one bot by default so Open & deal is one tap
   const [prev, setPrev] = useState(null);
   const narrow = useMedia('(max-width: 899px) and (not ((orientation: landscape) and (max-height: 520px)))');
   useEffect(() => { api('GET', '/bj').then((r) => { setInfo(r); setRules(r.defaults); setRoyal(Object.fromEntries(Object.entries(r.royalEv).map(([k, v]) => [k, { on: v.on, ...Object.fromEntries(r.royal[k].tiers.map((t) => [t.k, v[t.k]])) }]))); if (r.tables.length) setTab('tables'); }).catch((e) => setErr(e.message)); }, []);
@@ -168,7 +168,9 @@ function BjLobby({ me }) {
           <label className="bj-field"><span>Table name</span><input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} data-test="bj-name" /></label>
           <Seg test="bj-house" label="Who is the house?" value={house} onChange={setHouse} options={[['guntrad', 'Guntrad'], ['me', 'Me'], ['player', 'Another player']]} />
           <p className="small bj-note">{house === 'guntrad' ? 'Guntrad banks it: unlimited money, a big-Vegas single-deck table (S17, 3:2, double after split).' : house === 'me' ? `You put up a ${money(money_.houseBank)} bank and deal; you don't play a seat. If the bank runs dry the game ends.` : 'Pick the house from the players who join, before you start. Their bank comes from their bankroll.'}</p>
-          {house === 'guntrad' && <Seg test="bj-bots" label="Basic-strategy bots" value={money_.bots} onChange={(v) => M('bots', v)} options={[[0, 'None'], [1, '1'], [2, '2'], [3, '3']]} />}
+          <Seg test="bj-continuous" label="Individual continuous play" value={money_.continuous} onChange={(v) => M('continuous', v)} options={[[false, 'Off'], [true, 'On']]} />
+          {house === 'guntrad' && !money_.continuous && <Seg test="bj-bots" label="Basic-strategy bots" value={money_.bots} onChange={(v) => M('bots', v)} options={[[0, 'None'], [1, '1'], [2, '2'], [3, '3']]} />}
+          {money_.continuous && <p className="small bj-note" data-test="bj-continuous-note">Everyone plays their own single deck against the house, back to back. Nobody waits.{house !== 'guntrad' ? ' One bank covers every seat at once: a bet waits if the bank cannot cover it.' : ''}</p>}
         </div>}
         {sec === 'rules' && <div className="bj-grid2">
           <Seg test="bj-s17" label="Dealer soft 17" value={rules.s17} info={prev?.options?.s17} onChange={(v) => R('s17', v)} options={[[true, 'Stands (S17)'], [false, 'Hits (H17)']]} />
@@ -200,7 +202,7 @@ function BjLobby({ me }) {
         </div>}
       </div>
       <div className="bj-foot"><EdgeCard e={prev?.edge} compact />
-      <div className="bj-create"><span className="small dim">{prev ? `Bets $${prev.settings.minBet}–$${prev.settings.max}${house !== 'guntrad' ? ' (and never over a tenth of the bank)' : ''} · buy-in ${money(prev.settings.buyIn)}` : ''}</span>
+      <div className="bj-create"><span className="small dim">{prev ? `Bets $${prev.settings.minBet}–$${prev.settings.max}${house !== 'guntrad' ? ' (and never over a tenth of the bank)' : ''} · buy-in ${money(prev.settings.buyIn)}${prev.settings.continuous ? ' · continuous' : ''}` : ''}</span>
         <button className="btn ghost small" onClick={() => create()} disabled={!!prev?.problems?.length} data-test="bj-create">Open lobby</button>
         <button className="btn primary" onClick={() => create({ deal: true })} disabled={!!prev?.problems?.length} data-test="bj-create-deal" title="Create and start dealing">Open & deal →</button></div></div>
       {prev?.problems?.length > 0 && <p className="bj-warn" data-test="bj-problems">⊘ {prev.problems[0]}</p>}
@@ -281,6 +283,8 @@ function BjTable({ code, me }) {
   const turnSeat = r?.phase === 'play' ? r.hands[r.turn]?.seat : null;
   const status = v.status === 'lobby' ? 'Waiting for the host to start'
     : v.status !== 'playing' ? 'Game over'
+    : v.laneOver ? 'Your game is done'
+    : !r ? (v.house.isMe ? `You're the house: ${Object.values(v.lanes || {}).filter((l) => l.bet > 0).length} hands in play` : 'Watching')
     : dealing ? 'Dealing…'
     : r.phase === 'betting' ? (myBet ? 'Bet down: waiting for the others' : mine ? 'Place your bet' : 'Betting')
     : r.phase === 'insurance' ? 'Dealer shows an ace: insurance?'
@@ -324,6 +328,7 @@ function BjTable({ code, me }) {
         <div className="bj-bar" data-test="bj-bar">
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>
+            : v.laneOver ? <span className="small" data-test="bj-lane-over">{v.laneOver} <button className="btn small" onClick={() => post('leave')}>Cash out</button></span>
             : !mine ? <span className="small dim">{v.house.isMe ? 'You are the house: Guntrad deals by the table rules.' : 'Watching.'} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
             : ins && ready ? <div className="bj-acts"><span className="small">Insurance costs {money(Math.floor((r.hands.find((h) => h.seat === v.mySeat)?.bet || 0) / 2))}, pays 2:1</span><button className="btn" onClick={() => post('insure', { yes: true })} data-test="bj-ins-yes">Insure</button><button className="btn ghost" onClick={() => post('insure', { yes: false })} data-test="bj-ins-no">No thanks</button></div>
             : r.myTurn && ready ? <div className="bj-acts" data-test="bj-acts">
@@ -332,15 +337,17 @@ function BjTable({ code, me }) {
                 <button className={`btn ${r.can?.double ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.double} onClick={() => act('double')} data-test="bj-double" aria-hidden={!r.can?.double} title="Double down: one more card, then you stand">Double</button>
                 <button className={`btn ${r.can?.split ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.split} onClick={() => act('split')} data-test="bj-split" aria-hidden={!r.can?.split}>Split</button>
                 <button className={`btn ghost ${r.can?.surrender ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.surrender} onClick={() => act('surrender')} data-test="bj-surrender" aria-hidden={!r.can?.surrender}>Surrender</button>
+                <Sneak v={v} r={r} post={post} />
               </div>
             : r.phase === 'betting' && !myBet ? <BetBar min={v.limits.min} max={maxNow} royal={v.royal} bet={clampBet(bet)} setBet={(x) => setBet(clampBet(x))} side={side} setSide={setSide}
-                onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={() => post('sitout')} />
-            : <span className="small dim">{status}…</span>}
+                onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={v.continuous ? null : () => post('sitout')} />
+            : <span className="small dim">{status}… {ready && <Sneak v={v} r={r} post={post} />}</span>}
         </div>
         {err && <p className="error bj-err" role="alert">{err}</p>}
         {show === 'sit' && v.mySeat < 0 && !v.house.isMe && ['lobby', 'playing'].includes(v.status) && <SitGate v={v} post={post} onClose={() => { setShow(null); history.replaceState(null, '', `/bj/${code}`); }} />}
         {show === 'edge' && <div className="bj-pop" data-test="bj-edge-pop" onClick={() => setShow(null)}><div className="panel bj-gate"><h3 className="western">House edge</h3><EdgeCard e={v.edge} /><p className="small dim">{v.edge.total.text}</p><button className="btn small">Close</button></div></div>}
-        {show === 'rules' && <div className="bj-pop" data-test="bj-rules-pop" onClick={() => setShow(null)}><div className="panel"><h3 className="western">House rules</h3><ul>{v.ruleText.map((x) => <li key={x}>{x}</li>)}<li>Bets ${v.limits.min}–${v.limits.max}{v.house.mode !== 'guntrad' ? ', never over a tenth of the house bank' : ''}. Royal bets $1 up to your bet (max ${v.limits.royalMax}).</li>{['match', 'pairs'].filter((k) => v.royal[k]?.on).map((k) => <li key={k}>{k === 'match' ? `Royal Match: K-Q suited ${v.royal.match.royal}:1, suited ${v.royal.match.easy}:1` : `Royal Pairs: J/Q/K pair ${v.royal.pairs.royal}:1, other pair ${v.royal.pairs.pair}:1`} (house edge {pct(v.royal[k].edge)})</li>)}<li>Turn clock {TURN[v.turnSec]}: no bet in time sits you out; no move stands.</li></ul><button className="btn small">Close</button></div></div>}
+        {show === 'rules' && <div className="bj-pop" data-test="bj-rules-pop" onClick={() => setShow(null)}><div className="panel"><h3 className="western">House rules</h3><ul>{v.ruleText.map((x) => <li key={x}>{x}</li>)}<li>Bets ${v.limits.min}–${v.limits.max}{v.house.mode !== 'guntrad' ? ', never over a tenth of the house bank' : ''}. Royal bets $1 up to your bet (max ${v.limits.royalMax}).</li>{['match', 'pairs'].filter((k) => v.royal[k]?.on).map((k) => <li key={k}>{k === 'match' ? `Royal Match: K-Q suited ${v.royal.match.royal}:1, suited ${v.royal.match.easy}:1` : `Royal Pairs: J/Q/K pair ${v.royal.pairs.royal}:1, other pair ${v.royal.pairs.pair}:1`} (house edge {pct(v.royal[k].edge)})</li>)}{v.continuous ? <li>Individual continuous play: your own single deck against the house, round after round; nobody waits on anyone.{v.house.mode !== 'guntrad' ? ' One bank covers every seat: each open bet holds back what it could win (2× the bet; a royal bet its top payout) and a bet that does not fit waits a hand.' : ''} No move in {TURN[v.turnSec]} stands.</li>
+                : <li>Turn clock {TURN[v.turnSec]}: no bet in time sits you out; no move stands.</li>}</ul><button className="btn small">Close</button></div></div>}
         {show === 'summary' && mine && <Summary s={mine} onClose={() => setShow(null)} />}
         {v.final && <Final v={v} />}
       </div>
@@ -348,6 +355,15 @@ function BjTable({ code, me }) {
   );
 }
 
+/** Easter egg: against a player dealer the royal chips never quite leave the felt. Tap one after you've seen your cards. */
+function Sneak({ v, r, post }) {
+  const b = r?.bets?.[v.mySeat];
+  if (!r?.sneak || !b?.bet) return null;
+  const amt = Math.min(v.limits.royalMax, b.bet);
+  return ['match', 'pairs'].filter((k) => r.sneak[k]).map((k) => (
+    <button key={k} type="button" className="bj-sneak" data-test={`bj-sneak-${k}`} aria-label={`${k === 'match' ? 'Royal Match' : 'Royal Pairs'} $${amt}`}
+      onClick={() => post('sneak', { royal: { [k]: amt } })}>{k === 'match' ? '♛' : '♚'}<small>${amt}</small></button>));
+}
 function Summary({ s, onClose }) {
   const st = s.stats; const net = st.won - st.wagered;
   return (

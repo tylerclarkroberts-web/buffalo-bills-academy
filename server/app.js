@@ -376,7 +376,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/bj/tables', needPlayer, wrap((req) => bj.create(req.player, req.body || {})));
   api.get('/bj/tables/:code', needPlayer, wrap((req) => bj.view(req.player, req.params.code)));
   for (const [path, fn] of Object.entries({ join: (p, c, b) => bj.join(p, c, b?.ack === true), start: (p, c) => bj.start(p, c), leave: (p, c) => bj.leave(p, c), close: (p, c) => bj.close(p, c), sitout: (p, c) => bj.sitOut(p, c),
-    bet: (p, c, b) => bj.bet(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId) })) {
+    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId) })) {
     api.post(`/bj/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   api.get('/slots', needPlayer, wrap((req) => slots.view(req.player)));
