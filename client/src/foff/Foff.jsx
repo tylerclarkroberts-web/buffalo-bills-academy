@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { navigate } from '../App.jsx';
-import { api } from '../api.js';
+import { api, refreshSession, useSession } from '../api.js';
 import { MATCHES } from './course.js';
 import { createGame, loadSave, patchSave } from './game.js';
 import { meterX } from './draw.js';
 import { TRIP } from './quests.js';
 import { setSound } from './sfx.js';
+import { FilmPlayer } from './FoffCard.jsx';
 import './foff.css';
+import './foff-card.css';
 
 // Foff's Bachelor Party: a hidden golf adventure. This is the HUD around the canvas; the game is in game.js.
 const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* private mode */ } return null; };
@@ -21,6 +23,35 @@ function hint(ui) {
 }
 
 export default function Foff() {
+  const { me, loading } = useSession();
+  useEffect(() => { const title = document.title; document.title = "Foff's Bachelor Party"; return () => { document.title = title; }; }, []);
+  if (loading) return <div className="foff foff-gate" data-test="foff-gate-loading" />;
+  if (!me) return <FoffGate signedOut />;
+  if (!me.foffWatched) return <FoffGate onUnlocked={refreshSession} />;
+  return <FoffGame />;
+}
+
+function FoffGate({ signedOut = false, onUnlocked }) {
+  return (
+    <div className="foff foff-gate" data-test="foff-gate">
+      <h1>Foff&rsquo;s Bachelor Party</h1>
+      {signedOut ? (
+        <>
+          <p>Sign in first, then watch the film. The trip opens after.</p>
+          <button type="button" className="foff-btn go" onClick={() => navigate('/')} data-test="foff-gate-signin">SIGN IN</button>
+        </>
+      ) : (
+        <>
+          <p>Watch the film first. Then the trip opens.</p>
+          <div className="foff-gate-player"><FilmPlayer onWatched={onUnlocked} /></div>
+        </>
+      )}
+      <button type="button" className="foff-link" onClick={() => navigate('/')} data-test="foff-gate-leave">Leave</button>
+    </div>
+  );
+}
+
+function FoffGame() {
   const canvas = useRef(null), game = useRef(null);
   const [ui, setUi] = useState(null); // null: the title screen
   const [muted, setMuted] = useState(() => store('bba.foff.muted') === '1');

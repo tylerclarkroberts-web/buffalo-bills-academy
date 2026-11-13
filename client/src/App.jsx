@@ -56,7 +56,7 @@ export default function App() {
   }, [me?.id, me?.hasAvatar, path]);
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
   if (path === '/admin') return <Suspense fallback={<div style={{ background: '#170812', minHeight: '100vh' }} />}><Admin /></Suspense>; // owner only; the API enforces it
-  if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // unlisted on purpose
+  if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // lobby card unlocks this after the film
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);
   const room = path.match(/^\/rooms\/([\w-]+)\/?$/);
