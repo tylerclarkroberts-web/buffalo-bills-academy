@@ -1,4 +1,4 @@
-// v52: Hold'em-style oval felt for blackjack — seats with Bust avatars, Guntrad dealing.
+// v52: Hold'em-style oval felt for blackjack — seats with Bust avatars, Guntrad dealing (or the player who is the house).
 import React, { useRef } from 'react';
 import { Bust } from '../avatar/Bust.jsx';
 import { SeatBuddy } from '../table/TableBug.jsx';
@@ -63,6 +63,10 @@ export function BjArena({
     const ang = (seatDeg((seat - mySeat + N) % N, N) * Math.PI) / 180;
     return { x: geo.cx + geo.rx * Math.cos(ang), y: geo.cy + geo.ry * Math.sin(ang) };
   };
+  // Guntrad deals unless a player is the house; then that player's bust stands in his spot.
+  const playerHouse = v.house?.mode === 'player';
+  const spotPct = tall ? 28 : 32;
+  const houseBust = Math.round(Math.max(40, Math.min((h * spotPct) / 100 / 1.1 * 0.92, (w * 0.4) / 1.1)));
   const dShown = shown?.d ?? dealerCards.length;
   let visDealer = takeCards(dealerCards, dShown);
   // Hole stays down while the server still sends null, or during the one flip beat after reveal.
@@ -84,15 +88,31 @@ export function BjArena({
     >
       {w > 0 && (
         <>
-          {/* Same Guntrad as Hold'em: full dealer-spot behind the oval (face art untouched). */}
-          <div
-            className={`dealer-spot ${dealing ? 'dealing' : ''}`}
-            data-test="bj-guntrad"
-            style={{ height: `${tall ? 28 : 32}%` }}
-            title="Guntrad"
-          >
-            <Dealer still={reduced} />
-          </div>
+          {playerHouse ? (
+            /* A player is the house: they stand in Guntrad's spot behind the oval (same box, same layering). */
+            <div
+              className={`dealer-spot bj-house-spot ${dealing ? 'dealing' : ''}`}
+              data-test="bj-house-dealer"
+              style={{ height: `${spotPct}%` }}
+              title={`${v.house.name || 'The house'} (house)`}
+            >
+              {v.house.id ? (
+                <SeatBuddy bug={v.house.bug} playerId={v.house.id} size={Math.round(houseBust * 0.5)} reduced={reduced} myAction={false} busy={!!dealing} pose={bugPose}>
+                  <Bust id={v.house.id} avatar={v.house.avatar} size={houseBust} still={reduced} title={v.house.name || 'House'} />
+                </SeatBuddy>
+              ) : <span className="empty-chair" data-test="bj-house-empty" aria-hidden="true" />}
+            </div>
+          ) : (
+            /* Same Guntrad as Hold'em: full dealer-spot behind the oval (face art untouched). */
+            <div
+              className={`dealer-spot ${dealing ? 'dealing' : ''}`}
+              data-test="bj-guntrad"
+              style={{ height: `${tall ? 28 : 32}%` }}
+              title="Guntrad"
+            >
+              <Dealer still={reduced} />
+            </div>
+          )}
 
           <div
             className="bj-oval"
@@ -101,7 +121,11 @@ export function BjArena({
           >
             <div className="bj-oval-logo script">Buffalo Bill's</div>
           </div>
-          <DealerPlate style={{ top: `${geo.cy - geo.fry}%` }} />
+          {playerHouse ? (
+            <div className="dl-plate bj-house-plate" style={{ top: `${geo.cy - geo.fry}%` }} data-test="bj-house-plate">
+              <b>{v.house.id ? (v.house.name || 'The house') : 'House'} <i>{v.house.id ? (v.house.isMe ? 'you · the house' : 'the house') : 'to be picked'}</i></b>
+            </div>
+          ) : <DealerPlate style={{ top: `${geo.cy - geo.fry}%` }} />}
 
           <div className="bj-dealer-spot" style={{ top: `${geo.cy - geo.fry + (tall ? 6 : 5)}%` }} data-test="bj-dealer">
             <div className="bj-dealer-hand">

@@ -10,7 +10,7 @@ import { edgeReport, ruleOptions, royalMaxPay, guntradProblems, MAIN_FLOOR, ROYA
 import * as G from './game.js';
 import * as C from './continuous.js';
 import { GUNTRAD_RULES, RULE_CHOICES, LIMITS, ROYAL } from './rules.js';
-import { attachSeatBugs } from '../tableBug.js';
+import { attachSeatBugs, tableBugOf } from '../tableBug.js';
 
 const edgeSummary = (t) => { const e = tableEdge(t); return { main: { edge: e.main.edge, tone: e.main.tone }, side: Object.fromEntries(Object.entries(e.side).map(([k, v]) => [k, { edge: v.edge, tone: v.tone }])), needsAck: e.needsAck, grandfathered: !!e.grandfathered }; };
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -91,6 +91,13 @@ export class Blackjack {
     });
     v.avatars = avatars;
     attachSeatBugs(v.seats, this.barn, (s) => s.id);
+    // A player dealer stands behind the felt where Guntrad would: their avatar (photo or generated) and hatched bug.
+    if (v.house && t.house.mode === 'player' && t.house.id) {
+      const hp = this.getPlayer(t.house.id);
+      v.house.avatar = this.avatars && hp ? this.avatars.info(hp) : { kind: 'gen', seed: t.house.id };
+      const bug = tableBugOf(this.barn, t.house.id);
+      if (bug) v.house.bug = bug;
+    }
     return v;
   }
   /** Continuous play: you see your own game (deck, round, last hand) and a card-free line for everyone else's. */
