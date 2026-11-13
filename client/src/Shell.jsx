@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { navigate, goToMines } from './App.jsx';
 import Fawn from './fawn/Fawn.jsx';
-import { useSession, signInUrl, signOut } from './api.js';
+import { useSession, signInUrl, signOut, api, refreshSession } from './api.js';
 import { Mark, VENUE, TOANA } from './theme.jsx';
 import { Bust } from './avatar/Bust.jsx';
 import { BrokeHost } from './Broke.jsx';
@@ -89,13 +89,13 @@ function GamesMenu({ me }) {
   return (
     <div className="games-nav" ref={box} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
       <button type="button" ref={trigger} className="btn small games-toggle" aria-expanded={open} aria-controls="games-navigation" onClick={() => setOpen(!open)}>
-        Games <span aria-hidden="true">▾</span>
+        Games{me?.barnChallenges > 0 && <b className="barn-count" data-test="barn-count" aria-label={`${me.barnChallenges} waiting to fight your bug`}>{me.barnChallenges}</b>} <span aria-hidden="true">▾</span>
       </button>
       {open && (
         <nav id="games-navigation" className="acct-menu games-menu" aria-label="Games" onClick={() => setOpen(false)}>
           <Link to="/conquest"><Ico k="board" />Risk bets</Link>
           <button type="button" onClick={goToMines}><Ico k="pick" />Acid Mines</button>
-          {me && <Link to="/barn" data-test="barn-btn"><Ico k="barn" />Barn</Link>}
+          {me && <Link to="/barn" data-test="barn-btn"><Ico k="barn" />Barn{me.barnChallenges > 0 && <b className="barn-count">{me.barnChallenges}</b>}</Link>}
           {me && <Link to="/store" data-test="store-btn"><Ico k="store" />General Store</Link>}
         </nav>
       )}
@@ -106,6 +106,16 @@ function GamesMenu({ me }) {
 export function Shell({ path, children }) {
   const { me, config } = useSession();
   const compactNav = !useMedia('(min-width: 1100px)');
+  // The Barn button's count: ask once a minute while the tab is showing, and refresh the session only when it changed.
+  const waiting = useRef(0); waiting.current = me?.barnChallenges ?? 0;
+  useEffect(() => {
+    if (!me?.id) return undefined;
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      api('GET', '/barn/waiting').then((r) => { if (r.challenges !== waiting.current) refreshSession(); }).catch(() => {});
+    }, 60000);
+    return () => clearInterval(id);
+  }, [me?.id]);
   return (
     <div className="app">
       <a href="#main" className="sr-only">Skip to content</a>
@@ -116,7 +126,7 @@ export function Shell({ path, children }) {
           {compactNav ? <GamesMenu me={me} /> : <>
           <Link to="/conquest" className="barn-btn" title="ConquestK and play-money Risk bets"><Ico k="board" /><span>Risk bets</span></Link>
           <button className="mines-btn" onClick={goToMines} title="Work a shift in the Acid Mines"><Ico k="pick" /><span>Acid Mines</span></button>
-          {me && <Link to="/barn" className="barn-btn" title="Your barn" data-test="barn-btn"><Ico k="barn" /><span>Barn</span></Link>}
+          {me && <Link to="/barn" className="barn-btn" title={me.barnChallenges ? `Your barn: ${me.barnChallenges} waiting to fight your bug` : 'Your barn'} data-test="barn-btn"><Ico k="barn" /><span>Barn</span>{me.barnChallenges > 0 && <b className="barn-count" data-test="barn-count">{me.barnChallenges}</b>}</Link>}
           {me && <Link to="/store" className="barn-btn store-btn" title="The General Store (play money)" aria-label="General Store" data-test="store-btn"><Ico k="store" /><span>General Store</span></Link>}
           </>}
           {me ? <AccountMenu me={me} /> : (config.google ? <a className="btn small light" href={signInUrl()}>Sign in</a> : <Link to="/" className="btn small light">Sign in</Link>)}

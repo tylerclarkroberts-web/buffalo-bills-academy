@@ -413,3 +413,46 @@ test('start nudge message: three escalating lines, all in Guntrad\'s voice, with
   assert.equal(new Set(msgs.map((m) => m.text)).size, 3);
   for (const m of msgs) { assert.match(m.text, /3 players/); assert.match(m.text, /https:\/\/buffalobillsacademy.com\/t\/ABC123$/); assert.equal(m.blocks[1].elements[0].text.text, 'Start the game'); assert.ok(m.text.length < 220); }
 });
+
+test('a Barn challenge messages the challenged player once, with the stake and a link to the Barn', async (t) => {
+  const s = await boot(); t.after(s.stop);
+  const cookies = { ann: await s.login('Ann'), bob: await s.login('Bob') };
+  const ids = Object.fromEntries(await Promise.all(Object.entries(cookies).map(async ([name, cookie]) => [name, (await s.call(cookie, 'GET', '/api/me')).body.id])));
+  const barn = s.service.barn;
+  for (const id of Object.values(ids)) { barn.layEgg(id); barn.doc.pens[id].hatchAt = s.clock.t; barn.view(id); barn.doc.pens[id].xp = 160; }
+  barn.save();
+  const bug = (name) => barn.doc.pens[ids[name]].name;
+
+  const sent = await s.call(cookies.ann, 'POST', '/api/barn/challenges', { to: ids.bob, stake: 25.5 });
+  assert.equal(sent.status, 200); await s.idle();
+  assert.equal(s.slack.dms.length, 1); assert.equal(s.slack.dms[0].to, 'UBOB');
+  assert.equal(s.slack.dms[0].text, `Ann's bug ${bug('ann')} has called out your ${bug('bob')} for $25.50. Accept or decline within a day: https://buffalobillsacademy.com/barn`);
+  assert.match(s.slack.dms[0].blocks[0].text.text, /\$25\.50 each, winner takes \$51/);
+  assert.equal(s.slack.dms[0].blocks[1].elements[0].url, 'https://buffalobillsacademy.com/barn');
+  assert.equal((await s.call(cookies.bob, 'GET', '/api/barn/waiting')).body.challenges, 1);
+  assert.equal((await s.call(null, 'GET', '/api/barn/waiting')).status, 401);
+
+  // Asking again is the same challenge, so no second message; a free one says so.
+  await s.call(cookies.ann, 'POST', '/api/barn/challenges', { to: ids.bob, stake: 25.5 }); await s.idle();
+  assert.equal(s.slack.dms.length, 1);
+  await s.call(cookies.bob, 'POST', '/api/barn/challenges', { to: ids.ann, stake: 0 }); await s.idle();
+  assert.equal(s.slack.dms.length, 2); assert.equal(s.slack.dms[1].to, 'UANN');
+  assert.match(s.slack.dms[1].blocks[0].text.text, /No money, just the grudge/); assert.ok(!s.slack.dms[1].text.includes('$'));
+});
+
+test('challenge alerts respect the off switch and never fail the challenge when Slack is down', async (t) => {
+  const s = await boot(); t.after(s.stop);
+  const cookies = { ann: await s.login('Ann'), bob: await s.login('Bob'), cat: await s.login('Cat') };
+  const ids = Object.fromEntries(await Promise.all(Object.entries(cookies).map(async ([name, cookie]) => [name, (await s.call(cookie, 'GET', '/api/me')).body.id])));
+  const barn = s.service.barn;
+  for (const id of Object.values(ids)) { barn.layEgg(id); barn.doc.pens[id].hatchAt = s.clock.t; barn.view(id); barn.doc.pens[id].xp = 160; }
+  barn.save();
+  await s.call(cookies.bob, 'POST', '/api/me/slack/prefs', { on: false });
+  assert.equal((await s.call(cookies.ann, 'POST', '/api/barn/challenges', { to: ids.bob, stake: 0 })).status, 200); await s.idle();
+  assert.equal(s.slack.dms.length, 0, 'alerts off: nothing sent, but the challenge stands');
+  assert.equal((await s.call(cookies.bob, 'GET', '/api/barn')).body.challenges.incoming.length, 1);
+  s.slack.down = true;
+  const during = await s.call(cookies.ann, 'POST', '/api/barn/challenges', { to: ids.cat, stake: 0 }); await s.idle();
+  assert.equal(during.status, 200); assert.equal(during.body.challenges.outgoing.length, 2);
+  assert.equal(s.slack.dms.length, 0); assert.ok(s.logs.some((line) => line.includes('[slack] challenge failed')));
+});

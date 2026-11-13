@@ -91,6 +91,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     client: new SlackClient({ token: env.SLACK_BOT_TOKEN, baseUrl: env.SLACK_API_URL || undefined, fetchImpl: slackFetch || fetchImpl || globalThis.fetch, retryDelayMs: slackRetryMs ?? 1500 }), ...(slackSendRetryMs ? { retryMs: slackSendRetryMs } : {}) });
   service.slack = slack;
   service.onTableChanged = (t, actorId) => slack.tableChanged(t, actorId);
+  barn.onChallenge = (facts) => slack.challenged(facts);
+  slack.challengeOpen = (id) => barn.doc.challenges.some((c) => c.id === id);
   // v48: blackjack turn DMs (same opt-in, dedupe, reminders, retries as poker)
   slack.bjSource = { all: () => Object.values(bj.doc?.tables || {}) };
   bj.onChange = (t, actorId) => slack.bjChanged(t, actorId);
@@ -125,7 +127,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     accounts.ensure(p);
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
       username: p.login?.username || null, hasPassword: !!p.login?.hash, googleLinked: !!p.google && p.kind !== 'dev',
-      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p) };
+      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), barnChallenges: barn.challengeCount(p.id) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
   const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
@@ -311,6 +313,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/bouts', needPlayer, wrap((req) => barn.openBout(req.player.id, req.body)));
   api.post('/barn/bouts/:id/join', needPlayer, wrap((req) => barn.joinBout(req.player.id, req.params.id, req.body)));
   api.delete('/barn/bouts/:id', needPlayer, wrap((req) => barn.cancelBout(req.player.id, req.params.id)));
+  api.post('/barn/challenges', needPlayer, wrap((req) => barn.challenge(req.player.id, req.body)));
+  api.post('/barn/challenges/:id/accept', needPlayer, wrap((req) => barn.acceptChallenge(req.player.id, req.params.id, req.body)));
+  api.delete('/barn/challenges/:id', needPlayer, wrap((req) => barn.dropChallenge(req.player.id, req.params.id)));
+  api.get('/barn/fights/:id', needPlayer, wrap((req) => barn.fight(req.params.id)));
+  api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
