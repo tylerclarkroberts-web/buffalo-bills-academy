@@ -40,6 +40,10 @@ Bugs grow slightly through level 10, with shared size and equipped-art scaling a
 - Held stakes remain part of net worth. Cancel an open bout before deleting the account.
 - Signed-in players can see, for every bug in the ring, its name, species, level, looks, record and whether it is resting; and for each recent fight, the bugs, their owners, the blows, the result and the pot. Wallets, payout receipts, combat setups, condition, needs, XP and care history remain private.
 
+## Sound
+
+A fight's effects and music follow the Barn's one sound switch, which is off until a player turns it on, and stop at once when it is turned off. Both are made in the browser; there are no audio files. The music plays from the first blow to the finish. Each blow is followed by a short pause so its line can be read before the next one lands.
+
 ## Fight invariants and compatibility
 
 - Both bugs must be alive, at least level 3 and off their one-hour fight cooldown when joining. Any two eligible levels may fight; the board shows the difference before players commit.

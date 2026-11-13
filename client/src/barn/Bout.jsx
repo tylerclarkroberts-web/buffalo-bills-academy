@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, verdictLine } from './boutFx.js';
-import { voice, sfx } from './sfx.js';
+import { voice, sfx, music } from './sfx.js';
 
 const EXTRA = { pierce: 'pierce', guard: 'guard', venom: 'venom', weaken: 'weaken' };
 function landSound({ kind, r }) {
@@ -57,7 +57,10 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
     else if (beat && pos.phase === 'act' && beat.kind === 'attack') sfx[STYLES[styleOf(fighters[beat.r.by]?.species)].sound]();
     else if (beat && pos.phase === 'land') landSound(beat);
     else if (pos.phase === 'finish') { if (plan.ending === 'ko') sfx.ko(); else sfx.bell(); }
+    // Music runs from the first blow to the last, and follows the sound switch.
+    if (['charge', 'act', 'land'].includes(pos.phase)) music.start(); else music.stop();
   }, [pos.i, pos.phase]);
+  useEffect(() => () => music.stop(), []);
   useEffect(() => {
     if (!done) return undefined;
     if (bout.result === 'lost') { sfx.sulk(); return undefined; }
