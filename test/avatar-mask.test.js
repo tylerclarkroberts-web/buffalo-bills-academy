@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { headMask, headPath, applyHeadMask, clipHeadTriangles } from '../client/src/avatar/head-mask.js';
+import { headMask, headPath, applyHeadMask, clipHeadTriangles, fitHead } from '../client/src/avatar/head-mask.js';
 import { buildHead } from '../client/src/avatar/facepoly.js';
 import { lowPoly } from '../client/src/lowpoly.js';
 
@@ -44,6 +44,27 @@ test('background colours never enter avatar facets or saved pixels after subject
   assert.equal(result.pixels[(120 * 240 + 66) * 4 + 3], 255, 'hair remains');
   assert.equal(result.pixels[(135 * 240 + 170) * 4 + 3], 255, 'ear remains');
   assert.ok(result.tris.length / 10 < 15000, 'ordinary head stays a practical 3D mesh');
+});
+
+test('a loosely framed head is enlarged to fill the outline and is not cut to its curve again', () => {
+  const img = photo(), alpha = new Uint8ClampedArray(240 * 300), outline = headMask(240, 300);
+  for (let i = 0; i < 240 * 300; i++) img.data.set([170, 100, 60, 255], i * 4);
+  for (let y = 150; y < 230; y++) for (let x = 120; x < 180; x++) alpha[y * 240 + x] = 255; // a 60×80 head, off centre
+  const fit = fitHead(240, 300, alpha);
+  let x0 = 240, x1 = 0, y0 = 300, y1 = 0;
+  for (let i = 0; i < fit.alpha.length; i++) if (fit.alpha[i]) {
+    x0 = Math.min(x0, i % 240); x1 = Math.max(x1, i % 240); y0 = Math.min(y0, Math.floor(i / 240)); y1 = Math.max(y1, Math.floor(i / 240));
+  }
+  assert.ok(x1 - x0 >= 200 && y1 - y0 >= 270, `grows to ${x1 - x0 + 1}×${y1 - y0 + 1}`);
+  assert.ok(Math.abs((x0 + x1) / 2 - 120) < 2 && Math.abs((y0 + y1) / 2 - 141) < 2, 'centred on the outline');
+  assert.ok(Math.abs(fit.crop.w / fit.crop.h - 0.8) < 1e-9, 'the photo is redrawn without stretching');
+  assert.equal(alpha[160 * 240 + 130], 255, 'the editing mask is left alone');
+  const corner = (y0 + 2) * 240 + x0 + 2;
+  assert.equal(outline[corner], 0, 'the enlarged corner lies outside the outline curve');
+  assert.equal(buildHead(img, fit.alpha, false).pixels[corner * 4 + 3], 255, 'and is saved anyway');
+  const full = fitHead(240, 300, outline);
+  assert.ok(Math.abs(full.crop.w - 240) < 2 && Math.abs(full.crop.x) < 2, 'a head already filling the outline stays put');
+  assert.deepEqual(fitHead(240, 300, new Uint8ClampedArray(240 * 300)).crop, { x: 0, y: 0, w: 240, h: 300 });
 });
 
 test('mesh clipping preserves mask holes even when all original triangle vertices are kept', () => {

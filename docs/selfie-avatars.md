@@ -4,10 +4,10 @@ Take a selfie or upload a photo to make a low-poly head for the card table. You 
 
 ## Make and review your head
 
-1. **Frame the photo.** Drag to position it and use **Zoom** to fit your head, including hair and ears, inside the outline. Arrow keys also move the photo. The guide and saved head use the same outline; automatic face framing is only a starting point where the browser supports it.
+1. **Frame the photo.** Drag to position it and use **Zoom** to fit your head, including hair and ears, inside the outline. Arrow keys also move the photo. The guide and the cutout use the same outline; automatic face framing is only a starting point where the browser supports it.
 2. Choose **Remove background**. Automatic removal runs on this device in a background worker. Its model and runtime are fetched from this site when first needed, about **28 MB** before transfer compression or browser caching. They are not loaded just to view the lobby or a saved avatar.
 3. **Review the cutout.** Choose **Keep** to restore hair or ears and **Erase** to remove background. Adjust **Brush size**, then drag or touch the picture. Dimmed areas will be removed; turn off **Show removed areas** to inspect the cutout without the dimmed photo. **Reset cutout** restores the automatic result, or the initial outline when using manual mode.
-4. Choose **Make it low-poly** to review the 3D head and **At the table** preview. Both use the same edited cutout. **Edit cutout** returns to your current brush edits. **Adjust framing** reuses the local photo and starts a new cutout, so you do not have to upload it again.
+4. Choose **Make it low-poly** to review the 3D head and **At the table** preview. Both use the same edited cutout, centred and enlarged so the kept head fills the outline however loosely the photo was framed. A stray kept speck away from the head holds the head back; erase it. **Edit cutout** returns to your current brush edits. **Adjust framing** reuses the local photo and starts a new cutout, so you do not have to upload it again.
 5. Choose **Looks good, save it**. Only then is the finished PNG uploaded. **Cancel** or **Retake** discards the local photo and starts over.
 
 Keyboard users can focus the cutout canvas, use arrow keys to move the brush, and press Space or Enter to paint. Shift plus an arrow moves farther. Keep can restore pixels inside the head outline; if hair or ears lie outside it, adjust framing first.
