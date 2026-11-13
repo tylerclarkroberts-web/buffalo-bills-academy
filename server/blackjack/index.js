@@ -8,6 +8,7 @@ import { GameError } from '../engine/game.js';
 import { newTable, viewFor, royalInfo, RULE_TEXT, cleanSettings, tableEdge } from './table.js';
 import { edgeReport, ruleOptions, royalMaxPay, guntradProblems, MAIN_FLOOR, ROYAL_FLOOR, ACK, MIX, EDGE_TABLE } from './edge.js';
 import * as G from './game.js';
+import * as C from './continuous.js';
 import { GUNTRAD_RULES, RULE_CHOICES, LIMITS, ROYAL } from './rules.js';
 import { attachSeatBugs } from '../tableBug.js';
 
@@ -43,7 +44,7 @@ export class Blackjack {
     const now = this.now(); let dirty = false;
     for (const t of Object.values(this.doc.tables)) {
       if (t.status !== 'playing') continue;
-      const seq = t.seq; try { G.advance(t, now, this.rng); } catch { /* keep ticking */ }
+      const seq = t.seq; try { if (C.isContinuous(t)) C.advanceAll(t, now, this.rng); else G.advance(t, now, this.rng); } catch { /* keep ticking */ }
       if (t.seq !== seq) { this.settleMoney(t); dirty = true; (this._tickChanged ||= []).push(t); }
     }
     if (dirty) this.save();
@@ -72,7 +73,8 @@ export class Blackjack {
   /** Attach seat avatars (same Bust pipeline as poker). Bots get a stable gen seed.
    *  BJ view nulls bot ids (privacy); hang the avatar on the seat and also key avatars by seat index. */
   viewOf(t, viewerId) {
-    const v = viewFor(t, viewerId, this.now());
+    const v = C.isContinuous(t) ? this.continuousView(t, viewerId) : viewFor(t, viewerId, this.now());
+    if (!C.isContinuous(t) && v.round && v.mySeat >= 0) v.round.sneak = G.sneakable(t, v.mySeat);
     const avatars = {};
     v.seats = v.seats.map((seat, i) => {
       if (!seat) return null;
@@ -91,6 +93,20 @@ export class Blackjack {
     attachSeatBugs(v.seats, this.barn, (s) => s.id);
     return v;
   }
+  /** Continuous play: you see your own game (deck, round, last hand) and a card-free line for everyone else's. */
+  continuousView(t, viewerId) {
+    const i = t.seats.findIndex((s) => s && !s.left && s.id === viewerId);
+    const lane = i >= 0 ? t.lanes?.[i] : null;
+    const mine = lane ? { ...t, round: lane.round, deck: lane.deck, last: lane.last, shuffles: lane.shuffles } : { ...t, round: null, last: null };
+    const v = viewFor(mine, viewerId, this.now());
+    v.continuous = true;
+    v.lanes = C.laneSummary(t);
+    v.log = t.log.filter((e) => e.lane == null || e.lane === i).slice(-60);
+    v.limits.maxNow = i >= 0 && t.lanes?.[i] ? C.laneMaxBet(t, i) : v.limits.maxNow;
+    v.house.free = t.house.mode === 'guntrad' ? null : C.freeBank(t);
+    if (lane) { v.laneOver = lane.status === 'over' ? lane.overReason : null; if (v.round) v.round.sneak = G.sneakable(C.laneView(t, i), i); }
+    return v;
+  }
   info() {
     return { defaults: GUNTRAD_RULES, choices: RULE_CHOICES, limits: LIMITS, royal: ROYAL, royalEv: royalInfo(cleanSettings({}).royal), ruleText: RULE_TEXT(GUNTRAD_RULES),
       floors: { main: MAIN_FLOOR, royal: ROYAL_FLOOR, ack: ACK, mix: MIX }, edgeBase: { base: EDGE_TABLE.base, se: EDGE_TABLE.baseSe } };
@@ -104,7 +120,8 @@ export class Blackjack {
   list(p) {
     return Object.values(this.doc.tables).filter((t) => t.status !== 'closed' && (t.hostId === p.id || t.house.id === p.id || t.seats.some((s) => s && !s.left && s.id === p.id)))
       .map((t) => ({ edge: edgeSummary(t), code: t.code, name: t.name, status: t.status, house: t.house.name, players: t.seats.filter((s) => s && !s.left).length, maxSeats: t.maxSeats,
-        myTurn: !!(t.round?.phase === 'play' && t.seats[t.round.hands[t.round.turn]?.seat]?.id === p.id) }));
+        myTurn: C.isContinuous(t) ? Object.entries(t.lanes || {}).some(([i, l]) => t.seats[i]?.id === p.id && !t.seats[i].left && l.status === 'playing' && ['play', 'insurance'].includes(l.round?.phase))
+          : !!(t.round?.phase === 'play' && t.seats[t.round.hands[t.round.turn]?.seat]?.id === p.id) }));
   }
   create(p, { name, settings }) {
     this.accounts.ensure(p);
@@ -125,6 +142,7 @@ export class Blackjack {
     this.accounts.change(p, -t.settings.buyIn, 'blackjack', `Blackjack buy-in (${t.code})`);
     t.seats[i] = { id: p.id, name: p.name, chips: t.settings.buyIn, startChips: t.settings.buyIn, stats: stats0() };
     G.log(t, this.now(), `${p.name} sits down with $${t.settings.buyIn}.`, { k: 'sit', seat: i });
+    if (C.isContinuous(t) && t.status === 'playing') C.openLane(t, i, this.now(), this.rng);
   }
   join(p, code, ack) {
     const t = this.table(code);
@@ -132,7 +150,7 @@ export class Blackjack {
     if (ed.needsAck && ack !== true) { const e = new GameError(`High house edge: ${ed.ackReasons.join('; ')}. Tap "I understand" to sit down.`, 409); e.code = 'edge-ack'; throw e; }
     if (t.status === 'over' || t.status === 'closed') throw new GameError('That game is over.', 409);
     if (t.house.id === p.id) throw new GameError("You're the house at this table.", 409);
-    return this.mutate(t, p.id, () => { this.seat(t, p); G.advance(t, this.now(), this.rng); return this.viewOf(t, p.id); });
+    return this.mutate(t, p.id, () => { this.seat(t, p); if (!C.isContinuous(t)) G.advance(t, this.now(), this.rng); return this.viewOf(t, p.id); });
   }
   setHouse(p, code, playerId) {
     const t = this.table(code);
@@ -166,7 +184,8 @@ export class Blackjack {
         t.seats[i] = { id: `bot-${b}`, name: ['Dusty', 'Slim', 'Ma Barker'][b], bot: true, chips: t.settings.buyIn, startChips: t.settings.buyIn, stats: stats0() };
       }
       t.status = 'playing'; t.startedAt = this.now();
-      G.startRound(t, this.now(), this.rng);
+      if (C.isContinuous(t)) { t.lanes = {}; t.seats.forEach((s, i) => { if (s && !s.left && !s.bot) C.openLane(t, i, this.now(), this.rng); }); }
+      else G.startRound(t, this.now(), this.rng);
       return this.viewOf(t, p.id);
     });
   }
@@ -174,23 +193,35 @@ export class Blackjack {
   play(p, code, fn) {
     const t = this.table(code);
     if (t.status !== 'playing') throw new GameError('The game is not running.', 409);
+    if (C.isContinuous(t)) return this.mutate(t, p.id, () => { const i = this.mySeat(t, p); C.laneOp(t, i, this.now(), this.rng, (lane) => fn(lane, i, true)); return this.viewOf(t, p.id); });
     return this.mutate(t, p.id, () => { G.advance(t, this.now(), this.rng); fn(t, this.mySeat(t, p)); return this.viewOf(t, p.id); });
   }
-  bet(p, code, body) { return this.play(p, code, (t, i) => G.placeBet(t, i, { bet: body?.bet, royal: body?.royal || {} }, this.now(), this.rng)); }
-  sitOut(p, code) { return this.play(p, code, (t, i) => G.sitOut(t, i, this.now(), this.rng)); }
+  bet(p, code, body) {
+    const t = this.table(code); const b = { bet: body?.bet, royal: body?.royal || {} };
+    if (C.isContinuous(t) && t.status === 'playing') return this.mutate(t, p.id, () => { C.placeBet(t, this.mySeat(t, p), b, this.now(), this.rng); return this.viewOf(t, p.id); });
+    return this.play(p, code, (t, i) => G.placeBet(t, i, b, this.now(), this.rng));
+  }
+  sitOut(p, code) {
+    if (C.isContinuous(this.table(code))) throw new GameError("Nobody's waiting on you here: just bet when you're ready.", 409);
+    return this.play(p, code, (t, i) => G.sitOut(t, i, this.now(), this.rng));
+  }
   insure(p, code, yes) { return this.play(p, code, (t, i) => G.insure(t, i, !!yes, this.now(), this.rng)); }
   act(p, code, action) { return this.play(p, code, (t, i) => G.act(t, i, String(action || ''), this.now(), this.rng)); }
+  /** Easter egg: a late royal bet against a player dealer (see G.sneakBet). */
+  sneak(p, code, body) { return this.play(p, code, (t, i) => G.sneakBet(t, i, body?.royal || {}, this.now())); }
   view(p, code) { const t = this.table(code); return this.viewOf(t, p.id); }
   leave(p, code) {
     const t = this.table(code);
     return this.mutate(t, p.id, () => {
-      if (t.house.id === p.id) { if (t.status === 'playing') G.endGame(t, this.now(), `${t.house.name} closed the bank.`); else if (t.status === 'lobby') { t.house.id = null; t.house.name = null; } return this.viewOf(t, p.id); }
+      if (t.house.id === p.id) { if (t.status === 'playing') this.endTable(t, `${t.house.name} closed the bank.`); else if (t.status === 'lobby') { t.house.id = null; t.house.name = null; } return this.viewOf(t, p.id); }
       const i = this.mySeat(t, p); const r = t.round;
+      if (C.isContinuous(t)) C.closeLane(t, i, this.now());
       if (t.status === 'playing' && r && r.phase !== 'betting' && r.hands.some((h) => h.seat === i)) throw new GameError('Finish this round first.', 409);
       if (r?.bets[i] && !r.bets[i].out) { t.seats[i].chips += r.bets[i].bet + (r.bets[i].side.match || 0) + (r.bets[i].side.pairs || 0); delete r.bets[i]; }
       const s = t.seats[i]; this.cashOut(t, s);
       G.log(t, this.now(), `${s.name} cashes out $${s.cashedOut}.`, { k: 'leave', seat: i });
-      if (t.status === 'playing' && !t.seats.some((x) => x && !x.left && !x.bot)) G.endGame(t, this.now(), 'Everyone left.');
+      if (t.status === 'playing' && !t.seats.some((x) => x && !x.left && !x.bot)) this.endTable(t, 'Everyone left.');
+      else if (C.isContinuous(t)) C.check(t, this.now());
       else G.advance(t, this.now(), this.rng);
       return this.viewOf(t, p.id);
     });
@@ -198,7 +229,8 @@ export class Blackjack {
   close(p, code) {
     const t = this.table(code);
     if (t.hostId !== p.id) throw new GameError('Only the host can close the table.', 403);
-    return this.mutate(t, p.id, () => { if (t.status !== 'over') G.endGame(t, this.now(), 'The host closed the table.'); this.settleMoney(t); t.status = 'closed'; return this.viewOf(t, p.id); });
+    return this.mutate(t, p.id, () => { if (t.status !== 'over') this.endTable(t, 'The host closed the table.'); this.settleMoney(t); t.status = 'closed'; return this.viewOf(t, p.id); });
   }
+  endTable(t, why) { if (C.isContinuous(t) && t.status === 'playing') C.endTable(t, this.now(), why); else G.endGame(t, this.now(), why); }
   seatedOpen(pid) { return Object.values(this.doc.tables).some((t) => (t.status === 'playing' || t.status === 'lobby') && (t.house.id === pid || t.seats.some((s) => s && !s.left && s.id === pid))); }
 }

@@ -9,7 +9,9 @@ const r2 = (x) => Math.round(x * 100) / 100;
 
 export function log(t, now, text, ev = null) {
   t.seq = (t.seq || 0) + 1;
-  t.log.push({ seq: t.seq, t: now, round: t.roundNo || 0, text, ev });
+  const e = { seq: t.seq, t: now, round: t.roundNo || 0, text, ev };
+  if (t.lane != null) e.lane = t.lane; // continuous play: which seat's own game this line belongs to
+  t.log.push(e);
   if (t.log.length > 400) t.log.splice(0, t.log.length - 400);
 }
 const seatName = (t, i) => t.seats[i]?.name || `Seat ${i + 1}`;
@@ -19,6 +21,50 @@ function reshuffle(t, now, rng, why) {
   t.deck = shuffle(freshDeck(), rng); t.discards = []; t.shuffles = (t.shuffles || 0) + 1;
   log(t, now, `${houseName(t)} shuffles a fresh single deck (${why}).`, { k: 'shuffle', why });
 }
+/**
+ * Easter egg: against a PLAYER dealer (never Guntrad) a royal bet can still be slid onto the felt after the deal,
+ * once you've seen your cards. It settles on the two cards you were dealt, paid exactly as if it went down before
+ * the deal, out of the human house's bank. Nobody catches you. Returns which royal bets this seat can still sneak.
+ */
+export function sneakable(t, seat) {
+  const r = t.round; const b = r?.bets?.[seat];
+  if (t.house.mode !== 'player' || !r || !['insurance', 'play'].includes(r.phase) || !b || b.out) return null;
+  if (!r.hands.some((h) => h.seat === seat)) return null;
+  const out = {}; for (const k of ['match', 'pairs']) out[k] = !!t.royal[k]?.on && !b.side[k];
+  return out.match || out.pairs ? out : null;
+}
+export function dealtCards(t, seat) {
+  const hs = t.round.hands.filter((h) => h.seat === seat);
+  if (hs[0]?.dealt) return hs[0].dealt;
+  // pre-dealt saves: split hands keep the original first and second cards in front
+  return hs.length > 1 ? [hs[0].cards[0], hs[1].cards[0]] : hs[0].cards.slice(0, 2);
+}
+export function sneakBet(t, seat, royal = {}, now) {
+  const can = sneakable(t, seat);
+  if (!can) throw new GameError('Bets are closed for this round.', 409);
+  const r = t.round; const b = r.bets[seat]; const s = t.seats[seat];
+  const want = {};
+  for (const k of ['match', 'pairs']) {
+    const v = Number(royal[k] || 0);
+    if (!v) continue;
+    if (!can[k]) throw new GameError(t.royal[k]?.on ? 'That royal bet is already riding.' : 'That royal bet is off at this table.', 409);
+    if (!Number.isInteger(v) || v < 1 || v > Math.min(t.limits.royalMax, b.bet)) throw new GameError(`Royal bets are $1 up to your main bet (max $${t.limits.royalMax}).`, 400);
+    want[k] = v;
+  }
+  const total = (want.match || 0) + (want.pairs || 0);
+  if (!total) throw new GameError('Pick a royal bet.', 400);
+  if (total > s.chips) throw new GameError(`You have $${s.chips} in chips.`, 402);
+  const cards = dealtCards(t, seat);
+  for (const [k, v] of Object.entries(want)) {
+    s.chips = r2(s.chips - v); s.stats.wagered = r2(s.stats.wagered + v);
+    b.side[k] = v; (b.sneak ||= {})[k] = true;
+    const tier = royalHit(k, cards);
+    // logged like any royal bet that settles on the deal — the felt doesn't snitch
+    if (tier) { const win = r2(v * t.royal[k][tier]); pay(t, seat, v + win, win); log(t, now, `${s.name} hits ${k === 'match' ? 'Royal Match' : 'Royal Pairs'} (${tier}): +$${win}!`, { k: 'royal', seat, bet: k, tier, amt: win, sneak: true }); }
+    else { houseTakes(t, v); s.stats.lost = r2((s.stats.lost || 0) + v); }
+  }
+}
+
 function draw(t, now, rng) {
   if (!t.deck.length) {
     // mid-round: only the discard pile goes back in (cards on the felt stay put), announced
@@ -96,6 +142,7 @@ function deal(t, now, rng) {
     log(t, now, pass ? `${houseName(t)} takes the hole card, face down.` : `${houseName(t)} shows ${c}.`, { k: 'deal', dealer: true, card: pass ? null : c });
   }
   r.phase = 'dealt';
+  for (const h of r.hands) h.dealt = h.cards.slice(); // the two cards as dealt (splits reshuffle h.cards; royal bets read these)
   // royal bets settle on the first two cards
   for (const h of r.hands) {
     const side = r.bets[h.seat].side; const s = t.seats[h.seat];
@@ -267,13 +314,22 @@ function settle(t, now, rng) {
   if (active(t).some(([x]) => !x.bot && x.chips >= t.limits.min)) startRound(t, now, rng);
   else if (active(t).some(([x]) => !x.bot)) endGame(t, now, 'No one can cover the minimum bet.');
 }
-export function endGame(t, now, why) {
-  // a round cut short: every unsettled stake goes back (bets not yet dealt, and hands still in play)
+/** A round cut short: every unsettled stake goes back (bets not yet dealt, and hands still in play). */
+export function voidRound(t, now) {
   const r = t.round;
   if (r && !['done', 'over'].includes(r.phase)) {
     if (r.phase === 'betting') for (const [i, b] of Object.entries(r.bets)) { if (!b.out) t.seats[i].chips = r2(t.seats[i].chips + b.bet + (b.side.match || 0) + (b.side.pairs || 0)); }
     else for (const h of r.hands) t.seats[h.seat].chips = r2(t.seats[h.seat].chips + h.bet);
     log(t, now, 'Round called off: bets returned.', { k: 'void' });
+  }
+}
+export function endGame(t, now, why) {
+  const r = t.round;
+  voidRound(t, now);
+  if (t.lane != null) { // continuous play: only this seat's own game stops; ./continuous.js decides about the table
+    t.status = 'over'; t.overReason = why; if (r) r.phase = 'over';
+    log(t, now, `${seatName(t, t.lane)} is done: ${why}`, { k: 'laneover', seat: t.lane });
+    return;
   }
   t.status = 'over'; t.overReason = why; if (t.round) t.round.phase = 'over';
   t.final = { why, at: now, standings: active(t).map(([s, i]) => ({ seat: i, name: s.name, chips: s.chips, net: r2(s.chips - s.startChips) })).sort((a, b) => b.net - a.net),

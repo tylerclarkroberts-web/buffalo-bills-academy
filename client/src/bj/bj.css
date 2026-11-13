@@ -307,3 +307,13 @@
 @media (prefers-reduced-motion: reduce) {
   .bj-pace { animation: none; }
 }
+/* individual continuous play: other seats' own games, one quiet line each */
+.bj-lane { display: inline-flex; flex-direction: column; align-items: center; font: 600 9.5px/1.2 var(--mono, ui-monospace, monospace); color: rgba(255,255,255,.72); background: rgba(0,0,0,.35); border-radius: 7px; padding: 1px 5px; white-space: nowrap; }
+.bj-lane.live { color: #ffe9a8; }
+.bj-lane em { font-style: normal; }
+.bj-lane em.up { color: #8ef0a0; } .bj-lane em.down { color: #ff9a8a; }
+/* easter egg: royal chips that never quite left the felt (player dealers only) */
+.bj-sneak { display: inline-flex; align-items: center; gap: 1px; min-height: 32px; padding: 0 6px; border: 1px dashed rgba(255,233,168,.28); border-radius: 999px; background: transparent; color: rgba(255,233,168,.45); font-size: 15px; cursor: pointer; }
+.bj-sneak small { font-size: 9px; }
+.bj-sneak:hover, .bj-sneak:focus-visible { color: #ffe9a8; border-color: rgba(255,233,168,.7); }
+.bj-house-meta > span { white-space: nowrap; }

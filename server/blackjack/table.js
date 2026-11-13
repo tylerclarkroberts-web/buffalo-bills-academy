@@ -11,6 +11,7 @@ export function cleanSettings(s = {}) {
   const house = ['guntrad', 'me', 'player'].includes(s.house) ? s.house : 'guntrad';
   const minBet = pick(s.minBet, LIMITS.minBets, 5);
   const maxBetX = pick(s.maxBetX, LIMITS.maxBetX, 20);
+  const continuous = s.continuous === true; // individual continuous play: every seat runs its own single-deck game vs the house
   return {
     house,
     // Guntrad's table always uses the standard Vegas rules unless the creator changes them; any house may change them
@@ -21,7 +22,8 @@ export function cleanSettings(s = {}) {
     houseBank: pick(s.houseBank, LIMITS.houseBanks, 1000),
     turnSec: pick(s.turnSec, LIMITS.turnSecs, 86400), // v48: default 1 day (range still 30 s .. 1 day)
     maxSeats: pick(s.maxSeats, LIMITS.maxSeats, 5),
-    bots: house === 'guntrad' ? Math.max(0, Math.min(3, Math.floor(Number(s.bots) || 0))) : 0,
+    continuous,
+    bots: house === 'guntrad' && !continuous ? Math.max(0, Math.min(3, Math.floor(Number(s.bots) || 0))) : 0,
   };
 }
 export function newTable({ code, name, host, settings }) {
@@ -35,6 +37,7 @@ export function newTable({ code, name, host, settings }) {
     turnSec: st.turnSec, maxSeats: st.maxSeats,
     house: st.house === 'guntrad' ? { mode: 'guntrad', id: null, name: 'Guntrad', bank: null, startBank: null, net: 0 }
       : st.house === 'me' ? { mode: 'player', id: host.id, name: host.name, bank: 0, startBank: 0, net: 0 } : { mode: 'player', id: null, name: null, bank: 0, startBank: 0, net: 0 },
+    ...(st.continuous ? { lanes: {} } : {}),
     seats: Array(st.maxSeats).fill(null), deck: null, discards: [], shuffles: 0, log: [], seq: 0, roundNo: 0, round: null, last: null,
   };
 }
