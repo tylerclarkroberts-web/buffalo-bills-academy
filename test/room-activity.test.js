@@ -251,6 +251,17 @@ test('resident takes bounded steps and gestures, while speech position updates d
   assert.equal(bubbles.length, 1); assert.equal(positions.length, 2);
   assert.ok(scene.residentGroup.position.x > 0 && scene.residentGroup.position.x < 0.55);
   assert.notEqual(scene.residentLegs[0].rotation.x, 0);
+  // Through every errand and the wave, an arm never swings sideways into the body: right arm out is positive, left negative.
+  scene.errands = [{ kind: 'sit', path: [[0.5, 1]], facing: 0, seat: [0.6, 1] }, { kind: 'inspect', path: [[0.5, 1]], facing: 0 }, { kind: 'cash', path: [[0.5, 1]], facing: 0 }];
+  let lifted = 0;
+  for (let ms = 0; ms < 34000 * 3; ms += 100) {
+    scene.activity.time = ms; scene.lastFrame = null; scene.animateActivity(0);
+    const [left, right] = scene.residentArms.map(arm => arm.rotation.z);
+    assert.ok(left <= 0 && right >= 0, `arms stay out of the body at ${ms} ms`);
+    lifted = Math.max(lifted, right);
+  }
+  assert.ok(lifted > 0.9, 'the wave still lifts the right arm, outward');
+  scene.errands = null;
   scene.activityPaused = true; scene.animateActivity(2000);
   assert.ok(scene.residentGroup.position.equals(scene.residentHome));
   assert.equal(Math.abs(scene.residentLegs[0].rotation.x), 0);
