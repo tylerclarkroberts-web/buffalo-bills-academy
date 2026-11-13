@@ -338,8 +338,9 @@ export class PokerService {
     return this.mutate(code, (tb, ctx) => G.setSay(tb, player.id, text, ctx), player.id);
   }
   // ----- Fight Guntrad -----
+  fightSeed() { return crypto.randomInt(1, 2 ** 31); } // unpredictable when live; a test that needs a win pins one
   fightStart(code, player) {
-    return this.mutate(code, (t, ctx) => G.startFight(t, player.id, { id: crypto.randomUUID(), seed: crypto.randomInt(1, 2 ** 31) }, ctx), player.id);
+    return this.mutate(code, (t, ctx) => G.startFight(t, player.id, { id: crypto.randomUUID(), seed: this.fightSeed() }, ctx), player.id);
   }
   fightDecline(code, player) { return this.mutate(code, (t, ctx) => G.declineFight(t, player.id, ctx), player.id); }
   fightForfeit(code, player, id) { const r = this.mutate(code, (t, ctx) => G.forfeitFight(t, player.id, id, ctx), player.id); this.liveDone(r); return r; }

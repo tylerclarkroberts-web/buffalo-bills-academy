@@ -201,6 +201,7 @@ async function boot() {
 
 test('HTTP: offer to the BB only, forged wins rejected, a real win is refunded, a loss is dead money, watchers follow live', async (t) => {
   const s = await boot(); t.after(s.stop);
+  s.service.fightSeed = () => SEEDS[0]; // live seeds are random and even the perfect bot loses about 1 in 20 of them
   const A = await s.agent('ann@x.test'); const B = await s.agent('bob@x.test');
   const code = (await A.post('/tables', { name: 'Fight night', settings: { buyIn: 100, bigBlind: 20, smallBlind: 10, nextHandDelaySeconds: 0 } })).body.code;
   assert.equal((await B.post(`/tables/${code}/join`)).status, 200);
@@ -241,7 +242,8 @@ test('HTTP: offer to the BB only, forged wins rejected, a real win is refunded, 
   assert.equal((await BBp.post(`/tables/${code}/fight/submit`, { id: started.id, log: r.log, frames: r.frames })).status, 409, 'a replay can not be reused');
   assert.equal((await fetch(`${s.base}/api/tables/${code}/fight/watch?since=0`).then((x) => x.json())).done, true);
 
-  // next hand: the other player is the BB; they lose by forfeit -> 5% of bankroll into the pot
+  // next hand: the other player is the BB; they lose by forfeit (on a live seed) -> 5% of bankroll into the pot
+  delete s.service.fightSeed;
   const h1 = done.hand.number;
   while ((await A.get(`/tables/${code}`)).body.hand?.number === h1) {
     const cur = (await A.get(`/tables/${code}`)).body; const actor = cur.seats[cur.hand.toAct].name === 'ann' ? A : B;
