@@ -57,6 +57,7 @@ function AccountMenu({ me }) {
           <button role="menuitem" onClick={() => go('/leaderboard')}><Ico k="board" />Leaderboard</button>
           <button role="menuitem" onClick={() => go('/invest')}><Ico k="invest" />Invest</button>
           <button role="menuitem" onClick={() => go('/conquest')}><Ico k="board" />Risk bets</button>
+          {me.admin && <button role="menuitem" onClick={() => go('/admin')}><Ico k="board" />Back office</button>}
           <button role="menuitem" className="am-out" onClick={async () => { setOpen(false); await signOut(); navigate('/'); }}><Ico k="out" />Sign out</button>
         </div>
       )}

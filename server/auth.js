@@ -39,10 +39,12 @@ export class Sessions {
     const t = this.now();
     for (const [k, s] of Object.entries(this.doc.sessions)) if (s.exp < t) delete this.doc.sessions[k];
   }
-  create(playerId) {
+  create(playerId, meta = {}) {
     const id = crypto.randomBytes(32).toString('base64url');
     this.prune();
-    this.doc.sessions[sha(id)] = { playerId, created: this.now(), exp: this.now() + SESSION_DAYS * 86400e3 };
+    // ip / ua (v74): where the sign-in came from, for the owner's admin dashboard
+    this.doc.sessions[sha(id)] = { playerId, created: this.now(), exp: this.now() + SESSION_DAYS * 86400e3,
+      ...(meta.ip ? { ip: String(meta.ip).slice(0, 64) } : {}), ...(meta.ua ? { ua: String(meta.ua).slice(0, 300) } : {}) };
     this.save();
     return id;
   }
@@ -72,7 +74,7 @@ export function authConfig(env = process.env) {
 }
 
 /** Mounts /auth/* routes and returns middleware that sets req.player from the session cookie. */
-export function setupAuth(app, { service, sessions, config, fetchImpl = globalThis.fetch, limits = {} }) {
+export function setupAuth(app, { service, sessions, config, fetchImpl = globalThis.fetch, limits = {}, onLogin = null, onLogout = null }) {
   const googleOn = !!(config.googleClientId && config.googleClientSecret && config.sessionSecret);
   const secret = config.sessionSecret || crypto.randomBytes(32).toString('hex'); // dev only: per-process
   const sign = (v) => crypto.createHmac('sha256', secret).update(v).digest('base64url');
@@ -80,10 +82,11 @@ export function setupAuth(app, { service, sessions, config, fetchImpl = globalTh
   const baseUrl = (req) => config.publicUrl || `${isSecure(req) ? 'https' : 'http'}://${req.get('host')}`;
   const safeReturn = (r) => (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') ? r : '/');
 
-  const startSession = (req, res, player) => {
+  const startSession = (req, res, player, how = player.kind) => {
     sessions.destroy(parseCookies(req.get('cookie'))[SESSION_COOKIE]); // fresh session id on every sign-in
-    const id = sessions.create(player.id);
+    const id = sessions.create(player.id, { ip: req.get('fly-client-ip') || req.ip || null, ua: req.get('user-agent') || null });
     res.append('Set-Cookie', cookie(SESSION_COOKIE, id, { maxAge: 60 * 86400, secure: isSecure(req) }));
+    try { onLogin?.(req, player, how); } catch { /* sign-in must not depend on the admin log */ }
   };
 
   const router = express.Router();
@@ -138,7 +141,7 @@ export function setupAuth(app, { service, sessions, config, fetchImpl = globalTh
         return res.redirect(`/profile?link=${err ? 'taken' : 'ok'}`);
       }
       const player = service.playerForIdentity({ sub: claims.sub, email: claims.email, name: claims.given_name || claims.name, picture: claims.picture, kind: 'google' });
-      startSession(req, res, player);
+      startSession(req, res, player, 'google');
       res.redirect(safeReturn(st.ret));
     } catch (e) { fail(e.message); }
   });
@@ -162,7 +165,7 @@ export function setupAuth(app, { service, sessions, config, fetchImpl = globalTh
       const taken = service.loginTaken({ username, email });
       if (taken) return res.status(409).json({ error: taken });
       const player = service.createPasswordPlayer({ username, email, hash: await hashPassword(String(b.password)), name: b.name || String(b.username).trim() });
-      startSession(req, res, player);
+      startSession(req, res, player, 'register');
       res.json({ id: player.id, name: player.name });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Something went wrong' }); }
   });
@@ -179,7 +182,7 @@ export function setupAuth(app, { service, sessions, config, fetchImpl = globalTh
       const good = p ? await verifyPassword(pw, p.login.hash) : (await burnTime(pw), false);
       if (!good) { loginAcctLimit.hit(ident); return res.status(401).json({ error: 'That username and password do not match.' }); }
       loginAcctLimit.clear(ident);
-      startSession(req, res, p);
+      startSession(req, res, p, 'password');
       res.json({ id: p.id, name: p.name });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Something went wrong' }); }
   });
@@ -201,7 +204,10 @@ export function setupAuth(app, { service, sessions, config, fetchImpl = globalTh
   });
 
   router.post('/logout', (req, res) => {
-    sessions.destroy(parseCookies(req.get('cookie'))[SESSION_COOKIE]);
+    const sid = parseCookies(req.get('cookie'))[SESSION_COOKIE];
+    const was = sessions.lookup(sid);
+    if (was) { try { onLogout?.(req, was.playerId); } catch { /* never block sign-out */ } }
+    sessions.destroy(sid);
     res.append('Set-Cookie', cookie(SESSION_COOKIE, '', { maxAge: 0, secure: isSecure(req) }));
     res.json({ ok: true });
   });
@@ -211,7 +217,7 @@ export function setupAuth(app, { service, sessions, config, fetchImpl = globalTh
     if (!config.devLogin) return res.status(404).json({ error: 'Not found' });
     const email = String(req.body?.email || 'dev@example.com').toLowerCase().slice(0, 80);
     const player = service.playerForIdentity({ sub: `dev:${email}`, email, name: req.body?.name || email.split('@')[0], picture: null, kind: 'dev' });
-    startSession(req, res, player);
+    startSession(req, res, player, 'dev');
     res.json({ id: player.id, name: player.name });
   });
   app.use('/auth', router);

@@ -31,7 +31,9 @@ export class Accounts {
   save() { this.store.savePlayers(); }
 
   log(p, type, amount, note) {
-    p.txns = [...(p.txns || []), { t: this.now(), type, amount: cents(amount), note, balance: p.bankroll }].slice(-MAX_TXNS);
+    const entry = { t: this.now(), type, amount: cents(amount), note, balance: p.bankroll };
+    p.txns = [...(p.txns || []), entry].slice(-MAX_TXNS);
+    if (this.onLog) { try { this.onLog(p, entry); } catch { /* the admin ledger must never break a payout */ } }
   }
   requireFunds(p, amount, what = 'that') {
     this.ensure(p);

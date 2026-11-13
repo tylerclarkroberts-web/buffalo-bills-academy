@@ -17,6 +17,7 @@ const Blackjack = lazy(() => import('./bj/BlackjackPage.jsx'));
 const Conquest = lazy(() => import('./Conquest.jsx'));
 const Room = lazy(() => import('./room/Room.jsx'));
 const Foff = lazy(() => import('./foff/Foff.jsx'));
+const Admin = lazy(() => import('./admin/AdminPage.jsx'));
 
 export function navigate(path, { replace = false } = {}) {
   if (path === window.location.pathname + window.location.search) return;
@@ -54,6 +55,7 @@ export default function App() {
     if (to) navigate(to, { replace: true });
   }, [me?.id, me?.hasAvatar, path]);
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
+  if (path === '/admin') return <Suspense fallback={<div style={{ background: '#170812', minHeight: '100vh' }} />}><Admin /></Suspense>; // owner only; the API enforces it
   if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // unlisted on purpose
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);

@@ -286,6 +286,7 @@ export class Mines {
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
     this.store.commitPlayerDrafts([draft]);
     this.commit(player.id, shift); this.holds.delete(player.id);
+    try { this.onShiftStart?.(player.id, shift, shaft.fare || 0); } catch { /* admin stats only */ }
     return this.publicShift(shift, false, player.id);
   }
   /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
@@ -442,6 +443,7 @@ export class Mines {
       }
       cur = { ...cur, settlement: { shiftId: cur.id, result, reason: result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt } };
       this.commit(player.id, cur);
+      try { this.onShiftEnd?.(player.id, cur, cur.settlement); } catch { /* admin stats only */ }
     }
     const receipt = cur.settlement;
     if (receipt.result) this.accounts.recordShift(player, { ...receipt.result, at: receipt.at, ms: receipt.ms });
@@ -488,6 +490,7 @@ export class Mines {
     const ids = Object.keys(next.raids); if (ids.length > 300) for (const id of ids.slice(0, ids.length - 300)) delete next.raids[id];
     this.store.saveDoc('mines', next); this.doc = next;
     this.holds.delete(rec.loser);
+    if (lost && next.completed[rec.loser]?.pvp === rec.id) { try { this.onShiftEnd?.(rec.loser, lost, next.completed[rec.loser]); } catch { /* admin stats only */ } }
     return out;
   }
 
