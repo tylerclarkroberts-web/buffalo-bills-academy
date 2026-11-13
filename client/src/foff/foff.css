@@ -57,6 +57,7 @@
 .foff-card { border-collapse: collapse; background: var(--cream); color: var(--ink); }
 .foff-card th, .foff-card td { padding: 3px 10px; font-weight: 400; text-align: center; border: 1px solid rgba(22, 36, 27, .25); }
 .foff-card th[scope='row'] { text-align: left; }
+.foff-card s { opacity: .55; }
 .foff-card tbody tr:nth-child(2) { background: #ffe9a3; }
 
 .foff-row { display: flex; gap: 8px; align-items: center; justify-content: center; }

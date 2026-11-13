@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MATCHES } from '../client/src/foff/course.js';
-import { CLUBS, MAX_STROKES, aiHole, aimPoint, angleTo, applyShot, dist, lieAt, pickClub, powerFor, shoot, slopeAt, swingSpec, teeUp } from '../client/src/foff/golf-sim.js';
+import { CLUBS, MAX_STROKES, aiHole, aimPoint, angleTo, applyShot, cardScore, dist, foeApply, foeSwing, foeTee, lieAt, markBack, pickClub, powerFor, shoot, slopeAt, swingSpec, teeUp } from '../client/src/foff/golf-sim.js';
 import { rng } from '../server/engine/maze.js';
 
 const [h1, h2] = MATCHES[0].holes;
@@ -66,11 +66,35 @@ test('every green holds a ball: nothing on it is steep enough to roll forever', 
 });
 
 test('quirks: Kashely gets three mulligans a match and no more, and Tcut is worse than his level once he is angry', () => {
-  const m = MATCHES.find((x) => x.foes[0].quirk === 'mulligan'), rnd = rng(3), q = { mulligans: 3 };
+  const m = MATCHES.find((x) => x.foes[0].quirk === 'cheat'), rnd = rng(3), q = { mulligans: 3 };
   for (let i = 0; i < 40; i++) for (const h of m.holes) aiHole(h, m.foes[0], rnd, [0, 0], q);
   assert.equal(q.mulligans, 0);
   const t = MATCHES.find((x) => x.foes[0].quirk === 'rage'), avg = (foe) => { const r = rng(8); let s = 0; for (let i = 0; i < 300; i++) for (const h of t.holes) s += aiHole(h, foe, r); return s / 300; };
   assert.ok(avg(t.foes[0]) > avg(t.foes[0].skill) + 0.3);
+});
+
+test('Kashely cheats in plain sight: ranch tees, a foot wedge once the mulligans run out, gimmes, a pencil and a marker', () => {
+  const m = MATCHES.find((x) => x.foes[0].quirk === 'cheat'), k = m.foes[0], rnd = rng(4), seen = { kick: 0, gimme: 0 };
+  for (let i = 0; i < 30; i++) for (const h of m.holes) {
+    const g = foeTee(h, k);
+    assert.ok(g.lie === 'tee' && dist(g.pos, h.tee) > 50 && dist(g.pos, h.pin) < dist(h.tee, h.pin) - 50, 'he tees off well up the hole');
+    while (!g.holed) {
+      const close = g.lie === 'green' && dist(g.pos, h.pin) <= 4, out = foeSwing(h, g, k, rnd, [0, 0], { mulligans: 0 });
+      assert.equal(!!out.gimme, close, 'a short putt is good, and only a short one');
+      if (out.kick) { seen.kick++; assert.equal(lieAt(h, out.kick.rest), 'fairway'); }
+      if (out.gimme) { seen.gimme++; assert.equal(out.res.holed, true); }
+      const before = g.strokes; foeApply(g, out);
+      assert.equal(g.strokes, Math.min(MAX_STROKES, before + 1), 'no penalties on the ranch');
+      assert.ok(g.holed || ['fairway', 'green'].includes(g.lie), `he is never in trouble: ${g.lie}`);
+    }
+  }
+  assert.ok(seen.kick > 5 && seen.gimme > 30, `${seen.kick} kicks, ${seen.gimme} gimmes`);
+  assert.deepEqual(foeTee(h1, { skill: 8 }).pos, h1.tee, 'everyone else uses the tee');
+  const q = { pencil: 1 }; // one hole a match gets better on paper, and never a birdie
+  assert.deepEqual([cardScore(k, 3, 4, q), cardScore(k, 5, 4, q), cardScore(k, 5, 4, q), cardScore({ skill: 5 }, 6, 4, { pencil: 1 })], [3, 4, 5, 6]);
+  const back = markBack(h1, [h1.pin[0], h1.pin[1] - 2]);
+  assert.ok(Math.abs(dist(back, h1.pin) - 4) < 1e-9 && lieAt(h1, back) === 'green', 'Keetch putts from two yards further');
+  assert.equal(markBack(h1, [h1.pin[0], h1.pin[1] + h1.green.ry]), null, 'but he is not marked off the green');
 });
 
 test('ten strokes and you pick up', () => {
