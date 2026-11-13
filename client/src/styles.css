@@ -273,6 +273,9 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .seat.me .seat-cards .card, .seat.me .seat-cards .card.sm { --w: max(22px, calc(var(--bust) * .7)); }
 .seat-plate { position: relative; z-index: 3; margin-top: 3px; /* v50: a real gap, never over the cards */ text-align: center; padding: 2px 10px 3px; min-width: calc(var(--bust) * 1.4); background: #1e0915; border: 1px solid rgba(251, 244, 234, .18); border-radius: 999px; box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .8); }
 .seat-name { font-size: clamp(10.5px, calc(var(--bust) * .22), calc(13px * var(--tscale, 1))); font-weight: 600; max-width: calc(var(--bust) * 2.2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
+/* A player with the table open and in front right now. Steady, so it never competes with the turn glow. */
+.here-dot { display: inline-block; flex: none; width: .5em; height: .5em; min-width: 6px; min-height: 6px; margin-right: .4em; border-radius: 50%; background: var(--pos); box-shadow: 0 0 6px rgba(107, 227, 143, .7); vertical-align: middle; }
+.st-name .here-dot { margin-right: 0; }
 .seat-stack { font: 500 clamp(10px, calc(var(--bust) * .2), calc(12px * var(--tscale, 1)))/1.2 var(--mono); color: var(--amber); }
 .seat.me .seat-plate { border-color: var(--teal); }
 .seat.toact .seat-plate { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(242, 198, 90, .25), 0 0 20px rgba(242, 198, 90, .35); }
