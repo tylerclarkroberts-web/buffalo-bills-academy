@@ -79,3 +79,12 @@
 .foff-hint { min-height: 2.3em; text-align: center; font-size: 18px; opacity: .8; }
 
 @media (prefers-reduced-motion: reduce) { .foff-talk i { animation: none; } }
+
+/* The film gate on /foff, before the trip unlocks. Saved progress is left alone. */
+.foff-gate { position: fixed; inset: 0; display: grid; place-content: safe center; justify-items: center; gap: 16px; padding: 24px 16px; text-align: center; overflow: auto; }
+.foff-gate h1 { margin: 0; font-family: 'Rye', 'VT323', serif; font-weight: 400; font-size: clamp(28px, 8vw, 44px); line-height: 1.05; color: var(--gold); text-shadow: 3px 3px 0 var(--flag); }
+.foff-gate p { margin: 0; max-width: 28em; }
+.foff-gate-player { width: min(840px, calc(100vw - 32px)); display: grid; gap: 10px; }
+.foff-gate .foff-player { width: 100%; }
+.foff-gate .foff-fallback { align-items: center; }
+.foff-film-hint { color: var(--gold); margin: 0; }

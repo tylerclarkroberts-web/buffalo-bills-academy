@@ -298,6 +298,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/mines/office', needPlayer, wrap((req) => mines.office(req.player)));
   api.post('/foff/claim', needPlayer, wrap((req) => foff.claim(accounts.ensure(req.player))));
   api.post('/foff/quest', needPlayer, wrap((req) => foff.quest(accounts.ensure(req.player), String(req.body?.id || ''))));
+  api.post('/foff/watching', needPlayer, wrap((req) => foff.startWatching(req.player)));
   api.post('/foff/watched', needPlayer, wrap((req) => foff.markWatched(req.player)));
   api.post('/mines/nephew', needPlayer, wrap((req) => mines.sendNephew(accounts.ensure(req.player))));
   api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
