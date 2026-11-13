@@ -37,6 +37,9 @@ export const BOUT_XP = 20;
 export const BOUT_COOLDOWN_MS = 60 * 60e3; // one bout an hour
 export const BOUT_OPEN_MS = 60 * 60e3;
 export const MAX_BOUT_STAKE = 10000;
+export const CHALLENGE_OPEN_MS = 24 * 3600e3; // a challenge waits a day: nothing is held, so it can afford to
+export const MAX_CHALLENGES = 3;              // outgoing, per player
+export const FIGHT_LOG = 20;                  // recent fights anyone can watch
 const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
@@ -50,6 +53,7 @@ export class Barn {
     this.eggInt = eggInt || ((n) => crypto.randomInt(n)); // its own random source: never the mine's pay or vein ones
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
     this.doc.pens ||= {}; this.doc.names ||= {}; this.doc.count ||= {}; this.doc.graves ||= {};
+    this.doc.challenges ||= []; this.doc.fights ||= [];
     if (this.migrate()) this.save();
   }
   /** v33: hybrid eggs and creatures become randomly chosen bugs. Level, XP, needs, record and cooldowns are kept;
@@ -91,8 +95,10 @@ export class Barn {
     return WARN_MS.filter((w) => since >= w * this.k).length;
   }
   save() { this.store.saveDoc('barn', this.doc); }
-  commitPen(playerId, pen) {
-    const next = { ...this.doc, pens: { ...this.doc.pens, [playerId]: pen } };
+  commitPen(playerId, pen) { this.commitDoc({ pens: { ...this.doc.pens, [playerId]: pen } }); }
+  /** Written before it replaces what is in memory, so a failed write leaves the last saved barn in place. */
+  commitDoc(changes) {
+    const next = { ...this.doc, ...changes };
     this.store.saveDoc('barn', next);
     this.doc = next;
   }
@@ -157,7 +163,36 @@ export class Barn {
 
   view(playerId) {
     this.expireBouts();
-    return { ...this.petView(playerId), ...this.board(playerId) };
+    return { ...this.petView(playerId), ...this.board(playerId), ...this.ring(playerId) };
+  }
+
+  /** The ring: every living bug, the caller's challenges and the recent fights. The same for a player with no bug. */
+  ring(playerId) {
+    const now = this.now(), players = this.store.players || {};
+    const roster = Object.entries(this.doc.pens).flatMap(([ownerId, pen]) => {
+      const owner = players[ownerId];
+      if (!owner || owner.hidden || pen.stage !== 'creature' || now >= this.deathAt(pen)) return [];
+      const level = levelFor(pen.xp);
+      // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
+      return [{ ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId) || null,
+        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, restMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now) }];
+    }).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
+    const named = c => ({ ...c, fromName: players[c.from]?.name || 'Someone', toName: players[c.to]?.name || 'Someone' });
+    return { roster,
+      challenges: { incoming: this.doc.challenges.filter(c => c.to === playerId).map(named), outgoing: this.doc.challenges.filter(c => c.from === playerId).map(named), max: MAX_CHALLENGES },
+      fights: this.doc.fights.map(({ id, at, stake, winner, sides }) => ({ id, at, stake, winner, sides: sides.map(({ ownerId, owner, fighter }) => ({ ownerId, owner, name: fighter.name, species: fighter.species, level: fighter.level })) })) };
+  }
+
+  /** How many challenges are waiting on this player, for the Barn button. */
+  challengeCount(playerId) { const now = this.now(); return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length; }
+
+  /** A recent fight as anyone may watch it: the bugs as drawn and the blows, without setups, condition or wallets. */
+  fight(id) {
+    const found = this.doc.fights.find(fight => fight.id === id);
+    if (!found) throw new GameError('That fight has left the record.', 404);
+    const [you, them] = found.sides.map(({ owner, fighter }) => ({ owner, name: fighter.name, species: fighter.species, level: fighter.level, style: fighter.style }));
+    return { id: found.id, at: found.at, you, them, rounds: found.rounds, maxHp: found.maxHp, pot: cents(found.stake * 2),
+      result: found.winner === null ? 'draw' : found.winner === 0 ? 'won' : 'lost' };
   }
 
   petView(playerId) {
@@ -242,7 +277,8 @@ export class Barn {
       legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
   }
 
-  ready(playerId) {
+  /** Alive and old enough to fight. `rested` also wants its hour since the last bout: a challenge can be sent without it. */
+  ready(playerId, rested = true) {
     const pen = this.refresh(playerId);
     if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
     if (pen.stage === 'dead') throw new GameError('It is resting. For good.', 409);
@@ -250,7 +286,7 @@ export class Barn {
     const now = this.now();
     const level = levelFor(pen.xp);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
-    if (now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
+    if (rested && now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
     return pen;
   }
 
@@ -281,7 +317,13 @@ export class Barn {
     next.boutAt = receipt.at;
     next.lastBout = replay;
     next.settledBoutId = receipt.id;
-    this.commitPen(playerId, next);
+    // The ring's public record rides on the first pet reward, so it needs no write of its own and survives the
+    // same failures: whichever participant catches up first records the fight, as seen from their corner.
+    const logged = !receipt.owners || this.doc.fights.some(fight => fight.id === receipt.id);
+    const fights = logged ? this.doc.fights : [{ id: receipt.id, at: receipt.at, stake: receipt.stake, maxHp: receipt.maxHp, rounds: receipt.rounds,
+      winner: receipt.result === 'won' ? 0 : receipt.result === 'lost' ? 1 : null,
+      sides: [receipt.you, receipt.them].map((fighter, i) => ({ ownerId: receipt.owners[i].id, owner: receipt.owners[i].name, fighter })) }, ...this.doc.fights].slice(0, FIGHT_LOG);
+    this.commitDoc({ pens: { ...this.doc.pens, [playerId]: next }, fights });
   }
 
   refundOpen(player) {
@@ -298,6 +340,101 @@ export class Barn {
       const pen = this.doc.pens[player.id];
       if (this.now() >= open.expiresAt || !pen || pen.stage !== 'creature' || pen.bornAt !== open.petBornAt || this.now() >= this.deathAt(pen)) this.refundOpen(player);
     }
+    // Challenges hold no money, so a stale one is simply dropped: past its day, or either bug gone.
+    const alive = id => { const pen = this.doc.pens[id]; return !!this.store.players?.[id] && pen?.stage === 'creature' && this.now() < this.deathAt(pen); };
+    const kept = this.doc.challenges.filter(c => this.now() < c.expiresAt && alive(c.from) && alive(c.to));
+    if (kept.length !== this.doc.challenges.length) this.commitDoc({ challenges: kept });
+  }
+
+  /** Call out another player's bug. Nothing is held: both stakes are checked and taken only if the owner accepts. */
+  challenge(playerId, body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'to' && key !== 'stake') || typeof body.to !== 'string'
+      || typeof body.stake !== 'number' || !Number.isFinite(body.stake) || body.stake < 0 || body.stake > MAX_BOUT_STAKE || cents(body.stake) !== body.stake) {
+      throw new GameError(`Name a bug's owner and a stake from $0 to $${MAX_BOUT_STAKE}, in whole cents.`, 400);
+    }
+    this.expireBouts();
+    const player = this.accounts.ensure(this.store.players[playerId]), target = this.store.players[body.to];
+    if (body.to === playerId) throw new GameError('Your bug cannot fight itself. It has tried.', 409);
+    const theirs = target && !target.hidden ? this.doc.pens[body.to] : null;
+    if (!theirs || theirs.stage !== 'creature' || this.now() >= this.deathAt(theirs)) throw new GameError('There is no bug there to challenge.', 404);
+    if (levelFor(theirs.xp) < BOUT_LEVEL) throw new GameError(`That bug is too young. Bouts open at level ${BOUT_LEVEL}.`, 409);
+    const pen = this.ready(playerId, false);
+    const mine = this.doc.challenges.filter(c => c.from === playerId), same = mine.find(c => c.to === body.to);
+    if (same) {
+      if (same.stake !== body.stake) throw new GameError('Withdraw your challenge to that bug before changing it.', 409);
+      return this.view(playerId);
+    }
+    if (mine.length >= MAX_CHALLENGES) throw new GameError(`${MAX_CHALLENGES} challenges at a time. Withdraw one first.`, 409);
+    this.accounts.requireFunds(player, body.stake, 'this challenge');
+    const now = this.now(), made = { id: crypto.randomUUID(), from: playerId, to: body.to, stake: body.stake, at: now, expiresAt: now + CHALLENGE_OPEN_MS };
+    this.commitDoc({ challenges: [...this.doc.challenges, made] });
+    // Tell the owner, if they have alerts on. The challenge is already saved, so a failed alert changes nothing.
+    try {
+      this.onChallenge?.({ id: made.id, toId: body.to, from: player.name, bug: pen.name, species: BY_ID[pen.species].name, level: levelFor(pen.xp), yours: theirs.name, stake: made.stake });
+    } catch { /* an alert must never undo or fail a challenge */ }
+    return this.view(playerId);
+  }
+
+  /** Withdraw a challenge you sent or decline one you were sent. Asking twice is harmless. */
+  dropChallenge(playerId, id) {
+    const found = this.doc.challenges.find(c => c.id === id);
+    if (found && found.from !== playerId && found.to !== playerId) throw new GameError('That is not your challenge.', 404);
+    if (found) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
+    return this.view(playerId);
+  }
+
+  /** The challenged owner takes it: both stakes are checked now and the fight is decided at once. */
+  acceptChallenge(playerId, id, body = {}) {
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) throw new GameError('Accept the stake as shown.', 400);
+    this.expireBouts();
+    const player = this.accounts.ensure(this.store.players[playerId]);
+    const found = this.doc.challenges.find(c => c.id === id);
+    if (player.barnBouts?.lastBout?.id === id) { // a retry after the fight was paid
+      if (found) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
+      return this.view(playerId);
+    }
+    if (!found || found.to !== playerId) throw new GameError('That challenge has expired or been withdrawn.', 409);
+    const rival = this.accounts.ensure(this.store.players[found.from]);
+    if (player.barnBouts?.open) throw new GameError('Cancel your open bout before taking a challenge.', 409);
+    if (rival.barnBouts?.open) throw new GameError(`${rival.name} has a bout posted and cannot take this one yet.`, 409);
+    let rivalPen;
+    try { rivalPen = this.ready(found.from); } catch (error) {
+      if (!(error instanceof GameError)) throw error;
+      throw new GameError(`${rival.name}'s bug is not ready. ${error.message}`, error.status);
+    }
+    const pen = this.ready(playerId);
+    this.accounts.requireFunds(player, found.stake, 'this bout');
+    if (rival.bankroll + 1e-9 < found.stake) throw new GameError(`${rival.name} can no longer cover that stake.`, 409);
+    this.settle(id, [{ player: rival, pen: rivalPen, fighter: this.fighter(found.from, rivalPen) }, { player, pen, fighter: this.fighter(playerId, pen) }], found.stake, false);
+    this.applyBoutReward(found.from);
+    return this.view(playerId);
+  }
+
+  /**
+   * Decide a fight and commit both wallets with their reward receipts in one players.json write. Side 0 posted the
+   * bout or sent the challenge; `held` says its stake is already in escrow. The ring's public record follows.
+   */
+  settle(id, sides, stake, held) {
+    const now = this.now(), fighters = sides.map(side => side.fighter);
+    const seed = `${now}:${this.eggInt(1e9)}`;
+    const { rounds, winner, maxHp } = simulateBout(...fighters, seed);
+    const drafts = sides.map(({ player: p, pen }, side) => {
+      const payout = winner === null ? stake : winner === side ? cents(stake * 2) : 0;
+      const receipt = { version: 3, id, at: now, seed, petBornAt: pen.bornAt,
+        you: fighters[side], them: fighters[1 - side],
+        rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
+        maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned: BOUT_XP,
+        levelBefore: levelFor(pen.xp), levelAfter: levelFor(pen.xp + BOUT_XP),
+        result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', stake, payout, net: cents(payout - stake),
+        owners: [side, 1 - side].map(i => ({ id: sides[i].player.id, name: sides[i].player.name })) };
+      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, lastBout: receipt } };
+      if (stake && (side === 1 || !held)) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
+      if (payout) this.accounts.change(draft, payout, winner === null ? 'barn-refund' : 'barn-win', winner === null ? 'Barn bout: draw, stake returned' : 'Barn bout: won the pot', { save: false });
+      return draft;
+    });
+    // Both wallets and their reward receipts must land in the same atomic players.json write.
+    this.store.commitPlayerDrafts(drafts);
+    if (this.doc.challenges.some(c => c.id === id)) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
   }
 
   openBout(playerId, body) {
@@ -341,27 +478,9 @@ export class Barn {
     if (host.id === playerId) throw new GameError('Your bug cannot fight itself. It has tried.', 409);
     if (player.barnBouts?.open) throw new GameError('Cancel your open bout before joining another.', 409);
     const hostPen = this.ready(host.id), guestPen = this.ready(playerId);
-    const open = host.barnBouts.open, stake = open.stake, now = this.now();
-    this.accounts.requireFunds(player, stake, 'this bout');
-    const fighters = [open.fighter, this.fighter(playerId, guestPen)];
-    const seed = `${now}:${this.eggInt(1e9)}`;
-    const { rounds, winner, maxHp } = simulateBout(...fighters, seed);
-    const drafts = [host, player].map((p, side) => {
-      const pen = side === 0 ? hostPen : guestPen;
-      const payout = winner === null ? stake : winner === side ? cents(stake * 2) : 0;
-      const receipt = { version: 3, id, at: now, seed, petBornAt: pen.bornAt,
-        you: fighters[side], them: fighters[1 - side],
-        rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
-        maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned: BOUT_XP,
-        levelBefore: levelFor(pen.xp), levelAfter: levelFor(pen.xp + BOUT_XP),
-        result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', stake, payout, net: cents(payout - stake) };
-      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, lastBout: receipt } };
-      if (side === 1 && stake) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
-      if (payout) this.accounts.change(draft, payout, winner === null ? 'barn-refund' : 'barn-win', winner === null ? 'Barn bout: draw, stake returned' : 'Barn bout: won the pot', { save: false });
-      return draft;
-    });
-    // Both wallets and their reward receipts must land in the same atomic players.json write.
-    this.store.commitPlayerDrafts(drafts);
+    const open = host.barnBouts.open;
+    this.accounts.requireFunds(player, open.stake, 'this bout');
+    this.settle(id, [{ player: host, pen: hostPen, fighter: open.fighter }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true);
     this.applyBoutReward(host.id);
     return this.view(playerId);
   }

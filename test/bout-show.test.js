@@ -58,6 +58,7 @@ test('replays of real bouts keep a sane timeline, from either fighter\'s side', 
         let at = INTRO_MS;
         for (const beat of plan.beats) {
           assert.equal(beat.at, at); assert.ok(beat.charge <= beat.impactAt && beat.impactAt < beat.dur); at += beat.dur;
+          assert.ok(beat.dur - beat.impactAt - beat.stop >= 1300, 'after a blow lands there is time to read it before the next begins');
           if (beat.kind === 'tick') assert.ok(beat.before[1 - beat.r.by].poison > 0, 'venom only ticks on a poisoned bug');
           assert.equal(locate(plan, beat.at).i, beat.i); assert.equal(locate(plan, beat.at + beat.impactAt).phase, 'land');
         }
