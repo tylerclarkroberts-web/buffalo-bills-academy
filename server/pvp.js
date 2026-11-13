@@ -11,7 +11,7 @@ import { makeMaze, FIRST_POOL_STEPS } from './engine/maze.js';
 import { mineDay } from './engine/daily-maze.js';
 import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
 import { makeFighter, newBattle, resolveTurn, autoMove, legalMoves, fighterView } from './engine/gb-battle.js';
-import { levelFor } from './engine/creatures.js';
+import { levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { cents } from './accounts.js';
 
@@ -28,6 +28,7 @@ export const PVP = {
   minAgeMs: 24 * 3600e3,
   cash: { min: 20, max: 100 },
   turnMs: 20000,            // pick a move within 20 s or your bug picks one for you
+  introMs: 6000,            // v75: the first turn's clock also covers the Game Boy intro (flash, versus screen, "wants to battle!")
   disconnectMs: 15000,      // a battler not heard from for 15 s forfeits
   keepOverMs: 60000,        // a finished battle stays readable for a minute
   maxVisible: 12,
@@ -190,12 +191,24 @@ export class Pvp {
   }
 
   // ----- bug battles -----
+  /**
+   * The bug a miner fights with. A fainted bug (v75) stays home until the Bug Center heals it, so its miner borrows
+   * the Foreman's beetle like anyone without a bug: being fainted is never a shield. `benched` names the fainted one.
+   */
   bugOf(id, full = true) {
     const pen = this.barn?.doc?.pens?.[id];
     const alive = pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen));
+    const fit = alive && !pen.faintedAt;
     const p = this.store.players[id];
-    if (!alive) return full ? { ...LOANER, loaner: true, ownerName: p?.name } : null;
-    return full ? { species: pen.species, name: pen.name, level: levelFor(pen.xp || 0), loaner: false, ownerName: p?.name } : { species: pen.species, name: pen.name };
+    if (!fit) return full ? { ...LOANER, loaner: true, ownerName: p?.name, ...(alive ? { benched: pen.name } : {}) } : null;
+    const xp = pen.xp || 0, level = levelFor(xp);
+    return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp } : { species: pen.species, name: pen.name };
+  }
+  /** Own-side XP bar numbers for the battle screen (null for a loaner). */
+  xpBar(xp) {
+    if (xp == null) return null;
+    const level = levelFor(xp);
+    return { xp, level, from: xpFor(level), to: level >= MAX_LEVEL ? null : xpFor(level + 1) };
   }
   startBattle(a, b) {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');
@@ -203,7 +216,9 @@ export class Pvp {
     const state = newBattle(
       makeFighter({ owner: a, ownerName: fa.ownerName, name: fa.loaner ? `${fa.name} (on loan)` : fa.name, species: fa.species, level: fa.level, loaner: fa.loaner }),
       makeFighter({ owner: b, ownerName: fb.ownerName, name: fb.loaner ? `${fb.name} (on loan)` : fb.name, species: fb.species, level: fb.level, loaner: fb.loaner }));
-    const battle = { id, a, b, startedAt: now, deadline: now + PVP.turnMs, state, choices: {}, lastSeen: { [a]: now, [b]: now }, turns: [], over: null };
+    const battle = { id, a, b, startedAt: now, deadline: now + PVP.turnMs + PVP.introMs, state, choices: {}, lastSeen: { [a]: now, [b]: now }, turns: [], over: null,
+      bugs: { a: fa.loaner ? null : { bornAt: fa.bornAt, xp: fa.xp }, b: fb.loaner ? null : { bornAt: fb.bornAt, xp: fb.xp } },
+      benched: { a: fa.benched || null, b: fb.benched || null } };
     this.battles.set(id, battle); this.inBattle.set(a, id); this.inBattle.set(b, id);
     for (const pid of [a, b]) { this.mines.holds.delete(pid); const pr = this.presence.get(pid); if (pr) pr.lastBattle = id; }
     return battle;
@@ -216,11 +231,18 @@ export class Pvp {
     if (!side) return null;
     battle.lastSeen[pid] = this.now();
     const st = battle.state;
-    return { id: battle.id, side, turn: st.turn, msLeft: Math.max(0, battle.deadline - this.now()),
-      you: fighterView(st.sides[side], true), foe: fighterView(st.sides[foe], false),
+    const rec = battle.over?.raid ? this.doc.raids[battle.over.raid] : null;
+    const mine = rec?.barn?.[side === battle.over?.winner ? 'winner' : 'loser'] || null;
+    const xpBefore = battle.bugs?.[side]?.xp;
+    return { id: battle.id, side, turn: st.turn, msLeft: Math.max(0, battle.deadline - this.now()), introMs: PVP.introMs,
+      you: { ...fighterView(st.sides[side], true), xpBar: this.xpBar(xpBefore) }, foe: fighterView(st.sides[foe], false),
+      benched: battle.benched?.[side] || null,
       chosen: battle.choices[side] !== undefined, foeChosen: battle.choices[foe] !== undefined,
       turns: battle.turns.slice(-3), // the last few resolved turns' events, numbered, for the text box
-      over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, raid: battle.over.raid ? this.publicRaid(this.doc.raids[battle.over.raid], pid) : null } : null };
+      over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, raid: rec ? this.publicRaid(rec, pid) : null,
+        // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
+        bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
+        foeFainted: battle.over.winner === side && !!battle.bugs?.[foe] } : null };
   }
   move(player, body = {}) {
     this.touch(player.id); this.sweep();
@@ -253,7 +275,13 @@ export class Pvp {
     const winner = winnerSide === 'a' ? battle.a : battle.b, loser = winnerSide === 'a' ? battle.b : battle.a;
     this.inBattle.delete(battle.a); this.inBattle.delete(battle.b);
     battle.over = { winner: winnerSide, reason, at: this.now(), raid: null };
-    if (reason !== 'abandoned') battle.over.raid = this.raid('battle', winner, loser, battle.id).id;
+    if (reason === 'abandoned') return;
+    const loserSide = winnerSide === 'a' ? 'b' : 'a';
+    // However it ended, the loser's bar runs out: walking away or going quiet still leaves your bug flat on the floor.
+    if (battle.state.sides[loserSide].hp > 0) battle.state = { ...battle.state, winner: winnerSide, sides: { ...battle.state.sides, [loserSide]: { ...battle.state.sides[loserSide], hp: 0 } } };
+    const bugs = { winner: battle.bugs?.[winnerSide] || null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
+      winnerBug: battle.state.sides[winnerSide].name, loserBug: battle.state.sides[loserSide].name };
+    battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
   }
   /** Turn timers and disconnects, checked on every PvP request (and by the app's one-second sweep). */
   sweep() {
@@ -279,7 +307,7 @@ export class Pvp {
    * battle, the tobacco (one shop.json write). Each step leaves a marker keyed by the raid id, and `recover()` finishes
    * any raid a crash interrupted, so nothing can be paid twice or half-moved for good.
    */
-  raid(kind, winnerId, loserId, battleId = null) {
+  raid(kind, winnerId, loserId, battleId = null, bugs = null) {
     const now = this.now(), day = mineDay(now);
     const winner = this.accounts.ensure(this.store.players[winnerId]), loser = this.accounts.ensure(this.store.players[loserId]);
     if (!winner || !loser || winnerId === loserId) throw new GameError('Nobody to rob.', 409);
@@ -293,7 +321,7 @@ export class Pvp {
     const rec = { id: crypto.randomBytes(9).toString('base64url'), kind, at: now, day, battleId,
       winner: winnerId, winnerName: winner.name, loser: loserId, loserName: loser.name,
       winnerShift: this.shiftOf(winnerId)?.id || null, loserShift: this.shiftOf(loserId)?.id || null,
-      cash: cents(cash), cashCapped: losses >= PVP.maxCashLossesPerDay, tobacco, tobaccoNames: tobacco.map((id) => ITEM[id]?.name || id), steps: {} };
+      cash: cents(cash), cashCapped: losses >= PVP.maxCashLossesPerDay, tobacco, tobaccoNames: tobacco.map((id) => ITEM[id]?.name || id), ...(bugs ? { bugs } : {}), steps: {} };
     this.doc = { ...this.doc, raids: { ...this.doc.raids, [rec.id]: rec }, pairs: { ...this.doc.pairs, [pairKey(winnerId, loserId)]: now },
       losses: { ...this.doc.losses, ...(cash > 0 ? { [loserId]: { day, n: losses + 1 } } : {}) } };
     this.save();
@@ -303,12 +331,21 @@ export class Pvp {
     if (!rec.steps.mines) { rec.mines = this.mines.applyRaid(rec); rec.steps.mines = true; this.save(); }
     if (!rec.steps.money) { rec.paid = this.pay(rec); rec.steps.money = true; this.save(); }
     if (!rec.steps.shop) { rec.shop = rec.tobacco.length && this.shop ? this.shop.applyRaid(rec) : { moved: [], smoked: [] }; rec.steps.shop = true; this.save(); }
+    if (rec.bugs && !rec.steps.barn) { rec.barn = this.settleBugs(rec); rec.steps.barn = true; this.save(); }
     if (!rec.done) {
       rec.done = true; this.prune(); this.save();
       const pr = this.presence.get(rec.winner); if (pr) pr.notice = this.publicRaid(rec, rec.winner);
       if (this.presence.get(rec.loser)) this.presence.get(rec.loser).seen.clear();
     }
     return rec;
+  }
+  /** v75: XP for both real bugs (bonus for the winner), and the loser's bug faints. Each call is idempotent per battle. */
+  settleBugs(rec) {
+    const b = rec.bugs, out = { winner: null, loser: null };
+    if (!this.barn?.battleResult) return out;
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName });
+    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, foeName: rec.winnerName });
+    return out;
   }
   /** Both bankrolls in one atomic write, with the raid id on both players so a retry is a no-op. Never below zero. */
   pay(rec) {
@@ -340,7 +377,8 @@ export class Pvp {
     const won = viewer ? rec.winner === viewer : true;
     return { id: rec.id, kind: rec.kind, won, winner: rec.winnerName, loser: rec.loserName, cash: rec.paid ?? rec.cash, cashCapped: !!rec.cashCapped,
       acid: rec.mines?.acid ?? 0, gained: rec.mines?.gained ?? 0, spilled: rec.mines?.spilled ?? 0,
-      tobacco: (rec.shop?.moved || []).map((id) => ITEM[id]?.name || id), smoked: (rec.shop?.smoked || []).map((id) => ITEM[id]?.name || id) };
+      tobacco: (rec.shop?.moved || []).map((id) => ITEM[id]?.name || id), smoked: (rec.shop?.smoked || []).map((id) => ITEM[id]?.name || id),
+      ...(rec.bugs ? { winnerBug: rec.bugs.winnerBug || null, loserBug: rec.bugs.loserBug || null, fainted: !!rec.barn?.loser?.fainted, bugXp: (won ? rec.barn?.winner?.xp : rec.barn?.loser?.xp) || 0 } : {}) };
   }
   forget(playerId) {
     this.forfeit(playerId, 'forfeit');

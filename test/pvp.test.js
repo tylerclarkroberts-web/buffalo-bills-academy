@@ -279,6 +279,7 @@ test('turn timer: a side that does not choose gets a random legal move; a discon
   const { a, b, view } = f.setup({ bobFacing: WEST });
   const id = view.battle.id;
   f.pvp.move(f.ann, { battleId: id, move: 0 });
+  f.clock.now += PVP.introMs; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 }); // the first turn's clock also covers the intro (v75)
   f.clock.now += PVP.turnMs / 2; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 }); // both still here...
   f.clock.now += PVP.turnMs / 2 + 1; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); // ...and bob never picks: the timer does
   assert.equal(f.pvp.battles.get(id).state.turn, 2);

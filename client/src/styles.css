@@ -422,6 +422,12 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .bust.relaxed .b-head { animation: none; transform: rotate(9deg) translateY(5%); }
 .bust.relaxed .b-eyes { animation: none; transform: scaleY(.12); }
 .seat.folded .tb-bug { opacity: .65; }
+/* v75: lost a mine battle. Flat on its back, a bit grey, swirly eyes until the Bug Center. */
+.tb-bug.is-fainted .tb-sprite { transform: rotate(180deg) translateY(-12%); filter: grayscale(.6) brightness(.85); }
+.tb-dizzy { position: absolute; left: 50%; top: -18%; transform: translateX(-50%); color: #fff6c8; filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); pointer-events: none; }
+.dizzy-stars { transform-origin: 20px 12px; animation: dizzy-spin 2.4s linear infinite; }
+@keyframes dizzy-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .dizzy-stars { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
   .tb-bug { animation: none !important; }
   .bust.relaxed .b-head { transform: none; }

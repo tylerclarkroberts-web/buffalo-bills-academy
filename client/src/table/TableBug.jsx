@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { spriteCanvas } from '../barn/sprite.js';
+import Dizzy from '../barn/Dizzy.jsx';
 import {
   MASSAGE_ANIM_MS, MASSAGE_RETRY_MS, canStartMassage, initialMassageDelay,
   nextMassageDelay, showTableBug,
@@ -82,17 +83,18 @@ export function TableBugSprite({ bug, massaging = false, reduced = false, size =
   const url = useBugSprite(bug);
   if (!showTableBug(bug)) return null;
   const label = bug.name || bug.speciesName || 'Bug';
-  const shades = bug.style?.bugacc?.shape !== 'shades';
+  const shades = !bug.fainted && bug.style?.bugacc?.shape !== 'shades';
   return (
     <div
-      className={`tb-bug ${massaging ? 'is-massage' : 'is-idle'} ${reduced ? 'still' : ''}`}
-      data-test={massaging ? 'table-bug-massage' : 'table-bug'}
+      className={`tb-bug ${bug.fainted ? 'is-fainted' : massaging ? 'is-massage' : 'is-idle'} ${reduced ? 'still' : ''}`}
+      data-test={bug.fainted ? 'table-bug-fainted' : massaging ? 'table-bug-massage' : 'table-bug'}
       style={{ '--tb-size': `${size}px` }}
-      title={`${label} is hanging out`}
+      title={bug.fainted ? `${label} fainted in the mines. The Bug Center in the Barn heals it for free.` : `${label} is hanging out`}
       aria-hidden="true"
     >
       {url ? <img src={url} alt="" draggable="false" className="tb-sprite" /> : <span className="tb-sprite tb-ph" />}
       {shades && <span className="tb-shades" />}
+      {bug.fainted && <Dizzy size={Math.max(16, Math.round(size * 0.7))} className="tb-dizzy" label={`${label} fainted`} />}
     </div>
   );
 }
@@ -105,7 +107,7 @@ export function SeatBuddy({
   bug, playerId, size, reduced, myAction, busy, pose, children,
 }) {
   const reduce = reduced ?? prefersReducedMotion();
-  const massaging = useTableBugMassage({ bug, playerId, reduced: reduce, myAction, busy, pose });
+  const massaging = useTableBugMassage({ bug, playerId, reduced: reduce, myAction, busy, pose: bug?.fainted ? 'idle' : pose }); // a fainted bug is in no state to massage anyone
   const child = React.Children.only(children);
   const bust = React.cloneElement(child, { relaxed: !!(child.props.relaxed || massaging) });
   if (!showTableBug(bug)) return bust;

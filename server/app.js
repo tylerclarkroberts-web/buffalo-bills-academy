@@ -312,6 +312,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/bouts/:id/join', needPlayer, wrap((req) => barn.joinBout(req.player.id, req.params.id, req.body)));
   api.delete('/barn/bouts/:id', needPlayer, wrap((req) => barn.cancelBout(req.player.id, req.params.id)));
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id))); // v75: the Bug Center nurse, always free
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
