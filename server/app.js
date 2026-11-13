@@ -28,8 +28,11 @@ import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js
 import { Conquest, mountConquest } from './conquest.js';
 import { Rooms } from './rooms.js';
 import { Pvp, PVP } from './pvp.js';
+import { Telemetry, watchBlackjack } from './admin/telemetry.js';
+import { Geo } from './admin/geo.js';
+import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
 
-export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
+export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
   const config = authConfig(env);
   if (devLogin !== undefined) config.devLogin = devLogin;
@@ -43,7 +46,12 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   app.use((req, res, next) => (req.path === '/api/me/avatar' ? avatarJson : /^\/api\/tables\/[^/]+\/fight\/(submit|stream)$/.test(req.path) ? fightJson : smallJson)(req, res, next));
 
   const sessions = new Sessions({ store: service.store, now: service.now });
-  const { middleware: auth, googleOn } = setupAuth(app, { service, sessions, config, fetchImpl, limits: authLimits });
+  // v74 admin dashboard: visits, IPs, devices and a full money ledger from here on (server/admin/)
+  const telemetry = new Telemetry({ store: service.store, now: service.now });
+  service.accounts.onLog = (p, e) => telemetry.ledger(p, e);
+  const adminCfg = adminConfig(env, service.store.dir);
+  const { middleware: auth, googleOn } = setupAuth(app, { service, sessions, config, fetchImpl, limits: authLimits,
+    onLogin: (req, p, how) => telemetry.login(req, p, how), onLogout: (req, id) => telemetry.logout(req, id) });
   const conquest = new Conquest({ service, sessions, env, fetchImpl: conquestFetch || fetchImpl, pollMs: conquestPollMs });
   service.conquest = conquest;
   const accounts = service.accounts;
@@ -86,6 +94,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // v48: blackjack turn DMs (same opt-in, dedupe, reminders, retries as poker)
   slack.bjSource = { all: () => Object.values(bj.doc?.tables || {}) };
   bj.onChange = (t, actorId) => slack.bjChanged(t, actorId);
+  watchBlackjack(bj, telemetry);
+  telemetry.backfill(service.store.players);
+  mines.onShiftStart = (id, s, fare) => telemetry.shiftStart(id, s, fare);
+  mines.onShiftEnd = (id, s, receipt) => telemetry.shiftEnd(id, s, receipt);
   slack.sweep();
 
   const api = express.Router();
@@ -97,6 +109,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     }
   };
   api.use(auth);
+  api.use((req, res, next) => { try { telemetry.hit(req); } catch { /* never block a request */ } next(); });
 
   const netWorth = (p) => {
     accounts.ensure(p);
@@ -156,7 +169,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     accounts.ensure(legacy); accounts.save();
     return { merged: true, me: meView(legacy) };
   }));
-  api.get('/me', needPlayer, wrap((req) => meView(req.player)));
+  api.get('/me', needPlayer, wrap((req) => ({ ...meView(req.player), ...(isAdmin(req, adminCfg) ? { admin: true } : {}) })));
   api.patch('/me', needPlayer, wrap((req) => {
     const b = req.body || {};
     if (b.username != null) service.changeUsername(req.player, b.username);
@@ -449,6 +462,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const dealerPath = dealerFile || path.join(import.meta.dirname, 'assets', 'dealer.png');
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
 
+  const geo = new Geo({ store: service.store, now: service.now, fetchImpl: geoFetch !== undefined ? geoFetch : (env.ADMIN_GEO === '0' ? null : globalThis.fetch) });
+  mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, getCtx: () => ({
+    now: service.now(), players: service.store.players, ledger: telemetry.readLedger(), events: telemetry.readEvents(), access: telemetry.doc, worth: netWorth,
+    docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc } }) });
   mountConquest({ app, api, conquest, auth, wrap });
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
@@ -481,6 +498,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
-  return { app, service, shutdown, bj };
+  const shutdown = () => { telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  return { app, service, shutdown, bj, telemetry };
 }

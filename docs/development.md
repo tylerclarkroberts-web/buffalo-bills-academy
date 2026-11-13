@@ -43,6 +43,8 @@ The app reads the shell environment; it does not load `.env` files automatically
 | `ALLOW_GUEST` | `0` disables guest creation. Username accounts need no Google setup. |
 | `CONQUESTK_URL`, `CONQUESTK_SERVICE_TOKEN` | Optional ConquestK origin and dedicated server credential; see [integration setup and recovery](conquest-integration.md). |
 | `CONQUESTK_BETTING_ENABLED`, `CONQUESTK_PILOT_PLAYER_IDS` | New-bet switch (disabled by default) and optional player allowlist. Existing-bet recovery stays enabled. |
+| `ADMIN_PLAYER_IDS`, `ADMIN_EMAILS` | Who may open `/admin` (comma-separated player ids; Google-verified emails). Nobody by default. A JSON list of ids in `<DATA_DIR>/admins.json` also works. |
+| `ADMIN_GEO` | `0` turns off the admin page's IP location lookups (ip-api.com, server-side, cached in `geo.json`). |
 
 Google OAuth's callback is `<PUBLIC_URL>/auth/google/callback`; when `PUBLIC_URL` is unset, it uses the request origin.
 
@@ -66,6 +68,7 @@ Unset inherited integration credentials for isolated testing. Never commit crede
 | Rooms | `server/rooms.js`, `server/catalog/room.js`, `client/src/room/`. |
 | Selfies | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`. |
 | ConquestK | `server/conquest.js`, `client/src/Conquest.jsx`, `test/conquest*.test.js`. |
+| Admin dashboard | `server/admin/` (telemetry, geo, report, routes), `client/src/admin/`, `test/admin.test.js`. Preview with made-up data: `scripts/admin-demo-seed.mjs`. |
 
 Poker uses Server-Sent Events to trigger a refetch of each player's view; the public lobby polls every 15 seconds. The same stream marks a signed-in, seated player as at the table while their page is in front (`here` in the view); a page in the background reconnects with `?away` and does not count. This is held in memory only, shown to anyone who can view the table, and dropped a few seconds after that player's last such page closes. The pure poker engine accepts injected time/randomness for deterministic tests.
 
@@ -80,6 +83,8 @@ Queued tobacco moments keep a bounded public `pendingSmokes` list in the table u
 Blackjack earnings in `blackjack.json` accumulate net results when a player cashes out or a human house returns its bank; active sessions are excluded. Older saves recover surviving cash-out records and returned house results, but replaced seats cannot be recovered, so older totals may be incomplete. Keep the earnings fields when maintaining or restoring this file. Tables with individual continuous play keep `round: null` and store each seat's own deck, round and last hand under `lanes` (keyed by seat index); seat chips and a human house's bank stay on the table, so cash-out and earnings work as before.
 
 Version-2 mining saves resolved deposits, bucket contents and prepared settlements in `mines.json`. Bankroll, transaction, statistics and the payment receipt commit together in `players.json`; shift-keyed receipts and Foreman markers make recovery idempotent across the separate files. Holds are memory-only. Read [Mines compatibility and recovery](acid-mines.md#persistence-and-recovery) before changing this flow or rolling back; new bucket shifts must not be processed by the legacy settlement path.
+
+The admin dashboard adds files and never changes existing ones: `access.json` (per-player IPs, devices, visits and time by area), `ledger.jsonl` (every bankroll change; players' own `txns` keep only their last 200), `events.jsonl` (sign-ins, mine clock-ins/settlements, blackjack settlements and sneak bets) and `geo.json` (IP location cache). On first start it copies surviving `txns` and blackjack table logs in once, marked `r: 1` (reconstructed). Lines and visits older than 180 days are dropped at startup. Sessions also remember the sign-in IP and user agent. Nothing before the first start with this code recorded IPs, devices or visits.
 
 Preserve the data directory. Stop the server before manual state maintenance and keep a backup. Atomic replacement is not a transaction across files, and separate processes do not share memory: multiple writers/replicas must not share one data directory. [ConquestK](conquest-integration.md#persistence-and-recovery) has additional ledger/recovery requirements.
 

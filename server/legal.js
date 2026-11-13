@@ -22,6 +22,7 @@ export const PRIVACY_HTML = page('Privacy', `
 <li><b>Game data:</b> your display name, play-money bankroll, tables you joined, hands and results, mine shifts, play-money coin trades and the stats built from them.</li>
 <li><b>Optional ConquestK link and Risk bets:</b> linked account IDs, your selected match outcomes, fixed-odds quotes, play-money stakes and settlement receipts. ConquestK receives the linked IDs and wager terms to authorize admission and supply match results. Your wager history is shown only to you; existing public balances and total net worth remain public. Passwords and session cookies are not shared between the sites.</li>
 <li><b>Slack alerts:</b> when it's your turn, we look up your account email (or the Slack email you entered) in our Slack workspace and remember the Slack user id it matches, so Guntrad the Pit Boss can message you. The messages say the table, hand number, street, pot, what it costs you to stay in and how long you have, with a link. At blackjack the message says the table, whether it needs your bet, your hand played or an insurance call, and how long you have, with a link. Never your cards, at either game. If you host a table that has players waiting but hasn't started, Guntrad may also nudge you to start it (at most 3 times per table). Turn alerts off any time in Profile → Settings.</li>
+<li><b>Connection details:</b> the IP address and device/browser type you use when you sign in and play, when you visit and which parts of the site you use, kept for up to 180 days so the person who runs the game can keep it working and spot abuse. Only the game's owner sees them. When the owner opens the admin page, the server looks up each IP's approximate city and internet provider through ip-api.com.</li>
 <li><b>A sign-in cookie</b> that keeps you logged in. No advertising or tracking cookies.</li>
 </ul>
 <h2>Your face photo</h2>
@@ -31,7 +32,7 @@ export const PRIVACY_HTML = page('Privacy', `
 <h2>Deleting your data</h2>
 <p>You can retake or replace your avatar from your profile at any time. For account removal, contact the person who invited you. Accounts with ConquestK link or Risk bet history require operator-assisted anonymization after outstanding bets settle; linked IDs and wager receipts must be retained to preserve account bindings and prevent duplicate payments.</p>
 <h2>No real money</h2>
-<p>Everything in the game is play money with no cash value. Not affiliated with any casino, resort or golf course.</p>`, 'November 10, 2026');
+<p>Everything in the game is play money with no cash value. Not affiliated with any casino, resort or golf course.</p>`, 'November 13, 2026');
 
 export const TERMS_HTML = page('Terms', `
 <p>By using Buffalo Bill's Academy you agree to these short terms.</p>
