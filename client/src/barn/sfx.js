@@ -1,7 +1,8 @@
 // The Barn (v30): synthesized sounds only (Web Audio, no files). Each creature has a voice from its roster entry.
 let ac = null, on = false;
 const ctx = () => { if (!ac) { const A = window.AudioContext || window.webkitAudioContext; if (!A) return null; ac = new A(); } if (ac.state === 'suspended') ac.resume(); return ac; };
-export const setSound = (v) => { on = !!v; };
+/** Sound off also silences what is already playing. */
+export const setSound = (v) => { on = !!v; if (!on) music.stop(); };
 export const soundOn = () => on;
 function tone(f0, f1, dur, { wave = 'sine', vol = 0.12, at = 0 } = {}) {
   const a = on && ctx(); if (!a) return;
@@ -33,6 +34,50 @@ export function voice(v, mood = 1) {
   v.pattern.forEach((n, i) => { const f = semi(v.base, n) * (0.9 + mood * 0.1); tone(f, Math.max(30, f + v.glide), 0.16, { wave: v.wave, vol: 0.07, at: i * 0.13 }); tone(f * 1.01, f * 0.5, 0.12, { wave: 'sine', vol: 0.03, at: i * 0.13 + 0.02 }); });
   noise(0.08 * v.pattern.length, { vol: 0.03, lp: 600 }); // the wet gurgle under it
 }
+// Fight music: an original four-bar loop in A minor, made from the same oscillators and noise as the effects and
+// scheduled a little ahead of the clock so it keeps time. It sits under the effects, not over them.
+const STEP = 0.1;                                  // a sixteenth at 150 beats a minute
+const ROOTS = [110, 87.31, 98, 82.41];             // A, F, G, E: one bar each
+const CHORDS = [[0, 3, 7, 12], [0, 4, 7, 12], [0, 4, 7, 12], [0, 4, 7, 12]];
+const RIFF = [0, 1, 2, 3, 2, 1, 2, 3], CLIMB = [0, 1, 2, 3, 3, 2, 3, 3]; // the chord note on each eighth; the last bar climbs
+let band = null;
+export const music = {
+  start() {
+    const a = on && ctx(); if (!a || band) return;
+    const out = a.createGain(); out.gain.setValueAtTime(0.0001, a.currentTime); out.gain.exponentialRampToValueAtTime(1, a.currentTime + 0.3); out.connect(a.destination);
+    const hiss = a.createBuffer(1, Math.ceil(a.sampleRate * 0.2), a.sampleRate), d = hiss.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const note = (f0, f1, t, dur, wave, vol) => {
+      const o = a.createOscillator(), g = a.createGain(); o.type = wave; o.frequency.setValueAtTime(f0, t);
+      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(out); o.start(t); o.stop(t + dur + 0.02);
+    };
+    const tap = (t, dur, vol, pass, freq) => {
+      const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); s.buffer = hiss; f.type = pass; f.frequency.value = freq;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(f).connect(g).connect(out); s.start(t); s.stop(t + dur + 0.02);
+    };
+    const play = (step, t) => {
+      const bar = Math.floor(step / 16) % 4, s = step % 16, root = ROOTS[bar];
+      if ([0, 3, 6, 8, 11, 14].includes(s)) note(root, root, t, 0.16, 'triangle', 0.09);                 // bass
+      if (s % 2 === 0) { const f = semi(root * 4, CHORDS[bar][(bar === 3 ? CLIMB : RIFF)[s / 2]]); note(f, f, t, 0.11, 'square', 0.022); } // lead
+      if (s % 8 === 0 || (bar === 3 && s === 10)) note(150, 45, t, 0.12, 'sine', 0.12);                   // kick
+      if (s % 8 === 4) tap(t, 0.09, 0.05, 'lowpass', 3000);                                               // snare
+      if (s % 2 === 0) tap(t, 0.03, 0.018, 'highpass', 7000);                                             // hat
+    };
+    let step = 0, next = a.currentTime + 0.06;
+    const ahead = () => { while (next < a.currentTime + 0.25) { play(step++, next); next += STEP; } };
+    band = { out, timer: setInterval(ahead, 60) }; ahead();
+  },
+  stop() {
+    if (!band) return;
+    const { out, timer } = band; band = null; clearInterval(timer);
+    out.gain.cancelScheduledValues(ac.currentTime); out.gain.setTargetAtTime(0.0001, ac.currentTime, 0.06);
+    setTimeout(() => out.disconnect(), 500);
+  },
+};
+
 export const sfx = {
   feed() { for (let i = 0; i < 4; i++) { noise(0.06, { vol: 0.12, at: i * 0.12, lp: 900 }); tone(180, 90, 0.08, { wave: 'square', vol: 0.04, at: i * 0.12 }); } tone(90, 50, 0.4, { wave: 'sawtooth', vol: 0.06, at: 0.55 }); }, // chomp x4, then a burp
   play() { tone(300, 900, 0.18, { wave: 'triangle', vol: 0.08 }); tone(900, 300, 0.18, { wave: 'triangle', vol: 0.08, at: 0.2 }); tone(500, 1400, 0.12, { wave: 'sine', vol: 0.06, at: 0.42 }); }, // boing-boing-squeak

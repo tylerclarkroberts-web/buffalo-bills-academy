@@ -140,6 +140,19 @@
 .barn-page dl { grid-template-columns: 7.2em 1fr; }
 @media (max-height: 500px) { .barn-abil li { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 
+/* The ring: every bug, challenges, open bouts and recent fights, in two columns that scroll together. */
+.barn-head-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.barn-ring { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.barn-ring p { margin: 0; }
+.barn-ring-note { grid-column: 1 / -1; }
+.barn-ring section { display: grid; align-content: start; min-width: 0; }
+.barn-roster, .barn-fights { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.barn-roster li { display: grid; grid-template-columns: 56px 1fr; gap: 6px 10px; align-items: center; padding-top: 10px; border-top: 1px solid #7a4a2a; }
+.barn-roster li > :nth-child(n+3) { grid-column: 1 / -1; justify-self: start; }
+.barn-thumb { width: 56px; height: 46px; }
+.barn-fights li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid #7a4a2a; overflow-wrap: anywhere; }
+.barn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 760px) { .barn-ring { grid-template-columns: 1fr; } }
 .barn-board { gap: 12px; }
 .barn-board h3 { margin: 0; font-family: var(--display); color: var(--gold); font-size: 19px; }
 .barn-post { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
@@ -158,7 +171,6 @@
 .barn-post input:focus-visible, .barn-opponent-setup summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .barn-board .btn { white-space: normal; text-align: center; }
 @media (max-width: 420px) { .barn-tabs { gap: 0; } .barn-tabs button { padding-inline: 7px; letter-spacing: .02em; } }
-@media (max-width: 760px) and (min-height: 501px) { .barn-body-bouts { grid-template-rows: minmax(96px, 24%) 1fr; } }
 @media (max-height: 500px) { .bout { height: calc(100dvh - 24px); } }
 @media (prefers-reduced-motion: reduce) { .barn-bar i { transition: none; } }
 

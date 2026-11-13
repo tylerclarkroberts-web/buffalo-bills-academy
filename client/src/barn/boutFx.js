@@ -6,6 +6,7 @@ import { spriteCanvas, bugScale, SPRITE } from './sprite.js';
 
 export const INTRO_MS = 2600, FINISH_MS = 1800;
 const RECOVER = 440;
+const BREATH = 800; // after each blow, time to read what it did before the next one starts
 
 // How each bug fights. Cosmetic only: the server's rules give no flying or rolling bonus.
 export const STYLES = {
@@ -49,6 +50,7 @@ const seedOf = (bout) => bout.id || bout.seed || bout.at || 'bout';
 export const introLine = (bout) => fill(pick(INTROS, `${seedOf(bout)}:intro`), bout);
 export const verdictLine = (bout) => fill(pick(VERDICTS[bout.result] || VERDICTS.draw, `${seedOf(bout)}:end`), bout);
 
+
 /** Timeline: one beat per round, with the statuses (guard, poison, weaken) the replay shows before and after it lands. */
 export function planBout(bout) {
   const fighters = [bout.you, bout.them], rounds = bout.rounds || [];
@@ -61,7 +63,7 @@ export function planBout(bout) {
     const charge = special ? (r.tier >= 4 ? 950 : 700) : 0;
     const impactAt = kind === 'tick' ? 220 : charge + (kind === 'heal' ? 320 : STYLES[styleOf(fighters[r.by]?.species)].approach);
     const stop = kind !== 'attack' || !r.hit || !(r.dmg > 0) ? 0 : r.critical ? 280 : special ? 120 : 70;
-    const dur = impactAt + stop + (kind === 'tick' ? 520 : RECOVER + 160) + (r.critical ? 650 : 0);
+    const dur = impactAt + stop + (kind === 'tick' ? 520 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
     const before = copy(), me = r.by, foe = 1 - r.by;
     if (kind === 'tick') status[foe].poison = Math.max(0, status[foe].poison - 1); // a venom round's `by` is the poisoner
     else if (kind === 'attack') {
