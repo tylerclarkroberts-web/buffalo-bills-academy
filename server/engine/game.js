@@ -444,7 +444,7 @@ function applyAction(t, seat, action, ctx, note = '') {
   const L = legalActions(t, seat);
   const type = action?.type;
   const st0 = s.stack;
-  const say = (txt) => log(t, ctx, `${s.name} ${txt}${note}`, { k: 'act', seat, a: type === 'allin' || p.allIn ? (st0 - s.stack > 0 ? 'allin' : type) : type, amt: st0 - s.stack, to: p.bet, allIn: p.allIn, auto: /auto-check/.test(note) || undefined, pot: potTotal(h) });
+  const say = (txt) => log(t, ctx, `${s.name} ${txt}${note}`, { k: 'act', seat, a: type === 'allin' || p.allIn ? (st0 - s.stack > 0 ? 'allin' : type) : type, amt: st0 - s.stack, to: p.bet, allIn: p.allIn, auto: !!note || undefined, pot: potTotal(h) }); // auto: the server moved for them (auto-check, away, out of time)
   if (h.fightOffer?.status === 'open' && h.fightOffer.seat === seat) h.fightOffer.status = 'expired'; // acting passes on the fight
   if (type === 'fold') {
     p.folded = true; say('folds');
