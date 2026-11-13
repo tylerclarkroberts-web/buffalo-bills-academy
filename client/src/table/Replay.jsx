@@ -1,13 +1,16 @@
 // Live and missed activity share one timeline; only completed visible beats advance the cursor.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { pickReplay, stepMs, replayEnabled, seenSeq, markSeen, replayView } from './replay.js';
+import { pickReplay, showdownSpan, stepMs, replayEnabled, seenSeq, markSeen, replayView } from './replay.js';
 import { isMuted } from './Gags.jsx';
 import { smokeSound } from './Smoke.jsx';
 export { ReplayLayer } from './ReplayLayer.jsx';
 
 const reducedMotion = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function useReplay(code, view, ready) {
+// shown: the felt is on screen. busy: something covers it for a moment (the showdown, the say box).
+// showdown: the hand whose showdown the cinematic plays, so the felt leaves it alone.
+export function useReplay(code, view, { shown, busy = false, showdown = null }) {
+  const ready = shown && !busy;
   const playerId = view?.me?.playerId;
   const scope = `${code}.${playerId || 'spectator'}`;
   const [progress, setProgress] = useState(null);
@@ -31,7 +34,10 @@ export function useReplay(code, view, ready) {
   const rp = queue?.scope === scope && queue.options === options ? queue : null;
   const maxSeq = (view?.log || []).reduce((n, e) => Math.max(n, e.seq || 0), 0);
   const latest = useRef(maxSeq); latest.current = maxSeq;
-  const unread = pickReplay(view?.log, { seen, noGags, noSmoke, muted: isMuted });
+  // The timeline waits in front of that showdown's reveals and carries on after its pot push.
+  const curtain = showdownSpan(view?.log, showdown, seen);
+  const end = curtain ? curtain.from - 1 : maxSeq;
+  const unread = pickReplay(view?.log, { seen, me: playerId, before: curtain?.from, noGags, noSmoke, muted: isMuted });
   const pending = enabled && (!!rp || (seen > 0 && unread.length > 0));
   const on = ready && visible && !!rp;
   const playing = on && !paused;
@@ -40,8 +46,11 @@ export function useReplay(code, view, ready) {
   useLayoutEffect(() => {
     if (!view) return;
     if (!ready || !visible) {
-      away.current = true;
-      if (rp && !rp.catchup) setQueue({ ...rp, catchup: true });
+      // Only leaving the felt makes what follows a replay; a moment under the showdown or the say box stays live.
+      if (!shown || !visible) {
+        away.current = true;
+        if (rp && !rp.catchup) setQueue({ ...rp, catchup: true });
+      }
       return;
     }
     const first = initialized.current !== scope;
@@ -56,13 +65,13 @@ export function useReplay(code, view, ready) {
     }
     if (rp) return;
     if (!unread.length) {
-      if (maxSeq > seen) acknowledge(maxSeq);
-      away.current = false;
+      if (end > seen) acknowledge(end);
+      if (!curtain) away.current = false;
       return;
     }
-    setQueue({ scope, options, steps: unread, i: 0, end: maxSeq, reduced: reducedMotion(), catchup: away.current });
+    setQueue({ scope, options, steps: unread, i: 0, end, reduced: reducedMotion(), catchup: away.current });
     setPaused(false);
-  }, [scope, options, maxSeq, seen, ready, visible, rp]);
+  }, [scope, options, maxSeq, end, seen, ready, shown, visible, rp]);
 
   useEffect(() => {
     if (!playing) {
@@ -91,6 +100,9 @@ export function useReplay(code, view, ready) {
 
   const skip = () => { acknowledge(maxSeq); setQueue(null); setPaused(false); away.current = false; };
   const step = rp?.steps[rp.i];
+  // While the showdown is owed or playing, the felt stays as it stood before the cards went over.
+  const rest = !step && curtain ? view.log.filter((e) => e.frame && e.seq < curtain.from).pop() : null;
   return { enabled, on, pending, visible, seen, paused, togglePause: () => setPaused((p) => !p), ...(rp || {}), step, skip,
-    view: step ? replayView(view, step.frame) : view };
+    afterShowdown: () => { if (curtain) acknowledge(curtain.to); },
+    view: step ? replayView(view, step.frame) : rest ? replayView(view, rest.frame) : view };
 }

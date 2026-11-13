@@ -1,7 +1,7 @@
 // Public replay selection, readable timing and browser-local progress.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickReplay, stepMs, seenSeq, markSeen, replayView } from '../client/src/table/replay.js';
+import { pickReplay, showdownSpan, cinematicPlays, stepMs, seenSeq, markSeen, replayView } from '../client/src/table/replay.js';
 import * as G from '../server/engine/game.js';
 import { makeTable, act } from './helpers.js';
 
@@ -28,14 +28,56 @@ test('selection retains recorded public frames across hands in log order', () =>
   assert.deepEqual(history, original, 'selection must not change saved history');
 });
 
-test('taking an action does not discard that action or earlier unseen actions', () => {
+test('a player is shown what followed their own last turn, never the turn itself', () => {
   const { t } = makeTable(['Ann', 'Bob', 'Cat']);
   G.startGame(t, t.hostId, { now: 1000 });
   const seen = t.log.at(-1).seq;
   act(t, 'Ann', 'call'); act(t, 'Bob', 'call'); act(t, 'Cat', 'check');
-  const steps = pickReplay(t.log, { seen });
-  assert.deepEqual(steps.map((s) => s.k + ':' + (s.a || s.street)), ['act:call', 'act:call', 'act:check', 'deal:flop']);
-  assert.deepEqual(steps.slice(0, 3).map((s) => t.seats[s.seat].name), ['Ann', 'Bob', 'Cat']);
+  const missed = (opts) => pickReplay(t.log, opts).map((s) => `${t.seats[s.seat]?.name || ''} ${s.a || s.street}`);
+  assert.deepEqual(missed({ seen }), ['Ann call', 'Bob call', 'Cat check', ' flop'], 'a watcher took no turns');
+  assert.deepEqual(missed({ seen, me: 'p0' }), ['Bob call', 'Cat check', ' flop']);
+  assert.deepEqual(missed({ seen, me: 'p1' }), ['Cat check', ' flop'], 'Bob was at the table when he called');
+  assert.deepEqual(missed({ seen, me: 'p2' }), [' flop']);
+  assert.deepEqual(missed({ seen: t.log.at(-1).seq, me: 'p0' }), [], 'the cursor still wins when it is further on');
+  // Blinds and moves the server makes for an absent player are news to that player.
+  assert.ok(pickReplay(t.log.filter((e) => e.seq <= seen), { me: 'p1' }).some((s) => s.a === 'post' && s.seat === 1));
+  G.tick(t, { now: t.hand.deadline });
+  const timedOut = pickReplay(t.log, { seen: t.log.at(-2).seq, me: 'p1' });
+  assert.deepEqual(timedOut.map((s) => [s.text, s.auto]), [['Bob checks (ran out of time)', true]]);
+});
+
+test('a showdown belongs to the cinematic: the felt stops before its reveals and resumes after the pot', () => {
+  const { t, ctx } = makeTable(['Ann', 'Bob']);
+  G.startGame(t, t.hostId, ctx);
+  const seen = t.log.at(-1).seq;
+  act(t, 'Ann', 'call');
+  while (t.hand) act(t, t.seats[t.hand.toAct].name, 'check');
+  G.tick(t, { now: 9000 });
+  assert.equal(t.handNumber, 2, 'the next hand has started by the time anyone returns');
+  const view = G.viewFor(t, 'p0', 9000);
+  assert.equal(view.showdown.kind, 'showdown');
+  assert.equal(cinematicPlays(view.showdown, view.log), true, 'revealed hands, the winner and the pot are shown');
+  const span = showdownSpan(view.log, view.showdown.number, seen);
+  const covered = view.log.filter((e) => e.seq >= span.from && e.seq <= span.to).map((e) => e.ev.k);
+  assert.deepEqual(covered, ['reveal', 'reveal', 'win']);
+  const kinds = (opts) => pickReplay(view.log, { me: 'p1', ...opts }).map((s) => s.k);
+  assert.ok(kinds({ seen }).includes('reveal'), 'left alone, the felt would play it too');
+  const before = kinds({ seen, before: span.from });
+  assert.ok(before.length > 0 && !before.includes('reveal') && !before.includes('win') && !before.includes('hand'));
+  assert.equal(showdownSpan(view.log, view.showdown.number, span.to), null, 'played once');
+  const after = kinds({ seen: span.to });
+  assert.ok(after.includes('hand') && !after.includes('reveal') && !after.includes('win'));
+
+  const folded = makeTable(['Ann', 'Bob']);
+  G.startGame(folded.t, folded.t.hostId, folded.ctx);
+  act(folded.t, 'Ann', 'fold');
+  const quiet = G.viewFor(folded.t, 'p1', 3000);
+  assert.equal(quiet.showdown.kind, 'fold');
+  assert.equal(cinematicPlays(quiet.showdown, quiet.log), false, 'a fold win is the pot push on the felt');
+  assert.equal(cinematicPlays(quiet.showdown, quiet.log, false), true, 'unless this viewer switched the replay off');
+  assert.equal(cinematicPlays(quiet.showdown, quiet.log.map(({ frame, ...e }) => e)), true, 'or the log predates table frames');
+  assert.equal(showdownSpan(quiet.log, 1), null);
+  assert.equal(cinematicPlays(null, quiet.log), false);
 });
 
 test('returning after another hand starts retains the earlier hand actions', () => {
