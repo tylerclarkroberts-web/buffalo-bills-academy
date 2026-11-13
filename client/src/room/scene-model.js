@@ -160,7 +160,10 @@ export function roomRenderSize(width, height, pixelRatio = 1) {
   return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
 }
 
-export const roomWallVisibility = position => ({ back: position.z >= -3 * S, left: position.x >= -4 * S });
+const ROOM_LOOK = [0, 1.1, -0.4 * S];
+// The camera has no perspective, so a wall shows its inside only while the camera is on the room's side of the point
+// it looks at. Judged by the wall's own line instead, a near wall was drawn from behind, leaning across the room.
+export const roomWallVisibility = position => ({ back: position.z >= ROOM_LOOK[2], left: position.x >= ROOM_LOOK[0] });
 
 /** Fit the full room and yard at any angle before applying zoom. */
 export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
@@ -168,7 +171,7 @@ export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
   const turn = rotation * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 60);
   camera.position.set((10 * cos + 12.4 * sin) * S, 1.1 + 7.9 * S, (12.4 * cos - 10 * sin - 0.4) * S);
-  camera.lookAt(0, 1.1, -0.4 * S);
+  camera.lookAt(...ROOM_LOOK);
   camera.updateMatrixWorld();
   const points = [];
   for (const x of [ROOM_BOUNDS.min[0], ROOM_BOUNDS.max[0]]) {
@@ -191,17 +194,82 @@ export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
   return camera;
 }
 
-/** A bounded arrangement: it never creates one mesh per dollar. */
-export function wealthLayout(stage) {
-  if (!Number.isInteger(stage) || stage < 0 || stage > 5) return { neutral: true, chips: [], bundles: [] };
-  const stacks = [0, 1, 3, 5, 7, 9][stage];
-  const height = [0, 2, 5, 8, 11, 14][stage];
-  const chips = [];
-  for (let i = 0; i < stacks; i++) for (let k = 0; k < height; k++) {
-    chips.push({ x: (i % 3 - 1) * 0.32, y: 0.035 + k * 0.045, z: Math.floor(i / 3) * 0.31 - 0.32, color: i % 3 });
+const scatter = (i, salt) => (Math.imul(i * 4 + salt + 1, 2654435761) >>> 0) / 2 ** 32;
+// A loose heap rather than neat stacks: a tall middle column, six around it and four lower ones along the tray.
+// Outer columns start late, so a few chips make a small mound in the middle instead of a flat spread.
+const CHIP_SLOTS = [[0, 0, 14, 0], ...[0, 1, 2, 3, 4, 5].map(i => [Math.cos(i * Math.PI / 3) * 0.3, Math.sin(i * Math.PI / 3) * 0.3, 10, 0.12]),
+  ...[[-0.45, -0.26], [0.45, -0.26], [-0.45, 0.26], [0.45, 0.26]].map(([x, z]) => [x, z, 6, 0.24])]
+  .flatMap(([x, z, tall, late]) => Array.from({ length: tall }, (_, level) => ({ x, z, level, fill: (level + 0.5) / tall + late }))).sort((a, b) => a.fill - b.fill);
+const BILL = 0.00027; // thickness of one note beside its 0.38-long face, as on a real hundred
+/** Casino chip values, highest first: yellow, purple, black, green and red in the usual American colours. */
+export const CHIP_VALUES = [1000, 500, 100, 25, 5];
+
+/**
+ * What the tray holds, in real amounts: the cash as $100 bills (a banded brick per thousand notes) and the chips at
+ * tables as a heap of casino chips. Pass nothing when the amounts are unknown.
+ * ponytail: stops at 98 chips (about $100,000) and four bricks ($400,000) so it never makes one mesh per dollar.
+ */
+export function wealthLayout(worth) {
+  if (!worth || typeof worth !== 'object') return { neutral: true, chips: [], bundles: [] };
+  const amount = value => Number.isFinite(value) && value > 0 ? value : 0;
+  // A working stack, as a dealer would hand it over: up to twenty of each chip before moving up to the next one,
+  // so $1,000 is a mixed heap of reds, greens and blacks rather than a single $1,000 chip.
+  let left = amount(worth.chips);
+  const counts = CHIP_VALUES.map((value, i) => {
+    const n = i === CHIP_VALUES.length - 1 ? Math.round(left / value) : Math.max(0, Math.floor((left - 20 * CHIP_VALUES[i + 1]) / value));
+    left -= n * value; return n;
+  });
+  if (amount(worth.chips) && !counts.some(Boolean)) counts[counts.length - 1] = 1;
+  // `color` is the chip's place in CHIP_VALUES. Shuffled so the heap is not sorted by value.
+  const colors = counts.flatMap((n, color) => Array(Math.min(n, CHIP_SLOTS.length)).fill(color)).slice(0, CHIP_SLOTS.length)
+    .map((color, i) => ({ color, order: scatter(i, 0) })).sort((a, b) => a.order - b.order);
+  const chips = colors.map(({ color }, i) => {
+    const slot = CHIP_SLOTS[i];
+    return { x: -0.2 + slot.x + (scatter(i, 1) - 0.5) * 0.04, y: 0.035 + slot.level * 0.045, z: slot.z + (scatter(i, 2) - 0.5) * 0.04, turn: scatter(i, 3) * Math.PI * 2, color };
+  });
+  const bills = Math.min(4000, Math.round(amount(worth.bankroll) / 100) || (amount(worth.bankroll) >= 1 ? 1 : 0)), piles = Math.ceil(bills / 1000), bundles = [];
+  for (let pile = 0; pile < piles; pile++) {
+    const count = Math.min(1000, bills - pile * 1000), h = Math.max(0.004, count * BILL), z = (pile - (piles - 1) / 2) * 0.2;
+    if (count >= 100) { bundles.push({ x: 0.68, y: h / 2, z, h, turn: 0, band: true }); continue; }
+    // Fewer than a strap's worth lies loose: a few slightly skewed layers instead of one card.
+    const layers = Math.min(3, count);
+    for (let i = 0; i < layers; i++) bundles.push({ x: 0.68, y: (i + 0.5) * h / layers, z, h: h / layers, turn: [-0.1, 0.07, -0.03][i], band: false });
   }
-  const bundles = Array.from({ length: [0, 0, 0, 2, 4, 6][stage] }, (_, i) => ({ x: 0.68, y: 0.045 + Math.floor(i / 2) * 0.09, z: (i % 2) * 0.38 - 0.2 }));
   return { neutral: false, chips, bundles };
+}
+
+/**
+ * Prepares a head cutout (RGBA bytes) for wrapping round a 3D head. Finds the box the head fills, smears each row's
+ * colours across that box so no transparent gap lands on the curve, and samples a hair and a skin colour.
+ */
+export function faceWrap(data, width, height) {
+  const kept = (x, y) => data[(y * width + x) * 4 + 3] >= 128;
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (kept(x, y)) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  if (x1 < 0) return null;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const mean = (left, top, right, bottom) => {
+    const sum = [0, 0, 0]; let n = 0;
+    for (let y = y0 + Math.floor(top * h); y < y0 + Math.ceil(bottom * h); y++) for (let x = x0 + Math.floor(left * w); x < x0 + Math.ceil(right * w); x++) {
+      if (kept(x, y)) { const i = (y * width + x) * 4; sum[0] += data[i]; sum[1] += data[i + 1]; sum[2] += data[i + 2]; n++; }
+    }
+    return n ? sum.map(value => Math.round(value / n)) : null;
+  };
+  const all = mean(0, 0, 1, 1), hair = mean(0.25, 0, 0.75, 0.12) || all, skin = mean(0.35, 0.48, 0.65, 0.66) || all;
+  for (let y = y0; y <= y1; y++) {
+    let from = -1;
+    for (let x = x0; x <= x1 && from < 0; x++) if (kept(x, y)) from = (y * width + x) * 4;
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * width + x) * 4;
+      if (kept(x, y)) { from = i; continue; }
+      // An empty row can only follow a filled one: the box starts on a row with something in it.
+      const source = from < 0 ? i - width * 4 : from;
+      data[i] = data[source]; data[i + 1] = data[source + 1]; data[i + 2] = data[source + 2]; data[i + 3] = 255;
+    }
+  }
+  return { x: x0, y: y0, w, h, hair, skin };
 }
 
 /** Short, deterministic visits that keep the faun's off-centre umbrella clear along the whole route. */

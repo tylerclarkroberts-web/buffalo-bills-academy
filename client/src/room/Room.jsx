@@ -13,7 +13,6 @@ import { roomView, nudgeAxes, ROOM_VIEW_LIMITS } from './scene-model.js';
 import { layoutOf, layoutKey, addShelf, resizeShelf, moveShelf, moveWallDisplay, removeShelf, changeStyle, furnitureOf, placeFurniture } from './layout.js';
 import './room.css';
 
-const WEALTH = ['An empty tray', 'Loose chips and notes', 'Neat chip stacks', 'Stacks and cash bundles', 'A crowded cash tray', 'A full strongbox'];
 const left = (ms) => ms > 0 ? `${Math.max(1, Math.ceil(ms / 60000))} min` : 'Ready';
 const SHELF_SIZES = [{ id: 'standard', label: 'Small shelf', detail: '1 item' }, { id: 'wide', label: 'Large shelf', detail: '3 items' }];
 
@@ -400,7 +399,7 @@ export default function Room({ id }) {
         </>}
         {selection.kind === 'wealth' && <>
           <p className="room-worth num">{money(display.worth?.total)}</p>
-          <p className="small muted">{Number.isInteger(display.wealthStage) ? WEALTH[display.wealthStage] : 'A decorative tray'} · play money only</p>
+          <p className="small muted">{Number.isInteger(display.wealthStage) ? 'Cash in hundreds, table chips in a heap' : 'A decorative tray'} · play money only</p>
           <dl className="room-money">{[['bankroll', 'Cash'], ['chips', 'Chips at tables'], ['holdings', 'Investments'], ['riskEscrow', 'Risk stakes'], ...(display.worth?.barnEscrow ? [['barnEscrow', 'Barn stakes']] : [])].map(([key, name]) => <div key={key}><dt>{name}</dt><dd className="num">{money(display.worth?.[key])}</dd></div>)}</dl>
         </>}
         {selection.kind === 'collection' && <>
