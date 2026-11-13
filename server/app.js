@@ -125,7 +125,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     accounts.ensure(p);
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
       username: p.login?.username || null, hasPassword: !!p.login?.hash, googleLinked: !!p.google && p.kind !== 'dev',
-      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p) };
+      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
   const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
@@ -298,6 +298,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/mines/office', needPlayer, wrap((req) => mines.office(req.player)));
   api.post('/foff/claim', needPlayer, wrap((req) => foff.claim(accounts.ensure(req.player))));
   api.post('/foff/quest', needPlayer, wrap((req) => foff.quest(accounts.ensure(req.player), String(req.body?.id || ''))));
+  api.post('/foff/watched', needPlayer, wrap((req) => foff.markWatched(req.player)));
   api.post('/mines/nephew', needPlayer, wrap((req) => mines.sendNephew(accounts.ensure(req.player))));
   api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
   api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));

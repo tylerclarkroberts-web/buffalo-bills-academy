@@ -18,12 +18,20 @@ export const REWARDS = {
 export class Foff {
   constructor({ store, accounts, shop, now = () => Date.now() }) {
     this.store = store; this.accounts = accounts; this.shop = shop; this.now = now;
-    this.doc = store.loadDoc('foff', { by: {}, quests: {} }); this.doc.by ||= {}; this.doc.quests ||= {};
+    this.doc = store.loadDoc('foff', { by: {}, quests: {} }); this.doc.by ||= {}; this.doc.quests ||= {}; this.doc.watched ||= {};
   }
   save() { this.store.saveDoc('foff', this.doc); }
   give(p, id) { this.shop.inv(p.id).own[id] = 1; this.shop.save(); }
   /** A deleted account takes its claims with it. */
-  forget(pid) { delete this.doc.by[pid]; delete this.doc.quests[pid]; this.save(); }
+  forget(pid) { delete this.doc.by[pid]; delete this.doc.quests[pid]; delete this.doc.watched[pid]; this.save(); }
+  /** Whether this player has finished the lobby film that unlocks the bachelor party. Missing `watched` is unwatched. */
+  watched(p) { return !!(p && this.doc.watched[p.id]); }
+  markWatched(p) {
+    if (!p) throw new GameError('Please sign in first', 401);
+    const row = this.doc.watched[p.id] || { at: this.now() };
+    if (!this.doc.watched[p.id]) { this.doc.watched[p.id] = row; this.save(); }
+    return { watched: true, at: row.at };
+  }
   claim(p) {
     if (!p) throw new GameError('Please sign in first', 401);
     this.accounts.ensure(p);
