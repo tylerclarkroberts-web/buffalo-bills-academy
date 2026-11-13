@@ -9,6 +9,7 @@ My Room displays the owner's existing pet, outfit, oddities and in-game wealth i
 - Visitors see the saved layout, displayed items, visible outfit, curated pet and owner wealth. They cannot edit, equip items or care for the pet. Visits are snapshots, not shared editing or live visitor presence.
 - Visitor data excludes undisplayed possessions, unworn clothing, email, authentication details, original selfies, transactions, battle setup/replay and pet-care timing. For a living bug, visitors do see the toy and battle gear in use, whether an automatic feeder is running, and a one-word mood (a neglected bug stamps about its terrarium); they never see need levels, cooldowns or timings. Eggs hide their species; memorials hide feeding history and time of death. Avatars are saved drawings.
 - Wealth combines bankroll, chips at tables, holdings and Risk escrow. Missing/nonfinite amounts stay unavailable rather than becoming zero; negative amounts remain accurate. Figures belong to the room owner, never the visitor's session.
+- The tray draws the bankroll as $100 bills and the chips at tables as a heap of casino chips ($5 red up to $1,000 yellow), so anyone who can see the room can roughly count both. It stops at 98 chips and $400,000 in bills; holdings and stakes appear only in the figures.
 
 ## Editing boundaries
 

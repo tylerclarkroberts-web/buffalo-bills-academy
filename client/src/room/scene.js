@@ -10,7 +10,7 @@ import { pixGrid } from '../store/pixart.js';
 import { spriteCanvas, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#8c6243', 'bunkhouse-sage': '#6d785b', 'bunkhouse-clay': '#9a6650' };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -38,6 +38,44 @@ function paintedTexture(w, h, paint, pixel = false) {
   const texture = canvasTexture(canvas);
   if (!pixel) { texture.magFilter = THREE.LinearFilter; texture.minFilter = THREE.LinearMipmapLinearFilter; texture.generateMipmaps = true; texture.anisotropy = 4; }
   return texture;
+}
+// Chip colour, insert colour and face value, in the order of CHIP_VALUES.
+const CHIP_ART = [['#d1b66c', '#4a3526', '1K'], ['#5d4279', '#e9dfc6', '500'], ['#2d2b2e', '#e9dfc6', '100'], ['#385b51', '#e9dfc6', '25'], ['#923f43', '#e9dfc6', '5']];
+/** Six edge inserts that run over the rim onto both faces, an inlay ring and the value: [side, top, bottom]. */
+function chipMaterials(base, insert, value) {
+  const face = paintedTexture(64, 64, ctx => {
+    ctx.fillStyle = base; ctx.fillRect(0, 0, 64, 64);
+    ctx.strokeStyle = insert; ctx.lineWidth = 9;
+    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(32, 32, 27.5, i * Math.PI / 3 - 0.2, i * Math.PI / 3 + 0.2); ctx.stroke(); }
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(32, 32, 19, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = insert; ctx.font = 'bold 15px Georgia'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(value, 32, 33);
+  });
+  const edge = paintedTexture(96, 8, ctx => {
+    ctx.fillStyle = base; ctx.fillRect(0, 0, 96, 8);
+    ctx.fillStyle = insert; for (let i = 0; i <= 6; i++) ctx.fillRect(i * 16 - 3, 0, 6, 8);
+  });
+  const flat = material('#ffffff', { map: face });
+  return [material('#ffffff', { map: edge }), flat, flat];
+}
+/** A hundred in green ink: frame, portrait oval, seals and the value in each corner, plus the layered edge of a stack. */
+function billTextures() {
+  const paper = '#c2cda8', ink = '#4f6d4c';
+  const face = paintedTexture(152, 64, ctx => {
+    ctx.fillStyle = paper; ctx.fillRect(0, 0, 152, 64);
+    ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.strokeRect(4.5, 4.5, 143, 55);
+    ctx.lineWidth = 1; ctx.strokeRect(9.5, 9.5, 133, 45);
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(76, 32, 15, 19, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = paper; ctx.beginPath(); ctx.arc(76, 27, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(76, 45, 10, 9, 0, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 2; for (const x of [46, 106]) { ctx.beginPath(); ctx.arc(x, 32, 6, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.fillStyle = ink; ctx.font = 'bold 12px Georgia'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [x, y] of [[25, 19], [127, 19], [25, 46], [127, 46]]) ctx.fillText('100', x, y);
+  });
+  const edge = paintedTexture(8, 32, ctx => {
+    ctx.fillStyle = '#d6dcc0'; ctx.fillRect(0, 0, 8, 32);
+    ctx.fillStyle = '#9fae8b'; for (let y = 0; y < 32; y += 4) ctx.fillRect(0, y, 8, 1);
+  });
+  return { face, edge };
 }
 function pixelTexture(name) {
   const grid = pixGrid(name);
@@ -648,7 +686,8 @@ export class RoomScene {
     stoneMap.magFilter = THREE.LinearFilter; stoneMap.minFilter = THREE.LinearMipmapLinearFilter; stoneMap.generateMipmaps = true;
     stoneMap.wrapS = stoneMap.wrapT = THREE.RepeatWrapping; stoneMap.repeat.set(3 * ROOM_FLOOR_SCALE, 2 * ROOM_FLOOR_SCALE);
     this.floorMaps = { planks: floorMap, stone: stoneMap };
-    this.floor = mesh(p, new THREE.BoxGeometry(8.5, 0.2, 6.5), material('#f0d4a2', { map: floorMap }), 0, -0.1, 0);
+    // The left edge stops at the wall's outer face; the right edge meets the yard.
+    this.floor = mesh(p, new THREE.BoxGeometry(8.33, 0.2, 6.5), material('#f0d4a2', { map: floorMap }), 0.085, -0.1, 0);
     this.wallMaterial = material('#8c6243'); this.walls = [];
     this.backWall = new THREE.Group(); this.leftWall = new THREE.Group(); p.add(this.backWall, this.leftWall);
     const wall = (parent, w, h, d, x, y, z) => {
@@ -893,12 +932,12 @@ export class RoomScene {
     if (view.placements?.some(place => place.itemId === 'odd-deed')) this.dynamic.add(moon());
     this.pet(view.pet);
     this.resident(view.owner, generation);
-    this.wealth(view.wealthStage);
+    this.wealth(Number.isInteger(view.wealthStage) ? view.worth : null);
     this.pick([furniture.pet.x, 1.16, furniture.pet.z], [1.95, 1.2, 1.35], { kind: 'pet' }, turn('pet'));
     if (!furniture.couch.off) this.pick([furniture.couch.x, 0.58, furniture.couch.z], [2.4, 1.1, 1], { kind: 'couch' }, turn('couch'));
     if (!furniture.wardrobe.off) this.pick([furniture.wardrobe.x, 1.3, furniture.wardrobe.z], [1.7, 2.6, 1], { kind: 'wardrobe' }, turn('wardrobe'));
     this.pick([furniture.wealth.x, 1.4, furniture.wealth.z], [2.1, 1, 1.25], { kind: 'wealth' }, turn('wealth'));
-    this.pick([0, -0.08, 0], [8.5 * ROOM_FLOOR_SCALE, 0.14, 6.5 * ROOM_FLOOR_SCALE], { kind: 'surface', surface: 'floor' });
+    this.pick([0.085 * ROOM_FLOOR_SCALE, -0.08, 0], [8.33 * ROOM_FLOOR_SCALE, 0.14, 6.5 * ROOM_FLOOR_SCALE], { kind: 'surface', surface: 'floor' });
     this.pick([furniture.rug.x, 0.045, furniture.rug.z], [3.5, 0.02, 2.1], { kind: 'surface', surface: 'rug' }, turn('rug'));
     configureShadowObjects(this.static); configureShadowObjects(this.dynamic); this.lighting?.invalidate();
     this.setEditing(this.editing, this.selection);
@@ -974,17 +1013,18 @@ export class RoomScene {
       box(shin, 0.235, 0.035, 0.39, '#1c1c1d', 0, -0.39, 0.07); return leg;
     });
     const body = cylinder(group, 0.33, 0.28, 0.67, shirt, 0, 1.02); body.scale.z = 0.72;
+    const skinParts = [];
     this.residentArms = [-1, 1].map(side => {
       const arm = new THREE.Group(); arm.position.set(side * 0.35, 1.27, 0); group.add(arm);
       cylinder(arm, 0.1, 0.085, 0.5, shirt, side * 0.03, -0.25);
       cylinder(arm, 0.089, 0.085, 0.05, shade(shirt, 0.75), side * 0.03, -0.49);
-      mesh(arm, new THREE.IcosahedronGeometry(0.1, 1), material(look.skin), side * 0.03, -0.58); return arm;
+      skinParts.push(mesh(arm, new THREE.IcosahedronGeometry(0.1, 1), material(look.skin), side * 0.03, -0.58)); return arm;
     });
     this.residentNote = box(this.residentArms[1], 0.22, 0.012, 0.12, '#b3b48a', 0.03, -0.68, 0.04); this.residentNote.visible = false;
     box(group, 0.52, 0.075, 0.41, '#493526', 0, 0.75); box(group, 0.1, 0.075, 0.025, '#bda475', 0, 0.75, 0.22);
     for (const y of [0.9, 1.04, 1.18]) box(group, 0.025, 0.025, 0.02, '#d9c8a7', 0, y, 0.235);
     for (const side of [-1, 1]) { const collar = box(group, 0.13, 0.13, 0.03, shade(shirt, 1.2), side * 0.07, 1.3, 0.19); collar.rotation.z = side * 0.45; }
-    cylinder(group, 0.08, 0.1, 0.18, look.skin, 0, 1.4);
+    skinParts.push(cylinder(group, 0.08, 0.1, 0.18, look.skin, 0, 1.4));
     const headGroup = this.residentHead = new THREE.Group(); group.add(headGroup);
     const head = mesh(headGroup, new THREE.SphereGeometry(0.25, 12, 8), material(look.skin), 0, 1.65); head.scale.set(0.9, 1.16, 0.9);
     const faceMap = paintedTexture(256, 320, ctx => {
@@ -995,13 +1035,30 @@ export class RoomScene {
       ctx.fillRect(h.cx - 4, h.cy + 13, 8, 1);
     });
     const faceMat = new THREE.MeshBasicMaterial({ map: faceMap, transparent: true, depthWrite: false });
-    mesh(headGroup, new THREE.PlaneGeometry(0.5, 0.62), faceMat, 0, 1.65, 0.23);
+    const plane = mesh(headGroup, new THREE.PlaneGeometry(0.5, 0.62), faceMat, 0, 1.65, 0.23);
     if (avatar?.kind === 'photo' && owner?.id) {
-      const texture = new THREE.TextureLoader().load(`/api/avatars/${encodeURIComponent(owner.id)}.png?v=${encodeURIComponent(avatar.v || 0)}`, () => {
-        if (this.disposed || generation !== this.generation) { texture.dispose(); return; }
-        faceMap.dispose(); faceMat.map = texture; faceMat.needsUpdate = true; this.render();
-      }, undefined, () => texture.dispose());
-      texture.colorSpace = THREE.SRGBColorSpace; texture.magFilter = THREE.LinearFilter;
+      // A saved head is wrapped round the front of the head, not held up in front of it like a mask: its own hair
+      // colour covers the back, and the neck and hands take its skin colour.
+      new THREE.ImageLoader().load(`/api/avatars/${encodeURIComponent(owner.id)}.png?v=${encodeURIComponent(avatar.v || 0)}`, image => {
+        if (this.disposed || generation !== this.generation) return;
+        const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(image, 0, 0);
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), wrap = faceWrap(pixels.data, canvas.width, canvas.height);
+        if (!wrap) return;
+        ctx.putImageData(pixels, 0, 0);
+        const map = canvasTexture(canvas); map.magFilter = map.minFilter = THREE.LinearFilter;
+        map.repeat.set(wrap.w / canvas.width, wrap.h / canvas.height); map.offset.set(wrap.x / canvas.width, 1 - (wrap.y + wrap.h) / canvas.height);
+        // Seen from the front the picture is undistorted; it only stretches where the head curves away.
+        const front = new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI), at = front.attributes.position;
+        for (let i = 0; i < at.count; i++) front.attributes.uv.setXY(i, at.getX(i) * 2 + 0.5, at.getY(i) * 2 + 0.5);
+        const rgb = colour => `rgb(${colour.join(',')})`;
+        head.geometry.dispose(); head.geometry = new THREE.SphereGeometry(0.25, 12, 8, Math.PI, Math.PI); head.material.color.set(rgb(wrap.hair));
+        head.scale.x = Math.max(0.7, Math.min(1.05, 1.16 * wrap.w / wrap.h));
+        mesh(headGroup, front, material('#ffffff', { map }), 0, head.position.y, 0).scale.copy(head.scale);
+        headGroup.remove(plane); plane.geometry.dispose(); faceMat.dispose(); faceMap.dispose();
+        for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
+        this.render();
+      });
     }
     const hat = avatar?.wear?.hat;
     if (hat) {
@@ -1012,20 +1069,27 @@ export class RoomScene {
     // Nod from the neck: a head pivoting at the feet swings a long way forward.
     headGroup.position.y = 1.45; for (const part of headGroup.children) part.position.y -= 1.45;
   }
-  wealth(stage) {
+  wealth(worth) {
     const table = new THREE.Group(), group = new THREE.Group(); group.position.x = -0.15; table.add(group); this.dynamic.add(table);
     table.userData.dragId = 'wealth';
     table.position.set(this.furniture.wealth.x, 1.1, this.furniture.wealth.z); table.rotation.y = this.furniture.wealth.r * Math.PI / 2;
-    const layout = wealthLayout(stage);
+    const layout = wealthLayout(worth);
     if (layout.neutral) { box(group, 1.3, 0.22, 0.8, '#805636', 0.1, 0.12); box(group, 0.13, 0.12, 0.03, '#c5a25b', 0.1, 0.12, 0.42); return; }
     const chipGeometry = new THREE.CylinderGeometry(0.13, 0.13, 0.038, 16);
-    for (let color = 0; color < 3; color++) {
+    for (let color = 0; color < CHIP_ART.length; color++) {
       const chips = layout.chips.filter(c => c.color === color); if (!chips.length) continue;
-      const stack = new THREE.InstancedMesh(chipGeometry, material(['#923f43', '#d1b66c', '#385b51'][color]), chips.length);
-      const transform = new THREE.Matrix4(); chips.forEach((p, i) => { transform.makeTranslation(p.x, p.y, p.z); stack.setMatrixAt(i, transform); }); group.add(stack);
+      const stack = new THREE.InstancedMesh(chipGeometry, chipMaterials(...CHIP_ART[color]), chips.length);
+      const transform = new THREE.Matrix4(); chips.forEach((p, i) => { transform.makeRotationY(p.turn).setPosition(p.x, p.y, p.z); stack.setMatrixAt(i, transform); }); group.add(stack);
     }
     if (!layout.chips.length) chipGeometry.dispose();
-    for (const bundle of layout.bundles) { box(group, 0.38, 0.08, 0.24, '#b3b48a', bundle.x, bundle.y, bundle.z); box(group, 0.07, 0.085, 0.245, '#dfcead', bundle.x, bundle.y, bundle.z); }
+    const note = layout.bundles.length && billTextures();
+    layout.bundles.forEach((bundle, i) => {
+      // Box faces run +x, -x, top, bottom, +z, -z: a printed note on top, the cut edges of the stack round the sides.
+      const tone = bundle.band ? '#ffffff' : shade('#ffffff', 0.9 + (i % 3) * 0.05);
+      const face = material(tone, { map: note.face }), edge = material(tone, { map: note.edge });
+      mesh(group, new THREE.BoxGeometry(0.38, bundle.h, 0.16), [edge, edge, face, face, edge, edge], bundle.x, bundle.y, bundle.z).rotation.y = bundle.turn;
+      if (bundle.band) box(group, 0.07, bundle.h + 0.004, 0.165, '#c9a646', bundle.x, bundle.y, bundle.z);
+    });
   }
   isVisible() { return !document.hidden && this.inViewport !== false; }
   visibilityChanged(now = performance.now()) {

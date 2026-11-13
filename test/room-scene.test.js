@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes } from '../client/src/room/scene-model.js';
+import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, faceWrap, CHIP_VALUES, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes } from '../client/src/room/scene-model.js';
 import { roomAnchors, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, shelfSlots, defaultShelves, defaultWallDisplays, roomFinishes, defaultFurniture, furnitureFits, wallMountsFit } from '../server/catalog/room.js';
 import { wallDisplayPosition, residentStep } from '../client/src/room/scene-model.js';
 import { RoomScene } from '../client/src/room/scene.js';
@@ -36,7 +36,8 @@ test('house and yard cover 2.1 times their first floor area while furniture, she
   scene.scene.updateMatrixWorld(true);
   const yard = scene.structure.children.find(object => object.geometry?.parameters.width === 4.2 && object.geometry?.parameters.depth === 6);
   assert.ok(yard, 'the enlarged yard is part of the room architecture');
-  for (const [floor, originalArea] of [[scene.floor, 8.5 * 6.5], [yard, 4.2 * 6]]) {
+  // The indoor floor is 8.33 wide: it stops at the left wall's outer face instead of running past it.
+  for (const [floor, originalArea] of [[scene.floor, 8.33 * 6.5], [yard, 4.2 * 6]]) {
     const size = new THREE.Box3().setFromObject(floor).getSize(new THREE.Vector3());
     assert.ok(Math.abs(size.x * size.z / originalArea - 2.1) < 1e-6);
     assert.equal(floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
@@ -52,9 +53,10 @@ test('house and yard cover 2.1 times their first floor area while furniture, she
   const shelfBounds = new THREE.Box3().setFromObject(shelf), wallInside = -4 * S + 0.08 * S;
   assert.ok(shelfBounds.min.x > wallInside && shelfBounds.min.x - wallInside < 0.15, 'the original-size shelf remains flush with the moved wall');
   scene.wagon.getWorldScale(new THREE.Vector3()).toArray().forEach(scale => assert.ok(Math.abs(scale - 1.65) < 1e-6));
+  // Without perspective a wall is in the way as soon as the camera passes the point it looks at, not the wall's own line.
   for (const offset of [-0.01, 0.01]) {
-    assert.equal(roomWallVisibility({ x: -4 * S + offset, z: 0 }).left, offset > 0);
-    assert.equal(roomWallVisibility({ x: 0, z: -3 * S + offset }).back, offset > 0);
+    assert.equal(roomWallVisibility({ x: offset, z: 0 }).left, offset > 0);
+    assert.equal(roomWallVisibility({ x: 0, z: -0.4 * S + offset }).back, offset > 0);
   }
   scene.setEditing(false);
   scene.scene.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
@@ -368,8 +370,9 @@ test('near walls, window trim, wall decorations and their click targets cut away
   const decoration = new THREE.Group(); decoration.userData.wallSide = 'back'; scene.dynamic.add(decoration);
   scene.pick([ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]], [1.2, 1.1, 0.3], { kind: 'anchor', anchorId: 'wall-left' });
   scene.dynamic.updateMatrixWorld();
+  // At -45 and 45 the camera is still inside the wall's line but already looks at its back.
   for (const [rotation, expected] of [[0, { back: true, left: true }], [90, { back: false, left: true }],
-    [180, { back: false, left: false }], [270, { back: true, left: false }]]) {
+    [180, { back: false, left: false }], [270, { back: true, left: false }], [-45, { back: true, left: false }], [45, { back: true, left: true }], [60, { back: false, left: true }]]) {
     scene.camera = makeRoomCamera(846 / 380, { rotation });
     assert.deepEqual(roomWallVisibility(scene.camera.position), expected);
     scene.setEditing(true, { kind: 'anchor', anchorId: 'wall-left' });
@@ -390,18 +393,52 @@ test('near walls, window trim, wall decorations and their click targets cut away
   scene.wallMaterial.dispose();
 });
 
-test('wealth art distinguishes unknown from empty and caps extreme inputs', () => {
-  for (const value of [undefined, null, -1, 6, 1e12, 1.5, '3']) assert.deepEqual(wealthLayout(value), { neutral: true, chips: [], bundles: [] });
-  assert.equal(wealthLayout(0).neutral, false);
-  assert.equal(wealthLayout(0).chips.length, 0);
+test('the tray shows real cash and chips, tells unknown from empty and caps extreme inputs', () => {
+  for (const value of [undefined, null, 3, '3']) assert.deepEqual(wealthLayout(value), { neutral: true, chips: [], bundles: [] });
+  for (const bad of [0, -50, NaN, Infinity, undefined, '300']) {
+    assert.deepEqual(wealthLayout({ bankroll: bad, chips: bad }), { neutral: false, chips: [], bundles: [] });
+  }
+  const stackHeight = bundles => bundles.reduce((sum, bundle) => sum + bundle.h, 0);
+  // $3,000 is thirty hundreds: a thin loose stack, far short of a banded strap.
+  const mine = wealthLayout({ bankroll: 3000, chips: 135 });
+  assert.ok(Math.abs(stackHeight(mine.bundles) - 30 * 0.00027) < 1e-9 && mine.bundles.every(bundle => !bundle.band));
+  const count = chips => CHIP_VALUES.map((_, color) => chips.filter(chip => chip.color === color).length);
+  assert.deepEqual(count(mine.chips), [0, 0, 0, 1, 22], '$135 is a short stack: one $25 and twenty-two $5 chips');
+  assert.deepEqual(count(wealthLayout({ chips: 1000 }).chips), [0, 0, 5, 16, 20], '$1,000 is a working stack, not one $1,000 chip');
+  assert.deepEqual(count(wealthLayout({ chips: 3000 }).chips), [0, 2, 15, 16, 20]);
+  assert.deepEqual(count(wealthLayout({ chips: 1e9 }).chips), [98, 0, 0, 0, 0], 'a fortune is all $1,000 chips, and no more than the tray holds');
+  assert.deepEqual(wealthLayout({ bankroll: 3000, chips: 135 }), mine, 'the heap does not reshuffle between renders');
+  const strap = wealthLayout({ bankroll: 10000, chips: 3 });
+  assert.equal(strap.bundles.length, 1); assert.ok(strap.bundles[0].band && Math.abs(strap.bundles[0].h - 0.027) < 1e-9);
+  assert.equal(strap.chips.length, 1, 'a few dollars is still one chip');
+  assert.ok(wealthLayout({ bankroll: 40 }).bundles.length, 'any cash is at least one note');
   let previous = 0;
-  for (let stage = 0; stage <= 5; stage++) {
-    const { chips, bundles } = wealthLayout(stage);
-    assert.ok(chips.length >= previous && chips.length <= 126);
-    assert.ok(bundles.length <= 6);
-    chips.forEach(p => assert.ok(Math.abs(p.x) <= 0.32 && Math.abs(p.z) <= 0.32 && p.y < 0.7));
+  for (const amount of [100, 2500, 9800, 1e6, 1e12]) {
+    const { chips, bundles } = wealthLayout({ bankroll: amount, chips: amount });
+    assert.ok(chips.length >= previous && chips.length <= 98);
+    assert.ok(bundles.length <= 4 && stackHeight(bundles) <= 4 * 0.27 + 1e-9);
+    // Inside the tray rails, and clear of the bills on the right.
+    chips.forEach(p => assert.ok(p.x - 0.13 >= -0.85 && p.x + 0.13 <= 0.45 && Math.abs(p.z) + 0.13 <= 0.56 && p.y < 0.7));
+    bundles.forEach(p => assert.ok(p.x === 0.68 && Math.abs(p.z) <= 0.3 + 1e-9));
     previous = chips.length;
   }
+});
+
+test('a head cutout is boxed, filled edge to edge and sampled for hair and skin before it wraps a head', () => {
+  const width = 12, height = 10, data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x, y, colour) => data.set([...colour, 255], (y * width + x) * 4);
+  for (let x = 4; x <= 7; x++) paint(x, 2, [40, 30, 20]); // hair
+  for (let y = 3; y <= 7; y++) for (let x = 3; x <= 8; x++) if (!(y === 7 && (x < 5 || x > 6))) paint(x, y, [200, 150, 120]); // face, narrow chin
+  data.set([9, 9, 9, 0], (5 * width + 5) * 4); // a hole inside the face
+  const wrap = faceWrap(data, width, height);
+  assert.deepEqual({ x: wrap.x, y: wrap.y, w: wrap.w, h: wrap.h }, { x: 3, y: 2, w: 6, h: 6 });
+  assert.deepEqual(wrap.hair, [40, 30, 20]); assert.deepEqual(wrap.skin, [200, 150, 120]);
+  const at = (x, y) => [...data.subarray((y * width + x) * 4, (y * width + x) * 4 + 4)];
+  assert.deepEqual(at(3, 2), [40, 30, 20, 255], 'hair reaches the left of the box');
+  assert.deepEqual(at(8, 7), [200, 150, 120, 255], 'the chin row reaches the right of the box');
+  assert.deepEqual(at(5, 5), [200, 150, 120, 255], 'holes take the colour beside them');
+  assert.deepEqual(at(0, 0), [0, 0, 0, 0], 'nothing outside the box is touched');
+  assert.equal(faceWrap(new Uint8ClampedArray(16), 2, 2), null);
 });
 
 test('the wagon footprint stays outside the cabin and desk props sit above the indoor floor', () => {

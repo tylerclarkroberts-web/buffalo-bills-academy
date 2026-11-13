@@ -259,7 +259,7 @@ export const ROOM_ITEM = Object.fromEntries(ROOM_ITEMS.map(item => [item.id, ite
 
 export const roomItemFits = (item, anchor) => !!anchor && Array.isArray(item?.roomTypes) && item.roomTypes.includes(anchor.type);
 
-/** The pile uses broad visual stages; room details carry exact current amounts. */
+/** A broad stage of total wealth. The tray draws exact cash and chips; it uses this only to tell known from unknown. */
 export function wealthStage(total) {
   if (!Number.isFinite(total)) return null;
   if (total <= 0) return 0;
