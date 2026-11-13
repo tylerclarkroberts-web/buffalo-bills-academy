@@ -67,7 +67,7 @@ Unset inherited integration credentials for isolated testing. Never commit crede
 | Selfies | `client/src/avatar/AvatarMaker.jsx`, `head-segmenter.worker.js`, `CutoutEditor.jsx`, `head-mask.js`. |
 | ConquestK | `server/conquest.js`, `client/src/Conquest.jsx`, `test/conquest*.test.js`. |
 
-Poker uses Server-Sent Events to trigger a refetch of each player's view; the public lobby polls every 15 seconds. The pure poker engine accepts injected time/randomness for deterministic tests.
+Poker uses Server-Sent Events to trigger a refetch of each player's view; the public lobby polls every 15 seconds. The same stream marks a signed-in, seated player as at the table while their page is in front (`here` in the view); a page in the background reconnects with `?away` and does not count. This is held in memory only, shown to anyone who can view the table, and dropped a few seconds after that player's last such page closes. The pure poker engine accepts injected time/randomness for deterministic tests.
 
 New poker log entries include compact public table frames for visual catch-up, within the existing 300-entry limit. Frames keep historical occupants and chip counts, never decks or private hole cards; publicly shown cards appear only from their reveal onward. Old entries without frames remain readable in the log and are not reconstructed for playback.
 

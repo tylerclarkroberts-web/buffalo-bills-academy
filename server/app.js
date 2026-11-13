@@ -205,8 +205,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const send = (v, extra) => res.write(`data: ${JSON.stringify({ version: v, ...extra })}\n\n`);
     send(t.version);
     const unsub = service.subscribe(t.code, send);
+    // A signed-in player's page in front counts as being at the table; a page in the background listens with ?away.
+    const leave = req.player && !('away' in req.query) ? service.enter(t.code, req.player.id) : null;
     const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-    req.on('close', () => { clearInterval(ping); unsub(); });
+    req.on('close', () => { clearInterval(ping); unsub(); leave?.(); });
   });
   // ----- profile & leaderboard -----
   const gamesFor = (pid, publicOnly = false) => service.store.allTables().filter((t) => t.ledger[pid] && (!publicOnly || t.visibility === 'public')).map((t) => {

@@ -14,11 +14,13 @@ const MAX_TIMER = 2 ** 31 - 1;
 const hashToken = (tok) => crypto.createHash('sha256').update(tok).digest('hex');
 
 export class PokerService {
-  constructor({ dataDir, now = () => Date.now(), botDelayScale = 1 }) {
+  constructor({ dataDir, now = () => Date.now(), botDelayScale = 1, hereGraceMs = 4000 }) {
     this.store = new Store(dataDir);
     this.now = now;
     this.accounts = new Accounts({ store: this.store, now: this.now });
     this.listeners = new Map(); // code -> Set(fn)
+    this.here = new Map(); // code -> Map(playerId -> table pages open and in front); memory only
+    this.hereGraceMs = hereGraceMs;
     this.timer = null;
     this.byTokenHash = new Map(Object.values(this.store.players).filter((p) => p.tokenHash).map((p) => [p.tokenHash, p]));
     this.bots = new BotDriver(this, { delayScale: botDelayScale });
@@ -189,6 +191,8 @@ export class PokerService {
     if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id), t.settings.bigBlind);
     if (v.fight && this.avatars && !(v.fight.playerId in avatars) && this.store.players[v.fight.playerId]) avatars[v.fight.playerId] = this.avatars.info(this.store.players[v.fight.playerId]);
     attachSeatBugs(v.seats, this.barn);
+    // Seated players with this table open and in front right now. Watchers come and go unannounced.
+    v.here = [...(this.here.get(t.code)?.keys() || [])].filter((id) => t.seats.some((s) => s?.playerId === id));
     return v;
   }
   tablesFor(player) {
@@ -420,6 +424,25 @@ export class PokerService {
     const set = this.listeners.get(code) || new Set();
     set.add(fn); this.listeners.set(code, set);
     return () => set.delete(fn);
+  }
+  /**
+   * A player's table page is open and in front. It lasts as long as that page's live-update stream and is never
+   * saved. Returns what to call when the stream ends.
+   */
+  enter(code, playerId) {
+    const at = this.here.get(code) || new Map();
+    this.here.set(code, at);
+    at.set(playerId, (at.get(playerId) || 0) + 1);
+    if (at.get(playerId) === 1) this.push(code, { here: true });
+    return () => {
+      // A reload or a dropped connection comes straight back: keep the light on for a moment.
+      const timer = setTimeout(() => {
+        if (at.get(playerId) > 1) { at.set(playerId, at.get(playerId) - 1); return; }
+        at.delete(playerId);
+        if (!this.closed) this.push(code, { here: true });
+      }, this.hereGraceMs);
+      timer.unref?.();
+    };
   }
   /** Push a one-off event (a prank) to everyone watching a table, without changing the table. */
   push(code, extra) {

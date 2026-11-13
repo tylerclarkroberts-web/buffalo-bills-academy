@@ -80,15 +80,20 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   useEffect(() => {
     load();
     let es;
-    try {
-      es = new EventSource(`/api/tables/${code}/events`);
-      es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.gag) addGag(d.gag); if (d.smoke) addSmoke(d.smoke); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke || d.show) load(); } catch { /* ignore */ } };
-    } catch { /* no SSE */ }
+    // The open stream is also how the table knows you are here: a page in the background keeps listening as away.
+    const listen = () => {
+      es?.close();
+      try {
+        es = new EventSource(`/api/tables/${code}/events${document.hidden ? '?away' : ''}`);
+        es.onmessage = (ev) => { try { const d = JSON.parse(ev.data); if (d.gag) addGag(d.gag); if (d.smoke) addSmoke(d.smoke); if (d.version !== versionRef.current || 'gagsOff' in d || 'smokeOff' in d || d.gag || d.smoke || d.show || d.here) load(); } catch { /* ignore */ } };
+      } catch { /* no SSE */ }
+    };
+    listen();
     const poll = setInterval(load, 20000);
-    const vis = () => { if (!document.hidden) load(); };
+    const vis = () => { listen(); if (!document.hidden) load(); };
     document.addEventListener('visibilitychange', vis);
     return () => { es?.close(); clearInterval(poll); document.removeEventListener('visibilitychange', vis); };
-  }, [code, load]);
+  }, [code, load, me?.id]);
   useEffect(() => { if (me?.id) load(); }, [me?.id, load]);
 
   const now = useNow(500) + skew.current;
@@ -580,7 +585,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) 
                   {button === seat && <div className="dealer-btn" title="Dealer button">D</div>}
                 </div>
                 <div className="seat-plate">
-                  <div className="seat-name">{s.name}{isMe && !crowd ? ' · you' : ''}</div>
+                  <div className="seat-name">{view.here?.includes(s.playerId) && <HereDot />}{s.name}{isMe && !crowd ? ' · you' : ''}</div>
                   <div className="seat-stack">{s.bot && <span className="bot-tag" title="A bot (always plays strong)">BOT</span>}{chips(s.stack)}</div>
                 </div>
                 {autoPops[s.name] && <span key={autoPops[s.name]} className="auto-pop" data-test="auto-pop">✓ auto-check</span>}
@@ -807,13 +812,18 @@ function Info({ view, post, seated, code }) {
   );
 }
 
+// This player has the table open and in front right now.
+function HereDot() {
+  return <i className="here-dot" data-test="here-dot" title="At the table now"><span className="sr-only">At the table now. </span></i>;
+}
+
 function Standings({ view }) {
   return (
     <Paged items={view.standings} rowH={44} className="standings"
       header={<div className="st-row st-head"><span>Name</span><span>Chips</span><span>In</span><span>Net</span></div>}
       render={(p) => (
         <div className={`st-row ${p.seated ? '' : 'muted'}`}>
-          <span className="st-name"><Bust id={p.playerId} avatar={view.avatars?.[p.playerId]} size={26} still /><span className="st-who" title={p.name}>{p.name}</span>{p.playerId === view.hostId ? <i className="muted"> · host</i> : ''}{!p.seated ? <i className="muted"> (left)</i> : ''}</span>
+          <span className="st-name"><Bust id={p.playerId} avatar={view.avatars?.[p.playerId]} size={26} still />{p.seated && view.here?.includes(p.playerId) && <HereDot />}<span className="st-who" title={p.name}>{p.name}</span>{p.playerId === view.hostId ? <i className="muted"> · host</i> : ''}{!p.seated ? <i className="muted"> (left)</i> : ''}</span>
           <span className="num">{chips(p.seated ? p.stack : p.cashOut)}</span>
           <span className="num">{chips(p.buyIn)}</span>
           <span className={`num ${p.net >= 0 ? 'pos' : 'neg'}`}>{signed(p.net)}</span>
