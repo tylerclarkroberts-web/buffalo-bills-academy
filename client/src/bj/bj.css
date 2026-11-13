@@ -317,3 +317,9 @@
 .bj-sneak small { font-size: 9px; }
 .bj-sneak:hover, .bj-sneak:focus-visible { color: #ffe9a8; border-color: rgba(255,233,168,.7); }
 .bj-house-meta > span { white-space: nowrap; }
+/* a player who is the house stands in Guntrad's spot: bust centered on the rail, a touch of the same glow */
+.bj-house-spot { align-items: flex-end; justify-content: center; }
+.bj-house-spot::before { content: ''; position: absolute; left: 12%; right: 12%; top: 10%; bottom: -8%; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 61, 139, .3), rgba(46, 230, 214, .06) 60%, transparent); filter: blur(6px); pointer-events: none; }
+.bj-house-spot > .bust, .bj-house-spot > .seat-buddy { position: relative; margin-bottom: -6%; }
+.bj-house-spot > .empty-chair { width: 34%; height: auto; aspect-ratio: 1; align-self: center; border-style: dashed; color: rgba(255, 233, 168, .35); }
+.bj-house-plate b { white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
