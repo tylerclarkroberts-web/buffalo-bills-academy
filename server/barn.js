@@ -40,6 +40,11 @@ export const MAX_BOUT_STAKE = 10000;
 export const CHALLENGE_OPEN_MS = 24 * 3600e3; // a challenge waits a day: nothing is held, so it can afford to
 export const MAX_CHALLENGES = 3;              // outgoing, per player
 export const FIGHT_LOG = 20;                  // recent fights anyone can watch
+// v75 mine battles: both bugs that fight to the end earn BATTLE_XP; the winner gets WIN_BONUS_XP on top. Outside the
+// care XP cap (the two-hour pair cooldown in pvp.js is the brake). A loser faints: pen.faintedAt is set and it can't
+// battle, guide or take a barn bout until the nurse at the Bug Center heals it (free).
+export const BATTLE_XP = 20;
+export const WIN_BONUS_XP = 30;
 const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
@@ -215,6 +220,8 @@ export class Barn {
       combat: { ...combatStats(level), stats: c.stats },
       arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
       title: pen.record?.w >= 5 ? 'Barn Menace' : null,
+      fainted: !!pen.faintedAt, ...(pen.faintedAt ? { faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null } : {}),
+      mineRecord: pen.mineRecord || { w: 0, l: 0 },
       boutCoolMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now), lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -285,6 +292,7 @@ export class Barn {
     if (pen.stage !== 'creature') throw new GameError('Eggs do not fight. Mostly.', 409);
     const now = this.now();
     const level = levelFor(pen.xp);
+    if (pen.faintedAt) throw new GameError(`${pen.name} fainted in the mines. Take it to the Bug Center first.`, 409);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
     if (rested && now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
     return pen;
@@ -338,7 +346,7 @@ export class Barn {
       const open = player.barnBouts?.open;
       if (!open) continue;
       const pen = this.doc.pens[player.id];
-      if (this.now() >= open.expiresAt || !pen || pen.stage !== 'creature' || pen.bornAt !== open.petBornAt || this.now() >= this.deathAt(pen)) this.refundOpen(player);
+      if (this.now() >= open.expiresAt || !pen || pen.stage !== 'creature' || pen.faintedAt || pen.bornAt !== open.petBornAt || this.now() >= this.deathAt(pen)) this.refundOpen(player);
     }
     // Challenges hold no money, so a stale one is simply dropped: past its day, or either bug gone.
     const alive = id => { const pen = this.doc.pens[id]; return !!this.store.players?.[id] && pen?.stage === 'creature' && this.now() < this.deathAt(pen); };
@@ -485,6 +493,44 @@ export class Barn {
     return this.view(playerId);
   }
 
+  /** Can this bug fight or guide right now? (hatched, alive, not fainted) */
+  fit(playerId) {
+    const pen = this.doc.pens[playerId];
+    return pen?.stage === 'creature' && !pen.faintedAt && !(this.now() >= this.deathAt(pen));
+  }
+  /**
+   * A mine bug battle's result for one bug (pvp.js calls this while settling the raid). Idempotent per battle id, and
+   * only for the same bug that fought (`bornAt`): a bug laid to rest and replaced since gets nothing. The winner gains
+   * BATTLE_XP + WIN_BONUS_XP; a loser that fought to the end gains BATTLE_XP and faints either way.
+   */
+  battleResult(playerId, { battleId, bornAt, won, fought = true, foeName = null }) {
+    const pen = this.doc.pens[playerId];
+    if (!pen || pen.stage !== 'creature' || pen.bornAt !== bornAt) return { xp: 0, fainted: false, skipped: true };
+    if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted: !won, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
+    const next = structuredClone(pen);
+    const xp = won ? BATTLE_XP + WIN_BONUS_XP : fought ? BATTLE_XP : 0;
+    const levelBefore = levelFor(next.xp || 0);
+    next.xp = (next.xp || 0) + xp;
+    next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
+    if (!won) { next.faintedAt = this.now(); next.faintedBy = foeName; }
+    next.mineBattles = [...(next.mineBattles || []), battleId].slice(-20);
+    next.lastMineBattle = { id: battleId, won, xp, levelBefore, levelAfter: levelFor(next.xp), at: this.now() };
+    this.commitPen(playerId, next);
+    return { xp, bonus: won ? WIN_BONUS_XP : 0, fainted: !won, levelBefore, levelAfter: levelFor(next.xp) };
+  }
+  /** The Bug Center: the nurse heals a fainted bug to full. Always free; healing a healthy bug is a polite no-op. */
+  heal(playerId) {
+    const pen = this.refresh(playerId);
+    if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
+    if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
+    if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
+    const was = !!pen.faintedAt;
+    if (was) {
+      const { faintedAt: _f, faintedBy: _b, ...rest } = pen;
+      this.commitPen(playerId, { ...rest, healedAt: this.now(), heals: (pen.heals || 0) + 1 });
+    }
+    return { ...this.view(playerId), healed: was, cost: 0 };
+  }
   /** Store looks for a bug (skin palette, hat, accessory, equipped battle gear), for drawing only. */
   looksOf(playerId) {
     const st = this.styleOf?.(playerId) || {};

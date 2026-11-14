@@ -141,7 +141,7 @@
 @media (max-height: 500px) { .barn-abil li { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 
 /* The ring: every bug, challenges, open bouts and recent fights, in two columns that scroll together. */
-.barn-head-acts { display: flex; align-items: center; gap: 8px; }
+.barn-head-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .barn-ring { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 4px; }
 .barn-ring p { margin: 0; }
 .barn-ring-note { grid-column: 1 / -1; }
@@ -216,3 +216,13 @@
   .bout-vs-mark { grid-column: 1; grid-row: 2; justify-self: center; } .bout-vs > .bout-fight { grid-area: 1 / 1 / 4 / 2; }
 }
 @media (prefers-reduced-motion: reduce) { .bout-fx * { animation: none !important; } .barn-bar.hp .ghost { transition: none; } }
+
+/* v75: fainted after a mine battle, and the Bug Center door */
+.barn-head { gap: 8px; }
+.barn-head h1 { margin-right: auto; }
+.barn-center-door { display: inline-flex; align-items: center; gap: 6px; font-family: 'Noto Sans JP', var(--sans, sans-serif); }
+.barn-stage.fainted .barn-canvas { filter: grayscale(.75) brightness(.8); transform: rotate(10deg) translateY(4%); }
+.barn-mood.m-fainted { color: #ffd84a; background: rgba(90,10,20,.7); }
+.barn-dizzy { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 2; color: #fff6c8; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); pointer-events: none; }
+.barn-faint { margin: 0; }
+.linklike { font: inherit; color: inherit; text-decoration: underline; background: none; border: 0; padding: 0; cursor: pointer; }

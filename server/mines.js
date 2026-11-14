@@ -304,12 +304,14 @@ export class Mines {
         if (raw?.stage === 'creature') pen = { stage: 'creature', species: raw.species, name: raw.name, speciesName: raw.species };
       }
       if (!pen || pen.stage !== 'creature') return null;
+      if (pen.fainted) return { fainted: true, name: pen.name, species: pen.species }; // v75: it stays home until the Bug Center heals it
       return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
     } catch { return null; }
   }
   publicShift(s, resumed, playerId) {
-    const bug = playerId != null ? this.guideBug(playerId) : null;
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
+    const guide = playerId != null ? this.guideBug(playerId) : null;
+    const bug = guide?.fainted ? null : guide;
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
@@ -479,7 +481,7 @@ export class Mines {
           title: battle ? 'YOUR BUG LOST' : 'AMBUSHED',
           text: battle ? `${rec.winnerName}'s bug beat yours fair and square. They took your bucket${rec.tobacco?.length ? ' and your smokes' : ''}. Your bug will live. Your pride is on a feeding tube.`
             : `${rec.winnerName} crept up behind you in the dark. You never saw them. Payroll does not cover this.`,
-          pvp: { kind: rec.kind, by: rec.winnerName, cash: rec.cash, acid: taken / 1000, tobacco: rec.tobaccoNames || [] } } };
+          pvp: { kind: rec.kind, by: rec.winnerName, cash: rec.cash, acid: taken / 1000, tobacco: rec.tobaccoNames || [], ...(rec.bugs?.loser ? { fainted: rec.bugs.loserBug || true } : {}) } } };
     }
     if (won && won.id === rec.winnerShift && won.rulesVersion === 2 && !won.settlement) {
       gained = Math.max(0, Math.min(taken, cap(won) - won.collected));

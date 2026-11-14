@@ -107,6 +107,7 @@ try {
   await shot(A, '3-bug-battle-phone'); await shot(Bp, '3-bug-battle-desktop');
   const fits = await A.evaluate(() => { const r = document.querySelector('.gb-screen').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; });
   check(fits, 'phone: the whole battle screen fits without scrolling');
+  await A.waitForSelector('[data-test=battle-run]', { timeout: 9000 }).catch(() => null); // after the v75 intro (flash, versus, "wants to battle!")
   check(await A.evaluate(() => !!document.querySelector('[data-test=battle-run]')), 'RUN is on screen');
   // play it out: both pick their first usable move, turn after turn
   let over = false;
