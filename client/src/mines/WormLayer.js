@@ -1,4 +1,4 @@
-// v79: draws the acid worms in 3D on their own small transparent canvas over the tunnel view (wormMesh.js has the
+// v79: draws the acid worms (grotesque trilobites, see wormMesh.js) in 3D on their own small transparent canvas over the tunnel view (wormMesh.js has the
 // worm). One orthographic camera in CSS pixels, so a worm sits exactly in its on-screen box (worms.js decides where
 // and how big; the DOM keeps an invisible hit box there for taps and swipes). Drawn at half resolution with crisp
 // pixels like the mine, and only while a worm or a chunk is on screen. createWormLayer() returns null when WebGL
@@ -71,13 +71,13 @@ export class WormLayer {
     for (const p of w.mesh.pieces()) {
       const lx = p.x * S * flip, ly = p.y * S, wx = g.position.x + lx * c - ly * s, wy = g.position.y + lx * s + ly * c;
       const side = Math.sign((wx - g.position.x) * nx + (wy - g.position.y) * ny) || (p.head ? 1 : -1);
-      const mat = this.mats.body.clone(); mat.opacity = 0.95;
+      const mat = (p.leg ? this.mats.limb : this.mats.body).clone(); mat.transparent = true; mat.opacity = 1;
       const m = new THREE.Mesh(p.geometry, mat); m.scale.copy(g.scale); m.rotation.z = rz; m.position.set(wx, wy, 0);
       if (p.head) { const f = w.mesh.face.clone(); f.traverse((o) => { if (o.isMesh) o.geometry = o.geometry.clone(); }); f.position.x -= p.x; f.position.y -= p.y; m.add(f); }
       this.scene.add(m);
       const kick = S * (0.9 + Math.random() * 0.7);
       this.chunks.push({ m, mat, vx: (nx * side * kick + ux * S * (Math.random() - 0.3) * 1.2), vy: (ny * side * kick + uy * S * (Math.random() - 0.3) * 1.2) + S * 0.6,
-        spin: (Math.random() - 0.5) * 14, tumble: (Math.random() - 0.5) * 10, life: 0 });
+        spin: (Math.random() - 0.5) * (p.leg ? 22 : 12), tumble: (Math.random() - 0.5) * 10, life: 0, leg: p.leg, ph: Math.random() * 6 });
     }
     g.updateMatrixWorld(true);
     const smear = new THREE.Mesh(w.mesh.smear.geometry.clone(), this.mats.smear.clone()); smear.applyMatrix4(w.mesh.smear.matrixWorld); this.scene.add(smear);
@@ -112,7 +112,8 @@ export class WormLayer {
     for (let i = this.chunks.length - 1; i >= 0; i--) {
       const k = this.chunks[i]; k.life += dt;
       if (!k.fadeOnly) { k.vy -= GRAVITY * dt; k.m.position.x += k.vx * dt; k.m.position.y += k.vy * dt; k.m.rotation.z += k.spin * dt; k.m.rotation.x += k.tumble * dt; }
-      k.mat.opacity = Math.max(0, (k.fadeOnly ? 0.38 : 0.95) * (1 - k.life / (k.fadeOnly ? 0.5 : 0.9)));
+      if (k.leg && !this.reduce) k.m.rotation.y = 0.6 * Math.sin(k.life * 38 + k.ph); // a loose leg keeps twitching
+      k.mat.opacity = Math.max(0, (k.fadeOnly ? 0.38 : 1) * (1 - k.life / (k.fadeOnly ? 0.5 : 0.9)));
       if (k.life > (k.fadeOnly ? 0.5 : 0.9)) { this.scene.remove(k.m); this.drop(k); this.chunks.splice(i, 1); }
     }
     this.renderer.render(this.scene, this.camera);

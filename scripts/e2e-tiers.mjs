@@ -63,7 +63,10 @@ async function runTier(browser, tier) {
       if (vp.m) check(scroll <= Math.max(2, without), `tier ${tier} ${vp.tag}: the tier banner adds no scrolling (${scroll}px over, ${without}px without it)`);
       else console.log(`     tier ${tier} ${vp.tag}: shift office ${scroll}px over (${without}px without the banner; the desktop office already scrolled)`);
       await shot(p, `tier${tier}-${vp.tag}-office`);
-      await p.click('text=[ CLOCK IN ]'); await p.waitForFunction(() => !!window.__acidMine); await wait(1500);
+      await p.click('text=[ CLOCK IN ]'); await p.waitForFunction(() => !!window.__acidMine && !!document.querySelector('.m-ticker'));
+      // listen to the ticker from the start: on some days a cave-in is already in sight when you clock in
+      await p.evaluate(() => { window.__lines = []; new MutationObserver(() => window.__lines.push(document.querySelector('.m-ticker').textContent)).observe(document.querySelector('.m-ticker'), { childList: true, characterData: true, subtree: true }); });
+      await wait(1500);
       check(!!(await p.$('.m-hud [data-test="mine-tier"]')), `tier ${tier} ${vp.tag}: HUD shows the tier`);
       if (vp.m) check(!!(await p.$('[data-test="mine-pad"]')), `tier ${tier} phone: move pad still there`);
       await shot(p, `tier${tier}-${vp.tag}-lantern`);
@@ -78,7 +81,7 @@ async function runTier(browser, tier) {
         // its eyes follow a finger / the cursor: point at the top-left corner for the shot
         await p.mouse.move(vp.w * 0.1, vp.h * 0.25); await wait(300);
         const gl = await p.evaluate(() => ({ c: window.__wormLayer.calls(), t: window.__wormLayer.triangles() }));
-        check(gl.c <= 6 && gl.t <= 400, `tier ${tier} ${vp.tag}: one worm costs ${gl.c} draw calls, ${gl.t} triangles`);
+        check(gl.c <= 6 && gl.t <= 520, `tier ${tier} ${vp.tag}: one worm costs ${gl.c} draw calls, ${gl.t} triangles`);
         await shot(p, `tier${tier}-${vp.tag}-worm`);
         if (vp.m) await p.tap('[data-test="knife"]'); else await p.keyboard.press('k');
         await wait(90); await shot(p, `tier${tier}-${vp.tag}-slash`);
@@ -101,13 +104,12 @@ async function runTier(browser, tier) {
           const r = bfs(g, start, stand); if (r && (!best || r.length < best.route.length)) best = { route: [...r, stand.close], yaw: Math.atan2(dx, dy) };
         }
         if (best && best.route.length < 90) {
-          await p.evaluate(() => { window.__lines = []; new MutationObserver(() => window.__lines.push(document.querySelector('.m-ticker').textContent)).observe(document.querySelector('.m-ticker'), { childList: true, characterData: true, subtree: true }); });
           await walk(p, best.route, best.yaw); await wait(400);
           while (await p.evaluate(() => window.__acidWorms.count)) { await p.evaluate(() => window.__acidWorms.cut()); await wait(50); }
           await wait(800);
           await shot(p, `tier${tier}-${vp.tag}-cavein`);
           const lines = await p.evaluate(() => window.__lines.join(' / '));
-          check(/ROOF CAME DOWN/.test(lines), `tier ${tier} ${vp.tag}: the ticker calls out the cave-in`);
+          check(/ROOF CAME DOWN/.test(lines), `tier ${tier} ${vp.tag}: the ticker calls out the cave-in${/ROOF CAME DOWN/.test(lines) ? "" : ` (heard: ${lines.slice(-300)})`}`);
           // walk into it: you can't
           const before = await p.evaluate(() => ({ x: window.__acidMine.pos.x, y: window.__acidMine.pos.y }));
           await p.evaluate(() => { window.__acidMine.input.f = 1; }); await wait(1500); await p.evaluate(() => { window.__acidMine.input.f = 0; });

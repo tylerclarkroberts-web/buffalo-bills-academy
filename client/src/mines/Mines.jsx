@@ -670,18 +670,18 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
-    const caveSeen = new Set();
+    const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
     const tick = setInterval(() => {
       setElapsed(Date.now() - shift.localStart);
       const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
       const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden });
       if (landed) { setWorms([...swarm.current.worms]); audio?.splat(); setLine(WORM_LINES[landed.id % WORM_LINES.length]); }
-      { // a cave-in a step or two ahead: say so once
+      if (!landed) { // a cave-in a step or two ahead: say so once (not on the tick a worm lands, or its line would swallow this one)
         const tx = Math.round(scene.pos.x / TILE), ty = Math.round(scene.pos.y / TILE), fx = -Math.sin(scene.yaw), fz = -Math.cos(scene.yaw);
         const [dx, dy] = Math.abs(fx) > Math.abs(fz) ? [Math.sign(fx), 0] : [0, Math.sign(fz)];
         for (let k = 1; k <= 2; k++) {
           const v = maze.grid[ty + dy * k]?.[tx + dx * k];
-          if (v === RUBBLE) { const key = `${tx + dx * k},${ty + dy * k}`; if (!caveSeen.has(key)) { caveSeen.add(key); setLine(CAVE_LINE); } break; }
+          if (v === RUBBLE) { const key = `${tx + dx * k},${ty + dy * k}`; if (!caveSeen.has(key)) { caveSeen.add(key); setLine(CAVE_LINE); caveHold = Date.now() + 4000; } break; }
           if (v !== 0) break;
         }
       }
@@ -696,7 +696,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         else { const ev = scene.eggView(); setEggNear(ev.dist < 1.9 && ev.facing > 0.4); }
       }
     }, 250);
-    const flavor = setInterval(() => { const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
+    const flavor = setInterval(() => { if (Date.now() < caveHold) return; const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidWorms; window.removeEventListener('resize', onResize);
