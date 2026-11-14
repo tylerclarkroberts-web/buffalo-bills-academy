@@ -9,6 +9,7 @@ import { BUGS } from './engine/bugs.js';
 import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
+import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
 import { Barn } from './barn.js';
 import { Shop, SMOKE } from './shop.js';
@@ -61,7 +62,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
-  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman });
+  // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
+  const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
+  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman,
+    ...(mineTier ? { layout: (now) => dailyLayout(mineDay(now), mineTier) } : {}) });
   const avatars = new Avatars({ dir: service.store.dir, store: service.store, now: service.now });
   service.avatars = avatars;
   // v34: the General Store. Avatars carry what you wear; the barn reads bug looks, toy and gear bonuses from it.

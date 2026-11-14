@@ -75,7 +75,24 @@ After displaying a result, the browser stores only its shift ID in the account-s
 
 ## The daily mine and miner-vs-miner (v71)
 
-**One mine a day.** A shift's maze seed is `daySeed(mineDay(now))` (`server/engine/daily-maze.js`): the calendar day in America/Denver, so it changes at Denver midnight (DST-safe), and everyone who clocks in that day walks the same tunnels with the deposits in the same places. The maze size follows the old per-shift mix (7/9/11 cells at 51/23/26%), and a day whose bucket chain would have fewer than five pools is re-dug deterministically (`${day}#k`). A shift keeps the maze it started with across midnight. Tests that pin `vein` keep their size. Everything else is unchanged: each *shift* still rolls its own vein time, fill table (5/25/50/20), cave-ins, visitor/faun encounter (faun 20%, never with Nosferatu) and egg; acid you can see is always mineable; the bug guide retargets; a full bucket ends the shift.
+**One mine a day.** A shift's maze seed is `daySeed(mineDay(now))` (`server/engine/daily-maze.js`): the calendar day in America/Denver, so it changes at Denver midnight (DST-safe), and everyone who clocks in that day walks the same tunnels with the deposits in the same places. The maze size comes from the day's difficulty tier (below), and a day whose bucket chain would have fewer than five pools is re-dug deterministically (`${day}#k`). A shift keeps the maze (and tier) it started with across midnight. Tests that pin `vein` keep their size and get plain, tier-less tunnels unless the pinned vein also returns a `tier`. Everything else is unchanged: each *shift* still rolls its own vein time, fill table (5/25/50/20), cave-ins, visitor/faun encounter (faun 20%, never with Nosferatu) and egg; acid you can see is always mineable; the bug guide retargets; a full bucket ends the shift.
+
+**Difficulty tiers (v79).** `dayTier(daySeed(day))` (`server/engine/mine-tiers.js`) gives every day one of five tiers, 20% each, the same for everyone. `GET /api/mines/office` reports it as `today` (`day`, `tier`, `cells`, `pay`) for the shift office banner; a shift stores `tier` (and `hazard` when it pays extra) and its public state carries `tier`. One builder, `shiftMaze({seed, cells, tier})`, digs the tunnels for the server, PvP and the browser; a shift without a tier gets exactly the old maze.
+
+| Tier | Name | Cells | Cave-ins | Lamp / fog / ambient | Flicker | Worms a minute (most at once, size) | Acid pay |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Greenhorn Gulch | 6 | 0 | 1.3 / 1.35 / 1.4 | none | 0 | ×1 |
+| 2 | Tenderfoot Tunnels | 8 | up to 2 | 1.1 / 1.15 / 1.15 | 0.2 | 0.6 (1, 26%) | ×1.1 |
+| 3 | Honest Work | 10 | up to 4 | 1 / 1 / 1 | 0.4 | 1.2 (2, 32%) | ×1.25 |
+| 4 | The Badlands | 13 | up to 8 | 0.78 / 0.8 / 0.7 | 0.7 | 2.2 (2, 40%) | ×1.5 |
+| 5 | Dead Man's Dig | 16 | up to 14 | 0.6 / 0.62 / 0.45 | 1 | 3.5 (3, 48%) | ×2 |
+
+- **Cave-ins** are grid value `RUBBLE` (2): solid everywhere (`=== 0` is the only walkable test), drawn as a rock pile with a CAVE-IN plank. They are placed per day after extra loops are opened, only on straight hallway tiles at least four steps from the elevator, and only where blocking keeps every tunnel tile connected, so the elevator and every acid spot (chosen afterwards) are always reachable. They are not timed.
+- **Light** multiplies the shaft's lamp reach and fog distance (a headlamp still helps), never below 5.5 m of fog and 3.6 m of lamp, so a pool in reach (1.9 m) is never lost in the dark.
+- **Acid worms** are browser-only (`client/src/mines/worms.js`): they land on the view and stay until cut (tap or swipe the worm, the CUT button, or K). None land while acid is in reach, during a battle, behind the door or in the first 6 s; the MINE button sits above them.
+- **Hazard pay** multiplies ordinary acid only. Mud stays pity money, the rare finds stay fixed, and the nephew and PvP spoils are untouched.
+
+The local dev server's `MINE_TEST_TIER=1..5` (with `DEV_LOGIN`) forces a tier for screenshots: `npm run build && PLAYWRIGHT_DIR=<dir with playwright-core> OUT=<dir> TIERS=1,3,5 npm run e2e:tiers`.
 
 **Deposits are per player.** The pools are in the same places for everyone, but each shift has its own amounts. A shared, first-come drain would let the first miner of the day empty everyone's pools; taking other people's acid is what ambushes and battles are for.
 

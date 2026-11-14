@@ -184,7 +184,7 @@ export class Telemetry {
 
   /** Acid Mines clock-in and settlement (see server/mines.js hooks). */
   shiftStart(playerId, s, fare = 0) {
-    this.event('shift-start', playerId, { shift: s.id, shaft: s.shaft || '7', cells: s.cells, cap: s.capacity ? s.capacity / 1000 : null, fare, scare: !!(s.scare || s.scareAt), faun: !!s.faun, twin: !!s.twin, egg: !!s.egg }, { t: s.startedAt });
+    this.event('shift-start', playerId, { shift: s.id, shaft: s.shaft || '7', cells: s.cells, ...(s.tier ? { tier: s.tier } : {}), cap: s.capacity ? s.capacity / 1000 : null, fare, scare: !!(s.scare || s.scareAt), faun: !!s.faun, twin: !!s.twin, egg: !!s.egg }, { t: s.startedAt });
   }
   shiftEnd(playerId, s, receipt) {
     const r = receipt?.result;
