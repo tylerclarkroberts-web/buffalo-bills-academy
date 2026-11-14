@@ -11,15 +11,15 @@ export function Bars({ data, height = 120, color = 'var(--teal)', fmt = (v) => v
   const max = Math.max(1, ...data.map((d) => d.value));
   const w = 100 / Math.max(1, data.length);
   return (
-    <figure className="ad-bars" style={{ height }} aria-label={ariaLabel}>
+    <figure className="bo-bars" style={{ height }} aria-label={ariaLabel}>
       <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" role="img">
         {data.map((d, i) => {
           const h = (d.value / max) * (height - 4);
           return <rect key={i} x={i * w + w * 0.12} y={height - 1 - h} width={w * 0.76} height={Math.max(h, d.value ? 1 : 0)} fill={d.color || color} rx="0.6"><title>{d.title || `${d.label}: ${fmt(d.value)}`}</title></rect>;
         })}
       </svg>
-      <div className="ad-bars-x">{data.map((d, i) => <span key={i} style={{ width: `${w}%` }}>{i % every === 0 ? d.label : ''}</span>)}</div>
-      <span className="ad-bars-max num">{fmt(max)}</span>
+      <div className="bo-bars-x">{data.map((d, i) => <span key={i} style={{ width: `${w}%` }}>{i % every === 0 ? d.label : ''}</span>)}</div>
+      <span className="bo-bars-max num">{fmt(max)}</span>
     </figure>
   );
 }
@@ -30,7 +30,7 @@ export function Diverging({ days, sources, height = 170, fmt }) {
   for (const d of days) { let p = 0, n = 0; for (const s of sources) { const v = d[s] || 0; if (v > 0) p += v; else n -= v; } top = Math.max(top, p); bot = Math.max(bot, n); }
   const scale = (height - 6) / (top + bot), zero = 3 + top * scale, w = 100 / Math.max(1, days.length);
   return (
-    <figure className="ad-bars" style={{ height }} aria-label="Daily money by source">
+    <figure className="bo-bars" style={{ height }} aria-label="Daily money by source">
       <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" role="img">
         <line x1="0" x2="100" y1={zero} y2={zero} stroke="rgba(251,244,234,.3)" strokeWidth="0.3" vectorEffect="non-scaling-stroke" />
         {days.map((d, i) => {
@@ -43,8 +43,8 @@ export function Diverging({ days, sources, height = 170, fmt }) {
           });
         })}
       </svg>
-      <div className="ad-bars-x">{days.map((d, i) => <span key={i} style={{ width: `${w}%` }}>{i % 5 === 0 ? d.day.slice(5) : ''}</span>)}</div>
-      <span className="ad-bars-max num">+{fmt(top)}</span><span className="ad-bars-min num">−{fmt(bot)}</span>
+      <div className="bo-bars-x">{days.map((d, i) => <span key={i} style={{ width: `${w}%` }}>{i % 5 === 0 ? d.day.slice(5) : ''}</span>)}</div>
+      <span className="bo-bars-max num">+{fmt(top)}</span><span className="bo-bars-min num">−{fmt(bot)}</span>
     </figure>
   );
 }
@@ -54,15 +54,15 @@ export function HBars({ rows, fmt, onPick }) {
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
   const anyNeg = rows.some((r) => r.value < 0);
   return (
-    <ul className="ad-hbars">
+    <ul className="bo-hbars">
       {rows.map((r) => {
         const pct = (Math.abs(r.value) / max) * (anyNeg ? 50 : 100);
         return (
           <li key={r.key} onClick={onPick ? () => onPick(r) : undefined} className={onPick ? 'pick' : ''}>
             <span className="ell">{r.label}{r.sub ? <small className="muted"> {r.sub}</small> : null}</span>
-            <span className="ad-hbar-track">
+            <span className="bo-hbar-track">
               <i style={{ left: anyNeg ? (r.value < 0 ? `${50 - pct}%` : '50%') : 0, width: `${pct}%`, background: r.color || (r.value < 0 ? 'var(--neg)' : 'var(--pos)') }} />
-              {anyNeg && <b className="ad-hbar-zero" />}
+              {anyNeg && <b className="bo-hbar-zero" />}
             </span>
             <span className={`num r ${r.value < 0 ? 'neg' : ''}`}>{fmt(r.value)}</span>
           </li>

@@ -6,6 +6,7 @@ import Invest from './Invest.jsx';
 import { Shell } from './Shell.jsx';
 import { useSession, currentSession } from './api.js';
 import { faceRedirect, safeNext } from './faceGate.js';
+import AdminBoundary, { BoScreen } from './admin/AdminBoundary.jsx';
 
 const Mines = lazy(() => import('./mines/Mines.jsx'));
 const AvatarMaker = lazy(() => import('./avatar/AvatarMaker.jsx'));
@@ -55,7 +56,8 @@ export default function App() {
     if (to) navigate(to, { replace: true });
   }, [me?.id, me?.hasAvatar, path]);
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
-  if (path === '/admin') return <Suspense fallback={<div style={{ background: '#170812', minHeight: '100vh' }} />}><Admin /></Suspense>; // owner only; the API enforces it
+  // owner only; the API enforces it. The boundary means a crash or a failed download shows a message, never a blank page.
+  if (path === '/admin') return <AdminBoundary><Suspense fallback={<BoScreen testId="bo-loading"><p style={{ margin: 0, opacity: 0.7 }}>Opening the back office…</p></BoScreen>}><Admin /></Suspense></AdminBoundary>;
   if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // lobby card unlocks this after the film
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);
