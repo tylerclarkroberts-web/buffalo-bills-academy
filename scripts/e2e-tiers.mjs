@@ -74,9 +74,14 @@ async function runTier(browser, tier) {
         // a worm lands, then the knife
         await p.evaluate(() => window.__acidWorms.spawn()); await wait(700);
         check((await p.$$('[data-test="worm"]')).length === 1 && !!(await p.$('[data-test="knife"]')), `tier ${tier} ${vp.tag}: a worm on the goggles and the knife button`);
+        check(await p.evaluate(() => document.querySelector('.m-worms').dataset.mode) === '3d', `tier ${tier} ${vp.tag}: the worm is drawn in 3D`);
+        // its eyes follow a finger / the cursor: point at the top-left corner for the shot
+        await p.mouse.move(vp.w * 0.1, vp.h * 0.25); await wait(300);
+        const gl = await p.evaluate(() => ({ c: window.__wormLayer.calls(), t: window.__wormLayer.triangles() }));
+        check(gl.c <= 6 && gl.t <= 400, `tier ${tier} ${vp.tag}: one worm costs ${gl.c} draw calls, ${gl.t} triangles`);
         await shot(p, `tier${tier}-${vp.tag}-worm`);
         if (vp.m) await p.tap('[data-test="knife"]'); else await p.keyboard.press('k');
-        await wait(170); await shot(p, `tier${tier}-${vp.tag}-slash`);
+        await wait(90); await shot(p, `tier${tier}-${vp.tag}-slash`);
         await wait(800);
         check((await p.$$('[data-test="worm"]')).length === 0 && !(await p.$('[data-test="knife"]')), `tier ${tier} ${vp.tag}: the knife cleared it`);
         // a swipe across a worm cuts it too (phone), or a click (desktop)

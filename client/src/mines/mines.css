@@ -300,6 +300,8 @@ body.in-mines { background: #020402; }
 /* acid worms, and the knife */
 .m-worms { position: absolute; inset: 0; z-index: 16; pointer-events: none; overflow: hidden; }
 .m-worm { position: absolute; width: min(calc(var(--s) * 100vmax), 92vmin); aspect-ratio: 1; transform: translate(-50%, -50%) rotate(var(--r)) scaleX(var(--f)); pointer-events: auto; touch-action: none; cursor: crosshair; }
+.m-worm3d { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; filter: contrast(1.1) saturate(1.15); }
+.m-worm.hit { background: none; }
 .m-worm .w-in { width: 100%; height: 100%; animation: w-jump .42s cubic-bezier(.2, 1.5, .4, 1) both; }
 .m-worm svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 12px rgba(0,0,0,.6)); }
 .m-worm:not(.cut) .w-body { transform-origin: 40px 150px; animation: w-wriggle .7s ease-in-out infinite alternate; }

@@ -1,5 +1,8 @@
-// v79: acid worms on your goggles, and the bowie knife that gets them off (logic: worms.js).
-import React, { useRef } from 'react';
+// v79: acid worms on your goggles, and the bowie knife that gets them off (logic: worms.js). They are drawn in 3D
+// (WormLayer.js, wormMesh.js); without WebGL the flat drawing below stands in. Either way the DOM keeps a box on each
+// worm for taps and swipes.
+import React, { useEffect, useRef, useState } from 'react';
+import { createWormLayer } from './WormLayer.js';
 
 const BODY = 'M40 150 C 20 110, 70 100, 80 125 S 125 160, 130 115 S 95 60, 140 48';
 function WormArt({ id }) {
@@ -33,22 +36,47 @@ function WormArt({ id }) {
  */
 export default function Worms({ worms, cutting, onCut }) {
   const swipe = useRef(null);
+  const canvas = useRef(null), layer = useRef(null), done = useRef(new Set());
+  const [mode, setMode] = useState('3d');
+  useEffect(() => {
+    const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const l = createWormLayer(canvas.current, { reduce, onLost: () => { layer.current?.dispose(); layer.current = null; setMode('flat'); } });
+    if (!l) { setMode('flat'); return undefined; }
+    layer.current = l;
+    window.__wormLayer = { calls: () => l.calls, triangles: () => l.triangles }; // e2e: the phone budget
+    const look = (e) => l.setPointer(e.clientX, e.clientY);
+    const resize = () => l.resize();
+    window.addEventListener('pointermove', look, { passive: true }); window.addEventListener('pointerdown', look, { passive: true }); window.addEventListener('resize', resize);
+    return () => { window.removeEventListener('pointermove', look); window.removeEventListener('pointerdown', look); window.removeEventListener('resize', resize); l.dispose(); layer.current = null; delete window.__wormLayer; };
+  }, []);
+  useEffect(() => {
+    const l = layer.current; if (!l) return;
+    for (const { w } of cutting) if (!done.current.has(w.id)) {
+      done.current.add(w.id);
+      // the knife's line is the box's "/" diagonal, turned and mirrored with the worm
+      const r = (w.rot * Math.PI) / 180, fx = w.flip ? -1 : 1, lx = fx, ly = -1;
+      l.cut(w.id, lx * Math.cos(r) - ly * Math.sin(r), lx * Math.sin(r) + ly * Math.cos(r));
+    }
+    l.sync(worms);
+  }, [worms, cutting]);
+  const flat = mode === 'flat';
   const down = (w) => (e) => { e.stopPropagation(); swipe.current = { id: w.id, x: e.clientX, y: e.clientY }; e.currentTarget.setPointerCapture?.(e.pointerId); };
   const move = (e) => { const s = swipe.current; if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 28) { swipe.current = null; onCut(s.id, Math.atan2(e.clientY - s.y, e.clientX - s.x)); } };
   const up = (e) => { const s = swipe.current; swipe.current = null; if (s) onCut(s.id, Math.atan2(e.clientY - s.y, e.clientX - s.x) || -0.5); };
   const place = (w) => ({ left: `${w.x * 100}%`, top: `${w.y * 100}%`, '--s': w.size, '--r': `${w.rot}deg`, '--f': w.flip ? -1 : 1 });
   return (
     <>
-      <div className="m-worms" aria-hidden="true">
+      <div className="m-worms" aria-hidden="true" data-mode={mode}>
+        <canvas ref={canvas} className="m-worm3d" hidden={flat} />
         {worms.map((w) => (
-          <div key={w.id} className="m-worm" style={place(w)} data-test="worm" onPointerDown={down(w)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { swipe.current = null; }}>
-            <div className="w-in"><WormArt id={w.id} /></div>
+          <div key={w.id} className={`m-worm${flat ? '' : ' hit'}`} style={place(w)} data-test="worm" onPointerDown={down(w)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { swipe.current = null; }}>
+            {flat && <div className="w-in"><WormArt id={w.id} /></div>}
           </div>
         ))}
         {cutting.map(({ w }) => (
           <div key={`c${w.id}`} className="m-worm cut" style={place(w)}>
-            <div className="w-half a"><div className="w-in"><WormArt id={`a${w.id}`} /></div></div>
-            <div className="w-half b"><div className="w-in"><WormArt id={`b${w.id}`} /></div></div>
+            {flat && <div className="w-half a"><div className="w-in"><WormArt id={`a${w.id}`} /></div></div>}
+            {flat && <div className="w-half b"><div className="w-in"><WormArt id={`b${w.id}`} /></div></div>}
             <div className="w-slash" />
           </div>
         ))}
