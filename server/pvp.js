@@ -7,7 +7,8 @@
 // ConquestK; nothing in this file reads or changes the ConquestK betting switch.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { makeMaze, FIRST_POOL_STEPS } from './engine/maze.js';
+import { FIRST_POOL_STEPS } from './engine/maze.js';
+import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
 import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
 import { makeFighter, newBattle, resolveTurn, autoMove, legalMoves, fighterView } from './engine/gb-battle.js';
@@ -54,13 +55,13 @@ export class Pvp {
   // ----- who is where -----
   maze(shift) {
     const cells = FIRST_POOL_STEPS[shift.cells] ? shift.cells : 7;
-    return this.mazeAt(`${shift.seed}:${cells}`);
+    return this.mazeAt(`${shift.seed}:${cells}:${shift.tier || 0}`); // the tier's cave-ins are rock here too
   }
   mazeAt(key) {
     let m = this.mazes.get(key);
     if (!m) {
-      const [seed, cells] = key.split(':').map(Number);
-      m = makeMaze(seed, cells, FIRST_POOL_STEPS[cells]); this.mazes.set(key, m);
+      const [seed, cells, tier] = key.split(':').map(Number);
+      m = shiftMaze({ seed, cells, tier }); this.mazes.set(key, m);
       if (this.mazes.size > 8) this.mazes.delete(this.mazes.keys().next().value);
     }
     return { key, grid: m.grid, start: m.start };

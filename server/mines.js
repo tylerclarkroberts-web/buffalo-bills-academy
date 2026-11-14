@@ -1,7 +1,8 @@
 // The Acid Mines: the only faucet in the closed economy. The server decides every payout.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { makeMaze, bucketChain, FIRST_POOL_STEPS } from './engine/maze.js';
+import { bucketChain } from './engine/maze.js';
+import { shiftMaze, tierInfo } from './engine/mine-tiers.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
@@ -205,7 +206,9 @@ export class Mines {
   /** The shift office: what you would clock in with, and every shaft with whether your permit opens it. */
   office(player) {
     const g = this.gear(player.id);
+    const today = this.layout(this.now()), t = tierInfo(today.tier);
     return { capacity: g.cap, extractionRate: EXTRACTION_RATE * g.rate, lamp: g.lamp, rod: g.rod, nephew: this.nephew(player.id),
+      ...(t ? { today: { day: today.day, tier: t.tier, cells: today.cells, pay: t.pay } } : {}),
       shafts: SHAFTS.map((s) => ({ id: s.id, name: s.name, fare: s.fare, max: s.max, open: g.shafts.includes(s) })) };
   }
   /** Null unless hired; otherwise whether he can still go down today (the faun's UTC day), what he brought back, and
@@ -271,8 +274,12 @@ export class Mines {
     if (shaft.fare) this.accounts.requireFunds(player, shaft.fare, `the elevator to ${shaft.name}`);
     const day = this.layout(now);
     const shift = { id: crypto.randomBytes(12).toString('base64url'), startedAt: now, ...rollScare(this.scareInt), ...this.vein(), seed: day.seed, day: day.day };
-    if (!this.pinnedCells || !shift.cells) shift.cells = day.cells; // the day decides how big the mine is
-    const maze = makeMaze(shift.seed, shift.cells || 7, FIRST_POOL_STEPS[shift.cells || 7]);
+    const pinned = this.pinnedCells && shift.cells; // a test that pins the size gets plain tunnels unless it pins a tier too
+    if (!pinned) shift.cells = day.cells; // the day decides how big the mine is
+    const tier = tierInfo(pinned ? shift.tier : day.tier); // v79: ...and how rough. The shift keeps it (and its hazard pay) past midnight.
+    delete shift.tier;
+    if (tier) Object.assign(shift, { tier: tier.tier, ...(tier.pay !== 1 ? { hazard: tier.pay } : {}) });
+    const maze = shiftMaze(shift);
     const chain = bucketChain(maze, shift.seed);
     Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, scale: shaft.scale, capacity: Math.min(gear.cap, shaft.max) * 1000, rate: EXTRACTION_RATE * gear.rate,
       ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}),
@@ -309,7 +316,7 @@ export class Mines {
   }
   publicShift(s, resumed, playerId) {
     const bug = playerId != null ? this.guideBug(playerId) : null;
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
@@ -434,8 +441,10 @@ export class Mines {
       // Acid and mud pay by the unit, so a bigger bucket is a bigger cheque. The rare finds are one find however big
       // the bucket: a full bucket of any size pays the same $10,000, and a partial one its fraction.
       const per = r.amount >= 10000 ? full : CAPACITY;
+      // v79: hazard pay on ordinary acid for a rough day (tier 2 up). Mud stays pity money; the rare finds are fixed.
+      const hazard = r.outcome === 'normal' && cur.hazard > 1 ? cur.hazard : 1;
       const result = cur.collected > 0 ? { ...r, shiftId: cur.id, collected: cur.collected / 1000, capacity: full / 1000,
-        amount: Math.round(r.amount * 100 * cur.collected / per) / 100,
+        amount: Math.round(r.amount * hazard * 100 * cur.collected / per) / 100, ...(hazard > 1 ? { hazard } : {}),
         ...(r.outcome === 'dud' && cur.collected < full ? { text: 'Mostly mud. The foreman pays for what you brought and questions your judgment.' } : {}) } : null;
       if (result && cur.twin) { // decided at clock-in, never sent to the browser, met only on the way out
         const took = Math.floor(result.amount * 100 * TWIN_CUT) / 100;

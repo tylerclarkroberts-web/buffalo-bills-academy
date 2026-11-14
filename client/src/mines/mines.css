@@ -268,3 +268,65 @@ body.in-mines { background: #020402; }
   .gb-field { grid-row: 1 / span 2; max-height: none; height: 100%; aspect-ratio: auto; }
   .gb-text { margin: 6px 6px 0; }
 }
+
+/* v79: the day's tier. Picks lit for how rough it is, a name, and the hazard pay. */
+.m-tier { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; color: var(--y); text-shadow: 0 0 6px rgba(230,255,0,.35); }
+.m-picks { letter-spacing: .04em; white-space: nowrap; }
+.m-picks i { font-style: normal; }
+.m-picks i.off { filter: grayscale(1) brightness(.35); opacity: .55; }
+.m-tier-name { letter-spacing: .08em; }
+.m-tier.t4 .m-picks i:not(.off), .m-tier.t5 .m-picks i:not(.off) { color: #ff8a3a; text-shadow: 0 0 8px rgba(255,120,40,.6); }
+.m-tier.t5 .m-tier-name { color: #ff6a4a; text-shadow: 0 0 8px rgba(255,80,50,.6); }
+.has-today .m-sub { margin-bottom: 10px; }
+.m-today { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 14px; padding: 4px 14px; border: 1px dashed var(--g3); background: rgba(10,26,6,.55); }
+.m-today .m-tier { font-size: 26px; }
+.m-today .m-dim { font-size: 18px; }
+.m-hud .m-tier { font-size: .85em; gap: 6px; }
+@media (max-width: 800px), (max-height: 520px) {
+  .m-today { margin: -4px 0 10px; padding: 4px 10px; gap: 4px 10px; }
+  .m-today .m-tier { font-size: 20px; }
+  .m-today .m-dim { font-size: 14px; }
+  .m-today .m-blurb, .m-today > .m-dim:first-child, .m-today .m-pay-word { display: none; }
+  .m-intro.has-today .m-sub { display: none; } /* on a phone the day's dig takes the tagline's line */
+  .m-today { flex-wrap: nowrap; margin: 8px 0 10px; padding: 2px 10px; }
+  .m-today .m-tier { flex-wrap: nowrap; white-space: nowrap; font-size: 19px; }
+  .m-today .m-dim { font-size: 17px; white-space: nowrap; }
+}
+@media (orientation: landscape) and (max-height: 520px) { .m-today .m-blurb { display: none; } }
+
+/* darker days close in at the edges; the centre of the tunnel stays readable */
+.m-dark { position: absolute; inset: 0; z-index: 12; pointer-events: none; background: radial-gradient(ellipse at 50% 55%, transparent calc(62% - var(--dark, 0) * 26%), rgba(0,0,0, calc(.35 + var(--dark, 0) * .6)) 100%); }
+
+/* acid worms, and the knife */
+.m-worms { position: absolute; inset: 0; z-index: 16; pointer-events: none; overflow: hidden; }
+.m-worm { position: absolute; width: min(calc(var(--s) * 100vmax), 92vmin); aspect-ratio: 1; transform: translate(-50%, -50%) rotate(var(--r)) scaleX(var(--f)); pointer-events: auto; touch-action: none; cursor: crosshair; }
+.m-worm3d { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; filter: contrast(1.1) saturate(1.15); }
+.m-worm.hit { background: none; }
+.m-worm .w-in { width: 100%; height: 100%; animation: w-jump .42s cubic-bezier(.2, 1.5, .4, 1) both; }
+.m-worm svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 12px rgba(0,0,0,.6)); }
+.m-worm:not(.cut) .w-body { transform-origin: 40px 150px; animation: w-wriggle .7s ease-in-out infinite alternate; }
+@keyframes w-jump { 0% { transform: translateY(70vh) scale(.25) rotate(-40deg); opacity: .6; } 70% { transform: translateY(0) scale(1.12, .86); opacity: 1; } 100% { transform: none; } }
+@keyframes w-wriggle { from { transform: rotate(-5deg) scaleY(1.03); } to { transform: rotate(6deg) scaleY(.96); } }
+.m-worm.cut { pointer-events: none; }
+.m-worm.cut .w-in { animation: none; }
+.m-worm.cut .w-half { position: absolute; inset: 0; }
+.m-worm.cut .w-half.a { clip-path: polygon(0 0, 100% 0, 0 100%); animation: w-fall-a .65s .06s ease-in forwards; }
+.m-worm.cut .w-half.b { clip-path: polygon(100% 0, 100% 100%, 0 100%); animation: w-fall-b .65s .06s ease-in forwards; }
+@keyframes w-fall-a { to { transform: translate(-22%, 60%) rotate(-28deg); opacity: 0; } }
+@keyframes w-fall-b { to { transform: translate(18%, 85%) rotate(24deg); opacity: 0; } }
+.m-worm .w-slash { position: absolute; left: -12%; right: -12%; top: 50%; height: 12px; margin-top: -6px; transform: rotate(-45deg) scaleX(0); transform-origin: 50% 50%;
+  background: linear-gradient(90deg, transparent, #fff 18%, #fffbe0 82%, transparent); box-shadow: 0 0 10px #fff, 0 0 26px #fff, 0 0 46px var(--y); border-radius: 6px; animation: w-slash .42s ease-out forwards; }
+@keyframes w-slash { 0% { transform: rotate(-45deg) scaleX(0); opacity: 1; } 35% { transform: rotate(-45deg) scaleX(1.05); opacity: 1; } 100% { transform: rotate(-45deg) scaleX(1.1) scaleY(.3); opacity: 0; } }
+.m-knife { position: absolute; z-index: 27; right: calc(14px + env(safe-area-inset-right)); bottom: calc(58px + env(safe-area-inset-bottom)); display: grid; justify-items: center; gap: 0; width: 84px; padding: 6px 4px 4px;
+  font: inherit; font-size: 20px; letter-spacing: .08em; color: #000; background: var(--y); border: 0; border-radius: 10px; cursor: pointer; box-shadow: 0 0 18px rgba(230,255,0,.55), inset 0 -4px 0 rgba(0,0,0,.25); touch-action: none; animation: m-knife-in .25s ease-out both; }
+.m-knife svg { width: 52px; height: 52px; }
+.m-knife:active { transform: translateY(2px) rotate(-8deg); }
+.m-knife:focus-visible { outline: 3px solid #fff; }
+@keyframes m-knife-in { from { transform: scale(.5); opacity: 0; } }
+@media (pointer: coarse) { .m-knife-key { display: none; } }
+@media (min-width: 801px) and (pointer: fine) { .m-knife { bottom: 120px; right: 24px; } }
+@media (orientation: landscape) and (max-height: 520px) { .m-knife { bottom: auto; top: 40%; width: 72px; } .m-knife svg { width: 40px; height: 40px; } }
+@media (prefers-reduced-motion: reduce) {
+  .m-worm .w-in, .m-worm:not(.cut) .w-body, .m-knife { animation: none; }
+  .m-worm.cut .w-half { animation-duration: .01s; }
+}

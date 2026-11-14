@@ -4,7 +4,10 @@ import { createPvpClient, pvpAmbush, pvpForfeit, pvpMove } from './pvpClient.js'
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { makeMaze, rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, FIRST_POOL_STEPS } from '../../../server/engine/maze.js';
+import { rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, RUBBLE } from '../../../server/engine/maze.js';
+import { shiftMaze, tierInfo, tierLight } from '../../../server/engine/mine-tiers.js';
+import { WormSwarm } from './worms.js';
+import Worms from './Worms.jsx';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
@@ -98,6 +101,22 @@ const VISITOR_LINES = [
   'IF HE WAVES BACK, THAT IS BETWEEN YOU AND HIM.',
   'THE GEIGER IS CLICKING IN MORSE. IT SAYS "BEHIND."',
 ];
+// v79: the acid worms and the cave-ins get their own lines.
+const WORM_LINES = ['AN ACID WORM IS ON YOUR GOGGLES. IT IS LOOKING AT YOU.', 'WORM. FACE. KNIFE. IN THAT ORDER.', 'IT IS WARM AND IT IS WIGGLING. CUT IT OFF.', 'THE WORM WOULD LIKE TO BE FRIENDS. CUT IT OFF.'];
+const CUT_LINES = ['SHLICK. TWO WORMS NOW, BOTH LEAVING.', 'CLEAN CUT. THE FOREMAN WOULD BE PROUD. HE WOULD NOT SAY SO.', 'YOU BOWIE\'D IT.', 'WORM REMOVED. GOGGLES STILL STICKY.'];
+const CAVE_LINE = 'THE ROOF CAME DOWN HERE. GO AROUND.';
+
+/** The day's tier: picks lit for how rough it is (out of five) and its name. */
+export function TierBadge({ tier }) {
+  const t = tierInfo(tier); if (!t) return null;
+  return (
+    <span className={`m-tier t${t.tier}`} data-test="mine-tier" aria-label={`Today's dig: ${t.tier} of 5, ${t.name.toLowerCase()}`}>
+      <span className="m-picks" aria-hidden="true">{[1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= t.tier ? '' : 'off'}>⛏</i>)}</span>
+      <span className="m-tier-name" aria-hidden="true">{t.name}</span>
+    </span>
+  );
+}
+
 const ART = {
   ambushed: String.raw`
       _____
@@ -285,10 +304,14 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
     );
   }
   return (
-    <main className="m-intro">
+    <main className={`m-intro${office?.today ? ' has-today' : ''}`}>
       <div className="hazard-bar" />
       <h1 className="m-title glitch" data-text="THE ACID MINES">THE ACID MINES</h1>
       <p className="m-sub">NOW HIRING · ALL SHIFTS · NO EXPERIENCE · NO QUESTIONS</p>
+      {office?.today && <div className="m-today" data-test="mine-today">
+        <span className="m-dim">TODAY'S DIG</span><TierBadge tier={office.today.tier} />
+        <span className="m-dim"><span className="m-blurb">{tierInfo(office.today.tier).blurb} </span>{office.today.pay > 1 ? <><span className="m-pay-word">HAZARD </span>PAY ×{office.today.pay}</> : <span className="m-pay-word">STANDARD PAY</span>}</span>
+      </div>}
       <div className="m-cols">
         <section className="m-box">
           <h2>&gt; SHIFT ORIENTATION</h2>
@@ -359,8 +382,20 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const [line, setLine] = useState(LINES[shift.seed % LINES.length]);
   const [status, setStatus] = useState('FIND THE ACID POOL');
   const done = useRef(false);
-  const cells = FIRST_POOL_STEPS[shift.cells] ? shift.cells : 7;
-  const maze = useRef(makeMaze(shift.seed, cells, FIRST_POOL_STEPS[cells])).current;
+  const maze = useRef(shiftMaze(shift)).current; // v79: the day's tier decides the size and the cave-ins
+  const tier = tierInfo(shift.tier);
+  // v79: acid worms (none on the easy days). They hold off while acid is in reach, in a battle or behind the door.
+  const swarm = useRef(null); if (!swarm.current) swarm.current = new WormSwarm(tier);
+  const [worms, setWorms] = useState([]);
+  const [cutting, setCutting] = useState([]);
+  const nearRef = useRef(false);
+  const cutWorm = useRef(null);
+  cutWorm.current = (id, angle = -0.6) => {
+    const w = swarm.current.slash(id); if (!w) return;
+    setWorms([...swarm.current.worms]); setCutting((c) => [...c, { w, angle }]); audio?.slash();
+    setTimeout(() => setCutting((c) => c.filter((x) => x.w.id !== w.id)), 700);
+    if (swarm.current.cuts % 3 === 1) setLine(CUT_LINES[swarm.current.cuts % CUT_LINES.length]);
+  };
   const eggLocation = useRef(eggSpot(maze, shift.seed)).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
   const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker(chain);
@@ -515,6 +550,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
     audio?.enter(dark);
+    // How far the lamp reaches and the fog sits: the shaft (and a headlamp), then the day's tier (never so dark a pool in reach is lost).
+    const base = { fogFar: [17, 12, 8.5, 6][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 8, 6, 4.5][dark] };
+    const light = tier ? tierLight(base, tier.tier) : { ...base, ambient: 1, flicker: 0 };
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     // The faun never shares a shift with the visitor; the server already guaranteed that.
     const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
@@ -548,13 +586,13 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         const kind = v.wantProbe(Date.now()); if (kind === 'pool' || (kind && !bucketShift)) askVein(kind);
         const n = v.canMine() && !done.current;
         if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
-        if (n !== lastNear) { lastNear = n; setNear(n); if (!n) release(); }
+        if (n !== lastNear) { lastNear = n; nearRef.current = n; setNear(n); if (!n) release(); }
         geiger.current = { bars: geigerBars(path), facing };
         const b = geigerBars(path, 48, facing);
         if (b !== lastBars) { lastBars = b; setBars(b); }
       },
       stalker, bugGuide, faun, localStart: shift.localStart, reduceMotion: reduce,
-      depth: dark, fogFar: [17, 12, 8.5, 6][dark] + (shift.lamp ? 8 : 0), lampReach: shift.lamp ? 18 : [11, 8, 6, 4.5][dark],
+      depth: dark, ...light, lampPower: tier ? Math.min(1.15, Math.max(0.7, tier.lamp)) : 1,
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
@@ -596,6 +634,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       });
     }
     window.__acidMine = scene; // handy for debugging and automated screenshots; the server still decides everything
+    window.__acidWorms = { spawn: () => { const w = swarm.current.spawn(); setWorms([...swarm.current.worms]); return w; }, cut: (id) => cutWorm.current(id ?? null), get count() { return swarm.current.worms.length; } };
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
     const sync = () => {
@@ -612,6 +651,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       if (k === 'f' && doorRef.current) { openDoor.current(); return; }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && preyRef.current) { stab(); return; }
+      if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
       keys.add(k); sync();
@@ -629,8 +669,22 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     const pm = (e) => { if (!drag) return; scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
     const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
+    let lastTick = Date.now();
+    const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
     const tick = setInterval(() => {
       setElapsed(Date.now() - shift.localStart);
+      const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
+      const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden });
+      if (landed) { setWorms([...swarm.current.worms]); audio?.splat(); setLine(WORM_LINES[landed.id % WORM_LINES.length]); }
+      if (!landed) { // a cave-in a step or two ahead: say so once (not on the tick a worm lands, or its line would swallow this one)
+        const tx = Math.round(scene.pos.x / TILE), ty = Math.round(scene.pos.y / TILE), fx = -Math.sin(scene.yaw), fz = -Math.cos(scene.yaw);
+        const [dx, dy] = Math.abs(fx) > Math.abs(fz) ? [Math.sign(fx), 0] : [0, Math.sign(fz)];
+        for (let k = 1; k <= 2; k++) {
+          const v = maze.grid[ty + dy * k]?.[tx + dx * k];
+          if (v === RUBBLE) { const key = `${tx + dx * k},${ty + dy * k}`; if (!caveSeen.has(key)) { caveSeen.add(key); setLine(CAVE_LINE); caveHold = Date.now() + 4000; } break; }
+          if (v !== 0) break;
+        }
+      }
       if (shift.rod) {
         const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
         setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
@@ -642,10 +696,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         else { const ev = scene.eggView(); setEggNear(ev.dist < 1.9 && ev.facing > 0.4); }
       }
     }, 250);
-    const flavor = setInterval(() => { const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
+    const flavor = setInterval(() => { if (Date.now() < caveHold) return; const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
-      scene.dispose(); sceneRef.current = null; delete window.__acidMine; window.removeEventListener('resize', onResize);
+      scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidWorms; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor);
@@ -717,7 +771,9 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   return (
     <div className="m-play">
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
-      <div className="m-hud tl"><div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{others > 0 && <div className="m-others" data-test="others">⛏ {others} OTHER MINER{others > 1 ? 'S' : ''} DOWN HERE</div>}</div>
+      {tier && <div className="m-dark" style={{ '--dark': [0, 0.15, 0.35, 0.65, 1][tier.tier - 1] }} aria-hidden="true" />}
+      <Worms worms={worms} cutting={cutting} onCut={(id, a) => cutWorm.current(id, a)} />
+      <div className="m-hud tl">{tier && <TierBadge tier={tier.tier} />}<div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{others > 0 && <div className="m-others" data-test="others">⛏ {others} OTHER MINER{others > 1 ? 'S' : ''} DOWN HERE</div>}</div>
       <div className="m-hud tr">
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
