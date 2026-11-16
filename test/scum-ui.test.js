@@ -91,3 +91,15 @@ test('Deal in the lobby waits until 3 players (seated humans plus reserved bots)
   assert.match(page, /disabled=\{busy \|\| !readyToDeal\}/);
   assert.match(page, /Invite friends with the link/);
 });
+
+test('the lobby Deal button actually deals, and a server rejection stays on screen (regression: Z5G38Q)', () => {
+  const page = read('client/src/scum/ScumPage.jsx');
+  const i = page.indexOf('data-test="scum-deal"');
+  const btn = page.slice(page.lastIndexOf('<button', i), page.indexOf('</button>', i));
+  assert.match(btn, /onClick=\{\(\) => post\('start'\)\}/, 'Deal must POST /start');
+  // Move errors live apart from the poll error, which the 1.5s poll clears on every success.
+  const post = page.slice(page.indexOf('const post = async'), page.indexOf('};', page.indexOf('const post = async')));
+  assert.match(post, /setActErr\(e\.message/);
+  assert.doesNotMatch(post, /setErr\(/);
+  assert.match(page, /\(actErr \|\| err\) && <p className="error bj-err" role="alert"/);
+});
