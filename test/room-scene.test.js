@@ -24,7 +24,7 @@ const screenPoint = (camera, position) => {
   return { clientX: (p.x + 1) * 846 / 2, clientY: (1 - p.y) * 380 / 2 };
 };
 
-test('house and yard cover 2.1 times their first floor area while furniture, shelves and wagon keep their size', t => {
+test('house and yard cover 3.15 times their first floor area while furniture, shelves and wagon keep their size', t => {
   const previousDocument = globalThis.document;
   const context = { fillRect() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
@@ -39,7 +39,7 @@ test('house and yard cover 2.1 times their first floor area while furniture, she
   // The indoor floor is 8.33 wide: it stops at the left wall's outer face instead of running past it.
   for (const [floor, originalArea] of [[scene.floor, 8.33 * 6.5], [yard, 4.2 * 6]]) {
     const size = new THREE.Box3().setFromObject(floor).getSize(new THREE.Vector3());
-    assert.ok(Math.abs(size.x * size.z / originalArea - 2.1) < 1e-6);
+    assert.ok(Math.abs(size.x * size.z / originalArea - 3.15) < 1e-6);
     assert.equal(floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
   }
   for (const fixture of scene.static.children.filter(object => object !== scene.structure)) {
@@ -424,7 +424,7 @@ test('the tray shows real cash and chips, tells unknown from empty and caps extr
   }
 });
 
-test('a head cutout is boxed, filled edge to edge and sampled for hair and skin before it wraps a head', () => {
+test('a head cutout is boxed, sampled for hair and skin, and surrounded by them before it wraps a head', () => {
   const width = 12, height = 10, data = new Uint8ClampedArray(width * height * 4);
   const paint = (x, y, colour) => data.set([...colour, 255], (y * width + x) * 4);
   for (let x = 4; x <= 7; x++) paint(x, 2, [40, 30, 20]); // hair
@@ -437,6 +437,8 @@ test('a head cutout is boxed, filled edge to edge and sampled for hair and skin 
   assert.deepEqual(at(3, 2), [40, 30, 20, 255], 'hair reaches the left of the box');
   assert.deepEqual(at(8, 7), [200, 150, 120, 255], 'the chin row reaches the right of the box');
   assert.deepEqual(at(5, 5), [200, 150, 120, 255], 'holes take the colour beside them');
+  data.set([0, 0, 255, 255], (4 * width + 3) * 4); faceWrap(data, width, height);
+  assert.deepEqual(at(3, 4), [40, 30, 20, 255], 'a rim of leftover background gives way to the hair beside the face');
   assert.deepEqual(at(0, 0), [0, 0, 0, 0], 'nothing outside the box is touched');
   assert.equal(faceWrap(new Uint8ClampedArray(16), 2, 2), null);
 });
@@ -523,7 +525,7 @@ test('touch drags preserve the grab point after rotating the camera and restore 
 
 test('zoomed furniture drags when its visible top is onscreen but its floor origin is cropped', () => {
   const scene = furnitureScene(), home = defaultFurniture(), moves = [];
-  scene.camera = makeRoomCamera(846 / 380, { rotation: 135, zoom: 1.5 });
+  scene.camera = makeRoomCamera(846 / 380, { rotation: 135, zoom: 2 });
   scene.raycaster = new THREE.Raycaster(); scene.onMoveFurniture = (...move) => moves.push(move);
   scene.update({ placements: [], finishes: roomFinishes() }); scene.dynamic.updateMatrixWorld(true); scene.setEditing(true);
   const at = (x, z, height = 2) => ({ button: 0, pointerId: 16, pointerType: 'mouse', ...screenPoint(scene.camera, [x, height, z]) });

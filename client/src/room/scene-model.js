@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect } from '../../../server/catalog/room.js';
+import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect } from '../../../server/catalog/room.js';
 
 export { ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
 /** Heights of the display spots that ride on movable furniture. */
-const SPOT_HEIGHT = { desk: 0.97, floor: 0.08, window: 0.02 };
+const SPOT_HEIGHT = { desk: 0.97, floor: 0.08, 'floor-2': 0.08, 'floor-3': 0.08, window: 0.02, 'wardrobe-top': 2.58, case: 0.775, 'case-2': 0.775, 'case-3': 0.775 };
+/** Where a spot sits along its furniture's width, for pieces that hold several. */
+const SPOT_OFFSET = { case: -0.62, 'case-3': 0.62 };
 export const RESIDENT_HEIGHT_SCALE = 1.4;
 // The stylized, un-hatted 1.94-unit resident represents 5 ft 11 in; walls are 8 ft 6 in.
 export const ROOM_WALL_HEIGHT = 1.94 * RESIDENT_HEIGHT_SCALE * 102 / 71;
@@ -12,13 +14,14 @@ export const ROOM_DOOR_HEIGHT = ROOM_WALL_HEIGHT * 80 / 102;
 export const ROOM_BOUNDS = { min: [-4.35 * S, -0.2, -3.35 * S], max: [8.6 * S, ROOM_WALL_HEIGHT + 0.25, 3.35 * S] };
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
-export const roomShelfPosition = spot => spot.wallSide === 'back' ? [spot.position[0] * S, spot.position[1], -3 * S + 0.75] : [-4 * S + 0.75, spot.position[1], spot.position[2] * S];
+export const roomShelfPosition = spot => spot.wallSide === 'back' ? [spot.position[0] * S, spot.position[1], -3 * S + 0.78] : [-4 * S + 0.78, spot.position[1], spot.position[2] * S];
 export const wallDisplayPosition = spot => spot.wallSide === 'left' ? [-4 * S + 0.19, spot.position[1], spot.position[2] * S] : [spot.position[0] * S, spot.position[1], -3 * S + 0.19];
 
 export const ROOM_POSITIONS = {
   'wall-left': [-2.9 * S, 2.55, -3 * S + 0.19], 'wall-right': [-1.25 * S, 2.55, -3 * S + 0.19],
-  'shelf-left': [-4 * S + 0.75, 1.22, -1.7 * S], 'shelf-right': [-4 * S + 0.75, 1.22, -0.4 * S],
+  'shelf-left': [-4 * S + 0.78, 1.22, -1.7 * S], 'shelf-right': [-4 * S + 0.78, 1.22, -0.4 * S],
   floor: home('floor', SPOT_HEIGHT.floor), desk: home('desk', SPOT_HEIGHT.desk), window: home('window', SPOT_HEIGHT.window),
+  sill: [0.75 * S, 1.42, -3 * S + 0.4], 'wardrobe-top': home('wardrobe', SPOT_HEIGHT['wardrobe-top']),
 };
 
 export const ROOM_FIXTURES = {
@@ -26,8 +29,12 @@ export const ROOM_FIXTURES = {
 };
 
 export function roomPositions(shelves, furniture = defaultFurniture(), wallDisplays) {
-  const positions = Object.fromEntries(Object.entries(ROOM_POSITIONS).filter(([id]) => !id.startsWith('shelf-') && !furniture[id]?.off)
-    .map(([id, position]) => [id, furniture[id] ? [furniture[id].x, SPOT_HEIGHT[id], furniture[id].z] : position]));
+  const positions = { sill: ROOM_POSITIONS.sill };
+  for (const [id, y] of Object.entries(SPOT_HEIGHT)) {
+    const place = furniture[anchorHost(id)];
+    const along = SPOT_OFFSET[id] || 0, turn = place.r * Math.PI / 2;
+    if (!place.off) positions[id] = [place.x + Math.cos(turn) * along, y, place.z - Math.sin(turn) * along];
+  }
   for (const shelf of roomShelves(shelves)) {
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
     if (spot) for (const slot of shelfSlots(shelf)) {
@@ -106,11 +113,11 @@ export function residentErrands(furniture = defaultFurniture()) {
     return [...path, to];
   };
   const errands = [];
-  for (const [id, kind] of [['couch', 'sit'], ['pet', 'inspect'], ['wealth', 'cash'], ['desk', 'inspect'], ['floor', 'inspect'], ['wardrobe', 'inspect']]) {
+  for (const [id, kind] of [['couch', 'sit'], ['pet', 'inspect'], ['wealth', 'cash'], ['desk', 'inspect'], ['floor', 'inspect'], ['floor-2', 'inspect'], ['floor-3', 'inspect'], ['case', 'inspect'], ['poker', 'inspect'], ['wardrobe', 'inspect']]) {
     if (!live.includes(id)) continue;
     const place = furniture[id], rect = furnitureRect(id, place), turn = place.r * Math.PI / 2, front = [Math.round(Math.sin(turn)), Math.round(Math.cos(turn))];
     // Doors, drawers and cushions have a front; tables can be approached from whichever side is nearest.
-    const sides = ['pet', 'wealth', 'floor'].includes(id) ? [[0, 1], [1, 0], [-1, 0], [0, -1]] : [front];
+    const sides = id !== 'desk' && id !== 'wardrobe' && id !== 'couch' ? [[0, 1], [1, 0], [-1, 0], [0, -1]] : [front];
     // Inspecting means leaning in, so stand a little further back than when sitting down or reaching for cash.
     const gap = kind === 'inspect' ? 0.75 : 0.5;
     const spot = sides.map(([dx, dz]) => ({ dx, dz, x: place.x + dx * ((rect[2] - rect[0]) / 2 + gap), z: place.z + dz * ((rect[3] - rect[1]) / 2 + gap - 0.05) }))
@@ -142,7 +149,7 @@ export function nudgeAxes(rotation = 0) {
     : { right: [0, Math.sign(direction.x)], away: [Math.sign(direction.x), 0] };
 }
 
-export const ROOM_VIEW_LIMITS = { minZoom: 0.75, maxZoom: 2.5, minRotation: -180, maxRotation: 180 };
+export const ROOM_VIEW_LIMITS = { minZoom: 0.75, maxZoom: 4, minRotation: -180, maxRotation: 180 };
 
 export function roomView(value = {}) {
   return {
@@ -239,8 +246,10 @@ export function wealthLayout(worth) {
 }
 
 /**
- * Prepares a head cutout (RGBA bytes) for wrapping round a 3D head. Finds the box the head fills, smears each row's
- * colours across that box so no transparent gap lands on the curve, and samples a hair and a skin colour.
+ * Prepares a head cutout (RGBA bytes) for wrapping round a 3D head. Drawn heads are wrapped; a photo head stays a flat
+ * cutout and only uses the hair and skin colours found here. Finds the box the head fills and samples a hair and
+ * a skin colour. Everything beside the cutout becomes hair down to the ears and skin below them, and the cutout's own
+ * edge fades into that, so the sides of the head look like a head and a ragged outline never lands on them.
  */
 export function faceWrap(data, width, height) {
   const kept = (x, y) => data[(y * width + x) * 4 + 3] >= 128;
@@ -258,15 +267,17 @@ export function faceWrap(data, width, height) {
     return n ? sum.map(value => Math.round(value / n)) : null;
   };
   const all = mean(0, 0, 1, 1), hair = mean(0.25, 0, 0.75, 0.12) || all, skin = mean(0.35, 0.48, 0.65, 0.66) || all;
+  const ears = y0 + h * 0.6, ease = t => { const c = Math.max(0, Math.min(1, t)); return c * c * (3 - 2 * c); };
   for (let y = y0; y <= y1; y++) {
-    let from = -1;
-    for (let x = x0; x <= x1 && from < 0; x++) if (kept(x, y)) from = (y * width + x) * 4;
+    let left = -1, right = -1;
+    for (let x = x0; x <= x1; x++) if (kept(x, y)) { if (left < 0) left = x; right = x; }
+    const below = ease((y - ears) / (h * 0.06) + 0.5), around = hair.map((value, c) => value + (skin[c] - value) * below);
     for (let x = x0; x <= x1; x++) {
-      const i = (y * width + x) * 4;
-      if (kept(x, y)) { from = i; continue; }
-      // An empty row can only follow a filled one: the box starts on a row with something in it.
-      const source = from < 0 ? i - width * 4 : from;
-      data[i] = data[source]; data[i + 1] = data[source + 1]; data[i + 2] = data[source + 2]; data[i + 3] = 255;
+      const i = (y * width + x) * 4, show = kept(x, y) ? ease(Math.min(x - left, right - x) / w / 0.12) : 0;
+      // A hole inside the face takes the colour beside it; only the outside takes the hair or skin of the head's side.
+      if (!show && x > left && x < right) for (let c = 0; c < 3; c++) data[i + c] = data[i - 4 + c];
+      else for (let c = 0; c < 3; c++) data[i + c] = Math.round(around[c] + (data[i + c] - around[c]) * show);
+      data[i + 3] = 255;
     }
   }
   return { x: x0, y: y0, w, h, hair, skin };

@@ -111,7 +111,7 @@ test('wall display drafts move without changing items and share collision rules 
   assert.equal(moveWallDisplay(moved, 'not-a-display', 'back-high-left'), moved);
   assert.equal(addShelf(moved, 'left-high-door'), moved, 'a new shelf cannot intersect the moved picture');
   assert.equal(moveShelf(moved, 'shelf-left', 'left-high-door'), moved, 'moving a shelf uses the same collision check');
-  assert.equal(addShelf(draft, 'left-high-corner'), draft, 'corner shelves cannot cut through an adjoining wall frame');
+  assert.equal(addShelf(draft, 'back-high-left'), draft, 'a shelf cannot cut through a wall frame');
   const more = addShelf(moved, 'back-low-left');
   assert.equal(more.shelves.length, 3);
   assert.ok(wallMountsFit(more.shelves, more.wallDisplays));

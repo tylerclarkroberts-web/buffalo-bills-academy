@@ -102,7 +102,7 @@ test('all twenty-eight oddities have compatible positions; placement never consu
   assert.equal(owner.bankroll, 142.87);
 });
 
-test('seven contextual positions accept a desk item but keep the wagon outdoors', t => {
+test('nine contextual positions accept a desk item but keep the wagon outdoors', t => {
   const { rooms, owner, shop } = fixture(t);
   const inventory = structuredClone(shop.doc);
   const placements = [
@@ -111,8 +111,8 @@ test('seven contextual positions accept a desk item but keep the wagon outdoors'
     { anchorId: 'desk', itemId: 'odd-telegraph' }, { anchorId: 'floor', itemId: 'odd-anvil' },
     { anchorId: 'window', itemId: 'odd-wagon' },
   ];
-  assert.equal(roomAnchors().length, 7);
-  assert.equal(ROOM_ANCHORS.length, 11);
+  assert.equal(roomAnchors().length, 9);
+  assert.equal(ROOM_ANCHORS.length, 22);
   assert.deepEqual(rooms.saveLayout(owner, layout(0, placements)).placements, placements);
   for (const anchorId of ['wall-left', 'shelf-left', 'desk', 'floor']) {
     assert.throws(() => rooms.saveLayout(owner, layout(1, [{ anchorId, itemId: 'odd-wagon' }])), status(400));
@@ -233,7 +233,7 @@ test('wall mounting validation rejects malformed maps, duplicate positions and s
     { ...wallDisplays, 'wall-left': 'window' }, { ...wallDisplays, 'wall-left': { x: 2, y: 3 } },
     { ...wallDisplays, 'wall-left': wallDisplays['wall-right'] }];
   for (const value of bad) assert.throws(() => rooms.saveLayout(owner, { ...layout(), wallDisplays: value }), status(400));
-  for (const spotId of ['back-high-left', 'left-high-corner']) {
+  for (const spotId of ['back-high-left', 'back-high-right']) {
     const shelves = [{ ...defaultShelves()[0], spotId }];
     assert.throws(() => rooms.saveLayout(owner, { ...layout(), shelves }), status(400), spotId);
   }
@@ -272,7 +272,7 @@ test('removing shelves stores their items and explicit empty furniture persists 
   assert.deepEqual(restarted.visit(visitor, owner).shelves, []);
   assert.deepEqual(restarted.visit(visitor, owner).placements, []);
   assert.equal(restarted.visit(visitor, owner).finishes.rug.typeId, 'none');
-  assert.equal(roomAnchors(saved.shelves).some(anchor => anchor.type === 'shelf'), false);
+  assert.equal(roomAnchors(saved.shelves).some(anchor => anchor.shelfId), false);
 });
 
 test('furniture validation rejects arbitrary values, occupied spots, absent shelves and excessive counts atomically', t => {

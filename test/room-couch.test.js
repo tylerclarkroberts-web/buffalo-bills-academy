@@ -9,7 +9,7 @@ test('the couch starts somewhere valid and the resident can walk to it, the cash
   assert.ok(furnitureValid(furniture)); assert.ok(wallMountsFit(defaultShelves(), defaultWallDisplays(), furniture));
   assert.deepEqual(roomFinishes().couch, { typeId: 'settee', colorId: 'oxblood' });
   assert.deepEqual(errands.slice(0, 3).map(errand => errand.kind), ['sit', 'inspect', 'cash']);
-  const solid = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard).map(id => furnitureRect(id, furniture[id]));
+  const solid = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off).map(id => furnitureRect(id, furniture[id]));
   for (const errand of errands) {
     let from = [furniture.rug.x, furniture.rug.z];
     for (const to of errand.path) {
@@ -37,7 +37,10 @@ test('rooms arranged on the earlier floor spread out and gain a couch only where
   assert.deepEqual(upgradeFurniture(undefined, defaultShelves(), defaultWallDisplays()), defaultFurniture());
   const snug = upgradeFurniture({ ...old, pet: { x: -4.39, z: 1.65, r: 0 } }, defaultShelves(), defaultWallDisplays());
   assert.ok(furnitureValid(snug), 'a terrarium that was tight against the wall is nudged, not reset');
-  assert.equal(snug.wardrobe.x, upgraded.wardrobe.x); assert.ok(snug.pet.x > Math.round(-4.39 * k * 100) / 100);
+  assert.equal(snug.wardrobe.x, upgraded.wardrobe.x); assert.ok(snug.pet.x >= Math.round(-4.39 * k * 100) / 100);
+  // A room saved on the 2.1x floor spreads by the smaller step and keeps its couch where it was.
+  const second = upgradeFurniture({ couch: { x: -2, z: -3.5, r: 0 }, pet: { x: -3, z: 1.8, r: 1 } }, defaultShelves(), defaultWallDisplays(), 2), step = S / Math.sqrt(2.1);
+  assert.deepEqual([second.couch.x, second.pet.x, second.pet.r], [Math.round(-2 * step * 100) / 100, Math.round(-3 * step * 100) / 100, 1]);
   const shelves = [{ ...defaultShelves()[0], spotId: 'back-low-left' }];
   assert.ok(wallMountsFit(shelves, defaultWallDisplays(), upgradeFurniture(undefined, shelves, defaultWallDisplays())), 'an old shelf keeps its place; the couch goes elsewhere');
 });

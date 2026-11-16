@@ -12,7 +12,7 @@ export function setupRoomLighting(scene, renderer) {
   sun.target.position.set((ROOM_BOUNDS.min[0] + ROOM_BOUNDS.max[0]) / 2, 0, 0);
   sun.position.copy(sun.target.position).add(new THREE.Vector3(2, 10, 6));
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.intensity = 0.48;
   sun.shadow.radius = 2.5;
   sun.shadow.bias = -0.0001;
