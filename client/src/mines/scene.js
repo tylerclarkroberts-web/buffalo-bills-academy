@@ -228,8 +228,8 @@ export class MineScene {
     }
 
     // The doors (v27, two of them since the picnic): side by side on the wall behind the start, so you only see them
-    // if you turn all the way around. Neither touches the shift. The left one (warm, orange) opens a side room in the
-    // page and never talks to the server; the right one (daylight under it) goes outside to the company picnic.
+    // if you turn all the way around. Neither touches the shift. The left one (warm, orange) opens the Hall of Doors,
+    // which never talks to the server; the right one (daylight under it) goes outside to the company picnic.
     {
       const behindX = maze.facing === 0; // facing +x down the first corridor: the doors are on the -x wall, else the -z wall
       const face = TILE / 2 - 0.02;
@@ -237,7 +237,7 @@ export class MineScene {
       if (behindX) { wall.position.set(maze.start.x * TILE - face, 0, maze.start.y * TILE); wall.rotation.y = Math.PI / 2; }
       else { wall.position.set(maze.start.x * TILE, 0, maze.start.y * TILE - face); }
       this.scene.add(wall); wall.updateMatrixWorld(true);
-      this.doors = [['doom', -0.55, 'B-7', '#ff6a2a', '#ff5a1f'], ['picnic', 0.55, 'B-8', '#e6f6ff', '#bfe4ff']].map(([to, x, stencil, seam, glow]) => {
+      this.doors = [['hall', -0.55, 'B-7', '#ff6a2a', '#ff5a1f'], ['picnic', 0.55, 'B-8', '#e6f6ff', '#bfe4ff']].map(([to, x, stencil, seam, glow]) => {
         const door = new THREE.Group(); door.position.x = x; wall.add(door);
         const slab = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 2.05), new THREE.MeshLambertMaterial({ map: doorTexture(stencil), emissive: '#0b0805' }));
         slab.position.y = 1.025; slab.name = `mine-door-${to}`; door.add(slab);
@@ -542,7 +542,7 @@ export class MineScene {
     }
     return best;
   }
-  /** Which door a tap at this screen point landed on ('doom' | 'picnic'), or null if none is in reach there. */
+  /** Which door a tap at this screen point landed on ('hall' | 'picnic'), or null if none is in reach there. */
   hitsDoor(clientX, clientY) {
     if (!this.doors) return null;
     const r = this.renderer.domElement.getBoundingClientRect();

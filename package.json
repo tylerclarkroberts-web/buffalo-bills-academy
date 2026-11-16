@@ -20,6 +20,7 @@
     "sim:mines": "node scripts/mine-timing.mjs",
     "e2e:fatality": "node scripts/e2e-fatality.mjs",
     "e2e:doom": "node scripts/e2e-doom.mjs",
+    "e2e:hall": "node scripts/e2e-door-hall.mjs",
     "e2e:gag": "node scripts/e2e-gag.mjs",
     "e2e:barn": "node scripts/e2e-barn.mjs",
     "e2e:bout": "node scripts/e2e-bout.mjs",

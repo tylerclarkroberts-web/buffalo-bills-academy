@@ -18,7 +18,7 @@ import { Stalker } from './stalker.js';
 import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
-import DoomRoom from './DoomRoom.jsx';
+import DoorHall from './DoorHall.jsx';
 import PicnicRoom from './PicnicRoom.jsx';
 import Foreman from './Foreman.jsx';
 import TiltControls from './TiltControls.jsx';
@@ -404,7 +404,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
-  const [doorNear, setDoorNear] = useState(false); // the door in front of you: false | 'doom' | 'picnic'
+  const [doorNear, setDoorNear] = useState(false); // the door in front of you: false | 'hall' | 'picnic'
   const [doom, setDoom] = useState(false);         // the door you are behind (same values); the mine holds still either way
   const doomRef = useRef(false);
   const soundWas = useRef(false);
@@ -521,15 +521,16 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   };
 
   const doorRef = useRef(false);
-  // The doors behind the start (v27). Opening one only changes this page: the mine stops drawing and the controls go
-  // to the game. The shift clock is the server's; it keeps running and nothing here can stop it. The first door's game
-  // brings its own sound, so the mine's pauses; the picnic borrows the mine's for its rivets.
+  // The doors behind the start (v27; the first opens into the Hall of Doors since v89, the second goes out to the
+  // company picnic). Opening one only changes this page: the mine stops drawing and the controls go to the game. The
+  // shift clock is the server's; it keeps running and nothing here can stop it. The hall's games bring their own
+  // sound, so the mine's music pauses; the picnic borrows the mine's sound for its rivets.
   const openDoor = useRef(null);
   openDoor.current = (to) => {
     if (doomRef.current || !to) return;
     doomRef.current = to; setDoom(to); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
-    soundWas.current = to === 'doom' && !!audio?.on; if (soundWas.current) audio.stop();
+    soundWas.current = to === 'hall' && !!audio?.on; if (soundWas.current) audio.stop();
   };
   const closeDoor = () => {
     doomRef.current = false; setDoom(false);
@@ -818,13 +819,13 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       )}
       {doorNear && !doom && !near && !eggNear && !prey && (
         <div className="m-door-prompt" data-test="door-prompt">
-          <span className="m-dim">{doorNear === 'picnic' ? 'THE OTHER DOOR. DAYLIGHT UNDER IT. RIVETING.' : 'A DOOR. WARM AIR UNDER IT.'}</span>
+          <span className="m-dim">{doorNear === 'picnic' ? 'THE OTHER DOOR. DAYLIGHT UNDER IT. RIVETING.' : 'A DOOR. VOICES BEHIND IT.'}</span>
           <button className="m-btn" onClick={() => openDoor.current(doorNear)} data-test="door-open">[ OPEN THE DOOR ]</button>
           <span className="m-dim small">or press F</span>
         </div>
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
-      {doom === 'doom' && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
+      {doom === 'hall' && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {doom === 'picnic' && <PicnicRoom elapsedMs={elapsed} onExit={closeDoor} audio={audio} Pad={MovePad} />}
       {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>

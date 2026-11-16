@@ -181,8 +181,9 @@ test('the picnic has room for sixteen', () => {
 });
 
 test('two doors behind the start: the one you face is the one that opens', () => {
-  const mine = Object.assign(Object.create(MineScene.prototype), { pos: { x: 0, y: 0 }, yaw: 0, doors: [{ to: 'doom', at: { x: -0.55, z: -1.08 } }, { to: 'picnic', at: { x: 0.55, z: -1.08 } }] });
-  mine.yaw = 0.3; assert.equal(mine.doorView().to, 'doom'); // turned a little left
+  const mine = Object.assign(Object.create(MineScene.prototype), { pos: { x: 0, y: 0 }, yaw: 0, doors: [{ to: 'hall', at: { x: -0.55, z: -1.08 } }, { to: 'picnic', at: { x: 0.55, z: -1.08 } }] });
+  mine.yaw = 0; assert.equal(mine.doorView().to, 'hall', 'square to the wall: the first door, as before there were two');
+  mine.yaw = 0.3; assert.equal(mine.doorView().to, 'hall'); // turned a little left
   mine.yaw = -0.3; const right = mine.doorView();
   assert.equal(right.to, 'picnic'); assert.ok(right.dist < 2.1 && right.facing > 0.75, 'close and square enough for the prompt');
   mine.yaw = Math.PI; assert.ok(mine.doorView().facing < 0, 'facing down the tunnel: no prompt');
