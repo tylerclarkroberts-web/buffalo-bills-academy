@@ -7,6 +7,8 @@ import { meterX } from './draw.js';
 import { TRIP } from './quests.js';
 import { setSound } from './sfx.js';
 import { FilmPlayer } from './FoffCard.jsx';
+import FoffBoard from './FoffBoard.jsx';
+import { pendingPosts, markPosted } from './records.js';
 import './foff.css';
 import './foff-card.css';
 
@@ -67,6 +69,25 @@ function FoffGame() {
   }, [won]);
   // Side quests pay pocket money, and four leave a keepsake for My Room. Same rule: once each, collected when it can be.
   const [loot, setLoot] = useState(null), qwon = ui?.screen === 'qend' && ui.result === 'win' ? ui.id : null;
+  const [board, setBoard] = useState(null);
+  const signed = ui?.screen === 'end';
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      for (const item of pendingPosts(loadSave())) {
+        try {
+          const body = item.backfill ? { matchId: item.matchId, strokes: item.strokes } : { matchId: item.matchId, strokes: item.strokes, holes: item.holes, at: item.at };
+          const next = await api('POST', '/foff/round', body);
+          if (stop) return;
+          patchSave((s) => { markPosted(s, item); });
+          setBoard(next);
+        } catch { break; }
+      }
+      if (stop) return;
+      try { const next = await api('GET', '/foff/board'); if (!stop) setBoard(next); } catch { /* the trip still works offline */ }
+    })();
+    return () => { stop = true; };
+  }, [signed]);
   useEffect(() => {
     setLoot(null);
     const save = loadSave(), owed = Object.keys(save.quests || {}).filter((id) => !save.paidQuests?.[id]);
@@ -138,6 +159,7 @@ function FoffGame() {
               })}</ol>
             </section>)}
             <div className="foff-day"><button className="foff-stop" disabled={!saved.quests?.sfo} onClick={() => game.current.ending()} data-test="foff-ending"><b>How it ended</b><span>{saved.quests?.sfo ? 'The flight home' : 'After the race to SFO'}</span></button></div>
+            {board && <FoffBoard board={board} />}
           </div>}
           {ui?.screen === 'qend' && <div className="foff-sheet">
             <h2>{ui.result === 'win' ? ui.title.toUpperCase() : 'NOT THIS TIME'}</h2>

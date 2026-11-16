@@ -88,3 +88,28 @@
 .foff-gate .foff-player { width: 100%; }
 .foff-gate .foff-fallback { align-items: center; }
 .foff-film-hint { color: var(--gold); margin: 0; }
+
+/* Course records and holes-in-one: compact, same cream/pale-green rows and gold labels as the trip. */
+.foff-boards { width: min(100%, 19em); display: grid; gap: 4px; text-align: left; font-size: .8em; line-height: 1.05; }
+.foff-boards-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.foff-boards-tabs button { margin: 0; padding: 4px 8px; min-height: 32px; font: inherit; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); background: transparent; border: 0; box-shadow: 0 0 0 2px var(--gold); cursor: pointer; }
+.foff-boards-tabs button.on, .foff-boards-tabs button[aria-selected='true'] { background: var(--gold); color: var(--ink); box-shadow: 0 0 0 2px var(--gold); }
+.foff-boards-tabs button:hover, .foff-boards-tabs button:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+.foff-board { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.foff-board-row { width: 100%; min-height: 28px; display: grid; grid-template-columns: minmax(0, 1.3fr) auto minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 2px 8px; font: inherit; color: var(--ink); background: #dfe8d0; border: 0; box-shadow: 0 0 0 2px var(--ink); text-align: left; }
+button.foff-board-row { cursor: pointer; }
+button.foff-board-row:disabled { opacity: 1; cursor: default; }
+button.foff-board-row:not(:disabled):hover, button.foff-board-row:not(:disabled):focus-visible { background: #fff; outline: 3px solid var(--gold); outline-offset: 1px; }
+.foff-board-row.sub { background: var(--cream); padding-left: 14px; }
+.foff-board-row.quiet { grid-template-columns: 1fr; }
+.foff-board-course { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.foff-board-score { font-size: 1.05em; color: var(--ink); letter-spacing: .04em; }
+.foff-board-who { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.foff-board-who .bust { flex: none; width: 22px; height: 22px; overflow: hidden; }
+.foff-board-who b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.foff-board-when { opacity: .7; font-size: .9em; white-space: nowrap; }
+.foff-board-empty { opacity: .65; grid-column: 2 / -1; }
+.foff-board-row.ace { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; }
+.foff-board-row.ace .foff-board-who { grid-column: 1; grid-row: 1; }
+.foff-board-row.ace .foff-board-when { grid-column: 2; grid-row: 1; }
+.foff-board-row.ace .foff-board-course { grid-column: 1 / -1; grid-row: 2; }
