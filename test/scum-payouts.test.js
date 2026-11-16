@@ -30,7 +30,7 @@ test('titles pay out on the real bankroll: King +100, Queen +50, Commoner 0, Bab
   assert.deepEqual(bank(P), { a: 1100, b: 1050, c: 1000, d: 995, e: 990 });
   assert.deepEqual(t.lastRound.finish.map((x) => [x.title, x.net]), [['king', 100], ['queen', 50], ['commoner', 0], ['babyScum', -5], ['scum', -10]]);
   assert.equal(scumTx(P.c).length, 0, 'commoners neither pay nor get paid');
-  assert.match(scumTx(P.a)[0].note, /^Async Scum: King payout/); assert.match(scumTx(P.e)[0].note, /Scum dues/);
+  assert.match(scumTx(P.a)[0].note, /^SCUM: King payout/); assert.match(scumTx(P.e)[0].note, /Scum dues/);
   const v = s.view(P.a, t.code);
   assert.deepEqual(v.seats.slice(0, 5).map((x) => x.pay), [100, 50, 0, -5, -10], 'chips by the avatars');
   assert.equal(v.payouts.king, 100); assert.equal(v.bankroll, 1100);
@@ -45,13 +45,13 @@ test('three players: King, Commoner, Scum', () => {
   assert.deepEqual(t.lastRound.finish.map((x) => x.title), ['king', 'commoner', 'scum']);
 });
 
-test('the admin ledger files it under its own source: Async Scum', () => {
-  assert.equal(SOURCES.scum, 'Async Scum');
-  assert.deepEqual(classify('scum', 'Async Scum: King payout (Porch, round 2)'), { source: 'scum', sub: 'King payout' });
-  assert.deepEqual(classify('scum', 'Async Scum: Baby Scum dues (Porch, round 2)'), { source: 'scum', sub: 'Baby Scum dues' });
-  assert.deepEqual(classify('scum', 'Async Scum: Scum dues (Porch, round 2)'), { source: 'scum', sub: 'Scum dues' });
-  assert.deepEqual(classify('scum', "Async Scum: from Scum to King, took Ann's King payouts (Porch, round 3)").sub, 'Scum to King haul');
-  assert.deepEqual(classify('scum', 'Async Scum: dethroned by Dee, paid their King payouts (Porch, round 3)').sub, 'Dethroned King paid out');
+test('the admin ledger files it under its own source: SCUM', () => {
+  assert.equal(SOURCES.scum, 'SCUM');
+  assert.deepEqual(classify('scum', 'SCUM: King payout (Porch, round 2)'), { source: 'scum', sub: 'King payout' });
+  assert.deepEqual(classify('scum', 'SCUM: Baby Scum dues (Porch, round 2)'), { source: 'scum', sub: 'Baby Scum dues' });
+  assert.deepEqual(classify('scum', 'SCUM: Scum dues (Porch, round 2)'), { source: 'scum', sub: 'Scum dues' });
+  assert.deepEqual(classify('scum', "SCUM: from Scum to King, took Ann's King payouts (Porch, round 3)").sub, 'Scum to King haul');
+  assert.deepEqual(classify('scum', 'SCUM: dethroned by Dee, paid their King payouts (Porch, round 3)').sub, 'Dethroned King paid out');
 });
 
 test('From Scum to King: the new King takes all the dethroned King’s King payouts at this table', () => {

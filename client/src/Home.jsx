@@ -236,7 +236,6 @@ function SlotsPromo({ bare = false }) {
         {!bare && <b className="western">Three Lil' Squatches</b>}
         <span className="small sp-desc">Tootin Weenies. Bets $1–$100.</span>
         <button className="btn small sp-go" onClick={() => navigate('/slots')} data-test="slots-go">Play the slots <span className="arrow">→</span></button>
-        <span className="sp-note">Play money only</span>
       </div>
     </div>
   );
