@@ -57,6 +57,31 @@
 .elh-keys { font-size: 16px !important; opacity: .75; } .elh-best { color: var(--tq); letter-spacing: .1em; }
 .elh-final b { font-size: 34px; color: var(--sun); font-weight: 400; }
 
+/* horde HUD: wave/left, players online, kill feed, the ACTION prompt, downed notice, scoreboard */
+.elh-score .elh-left { font-size: 14px; color: #fff; opacity: .8; letter-spacing: .08em; }
+.elh-count { justify-self: center; font-size: 13px; letter-spacing: .1em; opacity: .7; }
+.elh-feed { position: absolute; top: 74px; right: 10px; display: grid; gap: 2px; justify-items: end; font-size: 16px; letter-spacing: .05em; }
+.elh-feed div { background: rgba(20,8,24,.5); padding: 0 6px; animation: elh-in .2s ease-out; }
+.elh-feed div.me { color: var(--sun); } .elh-feed div.pvp { color: var(--rosa); }
+@keyframes elh-in { from { transform: translateX(10px); opacity: 0; } }
+.elh-reticle.hit { box-shadow: 0 0 0 3px rgba(255,255,255,.9); }
+.elh-prompt { position: absolute; left: 50%; top: calc(50% + 44px); transform: translateX(-50%); font-size: 20px; letter-spacing: .08em; color: #fff; background: rgba(20,8,24,.55); padding: 2px 10px; white-space: nowrap; opacity: 0; transition: opacity .15s; }
+.elh-prompt.on { opacity: 1; }
+.elh-pbar { position: absolute; left: 50%; top: calc(50% + 72px); width: 140px; margin-left: -70px; height: 5px; background: rgba(255,255,255,.15); }
+.elh-pbar i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: var(--sun); }
+.elh-down { position: absolute; left: 0; right: 0; top: 36%; text-align: center; font-family: 'Rye', serif; font-size: clamp(20px, 4.5vw, 32px); color: #ffd9e8; text-shadow: 0 2px 0 #7a1f3a; opacity: 0; }
+.elh-down.on { opacity: 1; }
+.elh-board { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; min-width: min(420px, 92vw); max-height: 80%; overflow: auto; padding: 10px 14px; background: rgba(20,8,24,.86); border: 1px solid rgba(255,194,58,.5); font-family: 'VT323', monospace; color: #fff; display: grid; gap: 8px; justify-items: center; }
+.elh-board table { width: 100%; border-collapse: collapse; font-size: 19px; }
+.elh-board th { color: var(--sun); font-weight: 400; letter-spacing: .1em; text-align: right; padding: 0 6px; } .elh-board th:first-child, .elh-board td:first-child { text-align: left; }
+.elh-board td { text-align: right; padding: 1px 6px; white-space: nowrap; } .elh-board td i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; }
+.elh-board tr.me td { color: var(--sun); } .elh-board tr.away td { opacity: .45; }
+.elh-sub { font-family: 'Rye', serif !important; color: var(--tq); letter-spacing: .14em; font-size: 18px !important; }
+.elh-live { color: var(--sun); letter-spacing: .1em; }
+.elh-note { color: var(--rosa); }
+.elh-top3 { margin: 0; padding: 0; list-style: none; font-family: 'VT323', monospace; font-size: 20px; line-height: 1.2; }
+.elh-top3 li:first-child { color: var(--sun); }
+
 /* touch pad: floating stick on the left, drag anywhere else to look, buttons bottom right */
 .elh-pad { position: absolute; inset: 0; z-index: 2; touch-action: none; }
 .elh-pad[hidden] { display: none; }
@@ -71,12 +96,14 @@
 .elh-acts .fire { grid-area: 2 / 3 / 4 / 4; background: rgba(255,61,139,.35); font-size: 20px; border-radius: 50%; align-self: end; height: 120px; }
 .elh-acts .nade { grid-area: 3 / 2; } .elh-acts .jump { grid-area: 3 / 1; } .elh-acts .melee { grid-area: 2 / 2; } .elh-acts .reload { grid-area: 1 / 2; font-size: 13px; } .elh-acts .swap { grid-area: 1 / 3; font-size: 13px; }
 .elh-acts .nade { font-size: 13px; }
+.elh-acts .act { grid-area: 1 / 1; font-size: 13px; opacity: .55; } .elh-acts .act.ready { opacity: 1; background: rgba(31,199,192,.45); border-color: #9ffff4; }
 /* phones in landscape: shorter, tighter */
 @media (max-height: 460px) {
   .elh-top { top: 4px; } .elh-score b { font-size: 24px; } .elh-ammo b { font-size: 26px; } .elh-ammo .elh-wname { display: none; }
   .elh-acts { grid-template-columns: 52px 52px 68px; grid-template-rows: 36px 52px 68px; gap: 6px; } .elh-acts .fire { height: 110px; }
   .elh-base { left: 80px; top: calc(100% - 84px); }
   .elh-title { padding-bottom: 14px; gap: 6px; } .elh-title p { font-size: 17px; } .elh-logo { font-size: 52px; }
+  .elh-feed { top: 50px; font-size: 14px; } .elh-count { display: none; } .elh-prompt { top: calc(50% + 30px); font-size: 16px; } .elh-pbar { top: calc(50% + 54px); }
 }
-@media (max-width: 480px) { .elh-top { grid-template-columns: auto 1fr auto; } .elh-bars { width: auto; } .elh-score b { font-size: 24px; } .elh-ammo b { font-size: 28px; } }
+@media (max-width: 480px) { .elh-feed { top: 66px; font-size: 14px; } .elh-prompt { font-size: 16px; } .elh-top { grid-template-columns: auto 1fr auto; } .elh-bars { width: auto; } .elh-score b { font-size: 24px; } .elh-ammo b { font-size: 28px; } }
 @media (prefers-reduced-motion: reduce) { .elh-bars.down .elh-shield, .elh-vig.down, .elh-ammo.reloading b { animation: none; } }

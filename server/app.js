@@ -30,6 +30,7 @@ import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js
 import { Conquest, mountConquest } from './conquest.js';
 import { Rooms } from './rooms.js';
 import { Pvp, PVP } from './pvp.js';
+import { ElHalo } from './elhalo/index.js';
 import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
@@ -345,6 +346,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
+  // EL HALO (Hall of Doors): the shared horde match. Free play; it never touches accounts.
+  const elhalo = new ElHalo({ tickMs: env.ELHALO_TICK_MS !== undefined ? Number(env.ELHALO_TICK_MS) : undefined, testHooks: barnTest });
+  elhalo.mount(api, needPlayer);
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
@@ -555,6 +559,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
-  return { app, service, shutdown, bj, scum, telemetry };
+  const shutdown = () => { elhalo.shutdown(); unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  return { app, service, shutdown, bj, scum, telemetry, elhalo };
 }
