@@ -46,7 +46,8 @@
     "e2e:v51": "node scripts/e2e-v51.mjs",
     "bj:edge": "node scripts/bj-edge-table.mjs",
     "e2e:bj-multihit": "node scripts/e2e-bj-multihit.mjs",
-    "e2e:v51d": "node scripts/e2e-v51d-tables.mjs"
+    "e2e:v51d": "node scripts/e2e-v51d-tables.mjs",
+    "e2e:dances": "node scripts/e2e-dances.mjs"
   },
   "dependencies": {
     "@fontsource/monoton": "^5.3.0",
