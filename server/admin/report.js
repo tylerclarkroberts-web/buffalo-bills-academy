@@ -16,7 +16,7 @@ export function denverHour(t) {
 
 export const SOURCES = {
   start: 'Starting bankroll', poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', pvp: 'Mine PvP', fawn: 'Faun gifts', golf: 'Foff golf',
-  slots: 'Slots', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev grants', other: 'Other',
+  slots: 'Slots', scum: 'Async Scum', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev grants', other: 'Other',
 };
 /** Where a bankroll change came from: { source, sub } from its type and note. */
 export function classify(type, note = '') {
@@ -32,6 +32,7 @@ export function classify(type, note = '') {
     case 'fawn': return { source: 'fawn', sub: "Faun's wooden box" };
     case 'foff': return { source: 'golf', sub: /Medal/.test(n) ? 'Medal of Freedom' : 'Bachelor party quest' };
     case 'slots': return { source: 'slots', sub: 'Spin result' };
+    case 'scum': return { source: 'scum', sub: /from Scum to King/.test(n) ? 'Scum to King haul' : /dethroned/.test(n) ? 'Dethroned King paid out' : /King payout/.test(n) ? 'King payout' : /Queen payout/.test(n) ? 'Queen payout' : /Baby Scum dues/.test(n) ? 'Baby Scum dues' : /Scum dues/.test(n) ? 'Scum dues' : 'Other' };
     case 'shop': return { source: 'store', sub: 'Purchase' };
     case 'invest-buy': return { source: 'invest', sub: 'Bought' };
     case 'invest-sell': return { source: 'invest', sub: 'Sold' };

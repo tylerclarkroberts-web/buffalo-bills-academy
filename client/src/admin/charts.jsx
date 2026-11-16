@@ -3,7 +3,7 @@ import React from 'react';
 
 export const SRC_COLORS = {
   start: '#8a7a84', poker: '#ff3d8b', blackjack: '#2ee6d6', mines: '#8dff5a', pvp: '#ffa14a', fawn: '#c99bff', golf: '#5ab0ff',
-  slots: '#f2c65a', store: '#ff6f7d', invest: '#9ad0c2', barn: '#d98c5f', risk: '#e3e3e3', admin: '#ffffff', other: '#666',
+  slots: '#f2c65a', scum: '#b5d68a', store: '#ff6f7d', invest: '#9ad0c2', barn: '#d98c5f', risk: '#e3e3e3', admin: '#ffffff', other: '#666',
 };
 
 /** Vertical bars. data: [{ label, value, title? }] */

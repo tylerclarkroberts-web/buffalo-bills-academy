@@ -18,6 +18,7 @@ import { Fawn } from './fawn.js';
 import { Foff } from './foff.js';
 import { Slots, SLOTS } from './slots/index.js';
 import { Blackjack } from './blackjack/index.js';
+import { Scum, LIMITS as LIMITS_SCUM } from './scum/index.js';
 import { Avatars } from './avatars.js';
 import { PRIVACY_HTML, TERMS_HTML } from './legal.js';
 import { Market } from './market.js';
@@ -87,6 +88,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // v44 blackjack (play money). BJ_TICK_MS=0 disables the clock (tests drive it).
   const bj = new Blackjack({ store: service.store, accounts, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.BJ_TICK_MS !== undefined ? Number(env.BJ_TICK_MS) : 1000, avatars, barn });
   service.blackjack = bj;
+  // Async Scum (play for pride; no money). SCUM_TICK_MS=0 / SCUM_BOT_MS let tests drive the clock and the bots.
+  const scum = new Scum({ store: service.store, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.SCUM_TICK_MS !== undefined ? Number(env.SCUM_TICK_MS) : 1000, botMs: env.SCUM_BOT_MS !== undefined ? Number(env.SCUM_BOT_MS) : 1400, avatars, barn, accounts, payouts: env.SCUM_PAYOUTS !== '0' });
+  service.scum = scum;
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
   service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.sessions = sessions;
@@ -100,6 +104,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // v48: blackjack turn DMs (same opt-in, dedupe, reminders, retries as poker)
   slack.bjSource = { all: () => Object.values(bj.doc?.tables || {}) };
   bj.onChange = (t, actorId) => slack.bjChanged(t, actorId);
+  slack.scumSource = { all: () => Object.values(scum.doc?.tables || {}) };
+  scum.onChange = (t, actorId) => slack.scumChanged(t, actorId);
   watchBlackjack(bj, telemetry);
   telemetry.backfill(service.store.players);
   mines.onShiftStart = (id, s, fare) => telemetry.shiftStart(id, s, fare);
@@ -352,7 +358,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (conquest.data(p).link?.active) throw new GameError('Unlink ConquestK on the Risk bets page before deleting your account.', 409);
     if (conquest.data(p).pendingLink || conquest.linkChanges.has(p.id)) throw new GameError('Finish or unlink your pending ConquestK account link before deleting your account.', 409);
     if (conquest.hasRetainedHistory(p)) throw new GameError('Risk account history must be retained. Contact the Academy operator to anonymize your account.', 409);
-    const seated = service.store.allTables().some((t) => t.status !== 'closed' && t.seats.some((x) => x && x.playerId === p.id)) || bj.seatedOpen(p.id);
+    const seated = service.store.allTables().some((t) => t.status !== 'closed' && t.seats.some((x) => x && x.playerId === p.id)) || bj.seatedOpen(p.id) || scum.seatedOpen(p.id);
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
@@ -408,6 +414,14 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   for (const [path, fn] of Object.entries({ join: (p, c, b) => bj.join(p, c, b?.ack === true), start: (p, c) => bj.start(p, c), leave: (p, c) => bj.leave(p, c), close: (p, c) => bj.close(p, c), sitout: (p, c) => bj.sitOut(p, c),
     bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId) })) {
     api.post(`/bj/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
+  }
+  // Async Scum: /scum (your tables) and /scum/CODE (invite link)
+  api.get('/scum', needPlayer, wrap((req) => ({ limits: LIMITS_SCUM, payouts: scum.payouts, tables: scum.list(req.player) })));
+  api.post('/scum/tables', needPlayer, wrap((req) => scum.create(req.player, req.body || {})));
+  api.get('/scum/tables/:code', needPlayer, wrap((req) => scum.view(req.player, req.params.code, { away: 'away' in req.query })));
+  for (const [path, fn] of Object.entries({ join: (p, c) => scum.join(p, c), start: (p, c) => scum.start(p, c), leave: (p, c) => scum.leave(p, c), close: (p, c) => scum.close(p, c),
+    play: (p, c, b) => scum.play(p, c, b.cards), pass: (p, c) => scum.pass(p, c), tribute: (p, c, b) => scum.tribute(p, c, b.beg), give: (p, c, b) => scum.give(p, c, b.cards) })) {
+    api.post(`/scum/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   api.get('/slots', needPlayer, wrap((req) => slots.view(req.player)));
   api.post('/slots/spin', needPlayer, wrap((req) => slots.spin(req.player, req.body?.bet)));
@@ -513,6 +527,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
-  return { app, service, shutdown, bj, telemetry };
+  const shutdown = () => { scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  return { app, service, shutdown, bj, scum, telemetry };
 }

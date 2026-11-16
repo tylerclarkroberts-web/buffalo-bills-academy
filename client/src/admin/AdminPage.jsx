@@ -35,7 +35,7 @@ export function dur(ms) {
 }
 const Sg = ({ v, sign = true }) => <span className={`num ${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}`}>{$(v, { sign })}</span>;
 const TABS = [['overview', 'Overview'], ['players', 'Players'], ['money', 'Money'], ['mines', 'Acid Mines'], ['usage', 'Usage'], ['anomalies', 'Flags']];
-const SRC = { start: 'Starting bankroll', poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', pvp: 'Mine PvP', fawn: 'Faun gifts', golf: 'Foff golf', slots: 'Slots', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev', other: 'Other' };
+const SRC = { start: 'Starting bankroll', poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', pvp: 'Mine PvP', fawn: 'Faun gifts', golf: 'Foff golf', slots: 'Slots', scum: 'Async Scum', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev', other: 'Other' };
 const AREA = { poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', golf: 'Foff golf', slots: 'Slots', store: 'Store', barn: 'Barn', faun: 'Faun', risk: 'Risk bets', invest: 'Invest', room: 'Bunkhouse', lobby: 'Lobby / profile' };
 
 function useLoad(url, deps = []) {
