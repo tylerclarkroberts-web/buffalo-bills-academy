@@ -1,0 +1,61 @@
+/* v75: the Bug Center. One screen, no scrolling: the room scales to fit; dialogue overlays it, visual-novel style. */
+.screen.bc { align-items: stretch; background: radial-gradient(120% 90% at 50% 0%, #3a1f2a, #160c12 70%); }
+.bc-loading { margin: auto; }
+.bc-fit { flex: 1; min-height: 0; display: grid; place-items: center; }
+.bc-scene { position: relative; border-radius: calc(var(--u) * 3); overflow: hidden; box-shadow: 0 0 0 3px #e65d70, 0 10px 40px rgba(0,0,0,.55); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.bc-room { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.bc-nurse-hit { cursor: pointer; }
+.bc-nurse { transform-box: fill-box; transform-origin: 50% 100%; }
+.bc-nurse.bow { animation: bc-bow 1.6s ease-in-out infinite; }
+@keyframes bc-bow { 0%, 100% { transform: none; } 40%, 60% { transform: translateY(2px) scaleY(.93); } }
+.bc-screen { animation: bc-flicker 3.2s steps(1) infinite; }
+@keyframes bc-flicker { 0%, 92% { opacity: 1; } 94% { opacity: .75; } }
+.bc-scan { animation: bc-scan 2s steps(8) infinite; }
+@keyframes bc-scan { to { transform: translateX(13px); } }
+.bc-light { animation: bc-pulse .5s steps(2) infinite; }
+.bc-light.l1, .bc-light.l4 { animation-delay: .12s; } .bc-light.l2, .bc-light.l5 { animation-delay: .24s; }
+@keyframes bc-pulse { 50% { fill: #fffbe0; } }
+.bc-machine.lit { filter: drop-shadow(0 0 2px #ffe36e); }
+.bc-pod { animation: bc-drop .35s steps(4) both; }
+@keyframes bc-drop { from { transform: translateY(-6px); opacity: 0; } }
+
+.bc-sign { position: absolute; transform: translate(-50%, -50%); font: 700 calc(var(--u) * 5.2 * var(--s, 1)) / 1 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Noto Sans CJK JP', 'Yu Gothic', sans-serif; color: #c2304a; white-space: nowrap; text-align: center; pointer-events: auto; letter-spacing: .04em; }
+.bc-sign rt { font-size: .45em; font-weight: 600; letter-spacing: 0; }
+.bc-sign small { display: block; font: 600 calc(var(--u) * 2.6) / 1.1 var(--mono, monospace); color: #7a3a48; letter-spacing: .03em; }
+.bc-sign.on-red { color: #fff; text-shadow: 0 1px 0 #a52f3c; }
+.bc-sign.on-red small { color: #ffe1e6; }
+.bc-sign-title { color: #e65d70; text-shadow: calc(var(--u) * .5) calc(var(--u) * .5) 0 #ffd1d8; }
+.bc-sign-pc, .bc-sign-machine { color: #3d4a5a; }
+
+.bc-status { position: absolute; left: 2%; top: 9%; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,.88); color: #8a2a3a; font: 700 calc(var(--u) * 3.4) / 1.1 'Noto Sans JP', sans-serif; box-shadow: 0 1px 0 #e65d70; }
+.bc-status small { color: #7a3a48; font-weight: 600; }
+
+.bc-talk { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(40,10,24,.15), rgba(40,10,24,.55)); animation: bc-fade .25s ease-out both; cursor: pointer; }
+@keyframes bc-fade { from { opacity: 0; } }
+.bc-portrait { position: absolute; left: 50%; bottom: 0; width: auto; max-width: none; object-fit: contain; object-position: top; transform: translateX(-50%); border-radius: 0; animation: bc-rise .45s cubic-bezier(.2,.8,.2,1) both;
+  -webkit-mask-image: linear-gradient(180deg, #000 78%, transparent); mask-image: linear-gradient(180deg, #000 78%, transparent); pointer-events: none; }
+@keyframes bc-rise { from { transform: translate(-50%, 8%); opacity: 0; } }
+.bc-box { position: absolute; left: 3%; right: 3%; bottom: 3%; padding: calc(var(--u) * 3) calc(var(--u) * 4) calc(var(--u) * 2.4); border-radius: calc(var(--u) * 2.5); background: rgba(255,250,251,.96); border: 3px solid #e65d70; box-shadow: 0 4px 0 #a52f3c, 0 10px 30px rgba(0,0,0,.35); color: #3a1f2a; }
+.bc-who { position: absolute; left: calc(var(--u) * 4); top: 0; transform: translateY(-62%); padding: 2px 12px; border-radius: 999px; background: #e65d70; color: #fff; font: 700 clamp(13px, calc(var(--u) * 3.6), 20px) / 1.2 'Noto Sans JP', sans-serif; }
+.bc-who rt { font-size: .5em; }
+.bc-line { margin: 0; min-height: 2.6em; font: 600 clamp(15px, calc(var(--u) * 4.2), 26px) / 1.45 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Noto Sans CJK JP', 'Yu Gothic', sans-serif; }
+.bc-next { display: inline-block; margin-left: 6px; color: #e65d70; animation: gb-blink 1s steps(2) infinite; }
+.bc-en { margin: 2px 0 0; font: 500 clamp(11px, calc(var(--u) * 2.8), 15px) / 1.3 var(--mono, monospace); color: #7a3a48; }
+.bc-ask { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.bc-choice { min-width: 96px; min-height: 44px; border-radius: 10px; border: 3px solid #e65d70; background: #e65d70; color: #fff; font: 700 18px/1 'Noto Sans JP', sans-serif; cursor: pointer; touch-action: manipulation; }
+.bc-choice.ghost { background: #fff; color: #c2304a; }
+.bc-choice:focus-visible { outline: 3px solid #6fcfa8; outline-offset: 2px; }
+.bc-box-heal { left: 20%; right: 20%; text-align: center; }
+
+.bc-bar { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.bc-bar .btn { font-family: 'Noto Sans JP', var(--sans, sans-serif); }
+.bc-bar .btn.on { background: rgba(230,93,112,.35); }
+.bc-bar small { font-size: .7em; opacity: .8; }
+
+/* Wide screens: the portrait stands to the left and the box takes the right, like a visual novel. */
+@media (min-aspect-ratio: 4/3) and (min-width: 760px) {
+  .bc-portrait { left: 2%; transform: none; animation-name: bc-rise-l; }
+  @keyframes bc-rise-l { from { transform: translateY(8%); opacity: 0; } }
+  .bc-box:not(.bc-box-heal) { left: 40%; }
+}
+@media (prefers-reduced-motion: reduce) { .bc-nurse.bow, .bc-screen, .bc-scan, .bc-light, .bc-pod, .bc-talk, .bc-portrait, .bc-next { animation: none !important; } }

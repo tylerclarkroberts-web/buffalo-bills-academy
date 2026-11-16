@@ -5,6 +5,7 @@ import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, verdictLine } from './boutFx.js';
 import { voice, sfx, music } from './sfx.js';
+import { navigate } from '../App.jsx';
 
 const EXTRA = { pierce: 'pierce', guard: 'guard', venom: 'venom', weaken: 'weaken' };
 function landSound({ kind, r }) {
@@ -72,7 +73,9 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const maxHp = bout.maxHp || [100, 100];
   const landed = beat ? pos.phase === 'land' : pos.i >= plan.beats.length;
   const shown = beat ? (landed ? beat.r : bout.rounds[pos.i - 1]) : landed ? bout.rounds[bout.rounds.length - 1] : null;
-  const hp = shown ? shown.hp : maxHp;
+  const hp = shown ? shown.hp : bout.startHp || maxHp;
+  // v76: your bug keeps its damage; only the Bug Center heals it. Live bouts only, not replays or the rafters.
+  const hurt = !replay && Number.isFinite(bout.healthAfter) && bout.healthAfter < 100;
   const status = beat ? (landed ? beat.after : beat.before) : null;
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
@@ -111,7 +114,8 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
       <div className="bout-acts">
         {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Bout sounds" title="Bout sounds">{sound ? '🔊' : '🔈'}</button>}
         {!done && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
-        {done && <button ref={closeButton} className="btn small" onClick={onClose} data-test="bout-close">Back to the stall</button>}
+        {done && hurt && <button className="btn small bout-center" onClick={() => { onClose(); navigate('/barn/center'); }} data-test="bout-hurt">{bout.healthAfter <= 0 ? `${bout.you.name} fainted` : 'Your bug is hurt'} — visit the Bug Center →</button>}
+        {done && <button ref={closeButton} className={`btn small${hurt ? ' ghost' : ''}`} onClick={onClose} data-test="bout-close">{hurt ? 'Later' : 'Back to the stall'}</button>}
       </div>
     </dialog>
   );

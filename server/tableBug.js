@@ -12,6 +12,7 @@ export function tableBugOf(barn, playerId) {
       level: pen.level ?? null,
     };
     if (pen.style) bug.style = pen.style;
+    if (pen.fainted) bug.fainted = true; // v75: lost a mine battle; swirly eyes until the Bug Center
     return bug;
   } catch {
     return null;
