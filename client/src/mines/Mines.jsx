@@ -18,7 +18,7 @@ import { Stalker } from './stalker.js';
 import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
-import DoomRoom from './DoomRoom.jsx';
+import DoorHall from './DoorHall.jsx';
 import Foreman from './Foreman.jsx';
 import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
@@ -520,7 +520,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   };
 
   const doorRef = useRef(false);
-  // The door behind the start (v27). Opening it only changes this page: the music pauses, the mine stops drawing,
+  // The door behind the start (v27; opens into the Hall of Doors since v89). Opening it only changes this page: the music pauses, the mine stops drawing,
   // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
   const openDoor = useRef(null);
   openDoor.current = () => {
@@ -816,13 +816,13 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       )}
       {doorNear && !doom && !near && !eggNear && !prey && (
         <div className="m-door-prompt" data-test="door-prompt">
-          <span className="m-dim">A DOOR. WARM AIR UNDER IT.</span>
+          <span className="m-dim">A DOOR. VOICES BEHIND IT.</span>
           <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
           <span className="m-dim small">or press F</span>
         </div>
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
-      {doom && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
+      {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
