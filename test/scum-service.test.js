@@ -98,7 +98,7 @@ test('full round to titles, then the exchange with private begs, then the King l
   assert.equal(done.seats.reduce((n, x) => n + (x?.count || 0), 0), 52);
 });
 
-test('the clock: no move passes for you; leading plays your lowest card; exchange settles itself', () => {
+test('the clock: no move passes for you; leading plays your lowest card', () => {
   const { s, P, clock } = svc();
   const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
   const t = s.table(v.code);
@@ -107,6 +107,22 @@ test('the clock: no move passes for you; leading plays your lowest card; exchang
   assert.deepEqual(t.round.pile.cards, ['2c'], 'lowest single led for Ann');
   clock.t += 31_000; s.tick();
   assert.equal(t.round.lastPlay.seat, 0); assert.ok(t.log.at(-1).text.match(/clock/));
+});
+
+test('the clock settles the exchange: best cards go over, the King gives his lowest, then he leads', () => {
+  const { s, P, clock } = svc();
+  const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
+  const t = s.table(v.code);
+  rig(t, { 0: ['3h'], 1: ['Kh', '2c'], 2: ['5d', '7d'] }, [0, 1, 2]); s.clock(t);
+  s.play(P.a, v.code, ['3h']); s.play(P.b, v.code, ['Kh']); s.pass(P.c, v.code); s.play(P.b, v.code, ['2c']);
+  assert.equal(t.round.phase, 'exchange');
+  assert.deepEqual(t.lastRound.finish.map((x) => x.title), ['king', 'citizen', 'scum']);
+  const best = t.round.hands[2].slice().sort((x, y) => 'x23456789TJQKA'.indexOf(x[0]) - 'x23456789TJQKA'.indexOf(y[0])).slice(-2);
+  clock.t += 31_000; s.tick();
+  assert.ok(best.every((c) => t.round.hands[0].includes(c)), 'Scum’s best went to the King');
+  clock.t += 31_000; s.tick();
+  assert.equal(t.round.phase, 'play'); assert.equal(t.round.turn, 0);
+  assert.equal(Object.values(t.round.hands).flat().length, 52);
 });
 
 test('bots play on their own after a beat', () => {
@@ -167,13 +183,13 @@ test('HTTP: routes, auth, and an app with old data and no scum.json still boots'
   const base = `http://127.0.0.1:${server.address().port}`;
   const call = (c, m, p, b) => fetch(base + p, { method: m, headers: { ...(c ? { cookie: c } : {}), 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null), cookie: r.headers.get('set-cookie')?.split(';')[0] }));
   assert.equal((await call(null, 'GET', '/api/scum')).status, 401);
-  const ann = (await call(null, 'POST', '/auth/dev', { name: 'Ann' })).cookie;
-  const bob = (await call(null, 'POST', '/auth/dev', { name: 'Bob' })).cookie;
+  const ann = (await call(null, 'POST', '/auth/dev', { name: 'Ann', email: 'ann@x.test' })).cookie;
+  const bob = (await call(null, 'POST', '/auth/dev', { name: 'Bob', email: 'bob@x.test' })).cookie;
   const c = await call(ann, 'POST', '/api/scum/tables', { name: 'Saloon', settings: { bots: 1 } });
   assert.equal(c.status, 200, JSON.stringify(c.body));
-  assert.equal((await call(bob, 'POST', `/api/scum/tables/${c.body.code}/join`)).status, 200);
+  const j = await call(bob, 'POST', `/api/scum/tables/${c.body.code}/join`); assert.equal(j.status, 200, JSON.stringify(j.body));
   const st = await call(ann, 'POST', `/api/scum/tables/${c.body.code}/start`);
-  assert.equal(st.status, 200); assert.equal(st.body.status, 'playing');
+  assert.equal(st.status, 200, JSON.stringify(st.body)); assert.equal(st.body.status, 'playing');
   const lst = await call(bob, 'GET', '/api/scum');
   assert.equal(lst.body.tables[0].code, c.body.code); assert.ok(lst.body.limits.turnSecs.includes(86400));
   const bad = await call(bob, 'POST', `/api/scum/tables/${c.body.code}/play`, { cards: ['Zz'] });
