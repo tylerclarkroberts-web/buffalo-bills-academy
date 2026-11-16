@@ -50,13 +50,13 @@ async function run(browser, sid, s) {
   check(!!(await p.$('[data-test=door-hall]')), `${s.n}: the mine door opens into the Hall of Doors`);
   check(await p.evaluate(() => window.__acidMine.paused === true), `${s.n}: the mine stops drawing behind the door`);
   await p.waitForTimeout(500);
-  check(!reqs.some((r) => /\/(doom|nanosaur)\//.test(r.url)), `${s.n}: no game files loaded in the hall`);
+  check(!reqs.some((r) => /\/(doom|nanosaur)\/|ElHaloRoom/.test(r.url)), `${s.n}: no game files loaded in the hall`);
   const hall = await p.evaluate(() => {
     const doors = [...document.querySelectorAll('[data-test^=hall-door-]')];
     const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 20 && r.height > 20 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; };
     return { n: doors.length, open: doors.filter((d) => d.dataset.open === '1').map((d) => d.dataset.test), allVisible: doors.every((d) => vis(d.querySelector('.m-hall-frame'))), exit: !!document.querySelector('[data-test=hall-exit]') };
   });
-  check(hall.n >= 6 && hall.open.join() === 'hall-door-doom,hall-door-nanosaur' && hall.allVisible && hall.exit, `${s.n}: ${hall.n} doors, open: ${hall.open.join(', ')}, all on screen, back button ${JSON.stringify(hall)}`);
+  check(hall.n >= 6 && hall.open.join() === 'hall-door-doom,hall-door-nanosaur,hall-door-elhalo' && hall.allVisible && hall.exit, `${s.n}: ${hall.n} doors, open: ${hall.open.join(', ')}, all on screen, back button ${JSON.stringify(hall)}`);
   check(await noScroll(p), `${s.n}: hall has no page scroll`);
   await shot(p, `${s.n}-2-hall`);
   // a locked door rattles and says so; nothing navigates
