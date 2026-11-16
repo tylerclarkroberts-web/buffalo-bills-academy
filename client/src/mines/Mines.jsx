@@ -19,6 +19,7 @@ import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
 import DoomRoom from './DoomRoom.jsx';
+import PicnicRoom from './PicnicRoom.jsx';
 import Foreman from './Foreman.jsx';
 import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
@@ -403,8 +404,8 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
-  const [doorNear, setDoorNear] = useState(false);
-  const [doom, setDoom] = useState(false);
+  const [doorNear, setDoorNear] = useState(false); // the door in front of you: false | 'doom' | 'picnic'
+  const [doom, setDoom] = useState(false);         // the door you are behind (same values); the mine holds still either way
   const doomRef = useRef(false);
   const soundWas = useRef(false);
   const [eggNear, setEggNear] = useState(false);
@@ -520,14 +521,15 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   };
 
   const doorRef = useRef(false);
-  // The door behind the start (v27). Opening it only changes this page: the music pauses, the mine stops drawing,
-  // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
+  // The doors behind the start (v27). Opening one only changes this page: the mine stops drawing and the controls go
+  // to the game. The shift clock is the server's; it keeps running and nothing here can stop it. The first door's game
+  // brings its own sound, so the mine's pauses; the picnic borrows the mine's for its rivets.
   const openDoor = useRef(null);
-  openDoor.current = () => {
-    if (doomRef.current) return;
-    doomRef.current = true; setDoom(true); release();
+  openDoor.current = (to) => {
+    if (doomRef.current || !to) return;
+    doomRef.current = to; setDoom(to); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
-    soundWas.current = !!audio?.on; if (audio?.on) audio.stop();
+    soundWas.current = to === 'doom' && !!audio?.on; if (soundWas.current) audio.stop();
   };
   const closeDoor = () => {
     doomRef.current = false; setDoom(false);
@@ -649,7 +651,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       if (doomRef.current || closing.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
-      if (k === 'f' && doorRef.current) { openDoor.current(); return; }
+      if (k === 'f' && doorRef.current) { openDoor.current(doorRef.current); return; }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
@@ -668,7 +670,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     let tap = null;
     const pd = (e) => { drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
     const pm = (e) => { if (!drag) return; scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
-    const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
+    const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else openDoor.current(scene.hitsDoor(e.clientX, e.clientY)); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
     const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
@@ -690,7 +692,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
         setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
       }
-      const dv = scene.doorView(); const n = dv.dist < 2.1 && dv.facing > 0.75;
+      const dv = scene.doorView(); const n = (dv.dist < 2.1 && dv.facing > 0.75 && dv.to) || false;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
@@ -816,13 +818,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       )}
       {doorNear && !doom && !near && !eggNear && !prey && (
         <div className="m-door-prompt" data-test="door-prompt">
-          <span className="m-dim">A DOOR. WARM AIR UNDER IT.</span>
-          <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
+          <span className="m-dim">{doorNear === 'picnic' ? 'THE OTHER DOOR. DAYLIGHT UNDER IT. RIVETING.' : 'A DOOR. WARM AIR UNDER IT.'}</span>
+          <button className="m-btn" onClick={() => openDoor.current(doorNear)} data-test="door-open">[ OPEN THE DOOR ]</button>
           <span className="m-dim small">or press F</span>
         </div>
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
-      {doom && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
+      {doom === 'doom' && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
+      {doom === 'picnic' && <PicnicRoom elapsedMs={elapsed} onExit={closeDoor} audio={audio} Pad={MovePad} />}
       {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />

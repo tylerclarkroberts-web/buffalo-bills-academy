@@ -55,7 +55,7 @@ export function buildMiner({ id, name, avatar, bug }) {
   add(new THREE.SphereGeometry(0.17, 10, 8), hair, 0, 1.57, -0.01); // back of the head
   const tex = faceTexture(id, avatar);
   const face = add(new THREE.PlaneGeometry(0.3, 0.36), tex ? new THREE.MeshLambertMaterial({ map: tex, transparent: true }) : skin, 0, 1.56, 0.16);
-  add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 1.66, 0);
+  const dome = add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 1.66, 0);
   const brim = add(new THREE.CylinderGeometry(0.25, 0.25, 0.025, 12), hat, 0, 1.66, 0.03);
   // the headlamp stays visible past the fog: you see a light bobbing in the dark before you see who it is
   const lamp = add(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff6c8', fog: false }), 0, 1.74, 0.19);
@@ -68,13 +68,14 @@ export function buildMiner({ id, name, avatar, bug }) {
     pet = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     pet.position.set(0.45, 0.32, 0.2); g.add(pet);
   }
-  void face; void brim;
-  return { group: g, legL, legR, armL, armR, lamp, tag, pet };
+  void face;
+  return { group: g, legL, legR, armL, armR, lamp, tag, pet, hat: [dome, brim, lamp] }; // `hat`: what comes off at the picnic
 }
 
 /** All of them, keyed by player id. `set()` takes the server's list; `update()` runs every frame. */
 export class OtherMiners {
-  constructor(scene, { reduceMotion = false } = {}) { this.scene = scene; this.reduce = reduceMotion; this.map = new Map(); }
+  /** `tile` scales the server's coordinates to metres; `ground(x, z)` is the floor height (the mine's is flat). */
+  constructor(scene, { reduceMotion = false, tile = TILE, ground = () => 0 } = {}) { this.scene = scene; this.reduce = reduceMotion; this.tile = tile; this.ground = ground; this.map = new Map(); }
   set(list = []) {
     const seen = new Set();
     for (const o of list) {
@@ -83,10 +84,10 @@ export class OtherMiners {
       const key = `${o.avatar?.kind || ''}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${o.name}`;
       if (m && m.key !== key) { this.remove(o.id); m = null; }
       if (!m) {
-        m = { ...buildMiner(o), key, x: o.x * TILE, z: o.y * TILE, yaw: o.yaw, walk: 0 };
+        m = { ...buildMiner(o), key, x: o.x * this.tile, z: o.y * this.tile, yaw: o.yaw, walk: 0 };
         this.scene.add(m.group); this.map.set(o.id, m);
       }
-      m.tx = o.x * TILE; m.tz = o.y * TILE; m.tyaw = o.yaw; m.shield = o.shield; m.cooling = o.cooling;
+      m.tx = o.x * this.tile; m.tz = o.y * this.tile; m.tyaw = o.yaw; m.shield = o.shield; m.cooling = o.cooling;
     }
     for (const id of [...this.map.keys()]) if (!seen.has(id)) this.remove(id);
   }
@@ -107,7 +108,7 @@ export class OtherMiners {
       m.walk += moving && !this.reduce ? dt * 9 : 0;
       const sw = moving && !this.reduce ? Math.sin(m.walk) * 0.45 : 0;
       m.legL.rotation.x = sw; m.legR.rotation.x = -sw; m.armL.rotation.x = -sw * 0.8; m.armR.rotation.x = sw * 0.8;
-      m.group.position.y = moving && !this.reduce ? Math.abs(Math.sin(m.walk)) * 0.03 : 0;
+      m.group.position.y = this.ground(m.x, m.z) + (moving && !this.reduce ? Math.abs(Math.sin(m.walk)) * 0.03 : 0);
       if (m.pet) { m.pet.rotation.y = cameraYaw - m.group.rotation.y; m.pet.position.y = 0.32 + (this.reduce ? 0 : Math.sin(now / 300) * 0.04); }
     }
   }

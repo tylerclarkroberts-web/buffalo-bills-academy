@@ -30,6 +30,7 @@ import { cheapestBuyIn, isBroke as brokeCheck, bustedAndBroke } from './broke.js
 import { Conquest, mountConquest } from './conquest.js';
 import { Rooms } from './rooms.js';
 import { Pvp, PVP } from './pvp.js';
+import { Picnic } from './picnic.js';
 import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
@@ -79,6 +80,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt });
   const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
   pvpSweep.unref?.();
+  const picnic = new Picnic({ store: service.store, avatars, now: service.now });
   const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
   barn.styleOf = (id) => shop.bugStyle(id);
@@ -343,6 +345,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
+  // The company picnic behind the mine's second door (server/picnic.js): memory only, nothing at stake.
+  api.post('/picnic/tick', needPlayer, wrap((req) => picnic.tick(req.player, req.body || {})));
+  api.post('/picnic/leave', needPlayer, wrap((req) => picnic.forget(req.player.id)));
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
@@ -366,7 +371,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    pvp.forget(p.id); mines.forget(p.id);
+    pvp.forget(p.id); picnic.forget(p.id); mines.forget(p.id);
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();

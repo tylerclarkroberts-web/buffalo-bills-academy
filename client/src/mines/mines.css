@@ -218,6 +218,24 @@ body.in-mines { background: #020402; }
 .m-doom-clock { font-size: 15px; letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-doom-frame { flex: 1; width: 100%; border: 0; display: block; background: #050505; }
 @media (max-width: 420px) { .m-doom-clock { display: none; } }
+/* The second door: the company picnic (PicnicRoom.jsx). Same frame and bar as the first; daylight needs dark plates behind the text. */
+.m-picnic-view { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.m-picnic .m-canvas { cursor: crosshair; }
+.m-picnic .m-hud { top: 0; margin: 0; padding: 8px 12px; background: rgba(0,0,0,.6); list-style: none; }
+.m-picnic-scores .me { color: var(--y); }
+.m-picnic .m-turn { display: none; } /* out here you turn by dragging the view (or the stick); the corner belongs to the RIVET button */
+.m-picnic-hair { position: absolute; left: 50%; top: 50%; z-index: 20; transform: translate(-50%, -50%); pointer-events: none; font-size: 30px; line-height: 1; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+.m-picnic-hair.hit { animation: m-picnic-hit .2s steps(2); }
+@keyframes m-picnic-hit { from { color: #ff3b2a; transform: translate(-50%, -50%) scale(1.8); } }
+.m-picnic-hurt { position: absolute; inset: 0; z-index: 19; pointer-events: none; opacity: 0; box-shadow: inset 0 0 120px 30px rgba(255,30,20,.75); }
+.m-picnic-hurt.on { animation: m-picnic-hurt .45s ease-out; }
+@keyframes m-picnic-hurt { from { opacity: 1; } }
+.m-picnic-msg { position: absolute; left: 50%; top: 62%; z-index: 20; transform: translateX(-50%); width: max-content; max-width: 92%; padding: 6px 12px; background: rgba(0,0,0,.6); text-align: center; pointer-events: none; }
+.m-picnic-fire { display: none; position: absolute; z-index: 26; right: calc(18px + env(safe-area-inset-right)); bottom: calc(70px + env(safe-area-inset-bottom)); min-width: 104px; min-height: 64px; background: #ff6a2a; touch-action: none; }
+.m-picnic-hurt.dent { animation: m-picnic-hurt .3s ease-out; box-shadow: inset 0 0 90px 14px rgba(232,185,35,.75); } /* the hat took it */
+.m-picnic-swap { display: none; position: absolute; z-index: 26; right: calc(18px + env(safe-area-inset-right)); bottom: calc(146px + env(safe-area-inset-bottom)); min-width: 104px; min-height: 44px; padding: 6px 10px; font-size: 18px; touch-action: none; }
+@media (pointer: coarse), (max-width: 800px) { .m-picnic-fire, .m-picnic-swap { display: block; } .m-picnic-key { display: none; } }
+@media (prefers-reduced-motion: reduce) { .m-picnic-hair.hit, .m-picnic-hurt.on, .m-picnic-hurt.dent { animation: none; } }
 
 /* v71: the shared mine */
 .m-pay.lost { color: #ff6a5a; text-shadow: 0 0 18px rgba(255,80,60,.6); }

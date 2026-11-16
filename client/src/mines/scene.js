@@ -75,15 +75,15 @@ function caveSignTexture() {
     g.fillStyle = '#ff5a2a'; g.font = 'bold 22px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('CAVE-IN', w / 2, h / 2 + 1);
   });
 }
-// The door behind where you clock in: a plain riveted steel bulkhead, dark and easy to miss. Original art.
-function doorTexture() {
+// A door behind where you clock in: a plain riveted steel bulkhead, dark and easy to miss. Original art.
+function doorTexture(stencil) {
   return canvasTex(64, 128, (g, w, h) => {
     g.fillStyle = '#23211d'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 500; i++) { const v = 28 + Math.floor(Math.random() * 18); g.fillStyle = `rgb(${v},${v - 2},${v - 6})`; g.fillRect(Math.floor(Math.random() * w), Math.floor(Math.random() * h), 2, 1); }
     g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(4, 40, w - 8, 2); g.fillRect(4, 86, w - 8, 2); // panel seams
     g.fillStyle = '#4a463d'; for (const y of [8, 36, 46, 82, 92, 120]) for (const x of [8, 22, 42, 56]) g.fillRect(x, y, 2, 2); // rivets
     g.fillStyle = '#3b3830'; g.fillRect(48, 60, 9, 4); // handle
-    g.fillStyle = 'rgba(160,120,60,.45)'; g.font = 'bold 9px monospace'; g.fillText('B-7', 24, 66); // faded stencil
+    g.fillStyle = 'rgba(160,120,60,.45)'; g.font = 'bold 9px monospace'; g.fillText(stencil, 24, 66); // faded stencil
     g.fillStyle = 'rgba(80,40,10,.35)'; for (let i = 0; i < 6; i++) g.fillRect(Math.floor(Math.random() * w), 100 + Math.floor(Math.random() * 20), 1, 8); // rust runs
   });
 }
@@ -227,23 +227,27 @@ export class MineScene {
       const a = r() * Math.PI * 2; c.position.set(this.poolPos.x + Math.cos(a) * (0.95 + r() * 0.15), 0.1, this.poolPos.z + Math.sin(a) * (0.95 + r() * 0.15)); c.scale.y = 2.2; this.scene.add(c); this.crystals.push(c);
     }
 
-    // The door (v27): on the wall behind the start, so you only see it if you turn all the way around.
-    // Purely decorative as far as the shift goes: it opens a side room in the page and never talks to the server.
+    // The doors (v27, two of them since the picnic): side by side on the wall behind the start, so you only see them
+    // if you turn all the way around. Neither touches the shift. The left one (warm, orange) opens a side room in the
+    // page and never talks to the server; the right one (daylight under it) goes outside to the company picnic.
     {
-      const behindX = maze.facing === 0; // facing +x down the first corridor: the door is on the -x wall, else the -z wall
+      const behindX = maze.facing === 0; // facing +x down the first corridor: the doors are on the -x wall, else the -z wall
       const face = TILE / 2 - 0.02;
-      const door = new THREE.Group();
-      const slab = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 2.05), new THREE.MeshLambertMaterial({ map: doorTexture(), emissive: '#0b0805' }));
-      slab.position.y = 1.025; slab.name = 'mine-door'; door.add(slab);
-      const seamMat = new THREE.MeshBasicMaterial({ color: '#ff6a2a', transparent: true, opacity: 0.7 });
-      for (const [w, h, x, y] of [[1.1, 0.025, 0, 2.06], [0.025, 2.06, -0.54, 1.03], [0.025, 2.06, 0.54, 1.03], [1.1, 0.02, 0, 0.01]]) {
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), seamMat); m.position.set(x, y, 0.004); door.add(m);
-      }
-      if (behindX) { door.position.set(maze.start.x * TILE - face, 0, maze.start.y * TILE); door.rotation.y = Math.PI / 2; }
-      else { door.position.set(maze.start.x * TILE, 0, maze.start.y * TILE - face); }
-      this.scene.add(door);
-      this.door = { group: door, slab, seamMat, normal: behindX ? new THREE.Vector2(1, 0) : new THREE.Vector2(0, 1) };
-      this.doorLight = new THREE.PointLight('#ff5a1f', 1.6, 2.2, 2); this.doorLight.position.set(door.position.x + this.door.normal.x * 0.3, 0.3, door.position.z + this.door.normal.y * 0.3); this.scene.add(this.doorLight);
+      const wall = new THREE.Group();
+      if (behindX) { wall.position.set(maze.start.x * TILE - face, 0, maze.start.y * TILE); wall.rotation.y = Math.PI / 2; }
+      else { wall.position.set(maze.start.x * TILE, 0, maze.start.y * TILE - face); }
+      this.scene.add(wall); wall.updateMatrixWorld(true);
+      this.doors = [['doom', -0.55, 'B-7', '#ff6a2a', '#ff5a1f'], ['picnic', 0.55, 'B-8', '#e6f6ff', '#bfe4ff']].map(([to, x, stencil, seam, glow]) => {
+        const door = new THREE.Group(); door.position.x = x; wall.add(door);
+        const slab = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 2.05), new THREE.MeshLambertMaterial({ map: doorTexture(stencil), emissive: '#0b0805' }));
+        slab.position.y = 1.025; slab.name = `mine-door-${to}`; door.add(slab);
+        const seamMat = new THREE.MeshBasicMaterial({ color: seam, transparent: true, opacity: 0.7 });
+        for (const [w, h, sx, sy] of [[1, 0.025, 0, 2.06], [0.025, 2.06, -0.49, 1.03], [0.025, 2.06, 0.49, 1.03], [1, 0.02, 0, 0.01]]) {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), seamMat); m.position.set(sx, sy, 0.004); door.add(m);
+        }
+        const light = new THREE.PointLight(glow, 1.6, 2.2, 2); light.position.set(0, 0.3, 0.3); door.add(light);
+        return { to, slab, seamMat, light, at: wall.localToWorld(new THREE.Vector3(x, 0, 0)) };
+      });
       this.raycaster = new THREE.Raycaster();
     }
 
@@ -528,21 +532,24 @@ export class MineScene {
     if (e.gone === 1) { e.group.position.y = a * 1.1; e.group.scale.setScalar(1 - a * 0.7); } else { e.group.position.y = -a * 0.45; e.light.intensity = 2.2 * (1 - a); }
     if (a >= 1) e.group.visible = false;
   }
-  /** How far the door is and whether you're looking at it (1 = straight at it). */
+  /** The door you are looking at most squarely: how far it is, how squarely (1 = straight at it) and where it goes (`to`). */
   doorView() {
-    if (!this.door) return { dist: 99, facing: -1 };
-    const p = this.door.group.position, dx = p.x - this.pos.x, dz = p.z - this.pos.y, d = Math.hypot(dx, dz) || 1;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
-    return { dist: d, facing: (fx * dx + fz * dz) / d };
+    let best = { dist: 99, facing: -1, to: null };
+    for (const d of this.doors || []) {
+      const dx = d.at.x - this.pos.x, dz = d.at.z - this.pos.y, dist = Math.hypot(dx, dz) || 1, facing = (fx * dx + fz * dz) / dist;
+      if (facing > best.facing) best = { dist, facing, to: d.to };
+    }
+    return best;
   }
-  /** Did a tap at this screen point land on the door (and close enough to reach)? */
+  /** Which door a tap at this screen point landed on ('doom' | 'picnic'), or null if none is in reach there. */
   hitsDoor(clientX, clientY) {
-    if (!this.door) return false;
+    if (!this.doors) return null;
     const r = this.renderer.domElement.getBoundingClientRect();
     const v = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(v, this.camera);
-    const hit = this.raycaster.intersectObject(this.door.slab, false)[0];
-    return !!hit && hit.distance < 4.5;
+    const hit = this.raycaster.intersectObjects(this.doors.map((d) => d.slab), false)[0];
+    return hit && hit.distance < 4.5 ? this.doors.find((d) => d.slab === hit.object).to : null;
   }
   /** Behind the door: stop drawing (and stop the visitor) until you come back. The shift clock is the server's and keeps going. */
   setPaused(p) {
@@ -596,7 +603,7 @@ export class MineScene {
     this.lamp.intensity = Math.max(1.5, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter) * this.lampPower); // a tired headlamp (more tired when he's near)
     this.poolLight.intensity = this.acidIn ? 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4) : 1.6;
     if (this.acidIn && !this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
-    if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }
+    for (const d of this.doors || []) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); d.seamMat.opacity = k; d.light.intensity = 1.2 + k; }
     for (const d of this.drops) {
       const u = d.userData;
       if (u.wait > 0) { u.wait -= dt; d.position.y = WALL_H - 0.02; continue; }
