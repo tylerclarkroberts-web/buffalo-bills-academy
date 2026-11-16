@@ -38,14 +38,15 @@ function FoffUnlock({ layout }) {
   const { me } = useSession();
   const { on, reveal, unlock } = useUnlocked(me);
   const [open, setOpen] = useState(false);
+  const bare = layout === 'card';
   const body = on
-    ? <UnlockedTile reveal={reveal} />
-    : <WatchPromo bare={layout === 'card'} onWatch={() => setOpen(true)} />;
+    ? <UnlockedPromo bare={bare} reveal={reveal} />
+    : <WatchPromo bare={bare} onWatch={() => setOpen(true)} />;
   return (
     <>
       {layout === 'card' ? (
-        <section className={`panel lb-card lb-slots lb-foff${on ? ' lb-foff-open' : ''}`} data-test="foff-card">
-          {!on && <div className="panel-head"><span className="western">Foff&rsquo;s Bachelor Party</span><span className="ph-sub">A short film</span></div>}
+        <section className="panel lb-card lb-slots lb-foff" data-test="foff-card">
+          <div className="panel-head"><span className="western">Foff&rsquo;s Bachelor Party</span><span className="ph-sub">{on ? 'The trip' : 'A short film'}</span></div>
           <div className="panel-body">{body}</div>
         </section>
       ) : (
@@ -58,7 +59,7 @@ function FoffUnlock({ layout }) {
 
 function WatchPromo({ bare, onWatch }) {
   return (
-    <div className={`foff-watch ${bare ? 'bare' : ''}`}>
+    <div className={`slots-promo foff-watch ${bare ? 'bare' : ''}`}>
       <button type="button" className="foff-thumb" onClick={onWatch} aria-label="Watch the film" data-test="foff-thumb">
         <img src={YT_THUMB} alt="" />
         <i aria-hidden="true" />
@@ -72,15 +73,34 @@ function WatchPromo({ bare, onWatch }) {
   );
 }
 
-function UnlockedTile({ reveal }) {
+function UnlockedPromo({ bare, reveal }) {
   return (
-    <button type="button" className={`foff-tile${reveal ? ' reveal' : ''}`} onClick={() => navigate('/foff')} data-test="foff-tile" aria-label="Foff's Bachelor Party">
+    <div className={`slots-promo foff-promo ${bare ? 'bare' : ''}${reveal ? ' reveal' : ''}`} data-test="foff-tile">
       {reveal && <span className="foff-confetti" aria-hidden="true">{CONFETTI.map(([bg, left, spin], i) => (
         <i key={i} style={{ left, background: bg, animationDelay: `${i * 30}ms`, '--dx': `${(i % 2 ? 1 : -1) * (18 + i * 8)}px`, '--spin': spin }} />
       ))}</span>}
-      <b>Foff&rsquo;s<br />Bachelor Party</b>
-      <span>The trip →</span>
-    </button>
+      <FoffArt />
+      <div className="sp-txt">
+        {!bare && <b className="western">Foff&rsquo;s Bachelor Party</b>}
+        <span className="small sp-desc">Eighteen holes with the lads.</span>
+        <button type="button" className="btn small sp-go" onClick={() => navigate('/foff')} data-test="foff-go">Go on the trip <span className="arrow">→</span></button>
+      </div>
+    </div>
+  );
+}
+
+/** Pixel golf flag with a hint of the old party-gradient colors as the icon accent. */
+function FoffArt() {
+  const p = (x, y, w, h, fill) => <rect x={x} y={y} width={w} height={h} fill={fill} />;
+  return (
+    <svg viewBox="0 0 32 32" className="sp-art" aria-hidden="true" shapeRendering="crispEdges">
+      {/* Tiny party-color confetti — a hint of the old gradient tile, as an accent only. */}
+      {p(1, 3, 3, 3, '#ff62d4')}{p(28, 2, 3, 3, '#ffd84a')}{p(2, 14, 2, 2, '#3ce0c4')}{p(28, 15, 3, 2, '#e2483d')}{p(26, 8, 2, 2, '#ff62d4')}
+      {p(3, 22, 26, 9, '#15582a')}{p(5, 20, 22, 6, '#1a6b32')}{p(7, 18, 18, 5, '#2f9a44')}{p(10, 17, 12, 2, '#4ec45a')}
+      {p(13, 1, 3, 22, '#3a2410')}{p(13, 1, 1, 22, '#7a4a22')}{p(15, 1, 1, 22, '#2a1808')}
+      {p(16, 1, 14, 3, '#ff3db0')}{p(16, 4, 13, 3, '#ffd84a')}{p(16, 7, 11, 3, '#ff3db0')}{p(16, 10, 7, 2, '#ffd84a')}
+      {p(6, 16, 6, 6, '#f4efe4')}{p(7, 17, 4, 4, '#e6dfd2')}{p(8, 18, 2, 2, '#c8c0b0')}{p(9, 16, 1, 1, '#fff')}
+    </svg>
   );
 }
 
