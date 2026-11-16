@@ -252,7 +252,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     </div>
   );
   const bar = <Bottom blocked={offerUp || !!sdPlay} replaying={rp.pending} view={view} me={me} seated={seated} myTurn={myTurn} now={now} code={code} inviteUrl={inviteUrl} copyInvite={copyInvite} join={join} post={post} players={players} />;
-  const bottom = pane ? bar : <div className="tp-turnq">{!turnBlocked && <NextTablePill advance={turnAdvance} />}{bar}</div>;
+  const bottom = pane ? bar : <>{!turnBlocked && <NextTablePill advance={turnAdvance} />}{bar}</>;
   const panels = {
     players: <Standings view={view} />,
     log: <HandLog view={view} />,

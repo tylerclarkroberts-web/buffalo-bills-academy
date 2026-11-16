@@ -1,4 +1,4 @@
-/* Tight "Your turns" chips: header entry + the post-action next-table row. */
+/* Tight "Your turns" chips: header entry + a click-only side prompt after you act. */
 
 .turns-pill {
   display: inline-flex;
@@ -32,60 +32,102 @@
 }
 .turns-arr { font-size: 13px; opacity: .9; }
 
-
-.turns-next-go, .turns-stay, .turns-caught {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font: 600 12.5px var(--sans, inherit);
-  line-height: 1;
-  white-space: nowrap;
-  border: 1px solid rgba(242, 198, 90, .65);
-  background: rgba(20, 8, 14, .88);
-  color: var(--amber);
-  cursor: pointer;
-}
-.turns-next-go:hover, .turns-next-go:focus-visible { background: rgba(242, 198, 90, .18); }
-.turns-stay {
-  height: 28px;
-  padding: 0 9px;
-  border-color: var(--line);
-  background: rgba(0, 0, 0, .35);
-  color: inherit;
-  font-weight: 600;
-  opacity: .85;
-}
-.turns-stay:hover, .turns-stay:focus-visible { opacity: 1; }
-.turns-caught {
-  border-color: var(--line);
-  color: inherit;
-  background: rgba(20, 8, 14, .8);
-  opacity: .9;
-  cursor: default;
-}
-
 .turns-lbl-narrow { display: none; }
-.turns-next, .turns-caught-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  min-height: 0;
-  padding: 0 2px 6px;
+
+/* Docked to the right edge. On Hold'em the Players column has empty space mid-right;
+   on SCUM/blackjack felt tables a seat sits there, so the prompt pins just under the chrome. */
+.turns-next {
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right, 0px));
+  top: 64px;
+  bottom: 96px;
+  height: fit-content;
+  margin-block: auto;
+  z-index: 35;
+  width: max-content;
+  max-width: min(228px, 34vw);
   pointer-events: none;
 }
-.turns-next > *, .turns-caught-row > * { pointer-events: auto; }
+body:has(.sc-felt):not(:has(.tp)) .turns-next,
+body:has(.bj-felt):not(:has(.tp)) .turns-next,
+body:has(.bj-arena):not(:has(.tp)) .turns-next {
+  top: 108px;
+  bottom: auto;
+  margin: 0;
+}
+.turns-next > * { pointer-events: auto; }
+
+.turns-next-go {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(242, 198, 90, .7);
+  background: rgba(20, 8, 14, .92);
+  color: var(--amber);
+  font: 600 12px var(--sans, inherit);
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+}
+.turns-next-go:hover, .turns-next-go:focus-visible { background: rgba(36, 14, 24, .96); border-color: var(--amber); }
+.turns-next-cta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  letter-spacing: .01em;
+}
+.turns-next-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--paper, #fbf4ea);
+}
+.turns-next-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 700 12px var(--sans, inherit);
+}
+.turns-next-game {
+  flex: none;
+  font: 600 10px var(--sans, inherit);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .8;
+  white-space: nowrap;
+}
 
 @media (max-width: 760px) {
   .turns-pill { height: 32px; padding: 0 8px; font-size: 11.5px; }
   .turns-lbl-wide { display: none; }
   .turns-lbl-narrow { display: inline; }
-  .turns-next-go, .turns-stay, .turns-caught { height: 32px; font-size: 12px; }
-}
-@media (max-width: 420px) {
-  .turns-next { justify-content: stretch; padding-bottom: 4px; }
-  .turns-next-go { flex: 1; justify-content: center; min-width: 0; }
+  /* Small right-edge tab just under the header, clear of cards and the action bar. */
+  .turns-next {
+    right: 0;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    margin: 0;
+    max-width: min(158px, 44vw);
+  }
+  .turns-next-go {
+    border-radius: 12px 0 0 12px;
+    border-right: none;
+    padding: 7px 8px 7px 10px;
+    font-size: 11.5px;
+  }
+  .turns-next-name { font-size: 11.5px; }
+  .turns-next-game { font-size: 9.5px; }
+  /* Felt tables have a title/toolbar row under the app header; sit just below it. */
+  body:has(.sc-felt):not(:has(.tp)) .turns-next,
+  body:has(.bj-felt):not(:has(.tp)) .turns-next,
+  body:has(.bj-arena):not(:has(.tp)) .turns-next {
+    top: calc(96px + env(safe-area-inset-top, 0px));
+  }
 }

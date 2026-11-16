@@ -9,7 +9,7 @@ import {
   waitingSince, sortTurns, collectTurns, listTurns, registerTurnSource,
   holdemSource, blackjackSource, scumSource,
 } from '../server/turns.js';
-import { entryTarget, nextTarget, restCount, shouldOfferAdvance, samePath, ADVANCE_MS } from '../client/src/turns/queue.js';
+import { entryTarget, nextTarget, restCount, shouldOfferAdvance, samePath, gameLabel } from '../client/src/turns/queue.js';
 
 function fakeService(tables) {
   return { store: { allTables: () => tables } };
@@ -153,8 +153,9 @@ test('client helpers: jump to the first table, then the next, never the current 
   assert.equal(shouldOfferAdvance({ hadAction: true, hasAction: false, blocked: true }), false);
   assert.equal(shouldOfferAdvance({ hadAction: true, hasAction: true, blocked: false }), false);
   assert.equal(shouldOfferAdvance({ hadAction: false, hasAction: false, blocked: false }), false);
-  assert.equal(shouldOfferAdvance({ hadAction: true, hasAction: false, blocked: false, dismissed: true }), false);
-  assert.equal(ADVANCE_MS, 1800);
+  assert.equal(gameLabel('holdem'), "Hold'em");
+  assert.equal(gameLabel('blackjack'), 'Blackjack');
+  assert.equal(gameLabel('scum'), 'SCUM');
 });
 
 async function boot(t) {
