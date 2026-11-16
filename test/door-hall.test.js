@@ -15,10 +15,10 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const NANO = path.join(ROOT, 'client/public/nanosaur');
 const src = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 
-test('the hall: Doom and Nanosaur open, a row of distinct locked doors', () => {
+test('the hall: Doom, Nanosaur and El Halo open, a row of distinct locked doors', () => {
   const ids = HALL_DOORS.map((d) => d.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.deepEqual(HALL_DOORS.filter((d) => d.open).map((d) => d.id), ['doom', 'nanosaur']);
+  assert.deepEqual(HALL_DOORS.filter((d) => d.open).map((d) => d.id), ['doom', 'nanosaur', 'elhalo']);
   const locked = HALL_DOORS.filter((d) => !d.open);
   assert.ok(locked.length >= 4 && locked.length <= 8, `${locked.length} locked doors`);
   assert.equal(new Set(HALL_DOORS.map((d) => d.style)).size, HALL_DOORS.length, 'every door has its own look');
