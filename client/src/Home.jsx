@@ -342,7 +342,7 @@ function LobbyPanel({ personalTables, publicTables, tab, setTab, wide, newTable,
   return (
     <div className={`panel lobby-panel${wide ? ' lb-card' : ''}`} data-test="lobby-panel">
       <Tabs label="Lobby" value={tabKey} onChange={setTab} tabs={[['tables', 'Your tables', mine], ['public', 'Public tables'], ...(!wide ? [['new', 'Start a table'], ['games', 'Games']] : [])]} />
-      <div className={`panel-body ${['tables', 'public'].includes(tabKey) ? 'tables-tab' : ''}`}>
+      <div className={`panel-body ${['tables', 'public'].includes(tabKey) ? 'tables-tab' : tabKey === 'games' ? 'games-tab' : ''}`}>
         {tabKey === 'public' ? <PublicTableList {...publicTables} startPublic={startPublic} />
           : tabKey === 'new' ? newTable
           : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /><FoffPromo /><ScumPromo /></div>
