@@ -15,6 +15,7 @@ const Barn = lazy(() => import('./barn/Barn.jsx'));
 const Store = lazy(() => import('./store/Store.jsx'));
 const Slots = lazy(() => import('./slots/SlotsPage.jsx'));
 const Blackjack = lazy(() => import('./bj/BlackjackPage.jsx'));
+const Scum = lazy(() => import('./scum/ScumPage.jsx'));
 const Conquest = lazy(() => import('./Conquest.jsx'));
 const Room = lazy(() => import('./room/Room.jsx'));
 const Foff = lazy(() => import('./foff/Foff.jsx'));
@@ -76,6 +77,7 @@ export default function App() {
   else if (path.startsWith('/invest')) page = <Invest />;
   else if (path.startsWith('/store')) page = <Suspense fallback={<div className="screen" />}><Store /></Suspense>;
   else if (path === '/bj' || path.startsWith('/bj/')) page = <Suspense fallback={<div className="screen" />}><Blackjack code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;
+  else if (path === '/scum' || path.startsWith('/scum/')) page = <Suspense fallback={<div className="screen" />}><Scum code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;
   else if (path.startsWith('/slots')) page = <Suspense fallback={<div className="screen" />}><Slots /></Suspense>;
   else if (path.startsWith('/barn')) page = <Suspense fallback={<div className="screen" />}><Barn /></Suspense>;
   else page = <Home key={me?.id || 'signed-out'} tab={query.get('tab') || undefined} />; // '/' and old '/lobby' links: the card room lobby
