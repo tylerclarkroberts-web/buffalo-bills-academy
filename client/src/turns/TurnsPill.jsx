@@ -1,5 +1,7 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useTurns, jumpToTurns } from './useTurns.js';
+import { gameLabel } from './queue.js';
 import './turns.css';
 
 /** Compact header chip: jumps to the first table you're up at. Hidden when the queue is empty. */
@@ -24,21 +26,30 @@ export function TurnsEntry() {
   );
 }
 
-/** After you act: a slim "Next table you're up →" row, or a brief "All caught up". */
+/** After you act: a side prompt. Goes to the next table only when clicked. Hidden if nothing else is waiting. */
 export function NextTablePill({ advance }) {
   if (!advance) return null;
-  const { phase, next, restCount, stay, goNow } = advance;
-  if (phase === 'caught') {
-    return <div className="turns-caught-row" data-test="turns-caught" role="status"><span className="turns-caught">All caught up</span></div>;
-  }
+  const { phase, next, restCount, goNow } = advance;
   if (phase !== 'next' || !next) return null;
-  return (
+  const game = gameLabel(next.game);
+  const waiting = restCount === 1 ? '1 table waiting' : `${restCount} tables waiting`;
+  const node = (
     <div className="turns-next" data-test="turns-next" role="status">
-      <button type="button" className="turns-next-go" onClick={goNow} data-test="turns-next-go">
-        Next table you're up <span aria-hidden="true">→</span>
-        <b className="turns-n">{restCount}</b>
+      <button
+        type="button"
+        className="turns-next-go"
+        onClick={goNow}
+        data-test="turns-next-go"
+        aria-label={`Next table you're up in: ${next.name}, ${game}. ${waiting}.`}
+      >
+        <span className="turns-next-cta">Next table you're up in <span aria-hidden="true">→</span></span>
+        <span className="turns-next-meta">
+          <b className="turns-next-name">{next.name}</b>
+          <span className="turns-next-game">{game}</span>
+          <b className="turns-n" title={waiting}>{restCount}</b>
+        </span>
       </button>
-      <button type="button" className="turns-stay" onClick={stay} data-test="turns-stay">Stay</button>
     </div>
   );
+  return typeof document === 'undefined' ? node : createPortal(node, document.body);
 }

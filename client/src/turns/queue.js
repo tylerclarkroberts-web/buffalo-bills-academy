@@ -1,7 +1,10 @@
 // Pure helpers for the Your turns queue. The server already sorts oldest waiting first.
 
-export const ADVANCE_MS = 1800;
-export const CAUGHT_MS = 2000;
+export const GAME_LABEL = { holdem: "Hold'em", blackjack: 'Blackjack', scum: 'SCUM' };
+
+export function gameLabel(game) {
+  return GAME_LABEL[game] || game || 'Table';
+}
 
 export function samePath(a, b) {
   const norm = (p) => {
@@ -27,7 +30,7 @@ export function restCount(turns, currentPath) {
   return (turns || []).filter((t) => !samePath(t.path, currentPath)).length;
 }
 
-/** Ready to offer auto-advance once the player just acted, has nothing left here, and cinematics are done. */
-export function shouldOfferAdvance({ hadAction, hasAction, blocked, dismissed } = {}) {
-  return !!hadAction && !hasAction && !blocked && !dismissed;
+/** After the player just acted, has nothing left here, and cinematics are done: offer a click-to-go prompt. */
+export function shouldOfferAdvance({ hadAction, hasAction, blocked } = {}) {
+  return !!hadAction && !hasAction && !blocked;
 }

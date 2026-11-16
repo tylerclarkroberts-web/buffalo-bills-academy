@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, useSession } from '../api.js';
 import { navigate } from '../App.jsx';
-import { ADVANCE_MS, CAUGHT_MS, entryTarget, nextTarget, restCount, shouldOfferAdvance } from './queue.js';
+import { entryTarget, nextTarget, restCount, shouldOfferAdvance } from './queue.js';
 
 let state = { turns: [] };
 const subs = new Set();
@@ -51,21 +51,17 @@ export function jumpToTurns(turns, currentPath = window.location.pathname) {
   return t;
 }
 
+/** After you finish a turn, expose the next table you're up in. Navigation happens only in goNow (a click). */
 export function useTurnAdvance({ currentPath, hasAction, blocked = false, enabled = true }) {
   const { turns, refresh } = useTurns();
-  const [phase, setPhase] = useState('idle'); // idle | next | caught
-  const [remain, setRemain] = useState(ADVANCE_MS);
   const armed = useRef(false);
-  const dismissed = useRef(false);
 
   useEffect(() => {
     armed.current = false;
-    dismissed.current = false;
-    setPhase('idle');
   }, [currentPath]);
 
   useEffect(() => {
-    if (hasAction) { armed.current = true; dismissed.current = false; }
+    if (hasAction) armed.current = true;
   }, [hasAction]);
 
   useEffect(() => { if (enabled) refresh(); }, [enabled, hasAction, currentPath, refresh]);
@@ -73,33 +69,11 @@ export function useTurnAdvance({ currentPath, hasAction, blocked = false, enable
   const next = nextTarget(turns, currentPath);
   const left = restCount(turns, currentPath);
   const ready = enabled && shouldOfferAdvance({
-    hadAction: armed.current, hasAction, blocked, dismissed: dismissed.current,
+    hadAction: armed.current, hasAction, blocked,
   });
+  const show = !!(ready && next);
 
-  useEffect(() => {
-    if (!ready) {
-      if (phase === 'next') setPhase('idle');
-      return undefined;
-    }
-    if (!next) {
-      setPhase('caught');
-      const t = setTimeout(() => setPhase('idle'), CAUGHT_MS);
-      return () => clearTimeout(t);
-    }
-    setPhase('next');
-    setRemain(ADVANCE_MS);
-    const start = Date.now();
-    const id = setInterval(() => setRemain(Math.max(0, ADVANCE_MS - (Date.now() - start))), 50);
-    const go = setTimeout(() => navigate(next.path), ADVANCE_MS);
-    return () => { clearInterval(id); clearTimeout(go); };
-    // Restart only when the destination (or readiness) changes, not on every poll tick.
-  }, [ready, next?.path]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const stay = useCallback(() => {
-    dismissed.current = true;
-    setPhase('idle');
-  }, []);
   const goNow = useCallback(() => { if (next) navigate(next.path); }, [next]);
 
-  return { phase, next, remain, restCount: left, count: turns.length, stay, goNow, refresh };
+  return { phase: show ? 'next' : 'idle', next, restCount: left, count: turns.length, goNow, refresh };
 }
