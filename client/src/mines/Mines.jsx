@@ -18,11 +18,12 @@ import { Stalker } from './stalker.js';
 import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
-import DoomRoom from './DoomRoom.jsx';
+import DoorHall from './DoorHall.jsx';
 import Foreman from './Foreman.jsx';
 import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
 import { SHAFTS } from '../../../server/catalog/mine.js';
+import { DANCES, DANCE_BY_ID } from '../../../server/engine/dances.js';
 import './mines.css';
 
 const LINES = [
@@ -258,7 +259,7 @@ export default function Mines() {
         </header>
         {err && <div className="m-err" role="alert" onClick={() => setErr('')}>! {err}</div>}
         {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} starting={starting} office={office} open={open} going={going} onShaft={setShaft} />}
-        {phase === 'play' && shift && <Shift key={shift.shiftId} shift={shift} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} onComplete={complete} exitShift={exitShift} onLeaving={setLeaving} />}
+        {phase === 'play' && shift && <Shift key={shift.shiftId} shift={shift} me={me} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} onComplete={complete} exitShift={exitShift} onLeaving={setLeaving} />}
         {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} fare={going?.fare} />}
       </div>
       {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); navigate('/'); }} />}
@@ -357,7 +358,7 @@ const DRY_LINES = [
   'NOTHING BUT DAMP ROCK. KEEP WALKING.',
 ];
 
-function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, onLeaving }) {
+function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShift, onLeaving }) {
   const bucketShift = shift.rulesVersion === 2;
   const canvas = useRef(null);
   const sceneRef = useRef(null);
@@ -376,11 +377,31 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
   const holdingRef = useRef(false);
-  const hold = value => { holdingRef.current = value; setHolding(value); };
+  const hold = value => { if (value) stopDance(); holdingRef.current = value; setHolding(value); };
+  // v89: dances. Cosmetic only: the server passes the id on to the other miners and nothing else reads it.
+  const [dance, setDance] = useState(null);
+  const danceRef = useRef(null);
+  const [picker, setPicker] = useState(false);
+  const pickerRef = useRef(false);
+  const showPicker = (v) => { pickerRef.current = v; setPicker(v); };
+  function stopDance() {
+    if (!danceRef.current) return;
+    danceRef.current = null; setDance(null); sceneRef.current?.stopDance(); audio?.danceBeat(false);
+  }
+  function startDance(id) {
+    const d = DANCE_BY_ID[id]; showPicker(false);
+    if (!d || !sceneRef.current || battleRef.current || doomRef.current || done.current) return;
+    if (holdingRef.current) { holdingRef.current = false; setHolding(false); client.current?.stop().catch(() => {}); }
+    keys.clear();
+    sceneRef.current.startDance(id);
+    if (danceRef.current !== id) setLine(d.line);
+    danceRef.current = id; setDance(id); audio?.danceBeat(true);
+    pvp.current?.beat();
+  }
   const release = () => { hold(false); client.current?.stop().catch(() => {}); };
   const [elapsed, setElapsed] = useState(0);
   // v75: a bug that lost a mine battle stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone)
-  const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HEALS IT FOR FREE.` : LINES[shift.seed % LINES.length]);
+  const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
   const [status, setStatus] = useState('FIND THE ACID POOL');
   const done = useRef(false);
   const maze = useRef(shiftMaze(shift)).current; // v79: the day's tier decides the size and the cave-ins
@@ -465,7 +486,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     if (closing.current || done.current) return;
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
-  const freeze = () => { release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
+  const freeze = () => { stopDance(); showPicker(false); release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
   const showBattle = (b) => {
     if (!b || dismissed.current.has(b.id)) return;
     if (!battleRef.current) { freeze(); audio?.dread(false); }
@@ -512,6 +533,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const move = (f, t) => {
     const s = sceneRef.current;
     if (!s || doomRef.current || battleRef.current) return;
+    if (danceRef.current) { if (!f && !t) return; stopDance(); } // moving ends the dance
     s.input.f = f; s.input.t = t; s.input.s = 0;
   };
   const setTiltMode = (active) => {
@@ -520,11 +542,12 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   };
 
   const doorRef = useRef(false);
-  // The door behind the start (v27). Opening it only changes this page: the music pauses, the mine stops drawing,
+  // The door behind the start (v27; opens into the Hall of Doors since v89). Opening it only changes this page: the music pauses, the mine stops drawing,
   // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
   const openDoor = useRef(null);
   openDoor.current = () => {
     if (doomRef.current) return;
+    stopDance(); showPicker(false);
     doomRef.current = true; setDoom(true); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
     soundWas.current = !!audio?.on; if (audio?.on) audio.stop();
@@ -614,6 +637,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       },
     });
     sceneRef.current = scene;
+    if (me) scene.setSelf(me);
     if (!bucketShift) scene.setAcid(vein.current.flowing);
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
@@ -630,7 +654,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     if (bucketShift) {
       pvp.current = createPvpClient({
         send: pvpSend, onView: onPvp,
-        pose: () => (doomRef.current || done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw }),
+        pose: () => (doomRef.current || done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw, dance: danceRef.current }),
         onError: (e) => { if (e.code === 'mine_reload') fail(e); },
       });
     }
@@ -653,6 +677,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
+      if (k === 'b' && !e.repeat) { showPicker(!pickerRef.current); return; }
+      if (k === 'escape' && pickerRef.current) { showPicker(false); return; }
+      if (/^[1-9]$/.test(k) && !e.metaKey && !e.ctrlKey && !e.altKey) { startDance(DANCES[Number(k) - 1].id); return; }
+      if (danceRef.current && ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) stopDance();
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
       keys.add(k); sync();
@@ -667,7 +695,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     const c = canvas.current;
     let tap = null;
     const pd = (e) => { drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
-    const pm = (e) => { if (!drag) return; scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
+    const pm = (e) => { if (!drag) return; if (scene.dance) { scene.danceOrbit = (scene.danceOrbit || 0) - (e.clientX - drag.x) * 0.006; drag = { x: e.clientX, y: e.clientY }; return; } scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
     const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
@@ -703,7 +731,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidWorms; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
-      clearInterval(tick); clearInterval(flavor);
+      clearInterval(tick); clearInterval(flavor); audio?.danceBeat(false);
       audio?.dread(false); audio?.leave(); // clocking out: the normal music comes back
     };
   }, []);
@@ -783,7 +811,10 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
         </div>}
         <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
+        {!doom && !battle && <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
+          onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>}
       </div>
+      {picker && !doom && !battle && <DancePicker current={dance} onPick={startDance} onClose={() => showPicker(false)} />}
       {mineError && <div className="m-recovery" role="alert">
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
@@ -796,7 +827,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           <span className="m-dim small">or press X · takes their acid and $20–$100</span>
         </div>
       )}
-      {near && !prey && (
+      {near && !prey && !dance && (
         <div className="m-mine">
           {!bucketShift && <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>}
           <button className={`m-btn big ${holding ? 'on' : ''}`} disabled={!!mineError || clockingOut} onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); hold(true); }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={(e) => e.preventDefault()}
@@ -807,27 +838,42 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
           <div className="m-dim small">or hold SPACE</div>
         </div>
       )}
-      {eggNear && !doom && !near && !prey && (
+      {eggNear && !doom && !near && !prey && !dance && (
         <div className="m-door-prompt" data-test="egg-prompt">
           <span className="m-dim">AN EGG. STILL WARM.</span>
           <button className="m-btn" onClick={() => grabEgg.current()} data-test="egg-take">[ PICK IT UP ]</button>
           <span className="m-dim small">or press G</span>
         </div>
       )}
-      {doorNear && !doom && !near && !eggNear && !prey && (
+      {doorNear && !doom && !near && !eggNear && !prey && !dance && (
         <div className="m-door-prompt" data-test="door-prompt">
-          <span className="m-dim">A DOOR. WARM AIR UNDER IT.</span>
+          <span className="m-dim">A DOOR. VOICES BEHIND IT.</span>
           <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
           <span className="m-dim small">or press F</span>
         </div>
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
-      {doom && <DoomRoom elapsedMs={elapsed} onExit={closeDoor} />}
+      {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
         {!tiltActive && <MovePad apply={move} />}
       </div>
+    </div>
+  );
+}
+
+/** v89: nine dances in a 3×3 grid. Number keys 1–9 do the same without opening it. */
+function DancePicker({ current, onPick, onClose }) {
+  const first = useRef(null);
+  useEffect(() => { first.current?.focus({ preventScroll: true }); }, []);
+  return (
+    <div className="m-dances" role="dialog" aria-label="Dance" data-test="dance-picker" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+      {DANCES.map((d, i) => (
+        <button key={d.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === d.id ? ' on' : ''}`} data-test={`dance-${d.id}`} onClick={() => onPick(d.id)}>
+          <span className="m-dance-icon" aria-hidden="true">{d.icon}</span><span className="m-dance-name">{d.name}</span><span className="m-key">{i + 1}</span>
+        </button>
+      ))}
     </div>
   );
 }

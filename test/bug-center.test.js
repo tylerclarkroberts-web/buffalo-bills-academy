@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Barn, BATTLE_XP, WIN_BONUS_XP, BOUT_LEVEL } from '../server/barn.js';
+import { Barn, BATTLE_XP, WIN_BONUS_XP, BOUT_LEVEL, FIND_XP, RECOVER_MS, FAST_HEAL_COST } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines } from '../server/mines.js';
 import { Pvp, PVP } from '../server/pvp.js';
@@ -15,7 +15,7 @@ import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { tableBugOf } from '../server/tableBug.js';
 import { createApp } from '../server/app.js';
 import { introLines, outroEvents, spoilsLines, loserOf } from '../client/src/mines/battleScript.js';
-import { greeting, done, NO, SIGNS, NURSE } from '../client/src/bugcenter/script.js';
+import { greeting, done, NO, REST, SIGNS, NURSE } from '../client/src/bugcenter/script.js';
 import { HEAL_TUNE } from '../client/src/bugcenter/chime.js';
 
 const V = { rulesVersion: 2 };
@@ -159,6 +159,16 @@ test('a fainted bug stays home from the mines and shows swirly eyes at the table
   assert.equal(f.mines.guideBug('ann').species, 'manticora', 'the winner still guides'); assert.equal(f.mines.guideBug('bob').fainted, true);
 });
 
+test('a guide bug earns a little XP for each acid pool it finds, once; a fainted one earns nothing', (t) => {
+  const f = fixture(t);
+  const find = (p) => { const s = f.mines.start(p, V); f.clock.now = s.readyAt; f.mines.probe(p, s.shiftId, { ...V, poolId: s.currentPoolId }); f.mines.probe(p, s.shiftId, { ...V, poolId: s.currentPoolId }); };
+  find(f.ann);
+  assert.equal(f.barn.doc.pens.ann.xp, 640 + FIND_XP, 'probing the same pool twice pays once');
+  f.barn.doc.pens.bob.faintedAt = f.clock.now;
+  find(f.bob);
+  assert.equal(f.barn.doc.pens.bob.xp, 360);
+});
+
 test('an open barn bout is refunded if its bug faints in the mines', (t) => {
   const f = fixture(t);
   f.barn.openBout('bob', { stake: 50 });
@@ -170,9 +180,28 @@ test('an open barn bout is refunded if its bug faints in the mines', (t) => {
   assert.equal(f.store.players.bob.bankroll, held - lost + 50);
 });
 
-test('Bug Center: the nurse heals a fainted bug to full at no cost; healthy bugs are a polite no-op', (t) => {
+test('Bug Center: a fainted bug rests an hour for a free heal, or pays to be up now', (t) => {
   const f = fixture(t);
   const m = f.meet(); f.annWins(m);
+  const money = f.store.players.bob.bankroll;
+  const view = f.barn.view('bob').pen;
+  assert.equal(view.recoverMs, RECOVER_MS); assert.equal(view.healCost, FAST_HEAL_COST);
+  assert.throws(() => f.barn.heal('bob'), (e) => e.status === 409 && /60 more minutes/.test(e.message));
+  assert.equal(f.barn.doc.pens.bob.faintedAt > 0, true, 'still fainted'); assert.equal(f.store.players.bob.bankroll, money);
+  f.store.players.bob.bankroll = FAST_HEAL_COST - 1;
+  assert.throws(() => f.barn.heal('bob', { pay: true }), (e) => e.status === 402);
+  f.store.players.bob.bankroll = money;
+  const paid = f.barn.heal('bob', { pay: true });
+  assert.equal(paid.healed, true); assert.equal(paid.cost, FAST_HEAL_COST); assert.equal(paid.pen.fainted, false);
+  assert.equal(f.store.players.bob.bankroll, money - FAST_HEAL_COST);
+  assert.equal(f.barn.heal('bob', { pay: true }).cost, 0, 'a healthy bug is never charged');
+  assert.equal(f.store.players.bob.bankroll, money - FAST_HEAL_COST);
+});
+
+test('Bug Center: the nurse heals a rested fainted bug to full at no cost; healthy bugs are a polite no-op', (t) => {
+  const f = fixture(t);
+  const m = f.meet(); f.annWins(m);
+  f.clock.now += RECOVER_MS;
   const money = f.store.players.bob.bankroll, xp = f.barn.doc.pens.bob.xp;
   const r = f.barn.heal('bob');
   assert.equal(r.healed, true); assert.equal(r.cost, 0); assert.equal(r.pen.fainted, false);
@@ -251,7 +280,11 @@ test('Bug Center script: all Japanese on screen, English on request, and the rig
   assert.ok(greeting(null).at(-1).end); assert.ok(greeting({ stage: 'egg' }).at(-1).end); assert.ok(greeting({ stage: 'dead', name: 'x' }).at(-1).end);
   assert.match(done({ name: 'Sagra II' }, true)[0].ja, /すっかり元気/);
   assert.match(done({ name: 'Sagra II' }, true).map((l) => l.en).join(' '), /no charge/);
-  assert.ok(NO.end);
+  assert.ok(NO.end); assert.ok(REST.end);
+  const early = greeting({ stage: 'creature', name: 'Sagra II', fainted: true, recoverMs: 59.2 * 60e3, healCost: 50 });
+  assert.match(early.at(-2).en, /another 60 minutes/); assert.match(early.at(-1).ja, /\$50/); assert.equal(early.at(-1).pay, true);
+  assert.equal(fainted.at(-1).pay, undefined, 'a rested bug is healed free');
+  assert.match(done({ name: 'Sagra II' }, true, 50).map((l) => l.en).join(' '), /\$50/);
   assert.ok(Object.values(SIGNS).every((s) => jp.test(s.ja) && s.en));
   assert.equal(SIGNS.title.ja, 'バグセンター');
   assert.ok(jp.test(NURSE.ja) && !/joy/i.test(NURSE.en), 'an original nurse');

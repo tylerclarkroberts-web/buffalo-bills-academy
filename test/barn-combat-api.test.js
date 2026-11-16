@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { Barn, BOUT_COOLDOWN_MS, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG } from '../server/barn.js';
+import { Barn, BOUT_WIN_XP, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG } from '../server/barn.js';
 import { Store } from '../server/store.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
+const earned = (pen) => BOUT_XP + (pen.lastBout.result === 'won' ? BOUT_WIN_XP : 0); // winners get the bonus, losers and draws do not
 
 async function fixture(t) {
   const prefix = path.join(os.tmpdir(), 'bba-barn-combat-');
@@ -104,8 +105,8 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   const f = await fixture(t);
   const { owner, other, barn, clock } = f;
   const pen = f.hatch(owner.id);
-  pen.xp = xpFor(4) - 10; pen.xpToday = 120; pen.xpDay = Math.floor(clock.now / 86400e3);
-  const rival = f.hatch(other.id, 10); rival.xpToday = 120; rival.xpDay = pen.xpDay; barn.save();
+  pen.xp = xpFor(4) - 10;
+  f.hatch(other.id, 10); barn.save();
   const opened = await post(owner, 100.25);
   assert.equal(opened.status, 200, JSON.stringify(opened.body));
   const listing = opened.body.openBout;
@@ -133,18 +134,17 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   });
   assert.equal(host.pen.xp, xpFor(4) + 10); assert.equal(host.pen.level, 4);
   assert.equal(hostResult.you.level, 3); assert.equal(hostResult.levelBefore, 3); assert.equal(hostResult.levelAfter, 4);
-  assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + BOUT_XP);
+  assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + BOUT_XP + BOUT_WIN_XP);
   assert.equal(joined.body.pen.xpNext, null);
   for (const [player, result] of [[owner, host], [other, joined.body]]) {
-    assert.equal(result.pen.lastBout.xpEarned, BOUT_XP);
-    assert.equal(result.pen.boutCoolMs, BOUT_COOLDOWN_MS); assert.equal(recordCount(result.pen), 1);
-    assert.equal(barn.doc.pens[player.id].xpToday, 120);
+    assert.equal(result.pen.lastBout.xpEarned, earned(result.pen));
+    assert.equal(recordCount(result.pen), 1);
     const expectedNet = result.pen.lastBout.result === 'won' ? 100.25 : result.pen.lastBout.result === 'lost' ? -100.25 : 0;
     assert.equal(result.pen.lastBout.net, expectedNet);
     assert.equal(result.pen.lastBout.payout, expectedNet + 100.25);
     assert.equal(balance(f, player), 1000 + expectedNet);
-    // v76: the loser fainted (Bug Center first: 409); the winner is merely resting (429)
-    assert.equal((await post(player)).status, result.pen.lastBout.result === 'lost' ? 409 : 429);
+    // the loser fainted: Bug Center first
+    if (result.pen.lastBout.result === 'lost') assert.equal((await post(player)).status, 409);
   }
   assert.equal(balance(f, owner) + balance(f, other), 2000);
   const savedPlayers = structuredClone(f.service.store.players), savedPens = structuredClone(barn.doc.pens);
@@ -209,7 +209,7 @@ test('posting freezes the advertised setup; cancellation and expiry refund witho
   assert.deepEqual(advertised.fighter, opened.body.openBout.fighter, 'care progression cannot silently alter the advertised combat snapshot');
   const cancelled = await cancel(owner, id);
   assert.equal(cancelled.status, 200); assert.equal(balance(f, owner), 1000);
-  assert.equal(cancelled.body.openBout, null); assert.equal(cancelled.body.pen.boutCoolMs, 0);
+  assert.equal(cancelled.body.openBout, null);
   assert.equal(recordCount(cancelled.body.pen), 0); assert.equal(cancelled.body.pen.xp, xpFor(10));
   const reposted = await post(owner, 25); assert.equal(reposted.status, 200);
   const expiry = reposted.body.openBout.expiresAt;
@@ -220,7 +220,7 @@ test('posting freezes the advertised setup; cancellation and expiry refund witho
   const after = (await owner.api('GET', '/api/barn')).body;
   assert.equal(after.openBout, null); assert.equal(after.bouts.length, 0);
   assert.equal(balance(f, owner), 1000); assert.equal(after.pen.xp, xpFor(10));
-  assert.equal(after.pen.boutCoolMs, 0); assert.equal(recordCount(after.pen), 0);
+  assert.equal(recordCount(after.pen), 0);
   assert.ok((await join(other, reposted.body.openBout.id)).status >= 400);
   await owner.api('GET', '/api/barn'); assert.equal(balance(f, owner), 1000);
   assert.equal(beforeXp, xpFor(6));
@@ -276,7 +276,7 @@ test('only one competing join can claim an open bout, including a free bout', as
   const winnerIndex = results.findIndex(result => result.status === 200), participants = [other, third];
   const accepted = participants[winnerIndex], rejected = participants[1 - winnerIndex];
   const acceptedView = (await accepted.api('GET', '/api/barn')).body;
-  assert.equal(acceptedView.pen.xp, xpFor(3) + BOUT_XP);
+  assert.equal(acceptedView.pen.xp, xpFor(3) + earned(acceptedView.pen));
   assert.equal(acceptedView.pen.lastBout.stake, 0); assert.equal(acceptedView.pen.lastBout.net, 0);
   assert.equal((await rejected.api('GET', '/api/barn')).body.pen.xp, xpFor(3));
   assert.equal(recordCount((await rejected.api('GET', '/api/barn')).body.pen), 0);
@@ -292,7 +292,7 @@ test('wins, losses and draws award both players; a draw returns both stakes', as
   for (; seed < 256 && outcomes.size < 3; seed++) {
     for (const player of [owner, other]) {
       const pen = barn.doc.pens[player.id];
-      pen.xp = xpFor(6); pen.boutAt = 0; pen.species = 'lamprima'; delete pen.faintedAt; delete pen.health; // v76: a nurse visit between bouts
+      pen.xp = xpFor(6); pen.species = 'lamprima'; delete pen.faintedAt; delete pen.health; // v76: a nurse visit between bouts
       pen.battle = { stance: 'defensive', specials: ['technique', 'signature'] };
       pen.stats = Object.fromEntries(['hunger', 'mood', 'clean'].map(stat => [stat, { v: 0, at: clock.now }]));
     }
@@ -301,8 +301,8 @@ test('wins, losses and draws award both players; a draw returns both stakes', as
     const accepted = await join(other, opened.body.openBout.id);
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
     const result = accepted.body.pen.lastBout.result; outcomes.add(result);
-    assert.equal(accepted.body.pen.xp, xpFor(6) + BOUT_XP);
-    assert.equal((await owner.api('GET', '/api/barn')).body.pen.xp, xpFor(6) + BOUT_XP);
+    assert.equal(accepted.body.pen.xp, xpFor(6) + earned(accepted.body.pen));
+    { const pen = (await owner.api('GET', '/api/barn')).body.pen; assert.equal(pen.xp, xpFor(6) + earned(pen)); }
     assert.equal(balance(f, owner) + balance(f, other), 2000);
     if (result === 'draw') assert.deepEqual([balance(f, owner), balance(f, other)], balances);
   }
@@ -348,9 +348,8 @@ test('durable settlement receipts recover XP and replay after a failed Barn writ
   assert.equal((await join(other, opened.body.openBout.id)).status, 200);
   for (const player of [owner, other]) {
     const result = (await player.api('GET', '/api/barn')).body;
-    assert.equal(result.pen.xp, xpFor(6) + BOUT_XP); assert.equal(recordCount(result.pen), 1);
+    assert.equal(result.pen.xp, xpFor(6) + earned(result.pen)); assert.equal(recordCount(result.pen), 1);
     assert.equal(result.pen.lastBout.id, opened.body.openBout.id);
-    assert.equal(result.pen.boutCoolMs, BOUT_COOLDOWN_MS);
   }
   assert.deepEqual(f.service.store.players, committedPlayers, 'recovery does not debit or pay again');
   const settledPens = structuredClone(f.barn.doc.pens);
@@ -372,7 +371,7 @@ test('a failed second Barn write recovers only the unpaid pet reward after resta
   t.after(() => { service.store.saveDoc = saveDoc; });
   assert.equal((await join(other, id)).status, 500);
   assert.equal(barnWrites, 2);
-  assert.equal(barn.doc.pens[owner.id].xp, xpFor(6) + BOUT_XP);
+  assert.equal(barn.doc.pens[owner.id].xp, xpFor(6) + earned(barn.doc.pens[owner.id]));
   assert.equal(barn.doc.pens[owner.id].settledBoutId, id);
   assert.equal(barn.doc.pens[other.id].xp, xpFor(6));
   const diskPens = JSON.parse(fs.readFileSync(path.join(dataDir, 'barn.json'), 'utf8')).pens;
@@ -384,8 +383,8 @@ test('a failed second Barn write recovers only the unpaid pet reward after resta
   assert.equal((await join(other, id)).status, 200);
   for (const player of [owner, other]) {
     const pen = (await player.api('GET', '/api/barn')).body.pen;
-    assert.equal(pen.xp, xpFor(6) + BOUT_XP); assert.equal(recordCount(pen), 1);
-    assert.equal(pen.lastBout.id, id); assert.equal(pen.boutCoolMs, BOUT_COOLDOWN_MS);
+    assert.equal(pen.xp, xpFor(6) + earned(pen)); assert.equal(recordCount(pen), 1);
+    assert.equal(pen.lastBout.id, id);
   }
   const settledPens = structuredClone(f.barn.doc.pens);
   assert.equal((await join(other, id)).status, 200);
@@ -458,9 +457,9 @@ test('the ring lists every living bug of a visible owner, even to a player with 
   const view = (await watcher.api('GET', '/api/barn')).body;
   assert.equal(view.pen, null);
   assert.deepEqual(view.roster.map(bug => bug.ownerId), [owner.id, other.id, young.id], 'highest level first; eggs, the dead and hidden owners are left out');
-  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'level', 'name', 'owner', 'ownerId', 'record', 'restMs', 'species', 'style']);
+  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'level', 'name', 'owner', 'ownerId', 'record', 'species', 'style']);
   assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, false]]);
-  assert.deepEqual(view.challenges, { incoming: [], outgoing: [], max: 3 }); assert.deepEqual(view.fights, []);
+  assert.deepEqual(view.challenges, { incoming: [], outgoing: [] }); assert.deepEqual(view.fights, []);
   assert.equal((await watcher.api('POST', '/api/barn/challenges', { to: owner.id, stake: 0 })).status, 404, 'no bug, no challenge');
 });
 
@@ -477,10 +476,8 @@ test('a challenge holds no money, needs a mature bug on both sides and can be wi
   assert.equal((await challenge(other, owner.id)).status, 409, 'and a young bug cannot challenge');
   barn.doc.pens[other.id].xp = xpFor(3); barn.save();
   assert.equal((await challenge(owner, other.id, 5000)).status, 402);
-  barn.doc.pens[owner.id].boutAt = clock.now; barn.save();
   const sent = await challenge(owner, other.id, 100);
-  assert.equal(sent.status, 200, 'a resting bug can still send a challenge');
-  barn.doc.pens[owner.id].boutAt = 0; barn.save();
+  assert.equal(sent.status, 200);
   const made = sent.body.challenges.outgoing[0];
   assert.equal(made.expiresAt - made.at, CHALLENGE_OPEN_MS);
   assert.equal(balance(f, owner), 1000, 'nothing is held'); assert.equal(sent.body.openBout, null);
@@ -495,18 +492,37 @@ test('a challenge holds no money, needs a mature bug on both sides and can be wi
   assert.equal((await drop(other, made.id)).body.challenges.incoming.length, 0);
   assert.equal((await drop(other, made.id)).status, 200, 'declining twice is harmless');
   assert.equal((await owner.api('GET', '/api/barn')).body.challenges.outgoing.length, 0);
-  // Three at a time.
+  // One per rival bug, as many rivals as you like.
   const fourth = await login('FourthRancher'), fifth = await login('FifthRancher'); hatch(fourth.id, 3); hatch(fifth.id, 3);
-  for (const target of [other, third, fourth]) assert.equal((await challenge(owner, target.id)).status, 200);
-  assert.equal((await challenge(owner, fifth.id)).status, 409);
+  for (const target of [other, third, fourth, fifth]) assert.equal((await challenge(owner, target.id)).status, 200);
   const mine = (await owner.api('GET', '/api/barn')).body.challenges.outgoing;
-  assert.equal((await drop(owner, mine[0].id)).body.challenges.outgoing.length, 2, 'withdrawing frees a place');
+  assert.equal((await drop(owner, mine[0].id)).body.challenges.outgoing.length, 3);
   // A bug that dies takes its challenges with it; the rest lapse after a day.
   barn.doc.pens[third.id].stage = 'dead'; barn.save();
-  assert.deepEqual((await owner.api('GET', '/api/barn')).body.challenges.outgoing.map(c => c.to), [fourth.id]);
+  assert.deepEqual((await owner.api('GET', '/api/barn')).body.challenges.outgoing.map(c => c.to), [fourth.id, fifth.id]);
   clock.now += CHALLENGE_OPEN_MS;
   assert.equal((await fourth.api('GET', '/api/me')).body.barnChallenges, 0);
   assert.equal((await owner.api('GET', '/api/barn')).body.challenges.outgoing.length, 0);
+});
+
+test('the Barn button counts open bouts for a bug that can fight, and a fight decided while you were away', async t => {
+  const f = await fixture(t); const { owner, other, hatch, login } = f;
+  const waiting = async player => (await player.api('GET', '/api/barn/waiting')).body.challenges;
+  hatch(owner.id, 3); hatch(other.id, 3);
+  const bugless = await login('NoBug');
+  const posted = await post(owner, 0);
+  assert.equal(await waiting(other), 1); assert.equal(await waiting(owner), 0, 'not your own'); assert.equal(await waiting(bugless), 0);
+  await cancel(owner, posted.body.openBout.id);
+  assert.equal(await waiting(other), 0);
+  const id = (await challenge(owner, other.id)).body.challenges.outgoing[0].id;
+  assert.equal(await waiting(other), 1);
+  assert.equal((await accept(other, id)).status, 200);
+  assert.equal(await waiting(other), 0, 'the one who accepted watched it');
+  assert.equal(await waiting(owner), 1);
+  assert.equal((await owner.api('GET', '/api/barn')).body.unseenBout, false, 'only the Barn page clears it');
+  assert.equal(await waiting(owner), 1);
+  assert.equal((await owner.api('GET', '/api/barn?seen=1')).body.unseenBout, true);
+  assert.equal(await waiting(owner), 0); assert.equal((await owner.api('GET', '/api/barn?seen=1')).body.unseenBout, false);
 });
 
 test('accepting a challenge takes both stakes then, settles once and puts the fight on the public record', async t => {
@@ -518,15 +534,15 @@ test('accepting a challenge takes both stakes then, settles once and puts the fi
   const mine = await post(other, 0); assert.equal((await accept(other, id)).status, 409); await cancel(other, mine.body.openBout.id);
   const theirs = await post(owner, 0); const blocked = await accept(other, id);
   assert.equal(blocked.status, 409); assert.match(blocked.body.error, /BugOwner has a bout posted/); await cancel(owner, theirs.body.openBout.id);
-  // Either side short of the stake, or the challenger's bug still resting.
+  // Either side short of the stake, or the challenger's bug fainted since.
   f.service.getPlayer(owner.id).bankroll = 50;
   const broke = await accept(other, id); assert.equal(broke.status, 409); assert.match(broke.body.error, /BugOwner can no longer cover/);
   f.service.getPlayer(owner.id).bankroll = 1000; f.service.getPlayer(other.id).bankroll = 50;
   assert.equal((await accept(other, id)).status, 402);
   f.service.getPlayer(other.id).bankroll = 1000;
-  barn.doc.pens[owner.id].boutAt = clock.now; barn.save();
-  const resting = await accept(other, id); assert.equal(resting.status, 429); assert.match(resting.body.error, /BugOwner's bug is not ready/);
-  barn.doc.pens[owner.id].boutAt = 0; barn.save();
+  barn.doc.pens[owner.id].faintedAt = clock.now; barn.save();
+  const resting = await accept(other, id); assert.equal(resting.status, 409); assert.match(resting.body.error, /BugOwner's bug is not ready/);
+  delete barn.doc.pens[owner.id].faintedAt; barn.save();
   assert.equal(balance(f, owner) + balance(f, other), 2000); assert.equal(barn.doc.challenges.length, 1, 'a refused accept leaves the challenge standing');
 
   const done = await accept(other, id);
@@ -536,8 +552,8 @@ test('accepting a challenge takes both stakes then, settles once and puts the fi
   assert.equal(done.body.challenges.incoming.length, 0);
   for (const player of [owner, other]) {
     const pen = (await player.api('GET', '/api/barn')).body.pen;
-    assert.equal(pen.xp, xpFor(6) + BOUT_XP); assert.equal(recordCount(pen), 1);
-    assert.equal(pen.lastBout.id, id); assert.equal(pen.boutCoolMs, BOUT_COOLDOWN_MS);
+    assert.equal(pen.xp, xpFor(6) + earned(pen)); assert.equal(recordCount(pen), 1);
+    assert.equal(pen.lastBout.id, id);
   }
   const players = JSON.parse(JSON.stringify(f.service.store.players)), pens = structuredClone(barn.doc.pens);
   assert.equal((await accept(other, id)).status, 200, 'a retry is answered without another fight');

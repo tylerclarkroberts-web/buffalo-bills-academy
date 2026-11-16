@@ -323,7 +323,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/egg', needPlayer, wrap((req) => mines.takeEgg(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
   // ----- the Barn (v30) -----
-  api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id)));
+  api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id, { seen: req.query.seen === '1' })));
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''))));
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
@@ -336,7 +336,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/barn/fights/:id', needPlayer, wrap((req) => barn.fight(req.params.id)));
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
-  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id))); // v75: the Bug Center nurse, always free
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
@@ -525,6 +525,28 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       if (req.headers['if-none-match'] === hit.etag) return res.status(304).end();
       res.set({ 'Content-Type': type, 'Content-Encoding': 'gzip', 'Content-Length': hit.gz.length, 'X-Bba-Size': hit.size, ETag: hit.etag, Vary: 'Accept-Encoding', 'Cache-Control': 'public, max-age=86400' });
       res.end(hit.gz);
+    });
+    // The Hall of Doors' Nanosaur build (~20 MB) is gzipped at build time (vite.config.js writes <file>.gz next to
+    // each one) and streamed from disk, so none of it sits in this small machine's memory. Fixed names only; without
+    // a .gz (dev) or without gzip support it falls through to the plain static file.
+    const nanoDir = path.join(staticDir, 'nanosaur');
+    const NANO_GZ = { 'Nanosaur.data': 'application/octet-stream', 'Nanosaur.wasm': 'application/wasm', 'Nanosaur.js': 'text/javascript; charset=utf-8' };
+    const nanoMeta = new Map();
+    app.get('/nanosaur/:file', (req, res, next) => {
+      const type = NANO_GZ[req.params.file];
+      if (!type || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return next();
+      let hit = nanoMeta.get(req.params.file);
+      if (!hit) {
+        const f = path.join(nanoDir, req.params.file), gz = `${f}.gz`;
+        if (!fs.existsSync(f) || !fs.existsSync(gz)) return next();
+        const raw = fs.statSync(f), z = fs.statSync(gz);
+        hit = { gz, gzSize: z.size, size: raw.size, etag: `"n${raw.size.toString(36)}-${Math.floor(raw.mtimeMs).toString(36)}-${z.size.toString(36)}"` };
+        nanoMeta.set(req.params.file, hit);
+      }
+      if (req.headers['if-none-match'] === hit.etag) return res.status(304).end();
+      res.set({ 'Content-Type': type, 'Content-Encoding': 'gzip', 'Content-Length': hit.gzSize, 'X-Bba-Size': hit.size, ETag: hit.etag, Vary: 'Accept-Encoding', 'Cache-Control': 'public, max-age=86400' });
+      if (req.method === 'HEAD') return res.end();
+      fs.createReadStream(hit.gz).on('error', () => res.destroy()).pipe(res);
     });
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
     app.get('/{*splat}', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
