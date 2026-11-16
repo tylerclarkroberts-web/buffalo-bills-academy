@@ -1,0 +1,125 @@
+// The shared ring fight: one action at a time, moves lined up by the owner or picked by the bug, and the Barn's
+// money held while a fight is on and paid when it ends.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createApp } from '../server/app.js';
+import { ROSTER, xpFor } from '../server/engine/creatures.js';
+import { startBout, stepBout, simulateBout, nextMove, MAX_ROUNDS } from '../server/engine/bout.js';
+import { traitFor } from '../server/engine/bug-combat.js';
+import { Fights, FIGHT } from '../server/fights.js';
+
+const bug = (species, extra = {}) => ({ species, name: species, level: 10, ...extra });
+
+test('every species has a trait, and a fight left alone is the same fight every time', () => {
+  for (const b of ROSTER) assert.ok(traitFor(b.id)?.name && traitFor(b.id).description, b.id);
+  const a = simulateBout(bug('lamprima'), bug('sagra'), 'seed');
+  assert.deepEqual(a, simulateBout(bug('lamprima'), bug('sagra'), 'seed'));
+  assert.ok(a.rounds.filter(r => r.type === 'move').length <= MAX_ROUNDS);
+  assert.ok(a.rounds[a.rounds.length - 1].hp.some(hp => hp <= 0) || a.rounds.filter(r => r.type === 'move').length === MAX_ROUNDS, 'a knockout or the bell');
+});
+
+test('a lined-up move is used when it is ready; one still recovering falls back to the bug\'s own pick', () => {
+  const S = startBout(bug('lamprima'), bug('sagra'), 'pick'), me = S.by;
+  assert.equal(stepBout(S, 'capstone').find(r => r.type === 'move').moveId, 'capstone');
+  stepBout(S); // the other bug
+  const again = stepBout(S, 'capstone').find(r => r.type === 'move');
+  assert.equal(again.by, me);
+  assert.notEqual(again.moveId, 'capstone', 'still recovering');
+  assert.equal(nextMove(S, me, 'not-a-move').id, nextMove(S, me).id);
+  const young = startBout(bug('lamprima', { level: 1 }), bug('sagra', { level: 1 }), 'young');
+  assert.notEqual(stepBout(young, 'capstone').find(r => r.type === 'move').moveId, 'capstone', 'not learned yet');
+});
+
+test('a watched fight takes one action a beat and uses the lined-up moves; an unwatched one runs straight through', () => {
+  let now = 1000, finished = 0;
+  const fights = new Fights({ now: () => now });
+  const fight = fights.start({ id: 'f1', kind: 'barn', players: ['a', 'b'], fighters: [bug('lamprima'), bug('sagra')], seed: 's', watching: ['a'], onFinish: () => finished++ });
+  assert.equal(fights.line(fight, 'a', ['capstone', 'basic', 'technique', 'tactic']), false, 'three at most');
+  assert.equal(fights.line(fight, 'a', ['not-a-move']), false);
+  assert.equal(fights.line(fight, 'c', ['basic']), false, 'not their fight');
+  assert.ok(fights.line(fight, 'a', ['capstone', 'basic']));
+  fights.sweep();
+  assert.equal(fight.S.turn, 0, 'the entrance comes first');
+  for (let i = 0; i < 4; i++) { now = fight.nextAt; fights.view(fight, 'a'); const before = fight.S.turn; fights.sweep(); assert.equal(fight.S.turn, before + 1); }
+  assert.deepEqual(fight.S.rounds.filter(r => r.type === 'move' && r.by === 0).map(r => r.moveId), ['capstone', 'basic']);
+  assert.deepEqual(fights.view(fight, 'a').queue, []);
+  const theirs = fights.view(fight, 'b', 2);
+  assert.equal(theirs.you.species, 'sagra'); assert.equal(theirs.from, 2);
+  assert.deepEqual(theirs.rounds[0].hp, [...fight.S.rounds[2].hp].reverse(), 'turned to their corner');
+  now += FIGHT.watchMs + 1; fights.sweep();
+  assert.ok(fight.over); assert.equal(finished, 1); assert.equal(fights.fightOf('a'), null);
+  assert.ok(['won', 'lost', 'draw'].includes(fights.view(fight, 'a').result));
+  now += FIGHT.keepMs + 1; fights.sweep();
+  assert.equal(fights.get('f1'), null, 'forgotten after a minute');
+});
+
+async function fixture(t) {
+  const prefix = path.join(os.tmpdir(), 'bba-ring-fight-');
+  const dataDir = fs.mkdtempSync(prefix), clock = { now: 1_800_000_000_000 };
+  let running, server, base;
+  const boot = async () => {
+    running = createApp({ dataDir, now: () => clock.now, devLogin: true, env: { BARN_INCUBATE_MS: '1' } });
+    server = await new Promise(resolve => { const s = running.app.listen(0, '127.0.0.1', () => resolve(s)); });
+    base = `http://127.0.0.1:${server.address().port}`;
+  };
+  const stop = async () => { running.shutdown(); server.closeAllConnections?.(); await new Promise(resolve => server.close(resolve)); };
+  await boot();
+  t.after(async () => { await stop(); assert.ok(path.resolve(dataDir).startsWith(path.resolve(prefix))); fs.rmSync(dataDir, { recursive: true, force: true }); });
+  const login = async name => {
+    const res = await fetch(`${base}/auth/dev`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, email: `${name.toLowerCase()}@example.test` }) });
+    const cookie = res.headers.get('set-cookie').split(';')[0], id = (await res.json()).id;
+    const api = async (method, url, body) => { const r = await fetch(base + url, { method, headers: { 'content-type': 'application/json', cookie }, body: body === undefined ? undefined : JSON.stringify(body) }); return { status: r.status, body: await r.json() }; };
+    return { id, api };
+  };
+  const host = await login('RingHost'), guest = await login('RingGuest');
+  const hatch = (id, level) => { const barn = running.service.barn; barn.layEgg(id); clock.now += 1; barn.view(id); barn.doc.pens[id].xp = xpFor(level); barn.save(); };
+  const cash = player => running.service.getPlayer(player.id).bankroll;
+  return { clock, host, guest, hatch, cash, get barn() { return running.service.barn; }, restart: async () => { await stop(); await boot(); } };
+}
+
+test('joining a bout holds both stakes, plays live and pays the pot when it ends', async t => {
+  const f = await fixture(t), { host, guest, hatch, cash, clock } = f;
+  hatch(host.id, 1); hatch(guest.id, 4); // a level 1 bug may bout now
+  const start = [cash(host), cash(guest)];
+  const posted = await host.api('POST', '/api/barn/bouts', { stake: 50 });
+  assert.equal(posted.status, 200);
+  const id = posted.body.openBout.id, joined = await guest.api('POST', `/api/barn/bouts/${id}/join`, {});
+  assert.equal(joined.status, 200); assert.equal(joined.body.live, id);
+  assert.deepEqual([cash(host), cash(guest)], [start[0] - 50, start[1] - 50], 'both stakes are held while it is on');
+  assert.equal(joined.body.pen.lastBout, null, 'nothing is decided yet');
+  assert.equal((await guest.api('POST', '/api/barn/bouts', { stake: 0 })).status, 409, 'one ring at a time');
+  const live = (await guest.api('GET', `/api/barn/fight?id=${id}`)).body.fight;
+  assert.equal(live.live, true); assert.deepEqual(live.moves.map(m => m.id), ['basic', 'technique', 'signature']);
+  assert.deepEqual((await guest.api('POST', `/api/barn/fight/${id}/moves`, { moves: ['technique', 'basic'] })).body.fight.queue, ['technique', 'basic']);
+  assert.equal((await guest.api('POST', `/api/barn/fight/${id}/moves`, { moves: ['capstone'] })).status, 400, 'not learned at level 4');
+  assert.equal((await host.api('GET', '/api/barn/waiting')).body.challenges, 1, 'the host\'s Barn button says their bug is fighting');
+  clock.now += 10_000; f.barn.fights.sweep(); // nobody has looked for a while: it runs to the end
+  const mine = (await guest.api('GET', '/api/barn')).body, theirs = (await host.api('GET', '/api/barn?seen=1')).body;
+  assert.equal(mine.live, null); assert.equal(mine.pen.lastBout.id, id);
+  const result = mine.pen.lastBout.result;
+  assert.equal(cash(host) + cash(guest), start[0] + start[1], 'the pot goes somewhere and nowhere else');
+  if (result !== 'draw') assert.equal(cash(result === 'won' ? guest : host), (result === 'won' ? start[1] : start[0]) + 50);
+  assert.equal(theirs.unseenBout, true, 'the host was not there to see it');
+  assert.equal(theirs.pen.lastBout.result, result === 'won' ? 'lost' : result === 'lost' ? 'won' : 'draw');
+  assert.ok(mine.pen.lastBout.xpEarned > 0 && theirs.pen.lastBout.xpEarned > 0);
+  assert.equal((await guest.api('GET', `/api/barn/fights/${id}`)).status, 200, 'on the ring\'s record');
+  assert.equal((await guest.api('POST', `/api/barn/bouts/${id}/join`, {})).body.pen.lastBout.id, id, 'a late retry changes nothing');
+  assert.equal(cash(host) + cash(guest), start[0] + start[1]);
+});
+
+test('a restart mid-fight calls it off: both stakes go back and nobody is paid or scored', async t => {
+  const f = await fixture(t), { host, guest, hatch, cash } = f;
+  hatch(host.id, 3); hatch(guest.id, 3);
+  const start = [cash(host), cash(guest)];
+  const id = (await host.api('POST', '/api/barn/bouts', { stake: 100 })).body.openBout.id;
+  await guest.api('POST', `/api/barn/bouts/${id}/join`, {});
+  assert.deepEqual([cash(host), cash(guest)], [start[0] - 100, start[1] - 100]);
+  await f.restart();
+  const view = (await guest.api('GET', '/api/barn')).body;
+  assert.equal(view.live, null); assert.equal(view.pen.lastBout, null);
+  assert.deepEqual([cash(host), cash(guest)], start);
+  assert.deepEqual(view.pen.record, { w: 0, l: 0, d: 0 });
+});

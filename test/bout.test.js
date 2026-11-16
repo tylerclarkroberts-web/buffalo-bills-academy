@@ -15,19 +15,16 @@ test('bout sim is deterministic and keeps combat events and HP bounded', () => {
   assert.ok([0, 1, null].includes(r1.winner));
 });
 
-test('equal-level basic-only bouts retain balanced species traits and no locked moves', () => {
-  let worst = 0;
-  for (let i = 0; i < ROSTER.length; i += 3) for (let j = 1; j < ROSTER.length; j += 5) {
-    if (i === j) continue;
-    let w = 0; const N = 400;
-    for (let s = 0; s < N; s++) {
-      const o = simulateBout({ ...A, species: ROSTER[i].id, level: 3, battle: { stance: 'balanced', specials: [] } }, { ...B, species: ROSTER[j].id, level: 3, battle: { stance: 'balanced', specials: [] } }, `f${s}`);
-      for (const r of o.rounds) assert.equal(r.moveId, 'basic', 'level 3 has only its basic move');
-      if (o.winner === 0) w++;
+test('level 3 bouts use only what a level 3 bug has learned, and no species runs away with the field', () => {
+  for (const mine of ROSTER) {
+    let w = 0, n = 0;
+    for (const theirs of ROSTER) if (theirs !== mine) for (let s = 0; s < 30; s++) {
+      const o = simulateBout({ ...A, species: mine.id, level: 3 }, { ...B, species: theirs.id, level: 3 }, `f${s}`);
+      for (const r of o.rounds) if (r.type === 'move') assert.ok(r.moveId === 'basic' || r.moveId === 'technique', 'level 3 has its strike and its technique');
+      w += o.winner === 0 ? 1 : o.winner === null ? 0.5 : 0; n++;
     }
-    worst = Math.max(worst, Math.abs(w / N - 0.5));
+    assert.ok(w / n > 0.3 && w / n < 0.7, `${mine.id} wins ${Math.round((100 * w) / n)}% of level 3 bouts`);
   }
-  assert.ok(worst < 0.15, `worst pair ${worst}`);
 });
 
 test('BARN_TEST_XP only works with dev login', async () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BugBattle } from './BugBattle.jsx';
+import Bout, { mergeFight } from '../barn/Bout.jsx';
 import { createPvpClient, pvpAmbush, pvpForfeit, pvpMove } from './pvpClient.js';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
@@ -490,7 +490,13 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const showBattle = (b) => {
     if (!b || dismissed.current.has(b.id)) return;
     if (!battleRef.current) { freeze(); audio?.dread(false); }
-    battleRef.current = b; setBattle(b);
+    // The server sends only the blows this page has not seen; the ring wants the whole fight so far, plus what the mine adds at the end.
+    const m = mergeFight(battleRef.current, b), raid = m.over?.raid, sign = m.over?.won ? '+' : '−';
+    if (m.over) Object.assign(m, { xpEarned: m.over.bug?.xp, levelBefore: m.over.bug?.levelBefore, levelAfter: m.over.bug?.levelAfter,
+      ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: 'No contest. Nobody gets robbed.' } : {}),
+      spoils: raid ? [`${sign}$${raid.cash}${raid.cashCapped ? ' (daily loss cap)' : ''}`, `${sign}${Math.floor(m.over.won ? raid.gained || raid.acid : raid.acid)} acid`,
+        ...(raid.tobacco?.length ? [`${sign}${raid.tobacco.join(', ')}`] : [])] : [] });
+    battleRef.current = m; setBattle(m);
   };
   const onPvp = (v) => {
     if (done.current) return;
@@ -522,7 +528,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (state.pools || state.result || Object.hasOwn(state, 'pending')) accept(state);
     } catch (e) { setLine(String(e.message || 'TOO LATE.').toUpperCase()); }
   };
-  const battleMove = async (i) => { const b = battleRef.current; if (!b) return; try { await pvpMove(pvpSend, b.id, i); pvp.current?.beat(); } catch (e) { setLine(String(e.message).toUpperCase()); } };
+  const battleMove = async (moves) => { const b = battleRef.current; if (!b) return; try { showBattle((await pvpMove(pvpSend, b.id, moves, b.rounds.length)).battle); } catch (e) { setLine(String(e.message).toUpperCase()); } };
   const battleForfeit = async () => { try { await pvpForfeit(pvpSend); } catch { /* the next heartbeat tells */ } pvp.current?.beat(); };
   const battleDone = () => {
     const b = battleRef.current; if (b) dismissed.current.add(b.id);
@@ -654,7 +660,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (bucketShift) {
       pvp.current = createPvpClient({
         send: pvpSend, onView: onPvp,
-        pose: () => (doomRef.current || done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw, dance: danceRef.current }),
+        pose: () => (doomRef.current || done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw, have: battleRef.current?.rounds.length || 0, dance: danceRef.current }),
         onError: (e) => { if (e.code === 'mine_reload') fail(e); },
       });
     }
@@ -854,7 +860,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
-      {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
+      {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
         {!tiltActive && <MovePad apply={move} />}

@@ -59,7 +59,7 @@ test('replays of real bouts keep a sane timeline, from either fighter\'s side', 
         for (const beat of plan.beats) {
           assert.equal(beat.at, at); assert.ok(beat.charge <= beat.impactAt && beat.impactAt < beat.dur); at += beat.dur;
           assert.ok(beat.dur - beat.impactAt - beat.stop >= 1300, 'after a blow lands there is time to read it before the next begins');
-          if (beat.kind === 'tick') assert.ok(beat.before[1 - beat.r.by].poison > 0, 'venom only ticks on a poisoned bug');
+          if (beat.kind === 'tick' && !beat.r.pop) assert.ok(beat.before[1 - beat.r.by].poison > 0, 'venom only ticks on a poisoned bug');
           assert.equal(locate(plan, beat.at).i, beat.i); assert.equal(locate(plan, beat.at + beat.impactAt).phase, 'land');
         }
         assert.equal(plan.total, plan.end + FINISH_MS);
@@ -79,7 +79,7 @@ test('the whole show draws without errors for every style, wide and tall, and wi
     for (const [W, H] of [[900, 420], [330, 520]]) {
       const x = new Canvas(W, H).getContext(), fx = { parts: [], fired: new Set() };
       for (let tt = 0; tt <= plan.total + 500; tt += 33) drawBout(x, { W, H, bout: b, plan, t: tt, reduced: false, fx });
-      assert.equal(fx.fired.size, plan.beats.length, 'every beat landed once');
+      assert.equal(fx.fired.size, plan.beats.filter((beat) => beat.kind !== 'skip').length, 'every blow landed once (a lost turn lands nothing)');
       drawBout(x, { W, H, bout: b, plan, t: plan.total + 1, reduced: true, fx: { parts: [], fired: new Set() } });
     }
   });

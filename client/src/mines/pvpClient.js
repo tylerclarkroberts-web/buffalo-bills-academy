@@ -3,14 +3,14 @@
 // and how your bug battle is going. One request at a time; a slow answer just skips a beat.
 export const PVP_TICK_MS = 250;
 
-export function createPvpClient({ send, pose, onView, onError, intervalMs = PVP_TICK_MS, paused = () => false, setTimer = setInterval, clearTimer = clearInterval }) {
+export function createPvpClient({ send, pose, onView, onError, path = '/mines/pvp/tick', intervalMs = PVP_TICK_MS, paused = () => false, setTimer = setInterval, clearTimer = clearInterval }) {
   let busy = false, fresh = true, stopped = false, failures = 0;
   const beat = async () => {
     if (busy || stopped || paused()) return;
     const p = pose(); if (!p) return;
     busy = true;
     try {
-      const view = await send('/mines/pvp/tick', { x: p.x, y: p.y, yaw: p.yaw, ...(p.dance ? { dance: p.dance } : {}), ...(fresh ? { fresh: true } : {}) });
+      const view = await send(path, { ...p, ...(fresh ? { fresh: true } : {}) }); // the picnic beats the same way with its own path and pose
       fresh = false; failures = 0;
       if (!stopped) onView(view);
     } catch (e) {
@@ -28,6 +28,6 @@ export function createPvpClient({ send, pose, onView, onError, intervalMs = PVP_
 }
 
 /** Battle calls go straight through; the next heartbeat shows the result. */
-export const pvpMove = (send, battleId, move) => send('/mines/pvp/move', { battleId, move });
+export const pvpMove = (send, battleId, moves, have) => send('/mines/pvp/move', { battleId, moves, have });
 export const pvpAmbush = (send, target) => send('/mines/pvp/ambush', { target });
 export const pvpForfeit = (send) => send('/mines/pvp/forfeit', {});

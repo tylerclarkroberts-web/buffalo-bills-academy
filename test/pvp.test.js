@@ -225,25 +225,28 @@ test('the same two miners can only rob each other once every two hours; three ca
   assert.equal(g.bob.bankroll, before);
 });
 
-test('face to face and touching: a bug battle starts; mining waits; turns resolve on the server', (t) => {
+test('face to face and touching: the ring fight starts; mining waits; miners line up moves and the fight keeps its own time', (t) => {
   const f = fixture(t);
   f.barn.doc.pens.ann = { stage: 'creature', species: 'manticora', name: 'Manticora I', xp: 40 * 16, bornAt: f.clock.now, fedAt: f.clock.now, stats: { hunger: { v: 80, at: f.clock.now }, mood: { v: 80, at: f.clock.now }, clean: { v: 80, at: f.clock.now } }, cool: {} };
   const { a, b, at, view } = f.setup({ bobFacing: WEST });
   assert.ok(view.battle, 'the battle starts on the report that closes the gap');
-  const id = view.battle.id;
-  assert.equal(view.battle.you.name, 'Manticora I'); assert.equal(view.battle.you.level, 5); assert.equal(view.battle.you.moves.length, 4);
-  assert.equal(view.battle.foe.name, 'Gerald (on loan)', 'a miner with no bug borrows the Foreman\'s'); assert.equal(view.battle.foe.moves, undefined);
+  const id = view.battle.id, battle = f.pvp.battles.get(id);
+  assert.equal(view.battle.kind, 'mine'); assert.equal(view.battle.live, true);
+  assert.equal(view.battle.you.name, 'Manticora I'); assert.equal(view.battle.you.level, 5);
+  assert.deepEqual(view.battle.moves.map((m) => m.id), ['basic', 'technique', 'signature'], 'what a level 5 bug has learned');
+  assert.equal(view.battle.them.name, 'Gerald (on loan)', 'a miner with no bug borrows the Foreman\'s');
   assert.throws(() => f.mines.extract(f.ann, a.shiftId, { ...V, action: 'start', poolId: 'p0' }), /./);
   // Frozen in place while fighting.
   f.clock.now += 250; f.tick(f.ann, a, { x: at.x - 0.8, y: at.y, yaw: EAST });
   assert.equal(f.pvp.presence.get('ann').x, at.x);
-  assert.throws(() => f.pvp.move(f.ann, { battleId: id, move: 9 }), /does not know/);
-  f.pvp.move(f.ann, { battleId: id, move: 0 });
-  assert.throws(() => f.pvp.move(f.ann, { battleId: id, move: 1 }), /already/);
-  const r = f.pvp.move(f.bob, { battleId: id, move: 0 });
-  assert.equal(r.battle.turns.length, 1); assert.equal(r.battle.turn, 2);
-  assert.ok(r.battle.turns[0].events.some((e) => /USED/.test(e.s)));
-  assert.ok(b);
+  assert.throws(() => f.pvp.move(f.ann, { battleId: id, moves: ['capstone'] }), /does not know/);
+  assert.deepEqual(f.pvp.move(f.ann, { battleId: id, moves: ['signature', 'basic'] }).battle.queue, ['signature', 'basic']);
+  assert.equal(battle.fight.S.turn, 0, 'nothing happens until the first beat');
+  f.clock.now = battle.fight.nextAt; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 });
+  assert.equal(battle.fight.S.turn, 1, 'one action a beat');
+  const later = f.pvp.battleView(battle, 'ann', 0);
+  assert.ok(later.rounds.length >= 1 && later.rounds.every((r) => r.line));
+  assert.equal(f.pvp.battleView(battle, 'ann', later.rounds.length).rounds.length, 0, 'only the blows the page has not seen');
 });
 
 test('the battle winner takes acid, $20-$100 and every tobacco product; duplicates get smoked', (t) => {
@@ -252,13 +255,14 @@ test('the battle winner takes acid, $20-$100 and every tobacco product; duplicat
   f.shop.inv('ann').own = { 'tob-rollie': 1 };
   const { a, b, view } = f.setup({ bobFacing: WEST });
   f.collect(f.bob, b, 25);
-  const battle = f.pvp.battles.get(view.battle.id);
-  battle.state.sides[battle.a === 'ann' ? 'b' : 'a'].hp = 1; // bob's bug is on its last legs
+  const battle = f.pvp.battles.get(view.battle.id), bobSide = battle.a === 'bob' ? 0 : 1;
   const before = { ann: f.ann.bankroll, bob: f.bob.bankroll };
-  f.pvp.move(f.ann, { battleId: battle.id, move: 0 });
-  const end = f.pvp.move(f.bob, { battleId: battle.id, move: 0 });
-  assert.equal(end.battle.over.won, false);
-  const raid = end.battle.over.raid;
+  let annSees = null; // the report on which ann's page hears she won
+  // bob's bug is on its last legs; both miners stay and leave it to the bugs
+  for (let i = 0; i < 40 && !battle.over; i++) { battle.fight.S.hp[bobSide] = 1; battle.fight.S.hp[1 - bobSide] = battle.fight.S.maxHp[1 - bobSide]; f.clock.now = battle.fight.nextAt; const seen = f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 }); if (seen.notice) annSees = seen; if (!battle.over) f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); }
+  const end = f.pvp.battleView(battle, 'bob');
+  assert.equal(end.live, false); assert.equal(end.result, 'lost'); assert.equal(end.over.won, false);
+  const raid = end.over.raid;
   assert.equal(raid.cash, 30); assert.equal(raid.acid, 25);
   assert.deepEqual(raid.tobacco, ['Big Cigar']); assert.deepEqual(raid.smoked, ['Hand-Rolled Cigarette']);
   assert.deepEqual(f.shop.doc.inv.bob.own, { 'hat-cowboy': 1 }, 'only the tobacco goes');
@@ -269,25 +273,21 @@ test('the battle winner takes acid, $20-$100 and every tobacco product; duplicat
   assert.deepEqual(f.mines.doc.completed.bob.result.pvp.tobacco.sort(), ['Big Cigar', 'Hand-Rolled Cigarette']);
   const bobSees = f.tick(f.bob, b, { x: 1, y: 1, yaw: 0 });
   assert.equal(bobSees.battle.over.won, false); assert.equal(bobSees.result.outcome, 'defeated');
-  const annSees = f.tick(f.ann, a, { x: f.pvp.presence.get('ann').x, y: f.pvp.presence.get('ann').y, yaw: EAST });
   assert.equal(annSees.battle.over.won, true); assert.equal(annSees.notice.won, true);
   assert.equal(annSees.shift.collected, 25);
 });
 
-test('turn timer: a side that does not choose gets a random legal move; a disconnect forfeits', (t) => {
+test('a miner who lines nothing up leaves it to the bug; a disconnect forfeits', (t) => {
   const f = fixture(t);
   const { a, b, view } = f.setup({ bobFacing: WEST });
-  const id = view.battle.id;
-  f.pvp.move(f.ann, { battleId: id, move: 0 });
-  f.clock.now += PVP.introMs; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 }); // the first turn's clock also covers the intro (v75)
-  f.clock.now += PVP.turnMs / 2; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 }); // both still here...
-  f.clock.now += PVP.turnMs / 2 + 1; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); // ...and bob never picks: the timer does
-  assert.equal(f.pvp.battles.get(id).state.turn, 2);
+  const id = view.battle.id, battle = f.pvp.battles.get(id);
+  f.clock.now = battle.fight.nextAt; f.tick(f.bob, b, { x: 0, y: 0, yaw: 0 }); f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 });
+  assert.equal(battle.fight.S.turn, 1, 'nobody picked, so the bug did');
   // Bob stops reporting: after the disconnect window he forfeits and loses the spoils.
   for (let i = 0; i < 4; i++) { f.clock.now += 5000; f.tick(f.ann, a, { x: 0, y: 0, yaw: 0 }); }
-  const battle = f.pvp.battles.get(id);
   assert.equal(battle.over.reason, 'disconnect');
   assert.equal(battle.over.winner, battle.a === 'ann' ? 'a' : 'b');
+  assert.equal(f.pvp.battleView(battle, 'ann').result, 'won');
   assert.equal(f.mines.doc.active.bob, undefined);
 });
 
@@ -337,7 +337,7 @@ test('HTTP: tick, ambush and move are signed-in only and validate their input', 
   assert.equal(tick.status, 200); assert.deepEqual(tick.body.others, []); assert.equal(tick.body.shield, 'greenhorn');
   assert.equal((await post('/mines/pvp/tick', { shiftId: s.shiftId })).body.code, 'mine_reload');
   assert.equal((await post('/mines/pvp/ambush', { shiftId: s.shiftId, target: 'nobody' })).status, 409);
-  assert.equal((await post('/mines/pvp/move', { battleId: 'x', move: 0 })).status, 409);
+  assert.equal((await post('/mines/pvp/move', { battleId: 'x', moves: ['basic'] })).status, 409);
   assert.equal((await post('/mines/pvp/forfeit', {})).body.battle, null);
 });
 

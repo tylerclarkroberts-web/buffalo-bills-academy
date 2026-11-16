@@ -9,6 +9,7 @@ import { Store } from '../server/store.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
 const earned = (pen) => BOUT_XP + (pen.lastBout.result === 'won' ? BOUT_WIN_XP : 0); // winners get the bonus, losers and draws do not
 
+let current; // the running fixture: tests in a file run one at a time
 async function fixture(t) {
   const prefix = path.join(os.tmpdir(), 'bba-barn-combat-');
   const dataDir = fs.mkdtempSync(prefix);
@@ -46,12 +47,25 @@ async function fixture(t) {
     barn.doc.pens[id].xp = xpFor(level); barn.save();
     return barn.doc.pens[id];
   };
-  return { dataDir, clock, get service() { return running.service; }, get barn() { return running.service.barn; },
+  return current = { dataDir, clock, get service() { return running.service; }, get barn() { return running.service.barn; },
     anon, owner, other, client, hatch, login, restart: async () => { await stop(); await boot(); } };
 }
 
 const post = (player, stake = 0) => player.api('POST', '/api/barn/bouts', { stake });
-const join = (player, id, body = {}) => player.api('POST', `/api/barn/bouts/${id}/join`, body);
+/**
+   * A fight is live once it is joined or accepted. The player who took it watches it to the end, leaving the moves to
+   * the bugs; the answer is then the Barn as that player next sees it. Paying out is the server's own work now, not a
+   * request, so a failed write there surfaces here as the 500 it used to be.
+   */
+const fought = async (player, res) => {
+  if (res.status !== 200 || !res.body.live) return res;
+  const fights = current.barn.fights, fight = fights.get(res.body.live);
+  try { for (let beat = 0; beat < 200 && !fight.over; beat++) { current.clock.now = Math.max(current.clock.now, fight.nextAt); fights.view(fight, player.id); fights.sweep(); } }
+  catch (error) { return { status: 500, body: { error: error.message } }; }
+  return { ...res, body: (await player.api('GET', '/api/barn')).body };
+};
+const join = async (player, id, body = {}) => fought(player, await player.api('POST', `/api/barn/bouts/${id}/join`, body));
+const accept = async (player, id, body = {}) => fought(player, await player.api('POST', `/api/barn/challenges/${id}/accept`, body));
 const cancel = (player, id) => player.api('DELETE', `/api/barn/bouts/${id}`);
 const recordCount = pen => Object.values(pen.record || {}).reduce((sum, count) => sum + count, 0);
 const balance = (f, player) => f.service.getPlayer(player.id).bankroll;
@@ -59,46 +73,41 @@ const balance = (f, player) => f.service.getPlayer(player.id).bankroll;
 test('battle settings require authentication and can change only the caller\'s bug', async t => {
   const { anon, owner, other, client, hatch, barn } = await fixture(t);
   hatch(owner.id, 6); hatch(other.id, 6);
-  const settings = { stance: 'aggressive', specials: ['technique', 'signature'] };
+  const settings = { stance: 'aggressive' };
   assert.equal((await anon('PATCH', '/api/barn/battle', settings)).status, 401);
   const beforeOther = structuredClone(barn.doc.pens[other.id]);
   const save = await owner.api('PATCH', '/api/barn/battle', settings);
   assert.equal(save.status, 200, JSON.stringify(save.body));
-  assert.deepEqual(save.body.pen.battle, settings);
+  assert.deepEqual(save.body.pen.battle, { stance: 'aggressive', specials: ['technique', 'signature'] }, 'left alone, a level 6 bug reaches for every special it has learned');
   assert.deepEqual(barn.doc.pens[other.id], beforeOther);
   assert.equal((await owner.api('PATCH', '/api/barn/battle', { ...settings, playerId: other.id })).status, 400);
   assert.deepEqual(barn.doc.pens[other.id], beforeOther);
   const guest = (await anon('POST', '/api/players', { name: 'Legacy Rancher' })).body;
   hatch(guest.id, 4);
   const guestApi = client({ authorization: `Bearer ${guest.token}` });
-  const guestSave = await guestApi('PATCH', '/api/barn/battle', { stance: 'defensive', specials: ['technique'] });
+  const guestSave = await guestApi('PATCH', '/api/barn/battle', { stance: 'defensive' });
   assert.equal(guestSave.status, 200, 'existing bearer guests retain access to their own Barn');
-  assert.deepEqual(guestSave.body.pen.battle, { stance: 'defensive', specials: ['technique'] });
+  assert.deepEqual(guestSave.body.pen.battle, { stance: 'defensive', specials: ['technique', 'signature'] });
 });
 
-test('battle settings reject malformed, duplicate, basic and locked selections without changing saved choices', async t => {
+test('battle settings reject anything but a known stance, without changing the saved one', async t => {
   const { owner, hatch, barn, dataDir, clock } = await fixture(t);
   hatch(owner.id, 4);
-  const settings = { stance: 'balanced', specials: ['technique'] };
+  const settings = { stance: 'aggressive' };
   assert.equal((await owner.api('PATCH', '/api/barn/battle', settings)).status, 200);
   const before = structuredClone(barn.doc);
   for (const body of [
-    {}, [], { specials: [] }, { stance: 'balanced' },
-    { stance: 'unknown', specials: [] }, { stance: 'balanced', specials: 'technique' },
-    { stance: 'balanced', specials: ['technique', 'technique'] },
-    { stance: 'balanced', specials: ['technique', 'signature', 'tactic'] },
-    { stance: 'balanced', specials: ['basic'] }, { stance: 'balanced', specials: ['signature'] },
-    { stance: 'balanced', specials: ['missing'] }, { stance: 'balanced', specials: [null] },
+    {}, [], { specials: [] }, { stance: 'unknown' }, { stance: 7 }, { stance: null },
+    { stance: 'balanced', specials: ['technique'] }, // the two-special setup is gone: you choose moves in the ring
     { ...settings, xp: 99999 },
   ]) {
     const result = await owner.api('PATCH', '/api/barn/battle', body);
     assert.equal(result.status, 400, JSON.stringify(body));
     assert.deepEqual(barn.doc, before);
   }
-  const empty = { stance: 'defensive', specials: [] };
-  assert.equal((await owner.api('PATCH', '/api/barn/battle', empty)).status, 200, 'basic-only is a valid choice');
+  assert.equal((await owner.api('PATCH', '/api/barn/battle', { stance: 'defensive' })).status, 200);
   const reloaded = new Barn({ store: new Store(dataDir), now: () => clock.now });
-  assert.deepEqual(reloaded.view(owner.id).pen.battle, empty);
+  assert.deepEqual(reloaded.view(owner.id).pen.battle, { stance: 'defensive', specials: ['technique', 'signature'] });
 });
 
 test('paid open bouts use the chosen opponent, settle both wallets and award both bugs once', async t => {
@@ -157,14 +166,16 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   assert.equal(balance(f, owner) + balance(f, other), 2000);
 });
 
-test('open bouts require authentication, valid stakes, a mature living bug and available funds', async t => {
+test('open bouts require authentication, valid stakes, a hatched living bug and available funds', async t => {
   const f = await fixture(t); const { owner, other, anon, barn } = f;
   assert.equal((await anon('POST', '/api/barn/bouts', { stake: 1 })).status, 401);
   assert.equal((await anon('POST', '/api/barn/bouts/missing/join', {})).status, 401);
   assert.equal((await anon('DELETE', '/api/barn/bouts/missing')).status, 401);
   assert.equal((await post(owner)).status, 404);
   barn.layEgg(owner.id); assert.equal((await post(owner)).status, 409);
-  f.clock.now++; barn.view(owner.id); assert.equal((await post(owner)).status, 409);
+  f.clock.now++; barn.view(owner.id);
+  const young = await post(owner); assert.equal(young.status, 200, 'any hatched bug may bout, from level 1');
+  assert.equal((await cancel(owner, young.body.openBout.id)).status, 200);
   barn.doc.pens[owner.id].xp = xpFor(3); barn.save();
   f.hatch(other.id, 3);
   const playersBefore = structuredClone(f.service.store.players), pensBefore = structuredClone(barn.doc.pens);
@@ -199,7 +210,7 @@ test('posting freezes the advertised setup; cancellation and expiry refund witho
   f.hatch(owner.id, 6); f.hatch(other.id, 6);
   const opened = await post(owner, 10.01); const id = opened.body.openBout.id;
   const beforeXp = opened.body.pen.xp;
-  assert.equal((await owner.api('PATCH', '/api/barn/battle', { stance: 'aggressive', specials: ['technique'] })).status, 409);
+  assert.equal((await owner.api('PATCH', '/api/barn/battle', { stance: 'aggressive' })).status, 409);
   assert.ok([403, 404].includes((await cancel(other, id)).status));
   const ownSecond = await post(other, 5); assert.equal(ownSecond.status, 200);
   assert.equal((await join(other, id)).status, 409, 'a player cannot keep a listing and join another bout');
@@ -411,7 +422,7 @@ test('failed persistence leaves battle choices unchanged', async t => {
   const saveDoc = service.store.saveDoc.bind(service.store);
   service.store.saveDoc = (name, doc) => { if (name === 'barn') throw new Error('simulated write failure'); return saveDoc(name, doc); };
   t.after(() => { service.store.saveDoc = saveDoc; });
-  assert.equal((await owner.api('PATCH', '/api/barn/battle', { stance: 'aggressive', specials: ['technique'] })).status, 500);
+  assert.equal((await owner.api('PATCH', '/api/barn/battle', { stance: 'aggressive' })).status, 500);
   assert.deepEqual(barn.doc, before);
   assert.equal(fs.readFileSync(path.join(dataDir, 'barn.json'), 'utf8'), diskBefore);
 });
@@ -433,18 +444,17 @@ test('legacy creatures retain earned abilities and saved identity, XP, records a
     for (const key of Object.keys(old)) assert.deepEqual(pen[key], old[key], `${id}: ${key}`);
     const count = id === '1' ? 1 : id === '3' ? 2 : 3;
     assert.equal(pen.legacyAbilities, count);
-    assert.equal(barn.view(id).pen.abilities.filter(move => move.unlocked).length, count);
+    assert.equal(barn.view(id).pen.abilities.filter(move => move.unlocked).length, Math.max(count, 2), 'nothing learned is lost, and every bug now starts with its strike and technique');
   }
   assert.deepEqual(new Barn({ store, now: () => now }).doc, barn.doc, 'migration is idempotent');
   barn.layEgg('new');
   const later = new Barn({ store, now: () => now + 1, incubateMs: 1, eggInt: () => 0 });
   const newborn = later.view('new').pen;
-  assert.equal(newborn.level, 1); assert.equal(newborn.abilities.some(move => move.unlocked), false);
+  assert.equal(newborn.level, 1); assert.deepEqual(newborn.abilities.filter(move => move.unlocked).map(move => move.id), ['basic', 'technique'], 'a newborn knows its strike and its technique');
   assert.equal(later.doc.pens.new.legacyAbilities, undefined);
 });
 
 const challenge = (player, to, stake = 0) => player.api('POST', '/api/barn/challenges', { to, stake });
-const accept = (player, id, body = {}) => player.api('POST', `/api/barn/challenges/${id}/accept`, body);
 const drop = (player, id) => player.api('DELETE', `/api/barn/challenges/${id}`);
 
 test('the ring lists every living bug of a visible owner, even to a player with no bug, without needs or XP', async t => {
@@ -458,12 +468,12 @@ test('the ring lists every living bug of a visible owner, even to a player with 
   assert.equal(view.pen, null);
   assert.deepEqual(view.roster.map(bug => bug.ownerId), [owner.id, other.id, young.id], 'highest level first; eggs, the dead and hidden owners are left out');
   for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'level', 'name', 'owner', 'ownerId', 'record', 'species', 'style']);
-  assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, false]]);
+  assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, true]]);
   assert.deepEqual(view.challenges, { incoming: [], outgoing: [] }); assert.deepEqual(view.fights, []);
   assert.equal((await watcher.api('POST', '/api/barn/challenges', { to: owner.id, stake: 0 })).status, 404, 'no bug, no challenge');
 });
 
-test('a challenge holds no money, needs a mature bug on both sides and can be withdrawn, declined or left to lapse', async t => {
+test('a challenge holds no money, needs a living bug on both sides and can be withdrawn, declined or left to lapse', async t => {
   const f = await fixture(t); const { anon, owner, other, barn, hatch, login, clock } = f;
   assert.equal((await anon('POST', '/api/barn/challenges', { to: other.id, stake: 0 })).status, 401);
   hatch(owner.id, 6); hatch(other.id, 2);
@@ -472,8 +482,6 @@ test('a challenge holds no money, needs a mature bug on both sides and can be wi
   }
   assert.equal((await challenge(owner, owner.id)).status, 409);
   assert.equal((await challenge(owner, 'nobody')).status, 404);
-  assert.equal((await challenge(owner, other.id)).status, 409, 'the other bug is too young');
-  assert.equal((await challenge(other, owner.id)).status, 409, 'and a young bug cannot challenge');
   barn.doc.pens[other.id].xp = xpFor(3); barn.save();
   assert.equal((await challenge(owner, other.id, 5000)).status, 402);
   const sent = await challenge(owner, other.id, 100);
