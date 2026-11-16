@@ -91,7 +91,17 @@ function tables(P, now) {
     lastRound: { no: 1, finish: [{ seat: 0, name: 'Ann', title: 'king', pay: 100, net: 100 }, { seat: 1, name: 'Bob', title: 'queen', pay: 50, net: 50 }, { seat: 3, name: 'Dusty', title: 'babyScum', pay: -5, net: -5, house: true }, { seat: 2, name: 'Cat', title: 'scum', pay: -10, net: -10 }] },
     round: { no: 2, phase: 'play', order: [0, 1, 3], hands: h4, pile: null, owner: null, turn: 0, finished: [], gone: [], exchange: null, lastPlay: null, skipped: null, turnAt: now - 60e3, deadline: now + 3540e3 },
     log: [{ seq: 1, t: now - 70e3, round: 1, text: "Cat can't cover the $10 Scum dues. Off to the Acid Mines; the seat is saved.", ev: { k: 'broke', seat: 2 } }], seq: 1 };
-  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4 } };
+  // Table 5: Ann led a pair of 7s, everyone passed: she can play on her own set or pass to clear.
+  const h5 = deal({ 0: ['4c', '8h', '8d', 'Tc', 'Qs', 'Qh'] }, { 1: 14, 2: 15, 3: 15 }, ['7h', '7c']);
+  const t5 = { code: 'PLAYON', name: 'Last One Standing', hostId: P.Ann.id, hostName: 'Ann', createdAt: now - 9000e3, status: 'playing', settings: { turnSec: 86400, maxSeats: 4, bots: 0 }, turnSec: 86400, maxSeats: 4,
+    seats: [seat('Ann', stats(1, 0, 0)), seat('Bob', stats(0, 0, 0)), seat('Cat', stats(0, 1, 0)), seat('Dee', stats(0, 0, 0))],
+    titles: { 0: 'king', 1: 'queen', 3: 'babyScum', 2: 'scum' }, roundNo: 2,
+    lastRound: { no: 1, finish: [{ seat: 0, name: 'Ann', title: 'king', pay: 100, net: 100 }, { seat: 1, name: 'Bob', title: 'queen', pay: 50, net: 50 }, { seat: 3, name: 'Dee', title: 'babyScum', pay: -5, net: -5 }, { seat: 2, name: 'Cat', title: 'scum', pay: -10, net: -10 }] },
+    round: { no: 2, phase: 'play', order: [0, 1, 3, 2], hands: h5, pile: { cards: ['7h', '7c'], count: 2, rank: 7, seat: 0 }, owner: 0, playOn: true, turn: 0, finished: [], gone: [], exchange: null, lastPlay: { seat: 0, cards: ['7h', '7c'] }, skipped: null, turnAt: now - 60e3, deadline: now + 86340e3 },
+    log: [{ seq: 1, t: now - 300e3, round: 2, text: 'Ann leads round 2.', ev: { k: 'lead', seat: 0 } }, { seq: 2, t: now - 240e3, round: 2, text: 'Ann plays two 7s.', ev: { k: 'play', seat: 0, cards: ['7h', '7c'], left: 6 } },
+      { seq: 3, t: now - 200e3, round: 2, text: 'Bob passes.', ev: { k: 'pass', seat: 1 } }, { seq: 4, t: now - 150e3, round: 2, text: 'Dee passes.', ev: { k: 'pass', seat: 3 } }, { seq: 5, t: now - 100e3, round: 2, text: 'Cat passes.', ev: { k: 'pass', seat: 2 } },
+      { seq: 6, t: now - 99e3, round: 2, text: 'Everyone passed. Ann can keep playing on it or pass to clear.', ev: { k: 'playon', seat: 0 } }], seq: 6 };
+  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4, PLAYON: t5 } };
 }
 
 async function page(browser, who, view) {
@@ -125,6 +135,8 @@ try {
     await p.goto(`${BASE}/`); await p.waitForTimeout(1200);
     if (tag === 'phone') { const g = p.getByRole('tab', { name: 'Games' }); if (await g.count()) await g.click(); await p.waitForTimeout(400); }
     check(await p.locator('[data-test=scum-card], [data-test=scum-go]').count() > 0, `${tag}: scum card in the lobby`);
+    check((await p.locator('.lb-scum .sp-desc, .sc-promo .sp-desc, [data-test=scum-go]').first().locator('xpath=ancestor::*[.//*[contains(@class,"sp-desc")]][1]').locator('.sp-desc').first().innerText()) === "You're skipped!", `${tag}: card line reads "You're skipped!"`);
+    check(/single deck/i.test(await p.locator('body').innerText()) || tag === 'phone', `${tag}: card tag says single deck`);
     await shot(p, `${tag}-lobby-card`); await noScroll(p, `${tag} lobby`);
     await p.locator('[data-test=scum-go]').first().click(); await p.waitForTimeout(800);
     check(p.url().endsWith('/scum'), `${tag}: card opens /scum`); await shot(p, `${tag}-scum-lobby`); await noScroll(p, `${tag} /scum`);
@@ -153,7 +165,13 @@ try {
   await ann.click('[data-test=scum-card-9c]', edge); await ann.click('[data-test=scum-card-9d]', edge);
   await shot(ann, 'desktop-table-midgame'); await noScroll(ann, 'desktop table');
   await shot(cat, 'phone-table-midgame'); await noScroll(cat, 'phone table');
+  // Opponents' hands are real face-down cards, one per card left (counts only; never the cards themselves).
+  const fans = await cat.locator('[data-test=scum-fan]').evaluateAll((els) => els.map((e) => [Number(e.dataset.n), e.querySelectorAll('.sc-back').length]));
+  check(fans.length === 4 && fans.every(([n, k]) => n === k && n > 0), `card-back fans by each opponent (${fans.map((f) => f[0]).join(',')})`);
+  const annFan = cat.locator('[data-test=scum-seat-0] [data-test=scum-fan]');
+  check(await annFan.getAttribute('data-n') === '9', 'Ann shows 9 face-down cards');
   await ann.click('[data-test=scum-play]');
+  await cat.waitForFunction(() => document.querySelector('[data-test=scum-seat-0] [data-test=scum-fan]')?.dataset.n === '7', null, { timeout: 5000 }).then(() => check(true, 'Ann’s fan drops to 7 after her pair'), () => check(false, 'Ann’s fan drops to 7 after her pair'));
   await Promise.all([
     (async () => { await ann.waitForSelector('[data-test=scum-skip]'); await wait(1000); await shot(ann, 'desktop-skip-blast'); })(),
     (async () => {
@@ -165,6 +183,27 @@ try {
   await wait(3000);
   check(await cat.locator('[data-test=scum-skip]').count() === 0, 'blast goes away on its own');
   await ann.context().close(); await cat.context().close();
+
+  // play on: everyone passed on Ann's 7s: she can keep playing or pass to clear (desktop), Bob watches (phone)
+  const annP = await page(browser, P.Ann, DESK); const bobP = await page(browser, P.Bob, PHONE);
+  await annP.goto(`${BASE}/scum/PLAYON`); await bobP.goto(`${BASE}/scum/PLAYON`);
+  await annP.waitForSelector('[data-test=scum-hand]'); await bobP.waitForSelector('[data-test=scum-hand]'); await wait(900);
+  check(/Everyone passed — keep playing or pass to clear/.test(await annP.locator('[data-test=scum-status]').innerText()), 'play-on hint for the last player');
+  check(/Pass & clear/.test(await annP.locator('[data-test=scum-pass]').innerText()) && await annP.locator('[data-test=scum-pass]').isEnabled(), '"Pass & clear" is offered');
+  check(/can play on or clear/.test(await bobP.locator('[data-test=scum-status]').innerText()), 'others see she can play on');
+  await annP.click('[data-test=scum-card-8h]', { position: { x: 8, y: 14 } }); await annP.click('[data-test=scum-card-8d]', { position: { x: 8, y: 14 } });
+  await shot(annP, 'desktop-play-on'); await noScroll(annP, 'desktop play-on');
+  await shot(bobP, 'phone-play-on-watching'); await noScroll(bobP, 'phone play-on');
+  await annP.click('[data-test=scum-play]'); await wait(1200);
+  check(/Bob/.test(await annP.locator('[data-test=scum-status]').innerText()), 'she played on (8s on her own 7s); Bob gets another chance');
+  await annP.context().close(); await bobP.context().close();
+  const annC = await page(browser, P.Ann, PHONE); await annC.goto(`${BASE}/scum/PLAYON`); await annC.waitForSelector('[data-test=scum-hand]');
+  await call(P.Bob.cookie, 'POST', '/api/scum/tables/PLAYON/pass'); await call(P.Dee.cookie, 'POST', '/api/scum/tables/PLAYON/pass'); await call(P.Cat.cookie, 'POST', '/api/scum/tables/PLAYON/pass');
+  await annC.waitForFunction(() => /keep playing or pass to clear/.test(document.querySelector('[data-test=scum-status]')?.innerText || ''), null, { timeout: 6000 }).then(() => check(true, 'back to Ann after everyone passes again'), () => check(false, 'back to Ann after everyone passes again'));
+  await wait(400); await shot(annC, 'phone-play-on'); await noScroll(annC, 'phone play-on (you)');
+  await annC.click('[data-test=scum-pass]'); await wait(1200);
+  check(/Your lead/.test(await annC.locator('[data-test=scum-status]').innerText()), 'pass & clear: she leads fresh');
+  await annC.context().close();
 
   // small phone and phone on its side
   for (const [vp, tag] of [[{ width: 375, height: 667 }, 'small-phone'], [{ width: 844, height: 390 }, 'phone-landscape']]) {

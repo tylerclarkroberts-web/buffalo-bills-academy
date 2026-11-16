@@ -149,3 +149,42 @@ test('bots never touch money; the payouts flag off moves nothing', () => {
   assert.equal(s.view(P.a, t.code).payouts, null);
   assert.equal(S.PAY.commoner, 0); assert.equal(S.DUES_MAX, -S.PAY.scum);
 });
+
+/** Run the exchange out on the clock (tribute and give-back by timeout) so play starts. */
+function settleExchange(s, t, clock) { for (let k = 0; k < 6 && t.round?.phase === 'exchange'; k++) { clock.t += 31_000; s.tick(); } }
+
+test('the KING always leads every new round (regression), whatever the finishing order', () => {
+  const { s, P, clock } = svc();
+  const t = open(s, P, ['a', 'b', 'c', 'd', 'e']);
+  const orders = [[0, 1, 2, 3, 4], [4, 3, 2, 1, 0], [2, 0, 4, 1, 3], [3, 4, 0, 2, 1], [1, 2, 3, 4, 0], [4, 0, 1, 2, 3]];
+  for (const f of orders) {
+    finish(s, t, f);
+    const king = Number(Object.keys(t.titles).find((k) => t.titles[k] === 'king'));
+    assert.equal(king, f[0]);
+    assert.equal(t.round.order[0], king, 'King is first in turn order'); assert.equal(t.round.order.at(-1), f.at(-1), 'Scum goes last');
+    settleExchange(s, t, clock);
+    assert.equal(t.round.phase, 'play'); assert.equal(t.round.turn, king, `round ${t.round.no}: the King leads`);
+    assert.ok(t.log.findLast((e) => e.ev?.k === 'lead').ev.seat === king);
+  }
+});
+
+test('KING sitting out or gone: the next-highest title leads', () => {
+  const x = svc(); const t2 = open(x.s, x.P, ['a', 'b', 'c', 'd']);
+  x.P.a.bankroll = 1000; finish(x.s, t2, [0, 1, 2, 3]); settleExchange(x.s, t2, x.clock);
+  // The King walks out during the next exchange: the Queen leads.
+  finish(x.s, t2, [0, 1, 2, 3]);
+  assert.equal(t2.round.phase, 'exchange');
+  x.s.leave(x.P.a, t2.code);
+  settleExchange(x.s, t2, x.clock);
+  assert.equal(t2.round.turn, 1, 'Queen (Bob) leads when the King is gone');
+  // A broke King (spent below $10 after being paid) sits out the next deal: the Queen leads it.
+  const y = svc(); const t3 = open(y.s, y.P, ['a', 'b', 'c', 'd', 'e']);
+  t3.round.finished = [0, 1, 2, 3, 4]; t3.round.phase = 'done';
+  const realSettle = y.s.settle.bind(y.s);
+  y.s.settle = (tt, prev, no) => { realSettle(tt, prev, no); y.P.a.bankroll = 0; }; // paid +$100, then blew it all before the deal
+  y.s.finishRound(t3);
+  assert.equal(t3.seats[0].broke, true); assert.ok(!t3.round.order.includes(0));
+  assert.equal(t3.round.order[0], 1, 'Queen first in turn order');
+  settleExchange(y.s, t3, y.clock);
+  assert.equal(t3.round.turn, 1, 'the Queen leads while the King is in the mines');
+});
