@@ -1659,3 +1659,53 @@ button, .btn, [role=button], label { touch-action: manipulation; }
 .lb-col > .lb-scum { flex: 0 0 auto; }
 .sc-promo-art { display: grid; place-items: center; }
 .sc-promo-art svg { width: 100%; height: auto; }
+
+/* v86: Games tab on phones — every game card must be visible and tappable without scrolling.
+   Compact rows, drop the marquee and host strip, shrink the footer, and keep overflow-y as a
+   last-resort safety net so a card is never clipped behind overflow:hidden. Desktop is unchanged. */
+@media (max-width: 899px) {
+  .lobby5.narrow.tab-games .marquee5 { display: none; }
+  .lobby5.narrow.tab-games .host-banner { display: none; }
+  /* One row of lobby tabs instead of the 2×2 grid, so the cards get the height. */
+  .lobby5.narrow.tab-games .lobby-panel .tabs {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .lobby5.narrow.tab-games .lobby-panel .tabs button {
+    flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .lobby5.narrow.tab-games .lobby-panel { flex: 1; min-height: 0; }
+  .lobby5.narrow.tab-games .lobby-panel .panel-body.games-tab {
+    min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 8px 10px 10px; gap: 6px;
+  }
+  .lobby5.narrow .promo-pair {
+    flex: 1 1 auto; min-height: 0; gap: 6px;
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  .lobby5.narrow .promo-pair > .slots-promo:not(.bare) {
+    margin-top: 0; padding: 6px 8px; gap: 8px;
+  }
+  .lobby5.narrow .promo-pair .sp-art { width: 40px; height: 40px; }
+  .lobby5.narrow .promo-pair .bj-promo-art {
+    width: 46px; height: 40px; transform: scale(.75); transform-origin: left center;
+  }
+  .lobby5.narrow .promo-pair .sc-promo-art svg { width: 40px; height: 40px; }
+  /* Icon + title/line + button on one compact row; keep the short descriptor. */
+  .lobby5.narrow .promo-pair .sp-txt {
+    flex: 1; min-width: 0;
+    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 8px;
+  }
+  .lobby5.narrow .promo-pair .sp-txt b { display: inline; font-size: 14px; line-height: 1.15; }
+  .lobby5.narrow .promo-pair .sp-desc { font-size: 11.5px; line-height: 1.2; }
+  .lobby5.narrow .promo-pair .sp-go { margin-left: auto; }
+}
+
+/* Landscape phones: two-by-two so four compact cards share the short height. */
+@media (max-width: 899px) and (orientation: landscape) and (max-height: 520px) {
+  .lobby5.narrow .promo-pair {
+    display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 6px;
+  }
+  .lobby5.narrow .promo-pair > .slots-promo:not(.bare) { margin-top: 0; padding: 4px 8px; }
+  .lobby5.narrow .promo-pair .sp-txt b { display: inline; }
+}

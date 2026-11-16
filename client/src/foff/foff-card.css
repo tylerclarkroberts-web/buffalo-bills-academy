@@ -67,3 +67,10 @@
 @media (prefers-reduced-motion: reduce) {
   .foff-confetti i { animation: none !important; }
 }
+
+@media (max-width: 899px) {
+  .lobby5.narrow .promo-pair .foff-thumb { width: 64px; height: 36px; }
+}
+@media (max-width: 899px) and (orientation: landscape) and (max-height: 520px) {
+  .lobby5.narrow .promo-pair .foff-thumb { width: 48px; height: 28px; }
+}

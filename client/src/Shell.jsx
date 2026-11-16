@@ -138,7 +138,7 @@ export function Shell({ path, children }) {
       <footer className="legal">
         {/* The course name is a door. It is not supposed to look like one. */}
         <span className="toana">{TOANA.split('Toana Vista')[0]}<button type="button" className="toana-door" onClick={() => navigate('/foff')}>Toana Vista</button>.</span><span className="dot hide-s">·</span>
-        <span>Play money only. Not affiliated with any casino, resort or golf course.</span>
+        <span>Play money only. <span className="place">Not affiliated with any casino, resort or golf course.</span></span>
         <span><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></span>
       </footer>
       <BrokeHost me={me} />
