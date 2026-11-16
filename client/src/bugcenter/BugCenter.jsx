@@ -6,7 +6,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, WAIT, done, NO, OOPS, SIGNS } from './script.js';
+import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS } from './script.js';
 import { healChime, podBlip } from './chime.js';
 import './bugcenter.css';
 
@@ -148,20 +148,20 @@ export default function BugCenter() {
     if (line.end || talk.i + 1 >= talk.lines.length) { setTalk(null); return; }
     setTalk({ ...talk, i: talk.i + 1 });
   };
-  const heal = async () => {
+  const heal = async (pay) => {
     setTalk({ lines: [WAIT], i: 0, mode: 'heal' });
     setPod(true); if (sound) podBlip();
     const t0 = Date.now();
     let r = null, failed = null;
-    const call = api('POST', '/barn/heal').then((x) => { r = x; }).catch((e) => { failed = e; });
+    const call = api('POST', '/barn/heal', pay ? { pay: true } : undefined).then((x) => { r = x; }).catch((e) => { failed = e; });
     later(() => { setLit(true); if (sound) healChime(); }, 700);
     await call;
     const wait = Math.max(0, 3300 - (Date.now() - t0));
     later(() => {
       setLit(false); setPod(false);
       if (failed) { setTalk({ lines: [OOPS(failed.message)], i: 0, mode: 'talk' }); return; }
-      const { healed, cost: _c, ...view } = r; setB(view);
-      setTalk({ lines: done(view.pen, healed), i: 0, mode: 'talk' });
+      const { healed, cost, ...view } = r; setB(view);
+      setTalk({ lines: done(view.pen, healed, cost), i: 0, mode: 'talk' });
     }, wait);
   };
   if (!b) return <div className="screen bc"><div className="bc-loading muted">{err ? <p role="alert">{err}</p> : 'いらっしゃいませ…'}</div></div>;
@@ -180,8 +180,8 @@ export default function BugCenter() {
               <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && <span className="bc-next" aria-hidden="true">▼</span>}</p>
               {en && full && <p className="bc-en" lang="en">{line.en}</p>}
               {line.ask && full && <div className="bc-ask">
-                <button className="bc-choice" onClick={(e) => { e.stopPropagation(); heal(); }} data-test="bc-yes" title="Yes">はい</button>
-                <button className="bc-choice ghost" onClick={(e) => { e.stopPropagation(); setTalk({ lines: [NO], i: 0, mode: 'talk' }); }} data-test="bc-no" title="No">いいえ</button>
+                <button className="bc-choice" onClick={(e) => { e.stopPropagation(); heal(line.pay); }} data-test="bc-yes" title="Yes">はい</button>
+                <button className="bc-choice ghost" onClick={(e) => { e.stopPropagation(); setTalk({ lines: [line.pay ? REST : NO], i: 0, mode: 'talk' }); }} data-test="bc-no" title="No">いいえ</button>
               </div>}
             </div>
           </div>}

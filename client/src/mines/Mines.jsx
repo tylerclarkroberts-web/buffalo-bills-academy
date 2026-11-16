@@ -401,7 +401,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const release = () => { hold(false); client.current?.stop().catch(() => {}); };
   const [elapsed, setElapsed] = useState(0);
   // v75: a bug that lost a mine battle stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone)
-  const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HEALS IT FOR FREE.` : LINES[shift.seed % LINES.length]);
+  const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
   const [status, setStatus] = useState('FIND THE ACID POOL');
   const done = useRef(false);
   const maze = useRef(shiftMaze(shift)).current; // v79: the day's tier decides the size and the cave-ins

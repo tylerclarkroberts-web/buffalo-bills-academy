@@ -10,17 +10,27 @@ export function greeting(pen) {
   if (pen.stage === 'egg') return [...out, L('卵ちゃんは元気いっぱいですよ。あたためてあげてね♡', 'Your egg is perfectly healthy. Keep it warm ♡', { end: true })];
   if (pen.stage === 'dead') return [...out, L('……ごめんなさい。この子は、もう……', "...I'm so sorry. This one is already...", { end: true })];
   const n = pen.name;
-  if (pen.fainted) return [...out, L(`あら……${n}ちゃん、目がぐるぐるですね。`, `Oh dear... ${n}'s eyes are all swirly.`), L('あなたのバグを元気にしますね！', "I'll get your bug back on its feet!", { ask: true })];
+  if (pen.fainted) {
+    const eyes = L(`あら……${n}ちゃん、目がぐるぐるですね。`, `Oh dear... ${n}'s eyes are all swirly.`);
+    // Free once it has rested an hour since fainting; before that the nurse offers the paid shortcut (`pay` rides on the question).
+    if (pen.recoverMs > 0) {
+      const m = Math.ceil(pen.recoverMs / 60000);
+      return [...out, eyes, L(`しぜんに元気になるまで、あと${m}分かかります。`, `It needs another ${m} minutes of rest to recover on its own.`),
+        L(`お急ぎなら、$${pen.healCost}で今すぐ元気にできますよ。どうしますか？`, `In a hurry? For $${pen.healCost} I can have it up right now. Shall I?`, { ask: true, pay: true })];
+    }
+    return [...out, eyes, L('あなたのバグを元気にしますね！', "I'll get your bug back on its feet!", { ask: true })];
+  }
   if (pen.hurt) return [...out, L(`あら、${n}ちゃん、けがをしていますね。HPが ${pen.hp}/${pen.maxHp} です。`, `Oh, ${n} is hurt. Its HP is ${pen.hp}/${pen.maxHp}.`), L('しぜんには なおりませんよ。回復しましょうか？', "That won't heal on its own. Shall I patch it up?", { ask: true })];
   return [...out, L(`${n}ちゃんはもう元気いっぱいですね！`, `${n} is already full of energy!`), L('念のため、診ておきましょうか？', 'Shall I give it a quick check-up, just in case?', { ask: true })];
 }
 export const WAIT = L('少々お待ちください♪', 'Just a moment, please ♪');
-export function done(pen, healed) {
+export function done(pen, healed, cost = 0) {
   const n = pen?.name || '';
   return [healed ? L(`お待たせしました！${n}ちゃんはすっかり元気になりました！`, `Thank you for waiting! ${n} is fully healed!`) : L(`ばっちり元気です！${n}ちゃん、えらいですね♪`, `Perfectly healthy! Good job, ${n} ♪`),
-    L('お代はいりませんよ。', "There's no charge."), L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })];
+    cost ? L(`お代は $${cost} です。ありがとうございます♪`, `That comes to $${cost}. Thank you ♪`) : L('お代はいりませんよ。', "There's no charge."), L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })];
 }
 export const NO = L('わかりました。またいつでもどうぞ♡', 'Understood. Drop by any time ♡', { end: true });
+export const REST = L('わかりました。ゆっくり休ませてあげましょうね♡', "Understood. We'll let it rest ♡", { end: true });
 export const OOPS = (msg) => L('あら？機械の調子が……もう一度お願いします。', `Oh? The machine is acting up... please try again. (${msg})`, { end: true });
 
 /** Signage around the room: Japanese, its reading, and English for the 訳 toggle. */
@@ -31,5 +41,5 @@ export const SIGNS = {
   pc: { ja: 'パソコン', en: 'PC' },
   wait: { ja: '待合室', rt: 'まちあいしつ', en: 'Waiting room' },
   mat: { ja: 'いらっしゃいませ', en: 'Welcome' },
-  hours: { ja: '24時間 無料', rt: 'じかん むりょう', en: 'Open 24 hours · Free' },
+  hours: { ja: '24時間 営業', rt: 'じかん えいぎょう', en: 'Open 24 hours' },
 };
