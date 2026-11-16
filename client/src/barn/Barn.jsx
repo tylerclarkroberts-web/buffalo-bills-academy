@@ -238,7 +238,9 @@ function BarnHome({ me }) {
     skew.current = r.serverNow - Date.now(); setB(r);
     const last = r.pen?.lastBout;
     const id = last?.id || last?.at || null;
-    if (seenBout.current !== undefined && id && id !== seenBout.current) { setReplay(false); setBout(last); }
+    // A new fight since the last look, or one decided while you were away (the Barn button was counting it).
+    if (id && (r.unseenBout || (seenBout.current !== undefined && id !== seenBout.current))) { setReplay(false); setBout(last); }
+    if (r.unseenBout) refreshSession();
     seenBout.current = id;
     if (wallet.current !== undefined && wallet.current !== r.bankroll) refreshSession();
     wallet.current = r.bankroll;
@@ -247,7 +249,7 @@ function BarnHome({ me }) {
     if (pending.current || loading.current) return;
     loading.current = true;
     const before = mutation.current;
-    api('GET', '/barn').then((r) => { if (before === mutation.current) take(r); }).catch((e) => { if (before === mutation.current) setErr(e.message); }).finally(() => { loading.current = false; });
+    api('GET', '/barn?seen=1').then((r) => { if (before === mutation.current) take(r); }).catch((e) => { if (before === mutation.current) setErr(e.message); }).finally(() => { loading.current = false; });
   };
   useEffect(() => {
     document.title = "The Barn · Buffalo Bill's Academy";
@@ -289,6 +291,7 @@ function BarnHome({ me }) {
   if (!b) return <div className="screen barn"><div className="barn-empty muted">{err ? <><p role="alert">{err}</p><button className="btn" onClick={() => { setErr(''); load(); }}>Try again</button></> : 'Opening the barn doors…'}</div></div>;
   const now = Date.now() + skew.current;
   const nextAbility = pen?.abilities?.find((a) => !a.unlocked);
+  const waiting = b.challenges.incoming.length + b.bouts.filter((x) => x.hostId !== me.id).length;
   return (
     <div className="screen barn" data-test="barn">
       <div className="barn-wrap panel">
@@ -296,7 +299,7 @@ function BarnHome({ me }) {
           <h1 className="western">The Barn</h1>
           <div className="barn-head-acts">
             {pen?.stage === 'creature' && <CenterDoor urgent={pen.fainted || pen.hurt} />}
-            <button className={`btn small${!ring && b.challenges.incoming.length ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : b.challenges.incoming.length ? `The ring · ${b.challenges.incoming.length} waiting` : 'The ring'}</button>
+            <button className={`btn small${!ring && waiting ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : waiting ? `The ring · ${waiting} waiting` : 'The ring'}</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
         </header>

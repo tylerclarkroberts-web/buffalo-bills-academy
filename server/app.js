@@ -323,7 +323,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/egg', needPlayer, wrap((req) => mines.takeEgg(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
   // ----- the Barn (v30) -----
-  api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id)));
+  api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id, { seen: req.query.seen === '1' })));
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''))));
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));

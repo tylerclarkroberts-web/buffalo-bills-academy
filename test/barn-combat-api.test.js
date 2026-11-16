@@ -505,6 +505,26 @@ test('a challenge holds no money, needs a mature bug on both sides and can be wi
   assert.equal((await owner.api('GET', '/api/barn')).body.challenges.outgoing.length, 0);
 });
 
+test('the Barn button counts open bouts for a bug that can fight, and a fight decided while you were away', async t => {
+  const f = await fixture(t); const { owner, other, hatch, login } = f;
+  const waiting = async player => (await player.api('GET', '/api/barn/waiting')).body.challenges;
+  hatch(owner.id, 3); hatch(other.id, 3);
+  const bugless = await login('NoBug');
+  const posted = await post(owner, 0);
+  assert.equal(await waiting(other), 1); assert.equal(await waiting(owner), 0, 'not your own'); assert.equal(await waiting(bugless), 0);
+  await cancel(owner, posted.body.openBout.id);
+  assert.equal(await waiting(other), 0);
+  const id = (await challenge(owner, other.id)).body.challenges.outgoing[0].id;
+  assert.equal(await waiting(other), 1);
+  assert.equal((await accept(other, id)).status, 200);
+  assert.equal(await waiting(other), 0, 'the one who accepted watched it');
+  assert.equal(await waiting(owner), 1);
+  assert.equal((await owner.api('GET', '/api/barn')).body.unseenBout, false, 'only the Barn page clears it');
+  assert.equal(await waiting(owner), 1);
+  assert.equal((await owner.api('GET', '/api/barn?seen=1')).body.unseenBout, true);
+  assert.equal(await waiting(owner), 0); assert.equal((await owner.api('GET', '/api/barn?seen=1')).body.unseenBout, false);
+});
+
 test('accepting a challenge takes both stakes then, settles once and puts the fight on the public record', async t => {
   const f = await fixture(t); const { anon, owner, other, barn, hatch, login, clock } = f;
   hatch(owner.id, 6); hatch(other.id, 6);

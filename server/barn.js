@@ -180,9 +180,12 @@ export class Barn {
     return pen;
   }
 
-  view(playerId) {
+  /** `seen` is the Barn page itself asking: it clears the "decided while you were away" flag and reports it once. */
+  view(playerId, { seen = false } = {}) {
     this.expireBouts();
-    return { ...this.petView(playerId), ...this.board(playerId), ...this.ring(playerId) };
+    const player = this.store.players?.[playerId], unseenBout = seen && !!player?.barnBouts?.unseen;
+    if (unseenBout) this.store.commitPlayerDrafts([{ ...player, barnBouts: { ...player.barnBouts, unseen: null } }]);
+    return { ...this.petView(playerId), ...this.board(playerId), ...this.ring(playerId), unseenBout };
   }
 
   /** The ring: every living bug, the caller's challenges and the recent fights. The same for a player with no bug. */
@@ -202,8 +205,13 @@ export class Barn {
       fights: this.doc.fights.map(({ id, at, stake, winner, sides }) => ({ id, at, stake, winner, sides: sides.map(({ ownerId, owner, fighter }) => ({ ownerId, owner, name: fighter.name, species: fighter.species, level: fighter.level })) })) };
   }
 
-  /** How many challenges are waiting on this player, for the Barn button. */
-  challengeCount(playerId) { const now = this.now(); return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length; }
+  /** The Barn button's count: challenges to this player, a fight decided while they were away, and (with a bug fit to fight) bouts anyone else has open. */
+  challengeCount(playerId) {
+    const now = this.now(), players = this.store.players || {}, pen = this.doc.pens[playerId];
+    const canFight = pen?.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp) >= BOUT_LEVEL && now < this.deathAt(pen);
+    return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length + (players[playerId]?.barnBouts?.unseen ? 1 : 0)
+      + (canFight ? Object.values(players).filter(p => p.id !== playerId && p.barnBouts?.open && now < p.barnBouts.open.expiresAt).length : 0);
+  }
 
   /** A recent fight as anyone may watch it: the bugs as drawn and the blows, without setups, condition or wallets. */
   fight(id) {
@@ -458,7 +466,8 @@ export class Barn {
         levelBefore: levelFor(pen.xp), levelAfter: levelFor(pen.xp + xpEarned),
         result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', stake, payout, net: cents(payout - stake),
         owners: [side, 1 - side].map(i => ({ id: sides[i].player.id, name: sides[i].player.name })) };
-      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, lastBout: receipt } };
+      // Side 0 posted or challenged and may be anywhere by now: flag the result until they open the Barn.
+      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, lastBout: receipt, ...(side === 0 ? { unseen: id } : {}) } };
       if (stake && (side === 1 || !held)) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
       if (payout) this.accounts.change(draft, payout, winner === null ? 'barn-refund' : 'barn-win', winner === null ? 'Barn bout: draw, stake returned' : 'Barn bout: won the pot', { save: false });
       return draft;
