@@ -14,11 +14,13 @@ import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
 import { NextTablePill } from '../turns/TurnsPill.jsx';
 import '../bj/bj.css';
 import './scum.css';
+import { canDealNow, canStartDeal } from './setup.js';
 
 const RK = '23456789TJQKA';
 const rk = (c) => RK.indexOf(c[0]) + 2;
 /** Auto-organize: your hand always reads low to high (2 … K, aces last), suits in a fixed order (♣ ♦ ♥ ♠). */
 export const sortCards = (cards) => cards.slice().sort((a, b) => rk(a) - rk(b) || 'cdhs'.indexOf(a[1]) - 'cdhs'.indexOf(b[1]));
+export { canDealNow, canStartDeal } from './setup.js';
 const RN = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
 const rn = (r) => (r === 10 ? '10' : RN[r] || String(r));
 const SET = ['', 'single', 'pair', 'three', 'four'];
@@ -105,7 +107,7 @@ function ScumLobby({ me }) {
         </button>)) : <p className="small dim">No scum tables yet.</p>}
     </div>
   );
-  const canDeal = st.bots >= 2;
+  const canDeal = canDealNow(st.bots);
   const form = (
     <div className="bj-setup sc-setup" data-test="scum-setup">
       <div className="bj-grid2">
@@ -117,8 +119,10 @@ function ScumLobby({ me }) {
       {narrow ? <p className="small bj-note sc-pitch">Aces are trump. Match the last card and the next sap is skipped. Finish first, be King. Finish last, hand over your best cards.</p>
         : <div className="sc-howto"><h3 className="western">How it plays</h3><ul className="small">{[...RULES, ...(info.payouts ? PAY_RULES : [])].map((x) => <li key={x}>{x}</li>)}</ul></div>}
       <div className="bj-create"><span className="small dim">3–7 players · invite friends with the link · out of time = pass</span>
-        <button className="btn ghost small" onClick={() => create()} data-test="scum-create">Open lobby</button>
-        <button className="btn primary" onClick={() => create({ deal: true })} disabled={!canDeal} title={canDeal ? 'Create and deal with the bots' : 'Needs 2 bots to deal right away'} data-test="scum-create-deal">Open & deal →</button></div>
+        {canDeal
+          ? <><button className="btn ghost small" onClick={() => create()} data-test="scum-create">Open lobby</button>
+            <button className="btn primary" onClick={() => create({ deal: true })} title="Create and deal with the bots" data-test="scum-create-deal">Open & deal →</button></>
+          : <button className="btn primary" onClick={() => create()} title="Create a table and invite friends with the link" data-test="scum-create">Open lobby →</button>}</div>
     </div>
   );
   return (
@@ -354,6 +358,7 @@ function ScumTable({ code, me }) {
     : r?.myTurn && !fly ? (r.leading ? 'Your lead. Play any set.' : r.playOn ? 'Everyone passed — keep playing or pass to clear' : `Your turn: beat ${setName(r.pile)} or pass.`)
     : r?.playOn && turnName && !fly ? `Everyone passed. ${turnName} can play on or clear`
     : turnName ? `${turnName}'s turn` : '';
+  const readyToDeal = canStartDeal(v.seats.filter(Boolean).length, v.bots);
   const invite = async () => { const url = `${location.origin}/scum/${v.code}`; try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { setErr(url); } };
   const leave = () => { if (v.status === 'playing' && mine && r?.order.includes(v.mySeat) && !r.finished.includes(v.mySeat) && !window.confirm('Walk out? Your cards go with you.')) return; post('leave'); };
   const cw = hs.w < 420 ? 42 : hs.w < 700 ? 50 : 58;
@@ -427,7 +432,7 @@ function ScumTable({ code, me }) {
         <div className="sc-bar" data-test="scum-bar">
           {v.status === 'lobby' ? <div className="bj-acts" data-test="scum-lobby">
               <span className="small">Invite friends: <b className="mono" data-test="scum-code">{v.code}</b></span>
-              {v.isHost ? <button className="btn primary" disabled={busy} onClick={() => post('start')} data-test="scum-deal">Deal</button> : <span className="small dim">Waiting for {v.hostName} to deal…</span>}
+              {v.isHost ? <button className="btn primary" disabled={busy || !readyToDeal} title={readyToDeal ? 'Deal the first hand' : 'Needs 3 players. Invite friends with the link, or add bots.'} data-test="scum-deal">Deal</button> : <span className="small dim">Waiting for {v.hostName} to deal…</span>}
               {!mine && <button className="btn small" onClick={() => post('join')} data-test="scum-sit">Sit down</button>}
             </div>
             : v.status === 'over' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/scum')}>Back to scum</button></span>
