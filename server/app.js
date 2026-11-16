@@ -528,6 +528,28 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       res.set({ 'Content-Type': type, 'Content-Encoding': 'gzip', 'Content-Length': hit.gz.length, 'X-Bba-Size': hit.size, ETag: hit.etag, Vary: 'Accept-Encoding', 'Cache-Control': 'public, max-age=86400' });
       res.end(hit.gz);
     });
+    // The Hall of Doors' Nanosaur build (~20 MB) is gzipped at build time (vite.config.js writes <file>.gz next to
+    // each one) and streamed from disk, so none of it sits in this small machine's memory. Fixed names only; without
+    // a .gz (dev) or without gzip support it falls through to the plain static file.
+    const nanoDir = path.join(staticDir, 'nanosaur');
+    const NANO_GZ = { 'Nanosaur.data': 'application/octet-stream', 'Nanosaur.wasm': 'application/wasm', 'Nanosaur.js': 'text/javascript; charset=utf-8' };
+    const nanoMeta = new Map();
+    app.get('/nanosaur/:file', (req, res, next) => {
+      const type = NANO_GZ[req.params.file];
+      if (!type || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return next();
+      let hit = nanoMeta.get(req.params.file);
+      if (!hit) {
+        const f = path.join(nanoDir, req.params.file), gz = `${f}.gz`;
+        if (!fs.existsSync(f) || !fs.existsSync(gz)) return next();
+        const raw = fs.statSync(f), z = fs.statSync(gz);
+        hit = { gz, gzSize: z.size, size: raw.size, etag: `"n${raw.size.toString(36)}-${Math.floor(raw.mtimeMs).toString(36)}-${z.size.toString(36)}"` };
+        nanoMeta.set(req.params.file, hit);
+      }
+      if (req.headers['if-none-match'] === hit.etag) return res.status(304).end();
+      res.set({ 'Content-Type': type, 'Content-Encoding': 'gzip', 'Content-Length': hit.gzSize, 'X-Bba-Size': hit.size, ETag: hit.etag, Vary: 'Accept-Encoding', 'Cache-Control': 'public, max-age=86400' });
+      if (req.method === 'HEAD') return res.end();
+      fs.createReadStream(hit.gz).on('error', () => res.destroy()).pipe(res);
+    });
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
     app.get('/{*splat}', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   } else {

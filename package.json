@@ -14,12 +14,15 @@
     "dev": "node scripts/dev.mjs",
     "test": "node --test test/*.test.js",
     "smoke": "node scripts/smoke.mjs",
+    "announcer": "node --env-file=.env.local scripts/announcer-clips.mjs",
     "e2e:create": "node scripts/e2e-create-table.mjs",
     "e2e:multi": "node scripts/e2e-multi.mjs",
     "e2e:offer": "node scripts/e2e-fight-offer.mjs",
     "sim:mines": "node scripts/mine-timing.mjs",
     "e2e:fatality": "node scripts/e2e-fatality.mjs",
     "e2e:doom": "node scripts/e2e-doom.mjs",
+    "e2e:hall": "node scripts/e2e-door-hall.mjs",
+    "e2e:elhalo": "node scripts/e2e-el-halo.mjs",
     "e2e:gag": "node scripts/e2e-gag.mjs",
     "e2e:barn": "node scripts/e2e-barn.mjs",
     "e2e:bout": "node scripts/e2e-bout.mjs",
@@ -44,7 +47,8 @@
     "e2e:v51": "node scripts/e2e-v51.mjs",
     "bj:edge": "node scripts/bj-edge-table.mjs",
     "e2e:bj-multihit": "node scripts/e2e-bj-multihit.mjs",
-    "e2e:v51d": "node scripts/e2e-v51d-tables.mjs"
+    "e2e:v51d": "node scripts/e2e-v51d-tables.mjs",
+    "e2e:dances": "node scripts/e2e-dances.mjs"
   },
   "dependencies": {
     "@fontsource/monoton": "^5.3.0",
@@ -52,6 +56,7 @@
     "express": "^5.3.0"
   },
   "devDependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.79.0",
     "@fontsource/anton": "^5.3.0",
     "@fontsource/instrument-serif": "^5.3.0",
     "@fontsource/inter": "^5.3.0",

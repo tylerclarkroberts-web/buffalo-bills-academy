@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { SlackClient, turnMessage, hoursLeft, nudgeMessage, NUDGE_FIRST_MS, NUDGE_EVERY_MS, NUDGE_MAX } from '../server/slack.js';
+import { SlackClient, turnMessage, hoursLeft, nudgeMessage, NUDGE_FIRST_MS, NUDGE_EVERY_MS, NUDGE_MAX, tableHasBots, isBotPlayerId, turnFacts, bjTurns, scumTurns } from '../server/slack.js';
 
 const TOKEN = 'xoxb-test-not-real';
 const USERS = { 'ann@x.test': 'UANN', 'bob@x.test': 'UBOB', 'cat@x.test': 'UCAT' };
@@ -30,13 +30,13 @@ function mockSlack() {
   return m;
 }
 
-async function boot({ token = TOKEN } = {}) {
+async function boot({ token = TOKEN, botDelayScale } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-slack-'));
   const clock = { t: 1_800_000_000_000 };
   const slack = mockSlack();
   const logs = [];
   const origWarn = console.warn; console.warn = (...a) => logs.push(a.join(' '));
-  const { app, service, shutdown } = createApp({ dataDir: dir, devLogin: true, now: () => clock.t, env: token ? { SLACK_BOT_TOKEN: token, PUBLIC_URL: 'https://buffalobillsacademy.com' } : {}, slackFetch: slack.fetch, slackRetryMs: 1, snapshots: false });
+  const { app, service, shutdown } = createApp({ dataDir: dir, devLogin: true, now: () => clock.t, env: token ? { SLACK_BOT_TOKEN: token, PUBLIC_URL: 'https://buffalobillsacademy.com' } : {}, slackFetch: slack.fetch, slackRetryMs: 1, snapshots: false, ...(botDelayScale !== undefined ? { botDelayScale } : {}) });
   const server = app.listen(0); await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const call = (c, m, p, b) => fetch(base + p, { method: m, headers: { ...(c ? { cookie: c } : {}), 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined })
@@ -456,3 +456,84 @@ test('challenge alerts respect the off switch and never fail the challenge when 
   assert.equal(during.status, 200); assert.equal(during.body.challenges.outgoing.length, 2);
   assert.equal(s.slack.dms.length, 0); assert.ok(s.logs.some((line) => line.includes('[slack] challenge failed')));
 });
+
+test('tableHasBots: any bot seat or requested bots count; human-only tables stay false', () => {
+  assert.equal(tableHasBots(null), false);
+  assert.equal(tableHasBots({ seats: [{ id: 'p1', name: 'Ann', playerId: 'p1' }] }), false);
+  assert.equal(tableHasBots({ settings: { bots: 0 }, seats: [{ id: 'p1' }] }), false);
+  assert.equal(tableHasBots({ bots: { count: 3, friends: true }, seats: [{ playerId: 'p1' }] }), true, 'poker practice tables');
+  assert.equal(tableHasBots({ settings: { bots: 2 }, seats: [{ id: 'p1' }] }), true, 'BJ/SCUM count is set at create, before bots sit');
+  assert.equal(tableHasBots({ seats: [{ id: 'p1' }, { id: 'bot-0', bot: true, name: 'Dusty' }] }), true);
+  assert.equal(tableHasBots({ seats: [{ id: 'scumbot-1', bot: true }] }), true);
+  assert.equal(tableHasBots({ seats: [{ playerId: 'bot-ab12', name: 'Dusty' }] }), true, 'poker bot id even without the flag');
+  assert.equal(isBotPlayerId('bot-ff'), true);
+  assert.equal(isBotPlayerId('scumbot-0'), true);
+  assert.equal(isBotPlayerId('ann'), false);
+  assert.equal(isBotPlayerId(null), false);
+});
+
+test('turn, blackjack and SCUM fact helpers stay empty when a table has bots', () => {
+  const poker = {
+    bots: { count: 1 },
+    settings: { turnSeconds: 60 },
+    seats: [{ playerId: 'p', name: 'Ann', stack: 100 }],
+    hand: { toAct: 0, deadline: 10_000, number: 1, street: 'preflop', players: [{ bet: 0, total: 0 }], currentBet: 0 },
+  };
+  assert.equal(turnFacts(poker, 0), null);
+  const humanPoker = { ...poker, bots: undefined };
+  assert.equal(turnFacts(humanPoker, 0).playerId, 'p');
+
+  const bj = {
+    code: 'ABC123', name: 'Porch', status: 'playing', settings: { bots: 2 }, turnSec: 86400,
+    seats: [{ id: 'p', name: 'Ann', chips: 200 }, { id: 'bot-0', bot: true, chips: 200 }],
+    limits: { min: 5 }, round: { no: 1, phase: 'betting', bets: {}, deadline: null },
+  };
+  assert.deepEqual(bjTurns(bj, 0), []);
+  assert.equal(bjTurns({ ...bj, settings: { bots: 0 }, seats: [bj.seats[0]] }, 0).length, 1, 'human-only blackjack still lists the bettor');
+
+  const scum = {
+    code: 'SCUM01', name: 'Porch', status: 'playing', settings: { bots: 2 },
+    seats: [{ id: 'p', name: 'Ann' }, { id: 'scumbot-0', bot: true }],
+    round: { no: 1, phase: 'play', turn: 0, pile: null, deadline: 10_000, turnAt: 1 },
+  };
+  assert.deepEqual(scumTurns(scum, 0), []);
+  assert.equal(scumTurns({ ...scum, settings: { bots: 0 }, seats: [scum.seats[0]] }, 0).length, 1, 'human-only SCUM still lists the lead');
+});
+
+test('poker tables with bots never Slack, even when a human friend is seated; human-only tables still ping', async (t) => {
+  const s = await boot({ botDelayScale: 0 }); t.after(s.stop);
+  const c = { ann: await s.login('Ann'), bob: await s.login('Bob'), cat: await s.login('Cat') };
+  for (const n of ['ann', 'bob', 'cat']) await s.call(c[n], 'POST', '/api/me/slack', { email: `${n}@x.test` });
+  s.slack.dms.length = 0;
+
+  const botTable = await s.call(c.ann, 'POST', '/api/tables', { name: 'Practice', bots: { count: 2, friends: true }, settings: { buyIn: 100, smallBlind: 1, bigBlind: 2, nextHandDelaySeconds: 0, turnSeconds: 86400, maxPlayers: 6 } });
+  assert.equal(botTable.status, 200, JSON.stringify(botTable.body));
+  const botCode = botTable.body.code || botTable.body.table?.code;
+  assert.equal((await s.call(c.bob, 'POST', `/api/tables/${botCode}/join`)).status, 200);
+  await s.idle();
+  assert.equal(s.slack.dms.length, 0, 'create, bots acting, and a friend joining: no DMs');
+  const live = s.service.store.getTable(botCode);
+  assert.ok(tableHasBots(live));
+  assert.equal(turnFacts(live, s.clock.t), null);
+  if (live.hand?.deadline) {
+    s.clock.t = live.hand.deadline - 3 * 3600 * 1000; // inside the 4-hour reminder window
+    s.service.slack.sweep(); await s.idle();
+  }
+  assert.equal(s.slack.dms.length, 0, 'no reminder on a bot table either');
+
+  // Control: a human-only table still pings the player who did not just act.
+  s.clock.t = 1_800_000_000_000;
+  const humanCode = await threeHanded(s, c);
+  await s.idle();
+  const hasTurnDm = () => s.slack.dms.some((d) => /Your turn/.test(d.text) && !/Reminder/.test(d.text) && d.text.includes(`/t/${humanCode}`));
+  if (!hasTurnDm()) {
+    const who = toAct(s, humanCode);
+    const v = await s.call(cookieOf(c, who), 'GET', `/api/tables/${humanCode}`);
+    const r = await s.call(cookieOf(c, who), 'POST', `/api/tables/${humanCode}/action`, { type: v.body.legal?.canCheck ? 'check' : 'call', handNumber: v.body.hand.number });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await s.idle();
+  }
+  assert.ok(hasTurnDm(), 'human-only table still sends a turn DM');
+  assert.ok(s.slack.dms.every((d) => !String(d.text).includes(`/t/${botCode}`)), 'those DMs are not from the bot table');
+});
+

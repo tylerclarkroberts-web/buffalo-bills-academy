@@ -285,3 +285,83 @@ body.in-mines { background: #020402; }
   .m-worm .w-in, .m-worm:not(.cut) .w-body, .m-knife { animation: none; }
   .m-worm.cut .w-half { animation-duration: .01s; }
 }
+
+/* v89: dances. One small HUD link opens a 3×3 picker; number keys 1–9 skip it. */
+.m-dance-btn.on { color: var(--y); }
+.m-key { opacity: .55; font-size: .8em; }
+.m-dances { position: absolute; z-index: 30; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(560px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; background: rgba(2, 4, 2, .92); border: 1px solid var(--g3); }
+.m-dance { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; min-height: 44px; padding: 4px 8px; background: rgba(10, 26, 6, .6); border: 1px solid rgba(125, 255, 58, .35); color: var(--g); font: 700 16px/1.1 var(--mono); text-align: left; cursor: pointer; }
+.m-dance:hover, .m-dance:focus-visible { border-color: var(--g); background: rgba(125, 255, 58, .16); outline: none; }
+.m-dance.on { border-color: var(--y); color: var(--y); }
+.m-dance-icon { font-size: 18px; }
+.m-dance-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) { .m-key { display: none; } .m-dance { grid-template-columns: auto 1fr; } }
+@media (max-width: 480px) { .m-dance { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 2px; padding: 4px; font-size: 14px; min-height: 52px; } .m-dance-name { white-space: normal; } .m-dance-icon { font-size: 16px; } }
+@media (orientation: landscape) and (max-height: 520px) { .m-dances { bottom: calc(46px + env(safe-area-inset-bottom)); gap: 4px; padding: 6px; } .m-dance { min-height: 40px; } }
+/* v89 Hall of Doors: behind the mine door. A stone hall, one row of doors (two rows on upright screens), no scroll.
+   It sits under the CRT scanlines (z 50) so it still feels like the mine; the game rooms behind its doors sit above. */
+.m-hall { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 38%, #12200c 0%, #070b05 55%, #020402 100%); }
+.m-hall-bar { border-bottom-color: var(--g3); background: rgba(2,4,2,.9); }
+.m-hall-title { letter-spacing: .22em; color: var(--y); text-shadow: 0 0 8px rgba(230,255,0,.45); white-space: nowrap; font-size: 20px; }
+.m-hall-room { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px calc(8px + env(safe-area-inset-bottom));
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.35) 0 2px, transparent 2px 96px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,.35) 0 2px, transparent 2px 48px),
+    linear-gradient(180deg, #0c1309 0%, #111a0d 60%, #0a0f08 100%);
+  background-size: 96px 48px, 96px 48px, auto; background-position: 48px 0, 0 0, 0 0; }
+.m-hall-doors { position: relative; z-index: 1; flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: 1fr; gap: 10px; align-items: end; }
+@media (max-aspect-ratio: 6/5) { .m-hall-doors { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 6px 10px; } }
+.m-hall-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 18%; z-index: 0; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(28,74,12,.18)), repeating-linear-gradient(90deg, rgba(125,255,58,.05) 0 1px, transparent 1px 60px); border-top: 1px solid rgba(125,255,58,.12); }
+.m-hall-slot { container-type: size; height: 100%; min-height: 0; display: flex; align-items: flex-end; justify-content: center;
+  --c1: #3a2a1a; --c2: #20160c; --frame: #4a4a44; --glow: rgba(255,120,40,.0); --ink: #e6ffd0; --sign: #1a1a14; }
+.m-hall-door { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: min(100cqw, calc((100cqh - 26px) / 2)); -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 0 10px var(--glow)); }
+.m-hall-frame { position: relative; display: block; width: 100%; aspect-ratio: 1 / 2; padding: 22% 9% 0; background: var(--frame);
+  clip-path: polygon(8% 4%, 50% 0, 92% 4%, 100% 12%, 100% 100%, 0 100%, 0 12%);
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,.4); transition: transform .15s, filter .2s; }
+.m-hall-sign { position: absolute; top: 6%; left: 50%; transform: translateX(-50%); max-width: 92%; padding: 1px 6px; background: var(--sign); color: var(--ink);
+  font-size: clamp(11px, 9cqw, 18px); letter-spacing: .1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 6px var(--glow); border: 1px solid rgba(255,255,255,.12); }
+.m-hall-slab { position: relative; display: block; width: 100%; height: 100%; background: linear-gradient(160deg, var(--c1), var(--c2));
+  clip-path: polygon(0 3%, 50% 0, 100% 3%, 100% 100%, 0 100%); overflow: hidden; }
+.m-hall-panel { position: absolute; left: 14%; right: 14%; border: 2px solid rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.m-hall-panel.p1 { top: 10%; height: 34%; } .m-hall-panel.p2 { top: 52%; height: 38%; }
+.m-hall-emblem { position: absolute; left: 50%; top: 18%; width: 46%; transform: translateX(-50%); color: var(--ink); opacity: .85; filter: drop-shadow(0 0 4px var(--glow)); }
+.m-hall-knob { position: absolute; right: 12%; top: 52%; width: 11%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff8, #0000 60%), var(--knob, #c9a64a); box-shadow: 0 1px 0 rgba(0,0,0,.6); }
+.m-hall-spill { position: absolute; left: 9%; right: 9%; bottom: 0; height: 3px; background: var(--glow); box-shadow: 0 0 14px 4px var(--glow); }
+.m-hall-plaque { font-size: clamp(11px, 10cqw, 17px); letter-spacing: .08em; white-space: nowrap; color: var(--g); line-height: 1; }
+.is-locked .m-hall-plaque { color: var(--g2); opacity: .75; text-shadow: none; }
+.is-open .m-hall-door:hover .m-hall-frame, .is-open .m-hall-door:focus-visible .m-hall-frame { transform: translateY(-3px); filter: brightness(1.18); }
+.is-open .m-hall-door:hover .m-hall-plaque, .is-open .m-hall-door:focus-visible .m-hall-plaque { color: var(--y); }
+.m-hall-door:focus-visible .m-hall-plaque { outline: 1px dashed var(--y); outline-offset: 3px; }
+.is-locked .m-hall-slab { filter: saturate(.75) brightness(.85); }
+.m-hall-lock { position: absolute; left: 50%; top: 60%; transform: translateX(-50%); width: 26%; aspect-ratio: 4 / 5; display: block; }
+.m-hall-lock .shackle { position: absolute; left: 18%; right: 18%; top: 0; height: 50%; border: 3px solid #b8b8a8; border-bottom: 0; border-radius: 40% 40% 0 0; }
+.m-hall-lock .body { position: absolute; left: 0; right: 0; bottom: 0; height: 60%; background: linear-gradient(180deg, #e0c060, #8a6a20); border-radius: 3px; box-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.m-hall-lock .body::after { content: ''; position: absolute; left: 44%; top: 30%; width: 12%; height: 40%; background: #2a1a00; border-radius: 2px; }
+.m-hall-door.shake .m-hall-frame { animation: m-hall-rattle .42s steps(6) both; }
+.m-hall-door.shake .m-hall-lock { animation: m-hall-lockjump .42s ease-out both; }
+@keyframes m-hall-rattle { 0%, 100% { transform: none; } 20% { transform: translateX(-4px) rotate(-1deg); } 40% { transform: translateX(4px) rotate(1deg); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+@keyframes m-hall-lockjump { 0%, 100% { transform: translateX(-50%); } 30% { transform: translateX(-50%) translateY(-12%) rotate(-12deg); } 60% { transform: translateX(-50%) rotate(8deg); } }
+.m-hall-note { position: relative; z-index: 1; flex: none; margin: 6px 0 0; text-align: center; font-size: 18px; letter-spacing: .1em; color: var(--g2); min-height: 1.3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-hall-note.on { color: #ffb070; text-shadow: 0 0 8px rgba(255,140,60,.5); animation: m-on .35s steps(4) both; }
+@media (prefers-reduced-motion: reduce) { .m-hall-door.shake .m-hall-frame, .m-hall-door.shake .m-hall-lock, .m-hall-note.on { animation: none; } .m-hall-frame { transition: none; } }
+@media (max-width: 560px) { .m-hall-title { font-size: 15px; letter-spacing: .12em; } .m-hall-note { font-size: 14px; letter-spacing: .04em; } .m-hall-room { padding: 8px 8px calc(6px + env(safe-area-inset-bottom)); } }
+@media (max-height: 420px) { .m-hall-bar .m-doom-clock { display: none; } .m-hall-note { font-size: 14px; margin-top: 2px; } .m-hall-room { padding-top: 6px; } }
+/* the doors */
+.s-hell { --c1: #6a1a0c; --c2: #2a0804; --frame: #3c2a24; --glow: rgba(255,90,30,.75); --ink: #ffcf9a; --sign: #2a0a04; --knob: #a02010; }
+.s-hell .m-hall-slab { background: repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 2px, transparent 2px 14%), linear-gradient(160deg, var(--c1), var(--c2)); }
+.s-jungle { --c1: #4a6a22; --c2: #22320c; --frame: #5a4a2c; --glow: rgba(160,255,80,.7); --ink: #f2ffcf; --sign: #1e2a0a; --knob: #d8b860; }
+.s-jungle .m-hall-slab { background: repeating-linear-gradient(0deg, rgba(0,0,0,.2) 0 2px, transparent 2px 11%), linear-gradient(160deg, var(--c1), var(--c2)); }
+.s-sol { --c1: #ff7a3a; --c2: #7a1f4a; --frame: #c86a3a; --glow: rgba(255,194,58,.6); --ink: #ffc23a; --sign: #3a0f2a; --knob: #1fc7c0; }
+.s-sol .m-hall-slab { background: linear-gradient(180deg, transparent 0 46%, #1fc7c0 46% 48.5%, #ffc23a 48.5% 51%, #ff3d8b 51% 53.5%, #6a2a8a 53.5% 56%, transparent 56%), linear-gradient(170deg, var(--c1), var(--c2)); }
+.s-sol .m-hall-sign { border-color: #ffc23a; }
+.m-elh-loading { align-items: center; justify-content: center; background: #1d0f24; color: #ffc23a; font-size: 26px; letter-spacing: .12em; }
+.s-vault { --c1: #6c7072; --c2: #30343a; --frame: #22262a; --glow: rgba(200,220,230,.25); --ink: #e6eef2; --sign: #121416; --knob: #9aa4aa; }
+.s-neon { --c1: #2a0a3a; --c2: #120418; --frame: #1a0a24; --glow: rgba(255,60,220,.55); --ink: #ff9cf2; --sign: #12041a; --knob: #ff60e0; }
+.s-neon .m-hall-sign { border-color: #ff60e0; }
+.s-deep { --c1: #0c3a3a; --c2: #041818; --frame: #3a4a44; --glow: rgba(60,255,220,.35); --ink: #a8fff0; --sign: #041414; --knob: #8a7040; }
+.s-mystery { --c1: #1a1a1a; --c2: #050505; --frame: #2a2a2a; --glow: rgba(230,255,0,.25); --ink: #e6ff00; --sign: #0a0a0a; --knob: #444; }
+.s-gold { --c1: #6a4a10; --c2: #2a1a04; --frame: #8a6a2a; --glow: rgba(255,210,80,.4); --ink: #ffe9a8; --sign: #2a1a04; --knob: #ffd860; }
+.s-sky { --c1: #8aa6c0; --c2: #3a5470; --frame: #c8d4de; --glow: rgba(190,230,255,.45); --ink: #ffffff; --sign: #22344a; --knob: #e8eef4; }
+.m-nano .m-doom-bar { border-bottom-color: var(--g3); background: #040803; }

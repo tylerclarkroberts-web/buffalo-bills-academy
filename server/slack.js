@@ -1,6 +1,10 @@
 // Slack turn alerts: a Slack bot ("Guntrad the Pit Boss") DMs a player when it is their turn, plus one
 // gentle reminder when about 4 hours are left on their clock. Off unless SLACK_BOT_TOKEN is set.
 // It also nudges the host of a table that has 2+ players seated but was never started (10 min, then every 6 h, max 3).
+// Tables with any bot (computer) player never get these messages: no turn ping, reminder, or start nudge.
+// That includes poker practice tables and blackjack or SCUM tables that requested bots (even before those
+// bots are seated at start). Human-only games are unchanged. Barn challenges, the connect hello, and the
+// Settings test DM are not table alerts and still send.
 // Players are matched to Slack automatically by their account email (verified Google email, or the email on a
 // password account), looked up lazily and cached; a manual "Slack email" in Settings overrides it; alerts can be switched off.
 // Slack is never on the game's critical path: every send is async, caught, retried once and logged
@@ -46,6 +50,23 @@ export class SlackClient {
   }
 }
 
+
+/** A seat or player id that belongs to a computer player (poker/blackjack `bot-…`, SCUM `scumbot-…`). */
+export const isBotPlayerId = (id) => typeof id === 'string' && (id.startsWith('bot-') || id.startsWith('scumbot-'));
+
+/**
+ * True if this table has, or is set up to have, one or more bot seats.
+ * Poker practice tables are marked with `t.bots`. Blackjack and SCUM store a requested bot count on
+ * `settings.bots` at create and only seat them when the host starts — we treat that count as enough,
+ * so a lobby with bots requested also stays quiet. Seated `bot` flags and bot ids are a backstop.
+ */
+export function tableHasBots(t) {
+  if (!t) return false;
+  if (t.bots) return true;
+  if (Number(t.settings?.bots) > 0) return true;
+  return (t.seats || []).some((s) => s && (s.bot || isBotPlayerId(s.id) || isBotPlayerId(s.playerId)));
+}
+
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const STREET = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River' };
 export function hoursLeft(ms) {
@@ -59,7 +80,7 @@ export function hoursLeft(ms) {
 /** The public facts about a turn: table, hand, street, what it costs to stay in, pot, time left. No cards. */
 export function turnFacts(t, now) {
   const h = t.hand;
-  if (t.bots) return null; // v38: no Slack from bot tables (reminders included)
+  if (tableHasBots(t)) return null; // no Slack from tables with bots (reminders included)
   if (!h || h.toAct === null || h.toAct === undefined || h.deadline === null) return null;
   const seat = h.toAct; const s = t.seats[seat]; const p = h.players[seat];
   if (!s || !p) return null;
@@ -108,7 +129,7 @@ export function challengeMessage(f, { publicUrl }) {
  * for the deadline because the betting clock only starts at the first human bet (that must not re-ping everyone).
  */
 export function bjTurns(t, now) {
-  const r = t?.round; if (!r || t.status !== 'playing') return [];
+  const r = t?.round; if (!r || t.status !== 'playing' || tableHasBots(t)) return [];
   const out = [];
   const add = (seat, phase, keyDeadline) => {
     const s = t.seats[seat]; if (!s || s.bot || s.left || !s.id) return;
@@ -141,7 +162,7 @@ export function bjMessage(f, { publicUrl, reminder = false }) {
 /** Who an Async Scum table is waiting on: 'lead' / 'play' (their turn), 'tribute' (Scum or Baby Scum owes cards) or
  *  'give' (King or Queen gives back). Humans only, public facts only (never cards or begs). One key per turn. */
 export function scumTurns(t, now) {
-  const r = t?.round; if (!r || t.status !== 'playing') return [];
+  const r = t?.round; if (!r || t.status !== 'playing' || tableHasBots(t)) return [];
   const out = [];
   const add = (seat, phase, deadline, start) => {
     const s = t.seats[seat]; if (!s || s.bot || s.left || !s.id || !deadline) return;
@@ -328,7 +349,7 @@ export class SlackAlerts {
   /** Called after every table change. Never throws, never awaits Slack. */
   tableChanged(t, actorId = null) {
     try {
-      if (!this.enabled || t.bots) return; // v38: bot tables never send Slack
+      if (!this.enabled || tableHasBots(t)) return; // tables with bots never send Slack
       this.nudgeTrack(t);
       const f = turnFacts(t, this.service.now());
       if (!f) return;
@@ -352,7 +373,7 @@ export class SlackAlerts {
   /** v48: called after every saved blackjack change (player action or clock tick). Never throws, never awaits Slack. */
   bjChanged(t, actorId = null) {
     try {
-      if (!this.enabled) return;
+      if (!this.enabled || tableHasBots(t)) return;
       const pre = `bj:${t.code}:`; let dirty = false;
       if (t.status !== 'playing') { for (const m of [this.state.pinged, this.state.reminded]) for (const k of Object.keys(m)) if (k.startsWith(pre)) { delete m[k]; dirty = true; } if (dirty) this.save(); return; }
       for (const f of bjTurns(t, this.service.now())) {
@@ -369,7 +390,7 @@ export class SlackAlerts {
   /** Async Scum: same opt-in, dedupe and reminders as blackjack. Never throws, never awaits Slack. */
   scumChanged(t, actorId = null) {
     try {
-      if (!this.enabled) return;
+      if (!this.enabled || tableHasBots(t)) return;
       const pre = `scum:${t.code}:`; let dirty = false;
       const turns = scumTurns(t, this.service.now()); const live = new Set(turns.map((f) => pre + f.seat));
       for (const m of [this.state.pinged, this.state.reminded]) for (const k of Object.keys(m)) if (k.startsWith(pre) && (t.status !== 'playing' || !live.has(k))) { delete m[k]; dirty = true; }
@@ -431,6 +452,7 @@ export class SlackAlerts {
    * Records for tables that started or closed are dropped, so the nudging stops for good.
    */
   nudgeTrack(t) {
+    if (tableHasBots(t)) return;
     const N = this.state.nudges; const rec = N[t.code];
     if (t.status !== 'lobby') { if (rec) { delete N[t.code]; this.save(); } return; }
     const ready = readyCount(t) >= 2;
@@ -446,7 +468,7 @@ export class SlackAlerts {
     return rec.sent === 0 ? rec.since + NUDGE_FIRST_MS : rec.last + NUDGE_EVERY_MS;
   }
   nudgeIfDue(t, now) {
-    if (t.bots) return;
+    if (tableHasBots(t)) return;
     this.nudgeTrack(t);
     const due = this.nudgeDue(t);
     if (due === null || now < due) return;

@@ -600,6 +600,18 @@ export class Barn {
     return { xp, bonus: won ? WIN_BONUS_XP : 0, fainted: !won, levelBefore, levelAfter: levelFor(next.xp) };
   }
   /**
+   * A mine fight that ran to the bell with nobody down (no contest): no XP, no record, but each bug keeps the HP it
+   * ended on, so the fight's damage stays until the nurse heals it. Never raises HP. Idempotent per battle id.
+   */
+  keepScrapes(playerId, { battleId, bornAt, hpPct }) {
+    const pen = this.doc.pens[playerId];
+    if (!pen || pen.stage !== 'creature' || pen.bornAt !== bornAt || pen.faintedAt || !Number.isFinite(hpPct)) return false;
+    if ((pen.mineBattles || []).includes(battleId)) return false;
+    const health = Math.max(1, Math.min(healthOf(pen), Math.round(hpPct)));
+    this.commitPen(playerId, { ...pen, health, mineBattles: [...(pen.mineBattles || []), battleId].slice(-20) });
+    return true;
+  }
+  /**
    * The Bug Center: the nurse heals a fainted or hurt bug to full HP. The only way HP comes back. A hurt bug is free;
    * a fainted one is free RECOVER_MS after it fainted, or FAST_HEAL_COST right now with `pay`. A healthy bug is a polite no-op.
    */

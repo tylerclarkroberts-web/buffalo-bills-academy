@@ -340,3 +340,57 @@ test('HTTP: tick, ambush and move are signed-in only and validate their input', 
   assert.equal((await post('/mines/pvp/move', { battleId: 'x', moves: ['basic'] })).status, 409);
   assert.equal((await post('/mines/pvp/forfeit', {})).body.battle, null);
 });
+
+test('v89 dances: only the nine known ids reach the other miners, walking or a battle ends one, switching is rate limited', (t) => {
+  const f = fixture(t);
+  const { a, b, at } = f.setup({ bobFacing: EAST, gap: 2.5 }); // not touching: no battle, no ambush
+  const bobAt = { x: at.x + 2.5, y: at.y, yaw: EAST }, annAt = { x: at.x, y: at.y, yaw: EAST };
+  f.clock.now += 250;
+  f.tick(f.bob, b, bobAt, { dance: 'tuktuk' });
+  let seen = f.tick(f.ann, a, annAt).others.find((o) => o.id === 'bob');
+  assert.equal(seen.dance, 'tuktuk', 'ann sees bob dancing');
+  // junk ids, objects, prototype names and long strings never pass
+  for (const junk of ['moonwalk', { id: 'robot' }, '__proto__', 'constructor', 'x'.repeat(5000), 7, true]) {
+    f.clock.now += 1000;
+    const v = f.tick(f.bob, b, bobAt, { dance: junk });
+    assert.equal(v.dance, null, `refused ${String(junk).slice(0, 20)}`);
+  }
+  // switching again inside the gap keeps the old dance; after it, the new one
+  f.clock.now += 1000; f.tick(f.bob, b, bobAt, { dance: 'robot' });
+  f.clock.now += PVP.danceGapMs - 100; assert.equal(f.tick(f.bob, b, bobAt, { dance: 'spin' }).dance, 'robot', 'rate limited');
+  f.clock.now += 200; assert.equal(f.tick(f.bob, b, bobAt, { dance: 'spin' }).dance, 'spin');
+  // stopping is never rate limited
+  assert.equal(f.tick(f.bob, b, bobAt, {}).dance, null);
+  // walking ends it, even if the page still says it's dancing
+  f.clock.now += 1000; f.tick(f.bob, b, bobAt, { dance: 'disco' });
+  f.clock.now += 250; assert.equal(f.tick(f.bob, b, { ...bobAt, x: bobAt.x + 0.3 }, { dance: 'disco' }).dance, null, 'moved: no dance');
+  seen = f.tick(f.ann, a, annAt).others.find((o) => o.id === 'bob');
+  assert.equal(seen.dance, null);
+});
+
+test('v89 dances do not change who can ambush whom, and a battle ends the dance', (t) => {
+  const f = fixture(t);
+  const { a, b, at, view } = f.setup(); // ann right behind bob, both facing east
+  assert.deepEqual(view.ambush, { id: 'bob', name: 'BOB' });
+  f.clock.now += 250;
+  f.tick(f.bob, b, { x: at.x + 0.6, y: at.y, yaw: EAST }, { dance: 'spin' }); // spinning on the floor is still facing east
+  const v = f.tick(f.ann, a, { x: at.x, y: at.y, yaw: EAST }, { dance: 'hipthrust' });
+  assert.deepEqual(v.ambush, { id: 'bob', name: 'BOB' }, 'a dancing miner can still be stabbed from behind');
+  assert.equal(v.others[0].dance, 'spin');
+  // bob turns round: face to face starts a battle, and both dances stop
+  f.clock.now += 250;
+  const bv = f.tick(f.bob, b, { x: at.x + 0.6, y: at.y, yaw: WEST }, { dance: 'spin' });
+  assert.ok(bv.battle, 'battle started');
+  f.clock.now += 250;
+  assert.equal(f.tick(f.bob, b, { x: at.x + 0.6, y: at.y, yaw: WEST }, { dance: 'spin' }).dance, null, 'no dancing mid-battle');
+  assert.equal(f.tick(f.ann, a, { x: at.x, y: at.y, yaw: EAST }, { dance: 'robot' }).dance, null);
+});
+
+test('v89 dances do not touch acid, money or the bucket', (t) => {
+  const f = fixture(t);
+  const { a, b, at } = f.setup({ gap: 2.5 });
+  f.collect(f.ann, a, 12);
+  const before = JSON.stringify([f.ann.bankroll, f.bob.bankroll, f.mines.doc.active.ann.collected, f.ann.txns?.length]);
+  for (let i = 0; i < 20; i++) { f.clock.now += 500; f.tick(f.ann, a, { x: at.x, y: at.y, yaw: EAST }, { dance: ['robot', 'tuktuk', 'swing'][i % 3] }); f.tick(f.bob, b, { x: at.x + 2.5, y: at.y, yaw: EAST }); }
+  assert.equal(JSON.stringify([f.ann.bankroll, f.bob.bankroll, f.mines.doc.active.ann.collected, f.ann.txns?.length]), before);
+});

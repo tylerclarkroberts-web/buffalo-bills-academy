@@ -273,3 +273,63 @@ test('skip then pass: the skipped player still gets the live pile; if they pass,
   assert.equal(t.round.pile, null); assert.equal(t.round.turn, 1, 'Bob played last, so Bob leads');
 });
 
+test('HTTP: create with no bots opens a lobby, friends join by code, host deals at 3', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-scum-nobots-'));
+  const { app, shutdown } = createApp({ dataDir: dir, devLogin: true, env: { SCUM_TICK_MS: '0', SCUM_BOT_MS: '0', BJ_TICK_MS: '0' } });
+  const server = app.listen(0); await new Promise((r) => server.once('listening', r));
+  t.after(() => { server.close(); shutdown(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = (c, m, p, b) => fetch(base + p, { method: m, headers: { ...(c ? { cookie: c } : {}), 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null), cookie: r.headers.get('set-cookie')?.split(';')[0] }));
+  const ann = (await call(null, 'POST', '/auth/dev', { name: 'Ann', email: 'ann0@x.test' })).cookie;
+  const bob = (await call(null, 'POST', '/auth/dev', { name: 'Bob', email: 'bob0@x.test' })).cookie;
+  const cat = (await call(null, 'POST', '/auth/dev', { name: 'Cat', email: 'cat0@x.test' })).cookie;
+  const c = await call(ann, 'POST', '/api/scum/tables', { name: "Ann's scum table", settings: { bots: 0, maxSeats: 6, turnSec: 86400 } });
+  assert.equal(c.status, 200, JSON.stringify(c.body));
+  assert.equal(c.body.status, 'lobby');
+  assert.equal(c.body.bots, 0);
+  assert.match(c.body.code, /^[A-Z2-9]{6}$/);
+  assert.equal(c.body.seats.filter(Boolean).length, 1);
+  assert.equal(c.body.isHost, true);
+  const early = await call(ann, 'POST', `/api/scum/tables/${c.body.code}/start`);
+  assert.equal(early.status, 409);
+  assert.match(early.body.error || early.body.message || JSON.stringify(early.body), /needs 3 players/i);
+  const j1 = await call(bob, 'POST', `/api/scum/tables/${c.body.code}/join`);
+  assert.equal(j1.status, 200, JSON.stringify(j1.body));
+  const still = await call(ann, 'POST', `/api/scum/tables/${c.body.code}/start`);
+  assert.equal(still.status, 409);
+  const j2 = await call(cat, 'POST', `/api/scum/tables/${c.body.code}/join`);
+  assert.equal(j2.status, 200, JSON.stringify(j2.body));
+  assert.equal(j2.body.seats.filter(Boolean).length, 3);
+  const st = await call(ann, 'POST', `/api/scum/tables/${c.body.code}/start`);
+  assert.equal(st.status, 200, JSON.stringify(st.body));
+  assert.equal(st.body.status, 'playing');
+  assert.equal(st.body.seats.filter((s) => s && s.bot).length, 0);
+});
+
+test('HTTP: a 5-human table with no bots deals when the host hits Deal (regression: Z5G38Q)', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-scum-five-'));
+  const { app, shutdown } = createApp({ dataDir: dir, devLogin: true, env: { SCUM_TICK_MS: '0', SCUM_BOT_MS: '0', BJ_TICK_MS: '0' } });
+  const server = app.listen(0); await new Promise((r) => server.once('listening', r));
+  t.after(() => { server.close(); shutdown(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const call = (c, m, p, b) => fetch(base + p, { method: m, headers: { ...(c ? { cookie: c } : {}), 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null), cookie: r.headers.get('set-cookie')?.split(';')[0] }));
+  const names = ['Tyler', 'Joe', 'Geoffrey', 'Keetch', 'Gunnar'];
+  const cookies = [];
+  for (const [i, n] of names.entries()) cookies.push((await call(null, 'POST', '/auth/dev', { name: n, email: `five${i}@x.test` })).cookie);
+  const c = await call(cookies[0], 'POST', '/api/scum/tables', { name: "Tyler's scum table", settings: { bots: 0, maxSeats: 6, turnSec: 86400 } });
+  assert.equal(c.status, 200, JSON.stringify(c.body));
+  assert.equal(c.body.bots, 0);
+  for (const ck of cookies.slice(1)) assert.equal((await call(ck, 'POST', `/api/scum/tables/${c.body.code}/join`)).status, 200);
+  const lobby = await call(cookies[0], 'GET', `/api/scum/tables/${c.body.code}`);
+  assert.equal(lobby.body.status, 'lobby');
+  assert.equal(lobby.body.seats.filter(Boolean).length, 5);
+  const st = await call(cookies[0], 'POST', `/api/scum/tables/${c.body.code}/start`);
+  assert.equal(st.status, 200, JSON.stringify(st.body));
+  assert.equal(st.body.status, 'playing');
+  assert.equal(st.body.seats.filter((s) => s && s.bot).length, 0);
+  assert.equal(st.body.round.order.length, 5);
+  assert.equal(st.body.seats.reduce((n, x) => n + (x?.count || 0), 0), 52, 'all 52 cards dealt across 5 players');
+  // A non-host can't deal, and gets a readable reason rather than nothing.
+  const again = await call(cookies[1], 'POST', `/api/scum/tables/${c.body.code}/start`);
+  assert.ok(again.status >= 400 && typeof again.body?.error === 'string' && again.body.error.length > 0);
+});
