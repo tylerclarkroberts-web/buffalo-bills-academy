@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Nanosaur · Hall of Doors</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="play.css?v=1">
+</head>
+<body>
+<div id="load" class="load" data-test="nano-loading"><p id="load-t">LOADING 0%</p><div class="bar"><div id="load-b"></div></div><button id="retry" class="btn" hidden>TRY AGAIN</button></div>
+<div id="stage" class="stage">
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <aside id="keys" class="keys" data-test="nano-keys" aria-label="Controls">
+    <h2>Controls</h2>
+    <dl>
+      <div class="k-fire"><dt>Fire</dt><dd><kbd class="w">Space</kbd><kbd class="m">Click</kbd></dd></div>
+      <div><dt>Move / turn</dt><dd><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dd></div>
+      <div><dt>Jump</dt><dd><kbd class="w">Alt</kbd></dd></div>
+      <div><dt>Pick up</dt><dd><kbd class="w">Ctrl</kbd></dd></div>
+      <div><dt>Jetpack</dt><dd><kbd>A</kbd><kbd>Z</kbd></dd></div>
+      <div><dt>Weapon</dt><dd><kbd class="w">Shift</kbd></dd></div>
+      <div><dt>Camera</dt><dd><kbd>Tab</kbd><kbd>,</kbd><kbd>.</kbd></dd></div>
+      <div><dt>Map</dt><dd><kbd>G</kbd></dd></div>
+      <div><dt>Pause</dt><dd><kbd>Esc</kbd></dd></div>
+    </dl>
+  </aside>
+</div>
+<div id="pad" class="pad" hidden aria-label="Touch controls">
+  <div class="dpad">
+    <button data-k="ArrowUp" class="u" aria-label="Forward">▲</button>
+    <button data-k="ArrowLeft" class="l" aria-label="Turn left">◄</button>
+    <button data-k="ArrowRight" class="r" aria-label="Turn right">►</button>
+    <button data-k="ArrowDown" class="d" aria-label="Back">▼</button>
+  </div>
+  <div class="tops">
+    <button data-k="Escape" data-tap="1">PAUSE</button><button data-k="Enter" data-tap="1">OK</button><button data-k="Tab" data-tap="1">CAM</button><button data-k="KeyG" data-tap="1">MAP</button><button data-k="ShiftLeft" data-tap="1">WPN</button>
+  </div>
+  <div class="acts">
+    <button data-k="KeyA" class="jet">JET▲</button>
+    <button data-k="AltLeft" class="jump">JUMP</button>
+    <button data-k="Space" class="fire">FIRE</button>
+    <button data-k="ControlLeft" class="pick">GRAB</button>
+  </div>
+</div>
+<button id="credits-open" class="credits-link" data-test="nano-credits">Credits &amp; licence</button>
+<div id="credits" class="credits" role="dialog" aria-label="Credits and licence" hidden>
+  <p>Nanosaur © 1998 Pangea Software, Inc. Used under <a href="LICENSE-CC-BY-NC-SA-4.0.md" target="_blank">CC BY-NC-SA 4.0</a> (non-commercial).</p>
+  <p>Modern source port by Iliyas Jorio (<a href="https://github.com/jorio/Nanosaur" target="_blank" rel="noopener">jorio/Nanosaur</a>). WebAssembly port by Lachlan Wright (<a href="https://github.com/LachlanBWWright/Nanosaur-android" target="_blank" rel="noopener">source</a>). <a href="NOTICE.txt" target="_blank">Notice</a>.</p>
+  <p>Unmodified build, hosted here for free play only; no wagering. Not affiliated with or endorsed by Pangea Software.</p>
+  <p class="keys-line">Arrows move and turn · Space or click fire · Alt jump · Ctrl pick up · A / Z jetpack · Shift weapon · Tab , . camera · G map · Esc pause</p>
+  <button id="credits-close" class="btn">CLOSE</button>
+</div>
+<script src="webgl-fixes.js?v=1"></script>
+<script src="play.js?v=1"></script>
+</body>
+</html>
