@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, verdictLine } from './boutFx.js';
-import { voice, sfx, music } from './sfx.js';
+import { voice, sfx, music, announce } from './sfx.js';
 import { navigate } from '../App.jsx';
 
 const EXTRA = { pierce: 'pierce', guard: 'guard', venom: 'venom', weaken: 'weaken' };
@@ -53,17 +53,18 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
 
   const beat = pos.i >= 0 && pos.i < plan.beats.length ? plan.beats[pos.i] : null;
   useEffect(() => {
-    if (pos.phase === 'intro') sfx.intro();
+    if (pos.phase === 'intro') { sfx.intro(); announce('intro'); }
     else if (beat && pos.phase === 'charge') sfx.charge(beat.r.tier);
     else if (beat && pos.phase === 'act' && beat.kind === 'attack') sfx[STYLES[styleOf(fighters[beat.r.by]?.species)].sound]();
-    else if (beat && pos.phase === 'land') landSound(beat);
+    else if (beat && pos.phase === 'land') { landSound(beat); if (beat.r.critical) announce('crit', false); }
     else if (pos.phase === 'finish') { if (plan.ending === 'ko') sfx.ko(); else sfx.bell(); }
     // Music runs from the first blow to the last, and follows the sound switch.
     if (['charge', 'act', 'land'].includes(pos.phase)) music.start(); else music.stop();
   }, [pos.i, pos.phase]);
-  useEffect(() => () => music.stop(), []);
+  useEffect(() => () => { music.stop(); announce.stop(); }, []);
   useEffect(() => {
     if (!done) return undefined;
+    announce(bout.result === 'won' || bout.result === 'lost' ? bout.result : 'draw');
     if (bout.result === 'lost') { sfx.sulk(); return undefined; }
     if (bout.result !== 'won') { sfx.bell(); return undefined; }
     sfx.fanfare(); const id = setTimeout(() => voice(BY_ID[bout.you.species]?.voice), 1100);
