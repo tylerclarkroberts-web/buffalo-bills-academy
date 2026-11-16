@@ -175,11 +175,15 @@ export class Scum {
   doPass(t, seat, auto = null) {
     const r = t.round; const own = !!(r.playOn && r.owner === seat); const res = S.pass(r, seat);
     const who = this.nm(t, seat); const bug = auto ? this.bugWho(auto) : '';
-    const text = own ? (auto ? `${who} missed their turn; ${bug} passes and clears the pile.` : `${who} passes on their own set and clears the pile.`)
+    const text = own
+      ? (res.cleared
+        ? (auto ? `${who} missed their turn; ${bug} passes and clears the pile.` : `${who} passes on their own set and clears the pile.`)
+        : (auto ? `${who} missed their turn; ${bug} passes on their own set.` : `${who} passes on their own set.`))
       : auto ? `${who} missed their turn; ${bug} has nothing that beats it and passes.` : `${who} passes.`;
     this.log(t, text, { k: 'pass', seat, ...(own ? { own: true } : {}), ...(auto ? { bug: auto } : {}) });
     if (res.cleared) this.log(t, own ? `Pile cleared. ${this.nm(t, r.turn)} leads.` : `Everyone passed. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
     else if (res.playOn) this.playOnLog(t);
+    else if (own && r.turn != null) this.log(t, `${this.nm(t, r.turn)} was skipped, not passed — they can still play.`, { k: 'stillin', seat: r.turn });
     this.clock(t);
   }
   /** Everyone else passed (or got skipped) on the last set: its owner may keep playing on it or pass to clear. */
@@ -343,7 +347,7 @@ export class Scum {
       const pl = s.bot ? null : this.getPlayer(s.id);
       const avatar = s.bot ? { kind: 'gen', seed: `scumbot:${s.name}`, bot: true } : this.avatars && pl ? this.avatars.info(pl) : { kind: 'gen', seed: s.id };
       return { i, id: s.bot ? null : s.id, name: s.name, me: i === me, bot: !!s.bot, left: !!s.left, waiting: !!s.waiting, count: r?.hands?.[i]?.length ?? 0,
-        title: t.titles?.[i] || null, broke: !!s.broke, pay: (t.lastRound?.finish || []).find((x) => x.seat === i)?.net ?? null, place: r ? r.finished.indexOf(i) + 1 || null : null, here: !s.bot && here.includes(s.id), turn: waiting.includes(i), avatar, stats: s.stats };
+        title: t.titles?.[i] || null, broke: !!s.broke, pay: (t.lastRound?.finish || []).find((x) => x.seat === i)?.net ?? null, place: r ? r.finished.indexOf(i) + 1 || null : null, here: !s.bot && here.includes(s.id), turn: waiting.includes(i), passed: !!(r?.passed || []).includes(i), skipped: r?.skipped === i, avatar, stats: s.stats };
     });
     attachSeatBugs(seats, this.barn, (s) => s?.id);
     let round = null;
@@ -352,7 +356,7 @@ export class Scum {
         const mine = me === pr.from || me === pr.to;
         return { from: pr.from, to: pr.to, n: pr.n, paid: pr.paid, given: pr.given, due: pr.given ? null : pr.due, ...(mine ? { beg: pr.beg, tribute: pr.tribute, gift: pr.gift, owe: me === pr.from && !pr.paid ? S.highest(r.hands[me], pr.n) : null } : {}) };
       }) } : null;
-      round = { no: r.no, phase: r.phase, order: r.order, turn: r.turn, pile: r.pile, lastPlay: r.lastPlay, finished: r.finished, deadline: r.phase === 'play' ? r.deadline : null,
+      round = { no: r.no, phase: r.phase, order: r.order, turn: r.turn, pile: r.pile, lastPlay: r.lastPlay, finished: r.finished, passed: r.passed || [], skipped: r.skipped, deadline: r.phase === 'play' ? r.deadline : null,
         hand: me >= 0 ? S.sortHand(r.hands[me] || []) : null, myTurn: me >= 0 && r.phase === 'play' && r.turn === me, leading: !r.pile, playOn: !!(r.playOn && r.pile), exchange: ex };
     }
     return {

@@ -20,7 +20,7 @@ function svc(extra = {}) {
 }
 /** Rig the live round: fixed hands, turn order and turn. */
 function rig(t, hands, order, turn = order[0]) {
-  Object.assign(t.round, { phase: 'play', order, hands, pile: null, owner: null, turn, finished: [], gone: [], exchange: null });
+  Object.assign(t.round, { phase: 'play', order, hands, pile: null, owner: null, turn, finished: [], gone: [], exchange: null, passed: [], playOn: false, skipped: null });
 }
 
 test('create, join by invite code, deal: three humans, each sees only their own hand', () => {
@@ -249,3 +249,27 @@ test('play on: the view and log say who can keep playing; their pass clears the 
   assert.equal(bob.seats[0].count, 1); assert.ok(!JSON.stringify(bob.seats).includes('2c'));
   assert.ok(!('hands' in bob.round));
 });
+
+test('skip then pass: the skipped player still gets the live pile; if they pass, the skipper leads', () => {
+  const { s, P } = svc();
+  const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
+  const t = s.table(v.code);
+  // Cat is already out: two left. Ann plays a 7, Bob matches (skips Ann), Bob passes, Ann may still play.
+  rig(t, { 0: ['7h', '9c', '2c'], 1: ['7c', '3d', '8s'], 2: [] }, [0, 1, 2]);
+  t.round.finished = [2];
+  s.play(P.a, v.code, ['7h']);
+  const sk = s.play(P.b, v.code, ['7c']);
+  assert.equal(sk.round.playOn, true); assert.equal(sk.round.turn, 1); assert.equal(sk.seats[0].skipped, true);
+  const after = s.pass(P.b, v.code);
+  assert.equal(after.round.pile.cards[0], '7c', 'pile stays live');
+  assert.equal(after.round.turn, 0); assert.equal(after.round.playOn, false);
+  assert.equal(after.round.myTurn, false, "Bob's view: not his turn");
+  assert.equal(after.seats[1].passed, true); assert.equal(after.seats[0].passed, false);
+  assert.deepEqual(after.round.passed, [1]);
+  assert.match(t.log.findLast((e) => e.ev?.k === 'stillin').text, /Ann was skipped, not passed/);
+  const ann = s.view(P.a, v.code);
+  assert.equal(ann.round.myTurn, true); assert.equal(ann.seats[0].turn, true);
+  s.pass(P.a, v.code);
+  assert.equal(t.round.pile, null); assert.equal(t.round.turn, 1, 'Bob played last, so Bob leads');
+});
+
