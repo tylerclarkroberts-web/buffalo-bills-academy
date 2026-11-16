@@ -214,5 +214,24 @@ export class MineAudio {
     o2.start(t); o2.stop(t + 0.8);
     lfo.start(t); lfo.stop(t + 0.8);
   }
+  /** v79: noise through a filter sweep, the building block for the knife and the worm. */
+  noise(len, from, to, vol, type = 'bandpass') {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime, buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 1.5;
+    const s = c.createBufferSource(); s.buffer = buf;
+    const f = c.createBiquadFilter(); f.type = type; f.Q.value = 2.5; f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + len);
+    const g = c.createGain(); g.gain.value = vol; s.connect(f); f.connect(g); g.connect(this.master); s.start(t);
+  }
+  /** An acid worm lands on your face: a wet slap. */
+  splat() { this.noise(0.22, 900, 140, 0.55, 'lowpass'); }
+  /** The bowie knife: a bright whoosh up, then a ring. */
+  slash() {
+    this.noise(0.16, 1200, 7000, 0.5);
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime + 0.05, o = c.createOscillator(), g = c.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(2900, t); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.4);
+  }
   dispose() { clearTimeout(this.dripTimer); try { this.ctx?.close(); } catch { /* ignore */ } }
 }

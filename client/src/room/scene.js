@@ -1045,15 +1045,18 @@ export class RoomScene {
         const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(image, 0, 0);
         const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), wrap = faceWrap(pixels.data, canvas.width, canvas.height);
         if (!wrap) return;
-        ctx.putImageData(pixels, 0, 0);
-        const map = canvasTexture(canvas); map.magFilter = map.minFilter = THREE.LinearFilter;
-        map.repeat.set(wrap.w / canvas.width, wrap.h / canvas.height); map.offset.set(wrap.x / canvas.width, 1 - (wrap.y + wrap.h) / canvas.height);
-        // Seen from the front the picture is undistorted; it only stretches where the head curves away.
+        // Only the box the head fills becomes the texture, so past its edge the edge colour carries on.
+        const crop = document.createElement('canvas'); crop.width = wrap.w; crop.height = wrap.h;
+        crop.getContext('2d').putImageData(pixels, -wrap.x, -wrap.y, wrap.x, wrap.y, wrap.w, wrap.h);
+        const map = canvasTexture(crop); map.magFilter = map.minFilter = THREE.LinearFilter;
+        // A rounder head, as at the table, instead of one as narrow as the picture. The picture keeps its own shape on
+        // the front, undistorted from straight on; where the head is wider its edges run round the sides.
+        const wide = 0.96, tall = 1.1, shape = wrap.w / wrap.h, across = Math.min(0.5 * wide, 0.5 * tall * shape), up = across / shape;
         const front = new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI), at = front.attributes.position;
-        for (let i = 0; i < at.count; i++) front.attributes.uv.setXY(i, at.getX(i) * 2 + 0.5, at.getY(i) * 2 + 0.5);
+        for (let i = 0; i < at.count; i++) front.attributes.uv.setXY(i, 0.5 + at.getX(i) * wide / across, 0.5 + at.getY(i) * tall / up);
         const rgb = colour => `rgb(${colour.join(',')})`;
         head.geometry.dispose(); head.geometry = new THREE.SphereGeometry(0.25, 12, 8, Math.PI, Math.PI); head.material.color.set(rgb(wrap.hair));
-        head.scale.x = Math.max(0.7, Math.min(1.05, 1.16 * wrap.w / wrap.h));
+        head.scale.set(wide, tall, 0.9); head.position.y += 0.03;
         mesh(headGroup, front, material('#ffffff', { map }), 0, head.position.y, 0).scale.copy(head.scale);
         headGroup.remove(plane); plane.geometry.dispose(); faceMat.dispose(); faceMap.dispose();
         for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
@@ -1068,6 +1071,9 @@ export class RoomScene {
     }
     // Nod from the neck: a head pivoting at the feet swings a long way forward.
     headGroup.position.y = 1.45; for (const part of headGroup.children) part.position.y -= 1.45;
+    // The body is stretched to its height; the head is not. Stretched with it, a face came out 40% too long.
+    // Undo that for the head, hat included, and make it a little oversized, like the bust at the table.
+    headGroup.scale.set(1.3, 1.3 / RESIDENT_HEIGHT_SCALE, 1.3);
   }
   wealth(worth) {
     const table = new THREE.Group(), group = new THREE.Group(); group.position.x = -0.15; table.add(group); this.dynamic.add(table);
@@ -1146,9 +1152,11 @@ export class RoomScene {
         if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : 1.45 * sit;
       });
       // Hands behind the back to inspect, a reach for the cash table, and a wave with whatever was found there.
+      // Sideways, an arm only ever swings away from the body (positive for the right arm, negative for the left):
+      // the wave used to turn the right arm inward, straight through the torso.
       this.residentArms?.forEach((arm, i) => {
         arm.rotation.x = (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035 + look * 0.45 - sit * 0.3 - (i ? grab * 1.2 : 0);
-        arm.rotation.z = i ? -pose.wave * 0.65 : 0.04 * Math.sin(t * 0.8);
+        arm.rotation.z = i ? pose.wave * 1.1 : -0.02 - 0.02 * Math.sin(t * 0.8);
       });
       if (this.residentNote) this.residentNote.visible = cash && pose.phase > 13 && pose.phase < 30;
     }

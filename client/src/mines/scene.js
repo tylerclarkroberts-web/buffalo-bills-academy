@@ -1,6 +1,6 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
-import { rng, distFrom, pathSteps, geigerFacing } from '../../../server/engine/maze.js';
+import { rng, distFrom, pathSteps, geigerFacing, RUBBLE } from '../../../server/engine/maze.js';
 import { MIN_GAP } from './stalker.js';
 import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
@@ -64,6 +64,15 @@ function hazardTexture() {
     g.fillStyle = '#e6ff00'; g.beginPath(); g.moveTo(32, 6); g.lineTo(60, 56); g.lineTo(4, 56); g.closePath(); g.fill();
     g.fillStyle = '#0b0b06'; g.beginPath(); g.moveTo(32, 16); g.lineTo(52, 51); g.lineTo(12, 51); g.closePath(); g.fill();
     g.fillStyle = '#e6ff00'; g.fillRect(30, 24, 4, 16); g.fillRect(30, 43, 4, 4);
+  });
+}
+// v79: the plank nailed across a cave-in. Hand-painted, misspelled by nobody, ignored by everybody.
+function caveSignTexture() {
+  return canvasTex(128, 40, (g, w, h) => {
+    g.fillStyle = '#5a3a1c'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(30,16,6,.5)'; g.fillRect(0, 4 + i * 6 + (i % 2), w, 1); }
+    g.fillStyle = '#2a1a0a'; g.fillRect(4, 18, 4, 4); g.fillRect(w - 8, 18, 4, 4);
+    g.fillStyle = '#ff5a2a'; g.font = 'bold 22px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('CAVE-IN', w / 2, h / 2 + 1);
   });
 }
 // The door behind where you clock in: a plain riveted steel bulkhead, dark and easy to miss. Original art.
@@ -141,7 +150,8 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, faun, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0 } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, faun, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0, ambient = 1, flicker = 0, lampPower = 1 } = {}) {
+    this.flicker = reduceMotion ? 0 : flicker; this.lampPower = lampPower; this.sputter = 0; // v79: the day's lantern
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
     this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.faun = faun || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
@@ -154,18 +164,20 @@ export class MineScene {
     this.scene.fog = new THREE.Fog(look.bg, 2.5, fogFar); // deeper shafts are darker; a headlamp pushes it back
     this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 60);
     this.scene.add(this.camera);
-    this.scene.add(new THREE.AmbientLight(look.ambient, look.ambientI));
+    this.scene.add(new THREE.AmbientLight(look.ambient, look.ambientI * ambient));
     this.lamp = new THREE.PointLight(look.lamp, 18, lampReach, 1.6);
     this.camera.add(this.lamp);
 
     const { grid, size } = maze;
     const wallMat = new THREE.MeshLambertMaterial({ map: rockTexture(r, look, acid) });
     this.wallMaterial = wallMat;
-    let n = 0; for (const row of grid) for (const v of row) n += v;
+    let n = 0; for (const row of grid) for (const v of row) n += v === 1 ? 1 : 0;
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(TILE, WALL_H, TILE), wallMat, n);
     const m = new THREE.Matrix4(); let i = 0;
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (grid[y][x]) { m.makeTranslation(x * TILE, WALL_H / 2, y * TILE); walls.setMatrixAt(i++, m); }
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (grid[y][x] === 1) { m.makeTranslation(x * TILE, WALL_H / 2, y * TILE); walls.setMatrixAt(i++, m); }
     this.scene.add(walls);
+    this.caveIns = [];
+    for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) if (grid[y][x] === RUBBLE) this.caveIns.push(this.addCaveIn(x, y, grid, r, look, wallMat));
     const floorT = floorTexture(r, look); floorT.repeat.set(size, size);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(size * TILE, size * TILE), new THREE.MeshLambertMaterial({ map: floorT }));
     floor.rotation.x = -Math.PI / 2; floor.position.set((size - 1) * TILE / 2, 0, (size - 1) * TILE / 2); this.scene.add(floor);
@@ -263,6 +275,29 @@ export class MineScene {
     this.loop = this.loop.bind(this);
     this.miners = new OtherMiners(this.scene, { reduceMotion: this.reduce });
     this.raf = requestAnimationFrame(this.loop);
+  }
+  /** v79: a cave-in: the roof is on the floor, to the ceiling, with a snapped beam. Solid in the grid (RUBBLE), so you go around. */
+  addCaveIn(x, y, grid, r, look, wallMat) {
+    const g = new THREE.Group(); g.position.set(x * TILE, 0, y * TILE); g.name = 'cave-in';
+    const alongX = grid[y][x - 1] === 0 || grid[y][x + 1] === 0; // the hallway runs along x: its faces look down x
+    const rockMat = new THREE.MeshLambertMaterial({ map: wallMat.map, color: '#d8c8a4', emissive: '#1c160c' }); // fresh-broken rock: paler than the walls
+    const core = new THREE.Mesh(new THREE.BoxGeometry(alongX ? TILE * 0.45 : TILE, WALL_H, alongX ? TILE : TILE * 0.45), rockMat); core.position.y = WALL_H / 2; g.add(core);
+    const geo = new THREE.DodecahedronGeometry(1, 0);
+    for (const side of [-1, 1]) for (let k = 0; k < 11; k++) {
+      const rad = 0.22 + r() * 0.42, h = Math.min(WALL_H - rad * 0.5, rad * 0.6 + r() * (WALL_H - 0.2) * (k < 7 ? 0.55 : 1));
+      const b = new THREE.Mesh(geo, rockMat); b.scale.set(rad, rad * (0.7 + r() * 0.4), rad);
+      const out = side * (TILE * 0.2 + r() * TILE * 0.32 * (1 - h / WALL_H)), across = (r() - 0.5) * TILE * 0.9;
+      b.position.set(alongX ? out : across, h, alongX ? across : out); b.rotation.set(r() * 3, r() * 3, r() * 3); g.add(b);
+    }
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, TILE * 1.05), new THREE.MeshLambertMaterial({ color: look.beam }));
+    beam.position.set(0, WALL_H * 0.55, 0); beam.rotation.set(0.7, alongX ? 0 : Math.PI / 2, 0.15); if (alongX) beam.position.x = (r() < 0.5 ? -1 : 1) * TILE * 0.3; else beam.position.z = (r() < 0.5 ? -1 : 1) * TILE * 0.3; g.add(beam);
+    const signMat = new THREE.MeshBasicMaterial({ map: (this.caveSignTex ||= caveSignTexture()), side: THREE.DoubleSide });
+    for (const side of [-1, 1]) {
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.4), signMat);
+      const at = side * TILE * 0.56; if (alongX) { sign.position.set(at, 1.45, 0); sign.rotation.y = side * Math.PI / 2; } else { sign.position.set(0, 1.45, at); sign.rotation.y = side > 0 ? 0 : Math.PI; }
+      sign.rotation.z = (r() - 0.5) * 0.25; g.add(sign);
+    }
+    this.scene.add(g); return g;
   }
   /** v71: the other miners on today's shift, as the server last reported them. */
   setOthers(list) { this.miners?.set(list); }
@@ -552,7 +587,13 @@ export class MineScene {
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
     const dread = this.dreadLevel || 0;
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
-    this.lamp.intensity = 16 + Math.sin(now / 90) * 0.6 + dip; // a tired headlamp (more tired when he's near)
+    // v79: rough days sputter. Now and then the lantern stutters for a beat; on Dead Man's Dig it nearly goes out.
+    const fl = this.flicker;
+    if (fl && this.sputter <= 0 && Math.random() < fl * 0.006) this.sputter = 0.15 + Math.random() * 0.55 * fl;
+    let sput = 0;
+    if (this.sputter > 0) { this.sputter -= dt; sput = Math.random() < 0.5 ? -6 - 9 * fl * Math.random() : -2 * Math.random(); }
+    const jitter = fl ? (Math.random() - 0.5) * 2.4 * fl : 0;
+    this.lamp.intensity = Math.max(1.5, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter) * this.lampPower); // a tired headlamp (more tired when he's near)
     this.poolLight.intensity = this.acidIn ? 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4) : 1.6;
     if (this.acidIn && !this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
     if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }

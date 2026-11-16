@@ -344,7 +344,7 @@ function SlackAlerts({ me }) {
     <div className="account slack-card">
       <div className="sl-head">
         <span className="sl-mark" aria-hidden="true">#</span>
-        <div><h2 className="display sl-title">Slack alerts</h2><p className="small muted">Guntrad the Pit Boss messages you on Slack when it's your turn at poker or blackjack (your bet, your hand, an insurance call), with a link to the table. One reminder if about 4 hours are left, and a nudge if your table is waiting for you to start it. Never your cards.</p></div>
+        <div><h2 className="display sl-title">Slack alerts</h2><p className="small muted">Guntrad the Pit Boss messages you on Slack when it's your turn at poker or blackjack (your bet, your hand, an insurance call), with a link to the table. One reminder if about 4 hours are left, and a nudge if your table is waiting for you to start it. He also tells you when someone challenges your Barn bug. Never your cards.</p></div>
       </div>
       {!st.enabled ? <p className="muted small">Slack alerts aren't switched on yet. Check back soon.</p> : (
         <>

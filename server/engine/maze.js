@@ -4,7 +4,13 @@ export function rng(seed) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-export function makeMaze(seed, n = 7, targetSteps = 34) {
+/**
+ * opts (difficulty tiers, engine/mine-tiers.js): `loops` extra openings on top of the usual few, then `caves`
+ * cave-ins. A cave-in is rubble (grid value 2: solid like rock, drawn as a fallen roof) dropped on a straight bit of
+ * hallway that sits on a loop, so blocking it only ever forces a detour: every open tile, the elevator and every
+ * pool chosen afterwards stay reachable. Without opts the maze is exactly what it always was.
+ */
+export function makeMaze(seed, n = 7, targetSteps = 34, opts = null) {
   const r = rng(seed);
   const W = 2 * n + 1;
   const g = Array.from({ length: W }, () => new Array(W).fill(1));
@@ -24,6 +30,13 @@ export function makeMaze(seed, n = 7, targetSteps = 34) {
   for (let k = 0; k < n; k++) {
     const x = 1 + Math.floor(r() * (W - 2)), y = 1 + Math.floor(r() * (W - 2));
     if (g[y][x] === 1 && ((g[y][x - 1] === 0 && g[y][x + 1] === 0) || (g[y - 1][x] === 0 && g[y + 1][x] === 0))) g[y][x] = 0;
+  }
+  if (opts) {
+    for (let k = 0; k < (opts.loops || 0); k++) {
+      const x = 1 + Math.floor(r() * (W - 2)), y = 1 + Math.floor(r() * (W - 2));
+      if (g[y][x] === 1 && ((g[y][x - 1] === 0 && g[y][x + 1] === 0) || (g[y - 1][x] === 0 && g[y + 1][x] === 0))) g[y][x] = 0;
+    }
+    if (opts.caves) caveIn(g, r, opts.caves);
   }
   // Breadth-first distances (in tiles) from the start.
   const dist = Array.from({ length: W }, () => new Array(W).fill(-1));
@@ -46,6 +59,39 @@ export function makeMaze(seed, n = 7, targetSteps = 34) {
   // Facing: look down the first open corridor.
   const facing = g[1][2] === 0 ? 0 : Math.PI / 2;
   return { grid: g, size: W, start: { x: 1, y: 1 }, pool: { x: best.x, y: best.y }, steps: best.steps, facing, dist };
+}
+
+/** Rubble on a tunnel tile: impassable, but never on the way out. */
+export const RUBBLE = 2;
+const openCount = (g) => { let c = 0; for (const row of g) for (const v of row) if (v === 0) c++; return c; };
+function reachable(g) {
+  const W = g.length, seen = new Uint8Array(W * W), q = [[1, 1]]; seen[W + 1] = 1;
+  for (let i = 0; i < q.length; i++) {
+    const [x, y] = q[i];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (g[Y]?.[X] === 0 && !seen[Y * W + X]) { seen[Y * W + X] = 1; q.push([X, Y]); } }
+  }
+  return q.length;
+}
+/** Drop up to `count` cave-ins, each on a straight hallway tile at least 4 steps from the elevator, keeping every tunnel connected. */
+function caveIn(g, r, count) {
+  const W = g.length, total = openCount(g);
+  const near = new Set(); { const q = [[1, 1, 0]]; near.add('1,1'); for (let i = 0; i < q.length; i++) { const [x, y, d] = q[i]; if (d >= 3) continue; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (g[Y][X] === 0 && !near.has(`${X},${Y}`)) { near.add(`${X},${Y}`); q.push([X, Y, d + 1]); } } } }
+  const cand = [];
+  for (let y = 1; y < W - 1; y++) for (let x = 1; x < W - 1; x++) {
+    if (g[y][x] !== 0 || near.has(`${x},${y}`)) continue;
+    const h = g[y][x - 1] === 0 && g[y][x + 1] === 0 && g[y - 1][x] && g[y + 1][x];
+    const v = g[y - 1][x] === 0 && g[y + 1][x] === 0 && g[y][x - 1] && g[y][x + 1];
+    if (h || v) cand.push([x, y]);
+  }
+  let open = total, placed = 0;
+  while (placed < count && cand.length) {
+    const [x, y] = cand.splice(Math.floor(r() * cand.length), 1)[0];
+    // not next to another cave-in: one pile per hallway reads better than a wall of them
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]].some(([dx, dy]) => g[y + dy]?.[x + dx] === RUBBLE)) continue;
+    g[y][x] = RUBBLE;
+    if (reachable(g) === open - 1) { open--; placed++; } else g[y][x] = 0;
+  }
+  return placed;
 }
 
 /** Walking distances (in tiles) from one tile to every other. */
@@ -104,7 +150,9 @@ export function geigerBars(steps, far = 48, facing = 0) {
   return Math.round(level) === 10 ? 10 : Math.max(1, Math.min(9, Math.round(level + 0.6 * facing)));
 }
 /** First pool's walking distance by maze size: a bigger mine starts you farther from the first glow. */
-export const FIRST_POOL_STEPS = { 7: 26, 9: 42, 11: 60 };
+export const FIRST_POOL_STEPS = { 6: 20, 7: 26, 8: 34, 9: 42, 10: 50, 11: 60, 13: 76, 16: 96 };
+/** How far apart later pools sit, by maze size. */
+export const NEXT_POOL_STEPS = { 6: 22, 7: 26, 8: 30, 9: 34, 10: 38, 11: 42, 13: 50, 16: 60 };
 /**
  * The vein: a seeded chain of pools, the first one where makeMaze put it, each next one a far dead end from the
  * last. The server alone knows which one actually has acid in it when you get there (it's about time, not place):
@@ -122,7 +170,7 @@ export function bucketChain(maze, seed) {
 function poolChain(maze, seed, k, bucket) {
   const r = rng((seed ^ 0xac1d) >>> 0);
   const { grid, size } = maze;
-  const target = { 7: 26, 9: 34, 11: 42 }[(size - 1) / 2];
+  const target = NEXT_POOL_STEPS[(size - 1) / 2] ?? 42;
   const ends = [];
   for (let y = 1; y < size; y += 2) for (let x = 1; x < size; x += 2) {
     if (grid[y][x]) continue;

@@ -1,8 +1,8 @@
 // The daily mine: one maze and one set of acid spots per Mountain-time day, the same for every miner.
 // Pure and shared with the browser: the seed is derived from the date alone, so anyone can rebuild the day's maze.
-// How big the day's maze is uses the same mix as the old per-shift vein (lucky 7-cell days are common, deep
-// 11-cell days are rarer), so across days the share of quick first finds stays where it was.
-import { rng, makeMaze, bucketChain, FIRST_POOL_STEPS } from './maze.js';
+// How big and rough the day's maze is comes from the day's tier (engine/mine-tiers.js).
+import { bucketChain } from './maze.js';
+import { dayTier, tierInfo, shiftMaze } from './mine-tiers.js';
 
 export const MINE_TZ = 'America/Denver';
 const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: MINE_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -20,32 +20,29 @@ export function daySeed(day) {
   return (h >>> 0) % 2 ** 31;
 }
 
-/** The same mix the per-shift vein produced (`rollVein` cells, measured): about 51% 7-cell, 23% 9-cell, 26% 11-cell. */
-export const DAY_CELL_MIX = [[7, 51], [9, 23], [11, 26]];
+/** v79: the size comes from the day's tier (engine/mine-tiers.js), 20% each, from tiny to enormous. */
 export function dayCells(seed) {
-  let u = rng((seed ^ 0xda11) >>> 0)() * 100;
-  for (const [cells, w] of DAY_CELL_MIX) { if (u < w) return cells; u -= w; }
-  return 11;
+  return tierInfo(dayTier(seed)).cells;
 }
 
 /** A whole day shares one maze, so a day with only two or three dead ends would short everyone all day: redig. */
 export const MIN_DAY_POOLS = 5;
 
-/** Everything about the day's tunnels that every miner shares. The size is the day's; the seed is the first dig
+/** Everything about the day's tunnels that every miner shares (`forceTier`: the local dev server's MINE_TEST_TIER hook). The size is the day's; the seed is the first dig
  *  (the day, then 'day#1', 'day#2', ...) that leaves at least MIN_DAY_POOLS acid spots. */
-export function dailyLayout(day) {
-  const cells = dayCells(daySeed(day));
+export function dailyLayout(day, forceTier = null) {
+  const tier = tierInfo(forceTier) ? forceTier : dayTier(daySeed(day)), cells = tierInfo(tier).cells;
   let seed = daySeed(day);
   for (let k = 1; k <= 40; k++) {
-    if (bucketChain(makeMaze(seed, cells, FIRST_POOL_STEPS[cells]), seed).length >= MIN_DAY_POOLS) break;
+    if (bucketChain(shiftMaze({ seed, cells, tier }), seed).length >= MIN_DAY_POOLS) break;
     seed = daySeed(`${day}#${k}`);
   }
-  return { day, seed, cells };
+  return { day, seed, cells, tier };
 }
 
 /** The day's maze and its pool chain (positions only: how much each holds is rolled per shift on the server). */
-export function dailyMine(day) {
-  const { seed, cells } = dailyLayout(day);
-  const maze = makeMaze(seed, cells, FIRST_POOL_STEPS[cells]);
-  return { day, seed, cells, maze, chain: bucketChain(maze, seed) };
+export function dailyMine(day, forceTier = null) {
+  const { seed, cells, tier } = dailyLayout(day, forceTier);
+  const maze = shiftMaze({ seed, cells, tier });
+  return { day, seed, cells, tier, maze, chain: bucketChain(maze, seed) };
 }

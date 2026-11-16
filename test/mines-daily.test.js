@@ -7,8 +7,9 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Mines, MIN_SHIFT_MS } from '../server/mines.js';
-import { mineDay, daySeed, dailyLayout, dailyMine, DAY_CELL_MIX, MIN_DAY_POOLS } from '../server/engine/daily-maze.js';
-import { distFrom, makeMaze, bucketChain, FIRST_POOL_STEPS } from '../server/engine/maze.js';
+import { mineDay, daySeed, dailyLayout, dailyMine, MIN_DAY_POOLS } from '../server/engine/daily-maze.js';
+import { TIERS } from '../server/engine/mine-tiers.js';
+import { distFrom } from '../server/engine/maze.js';
 
 // Walking the first leg at full speed (2.2 m tiles at 3.6 m/s) plus a couple of seconds of turning, never before
 // the server's 20 s floor: about when a good miner can first see acid.
@@ -37,12 +38,13 @@ test('the day decides the seed: same day same maze, a new day a new one', () => 
   assert.notDeepEqual(a.maze.grid.map(String), b.maze.grid.map(String).concat(a.cells === b.cells ? [] : ['size']));
 });
 
-test('every day for two years: every acid spot is reachable, and the maze-size mix matches the old vein', () => {
-  const counts = { 7: 0, 9: 0, 11: 0 }; let quick = 0;
+test('every day for two years: every acid spot is reachable, and the size follows the day\'s tier (v79)', () => {
+  const counts = {}; let quick = 0;
   const N = 730;
   for (let i = 0; i < N; i++) {
-    const day = mineDay(NOON_UTC + i * DAY), { cells, maze, chain } = dailyMine(day);
-    counts[cells]++;
+    const day = mineDay(NOON_UTC + i * DAY), { cells, tier, maze, chain } = dailyMine(day);
+    counts[tier] = (counts[tier] || 0) + 1;
+    assert.equal(cells, TIERS[tier - 1].cells, `${day}: tier ${tier} is ${TIERS[tier - 1].cells} cells`);
     const fromStart = distFrom(maze.grid, maze.start.x, maze.start.y);
     assert.ok(chain.length >= MIN_DAY_POOLS, `${day}: only ${chain.length} acid spots`);
     for (const p of chain) assert.ok(fromStart[p.y][p.x] > 0, `${day}: pool ${p.x},${p.y} unreachable`);
@@ -50,15 +52,9 @@ test('every day for two years: every acid spot is reachable, and the maze-size m
     for (let k = 1; k < chain.length; k++) assert.ok(chain.legs[k] > 0);
     if (walkMs(chain.legs[0]) < 30000) quick++;
   }
-  for (const [cells, w] of DAY_CELL_MIX) assert.ok(Math.abs(counts[cells] / N - w / 100) < 0.06, `${cells}-cell days: ${counts[cells]}/${N}`);
-  // The share of first finds inside 30 s matches what random per-shift mazes gave (same size mix, any seed).
-  let expected = 0;
-  for (const [cells, w] of DAY_CELL_MIX) {
-    let q = 0; for (let seed = 1; seed <= 300; seed++) { const m = makeMaze(seed * 7919, cells, FIRST_POOL_STEPS[cells]); if (walkMs(bucketChain(m, seed * 7919).legs[0]) < 30000) q++; }
-    expected += (w / 100) * (q / 300);
-  }
-  assert.ok(Math.abs(quick / N - expected) < 0.08, `quick-first-find days ${quick}/${N} vs per-shift ${expected.toFixed(2)}`);
-  assert.ok(quick / N >= 0.25, 'at least a quarter of days still allow acid inside 30 s');
+  for (const t of TIERS) assert.ok(Math.abs(counts[t.tier] / N - 0.2) < 0.05, `tier ${t.tier} days: ${counts[t.tier]}/${N}`);
+  // The small days still give quick first finds: at least the easy fifth of days.
+  assert.ok(quick / N >= 0.18, `quick-first-find days ${quick}/${N}`);
 });
 
 function fixture(t) {

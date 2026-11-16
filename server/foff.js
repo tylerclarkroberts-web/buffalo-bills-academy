@@ -2,10 +2,27 @@
 // word for what they won. It pays out once per account per thing, on the honour system, like the trip itself:
 // $2,000 and the Presidential Medal of Freedom for beating all eleven friends, and pocket money for each side
 // quest, four of which also leave a keepsake. Keepsakes hang in My Room with the other oddities and cannot be bought.
+// Course records and holes-in-one are also honour-system: a signed-in player posts a finished nine, and older
+// local saves can backfill a total with no hole card. Missing `best` / `aces` in foff.json is an empty board.
 import { GameError } from './engine/game.js';
 import { CATALOG } from './catalog/index.js';
 
 export const MEDAL = 'odd-medal', PRIZE = 2000;
+/** The bagpipe film at Spanish Bay: 1:34. A POST to mark it watched must come at least this long after watch-start, minus a few seconds of slack. */
+export const FILM_MS = 93_000, FILM_SLACK_MS = 5_000, FILM_MIN_MS = FILM_MS - FILM_SLACK_MS;
+export const NEED_FILM = 'Watch the film first. Then the trip opens.';
+export const BOARD_TOP = 5, HOLE_MAX = 10;
+/** The eight nines on the trip. A test keeps these in step with client/src/foff/course.js. */
+export const NINES = [
+  { id: 1, course: 'Poppy Hills', nine: 'Front nine', holes: 3 },
+  { id: 2, course: 'Poppy Hills', nine: 'Back nine', holes: 3 },
+  { id: 3, course: 'Pacific Grove', nine: 'Front nine', holes: 3 },
+  { id: 4, course: 'Pacific Grove', nine: 'Back nine', holes: 3 },
+  { id: 5, course: 'Bayonet', nine: 'Front nine', holes: 3 },
+  { id: 6, course: 'Bayonet', nine: 'Back nine', holes: 3 },
+  { id: 7, course: 'Black Horse', nine: 'Front nine', holes: 3 },
+  { id: 8, course: 'Black Horse', nine: 'Back nine', holes: 3 },
+];
 /** What each side quest pays, by the quest ids in client/src/foff/quests.js (a test keeps the two in step). */
 export const REWARDS = {
   van: { cash: 30 }, luggage: { cash: 20 }, banya: { cash: 40, item: 'odd-flipflop' }, burma: { cash: 25 }, dessert: { cash: 25 },
@@ -15,17 +32,49 @@ export const REWARDS = {
   hmb: { cash: 40 }, sfo: { cash: 60, item: 'odd-boardingpass' },
 };
 
+const matchOf = (id) => NINES.find((m) => m.id === Number(id));
+
 export class Foff {
-  constructor({ store, accounts, shop, now = () => Date.now() }) {
-    this.store = store; this.accounts = accounts; this.shop = shop; this.now = now;
-    this.doc = store.loadDoc('foff', { by: {}, quests: {} }); this.doc.by ||= {}; this.doc.quests ||= {};
+  constructor({ store, accounts, shop, avatars = { info: () => ({ kind: 'gen', seed: 'x' }) }, now = () => Date.now() }) {
+    this.store = store; this.accounts = accounts; this.shop = shop; this.avatars = avatars; this.now = now;
+    this.doc = store.loadDoc('foff', { by: {}, quests: {} });
+    this.doc.by ||= {}; this.doc.quests ||= {}; this.doc.watched ||= {}; this.doc.watching ||= {};
+    this.doc.best ||= {}; this.doc.aces ||= [];
   }
   save() { this.store.saveDoc('foff', this.doc); }
   give(p, id) { this.shop.inv(p.id).own[id] = 1; this.shop.save(); }
-  /** A deleted account takes its claims with it. */
-  forget(pid) { delete this.doc.by[pid]; delete this.doc.quests[pid]; this.save(); }
-  claim(p) {
+  /** A deleted account takes its claims and its golf scores with it. */
+  forget(pid) {
+    delete this.doc.by[pid]; delete this.doc.quests[pid]; delete this.doc.watched[pid]; delete this.doc.watching[pid];
+    delete this.doc.best[pid];
+    this.doc.aces = this.doc.aces.filter((a) => a.pid !== pid);
+    this.save();
+  }
+  /** Whether this player has finished the lobby film that unlocks the bachelor party. Missing `watched` is unwatched. */
+  watched(p) { return !!(p && this.doc.watched[p.id]); }
+  requireWatched(p) {
     if (!p) throw new GameError('Please sign in first', 401);
+    if (!this.watched(p)) throw new GameError(NEED_FILM, 403);
+  }
+  /** Record when they actually start the film. The first start sticks, so a retry does not reset the clock. */
+  startWatching(p) {
+    if (!p) throw new GameError('Please sign in first', 401);
+    const row = this.doc.watching[p.id] || { at: this.now() };
+    if (!this.doc.watching[p.id]) { this.doc.watching[p.id] = row; this.save(); }
+    return { startedAt: row.at, durationMs: FILM_MS, minMs: FILM_MIN_MS };
+  }
+  markWatched(p) {
+    if (!p) throw new GameError('Please sign in first', 401);
+    if (this.doc.watched[p.id]) return { watched: true, at: this.doc.watched[p.id].at };
+    const start = this.doc.watching[p.id]?.at;
+    if (!start) throw new GameError('Start the film first.', 403);
+    if (this.now() - start < FILM_MIN_MS) throw new GameError('Keep watching. The trip opens when the film is over.', 403);
+    const row = { at: this.now() };
+    this.doc.watched[p.id] = row; this.save();
+    return { watched: true, at: row.at };
+  }
+  claim(p) {
+    this.requireWatched(p);
     this.accounts.ensure(p);
     if (this.doc.by[p.id]) return { already: true, prize: PRIZE, bankroll: p.bankroll };
     this.accounts.change(p, PRIZE, 'foff', `Presidential Medal of Freedom: $${PRIZE.toLocaleString('en-US')}`);
@@ -34,7 +83,7 @@ export class Foff {
     return { prize: PRIZE, bankroll: p.bankroll };
   }
   quest(p, id) {
-    if (!p) throw new GameError('Please sign in first', 401);
+    this.requireWatched(p);
     const reward = Object.hasOwn(REWARDS, id) && REWARDS[id];
     if (!reward) throw new GameError('Nobody on the trip remembers that happening.', 404);
     this.accounts.ensure(p);
@@ -44,5 +93,68 @@ export class Foff {
     if (reward.item) this.give(p, reward.item);
     mine[id] = this.now(); this.save();
     return { cash: reward.cash, item, bankroll: p.bankroll };
+  }
+
+  /** A finished nine. `holes` is the real strokes (not a penciled card). A backfill may send only a total. */
+  recordRound(p, body = {}) {
+    this.requireWatched(p);
+    const m = matchOf(body.matchId);
+    if (!m) throw new GameError('That is not a nine on this trip.', 400);
+    const n = m.holes;
+    const at = Number(body.at);
+    const when = Number.isFinite(at) && at > 0 ? Math.min(at, this.now()) : this.now();
+    let holes = null, strokes = Number(body.strokes);
+    if (body.holes != null) {
+      if (!Array.isArray(body.holes) || body.holes.length !== n) throw new GameError('That card does not add up.', 400);
+      holes = body.holes.map((s) => Number(s));
+      if (holes.some((s) => !Number.isInteger(s) || s < 1 || s > HOLE_MAX)) throw new GameError('That card does not add up.', 400);
+      const sum = holes.reduce((a, b) => a + b, 0);
+      if (Number.isFinite(strokes) && strokes !== sum) throw new GameError('That card does not add up.', 400);
+      strokes = sum;
+    } else if (!Number.isInteger(strokes) || strokes < n || strokes > n * HOLE_MAX) {
+      throw new GameError('That card does not add up.', 400);
+    }
+    const mine = (this.doc.best[p.id] ||= {});
+    const prev = mine[m.id];
+    if (!prev || strokes < prev.strokes) mine[m.id] = { strokes, at: when, ...(holes ? { holes } : {}) };
+    else if (strokes === prev.strokes && !prev.holes && holes) mine[m.id] = { ...prev, holes };
+    if (holes) {
+      for (let i = 0; i < holes.length; i++) {
+        if (holes[i] !== 1) continue;
+        const ace = { pid: p.id, matchId: m.id, hole: i + 1, at: when };
+        const key = (a) => `${a.pid}:${a.matchId}:${a.hole}:${a.at}`;
+        if (!this.doc.aces.some((a) => key(a) === key(ace))) this.doc.aces.push(ace);
+      }
+    }
+    this.save();
+    return this.board(p.id);
+  }
+
+  face(pid, meId) {
+    const p = this.store.players[pid];
+    if (!p || p.hidden) return null;
+    return { id: p.id, name: p.name, avatar: this.avatars.info(p), you: pid === meId };
+  }
+
+  board(meId) {
+    const courses = NINES.map((m) => {
+      const top = Object.entries(this.doc.best)
+        .map(([pid, byMatch]) => {
+          const row = byMatch?.[m.id], who = this.face(pid, meId);
+          return row && who ? { ...who, strokes: row.strokes, at: row.at } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.strokes - b.strokes || a.at - b.at || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+        .slice(0, BOARD_TOP);
+      return { matchId: m.id, course: m.course, nine: m.nine, record: top[0] || null, top };
+    });
+    const aces = this.doc.aces
+      .map((a) => {
+        const m = matchOf(a.matchId), who = this.face(a.pid, meId);
+        return m && who ? { ...who, matchId: a.matchId, course: m.course, nine: m.nine, hole: a.hole, at: a.at } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.at - a.at || a.name.localeCompare(b.name));
+    return { courses, aces };
   }
 }

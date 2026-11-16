@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { Barn, BOUT_COOLDOWN_MS, BOUT_XP } from '../server/barn.js';
+import { Barn, BOUT_COOLDOWN_MS, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG } from '../server/barn.js';
 import { Store } from '../server/store.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
 
@@ -441,4 +441,133 @@ test('legacy creatures retain earned abilities and saved identity, XP, records a
   const newborn = later.view('new').pen;
   assert.equal(newborn.level, 1); assert.equal(newborn.abilities.some(move => move.unlocked), false);
   assert.equal(later.doc.pens.new.legacyAbilities, undefined);
+});
+
+const challenge = (player, to, stake = 0) => player.api('POST', '/api/barn/challenges', { to, stake });
+const accept = (player, id, body = {}) => player.api('POST', `/api/barn/challenges/${id}/accept`, body);
+const drop = (player, id) => player.api('DELETE', `/api/barn/challenges/${id}`);
+
+test('the ring lists every living bug of a visible owner, even to a player with no bug, without needs or XP', async t => {
+  const f = await fixture(t); const { owner, other, barn, service, hatch, login } = f;
+  const watcher = await login('NoBugRancher'), hiddenOne = await login('HiddenRancher'), young = await login('YoungRancher'), eggy = await login('EggRancher'), late = await login('LateRancher');
+  hatch(owner.id, 6); hatch(other.id, 4); hatch(hiddenOne.id, 5); hatch(young.id, 1); hatch(late.id, 7);
+  barn.layEgg(eggy.id);
+  service.getPlayer(hiddenOne.id).hidden = true;
+  barn.doc.pens[late.id].stage = 'dead'; barn.save();
+  const view = (await watcher.api('GET', '/api/barn')).body;
+  assert.equal(view.pen, null);
+  assert.deepEqual(view.roster.map(bug => bug.ownerId), [owner.id, other.id, young.id], 'highest level first; eggs, the dead and hidden owners are left out');
+  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fights', 'level', 'name', 'owner', 'ownerId', 'record', 'restMs', 'species', 'style']);
+  assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, false]]);
+  assert.deepEqual(view.challenges, { incoming: [], outgoing: [], max: 3 }); assert.deepEqual(view.fights, []);
+  assert.equal((await watcher.api('POST', '/api/barn/challenges', { to: owner.id, stake: 0 })).status, 404, 'no bug, no challenge');
+});
+
+test('a challenge holds no money, needs a mature bug on both sides and can be withdrawn, declined or left to lapse', async t => {
+  const f = await fixture(t); const { anon, owner, other, barn, hatch, login, clock } = f;
+  assert.equal((await anon('POST', '/api/barn/challenges', { to: other.id, stake: 0 })).status, 401);
+  hatch(owner.id, 6); hatch(other.id, 2);
+  for (const body of [[], {}, { to: other.id }, { to: 5, stake: 0 }, { to: other.id, stake: -1 }, { to: other.id, stake: 0.001 }, { to: other.id, stake: 10001 }, { to: other.id, stake: 0, extra: 1 }]) {
+    assert.equal((await owner.api('POST', '/api/barn/challenges', body)).status, 400, JSON.stringify(body));
+  }
+  assert.equal((await challenge(owner, owner.id)).status, 409);
+  assert.equal((await challenge(owner, 'nobody')).status, 404);
+  assert.equal((await challenge(owner, other.id)).status, 409, 'the other bug is too young');
+  assert.equal((await challenge(other, owner.id)).status, 409, 'and a young bug cannot challenge');
+  barn.doc.pens[other.id].xp = xpFor(3); barn.save();
+  assert.equal((await challenge(owner, other.id, 5000)).status, 402);
+  barn.doc.pens[owner.id].boutAt = clock.now; barn.save();
+  const sent = await challenge(owner, other.id, 100);
+  assert.equal(sent.status, 200, 'a resting bug can still send a challenge');
+  barn.doc.pens[owner.id].boutAt = 0; barn.save();
+  const made = sent.body.challenges.outgoing[0];
+  assert.equal(made.expiresAt - made.at, CHALLENGE_OPEN_MS);
+  assert.equal(balance(f, owner), 1000, 'nothing is held'); assert.equal(sent.body.openBout, null);
+  assert.equal((await challenge(owner, other.id, 100)).body.challenges.outgoing.length, 1, 'asking twice is one challenge');
+  assert.equal((await challenge(owner, other.id, 50)).status, 409);
+  const theirs = (await other.api('GET', '/api/barn')).body;
+  assert.deepEqual(theirs.challenges.incoming.map(c => [c.id, c.from, c.fromName, c.toName, c.stake]), [[made.id, owner.id, 'BugOwner', 'OtherRancher', 100]]);
+  assert.equal((await other.api('GET', '/api/me')).body.barnChallenges, 1); assert.equal((await owner.api('GET', '/api/me')).body.barnChallenges, 0);
+  const third = await login('ThirdRancher'); hatch(third.id, 3);
+  assert.equal((await drop(third, made.id)).status, 404); assert.equal((await accept(third, made.id)).status, 409);
+  assert.equal((await accept(owner, made.id)).status, 409, 'the sender cannot accept it for them');
+  assert.equal((await drop(other, made.id)).body.challenges.incoming.length, 0);
+  assert.equal((await drop(other, made.id)).status, 200, 'declining twice is harmless');
+  assert.equal((await owner.api('GET', '/api/barn')).body.challenges.outgoing.length, 0);
+  // Three at a time.
+  const fourth = await login('FourthRancher'), fifth = await login('FifthRancher'); hatch(fourth.id, 3); hatch(fifth.id, 3);
+  for (const target of [other, third, fourth]) assert.equal((await challenge(owner, target.id)).status, 200);
+  assert.equal((await challenge(owner, fifth.id)).status, 409);
+  const mine = (await owner.api('GET', '/api/barn')).body.challenges.outgoing;
+  assert.equal((await drop(owner, mine[0].id)).body.challenges.outgoing.length, 2, 'withdrawing frees a place');
+  // A bug that dies takes its challenges with it; the rest lapse after a day.
+  barn.doc.pens[third.id].stage = 'dead'; barn.save();
+  assert.deepEqual((await owner.api('GET', '/api/barn')).body.challenges.outgoing.map(c => c.to), [fourth.id]);
+  clock.now += CHALLENGE_OPEN_MS;
+  assert.equal((await fourth.api('GET', '/api/me')).body.barnChallenges, 0);
+  assert.equal((await owner.api('GET', '/api/barn')).body.challenges.outgoing.length, 0);
+});
+
+test('accepting a challenge takes both stakes then, settles once and puts the fight on the public record', async t => {
+  const f = await fixture(t); const { anon, owner, other, barn, hatch, login, clock } = f;
+  hatch(owner.id, 6); hatch(other.id, 6);
+  const id = (await challenge(owner, other.id, 100)).body.challenges.outgoing[0].id;
+  assert.equal((await accept(other, id, { stake: 1 })).status, 400);
+  // A bout posted by either side has to go first.
+  const mine = await post(other, 0); assert.equal((await accept(other, id)).status, 409); await cancel(other, mine.body.openBout.id);
+  const theirs = await post(owner, 0); const blocked = await accept(other, id);
+  assert.equal(blocked.status, 409); assert.match(blocked.body.error, /BugOwner has a bout posted/); await cancel(owner, theirs.body.openBout.id);
+  // Either side short of the stake, or the challenger's bug still resting.
+  f.service.getPlayer(owner.id).bankroll = 50;
+  const broke = await accept(other, id); assert.equal(broke.status, 409); assert.match(broke.body.error, /BugOwner can no longer cover/);
+  f.service.getPlayer(owner.id).bankroll = 1000; f.service.getPlayer(other.id).bankroll = 50;
+  assert.equal((await accept(other, id)).status, 402);
+  f.service.getPlayer(other.id).bankroll = 1000;
+  barn.doc.pens[owner.id].boutAt = clock.now; barn.save();
+  const resting = await accept(other, id); assert.equal(resting.status, 429); assert.match(resting.body.error, /BugOwner's bug is not ready/);
+  barn.doc.pens[owner.id].boutAt = 0; barn.save();
+  assert.equal(balance(f, owner) + balance(f, other), 2000); assert.equal(barn.doc.challenges.length, 1, 'a refused accept leaves the challenge standing');
+
+  const done = await accept(other, id);
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  const result = done.body.pen.lastBout.result;
+  assert.equal(balance(f, other), { won: 1100, lost: 900, draw: 1000 }[result]); assert.equal(balance(f, owner) + balance(f, other), 2000);
+  assert.equal(done.body.challenges.incoming.length, 0);
+  for (const player of [owner, other]) {
+    const pen = (await player.api('GET', '/api/barn')).body.pen;
+    assert.equal(pen.xp, xpFor(6) + BOUT_XP); assert.equal(recordCount(pen), 1);
+    assert.equal(pen.lastBout.id, id); assert.equal(pen.boutCoolMs, BOUT_COOLDOWN_MS);
+  }
+  const players = JSON.parse(JSON.stringify(f.service.store.players)), pens = structuredClone(barn.doc.pens);
+  assert.equal((await accept(other, id)).status, 200, 'a retry is answered without another fight');
+  assert.deepEqual(JSON.parse(JSON.stringify(f.service.store.players)), players); assert.deepEqual(barn.doc.pens, pens);
+
+  // Anyone signed in can see that it happened and watch it, without setups, condition or wallets.
+  const watcher = await login('NoBugRancher');
+  const seen = (await watcher.api('GET', '/api/barn')).body.fights;
+  assert.equal(seen.length, 1);
+  assert.deepEqual(seen[0].sides.map(side => [side.ownerId, side.owner, side.level]), [[owner.id, 'BugOwner', 6], [other.id, 'OtherRancher', 6]]);
+  assert.equal(seen[0].stake, 100); assert.equal(seen[0].winner, { won: 1, lost: 0, draw: null }[result]);
+  const replay = await watcher.api('GET', `/api/barn/fights/${id}`);
+  assert.equal(replay.status, 200); assert.equal(replay.body.pot, 200); assert.ok(replay.body.rounds.length > 0);
+  assert.equal(replay.body.you.owner, 'BugOwner'); assert.equal(replay.body.result, { won: 'lost', lost: 'won', draw: 'draw' }[result]);
+  for (const fighter of [replay.body.you, replay.body.them]) for (const key of Object.keys(fighter)) assert.ok(['level', 'name', 'owner', 'species', 'style'].includes(key), key);
+  for (const secret of ['payout', 'stance', 'specials', 'mood', 'bankroll']) assert.ok(!JSON.stringify(replay.body).includes(`"${secret}"`), secret);
+  assert.equal((await anon('GET', `/api/barn/fights/${id}`)).status, 401);
+  assert.equal((await watcher.api('GET', '/api/barn/fights/nope')).status, 404);
+});
+
+test('posted bouts reach the public record too, which keeps only the latest twenty', async t => {
+  const f = await fixture(t); const { owner, other, barn, hatch } = f;
+  hatch(owner.id, 3); hatch(other.id, 3);
+  const old = Array.from({ length: FIGHT_LOG }, (_, i) => ({ id: `old-${i}`, at: i, stake: 0, winner: null, maxHp: [1, 1], rounds: [],
+    sides: [{ ownerId: 'a', owner: 'A', fighter: { name: 'x', species: ROSTER[0].id, level: 3 } }, { ownerId: 'b', owner: 'B', fighter: { name: 'y', species: ROSTER[0].id, level: 3 } }] }));
+  barn.doc.fights = old; barn.save();
+  const opened = await post(owner, 0);
+  const joined = await join(other, opened.body.openBout.id);
+  assert.equal(joined.status, 200);
+  assert.equal(joined.body.fights.length, FIGHT_LOG);
+  assert.equal(joined.body.fights[0].id, opened.body.openBout.id);
+  assert.deepEqual(joined.body.fights[0].sides.map(side => side.ownerId), [owner.id, other.id], 'the host is in the first corner');
+  assert.equal(joined.body.fights.at(-1).id, `old-${FIGHT_LOG - 2}`);
 });

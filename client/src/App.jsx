@@ -6,6 +6,7 @@ import Invest from './Invest.jsx';
 import { Shell } from './Shell.jsx';
 import { useSession, currentSession } from './api.js';
 import { faceRedirect, safeNext } from './faceGate.js';
+import AdminBoundary, { BoScreen } from './admin/AdminBoundary.jsx';
 
 const Mines = lazy(() => import('./mines/Mines.jsx'));
 const AvatarMaker = lazy(() => import('./avatar/AvatarMaker.jsx'));
@@ -14,6 +15,7 @@ const Barn = lazy(() => import('./barn/Barn.jsx'));
 const Store = lazy(() => import('./store/Store.jsx'));
 const Slots = lazy(() => import('./slots/SlotsPage.jsx'));
 const Blackjack = lazy(() => import('./bj/BlackjackPage.jsx'));
+const Scum = lazy(() => import('./scum/ScumPage.jsx'));
 const Conquest = lazy(() => import('./Conquest.jsx'));
 const Room = lazy(() => import('./room/Room.jsx'));
 const Foff = lazy(() => import('./foff/Foff.jsx'));
@@ -55,8 +57,9 @@ export default function App() {
     if (to) navigate(to, { replace: true });
   }, [me?.id, me?.hasAvatar, path]);
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
-  if (path === '/admin') return <Suspense fallback={<div style={{ background: '#170812', minHeight: '100vh' }} />}><Admin /></Suspense>; // owner only; the API enforces it
-  if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // unlisted on purpose
+  // owner only; the API enforces it. The boundary means a crash or a failed download shows a message, never a blank page.
+  if (path === '/admin') return <AdminBoundary><Suspense fallback={<BoScreen testId="bo-loading"><p style={{ margin: 0, opacity: 0.7 }}>Opening the back office…</p></BoScreen>}><Admin /></Suspense></AdminBoundary>;
+  if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // lobby card unlocks this after the film
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);
   const room = path.match(/^\/rooms\/([\w-]+)\/?$/);
@@ -74,6 +77,7 @@ export default function App() {
   else if (path.startsWith('/invest')) page = <Invest />;
   else if (path.startsWith('/store')) page = <Suspense fallback={<div className="screen" />}><Store /></Suspense>;
   else if (path === '/bj' || path.startsWith('/bj/')) page = <Suspense fallback={<div className="screen" />}><Blackjack code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;
+  else if (path === '/scum' || path.startsWith('/scum/')) page = <Suspense fallback={<div className="screen" />}><Scum code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;
   else if (path.startsWith('/slots')) page = <Suspense fallback={<div className="screen" />}><Slots /></Suspense>;
   else if (path.startsWith('/barn')) page = <Suspense fallback={<div className="screen" />}><Barn /></Suspense>;
   else page = <Home key={me?.id || 'signed-out'} tab={query.get('tab') || undefined} />; // '/' and old '/lobby' links: the card room lobby

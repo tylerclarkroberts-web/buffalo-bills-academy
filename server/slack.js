@@ -5,7 +5,9 @@
 // password account), looked up lazily and cached; a manual "Slack email" in Settings overrides it; alerts can be switched off.
 // Slack is never on the game's critical path: every send is async, caught, retried once and logged
 // without the token or the message body. Messages never contain hole cards or anyone else's private info.
+// The same switch covers one more message: a DM when another player challenges your Barn bug.
 import { GameError } from './engine/game.js';
+import { fmt, cents } from './accounts.js';
 
 const SLACK_API = 'https://slack.com/api';
 const RETRYABLE = new Set(['ratelimited', 'internal_error', 'fatal_error', 'service_unavailable', 'request_timeout', 'network_error', 'http_error']);
@@ -84,6 +86,20 @@ export function turnMessage(f, { publicUrl, reminder = false }) {
   };
 }
 
+// ---- Barn challenges ----
+/** Someone has called out a player's bug. What the ring already shows everyone: both bugs, the challenger and the stake. */
+export function challengeMessage(f, { publicUrl }) {
+  const url = `${publicUrl}/barn`;
+  const terms = f.stake > 0 ? `$${fmt(f.stake)} each, winner takes $${fmt(cents(f.stake * 2))}` : 'No money, just the grudge';
+  return {
+    text: `${f.from}'s bug ${f.bug} has called out your ${f.yours}${f.stake > 0 ? ` for $${fmt(f.stake)}` : ''}. Accept or decline within a day: ${url}`,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: `*${esc(f.bug)}* has called out your *${esc(f.yours)}*\n${esc(f.from)}'s level ${f.level} ${esc(f.species)}. ${terms}. It stands for a day; nothing is held until you accept.` } },
+      { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open the Barn' }, url, style: 'primary', action_id: 'open_barn' }] },
+    ],
+  };
+}
+
 // ---- v48: blackjack turns ----
 /**
  * Who a blackjack table is waiting on, per seat: 'bet' (betting window open, no bet yet), 'insurance' (dealer shows
@@ -120,6 +136,35 @@ export function bjMessage(f, { publicUrl, reminder = false }) {
     ],
   };
 }
+
+// ---- Async Scum turns ----
+/** Who an Async Scum table is waiting on: 'lead' / 'play' (their turn), 'tribute' (Scum or Baby Scum owes cards) or
+ *  'give' (King or Queen gives back). Humans only, public facts only (never cards or begs). One key per turn. */
+export function scumTurns(t, now) {
+  const r = t?.round; if (!r || t.status !== 'playing') return [];
+  const out = [];
+  const add = (seat, phase, deadline, start) => {
+    const s = t.seats[seat]; if (!s || s.bot || s.left || !s.id || !deadline) return;
+    out.push({ game: 'scum', code: t.code, table: t.name, playerId: s.id, seat, phase, round: r.no, deadline, turnStart: start ?? null, left: deadline - now, key: `${t.code}:${r.no}:${seat}:${phase}:${start}` });
+  };
+  if (r.phase === 'exchange') { for (const p of r.exchange?.pairs || []) { if (!p.paid) add(p.from, 'tribute', p.due, p.at); else if (!p.given) add(p.to, 'give', p.due, p.at); } }
+  else if (r.phase === 'play' && r.turn != null) add(r.turn, r.pile ? 'play' : 'lead', r.deadline, r.turnAt);
+  return out;
+}
+const SCUM_NEED = { lead: 'you lead: play any set', play: 'beat the pile or pass', tribute: 'hand over your best cards (and beg, if you like)', give: 'pick the cards you give back' };
+const SCUM_FALL = { lead: 'or the clock plays your lowest card', play: 'or the clock passes for you', tribute: 'or they go over anyway', give: 'or the clock gives your lowest' };
+export function scumMessage(f, { publicUrl, reminder = false }) {
+  const url = `${publicUrl}/scum/${f.code}`;
+  const when = hoursLeft(f.left);
+  return {
+    text: `${reminder ? 'Reminder: still your turn' : 'Your turn'} at Async Scum ${f.table}: ${SCUM_NEED[f.phase]}. ${url}`,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: `${reminder ? 'Reminder: the table is still waiting on you' : 'Your turn'} at Async Scum *${esc(f.table)}*\n${SCUM_NEED[f.phase][0].toUpperCase()}${SCUM_NEED[f.phase].slice(1)}, ${when}, ${SCUM_FALL[f.phase]}.` } },
+      { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open the table' }, url, style: 'primary', action_id: 'open_table' }] },
+    ],
+  };
+}
+const gameMessage = (f, o) => (f.game === 'scum' ? scumMessage(f, o) : bjMessage(f, o));
 
 // ---- start nudges: the host of a table that's full enough but never started ----
 export const NUDGE_FIRST_MS = 10 * 60 * 1000;         // first nudge ~10 minutes after the table first has 2+ players ready
@@ -295,6 +340,15 @@ export class SlackAlerts {
       this.send(p, turnMessage(f, { publicUrl: this.publicUrl }), 'turn', { code: t.code, key: f.key });
     } catch (e) { this.warn('turn', e.message); } finally { this.reschedule(); }
   }
+  /** A Barn challenge was just sent. One message and no reminder: the Barn shows it for its whole day. Never throws, never awaits Slack. */
+  challenged(f) {
+    try {
+      if (!this.enabled) return;
+      const p = this.service.store.players[f.toId];
+      if (!this.mayAlert(p)) return;
+      this.send(p, challengeMessage(f, { publicUrl: this.publicUrl }), 'challenge', { challenge: f.id });
+    } catch (e) { this.warn('challenge', e.message); }
+  }
   /** v48: called after every saved blackjack change (player action or clock tick). Never throws, never awaits Slack. */
   bjChanged(t, actorId = null) {
     try {
@@ -312,13 +366,33 @@ export class SlackAlerts {
       if (dirty) this.save();
     } catch (e) { this.warn('bj-turn', e.message); } finally { this.reschedule(); }
   }
+  /** Async Scum: same opt-in, dedupe and reminders as blackjack. Never throws, never awaits Slack. */
+  scumChanged(t, actorId = null) {
+    try {
+      if (!this.enabled) return;
+      const pre = `scum:${t.code}:`; let dirty = false;
+      const turns = scumTurns(t, this.service.now()); const live = new Set(turns.map((f) => pre + f.seat));
+      for (const m of [this.state.pinged, this.state.reminded]) for (const k of Object.keys(m)) if (k.startsWith(pre) && (t.status !== 'playing' || !live.has(k))) { delete m[k]; dirty = true; }
+      for (const f of turns) {
+        const k = pre + f.seat; if (this.state.pinged[k] === f.key) continue;
+        this.state.pinged[k] = f.key; dirty = true;
+        if (f.playerId === actorId) continue; // their own click: they're looking at the table
+        const p = this.service.store.players[f.playerId];
+        if (!this.mayAlert(p)) continue;
+        this.send(p, scumMessage(f, { publicUrl: this.publicUrl }), 'scum-turn', { scum: true, code: t.code, key: f.key, seat: f.seat });
+      }
+      if (dirty) this.save();
+    } catch (e) { this.warn('scum-turn', e.message); } finally { this.reschedule(); }
+  }
+  scumTables() { try { return this.scumSource?.all() || []; } catch { return []; } }
   bjTables() { try { return this.bjSource?.all() || []; } catch { return []; } }
   /** Blackjack turns that will need a reminder: a deadline, a long enough clock, not reminded yet. */
   bjDue(now) {
     const out = [];
-    for (const t of this.bjTables()) for (const f of bjTurns(t, now)) {
+    const all = [...this.bjTables().map((t) => [t, bjTurns(t, now), 'bj']), ...this.scumTables().map((t) => [t, scumTurns(t, now), 'scum'])];
+    for (const [t, turns, game] of all) for (const f of turns) {
       if (!f.deadline) continue;
-      const rk = `bj:${t.code}:${f.seat}`, rv = `${f.key}:${f.deadline}`;
+      const rk = `${game}:${t.code}:${f.seat}`, rv = `${f.key}:${f.deadline}`;
       if (this.state.reminded[rk] === rv) continue;
       const at = f.deadline - REMIND_BEFORE_MS;
       if (at - f.turnStart < 3600000 || now >= f.deadline) continue;
@@ -347,7 +421,7 @@ export class SlackAlerts {
         this.state.reminded[rk] = rv; this.save();
         const p = this.service.store.players[f.playerId];
         if (!this.mayAlert(p)) continue;
-        this.send(p, bjMessage(f, { publicUrl: this.publicUrl, reminder: true }), 'bj-reminder', { bj: true, code: f.code, key: f.key, seat: f.seat });
+        this.send(p, gameMessage(f, { publicUrl: this.publicUrl, reminder: true }), f.game === 'scum' ? 'scum-reminder' : 'bj-reminder', { [f.game === 'scum' ? 'scum' : 'bj']: true, code: f.code, key: f.key, seat: f.seat });
       }
     } catch (e) { this.warn('sweep', e.message); } finally { this.reschedule(); }
   }
@@ -404,6 +478,8 @@ export class SlackAlerts {
   }
   /** Is this still the same turn, for this player, with alerts still on? (Checked again before every retry.) */
   stillDue(p, ctx) {
+    if (ctx.challenge) return this.isOn(p) && !!this.challengeOpen?.(ctx.challenge); // withdrawn, declined or fought: say nothing
+    if (ctx.scum) { const t = this.scumTables().find((x) => x.code === ctx.code); return !!t && scumTurns(t, this.service.now()).some((f) => f.key === ctx.key && f.playerId === p.id) && this.isOn(p); }
     if (ctx.bj) { const t = this.bjTables().find((x) => x.code === ctx.code); return !!t && bjTurns(t, this.service.now()).some((f) => f.key === ctx.key && f.playerId === p.id) && this.isOn(p); }
     const t = this.service.store.getTable?.(ctx.code) || this.service.store.allTables().find((x) => x.code === ctx.code);
     const f = t && turnFacts(t, this.service.now());

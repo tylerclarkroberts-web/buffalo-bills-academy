@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, verdictLine } from './boutFx.js';
-import { voice, sfx } from './sfx.js';
+import { voice, sfx, music } from './sfx.js';
 
 const EXTRA = { pierce: 'pierce', guard: 'guard', venom: 'venom', weaken: 'weaken' };
 function landSound({ kind, r }) {
@@ -57,7 +57,10 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
     else if (beat && pos.phase === 'act' && beat.kind === 'attack') sfx[STYLES[styleOf(fighters[beat.r.by]?.species)].sound]();
     else if (beat && pos.phase === 'land') landSound(beat);
     else if (pos.phase === 'finish') { if (plan.ending === 'ko') sfx.ko(); else sfx.bell(); }
+    // Music runs from the first blow to the last, and follows the sound switch.
+    if (['charge', 'act', 'land'].includes(pos.phase)) music.start(); else music.stop();
   }, [pos.i, pos.phase]);
+  useEffect(() => () => music.stop(), []);
   useEffect(() => {
     if (!done) return undefined;
     if (bout.result === 'lost') { sfx.sulk(); return undefined; }
@@ -80,7 +83,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           const pct = Math.max(0, Math.min(100, (hp[i] / maxHp[i]) * 100));
           return (
             <div key={i} className={`bout-side s${i}`}>
-              <b>{c.name}</b><span className="small muted">{c.stray ? 'stray · ' : ''}Lv {c.level}</span>
+              <b>{c.name}</b><span className="small muted">{c.stray ? 'stray · ' : ''}{c.owner ? `${c.owner} · ` : ''}Lv {c.level}</span>
               <div className={`barn-bar hp ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}`} role="progressbar" aria-label={`${c.name} health`} aria-valuemin={0} aria-valuemax={maxHp[i]} aria-valuenow={hp[i]}>
                 <b className="ghost" style={{ width: `${pct}%` }} /><i style={{ width: `${pct}%` }} />
               </div>
@@ -104,7 +107,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           {pos.phase === 'finish' && <strong className="bout-stamp end">{plan.ending === 'ko' ? 'K.O.' : 'TIME!'}</strong>}
         </div>
       </div>
-      <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <><b>{verdictLine(bout)}</b>{bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}{bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}{replay && <p className="small muted">Replay only. No extra XP or money.</p>}</> : line}</div>
+      <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <><b>{verdictLine(bout)}</b>{bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}{bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}{bout.pot > 0 && <p className="bout-payment">{money(bout.pot)} pot</p>}{replay && <p className="small muted">{bout.you.owner ? 'Seen from the rafters. No XP, no money.' : 'Replay only. No extra XP or money.'}</p>}</> : line}</div>
       <div className="bout-acts">
         {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Bout sounds" title="Bout sounds">{sound ? '🔊' : '🔈'}</button>}
         {!done && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
