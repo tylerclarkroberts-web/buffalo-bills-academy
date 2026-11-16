@@ -10,7 +10,7 @@ export function createPvpClient({ send, pose, onView, onError, intervalMs = PVP_
     const p = pose(); if (!p) return;
     busy = true;
     try {
-      const view = await send('/mines/pvp/tick', { x: p.x, y: p.y, yaw: p.yaw, ...(fresh ? { fresh: true } : {}) });
+      const view = await send('/mines/pvp/tick', { x: p.x, y: p.y, yaw: p.yaw, ...(p.dance ? { dance: p.dance } : {}), ...(fresh ? { fresh: true } : {}) });
       fresh = false; failures = 0;
       if (!stopped) onView(view);
     } catch (e) {

@@ -379,3 +379,16 @@ body.in-mines { background: #020402; }
   .m-worm .w-in, .m-worm:not(.cut) .w-body, .m-knife { animation: none; }
   .m-worm.cut .w-half { animation-duration: .01s; }
 }
+
+/* v89: dances. One small HUD link opens a 3×3 picker; number keys 1–9 skip it. */
+.m-dance-btn.on { color: var(--y); }
+.m-key { opacity: .55; font-size: .8em; }
+.m-dances { position: absolute; z-index: 30; left: 50%; bottom: calc(58px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(560px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; background: rgba(2, 4, 2, .92); border: 1px solid var(--g3); }
+.m-dance { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; min-height: 44px; padding: 4px 8px; background: rgba(10, 26, 6, .6); border: 1px solid rgba(125, 255, 58, .35); color: var(--g); font: 700 16px/1.1 var(--mono); text-align: left; cursor: pointer; }
+.m-dance:hover, .m-dance:focus-visible { border-color: var(--g); background: rgba(125, 255, 58, .16); outline: none; }
+.m-dance.on { border-color: var(--y); color: var(--y); }
+.m-dance-icon { font-size: 18px; }
+.m-dance-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) { .m-key { display: none; } .m-dance { grid-template-columns: auto 1fr; } }
+@media (max-width: 480px) { .m-dance { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 2px; padding: 4px; font-size: 14px; min-height: 52px; } .m-dance-name { white-space: normal; } .m-dance-icon { font-size: 16px; } }
+@media (orientation: landscape) and (max-height: 520px) { .m-dances { bottom: calc(46px + env(safe-area-inset-bottom)); gap: 4px; padding: 6px; } .m-dance { min-height: 40px; } }

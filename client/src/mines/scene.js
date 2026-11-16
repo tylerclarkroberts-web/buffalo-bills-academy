@@ -6,7 +6,9 @@ import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { spriteCanvas } from '../barn/sprite.js';
-import { OtherMiners } from './miners.js';
+import { OtherMiners, buildMiner } from './miners.js';
+import { danceStep } from './dance.js';
+import { danceId } from '../../../server/engine/dances.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -299,6 +301,31 @@ export class MineScene {
     }
     this.scene.add(g); return g;
   }
+  /**
+   * v89: you, as the others see you. Hidden until you dance; then the camera swings round in front so you can watch
+   * yourself. Your facing (`yaw`) never changes while you dance: dragging orbits the camera instead.
+   */
+  setSelf(who) {
+    if (this.self || !who?.id) return;
+    this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
+    if (this.self.tag) this.self.tag.visible = false;
+    this.self.group.visible = false; this.scene.add(this.self.group);
+  }
+  startDance(id) {
+    const d = danceId(id); if (!d) return false;
+    if (d !== this.dance) { this.dance = d; this.danceT = 0; }
+    this.danceOrbit = 0; this.input.f = this.input.s = this.input.t = 0;
+    return true;
+  }
+  stopDance() { this.dance = null; }
+  /** Third-person camera spot: in front of you at `orbit` round from your face, pulled in short of any rock. */
+  danceCam(orbit) {
+    const a = this.yaw + orbit, dx = -Math.sin(a), dz = -Math.cos(a); // forward of your facing: the camera looks back at you
+    let d = 0.4;
+    while (d < 2.4) { const n = d + 0.1, x = this.pos.x + dx * n, z = this.pos.y + dz * n, tx = Math.round(x / TILE), tz = Math.round(z / TILE); if (this.maze.grid[tz]?.[tx] !== 0 || this.blockedTight(x, z)) break; d = n; }
+    return { x: this.pos.x + dx * d, z: this.pos.y + dz * d, d };
+  }
+  blockedTight(x, z) { const g = this.maze.grid, r = 0.18; for (const [ox, oz] of [[r, r], [-r, r], [r, -r], [-r, -r]]) if (g[Math.round((z + oz) / TILE)]?.[Math.round((x + ox) / TILE)] !== 0) return true; return false; }
   /** v71: the other miners on today's shift, as the server last reported them. */
   setOthers(list) { this.miners?.set(list); }
   resize() {
@@ -566,8 +593,8 @@ export class MineScene {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
     const { f, s, t } = this.input;
-    this.yaw -= t * TURN * dt;
-    if (!this.mining && (f || s)) {
+    if (!this.dance) this.yaw -= t * TURN * dt;
+    if (!this.mining && !this.dance && (f || s)) {
       const sp = SPEED * dt * (f && s ? 0.75 : 1);
       const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw); // forward
       const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw); // right
@@ -583,8 +610,31 @@ export class MineScene {
     if (this.bugGuide) this.updateBugGuide(now, dt);
     this.miners?.update(dt, now, this.yaw);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;
-    this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
-    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    // v89: dancing pulls the camera out in front of you; stopping brings it straight back behind your eyes
+    const target = this.dance ? 1 : 0;
+    this.danceBlend = this.reduce ? target : (this.danceBlend || 0) + (target - (this.danceBlend || 0)) * (1 - Math.exp(-dt * 7));
+    if (this.self) {
+      const show = this.danceBlend > 0.02 && (this.dance || this.danceBlend > 0.3);
+      this.self.group.visible = !!show;
+      if (show) {
+        this.self.group.position.set(this.pos.x, 0, this.pos.y); this.self.group.rotation.y = this.yaw + Math.PI;
+        if (this.dance) { this.danceT = (this.danceT || 0) + dt; danceStep(this.self, this.dance, this.danceT, { reduce: this.reduce }); }
+      }
+    }
+    if (this.danceBlend > 0.001) {
+      const c = this.danceCam(this.danceOrbit || 0), k = this.danceBlend;
+      const fpx = this.pos.x, fpz = this.pos.y;
+      this.camera.position.set(fpx + (c.x - fpx) * k, EYE + (1.45 - EYE) * k, fpz + (c.z - fpz) * k);
+      if (k > 0.999) this.camera.lookAt(this.pos.x, 0.95, this.pos.y);
+      else {
+        const q0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+        this.camera.lookAt(this.pos.x, 0.95, this.pos.y);
+        this.camera.quaternion.copy(q0.slerp(this.camera.quaternion.clone(), k));
+      }
+    } else {
+      this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
+      this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    }
     const dread = this.dreadLevel || 0;
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
     // v79: rough days sputter. Now and then the lantern stutters for a beat; on Dead Man's Dig it nearly goes out.
@@ -611,6 +661,7 @@ export class MineScene {
   dispose() {
     cancelAnimationFrame(this.raf);
     this.miners?.dispose();
+    if (this.self) { this.scene.remove(this.self.group); disposeMeshes(this.self.group); this.self = null; }
     disposeMeshes(this.scene);
     this.renderer.dispose();
   }
