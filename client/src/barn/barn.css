@@ -238,3 +238,6 @@
 .barn-hurt:hover, .barn-hurt:focus-visible { background: rgba(230,93,112,.26); }
 .bout-center { background: #e65d70; border-color: #e65d70; color: #fff; }
 @media (prefers-reduced-motion: reduce) { .barn-hp-bar i { transition: none; } }
+.bout { grid-template-columns: minmax(0, 1fr); }
+.bout-acts { flex-wrap: wrap; gap: 6px; align-items: center; }
+@media (max-width: 760px) { .bout-center { flex: 1 1 auto; min-width: 0; white-space: normal; } }
