@@ -146,7 +146,7 @@ test('the clock settles the exchange: best cards go over, the King gives his low
   const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
   const t = s.table(v.code);
   rig(t, { 0: ['3h'], 1: ['Kh', '2c'], 2: ['5d', '7d'] }, [0, 1, 2]); s.clock(t);
-  s.play(P.a, v.code, ['3h']); s.play(P.b, v.code, ['Kh']); s.pass(P.c, v.code); s.play(P.b, v.code, ['2c']);
+  s.play(P.a, v.code, ['3h']); s.play(P.b, v.code, ['Kh']); s.pass(P.c, v.code); s.pass(P.b, v.code); s.play(P.b, v.code, ['2c']);
   assert.equal(t.round.phase, 'exchange');
   assert.deepEqual(t.lastRound.finish.map((x) => x.title), ['king', 'commoner', 'scum']);
   const best = t.round.hands[2].slice().sort((x, y) => 'x23456789TJQKA'.indexOf(x[0]) - 'x23456789TJQKA'.indexOf(y[0])).slice(-2);
@@ -177,7 +177,7 @@ test('leaving: a walk-out drops the cards; under three players the game ends; no
   s.leave(P.b, v.code);
   assert.equal(t.round.gone.includes(1), true);
   s.play(P.a, v.code, ['9h']); s.play(P.c, v.code, ['Jh']); s.pass(P.a, v.code);
-  s.play(P.c, v.code, ['3h']);
+  s.pass(P.c, v.code); s.play(P.c, v.code, ['3h']);
   assert.equal(t.status, 'over');
   assert.ok(!('bankroll' in P.a));
 });
@@ -228,4 +228,24 @@ test('HTTP: routes, auth, and an app with old data and no scum.json still boots'
   assert.equal(bad.status, 409);
   assert.equal((await call(ann, 'GET', '/api/scum/tables/NOPE99')).status, 404);
   assert.ok(fs.existsSync(path.join(dir, 'scum.json')));
+});
+
+test('play on: the view and log say who can keep playing; their pass clears the pile; the bug clears on a timeout', () => {
+  const { s, P, clock } = svc();
+  const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
+  const t = s.table(v.code);
+  rig(t, { 0: ['9h', 'Jc', '2c'], 1: ['4c', '4d'], 2: ['3h', '5h'] }, [0, 1, 2]); s.clock(t);
+  s.play(P.a, v.code, ['9h']); s.pass(P.b, v.code); const after = s.pass(P.c, v.code);
+  assert.equal(after.round.turn, 0); assert.deepEqual(after.round.pile.cards, ['9h']);
+  const ann = s.view(P.a, v.code); assert.equal(ann.round.playOn, true); assert.equal(ann.round.myTurn, true); assert.equal(ann.round.leading, false);
+  assert.match(t.log.findLast((e) => e.ev?.k === 'playon').text, /Ann can keep playing on it or pass to clear/);
+  s.play(P.a, v.code, ['Jc']); s.pass(P.b, v.code); s.pass(P.c, v.code);
+  clock.t += 31_000; s.tick(); // Ann's clock runs out while playing on: her bug passes, the pile clears
+  const p = t.log.findLast((e) => e.ev?.k === 'pass'); assert.equal(p.ev.own, true); assert.ok(p.ev.bug); assert.match(p.text, /passes and clears the pile/);
+  assert.equal(t.round.pile, null); assert.equal(t.round.turn, 0, 'she leads fresh');
+  assert.equal(s.view(P.b, v.code).round.playOn, false);
+  // Others only ever see counts, never cards.
+  const bob = s.view(P.b, v.code);
+  assert.equal(bob.seats[0].count, 1); assert.ok(!JSON.stringify(bob.seats).includes('2c'));
+  assert.ok(!('hands' in bob.round));
 });

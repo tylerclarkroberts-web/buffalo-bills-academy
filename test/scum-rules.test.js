@@ -84,12 +84,15 @@ test('skips work for pairs too', () => {
   assert.equal(r.turn, 3);
 });
 
-test('when the skip goes all the way round, the player who skipped leads', () => {
-  const r = round({ 0: ['7h', '2c'], 1: ['7c', '3d'] });
+test('when the skip goes all the way round, the skipper plays on: keep going or pass to clear and lead', () => {
+  const r = round({ 0: ['7h', '2c'], 1: ['7c', '3d', '8s'] });
   S.play(r, 0, ['7h']);
   const res = S.play(r, 1, ['7c']);
-  assert.equal(res.skipped, 0); assert.equal(res.cleared, 'pass');
-  assert.equal(r.pile, null); assert.equal(r.turn, 1);
+  assert.equal(res.skipped, 0); assert.equal(res.cleared, null); assert.equal(res.playOn, true);
+  assert.deepEqual(r.pile.cards, ['7c'], 'the pile stays live'); assert.equal(r.turn, 1); assert.equal(r.playOn, true);
+  assert.throws(() => S.play(r, 1, ['3d']), /7 or higher/, 'playing on still follows the rules');
+  const p = S.pass(r, 1);
+  assert.equal(p.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'pass to clear, then lead fresh'); assert.equal(r.playOn, false);
 });
 
 test('aces clear the pile at once and the ace player leads again', () => {
@@ -108,12 +111,63 @@ test('leading an ace clears too; going out on an ace hands the lead on', () => {
   assert.equal(res.cleared, 'ace'); assert.equal(res.out, 1); assert.equal(r.turn, 1);
 });
 
-test('when everyone else passes, the pile clears and the last player to play leads', () => {
-  const r = round({ 0: ['9h', '2c'], 1: ['4c', '4d'], 2: ['3h', '5h'] });
+test('play on: when everyone else passes, the last player keeps the turn with the pile live until they pass', () => {
+  const r = round({ 0: ['9h', 'Jc', 'Qd', '2c'], 1: ['4c', '4d', 'Kh'], 2: ['3h', '5h', 'Ks'] });
   S.play(r, 0, ['9h']);
   S.pass(r, 1);
   const res = S.pass(r, 2);
-  assert.equal(res.cleared, true); assert.equal(r.turn, 0); assert.equal(r.pile, null);
+  assert.equal(res.cleared, false); assert.equal(res.playOn, true);
+  assert.equal(r.turn, 0); assert.deepEqual(r.pile.cards, ['9h']); assert.equal(r.playOn, true);
+  assert.match(S.playProblem(r.pile, ['2c']), /9 or higher/);
+  const p2 = S.play(r, 0, ['Jc']); // Ann plays on top of her own 9
+  assert.equal(p2.playOn, false); assert.equal(r.turn, 1, 'a new play: everyone gets another chance to follow'); assert.equal(r.playOn, false);
+  S.pass(r, 1); S.pass(r, 2);
+  assert.equal(r.turn, 0); assert.equal(r.playOn, true);
+  S.play(r, 0, ['Qd']);
+  S.play(r, 1, ['Kh']); // Bob beats it: Bob owns the pile now
+  S.pass(r, 2); S.pass(r, 0);
+  assert.equal(r.turn, 1); assert.equal(r.playOn, true); assert.equal(r.owner, 1);
+  const c = S.pass(r, 1);
+  assert.equal(c.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'Bob passes on his own set: cleared, he leads');
+  assert.throws(() => S.pass(r, 1), /leading/);
+});
+
+test('play on: an equal rank on your own set still skips the next player still in', () => {
+  const r = round({ 0: ['9h', '9c', '2c'], 1: ['4c', '4d'], 2: ['3h', '5h'] });
+  S.play(r, 0, ['9h']); S.pass(r, 1); S.pass(r, 2);
+  const res = S.play(r, 0, ['9c']);
+  assert.equal(res.skipped, 1); assert.equal(r.turn, 2);
+  S.pass(r, 2);
+  assert.equal(r.turn, 0); assert.equal(r.playOn, true, 'back to Ann again');
+});
+
+test('play on: going out on the set hands the lead on as before; the bug and the bots', () => {
+  const r = round({ 0: ['9h'], 1: ['4c', '4d'], 2: ['3h', '5h'] });
+  S.play(r, 0, ['9h']); // Ann goes out on it
+  S.pass(r, 1); const res = S.pass(r, 2);
+  assert.equal(res.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'owner is out: the next player still in leads');
+  const b = round({ 0: ['9h', 'Kd', 'Ac'], 1: ['4c', '4d'], 2: ['3h', '5h'] });
+  S.play(b, 0, ['9h']); S.pass(b, 1); S.pass(b, 2);
+  assert.deepEqual(S.bugMove(b, 0), { pass: true }, 'the bug passes to clear (then leads your highest next turn)');
+  assert.deepEqual(S.autoMove(b, 0, { bot: true }), { pass: true }, 'a bot clears and leads fresh');
+  b.hands[0] = ['Kd', 'Ks']; b.pile = { cards: ['9h'], count: 1, rank: 9, seat: 0 };
+  assert.deepEqual(S.autoMove(b, 0, { bot: true }), { pass: true });
+  b.hands[0] = ['Kd']; assert.deepEqual(S.autoMove(b, 0, { bot: true }), { play: ['Kd'] }, 'unless it goes out on the spot');
+});
+
+test('single deck, always: exactly 52 unique cards dealt every round, no jokers, 7 players at most', () => {
+  let k = 3; const rng = (n) => (k = (k * 1103515245 + 12345) % 2147483648) % n;
+  for (let n = S.MIN_PLAYERS; n <= S.MAX_PLAYERS; n++) {
+    for (let rep = 0; rep < 5; rep++) {
+      const r = S.newRound({ no: 1 + rep, order: Array.from({ length: n }, (_, i) => i), titles: rep ? Object.fromEntries(S.titlesFor(n).map((t, i) => [i, t])) : null, rng });
+      const all = Object.values(r.hands).flat();
+      assert.equal(all.length, 52, `${n} players: 52 cards`); assert.equal(new Set(all).size, 52, 'no duplicates (one deck)');
+      assert.ok(all.every((c) => /^[2-9TJQKA][shdc]$/.test(c)), 'no jokers');
+      const sizes = Object.values(r.hands).map((h) => h.length); assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1);
+    }
+  }
+  assert.equal(S.DECK_SIZE, 52); assert.equal(S.MAX_PLAYERS, 7);
+  assert.throws(() => S.deal([0, 1, 2, 3, 4, 5, 6, 7], rng), /single deck/);
 });
 
 test('if the last player went out, the next player still in leads after the passes', () => {

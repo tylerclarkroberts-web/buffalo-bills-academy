@@ -167,13 +167,23 @@ export class Scum {
     if (res.out) this.log(t, `${who} is out ${PLACE[res.out] || `#${res.out}`}.`, { k: 'out', seat, place: res.out });
     if (res.cleared === 'ace') this.log(t, `Ace! The pile clears.${r.turn != null ? ` ${this.nm(t, r.turn)} leads.` : ''}`, { k: 'clear', why: 'ace', seat: r.turn });
     else if (res.cleared === 'pass') this.log(t, `Nobody can follow that. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
+    else if (res.playOn) this.playOnLog(t);
     if (r.phase === 'done') this.finishRound(t); else this.clock(t);
   }
   doPass(t, seat, auto = null) {
-    const r = t.round; const res = S.pass(r, seat);
-    this.log(t, auto ? `${this.nm(t, seat)} missed their turn; ${auto.generic ? 'a stray bug' : `their bug ${auto.name}`} has nothing that beats it and passes.` : `${this.nm(t, seat)} passes.`, { k: 'pass', seat, ...(auto ? { bug: auto } : {}) });
-    if (res.cleared) this.log(t, `Everyone passed. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
+    const r = t.round; const own = !!(r.playOn && r.owner === seat); const res = S.pass(r, seat);
+    const who = this.nm(t, seat); const bug = auto ? (auto.generic ? 'a stray bug' : `their bug ${auto.name}`) : '';
+    const text = own ? (auto ? `${who} missed their turn; ${bug} passes and clears the pile.` : `${who} passes on their own set and clears the pile.`)
+      : auto ? `${who} missed their turn; ${bug} has nothing that beats it and passes.` : `${who} passes.`;
+    this.log(t, text, { k: 'pass', seat, ...(own ? { own: true } : {}), ...(auto ? { bug: auto } : {}) });
+    if (res.cleared) this.log(t, own ? `Pile cleared. ${this.nm(t, r.turn)} leads.` : `Everyone passed. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
+    else if (res.playOn) this.playOnLog(t);
     this.clock(t);
+  }
+  /** Everyone else passed (or got skipped) on the last set: its owner may keep playing on it or pass to clear. */
+  playOnLog(t) {
+    const s = t.round.owner;
+    this.log(t, `Everyone passed. ${this.nm(t, s)} can keep playing on it or pass to clear.`, { k: 'playon', seat: s });
   }
   doTribute(t, seat, beg) {
     const r = t.round; const p = S.payTribute(r, seat, beg);
@@ -341,7 +351,7 @@ export class Scum {
         return { from: pr.from, to: pr.to, n: pr.n, paid: pr.paid, given: pr.given, due: pr.given ? null : pr.due, ...(mine ? { beg: pr.beg, tribute: pr.tribute, gift: pr.gift, owe: me === pr.from && !pr.paid ? S.highest(r.hands[me], pr.n) : null } : {}) };
       }) } : null;
       round = { no: r.no, phase: r.phase, order: r.order, turn: r.turn, pile: r.pile, lastPlay: r.lastPlay, finished: r.finished, deadline: r.phase === 'play' ? r.deadline : null,
-        hand: me >= 0 ? S.sortHand(r.hands[me] || []) : null, myTurn: me >= 0 && r.phase === 'play' && r.turn === me, leading: !r.pile, exchange: ex };
+        hand: me >= 0 ? S.sortHand(r.hands[me] || []) : null, myTurn: me >= 0 && r.phase === 'play' && r.turn === me, leading: !r.pile, playOn: !!(r.playOn && r.pile), exchange: ex };
     }
     return {
       game: 'scum', code: t.code, name: t.name, status: t.status, isHost: t.hostId === viewerId, hostName: t.hostName, turnSec: t.turnSec, maxSeats: t.maxSeats, bots: t.settings.bots,

@@ -43,7 +43,8 @@ const RULES = [
   'Lead a single, pair, three or four of a kind. Follow with the same number, equal or higher, or pass.',
   'Match the rank just played and the next player is SKIPPED.',
   'Aces clear the pile: 1 ace on singles, 2 on pairs, 3 on threes, 4 on fours. Nothing goes on an ace; you lead again.',
-  'When everyone passes, the last player to play leads fresh.',
+  'Everyone passed on your set? Keep playing on it, or pass to clear the pile and lead fresh.',
+  'One 52-card deck, always. No jokers, 3–7 players. The King leads every new round.',
   'First out is King, then Queen. Second to last is Baby Scum, last is Scum. (3 players: King, Commoner, Scum.)',
   'Next round Scum gives the King their 2 best cards, Baby Scum gives the Queen their best. Both may beg. The King gives back any 2, the Queen any 1.',
   'The King leads; Scum goes last. Round 1: whoever has the 2♣ leads.',
@@ -290,7 +291,8 @@ function ScumTable({ code, me }) {
     : v.status === 'over' ? 'Game over'
     : v.hold ? 'Waiting on the Acid Mines: not enough players can cover the dues'
     : ex ? 'Royal court in session: cards changing hands'
-    : r?.myTurn ? (r.leading ? 'Your lead. Play any set.' : `Your turn: beat ${setName(r.pile)} or pass.`)
+    : r?.myTurn ? (r.leading ? 'Your lead. Play any set.' : r.playOn ? 'Everyone passed — keep playing or pass to clear' : `Your turn: beat ${setName(r.pile)} or pass.`)
+    : r?.playOn && turnName ? `Everyone passed. ${turnName} can play on or clear`
     : turnName ? `${turnName}'s turn` : '';
   const invite = async () => { const url = `${location.origin}/scum/${v.code}`; try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { setErr(url); } };
   const leave = () => { if (v.status === 'playing' && mine && r?.order.includes(v.mySeat) && !r.finished.includes(v.mySeat) && !window.confirm('Walk out? Your cards go with you.')) return; post('leave'); };
@@ -345,9 +347,10 @@ function ScumTable({ code, me }) {
                   {s.title && <span className={`sc-title t-${s.title}`} data-test="scum-title">{CROWN[s.title]} {TITLE[s.title]}</span>}
                   {v.payouts && s.broke ? <span className="sc-paychip broke" data-test="scum-minechip" title="Off to the Acid Mines">⛏ mines</span>
                     : v.payouts && s.pay ? <span className={`sc-paychip ${s.pay > 0 ? 'up' : 'down'}`} data-test="scum-paychip" title={s.bot ? 'House money (bots never touch a bankroll)' : 'This round’s title pay'}>{cash(s.pay)}</span> : null}
+                  {r && !s.me && !s.waiting && !s.left && !s.broke && (s.count > 0 || r.order.includes(i)) && <Fan n={s.count} bust={bust} to={{ x: ((50 - p.x) / 100) * w, y: ((48 - p.y) / 100) * h }} reduced={reduced} />}
                   <div className="bj-pill sc-pill">
                     <b>{s.here && <i className="here-dot" data-test="here-dot" title="At the table now" />}{s.bot ? '🤖 ' : ''}{s.name}</b>
-                    {r && !s.waiting && !s.left && !s.broke && <span className="mono sc-count" title={`${s.count} cards`}>{s.place ? `out ${['', '1st', '2nd', '3rd'][s.place] || `${s.place}th`}` : `🂠${s.count}`}</span>}
+                    {r && !s.waiting && !s.left && !s.broke && <span className="mono sc-count" title={`${s.count} cards`}>{s.place ? `out ${['', '1st', '2nd', '3rd'][s.place] || `${s.place}th`}` : s.count}</span>}
                     {s.waiting && <span className="mono dim">next round</span>}{s.left && <span className="mono dim">left</span>}
                   </div>
                 </div>
@@ -377,7 +380,7 @@ function ScumTable({ code, me }) {
               {r?.phase === 'play' && <div className="bj-acts sc-acts">
                 {r.myTurn ? <>
                   <button className="btn primary" disabled={busy || !!prob || !!pb.pending} onClick={play} data-test="scum-play">{prob && sel.length ? prob : sel.length ? `Play ${setName({ count: sel.length, rank: rk(sel[0]) })}` : r.leading ? 'Pick your lead' : 'Pick cards'}</button>
-                  <button className="btn" disabled={busy || r.leading || !!pb.pending} onClick={() => post('pass')} data-test="scum-pass">Pass</button>
+                  <button className="btn" disabled={busy || r.leading || !!pb.pending} onClick={() => post('pass')} data-test="scum-pass">{r.playOn ? 'Pass & clear' : 'Pass'}</button>
                 </> : <span className="small dim">{mine.place ? 'Watching the rest fight it out.' : `Waiting on ${turnName || '…'}`}</span>}
               </div>}
             </>}
@@ -390,6 +393,29 @@ function ScumTable({ code, me }) {
       </div>
       {crown && <CrownBlast key={crown.seq} {...crown} onDone={endCrown} />}
       {blast && <SkipBlast key={blast.seq} name={blast.name} by={blast.by} me={blast.me} short={blast.short} onDone={endBlast} />}
+    </div>
+  );
+}
+
+/**
+ * Opponent's hand as real face-down cards: one back per card, overlapped tighter as the count grows so the fan stays
+ * about one avatar wide. Cards they just played lift off toward the pile. Only the count ever reaches the browser.
+ */
+function Fan({ n, bust, to, reduced }) {
+  const prev = useRef(n); const [gone, setGone] = useState(0);
+  useEffect(() => {
+    if (n < prev.current && !reduced) { setGone(prev.current - n); const id = setTimeout(() => setGone(0), 650); prev.current = n; return () => clearTimeout(id); }
+    prev.current = n; setGone(0); return undefined;
+  }, [n, reduced]);
+  const total = n + gone;
+  const cw = Math.max(11, Math.round(bust * 0.3));
+  const W = Math.max(48, bust * 1.5);
+  const step = total > 1 ? Math.min(cw * 0.55, (W - cw) / (total - 1)) : 0;
+  const width = cw + step * Math.max(0, total - 1);
+  const tilt = Math.min(2.4, 26 / Math.max(1, total));
+  return (
+    <div className="sc-fan" style={{ width, height: Math.round(cw * 1.4) + 4, '--cw': `${cw}px`, '--tx': `${Math.round(to.x)}px`, '--ty': `${Math.round(to.y)}px` }} data-test="scum-fan" data-n={n} aria-label={`${n} card${n === 1 ? '' : 's'} left`} role="img">
+      {Array.from({ length: total }, (_, k) => <i key={k} className={`sc-back ${k >= n ? 'leaving' : ''}`} style={{ left: k * step, transform: `rotate(${(k - (total - 1) / 2) * tilt}deg)` }} />)}
     </div>
   );
 }
