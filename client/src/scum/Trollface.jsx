@@ -42,7 +42,7 @@ export function Trollface({ size = 200, className = '', title }) {
  */
 export function SkipBlast({ name, by, me, short = false, onDone }) {
   useEffect(() => {
-    const id = setTimeout(onDone, short ? 1700 : 2500);
+    const id = setTimeout(onDone, short ? 1800 : 2800);
     const key = () => onDone();
     window.addEventListener('keydown', key);
     return () => { clearTimeout(id); window.removeEventListener('keydown', key); };

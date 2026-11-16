@@ -79,6 +79,8 @@ async function page(browser, who, view) {
   const ctx = await browser.newContext({ viewport: view, deviceScaleFactor: 2, isMobile: view === PHONE, hasTouch: view === PHONE, reducedMotion: 'no-preference' });
   const [name, value] = who.cookie.split('=');
   await ctx.addCookies([{ name, value, url: BASE }]);
+  // The wandering faun wears a real friend's face: keep him out of PR screenshots.
+  await ctx.addInitScript(() => { const s = document.createElement('style'); s.textContent = '[data-test=fawn]{display:none!important}'; document.addEventListener('DOMContentLoaded', () => document.head.appendChild(s)); });
   const p = await ctx.newPage(); p.on('pageerror', (e) => { console.log('pageerror', e.message); fails.push(`pageerror ${e.message}`); });
   return p;
 }
@@ -111,19 +113,38 @@ try {
   // 2. table mid-round, avatars, Ann to act; 3. Ann matches the 9s -> Cat is skipped (Cat on a phone, Ann on desktop)
   const ann = await page(browser, P.Ann, DESK); const cat = await page(browser, P.Cat, PHONE);
   await ann.goto(`${BASE}/scum/SCUMMY`); await cat.goto(`${BASE}/scum/SCUMMY`);
-  await ann.waitForSelector('[data-test=scum-hand]'); await cat.waitForSelector('[data-test=scum-hand]'); await wait(2500);
+  await ann.waitForSelector('[data-test=scum-hand]'); await cat.waitForSelector('[data-test=scum-hand]');
+  // Cat was last here before Cat's own 6 skipped Dee: coming back replays the missed moves (with that skip).
+  await cat.evaluate(() => localStorage.setItem('bba.scum.seen.SCUMMY', '33')); await cat.reload();
+  await cat.waitForSelector('[data-test=scum-catchup]', { timeout: 5000 }).then(() => check(true, 'missed moves replay on return'), () => check(false, 'missed moves replay on return'));
+  await cat.waitForSelector('[data-test=scum-skip]', { timeout: 5000 }).then(() => check(true, 'the missed skip plays in the catch-up'), () => check(false, 'the missed skip plays in the catch-up'));
+  await shot(cat, 'phone-catchup-replay');
+  await cat.waitForSelector('[data-test=scum-catchup]', { state: 'detached', timeout: 15000 });
+  await wait(1500);
   check(await ann.locator('.sc-seat .bust').count() === 5, 'five avatars round the felt');
   check(await ann.locator('[data-test=here-dot]').count() >= 2, 'presence dots for players at the table');
-  await ann.click('[data-test=scum-card-9c]'); await ann.click('[data-test=scum-card-9d]');
+  const edge = { position: { x: 8, y: 14 } };
+  await ann.click('[data-test=scum-card-9c]', edge); await ann.click('[data-test=scum-card-9d]', edge);
   await shot(ann, 'desktop-table-midgame'); await noScroll(ann, 'desktop table');
   await shot(cat, 'phone-table-midgame'); await noScroll(cat, 'phone table');
   await ann.click('[data-test=scum-play]');
-  await ann.waitForSelector('[data-test=scum-skip]'); await wait(1100); await shot(ann, 'desktop-skip-blast');
-  await cat.waitForSelector('[data-test=scum-skip]', { timeout: 5000 }); await wait(1100); await shot(cat, 'phone-skip-blast-you');
-  check(/YOU'RE/.test(await cat.locator('.sc-skip-txt').innerText()), 'skipped player sees YOU\'RE SKIPPED!');
-  await wait(2500);
+  await Promise.all([
+    (async () => { await ann.waitForSelector('[data-test=scum-skip]'); await wait(1000); await shot(ann, 'desktop-skip-blast'); })(),
+    (async () => {
+      await cat.waitForSelector('[data-test=scum-skip]', { timeout: 5000 });
+      check(/YOU'RE/.test(await cat.locator('.sc-skip-txt').innerText()) && (await cat.locator('.sc-blast.me').count()) === 1, 'skipped player sees YOU\'RE SKIPPED!');
+      await wait(700); await shot(cat, 'phone-skip-blast-you');
+    })(),
+  ]);
+  await wait(3000);
   check(await cat.locator('[data-test=scum-skip]').count() === 0, 'blast goes away on its own');
   await ann.context().close(); await cat.context().close();
+
+  // small phone and phone on its side
+  for (const [vp, tag] of [[{ width: 375, height: 667 }, 'small-phone'], [{ width: 844, height: 390 }, 'phone-landscape']]) {
+    const p = await page(browser, P.Dee, vp); await p.goto(`${BASE}/scum/SCUMMY`); await p.waitForSelector('[data-test=scum-hand]'); await wait(1200);
+    await noScroll(p, `${tag} table`); await shot(p, `${tag}-table`); await p.context().close();
+  }
 
   // 4. exchange: Dee (Scum) types a beg on her phone; Ann (King) reads it and picks two cards on desktop
   const dee = await page(browser, P.Dee, PHONE);
@@ -134,7 +155,7 @@ try {
   const king = await page(browser, P.Ann, DESK);
   await king.goto(`${BASE}/scum/COURT7`); await king.waitForSelector('[data-test=scum-give]'); await wait(600);
   check(/three kids/.test(await king.locator('[data-test=scum-begbub]').innerText()), 'the King reads the beg');
-  const cards = await king.locator('.sc-hc').all(); await cards[0].click(); await cards[1].click();
+  const cards = await king.locator('.sc-hc').all(); await cards[0].click({ position: { x: 8, y: 14 } }); await cards[1].click({ position: { x: 8, y: 14 } });
   await shot(king, 'desktop-exchange-give'); await noScroll(king, 'desktop give');
   const bob = await page(browser, P.Bob, PHONE);
   await bob.goto(`${BASE}/scum/COURT7`); await bob.waitForSelector('[data-test=scum-court]'); await wait(500);

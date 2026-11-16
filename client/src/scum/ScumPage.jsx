@@ -1,14 +1,14 @@
 // Async Scum: lobby (/scum) and table (/scum/CODE). One screen each, never scrolls. Play for pride: no money moves.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { useMedia, useSize } from '../ui.jsx';
+import { useMedia } from '../ui.jsx';
 import { Bust } from '../avatar/Bust.jsx';
 import { SeatBuddy } from '../table/TableBug.jsx';
 import { Card } from '../Card.jsx';
 import { sfx, isMuted, setMuted } from '../bj/sfx.js';
-import { SkipBlast, Trollface } from './Trollface.jsx';
+import { SkipBlast } from './Trollface.jsx';
 import '../bj/bj.css';
 import './scum.css';
 
@@ -99,7 +99,8 @@ function ScumLobby({ me }) {
         <Seg label="Turn clock" value={st.turnSec} onChange={(v) => S('turnSec', v)} options={info.limits.turnSecs.map((x) => [x, TURN[x]])} />
         <Seg label="Seats" value={st.maxSeats} onChange={(v) => S('maxSeats', v)} options={info.limits.maxSeats.map((x) => [x, String(x)])} />
       </div>
-      <p className="small bj-note sc-pitch">Aces are trump. Match the last card and the next sap is skipped. Finish first, be King. Finish last, hand over your best cards.</p>
+      {narrow ? <p className="small bj-note sc-pitch">Aces are trump. Match the last card and the next sap is skipped. Finish first, be King. Finish last, hand over your best cards.</p>
+        : <div className="sc-howto"><h3 className="western">How it plays</h3><ul className="small">{RULES.map((x) => <li key={x}>{x}</li>)}</ul></div>}
       <div className="bj-create"><span className="small dim">3–7 players · invite friends with the link · out of time = pass</span>
         <button className="btn ghost small" onClick={() => create()} data-test="scum-create">Open lobby</button>
         <button className="btn primary" onClick={() => create({ deal: true })} disabled={!canDeal} title={canDeal ? 'Create and deal with the bots' : 'Needs 2 bots to deal right away'} data-test="scum-create-deal">Open & deal →</button></div>
@@ -114,7 +115,7 @@ function ScumLobby({ me }) {
         {narrow ? <>
           <div className="bj-sectabs top" role="tablist">{[['new', 'Start a table'], ['tables', `Your tables${info.tables.length ? ` (${info.tables.length})` : ''}`]].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-test={`scum-tab-${k}`}>{l}</button>)}</div>
           {tab === 'new' ? form : tables}
-        </> : <div className="bj-cols"><section>{form}<div className="sc-lobby-troll" aria-hidden="true"><Trollface size={120} /></div></section><section><h3 className="western">Your tables</h3>{tables}</section></div>}
+        </> : <div className="bj-cols"><section>{form}</section><section><h3 className="western">Your tables</h3>{tables}</section></div>}
         {rules && <RulesPop onClose={() => setRules(false)} />}
       </div>
     </div>
@@ -123,6 +124,17 @@ function ScumLobby({ me }) {
 
 // ---------------------------------------------------------------- the table
 const SEEN = (code) => `bba.scum.seen.${code}`;
+/** Element size through a callback ref (the table mounts after its first fetch, so a plain ref would miss it). */
+function useBox() {
+  const [el, setEl] = useState(null); const [s, setS] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setS({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el); setS({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, [el]);
+  return [setEl, s];
+}
 function useView(code) {
   const [v, setV] = useState(null); const [err, setErr] = useState('');
   const load = useCallback(async () => { try { setV(await api('GET', `/scum/tables/${code}${document.hidden ? '?away' : ''}`)); setErr(''); } catch (e) { setErr(e.message); } }, [code]);
@@ -170,8 +182,9 @@ function ScumTable({ code, me }) {
   const [copied, setCopied] = useState(false);
   const [, tick] = useState(0);
   const reduced = useMedia('(prefers-reduced-motion: reduce)');
-  const arena = useRef(null); const { w, h } = useSize(arena);
-  const handBox = useRef(null); const hs = useSize(handBox);
+  const [arena, { w, h }] = useBox();
+  const [handBox, hs] = useBox();
+  const tiny = useMedia('(max-width: 520px)');
   const pb = usePlayback(v, code);
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
   useEffect(() => { document.title = v ? `${v.round?.myTurn ? '● ' : ''}${v.name} · Async Scum` : 'Async Scum'; }, [v?.name, v?.round?.myTurn]);
@@ -244,6 +257,7 @@ function ScumTable({ code, me }) {
   const cw = hs.w < 420 ? 42 : hs.w < 700 ? 50 : 58;
   const hand = r?.hand || [];
   const stepX = hand.length > 1 ? Math.max(14, Math.min(cw * 0.82, (hs.w - cw - 8) / (hand.length - 1))) : 0;
+  const handX = Math.max(0, (hs.w - (stepX * Math.max(0, hand.length - 1) + cw)) / 2);
   const fresh = new Set(gets?.paid ? gets.tribute || [] : owe?.paid ? owe.gift || [] : []);
   const owed = new Set(owe && !owe.paid ? owe.owe || [] : []);
 
@@ -255,9 +269,9 @@ function ScumTable({ code, me }) {
           <h1 className="western">{v.name}</h1>
           {r && <span className="bj-sub mono">R{r.no}</span>}
           <div className="bj-head-r">
-            <button className="btn ghost small" onClick={invite} data-test="scum-invite" title="Copy the invite link">{copied ? 'Copied!' : 'Invite'}</button>
-            <button className="btn ghost small" onClick={() => setShow(show === 'log' ? null : 'log')} data-test="scum-log-btn">Log</button>
-            <button className="btn ghost small" onClick={() => setShow(show === 'rules' ? null : 'rules')} data-test="scum-rules">Rules</button>
+            <button className="btn ghost small" onClick={invite} data-test="scum-invite" title="Copy the invite link" aria-label="Copy the invite link">{copied ? 'Copied!' : tiny ? '🔗' : 'Invite'}</button>
+            <button className="btn ghost small" onClick={() => setShow(show === 'log' ? null : 'log')} data-test="scum-log-btn" aria-label="Table log">{tiny ? '☰' : 'Log'}</button>
+            <button className="btn ghost small" onClick={() => setShow(show === 'rules' ? null : 'rules')} data-test="scum-rules" aria-label="Rules">{tiny ? '?' : 'Rules'}</button>
             <button className="btn ghost small" aria-pressed={muted} onClick={() => { setMuted(!muted); setMute(!muted); }} title="Sound">{muted ? '🔇' : '♪'}</button>
             {v.isHost ? <button className="btn ghost small" onClick={() => post('close')} data-test="scum-close">Close</button>
               : mine ? <button className="btn ghost small" onClick={leave} data-test="scum-leave">Leave</button> : null}
@@ -308,7 +322,7 @@ function ScumTable({ code, me }) {
               {ex && <Exchange v={v} owe={owe} gets={gets} giving={giving} sel={sel} beg={beg} setBeg={setBeg} busy={busy} post={post} onSent={() => { setSel([]); setBeg(''); }} />}
               <div className="sc-hand" ref={handBox} style={{ '--cw': `${cw}px` }} data-test="scum-hand">
                 {hand.map((c, k) => (
-                  <button key={c} type="button" className={`sc-hc ${sel.includes(c) ? 'sel' : ''} ${fresh.has(c) ? 'fresh' : ''} ${owed.has(c) ? 'owed' : ''}`} style={{ left: `${k * stepX}px`, zIndex: k }}
+                  <button key={c} type="button" className={`sc-hc ${sel.includes(c) ? 'sel' : ''} ${fresh.has(c) ? 'fresh' : ''} ${owed.has(c) ? 'owed' : ''}`} style={{ left: `${handX + k * stepX}px`, zIndex: k }}
                     onClick={() => tap(c)} aria-pressed={sel.includes(c)} disabled={!(myTurn || giving)} data-test={`scum-card-${c}`}><Card card={c} size="md" /></button>))}
                 {!hand.length && <span className="small dim sc-nohand">{mine.waiting ? 'You get dealt in next round.' : mine.place ? `You're out ${mine.place === 1 ? 'first. Long live the King.' : `#${mine.place}.`}` : ''}</span>}
               </div>

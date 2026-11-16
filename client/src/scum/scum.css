@@ -1,7 +1,5 @@
 /* Async Scum: same felt and card room look as blackjack; one screen, never scrolls. */
 .sc-felt { gap: 6px; }
-.sc-lobby .bj-cols > section:first-child { position: relative; }
-.sc-lobby-troll { position: absolute; right: 4px; bottom: 54px; opacity: .22; pointer-events: none; transform: rotate(-8deg); }
 .sc-pitch { color: var(--paper-2); }
 .sc-list { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
 .sc-status { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: #d9f5e3; min-height: 18px; }
@@ -43,7 +41,7 @@
 .sc-hand { position: relative; width: 100%; height: calc(var(--cw) * 1.4 + 12px); }
 .sc-hand .card { --w: var(--cw); }
 .sc-hc { position: absolute; bottom: 0; padding: 0; border: 0; background: none; cursor: pointer; transition: transform .12s ease; border-radius: 6px; }
-.sc-hc:disabled { cursor: default; }
+.sc-hc:disabled { cursor: default; opacity: 1; }
 .sc-hc.sel { transform: translateY(-12px); }
 .sc-hc.sel .card { box-shadow: 0 0 0 3px #ffd166, 0 8px 16px -6px rgba(0, 0, 0, .8); }
 .sc-hc.fresh .card { box-shadow: 0 0 0 2px #7cf0b0; }
@@ -65,13 +63,13 @@
 /* The skip blast: the whole screen, the troll, the words. */
 .sc-blast { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; overflow: hidden; cursor: pointer; background: radial-gradient(circle at 50% 45%, rgba(40, 10, 30, .55), rgba(5, 2, 4, .92)); animation: sc-fade .18s ease-out both; }
 .sc-rays { position: absolute; inset: -50%; background: repeating-conic-gradient(from 0deg, rgba(255, 209, 102, .16) 0deg 9deg, transparent 9deg 22deg); animation: sc-spin 6s linear infinite; }
-.sc-blast-in { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px; text-align: center; }
+.sc-blast-in { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px; text-align: center; }
 .sc-troll { width: min(70vw, 52vh, 420px); height: auto; filter: drop-shadow(0 12px 0 rgba(0, 0, 0, .45)); animation: sc-troll 2.4s cubic-bezier(.2, 1.4, .4, 1) both; transform-origin: 50% 60%; }
 .sc-troll .troll-eyes { animation: sc-eyes 1.2s ease-in-out .4s 2 alternate both; }
 .sc-troll .troll-grin { transform-origin: 110px 135px; animation: sc-grin .3s ease-in-out .5s 4 alternate both; }
-.sc-skip-txt { margin: 0; font-family: var(--display); font-size: clamp(42px, 11vw, 132px); line-height: .95; color: #ffd166; -webkit-text-stroke: 3px #1a0b02; text-shadow: 0 6px 0 #1a0b02, 0 0 28px rgba(255, 120, 40, .55); display: flex; gap: .25em; flex-wrap: wrap; justify-content: center; }
+.sc-skip-txt { margin: 0; font-family: var(--display); font-size: clamp(56px, 15vw, 132px); line-height: .95; color: #ffd166; -webkit-text-stroke: 3px #1a0b02; text-shadow: 0 6px 0 #1a0b02, 0 0 28px rgba(255, 120, 40, .55); display: flex; gap: .25em; flex-wrap: wrap; justify-content: center; }
 .sc-skip-txt span { display: inline-block; animation: sc-word .5s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(.25s + var(--i) * .14s); }
-.sc-blast.me .sc-skip-txt { color: #ff5d73; }
+.sc-blast.me .sc-skip-txt { color: #ffe14d; text-shadow: 0 6px 0 #1a0b02, 0 0 34px rgba(255, 40, 80, .9); }
 .sc-skip-sub { margin: 0; font-size: clamp(14px, 2.4vw, 20px); color: #fff3d6; text-shadow: 0 2px 0 #000; animation: sc-fade .3s ease-out .8s both; }
 @keyframes sc-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sc-spin { to { transform: rotate(360deg); } }
@@ -90,3 +88,16 @@
   .sc-title { font-size: 9px; padding: 0 5px; }
 }
 @media (max-height: 560px) { .sc-pile-cards { min-height: 52px; } .sc-pile-cards .card { --w: 38px; } }
+.sc-howto { border-top: 1px solid rgba(255, 255, 255, .1); padding-top: 8px; min-height: 0; overflow: hidden; }
+.sc-howto h3 { margin: 0 0 4px; font-size: 16px; }
+.sc-howto ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; color: var(--paper-2); }
+/* Phone on its side: the felt on the left, your hand and buttons on the right where a thumb reaches. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .sc-felt { display: grid; grid-template-columns: 1fr minmax(240px, 44%); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 10px; row-gap: 4px; padding: 6px 10px; }
+  .sc-felt > .bj-head, .sc-felt > .sc-status { grid-column: 1 / -1; }
+  .sc-felt > .sc-arena { grid-column: 1; grid-row: 3; }
+  .sc-felt > .sc-bar { grid-column: 2; grid-row: 3; border-top: 0; border-left: 1px solid rgba(255, 255, 255, .12); padding: 0 0 0 8px; justify-content: center; }
+  .sc-felt .bj-head h1 { font-size: 18px; }
+  .sc-pile-cards .card { --w: 34px; }
+  .sc-pile { gap: 2px; }
+}
