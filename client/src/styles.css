@@ -1649,3 +1649,7 @@ button, .btn, [role=button], label { touch-action: manipulation; }
 .st-name { min-width: 0; }
 .st-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .st-name > i { flex: none; }
+/* Async Scum lobby card (same stack as blackjack and slots) */
+.lb-col > .lb-scum { flex: 0 0 auto; }
+.sc-promo-art { display: grid; place-items: center; }
+.sc-promo-art svg { width: 100%; height: auto; }
