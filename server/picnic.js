@@ -1,4 +1,4 @@
-// The company picnic (behind the mine's second door): everyone who opened it stands in the same quarry and shoots
+// The company picnic (behind the last door in the Hall of Doors): everyone who opened it stands in the same quarry and shoots
 // each other. Nothing is at stake: no money, acid or bugs move here, and nothing is saved. The browser says where it
 // is standing and what it hit; the server keeps score, hands out what is lying about, and refuses the impossible
 // (walking too fast, shooting too often or with a gun you do not hold, hitting someone out of range, behind you,
@@ -100,7 +100,7 @@ export class Picnic {
     for (const [id, p] of this.here) if (now - p.at > PICNIC.staleMs) this.here.delete(id);
     let me = this.here.get(player.id), snap = body.fresh === true;
     if (!me) {
-      if (this.here.size >= PICNIC.max) throw new GameError('The picnic is full. Try the other door.', 409);
+      if (this.here.size >= PICNIC.max) throw new GameError('The picnic is full. Try another door.', 409);
       me = { id: player.id, ...this.spawn(), ...FRESH, yaw: 0, air: 0, at: now, deadUntil: 0, safeUntil: now + PICNIC.safeMs, kills: 0, deaths: 0, nextShot: 0, shot: { n: 0 }, by: null, got: null };
       this.here.set(player.id, me); snap = true;
     }

@@ -8,7 +8,7 @@ import { rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, RUBBLE } fr
 import { shiftMaze, tierInfo, tierLight } from '../../../server/engine/mine-tiers.js';
 import { WormSwarm } from './worms.js';
 import Worms from './Worms.jsx';
-import { stickTurn } from './controls.js';
+import MovePad from './MovePad.jsx';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
@@ -19,7 +19,6 @@ import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
 import { VeinTracker } from './vein.js';
 import DoorHall from './DoorHall.jsx';
-import PicnicRoom from './PicnicRoom.jsx';
 import Foreman from './Foreman.jsx';
 import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
@@ -404,8 +403,8 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
-  const [doorNear, setDoorNear] = useState(false); // the door in front of you: false | 'hall' | 'picnic'
-  const [doom, setDoom] = useState(false);         // the door you are behind (same values); the mine holds still either way
+  const [doorNear, setDoorNear] = useState(false);
+  const [doom, setDoom] = useState(false);
   const doomRef = useRef(false);
   const soundWas = useRef(false);
   const [eggNear, setEggNear] = useState(false);
@@ -521,16 +520,14 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
   };
 
   const doorRef = useRef(false);
-  // The doors behind the start (v27; the first opens into the Hall of Doors since v89, the second goes out to the
-  // company picnic). Opening one only changes this page: the mine stops drawing and the controls go to the game. The
-  // shift clock is the server's; it keeps running and nothing here can stop it. The hall's games bring their own
-  // sound, so the mine's music pauses; the picnic borrows the mine's sound for its rivets.
+  // The door behind the start (v27; opens into the Hall of Doors since v89). Opening it only changes this page: the music pauses, the mine stops drawing,
+  // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
   const openDoor = useRef(null);
-  openDoor.current = (to) => {
-    if (doomRef.current || !to) return;
-    doomRef.current = to; setDoom(to); release();
+  openDoor.current = () => {
+    if (doomRef.current) return;
+    doomRef.current = true; setDoom(true); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
-    soundWas.current = to === 'hall' && !!audio?.on; if (soundWas.current) audio.stop();
+    soundWas.current = !!audio?.on; if (audio?.on) audio.stop();
   };
   const closeDoor = () => {
     doomRef.current = false; setDoom(false);
@@ -652,7 +649,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       if (doomRef.current || closing.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
-      if (k === 'f' && doorRef.current) { openDoor.current(doorRef.current); return; }
+      if (k === 'f' && doorRef.current) { openDoor.current(); return; }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
@@ -671,7 +668,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
     let tap = null;
     const pd = (e) => { drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
     const pm = (e) => { if (!drag) return; scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
-    const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else openDoor.current(scene.hitsDoor(e.clientX, e.clientY)); } tap = null; };
+    const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
     const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
@@ -693,7 +690,7 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
         const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
         setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
       }
-      const dv = scene.doorView(); const n = (dv.dist < 2.1 && dv.facing > 0.75 && dv.to) || false;
+      const dv = scene.doorView(); const n = dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
@@ -819,55 +816,18 @@ function Shift({ shift, audio, sound, onFinish, onQuit, onComplete, exitShift, o
       )}
       {doorNear && !doom && !near && !eggNear && !prey && (
         <div className="m-door-prompt" data-test="door-prompt">
-          <span className="m-dim">{doorNear === 'picnic' ? 'THE OTHER DOOR. DAYLIGHT UNDER IT. RIVETING.' : 'A DOOR. VOICES BEHIND IT.'}</span>
-          <button className="m-btn" onClick={() => openDoor.current(doorNear)} data-test="door-open">[ OPEN THE DOOR ]</button>
+          <span className="m-dim">A DOOR. VOICES BEHIND IT.</span>
+          <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
           <span className="m-dim small">or press F</span>
         </div>
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
-      {doom === 'hall' && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
-      {doom === 'picnic' && <PicnicRoom elapsedMs={elapsed} onExit={closeDoor} audio={audio} Pad={MovePad} />}
+      {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <BugBattle key={battle.id} battle={battle} onMove={battleMove} onForfeit={battleForfeit} onDone={battleDone} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
         {!tiltActive && <MovePad apply={move} />}
       </div>
-    </div>
-  );
-}
-
-/** Phone controls: stick for walking and gentle steering; hold the arrows to turn. */
-function MovePad({ apply }) {
-  const base = useRef(null);
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
-  const stick = useRef({ x: 0, y: 0 });
-  const turn = useRef(0); // -1 / 0 / +1 from the side buttons
-  const active = useRef(false);
-  const push = () => {
-    const { x, y } = stick.current;
-    const f = Math.abs(y) < 0.12 ? 0 : -Math.sign(y) * Math.min(1, (Math.abs(y) - 0.12) / 0.88) ** 0.85;
-    const t = turn.current || stickTurn(x);
-    apply(f, t);
-  };
-  const move = (e) => {
-    if (!active.current) return;
-    const r = base.current.getBoundingClientRect();
-    let x = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), y = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
-    const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
-    stick.current = { x, y }; setKnob({ x, y }); push();
-  };
-  const end = () => { active.current = false; stick.current = { x: 0, y: 0 }; setKnob({ x: 0, y: 0 }); push(); };
-  const hold = (dir) => (e) => { e.preventDefault(); turn.current = dir; e.currentTarget.setPointerCapture?.(e.pointerId); push(); };
-  const release = () => { turn.current = 0; push(); };
-  return (
-    <div className="m-pad" data-test="mine-pad">
-      <button type="button" className="m-turn" aria-label="Turn left" data-test="mine-turn-l"
-        onPointerDown={hold(-1)} onPointerUp={release} onPointerCancel={release} onPointerLeave={release}>◂</button>
-      <div className="m-stick" ref={base} onPointerDown={(e) => { active.current = true; base.current.setPointerCapture(e.pointerId); move(e); }} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-label="Walk">
-        <div className="m-knob" style={{ transform: `translate(${knob.x * 38}px, ${knob.y * 38}px)` }} />
-      </div>
-      <button type="button" className="m-turn" aria-label="Turn right" data-test="mine-turn-r"
-        onPointerDown={hold(1)} onPointerUp={release} onPointerCancel={release} onPointerLeave={release}>▸</button>
     </div>
   );
 }

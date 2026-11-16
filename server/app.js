@@ -345,7 +345,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
-  // The company picnic behind the mine's second door (server/picnic.js): memory only, nothing at stake.
+  // The company picnic behind the last door in the Hall of Doors (server/picnic.js): memory only, nothing at stake.
   api.post('/picnic/tick', needPlayer, wrap((req) => picnic.tick(req.player, req.body || {})));
   api.post('/picnic/leave', needPlayer, wrap((req) => picnic.forget(req.player.id)));
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));

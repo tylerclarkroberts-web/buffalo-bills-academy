@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DoomRoom from './DoomRoom.jsx';
 import NanosaurRoom from './NanosaurRoom.jsx';
+import PicnicRoom from './PicnicRoom.jsx';
 import { HALL_DOORS, LOCKED_LINES } from './doorHall.js';
 
 // Behind the mine door (v89): a stone hall with a row of doors. Doom and Nanosaur open into their games (each game's
-// files only load once its door opens); the rest are locked for now and just rattle. Like the old Doom room, the
-// shift keeps running on the server the whole time and nothing here calls the mine API.
+// files only load once its door opens) and the last door goes outside to the company picnic; the rest are locked for
+// now and just rattle. Like the old Doom room, the shift keeps running on the server the whole time and nothing here
+// calls the mine API (the picnic talks to its own, server/picnic.js, from its own room).
 const EMBLEM = {
   hell: <path d="M12 3c-4 0-7 3-7 7 0 3 1.6 4.6 3 5.4V19h8v-3.6c1.4-.8 3-2.4 3-5.4 0-4-3-7-7-7zM9 11.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM10 19v2m2-2v2m2-2v2" />,
   jungle: <path d="M12 21c-2.5 0-4-1.6-4-3.5S10 13 12 13s4 2.6 4 4.5-1.5 3.5-4 3.5zM6.5 12.5 4 6M12 11V3m5.5 9.5L20 6" />,
@@ -42,7 +44,7 @@ function Door({ d, onOpen, onLocked, shake }) {
 }
 
 export default function DoorHall({ onExit, elapsedMs }) {
-  const [inside, setInside] = useState(null); // null | 'doom' | 'nanosaur'
+  const [inside, setInside] = useState(null); // null | 'doom' | 'nanosaur' | 'picnic'
   const [shaking, setShaking] = useState(null);
   const [note, setNote] = useState(null);
   const tries = useRef(0);
@@ -65,6 +67,7 @@ export default function DoorHall({ onExit, elapsedMs }) {
   const host = document.querySelector('.mines') || document.body;
   if (inside === 'doom') return <DoomRoom elapsedMs={elapsedMs} onExit={back} exitLabel="◄ BACK TO THE HALL" />;
   if (inside === 'nanosaur') return <NanosaurRoom elapsedMs={elapsedMs} onExit={back} />;
+  if (inside === 'picnic') return <PicnicRoom elapsedMs={elapsedMs} onExit={back} />;
   return createPortal(
     <div className="m-hall" role="dialog" aria-label="Hall of doors" data-test="door-hall">
       <div className="m-doom-bar m-hall-bar">

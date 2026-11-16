@@ -1,4 +1,4 @@
-// The company picnic grounds behind the mine's second door: an open quarry where everyone on shift settles up with
+// The company picnic grounds behind the last door in the Hall of Doors: an open quarry where everyone on shift settles up with
 // rivet guns. Pure and shared with the browser: the ground, the boulders, where people turn up and what a shot hits.
 // Positions are metres (x and z on the ground, y up). Yaw follows the mine: facing is (-sin yaw, -cos yaw) in (x, z).
 import { rng } from './maze.js';

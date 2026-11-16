@@ -1,9 +1,11 @@
-// The company picnic behind the mine's second door: the shared map, the server's scorekeeping, and the forked door.
+// The company picnic behind the last door in the Hall of Doors: the shared map, the server's scorekeeping, and the door.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GROUND, ROCKS, SPAWNS, INTERN_RING, GUNS, PICKUPS, PICKUP_REACH, heightAt, solid, walk, shoot } from '../server/engine/picnic-map.js';
 import { Picnic, PICNIC, INTERN, damage } from '../server/picnic.js';
-import { MineScene } from '../client/src/mines/scene.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { HALL_DOORS } from '../client/src/mines/doorHall.js';
 
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z)); // facing is (-sin yaw, -cos yaw)
 const RIVET = GUNS.rivet.everyMs; // waiting this long between reports always clears the server's fire-rate check
@@ -180,12 +182,13 @@ test('the picnic has room for sixteen', () => {
   assert.ok(picnic.tick(players.a, {}).snap);
 });
 
-test('two doors behind the start: the one you face is the one that opens', () => {
-  const mine = Object.assign(Object.create(MineScene.prototype), { pos: { x: 0, y: 0 }, yaw: 0, doors: [{ to: 'hall', at: { x: -0.55, z: -1.08 } }, { to: 'picnic', at: { x: 0.55, z: -1.08 } }] });
-  mine.yaw = 0; assert.equal(mine.doorView().to, 'hall', 'square to the wall: the first door, as before there were two');
-  mine.yaw = 0.3; assert.equal(mine.doorView().to, 'hall'); // turned a little left
-  mine.yaw = -0.3; const right = mine.doorView();
-  assert.equal(right.to, 'picnic'); assert.ok(right.dist < 2.1 && right.facing > 0.75, 'close and square enough for the prompt');
-  mine.yaw = Math.PI; assert.ok(mine.doorView().facing < 0, 'facing down the tunnel: no prompt');
-  assert.deepEqual(Object.assign(Object.create(MineScene.prototype), { pos: { x: 0, y: 0 }, yaw: 0 }).doorView(), { dist: 99, facing: -1, to: null });
+test('the picnic is a door in the hall, and the room behind it talks to the picnic and never to the mine', () => {
+  const src = (f) => fs.readFileSync(path.resolve(import.meta.dirname, '..', f), 'utf8');
+  assert.equal(HALL_DOORS.find((d) => d.id === 'picnic')?.open, true);
+  assert.match(src('client/src/mines/DoorHall.jsx'), /inside === 'picnic'\) return <PicnicRoom elapsedMs=\{elapsedMs\} onExit=\{back\} \/>/);
+  const room = src('client/src/mines/PicnicRoom.jsx');
+  assert.match(room, /path: '\/picnic\/tick'/); assert.match(room, /'\/picnic\/leave'/);
+  assert.doesNotMatch(room, /\/mines\//, 'nothing out here touches the shift');
+  assert.doesNotMatch(src('server/mines.js'), /picnic/i, 'and the mine server knows nothing about the picnic');
+  assert.doesNotMatch(src('server/picnic.js'), /accounts|bankroll|saveDoc|loadDoc/, 'no money and nothing saved');
 });

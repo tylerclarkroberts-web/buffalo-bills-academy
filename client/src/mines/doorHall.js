@@ -1,5 +1,6 @@
-// The Hall of Doors (v89): what's behind the mine door now. Two open doors (Doom, Nanosaur) and a row of locked ones
-// for whatever gets built next. Pure data so the tests can read it without a browser.
+// The Hall of Doors (v89): what's behind the mine door now. Three open doors (Doom, Nanosaur and, at the far end where
+// the daylight comes in, the company picnic) and a row of locked ones for whatever gets built next. The hall is laid
+// out for nine doors, so a new one takes a locked one's place. Pure data so the tests can read it without a browser.
 export const HALL_DOORS = [
   { id: 'doom', name: 'DOOM', style: 'hell', open: true, blurb: 'RIP AND TEAR' },
   { id: 'nanosaur', name: 'NANOSAUR', style: 'jungle', open: true, blurb: '1998 · PANGEA' },
@@ -9,7 +10,7 @@ export const HALL_DOORS = [
   { id: 'deep', name: 'THE DEEP', style: 'deep', open: false, blurb: 'FLOODED' },
   { id: 'mystery', name: '? ? ?', label: 'Mystery', style: 'mystery', open: false, blurb: 'DO NOT KNOCK' },
   { id: 'gilded', name: 'THE GILDED', style: 'gold', open: false, blurb: 'MEMBERS ONLY' },
-  { id: 'skydock', name: 'SKY DOCK', style: 'sky', open: false, blurb: 'COMING SOON' },
+  { id: 'picnic', name: 'PICNIC', style: 'sky', open: true, blurb: 'BRING A HAT' },
 ];
 
 export const LOCKED_LINES = [

@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom';
 import { api } from '../api.js';
 import { createPvpClient } from './pvpClient.js';
 import { PicnicScene } from './picnicScene.js';
+import { MineAudio } from './audio.js';
+import MovePad from './MovePad.jsx';
 import { GUNS } from '../../../server/engine/picnic-map.js';
 
-// Behind the mine's second door: the company picnic. Everyone who opens it walks out into the same quarry holding a
+// Behind the last door in the Hall of Doors: the company picnic. Everyone who opens it walks out into the same quarry holding a
 // rivet gun, with better things lying about. server/picnic.js keeps score; nothing is at stake and nothing is saved.
-// As with the first door, the shift keeps running on the server the whole time, and the mine's own sound switch
-// covers the noise.
+// As with the other doors, the shift keeps running on the server the whole time. The noise is the mine's synth with
+// the tunnel hum turned off, behind its own switch (the mine's music is paused out here, as it is for the whole hall).
 const IDLE = [
   'COMPANY PICNIC. ATTENDANCE IS MANDATORY. RIVET GUNS ARE PROVIDED.',
   'THE HAT TAKES THREE RIVETS. IT GROWS BACK.',
@@ -44,22 +46,29 @@ const DID = { rivet: 'RIVETED', stapler: 'STAPLED', surveyor: 'SURVEYED', dynami
 const BANG = { rivet: [0.07, 2600, 500, 0.5], stapler: [0.14, 900, 180, 0.8, 'lowpass'], surveyor: [0.22, 4200, 300, 0.7], dynamite: [0.6, 420, 50, 0.95, 'lowpass'] }; // MineAudio.noise arguments
 const pulse = (el, cls) => { if (!el) return; el.classList.remove('hit', 'on', 'dent'); void el.offsetWidth; el.classList.add(cls); };
 
-export default function PicnicRoom({ onExit, elapsedMs, audio, Pad }) {
+export default function PicnicRoom({ onExit, elapsedMs }) {
   const canvas = useRef(null), scene = useRef(null), hair = useRef(null), hurt = useRef(null), thumb = useRef(null);
   const [view, setView] = useState(null);
   const [error, setError] = useState(null);
   const [locked, setLocked] = useState(false);
   const [note, setNote] = useState(null); // what you just picked up, for a few seconds
+  const sound = useRef(null); // this room's MineAudio: made by whichever effect needs it first, closed when the room goes
+  const [muted, setMuted] = useState(() => localStorage.getItem('bba.picnic.muted') === '1');
   useEffect(() => {
-    const c = canvas.current;
+    localStorage.setItem('bba.picnic.muted', muted ? '1' : '0');
+    const a = (sound.current ||= new MineAudio());
+    if (muted) a.stop(); else if (a.start()) a.humBus.gain.value = 0; // rivets, no tunnel hum: this is outdoors
+  }, [muted]);
+  useEffect(() => {
+    const c = canvas.current, audio = (sound.current ||= new MineAudio());
     const s = scene.current = new PicnicScene(c, {
       reduceMotion: !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
       onEvent: (e, gun) => {
-        if (e === 'shot' || e === 'hit') audio?.noise(...BANG[gun]);
-        if (e === 'hit') { audio?.chunk(); pulse(hair.current, 'hit'); }
-        if (e === 'hurt') { audio?.splat(); pulse(hurt.current, 'on'); }
-        if (e === 'dent') { audio?.tick(1.3); pulse(hurt.current, 'dent'); } // the hat took it
-        if (e === 'shot-far') audio?.tick(0.7);
+        if (e === 'shot' || e === 'hit') audio.noise(...BANG[gun]);
+        if (e === 'hit') { audio.chunk(); pulse(hair.current, 'hit'); }
+        if (e === 'hurt') { audio.splat(); pulse(hurt.current, 'on'); }
+        if (e === 'dent') { audio.tick(1.3); pulse(hurt.current, 'dent'); } // the hat took it
+        if (e === 'shot-far') audio.tick(0.7);
       },
     });
     window.__picnic = s; // handy for debugging and automated screenshots, like window.__acidMine
@@ -113,7 +122,7 @@ export default function PicnicRoom({ onExit, elapsedMs, audio, Pad }) {
       window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); window.removeEventListener('blur', letGo); window.removeEventListener('resize', onResize);
       document.removeEventListener('pointerlockchange', onLock);
       if (held()) document.exitPointerLock();
-      s.dispose(); scene.current = null; delete window.__picnic; document.title = prevTitle;
+      s.dispose(); scene.current = null; delete window.__picnic; document.title = prevTitle; audio.dispose(); sound.current = null;
     };
   }, []);
   const steer = (f, t) => { const s = scene.current; if (s) { s.input.f = f; s.input.t = t; s.input.s = 0; } };
@@ -136,8 +145,9 @@ export default function PicnicRoom({ onExit, elapsedMs, audio, Pad }) {
   return createPortal(
     <div className="m-doom m-picnic" role="dialog" aria-label="The company picnic" data-test="picnic-room">
       <div className="m-doom-bar">
-        <button className="m-btn m-doom-exit" onClick={onExit} data-test="picnic-exit">◄ BACK TO THE MINE</button>
+        <button className="m-btn m-doom-exit" onClick={onExit} data-test="picnic-exit">◄ BACK TO THE HALL</button>
         <span className="m-dim m-doom-clock" title="Your shift is still on the clock while you're out here">SHIFT {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')} · STILL RUNNING</span>
+        <button className="m-link" onClick={() => setMuted((m) => !m)} aria-pressed={!muted} data-test="picnic-mute">{muted ? '♪ OFF' : '♪ ON'}<span className="sr-only"> game sound</span></button>
       </div>
       <div className="m-picnic-view">
         <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the company picnic" />
@@ -154,7 +164,7 @@ export default function PicnicRoom({ onExit, elapsedMs, audio, Pad }) {
         </ol>}
         {message && <div className="m-picnic-msg" role={error ? 'alert' : 'status'} data-test="picnic-msg">{message}</div>}
         <div className="m-ticker" aria-live="polite">{note && Date.now() < note.until ? note.text : last ? feedLine(last) : view?.others.length === 1 ? 'NOBODY ELSE CAME. GARY CAME. GARY ALWAYS COMES.' : IDLE[Math.floor(secs / 10) % IDLE.length]}</div>
-        <div className="m-movement"><Pad apply={steer} /></div>
+        <div className="m-movement"><MovePad apply={steer} /></div>
         {extra && <button type="button" className="m-btn m-picnic-swap" data-test="picnic-swap" onClick={() => scene.current?.swap()}>{held === 'rivet' ? GUNS[extra.kind].name.toUpperCase() : 'RIVET GUN'}</button>}
         <button type="button" className="m-btn m-picnic-fire" data-test="picnic-fire" onPointerDown={trigger(true)} onPointerMove={slide} onPointerUp={trigger(false)} onPointerCancel={trigger(false)} onLostPointerCapture={trigger(false)} onContextMenu={(e) => e.preventDefault()}>{GUNS[held].verb}</button>
       </div>

@@ -40,8 +40,7 @@ async function run(browser, sid, s) {
   else await p.evaluate(() => { window.__acidMine.yaw += Math.PI; });
   await p.waitForTimeout(500);
   const dv = await p.evaluate(() => window.__acidMine.doorView());
-  // two doors share that wall now (the hall and the company picnic): make sure it is the hall's we are facing
-  if (dv.facing < 0.75 || dv.to !== 'hall') await p.evaluate(() => { const m = window.__acidMine, d = m.doors.find((x) => x.to === 'hall').at; m.yaw = Math.atan2(-(d.x - m.pos.x), -(d.z - m.pos.y)); });
+  if (dv.facing < 0.75) await p.evaluate(() => { const m = window.__acidMine, d = m.door.group.position; m.yaw = Math.atan2(-(d.x - m.pos.x), -(d.z - m.pos.y)); });
   await p.waitForSelector('[data-test=door-prompt]', { timeout: 4000 }).catch(() => null);
   check(!!(await p.$('[data-test=door-prompt]')), `${s.n}: the mine door prompt shows`);
   await shot(p, `${s.n}-1-mine-door`);
@@ -57,7 +56,7 @@ async function run(browser, sid, s) {
     const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 20 && r.height > 20 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; };
     return { n: doors.length, open: doors.filter((d) => d.dataset.open === '1').map((d) => d.dataset.test), allVisible: doors.every((d) => vis(d.querySelector('.m-hall-frame'))), exit: !!document.querySelector('[data-test=hall-exit]') };
   });
-  check(hall.n >= 6 && hall.open.join() === 'hall-door-doom,hall-door-nanosaur' && hall.allVisible && hall.exit, `${s.n}: ${hall.n} doors, open: ${hall.open.join(', ')}, all on screen, back button ${JSON.stringify(hall)}`);
+  check(hall.n >= 6 && hall.open.join() === 'hall-door-doom,hall-door-nanosaur,hall-door-picnic' && hall.allVisible && hall.exit, `${s.n}: ${hall.n} doors, open: ${hall.open.join(', ')}, all on screen, back button ${JSON.stringify(hall)}`);
   check(await noScroll(p), `${s.n}: hall has no page scroll`);
   await shot(p, `${s.n}-2-hall`);
   // a locked door rattles and says so; nothing navigates
