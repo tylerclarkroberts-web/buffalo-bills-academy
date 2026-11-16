@@ -33,7 +33,7 @@ import { Pvp, PVP } from './pvp.js';
 import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
-import { listTurns } from './turns.js';
+import { listTurns, registerTurnSource, scumSource } from './turns.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
@@ -92,6 +92,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // Async Scum (play for pride; no money). SCUM_TICK_MS=0 / SCUM_BOT_MS let tests drive the clock and the bots.
   const scum = new Scum({ store: service.store, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.SCUM_TICK_MS !== undefined ? Number(env.SCUM_TICK_MS) : 1000, botMs: env.SCUM_BOT_MS !== undefined ? Number(env.SCUM_BOT_MS) : 1400, avatars, barn, accounts, payouts: env.SCUM_PAYOUTS !== '0' });
   service.scum = scum;
+  const unregisterScumTurns = registerTurnSource(scumSource(scum));
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
   service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.sessions = sessions;
@@ -529,6 +530,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  const shutdown = () => { unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
   return { app, service, shutdown, bj, scum, telemetry };
 }

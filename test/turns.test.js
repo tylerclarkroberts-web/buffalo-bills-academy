@@ -1,4 +1,4 @@
-// Your turns queue: oldest pending action first, Hold'em + blackjack now, Scum via registerTurnSource.
+// Your turns queue: oldest pending action first, Hold'em, blackjack, and Scum (registerTurnSource).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import {
   waitingSince, sortTurns, collectTurns, listTurns, registerTurnSource,
-  holdemSource, blackjackSource,
+  holdemSource, blackjackSource, scumSource,
 } from '../server/turns.js';
 import { entryTarget, nextTarget, restCount, shouldOfferAdvance, samePath, ADVANCE_MS } from '../client/src/turns/queue.js';
 
@@ -160,7 +160,7 @@ test('client helpers: jump to the first table, then the next, never the current 
 async function boot(t) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'turns-q-'));
   const clock = { t: 1_000 };
-  const { app, service, shutdown, bj } = createApp({ dataDir, now: () => clock.t, devLogin: true, env: { BJ_TICK_MS: '0' } });
+  const { app, service, shutdown, bj } = createApp({ dataDir, now: () => clock.t, devLogin: true, env: { BJ_TICK_MS: '0', SCUM_TICK_MS: '0', SCUM_BOT_MS: '0' } });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   t.after(async () => {
     shutdown(); server.closeAllConnections?.(); await new Promise((r) => server.close(r));
@@ -261,4 +261,73 @@ test('after a holdem action with nothing left at that table, it drops off the qu
   const theirs = (await other.api.get('/turns')).body.turns;
   const still = (await actor.api.get(`/tables/${a}`)).body;
   if (still.hand?.toActPlayerId === other.id) assert.equal(theirs.some((r) => r.code === a), true);
+});
+
+function scumTable({ code = 'SCUM01', name = 'Pride', seatId = 'p1', seat = 0, phase = 'play', turn = 0, pairs = null, deadline = 20_000, turnAt = 10_000, turnSec = 10_000, status = 'playing' } = {}) {
+  return {
+    code, name, status, turnSec,
+    seats: Array.from({ length: 4 }, (_, i) => (i === seat ? { id: seatId, name: 'Ann', left: false } : { id: `bot${i}`, name: 'Bot', bot: true, left: false })),
+    round: {
+      phase, turn, deadline, turnAt,
+      ...(pairs ? { exchange: { pairs } } : {}),
+    },
+  };
+}
+
+test('scumSource lists play, beg and swap at /scum/CODE and ignores spectators', () => {
+  const play = scumTable({ code: 'PLAY01', name: 'Lead', phase: 'play', turn: 0, deadline: 30_000, turnAt: 20_000, turnSec: 10 });
+  const beg = scumTable({
+    code: 'BEG001', name: 'Dues', seatId: 'p-scum', seat: 1, phase: 'exchange', turn: null,
+    pairs: [{ from: 1, to: 0, n: 2, paid: false, given: false, at: 4_000, due: 14_000 }],
+    turnSec: 10,
+  });
+  const swap = scumTable({
+    code: 'SWAP01', name: 'Court', phase: 'exchange', turn: null,
+    pairs: [{ from: 3, to: 0, n: 2, paid: true, given: false, at: 8_000, due: 18_000 }],
+    turnSec: 10,
+  });
+  const watching = scumTable({ code: 'WATCH1', phase: 'play', turn: 2 });
+  const src = scumSource({ doc: { tables: { play, beg, swap, watching, closed: { ...play, code: 'GONE01', status: 'closed' } } } });
+  const ann = src.list({ id: 'p1' });
+  assert.deepEqual(ann.map((r) => [r.action, r.path, r.code]), [
+    ['play', '/scum/PLAY01', 'PLAY01'],
+    ['swap', '/scum/SWAP01', 'SWAP01'],
+  ]);
+  assert.equal(ann.find((r) => r.action === 'play').waitingSince, 20_000);
+  assert.equal(ann.find((r) => r.action === 'swap').deadline, 18_000);
+  const baby = src.list({ id: 'p-scum' });
+  assert.equal(baby.length, 1);
+  assert.equal(baby[0].action, 'beg');
+  assert.equal(baby[0].path, '/scum/BEG001');
+  assert.equal(baby[0].waitingSince, 4_000);
+  assert.deepEqual(src.list({ id: 'nobody' }), []);
+});
+
+test('GET /turns includes a live Scum play turn after the source is registered', async (t) => {
+  const s = await boot(t);
+  const host = await s.player('Ann');
+  const pal = await s.player('Bea');
+  const kid = await s.player('Cal');
+  const made = await host.api.post('/scum/tables', { name: 'Porch', settings: { bots: 0, turnSec: 600 } });
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  const code = made.body.code;
+  assert.equal((await pal.api.post(`/scum/tables/${code}/join`)).status, 200);
+  assert.equal((await kid.api.post(`/scum/tables/${code}/join`)).status, 200);
+  const started = await host.api.post(`/scum/tables/${code}/start`);
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  const players = [host, pal, kid];
+  const views = [];
+  for (const p of players) views.push((await p.api.get(`/scum/tables/${code}`)).body);
+  const up = views.find((v) => v.round?.myTurn);
+  assert.ok(up, 'someone should be to act after the deal');
+  const actor = players.find((p) => p.id === up.seats[up.mySeat].id);
+  const rows = (await actor.api.get('/turns')).body.turns;
+  const mine = rows.filter((r) => r.game === 'scum');
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].path, `/scum/${code}`);
+  assert.equal(mine[0].action, 'play');
+  assert.equal(mine[0].code, code);
+  const idle = players.find((p) => p !== actor);
+  const theirs = (await idle.api.get('/turns')).body.turns;
+  assert.equal(theirs.some((r) => r.game === 'scum' && r.code === code), false);
 });

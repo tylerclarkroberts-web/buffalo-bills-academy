@@ -10,6 +10,8 @@ import { Card } from '../Card.jsx';
 import { sfx, isMuted, setMuted } from '../bj/sfx.js';
 import { SkipBlast, CrownBlast } from './Trollface.jsx';
 import { TableBugSprite } from '../table/TableBug.jsx';
+import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
+import { NextTablePill } from '../turns/TurnsPill.jsx';
 import '../bj/bj.css';
 import './scum.css';
 
@@ -234,10 +236,22 @@ function ScumTable({ code, me }) {
   const endCrown = useCallback(() => { setCrown(null); pb.next(); }, [pb.next]);
   useEffect(() => { if (!bugNote) return undefined; const id = setTimeout(() => setBugNote(null), 2600); return () => clearTimeout(id); }, [bugNote?.seq]);
 
+  const r0 = v?.round;
+  const ex0 = r0?.phase === 'exchange' ? r0.exchange : null;
+  const owe0 = ex0?.pairs.find((p) => p.from === v.mySeat);
+  const gets0 = ex0?.pairs.find((p) => p.to === v.mySeat);
+  const giving0 = !!(gets0 && gets0.paid && !gets0.given);
+  const hasAction = !!(v && v.mySeat >= 0 && (r0?.myTurn || (owe0 && !owe0.paid) || giving0));
+  const turnAdvance = useTurnAdvance({
+    currentPath: `/scum/${String(code).toUpperCase()}`,
+    hasAction,
+    blocked: !!pb.pending || !!blast || !!crown,
+    enabled: true,
+  });
   if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/scum')}>Back to scum</button>}</div></div>;
   const post = async (path, body) => {
     setBusy(true); setErr('');
-    try { const nv = await api('POST', `/scum/tables/${code}/${path}`, body); if (nv?.closed) { navigate('/scum'); return null; } setV(nv); return nv; } catch (e) { setErr(e.message); return null; } finally { setBusy(false); }
+    try { const nv = await api('POST', `/scum/tables/${code}/${path}`, body); if (nv?.closed) { navigate('/scum'); return null; } setV(nv); refreshTurns(); return nv; } catch (e) { setErr(e.message); return null; } finally { setBusy(false); }
   };
   const mine = v.mySeat >= 0 ? v.seats[v.mySeat] : null;
   const tall = w && h ? w / h < 1.2 : false;
@@ -342,6 +356,7 @@ function ScumTable({ code, me }) {
           </>}
         </div>
 
+        <NextTablePill advance={turnAdvance} />
         <div className="sc-bar" data-test="scum-bar">
           {v.status === 'lobby' ? <div className="bj-acts" data-test="scum-lobby">
               <span className="small">Invite friends: <b className="mono" data-test="scum-code">{v.code}</b></span>

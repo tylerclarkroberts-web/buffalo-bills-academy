@@ -1,22 +1,9 @@
-// Queue of tables where the current player is up (Hold'em and blackjack now).
+// Queue of tables where the current player is up (Hold'em, blackjack, and Scum).
 //
-// Scum hook: when Async Scum ships, register a turn source. Do not edit the
-// holdem or blackjack adapters. Invite links are /scum/CODE.
-//
-//   import { registerTurnSource } from './turns.js';
-//   registerTurnSource({
-//     game: 'scum',
-//     list(player, now) {
-//       return gamesWherePlayerIsUp(player).map((g) => ({
-//         code: g.code,
-//         name: g.name,
-//         path: `/scum/${g.code}`,
-//         action: g.action,          // e.g. 'play' | 'swap' | 'beg'
-//         waitingSince: g.waitingSince,
-//         deadline: g.deadline ?? null,
-//       }));
-//     },
-//   });
+// Scum is plugged in from app.js with registerTurnSource(scumSource(scum)).
+// Do not edit the holdem or blackjack adapters. Invite links are /scum/CODE.
+// Actions: 'play' (beat the pile or lead), 'beg' (Scum / Baby Scum hand over
+// their best cards and may type a beg), 'swap' (King / Queen give cards back).
 //
 // Adapter shape: { game, list(player, now) } → items with
 // { code, name, path, action, waitingSince, deadline? }.
@@ -165,6 +152,49 @@ export function blackjackSource(bj) {
   };
 }
 
+export function scumSource(scum) {
+  return {
+    game: 'scum',
+    list(player) {
+      const out = [];
+      const tables = scum?.doc?.tables ? Object.values(scum.doc.tables) : [];
+      for (const t of tables) {
+        if (t.status !== 'playing' || !t.round) continue;
+        const seat = t.seats.findIndex((s) => s && !s.left && s.id === player.id);
+        if (seat < 0) continue;
+        const turnMs = (t.turnSec || 0) * 1000;
+        const r = t.round;
+        if (r.phase === 'exchange') {
+          for (const pr of r.exchange?.pairs || []) {
+            if (!pr.paid && pr.from === seat) {
+              out.push({
+                code: t.code, name: t.name, path: `/scum/${t.code}`, action: 'beg',
+                waitingSince: waitingSince(pr.due, turnMs, pr.at || 0),
+                deadline: pr.due ?? null,
+              });
+            } else if (pr.paid && !pr.given && pr.to === seat) {
+              out.push({
+                code: t.code, name: t.name, path: `/scum/${t.code}`, action: 'swap',
+                waitingSince: waitingSince(pr.due, turnMs, pr.at || 0),
+                deadline: pr.due ?? null,
+              });
+            }
+          }
+          continue;
+        }
+        if (r.phase === 'play' && r.turn === seat) {
+          out.push({
+            code: t.code, name: t.name, path: `/scum/${t.code}`, action: 'play',
+            waitingSince: waitingSince(r.deadline, turnMs, r.turnAt || 0),
+            deadline: r.deadline ?? null,
+          });
+        }
+      }
+      return out;
+    },
+  };
+}
+
 export function collectTurns({ player, now, sources }) {
   const rows = [];
   for (const src of sources || []) {
@@ -173,7 +203,7 @@ export function collectTurns({ player, now, sources }) {
   return sortTurns(rows);
 }
 
-/** Built-in Hold'em + blackjack sources, plus anything registered (Scum). */
+/** Built-in Hold'em + blackjack sources, plus anything registered (Scum via registerTurnSource). */
 export function listTurns({ player, service, bj, now, sources } = {}) {
   const src = sources || [holdemSource(service), blackjackSource(bj), ...extra];
   return collectTurns({ player, now, sources: src });
