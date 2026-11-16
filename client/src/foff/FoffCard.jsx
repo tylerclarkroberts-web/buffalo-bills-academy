@@ -82,7 +82,7 @@ function UnlockedPromo({ bare, reveal }) {
       <FoffArt />
       <div className="sp-txt">
         {!bare && <b className="western">Foff&rsquo;s Bachelor Party</b>}
-        <span className="small sp-desc">Eighteen holes with the lads.</span>
+        <span className="small sp-desc">Golf with some GFRs</span>
         <button type="button" className="btn small sp-go" onClick={() => navigate('/foff')} data-test="foff-go">Go on the trip <span className="arrow">→</span></button>
       </div>
     </div>
