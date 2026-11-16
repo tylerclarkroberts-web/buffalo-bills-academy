@@ -1,5 +1,5 @@
 // v75: what Nurse Hikari (蛍野ヒカリ) says. All Japanese on screen; the English is the optional 訳 subtitle.
-// Pure so node --test can check the branches: fainted bug, healthy bug, egg, empty stall, a grave, and "no thanks".
+// Pure so node --test can check the branches: fainted bug, hurt bug (v76), healthy bug, egg, empty stall, a grave, and "no thanks".
 export const NURSE = { ja: '蛍野ヒカリ', kana: 'ほたるの ひかり', en: 'Nurse Hikari Hotaruno' };
 const L = (ja, en, extra = {}) => ({ ja, en, ...extra });
 
@@ -11,6 +11,7 @@ export function greeting(pen) {
   if (pen.stage === 'dead') return [...out, L('……ごめんなさい。この子は、もう……', "...I'm so sorry. This one is already...", { end: true })];
   const n = pen.name;
   if (pen.fainted) return [...out, L(`あら……${n}ちゃん、目がぐるぐるですね。`, `Oh dear... ${n}'s eyes are all swirly.`), L('あなたのバグを元気にしますね！', "I'll get your bug back on its feet!", { ask: true })];
+  if (pen.hurt) return [...out, L(`あら、${n}ちゃん、けがをしていますね。HPが ${pen.hp}/${pen.maxHp} です。`, `Oh, ${n} is hurt. Its HP is ${pen.hp}/${pen.maxHp}.`), L('しぜんには なおりませんよ。回復しましょうか？', "That won't heal on its own. Shall I patch it up?", { ask: true })];
   return [...out, L(`${n}ちゃんはもう元気いっぱいですね！`, `${n} is already full of energy!`), L('念のため、診ておきましょうか？', 'Shall I give it a quick check-up, just in case?', { ask: true })];
 }
 export const WAIT = L('少々お待ちください♪', 'Just a moment, please ♪');

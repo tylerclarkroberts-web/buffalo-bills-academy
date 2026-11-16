@@ -172,6 +172,7 @@ export default function BugCenter() {
         <div className="bc-scene" style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
           {pen?.stage === 'creature' && pen.fainted && !talk && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} fainted`} /> <span>{pen.name}：<b>ひんし</b></span>{en && <small lang="en">fainted</small>}</div>}
+          {pen?.stage === 'creature' && !pen.fainted && pen.hurt && !talk && <div className="bc-status" data-test="bc-status"><span>{pen.name}：<b className="num">HP {pen.hp}/{pen.maxHp}</b></span>{en && <small lang="en">hurt</small>}</div>}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
             <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>

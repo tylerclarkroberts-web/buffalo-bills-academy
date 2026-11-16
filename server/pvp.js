@@ -15,6 +15,7 @@ import { makeFighter, newBattle, resolveTurn, autoMove, legalMoves, fighterView 
 import { levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { cents } from './accounts.js';
+import { healthOf, pctOf } from './barn.js';
 
 export const PVP = {
   staleMs: 4000,            // a miner who has not reported in this long is not in the tunnels as far as anyone can tell
@@ -203,7 +204,7 @@ export class Pvp {
     const p = this.store.players[id];
     if (!fit) return full ? { ...LOANER, loaner: true, ownerName: p?.name, ...(alive ? { benched: pen.name } : {}) } : null;
     const xp = pen.xp || 0, level = levelFor(xp);
-    return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp } : { species: pen.species, name: pen.name };
+    return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp, health: healthOf(pen) } : { species: pen.species, name: pen.name };
   }
   /** Own-side XP bar numbers for the battle screen (null for a loaner). */
   xpBar(xp) {
@@ -215,8 +216,8 @@ export class Pvp {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');
     const fa = this.bugOf(a), fb = this.bugOf(b);
     const state = newBattle(
-      makeFighter({ owner: a, ownerName: fa.ownerName, name: fa.loaner ? `${fa.name} (on loan)` : fa.name, species: fa.species, level: fa.level, loaner: fa.loaner }),
-      makeFighter({ owner: b, ownerName: fb.ownerName, name: fb.loaner ? `${fb.name} (on loan)` : fb.name, species: fb.species, level: fb.level, loaner: fb.loaner }));
+      makeFighter({ owner: a, ownerName: fa.ownerName, name: fa.loaner ? `${fa.name} (on loan)` : fa.name, species: fa.species, level: fa.level, loaner: fa.loaner, health: fa.health }),
+      makeFighter({ owner: b, ownerName: fb.ownerName, name: fb.loaner ? `${fb.name} (on loan)` : fb.name, species: fb.species, level: fb.level, loaner: fb.loaner, health: fb.health }));
     const battle = { id, a, b, startedAt: now, deadline: now + PVP.turnMs + PVP.introMs, state, choices: {}, lastSeen: { [a]: now, [b]: now }, turns: [], over: null,
       bugs: { a: fa.loaner ? null : { bornAt: fa.bornAt, xp: fa.xp }, b: fb.loaner ? null : { bornAt: fb.bornAt, xp: fb.xp } },
       benched: { a: fa.benched || null, b: fb.benched || null } };
@@ -280,7 +281,8 @@ export class Pvp {
     const loserSide = winnerSide === 'a' ? 'b' : 'a';
     // However it ended, the loser's bar runs out: walking away or going quiet still leaves your bug flat on the floor.
     if (battle.state.sides[loserSide].hp > 0) battle.state = { ...battle.state, winner: winnerSide, sides: { ...battle.state.sides, [loserSide]: { ...battle.state.sides[loserSide], hp: 0 } } };
-    const bugs = { winner: battle.bugs?.[winnerSide] || null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
+    const won = battle.state.sides[winnerSide];
+    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(won.hp, won.maxHp) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
       winnerBug: battle.state.sides[winnerSide].name, loserBug: battle.state.sides[loserSide].name };
     battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
   }
@@ -344,7 +346,7 @@ export class Pvp {
   settleBugs(rec) {
     const b = rec.bugs, out = { winner: null, loser: null };
     if (!this.barn?.battleResult) return out;
-    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName });
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, hpPct: b.winner.hpPct ?? null });
     if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, foeName: rec.winnerName });
     return out;
   }

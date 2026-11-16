@@ -143,7 +143,8 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
     assert.equal(result.pen.lastBout.net, expectedNet);
     assert.equal(result.pen.lastBout.payout, expectedNet + 100.25);
     assert.equal(balance(f, player), 1000 + expectedNet);
-    assert.equal((await post(player)).status, 429);
+    // v76: the loser fainted (Bug Center first: 409); the winner is merely resting (429)
+    assert.equal((await post(player)).status, result.pen.lastBout.result === 'lost' ? 409 : 429);
   }
   assert.equal(balance(f, owner) + balance(f, other), 2000);
   const savedPlayers = structuredClone(f.service.store.players), savedPens = structuredClone(barn.doc.pens);
@@ -291,7 +292,7 @@ test('wins, losses and draws award both players; a draw returns both stakes', as
   for (; seed < 256 && outcomes.size < 3; seed++) {
     for (const player of [owner, other]) {
       const pen = barn.doc.pens[player.id];
-      pen.xp = xpFor(6); pen.boutAt = 0; pen.species = 'lamprima';
+      pen.xp = xpFor(6); pen.boutAt = 0; pen.species = 'lamprima'; delete pen.faintedAt; delete pen.health; // v76: a nurse visit between bouts
       pen.battle = { stance: 'defensive', specials: ['technique', 'signature'] };
       pen.stats = Object.fromEntries(['hunger', 'mood', 'clean'].map(stat => [stat, { v: 0, at: clock.now }]));
     }
@@ -457,7 +458,7 @@ test('the ring lists every living bug of a visible owner, even to a player with 
   const view = (await watcher.api('GET', '/api/barn')).body;
   assert.equal(view.pen, null);
   assert.deepEqual(view.roster.map(bug => bug.ownerId), [owner.id, other.id, young.id], 'highest level first; eggs, the dead and hidden owners are left out');
-  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fights', 'level', 'name', 'owner', 'ownerId', 'record', 'restMs', 'species', 'style']);
+  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'level', 'name', 'owner', 'ownerId', 'record', 'restMs', 'species', 'style']);
   assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, false]]);
   assert.deepEqual(view.challenges, { incoming: [], outgoing: [], max: 3 }); assert.deepEqual(view.fights, []);
   assert.equal((await watcher.api('POST', '/api/barn/challenges', { to: owner.id, stake: 0 })).status, 404, 'no bug, no challenge');

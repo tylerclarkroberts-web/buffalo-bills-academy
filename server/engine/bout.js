@@ -22,7 +22,10 @@ export function simulateBout(a, b, seed) {
       boost: stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage,
       turn: 0, readyAt: {}, guard: 0, weaken: 1, venom: null, lastSpecial: null };
   });
-  const maxHp = side.map(s => s.stats.maxHp), hp = [...maxHp], rounds = [];
+  // v76: a hurt bug starts where the last fight left it (c.health, percent of max; absent = full). Never below 1.
+  const maxHp = side.map(s => s.stats.maxHp), rounds = [];
+  const hp = side.map((s, i) => { const h = Number(s.c.health); return Number.isFinite(h) && h < 100 ? Math.max(1, Math.ceil((maxHp[i] * Math.max(0, h)) / 100)) : maxHp[i]; });
+  const startHp = [...hp];
   let by = R() < 0.5 + (side[0].st.spd - side[1].st.spd) * 0.03 ? 0 : 1;
   for (let turn = 1; turn <= MAX_ROUNDS && hp[0] > 0 && hp[1] > 0; turn++, by = 1 - by) {
     const s = side[by], target = side[1 - by]; s.turn++;
@@ -66,5 +69,5 @@ export function simulateBout(a, b, seed) {
       line: `${s.c.name} uses ${move.name}: ${detail}.` });
   }
   const score = hp[0] * maxHp[1] - hp[1] * maxHp[0];
-  return { rounds, winner: score === 0 ? null : score > 0 ? 0 : 1, maxHp };
+  return { rounds, winner: score === 0 ? null : score > 0 ? 0 : 1, maxHp, startHp };
 }

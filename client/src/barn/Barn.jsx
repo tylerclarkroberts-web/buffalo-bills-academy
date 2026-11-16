@@ -74,6 +74,14 @@ function CenterDoor({ urgent }) {
     バグセンター</button>;
 }
 
+/** v76: HP on the bug, Game Boy style. It only refills at the Bug Center. */
+function HpTag({ pen }) {
+  const pct = Math.max(0, Math.min(100, pen.health ?? 100));
+  return <span className={`barn-hp${pct <= 25 ? ' low' : pct < 100 ? ' mid' : ''}`} data-test="barn-hp" role="meter" aria-label={`${pen.name} health`} aria-valuemin={0} aria-valuemax={pen.maxHp} aria-valuenow={pen.hp}>
+    <b>HP</b><span className="barn-hp-bar"><i style={{ width: `${pct}%` }} /></span><span className="num">{pen.hp}/{pen.maxHp}</span>
+  </span>;
+}
+
 function Stage({ pen, poke, reduced }) {
   const ref = useRef(null);
   const pokeAt = useRef(-1e9); // not 0: performance.now() starts near 0, which read as a fresh poke on load
@@ -153,7 +161,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         <BugThumb bug={bug} />
         <div>
           <div className="barn-listing-title"><b>{bug.name}</b><span className="small">{bug.owner}</span></div>
-          <p className="small">Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : ''}</p>
+          <p className="small">Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : bug.fainted ? ' · fainted' : bug.health < 100 ? ` · ${bug.health}% HP` : ''}</p>
         </div>
         {out ? <div className="barn-row"><span className="small">Called out{out.stake ? stakeLabel(out.stake) : ''} · {left(out.expiresAt - now)} left</span><button className="btn ghost" onClick={() => drop(out.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
           : calling === bug.ownerId ? <form className="barn-post" onSubmit={(event) => { event.preventDefault(); call(bug.ownerId, Number(callStake)); setCalling(null); }}>
@@ -289,7 +297,7 @@ function BarnHome({ me }) {
         <header className="barn-head">
           <h1 className="western">The Barn</h1>
           <div className="barn-head-acts">
-            {pen?.stage === 'creature' && <CenterDoor urgent={pen.fainted} />}
+            {pen?.stage === 'creature' && <CenterDoor urgent={pen.fainted || pen.hurt} />}
             <button className={`btn small${!ring && b.challenges.incoming.length ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : b.challenges.incoming.length ? `The ring · ${b.challenges.incoming.length} waiting` : 'The ring'}</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
@@ -338,12 +346,13 @@ function BarnHome({ me }) {
         )}
         {!ring && pen?.stage === 'creature' && (
           <div className="barn-body" data-test="barn-creature" data-species={pen.species}>
-            <div className={`barn-stage${pen.fainted ? ' fainted' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}><Stage pen={pen} poke={poke} reduced={reduced} />{pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">fainted</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}</div>
+            <div className={`barn-stage${pen.fainted ? ' fainted' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}><Stage pen={pen} poke={poke} reduced={reduced} />{pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">fainted</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}{pen.maxHp > 0 && <HpTag pen={pen} />}</div>
             <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
               {pen.title && <span className="small barn-title">{pen.title}</span>}
               <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active, outside the care XP cap"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
-              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted in the mines{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it. Free.</p>}
+              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it. Free.</p>}
+              {!pen.fainted && pen.hurt && <button className="barn-hurt small" onClick={() => navigate('/barn/center')} data-test="barn-hurt">Your bug is hurt — visit the Bug Center →</button>}
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
               {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
               <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={(e) => {

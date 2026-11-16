@@ -38,10 +38,21 @@ export const BOUT_COOLDOWN_MS = 60 * 60e3; // one bout an hour
 export const BOUT_OPEN_MS = 60 * 60e3;
 export const MAX_BOUT_STAKE = 10000;
 // v75 mine battles: both bugs that fight to the end earn BATTLE_XP; the winner gets WIN_BONUS_XP on top. Outside the
-// care XP cap (the two-hour pair cooldown in pvp.js is the brake). A loser faints: pen.faintedAt is set and it can't
+// care XP cap (the two-hour pair cooldown in pvp.js is the brake). A loser (mine battle or, since v76, barn bout) faints: pen.faintedAt is set and it can't
 // battle, guide or take a barn bout until the nurse at the Bug Center heals it (free).
 export const BATTLE_XP = 20;
 export const WIN_BONUS_XP = 30;
+// v76 health: a bug's HP is kept as pen.health, a percent of its max (absent = 100). It NEVER comes back on its own:
+// no regen over time, no rest, no level-up refill. Whatever a barn bout or mine battle leaves is what it has until
+// the Bug Center nurse heals it (free). A bout's loser faints (0 HP); a winner or a draw keeps the HP it ended on.
+// A hurt but standing bug may still fight, guide and take bouts; it just starts them with less HP.
+export function healthOf(pen) {
+  if (!pen || pen.faintedAt) return 0;
+  const h = Number(pen.health);
+  return Number.isFinite(h) ? Math.max(0, Math.min(100, Math.round(h))) : 100;
+}
+/** HP left after a fight, as a percent, never rounding a standing bug down to 0. */
+export const pctOf = (hp, max) => (hp <= 0 ? 0 : Math.max(1, Math.min(100, Math.round((hp / max) * 100))));
 export const CHALLENGE_OPEN_MS = 24 * 3600e3; // a challenge waits a day: nothing is held, so it can afford to
 export const MAX_CHALLENGES = 3;              // outgoing, per player
 export const FIGHT_LOG = 20;                  // recent fights anyone can watch
@@ -180,7 +191,7 @@ export class Barn {
       const level = levelFor(pen.xp);
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
       return [{ ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId) || null,
-        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, restMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now) }];
+        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt, restMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now) }];
     }).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
     const named = c => ({ ...c, fromName: players[c.from]?.name || 'Someone', toName: players[c.to]?.name || 'Someone' });
     return { roster,
@@ -196,7 +207,7 @@ export class Barn {
     const found = this.doc.fights.find(fight => fight.id === id);
     if (!found) throw new GameError('That fight has left the record.', 404);
     const [you, them] = found.sides.map(({ owner, fighter }) => ({ owner, name: fighter.name, species: fighter.species, level: fighter.level, style: fighter.style }));
-    return { id: found.id, at: found.at, you, them, rounds: found.rounds, maxHp: found.maxHp, pot: cents(found.stake * 2),
+    return { id: found.id, at: found.at, you, them, rounds: found.rounds, maxHp: found.maxHp, ...(found.startHp ? { startHp: found.startHp } : {}), pot: cents(found.stake * 2),
       result: found.winner === null ? 'draw' : found.winner === 0 ? 'won' : 'lost' };
   }
 
@@ -220,9 +231,16 @@ export class Barn {
       combat: { ...combatStats(level), stats: c.stats },
       arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
       title: pen.record?.w >= 5 ? 'Barn Menace' : null,
-      fainted: !!pen.faintedAt, ...(pen.faintedAt ? { faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null } : {}),
+      fainted: !!pen.faintedAt, ...(pen.faintedAt ? { faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null, faintedIn: pen.faintedIn || 'mines' } : {}),
+      ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
       boutCoolMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now), lastBout: pen.lastBout || null }, serverNow: now };
+  }
+
+  /** HP for display: percent, points out of the level's max, and whether a nurse visit would help. */
+  hpOf(pen, level = levelFor(pen.xp)) {
+    const health = healthOf(pen), maxHp = combatStats(level).maxHp;
+    return { health, hp: health >= 100 ? maxHp : Math.round((maxHp * health) / 100), maxHp, hurt: health < 100 };
   }
 
   /** Feed, play or clean. Free, on a cooldown. */
@@ -278,7 +296,7 @@ export class Barn {
 
   fighter(playerId, pen) {
     const level = levelFor(pen.xp);
-    return { species: pen.species, name: pen.name, level,
+    return { species: pen.species, name: pen.name, level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
       gear: this.styleOf?.(playerId).gearBonus || 0, style: this.looksOf(playerId),
       legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
@@ -292,7 +310,7 @@ export class Barn {
     if (pen.stage !== 'creature') throw new GameError('Eggs do not fight. Mostly.', 409);
     const now = this.now();
     const level = levelFor(pen.xp);
-    if (pen.faintedAt) throw new GameError(`${pen.name} fainted in the mines. Take it to the Bug Center first.`, 409);
+    if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
     if (rested && now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
     return pen;
@@ -323,12 +341,17 @@ export class Barn {
     next.record ||= { w: 0, l: 0, d: 0 };
     next.record[receipt.result === 'won' ? 'w' : receipt.result === 'lost' ? 'l' : 'd']++;
     next.boutAt = receipt.at;
+    // v76: the damage stays. A loser faints until the Bug Center; a winner or a draw keeps what it ended on.
+    if (Number.isFinite(receipt.healthAfter)) {
+      if (receipt.result === 'lost' || receipt.healthAfter <= 0) { next.faintedAt = receipt.at; next.faintedBy = receipt.owners?.[1]?.name || receipt.them?.name || null; next.faintedIn = 'ring'; next.health = 0; }
+      else next.health = receipt.healthAfter;
+    }
     next.lastBout = replay;
     next.settledBoutId = receipt.id;
     // The ring's public record rides on the first pet reward, so it needs no write of its own and survives the
     // same failures: whichever participant catches up first records the fight, as seen from their corner.
     const logged = !receipt.owners || this.doc.fights.some(fight => fight.id === receipt.id);
-    const fights = logged ? this.doc.fights : [{ id: receipt.id, at: receipt.at, stake: receipt.stake, maxHp: receipt.maxHp, rounds: receipt.rounds,
+    const fights = logged ? this.doc.fights : [{ id: receipt.id, at: receipt.at, stake: receipt.stake, maxHp: receipt.maxHp, ...(receipt.startHp ? { startHp: receipt.startHp } : {}), rounds: receipt.rounds,
       winner: receipt.result === 'won' ? 0 : receipt.result === 'lost' ? 1 : null,
       sides: [receipt.you, receipt.them].map((fighter, i) => ({ ownerId: receipt.owners[i].id, owner: receipt.owners[i].name, fighter })) }, ...this.doc.fights].slice(0, FIGHT_LOG);
     this.commitDoc({ pens: { ...this.doc.pens, [playerId]: next }, fights });
@@ -425,10 +448,13 @@ export class Barn {
   settle(id, sides, stake, held) {
     const now = this.now(), fighters = sides.map(side => side.fighter);
     const seed = `${now}:${this.eggInt(1e9)}`;
-    const { rounds, winner, maxHp } = simulateBout(...fighters, seed);
+    const { rounds, winner, maxHp, startHp } = simulateBout(...fighters, seed);
+    const endHp = rounds.length ? rounds[rounds.length - 1].hp : startHp;
     const drafts = sides.map(({ player: p, pen }, side) => {
       const payout = winner === null ? stake : winner === side ? cents(stake * 2) : 0;
-      const receipt = { version: 3, id, at: now, seed, petBornAt: pen.bornAt,
+      const healthAfter = winner !== null && winner !== side ? 0 : pctOf(endHp[side], maxHp[side]);
+      const receipt = { version: 4, id, at: now, seed, petBornAt: pen.bornAt, healthAfter,
+        startHp: side === 0 ? startHp : [...startHp].reverse(),
         you: fighters[side], them: fighters[1 - side],
         rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
         maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned: BOUT_XP,
@@ -488,7 +514,7 @@ export class Barn {
     const hostPen = this.ready(host.id), guestPen = this.ready(playerId);
     const open = host.barnBouts.open;
     this.accounts.requireFunds(player, open.stake, 'this bout');
-    this.settle(id, [{ player: host, pen: hostPen, fighter: open.fighter }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true);
+    this.settle(id, [{ player: host, pen: hostPen, fighter: { ...open.fighter, health: healthOf(hostPen) } }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true);
     this.applyBoutReward(host.id);
     return this.view(playerId);
   }
@@ -503,7 +529,7 @@ export class Barn {
    * only for the same bug that fought (`bornAt`): a bug laid to rest and replaced since gets nothing. The winner gains
    * BATTLE_XP + WIN_BONUS_XP; a loser that fought to the end gains BATTLE_XP and faints either way.
    */
-  battleResult(playerId, { battleId, bornAt, won, fought = true, foeName = null }) {
+  battleResult(playerId, { battleId, bornAt, won, fought = true, foeName = null, hpPct = null }) {
     const pen = this.doc.pens[playerId];
     if (!pen || pen.stage !== 'creature' || pen.bornAt !== bornAt) return { xp: 0, fainted: false, skipped: true };
     if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted: !won, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
@@ -512,21 +538,22 @@ export class Barn {
     const levelBefore = levelFor(next.xp || 0);
     next.xp = (next.xp || 0) + xp;
     next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
-    if (!won) { next.faintedAt = this.now(); next.faintedBy = foeName; }
+    if (!won) { next.faintedAt = this.now(); next.faintedBy = foeName; next.faintedIn = 'mines'; next.health = 0; }
+    else if (Number.isFinite(hpPct)) next.health = Math.max(1, Math.min(100, Math.round(hpPct))); // v76: a winner keeps its scrapes
     next.mineBattles = [...(next.mineBattles || []), battleId].slice(-20);
     next.lastMineBattle = { id: battleId, won, xp, levelBefore, levelAfter: levelFor(next.xp), at: this.now() };
     this.commitPen(playerId, next);
     return { xp, bonus: won ? WIN_BONUS_XP : 0, fainted: !won, levelBefore, levelAfter: levelFor(next.xp) };
   }
-  /** The Bug Center: the nurse heals a fainted bug to full. Always free; healing a healthy bug is a polite no-op. */
+  /** The Bug Center: the nurse heals a fainted or hurt bug to full HP. The only way HP comes back. Always free; a healthy bug is a polite no-op. */
   heal(playerId) {
     const pen = this.refresh(playerId);
     if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
     if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
     if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
-    const was = !!pen.faintedAt;
+    const was = !!pen.faintedAt || healthOf(pen) < 100;
     if (was) {
-      const { faintedAt: _f, faintedBy: _b, ...rest } = pen;
+      const { faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, ...rest } = pen;
       this.commitPen(playerId, { ...rest, healedAt: this.now(), heals: (pen.heals || 0) + 1 });
     }
     return { ...this.view(playerId), healed: was, cost: 0 };

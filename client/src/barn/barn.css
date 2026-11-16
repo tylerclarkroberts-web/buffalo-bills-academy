@@ -226,3 +226,15 @@
 .barn-dizzy { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 2; color: #fff6c8; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); pointer-events: none; }
 .barn-faint { margin: 0; }
 .linklike { font: inherit; color: inherit; text-decoration: underline; background: none; border: 0; padding: 0; cursor: pointer; }
+
+/* v76: HP on the bug (only the Bug Center refills it) and the hurt prompt */
+.barn-hp { position: absolute; left: 8px; bottom: 8px; z-index: 2; display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.5); font: 600 10px var(--mono); color: #f6f1d8; letter-spacing: .04em; }
+.barn-hp b { color: #f2c65a; }
+.barn-hp-bar { width: 58px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.14); overflow: hidden; }
+.barn-hp-bar i { display: block; height: 100%; background: #58d058; transition: width .4s; }
+.barn-hp.mid .barn-hp-bar i { background: #f0c030; }
+.barn-hp.low .barn-hp-bar i { background: #e04830; }
+.barn-hurt { display: block; width: 100%; margin: 4px 0; padding: 5px 8px; border: 1px solid rgba(230,93,112,.55); border-radius: 8px; background: rgba(230,93,112,.14); color: #ffc2cb; font-weight: 600; text-align: left; cursor: pointer; }
+.barn-hurt:hover, .barn-hurt:focus-visible { background: rgba(230,93,112,.26); }
+.bout-center { background: #e65d70; border-color: #e65d70; color: #fff; }
+@media (prefers-reduced-motion: reduce) { .barn-hp-bar i { transition: none; } }

@@ -59,7 +59,7 @@ export const STRUGGLE = { id: 'struggle', name: 'Struggle', kind: 'damage', powe
  * One fighter: four moves named from its species kit (whatever its barn level), stats from the species' atk/def/spd
  * leanings and its level. `loaner` is the Foreman's spare beetle for miners without a bug.
  */
-export function makeFighter({ owner, ownerName, name, species, level = 1, loaner = false }) {
+export function makeFighter({ owner, ownerName, name, species, level = 1, loaner = false, health = 100 }) {
   const bug = BY_ID[species];
   if (!bug) throw new RangeError('Unknown bug species.');
   const L = battleLevel(level), type = typeOf(species);
@@ -76,7 +76,8 @@ export function makeFighter({ owner, ownerName, name, species, level = 1, loaner
   });
   return { owner, ownerName: ownerName || '', name, species, level: Math.max(1, Math.floor(level) || 1), battleLevel: L, type, loaner: !!loaner,
     stats: { atk: stat(bug.stats.atk), def: stat(bug.stats.def), spd: stat(bug.stats.spd) }, baseSpd: base(bug.stats.spd),
-    maxHp, hp: maxHp, stages: { atk: 0, def: 0 }, poisoned: false, moves };
+    // v76: a hurt bug starts at what its last fight left (health, % of max). Never below 1; the Bug Center refills it.
+    maxHp, hp: Number.isFinite(health) && health < 100 ? Math.max(1, Math.ceil((maxHp * Math.max(0, health)) / 100)) : maxHp, stages: { atk: 0, def: 0 }, poisoned: false, moves };
 }
 
 /** Moves a fighter can still use (indices); empty means Struggle. */

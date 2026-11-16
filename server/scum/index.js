@@ -151,17 +151,19 @@ export class Scum {
   pass(p, code) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doPass(t, this.mySeat(t, p))); }
   tribute(p, code, beg) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doTribute(t, this.mySeat(t, p), beg)); }
   give(p, code, cards) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doGive(t, this.mySeat(t, p), this.cardList(cards))); }
-  /** The bug that covers a missed turn: their hatched Barn bug, or a generic one. */
+  /** The bug that covers a missed turn: their hatched Barn bug, or a generic one. A fainted bug is laid up at the Bug Center, so a stray covers. */
   bugOf(t, s) {
     const b = tableBugOf(this.barn, t.seats[s]?.id);
+    if (b?.fainted) return { name: 'a stray bug', generic: true, benched: b.name || 'their bug' };
     return b ? { name: b.name || b.speciesName || 'their bug', species: b.species, ...(b.style ? { style: b.style } : {}) } : { name: 'a stray bug', generic: true };
   }
+  bugWho(auto) { return auto.generic ? (auto.benched ? `a stray bug (${auto.benched} is at the Bug Center)` : 'a stray bug') : `their bug ${auto.name}`; }
   doPlay(t, seat, cards, auto = null) {
     const r = t.round; const over = r.pile?.seat;
     const res = S.play(r, seat, cards);
     const who = this.nm(t, seat);
     const skipTxt = res.skipped != null ? ` Same rank: ${this.nm(t, res.skipped)} is SKIPPED!` : '';
-    const by = auto ? `${who} missed their turn; ${auto.generic ? 'a stray bug' : `their bug ${auto.name}`} plays their highest: ${S.describe(cards)}.` : `${who} plays ${S.describe(cards)}.`;
+    const by = auto ? `${who} missed their turn; ${this.bugWho(auto)} plays their highest: ${S.describe(cards)}.` : `${who} plays ${S.describe(cards)}.`;
     this.log(t, `${by}${skipTxt}`, { k: 'play', seat, cards: cards.slice(), left: r.hands[seat].length, ...(auto ? { bug: auto } : {}), ...(res.skipped != null ? { skip: res.skipped, over } : {}) });
     if (res.skipped != null) { t.seats[seat].stats.skips++; t.seats[res.skipped].stats.skipped++; }
     if (res.out) this.log(t, `${who} is out ${PLACE[res.out] || `#${res.out}`}.`, { k: 'out', seat, place: res.out });
@@ -171,7 +173,7 @@ export class Scum {
   }
   doPass(t, seat, auto = null) {
     const r = t.round; const res = S.pass(r, seat);
-    this.log(t, auto ? `${this.nm(t, seat)} missed their turn; ${auto.generic ? 'a stray bug' : `their bug ${auto.name}`} has nothing that beats it and passes.` : `${this.nm(t, seat)} passes.`, { k: 'pass', seat, ...(auto ? { bug: auto } : {}) });
+    this.log(t, auto ? `${this.nm(t, seat)} missed their turn; ${this.bugWho(auto)} has nothing that beats it and passes.` : `${this.nm(t, seat)} passes.`, { k: 'pass', seat, ...(auto ? { bug: auto } : {}) });
     if (res.cleared) this.log(t, `Everyone passed. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
     this.clock(t);
   }
