@@ -1,0 +1,49 @@
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #050505; color: #e9e4d6; font: 16px/1.4 ui-monospace, 'JetBrains Mono', Menlo, monospace; overflow: hidden; -webkit-user-select: none; user-select: none; }
+.btn { font: inherit; font-size: 15px; letter-spacing: .06em; padding: 12px 18px; background: #7dff3a; color: #031200; border: 0; cursor: pointer; }
+.btn:hover, .btn:focus-visible { background: #e6ff00; outline: none; }
+.load { position: fixed; inset: 0; z-index: 4; display: grid; place-content: center; text-align: center; gap: 14px; letter-spacing: .2em; background: #050505; }
+.bar { width: min(320px, 70vw); height: 6px; background: #222; } .bar div { height: 100%; width: 0; background: #7dff3a; transition: width .2s; }
+.load.bad #load-t { color: #ff6a5f; letter-spacing: .08em; }
+.stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; gap: 20px; padding: 0 16px; background: #000; }
+#canvas { display: block; flex: none; width: min(calc(100vw - 244px), calc(100vh * 4 / 3)) !important; height: auto !important; aspect-ratio: 4 / 3; background: #000; outline: none; }
+.keys { flex: none; width: 188px; color: #9d978a; font-size: 11px; letter-spacing: .04em; }
+.keys h2 { margin: 0 0 10px; font: 600 10px/1 inherit; font-family: inherit; letter-spacing: .28em; text-transform: uppercase; color: #6d675c; padding-bottom: 8px; border-bottom: 1px solid #222; }
+.keys dl { margin: 0; display: grid; gap: 7px; }
+.keys dl > div { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; }
+.keys dt { text-transform: uppercase; font-size: 9.5px; letter-spacing: .16em; color: #7d776b; }
+.keys dd { margin: 0; display: flex; flex-wrap: wrap; gap: 3px; }
+.keys kbd { font: 500 10.5px/1 inherit; font-family: inherit; min-width: 20px; padding: 4px 5px 3px; text-align: center; color: #e9e4d6; background: #141414; border: 1px solid #333; border-bottom-width: 2px; border-radius: 4px; }
+.keys kbd.w { min-width: 44px; } .keys kbd.m { color: #b9ff8a; }
+.keys .k-fire dt { color: #9dff5a; } .keys .k-fire kbd { border-color: #2a5a18; }
+@media (max-width: 760px), (orientation: portrait) {
+  .stage { flex-direction: column; justify-content: flex-start; gap: 8px; padding: 0; }
+  #canvas { width: min(100vw, calc((100vh - 64px) * 4 / 3)) !important; }
+  .keys { width: auto; max-width: 100vw; padding: 0 8px; }
+  .keys h2 { display: none; }
+  .keys dl { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; }
+  .keys dl > div { display: flex; gap: 4px; }
+  .keys dt { font-size: 8.5px; letter-spacing: .1em; }
+  .keys kbd { font-size: 9.5px; padding: 3px 4px 2px; min-width: 16px; } .keys kbd.w { min-width: 0; }
+}
+/* phones and tablets: the touch pad is the controls, no keyboard legend */
+body.touch .keys { display: none; }
+@media (orientation: portrait) { body.touch .stage { padding-top: 44px; } }
+@media (orientation: landscape) { body.touch .stage { gap: 0; padding: 0; } body.touch #canvas { width: min(100vw, calc(100vh * 4 / 3)) !important; } }
+.pad { position: fixed; inset: 0; pointer-events: none; touch-action: none; z-index: 3; }
+.pad button { pointer-events: auto; touch-action: none; font: inherit; font-size: 13px; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.28); border-radius: 10px; -webkit-tap-highlight-color: transparent; }
+.pad button.on { background: rgba(125,255,58,.5); }
+.dpad { position: absolute; left: 14px; bottom: 14px; width: 168px; height: 168px; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); gap: 4px; }
+.dpad .u { grid-area: 1 / 2; } .dpad .l { grid-area: 2 / 1; } .dpad .r { grid-area: 2 / 3; } .dpad .d { grid-area: 3 / 2; }
+.dpad button { font-size: 20px; }
+.acts { position: absolute; right: 14px; bottom: 14px; display: grid; grid-template-columns: 64px 64px; grid-template-rows: 64px 64px; gap: 8px; }
+.acts .fire { grid-area: 1 / 2 / 3 / 3; background: rgba(125,255,58,.32); font-size: 15px; } .acts .jump { grid-area: 2 / 1; } .acts .jet { grid-area: 1 / 1; font-size: 11px; }
+.acts .pick { position: absolute; right: 0; bottom: 144px; width: 64px; height: 44px; font-size: 11px; }
+.tops { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.tops button { padding: 6px 9px; font-size: 11px; }
+.credits-link { position: fixed; right: 6px; bottom: 4px; z-index: 5; font: inherit; font-size: 10px; letter-spacing: .04em; color: rgba(233,228,214,.45); background: none; border: 0; padding: 6px 8px; cursor: pointer; }
+.credits-link:hover, .credits-link:focus-visible { color: #e9e4d6; outline: none; }
+body.touch .credits-link { bottom: auto; top: 44px; right: 2px; }
+.credits { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 16px max(16px, calc(50vw - 300px)); background: rgba(5,5,5,.94); font-size: 12px; color: #bdb6a4; overflow: hidden; }
+.credits p { margin: 0; } .credits a { color: #c9f0b4; } .credits .keys-line { color: #8e887a; } .credits .btn { align-self: flex-start; margin-top: 6px; }
