@@ -7,6 +7,8 @@ import { useMedia } from '../ui.jsx';
 import { sfx, isMuted, setMuted } from './sfx.js';
 import { BjArena } from './BjArena.jsx';
 import { useDealReveal } from './useDealReveal.js';
+import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
+import { NextTablePill } from '../turns/TurnsPill.jsx';
 import './bj.css';
 
 const money = (x) => (x == null ? '∞' : `$${Number(x).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
@@ -247,6 +249,9 @@ function BjTable({ code, me }) {
   const r = v?.round;
   const showLast = !!(r && r.phase === 'betting' && v.last);
   const { shown, ready, tap, dealing } = useDealReveal(v, { showLast, reduced });
+  const myBetEarly = v?.round?.bets?.[v.mySeat];
+  const bjUp = !!(v && v.mySeat >= 0 && v.round && (v.round.myTurn || v.round.myInsurance || (v.round.phase === 'betting' && !myBetEarly)));
+  const turnAdvance = useTurnAdvance({ currentPath: `/bj/${String(code).toUpperCase()}`, hasAction: bjUp, blocked: dealing || !ready || !!fx, enabled: true });
 
   useEffect(() => {
     if (!v) return;
@@ -263,7 +268,7 @@ function BjTable({ code, me }) {
 
   if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/bj')}>Back</button>}</div></div>;
 
-  const post = async (path, body) => { setErr(''); try { const res = await api('POST', `/bj/tables/${code}/${path}`, body); setV(res); if (['leave', 'close', 'join', 'start'].includes(path)) refreshSession(); return res; } catch (e) { setErr(e.message); return null; } };
+  const post = async (path, body) => { setErr(''); try { const res = await api('POST', `/bj/tables/${code}/${path}`, body); setV(res); if (['leave', 'close', 'join', 'start'].includes(path)) refreshSession(); refreshTurns(); return res; } catch (e) { setErr(e.message); return null; } };
   const act = async (action) => {
     if (busy || !ready) return;
     setBusy(true);
@@ -325,6 +330,7 @@ function BjTable({ code, me }) {
           reduced={reduced}
           onSit={canSit ? sit : null}
         />
+        <NextTablePill advance={turnAdvance} />
         <div className="bj-bar" data-test="bj-bar">
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>
