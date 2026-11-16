@@ -148,7 +148,7 @@ export class PicnicScene {
       const m = this.miners.map.get(o.id);
       if (!m.gun) {
         m.gun = mesh(new THREE.BoxGeometry(0.06, 0.08, 0.4), flat('#3a3d3a'), 0.26, 1.02, 0.24); m.spare = m.hat[0].clone(); m.spare.position.y += 0.13;
-        m.group.add(m.gun, m.spare); m.shots = o.shot.n;
+        m.group.add(m.gun); m.head.add(m.spare); m.shots = o.shot.n;
       }
       m.air = o.air; m.dead = o.dead; m.safe = o.safe;
       for (const part of m.hat) part.visible = o.hats > 0; // shot off: bare-headed until it grows back

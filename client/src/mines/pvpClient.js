@@ -10,7 +10,8 @@ export function createPvpClient({ send, pose, onView, onError, path = '/mines/pv
     const p = pose(); if (!p) return;
     busy = true;
     try {
-      const view = await send(path, { ...p, ...(fresh ? { fresh: true } : {}) }); // the picnic beats the same way with its own path and pose
+      const { dance, ...at } = p; // the picnic beats the same way with its own path and pose; nobody dances there
+      const view = await send(path, { ...at, ...(dance ? { dance } : {}), ...(fresh ? { fresh: true } : {}) });
       fresh = false; failures = 0;
       if (!stopped) onView(view);
     } catch (e) {

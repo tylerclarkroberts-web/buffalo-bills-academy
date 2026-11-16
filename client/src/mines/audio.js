@@ -233,5 +233,29 @@ export class MineAudio {
     o.type = 'triangle'; o.frequency.setValueAtTime(2900, t); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.4);
   }
-  dispose() { clearTimeout(this.dripTimer); try { this.ctx?.close(); } catch { /* ignore */ } }
+  /**
+   * v89: a little beat while you dance (116 bpm: thump, tick, clap, plus a plucked bass that walks around). Our own.
+   * Only plays with the sound on; turning sound off mid-dance silences it on the next count.
+   */
+  danceBeat(on) {
+    clearInterval(this.danceTimer); this.danceTimer = null;
+    if (!on) return;
+    let step = 0; const bass = [55, 0, 55, 65.4, 0, 73.4, 65.4, 0];
+    const count = () => {
+      if (!this.on || !this.ctx) { step++; return; }
+      const c = this.ctx, t = c.currentTime + 0.02, s = step++ % 8;
+      const tone = (type, f0, f1, len, vol) => {
+        const o = c.createOscillator(), g = c.createGain(); o.type = type;
+        o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + len);
+        g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(g); g.connect(this.master); o.start(t); o.stop(t + len + 0.02);
+      };
+      if (s % 2 === 0) tone('sine', 120, 40, 0.18, 0.5);         // thump
+      else this.noise(0.04, 7000, 9000, 0.12, 'highpass');       // tick
+      if (s === 2 || s === 6) this.noise(0.12, 1800, 900, 0.3);  // clap
+      if (bass[s]) tone('triangle', bass[s], bass[s] * 0.98, 0.22, 0.18);
+    };
+    count(); this.danceTimer = setInterval(count, 60000 / 116 / 2);
+  }
+  dispose() { clearInterval(this.danceTimer); clearTimeout(this.dripTimer); try { this.ctx?.close(); } catch { /* ignore */ } }
 }

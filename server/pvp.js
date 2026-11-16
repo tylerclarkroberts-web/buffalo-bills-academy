@@ -14,6 +14,7 @@ import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
 import { makeFighter, newBattle, resolveTurn, autoMove, legalMoves, fighterView } from './engine/gb-battle.js';
 import { levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
+import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
 import { healthOf, pctOf } from './barn.js';
 
@@ -34,6 +35,7 @@ export const PVP = {
   disconnectMs: 15000,      // a battler not heard from for 15 s forfeits
   keepOverMs: 60000,        // a finished battle stays readable for a minute
   maxVisible: 12,
+  danceGapMs: 400,          // v89: starting or switching a dance at most every 0.4 s (stopping is always allowed)
 };
 
 const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -132,15 +134,17 @@ export class Pvp {
       this.presence.set(player.id, pr);
     }
     const x = Number(body.x), y = Number(body.y), yaw = Number(body.yaw);
-    let snap = false;
+    let snap = false, moved = false;
     if (!this.inBattle.has(player.id) && Number.isFinite(x) && Number.isFinite(y)) {
       const p = { x, y };
       const far = Math.hypot(x - pr.x, y - pr.y) > PVP.maxTilesPerSec * Math.max(0.05, (now - pr.at) / 1000) + PVP.slackTiles;
       // A fresh page (reload, resume) starts the miner back at the elevator: that one jump is allowed, nothing else.
       const restart = body.fresh === true && Math.hypot(x - start.x, y - start.y) <= 1.5;
+      if (Math.hypot(x - pr.x, y - pr.y) > 0.02) moved = true;
       if (onTunnel(grid, p) && (!far || restart)) { pr.x = x; pr.y = y; } else snap = true;
     }
     if (Number.isFinite(yaw)) pr.yaw = ((yaw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    this.setDance(pr, body.dance, { now, still: !moved && !snap && !this.inBattle.has(player.id) });
     pr.at = now;
     // Seeing goes both ways each report: my view of them now, and theirs of me from their last pose.
     for (const [oid, o] of this.neighbours(player.id)) {
@@ -153,18 +157,30 @@ export class Pvp {
     return this.view(player, { snap });
   }
 
+  /**
+   * v89: a dance is cosmetic. Only the nine known ids pass; walking, a snap or a bug battle ends it; starting or switching
+   * is rate limited. It never touches facing, so who can see whom (and so the ambush rules) is exactly as without it.
+   */
+  setDance(pr, raw, { now, still = true } = {}) {
+    const want = still ? danceId(raw) : null;
+    if (want === (pr.dance || null)) return;
+    if (!want) { pr.dance = null; return; }
+    if (now - (pr.danceAt ?? -Infinity) < PVP.danceGapMs) return;
+    pr.dance = want; pr.danceAt = now;
+  }
+
   view(player, { snap = false } = {}) {
     const pr = this.presence.get(player.id);
     const others = this.neighbours(player.id).slice(0, PVP.maxVisible).map(([oid, o]) => {
       const p = this.store.players[oid];
       return { id: oid, name: p?.name || 'A miner', avatar: this.avatars?.info(p) || null, x: o.x, y: o.y, yaw: o.yaw,
-        bug: this.bugOf(oid, false), shield: this.shield(oid), cooling: this.cooling(player.id, oid) };
+        bug: this.bugOf(oid, false), shield: this.shield(oid), cooling: this.cooling(player.id, oid), dance: o.dance || null };
     });
     const target = others.find((o) => this.canAmbush(player.id, o.id));
     const notice = pr?.notice || null; if (pr) pr.notice = null;
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
     const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id) : null;
-    return { serverNow: this.now(), others, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id),
+    return { serverNow: this.now(), others, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
       ...(notice ? { notice, shift: this.mines.stateFor(player) } : {}) };
   }
