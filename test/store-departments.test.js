@@ -15,10 +15,10 @@ test('departments cover every store category once, with no unknown categories', 
 test('departments respect server-hidden bug and seasonal categories', () => {
   const beforeHatch = TABS.filter(t => !t.bug && t.id !== 'seasonal');
   assert.deepEqual(categoriesFor(department('bugs'), beforeHatch), []);
-  assert.deepEqual(categoriesFor(department('room'), beforeHatch).map(t => t.id), ['oddities', 'unique']);
+  assert.deepEqual(categoriesFor(department('room'), beforeHatch).map(t => t.id), ['oddities', 'furnishings', 'unique']);
   const afterHatch = TABS.filter(t => t.id !== 'seasonal');
   assert.deepEqual(categoriesFor(department('bugs'), afterHatch), TABS.filter(t => t.bug));
-  assert.deepEqual(categoriesFor(department('room'), TABS).map(t => t.id), ['oddities', 'unique', 'seasonal']);
+  assert.deepEqual(categoriesFor(department('room'), TABS).map(t => t.id), ['oddities', 'furnishings', 'unique', 'seasonal']);
   assert.deepEqual(categoriesFor(department('appearance'), []), []);
 });
 

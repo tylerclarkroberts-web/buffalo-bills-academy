@@ -1,8 +1,9 @@
-import { ABSURD_ITEMS } from './gags.js';
+import { ABSURD_ITEMS, FURNITURE_ITEMS } from './gags.js';
 
 export const ROOM_ANCHORS = [
   { id: 'wall-left', label: 'Wall display 1', type: 'wall' },
   { id: 'wall-right', label: 'Wall display 2', type: 'wall' },
+  ...[3, 4, 5, 6].map(n => ({ id: `wall-${n}`, label: `Wall display ${n}`, type: 'wall' })),
   { id: 'shelf-left', label: 'Shelf 1', type: 'shelf' },
   { id: 'shelf-right', label: 'Shelf 2', type: 'shelf' },
   { id: 'shelf-3', label: 'Shelf 3', type: 'shelf' },
@@ -11,8 +12,16 @@ export const ROOM_ANCHORS = [
   { id: 'shelf-6', label: 'Shelf 6', type: 'shelf' },
   { id: 'desk', label: 'Writing desk', type: 'desk' },
   { id: 'floor', label: 'Floor', type: 'floor' },
+  { id: 'floor-2', label: 'Floor display 2', type: 'floor' },
+  { id: 'floor-3', label: 'Floor display 3', type: 'floor' },
+  { id: 'sill', label: 'Window sill', type: 'shelf' },
+  // `on` names the furniture a spot rides on: it moves with that piece and goes away when the piece is stored.
+  { id: 'wardrobe-top', label: 'Top of the wardrobe', type: 'shelf', on: 'wardrobe' },
+  ...[1, 2, 3].map(n => ({ id: n > 1 ? `case-${n}` : 'case', label: `Display case · ${n}`, type: 'shelf', on: 'case' })),
   { id: 'window', label: 'Yard', type: 'outdoor' },
 ];
+/** The furniture a display spot rides on; most spots are their own piece. */
+export const anchorHost = id => ROOM_ANCHORS.find(anchor => anchor.id === id)?.on || id;
 export const ROOM_THEMES = [
   { id: 'bunkhouse-timber', name: 'Warm timber' },
   { id: 'bunkhouse-sage', name: 'Sage wash' },
@@ -63,6 +72,8 @@ export const ROOM_WALL_SPOTS = [
   ...wallMountGrid('display', 'left', LEFT_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
   ...wallMountGrid('display', 'back', BACK_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
 ];
+/** The first two wall displays are always up; the rest are hung and taken down by the owner. */
+export const ROOM_WALL_IDS = ROOM_ANCHORS.filter(anchor => anchor.type === 'wall').map(anchor => anchor.id);
 export const defaultWallDisplays = () => ({ 'wall-left': 'back-high-left', 'wall-right': 'back-high-right' });
 export function roomWallDisplays(value, shelves = []) {
   const result = {};
@@ -70,6 +81,9 @@ export function roomWallDisplays(value, shelves = []) {
     const candidates = [value?.[id], fallback, ...ROOM_WALL_SPOTS.map(spot => spot.id)];
     result[id] = candidates.find(spotId => ROOM_WALL_SPOTS.some(spot => spot.id === spotId)
       && wallMountsFit(shelves, { ...result, [id]: spotId })) || fallback;
+  }
+  for (const id of ROOM_WALL_IDS) {
+    if (!result[id] && ROOM_WALL_SPOTS.some(spot => spot.id === value?.[id]) && wallMountsFit(shelves, { ...result, [id]: value[id] })) result[id] = value[id];
   }
   return result;
 }
@@ -97,12 +111,12 @@ export function wallMountsFit(shelves, wallDisplays, furniture) {
     // Include wardrobe trim/handles, desk decorations and the taller resident's hat, regardless of current styling.
     const pad = id === 'wardrobe' ? [0.075, 0.175] : id === 'desk' ? [0, 0.075] : [0, 0];
     if (place.r % 2) pad.reverse();
-    const height = { wardrobe: 2.6, pet: 1.8, wealth: 1.8, desk: 1.7, floor: 0.9, rug: 2.95, couch: 1.15 }[id];
+    const height = { wardrobe: 2.6, pet: 1.8, wealth: 1.8, desk: 1.7, rug: 2.95, couch: 1.15, case: 1.85, poker: 1.4 }[id] ?? 0.9;
     return [[rect[0] - pad[0], 0, rect[1] - pad[1]], [rect[2] + pad[0], height, rect[3] + pad[1]]];
   }) : [];
   return boxes.every((a, i) => boxes.slice(i + 1).every(b => !intersects(a, b)) && furnitureBoxes.every(b => !intersects(a, b)));
 }
-export const wallSpotAvailable = (shelves, wallDisplays, id, spotId, furniture) => Object.hasOwn(defaultWallDisplays(), id)
+export const wallSpotAvailable = (shelves, wallDisplays, id, spotId, furniture) => ROOM_WALL_IDS.includes(id)
   && ROOM_WALL_SPOTS.some(spot => spot.id === spotId) && wallMountsFit(shelves, { ...wallDisplays, [id]: spotId }, furniture);
 export const ROOM_FINISHES = {
   floor: {
@@ -151,10 +165,11 @@ export function roomShelves(value) {
 }
 export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe', 'couch'].map(kind => [kind, finishOf(kind, value?.[kind])]));
 
-/** The room and yard keep their original furniture sizes on floors scaled to 2.1x their first area. */
-export const ROOM_FLOOR_SCALE = Math.sqrt(2.1);
-/** Saved rooms carry this marker; records without it were arranged on the earlier 1.75x floor. */
-export const ROOM_PLAN = 2;
+/** The room and yard keep their original furniture sizes on floors scaled to 3.15x their first area. */
+export const ROOM_FLOOR_SCALE = Math.sqrt(3.15);
+/** Saved rooms carry this marker. Plan 2 was the 2.1x floor; records without one were arranged on the 1.75x floor. */
+export const ROOM_PLAN = 3;
+const PLAN_SCALE = { 2: Math.sqrt(2.1) };
 const S = ROOM_FLOOR_SCALE, cm = n => Math.round(n * 100) / 100;
 /**
  * Movable furniture in scene units: footprint [width, depth] and default centre [x, z].
@@ -167,8 +182,14 @@ export const ROOM_FURNITURE = {
   wealth: { label: 'Cash table', size: [2.2, 1.3], home: [cm(2.25 * S), cm(1.45 * S)] },
   rug: { label: 'Rug', size: [3.5, 2.1], home: [cm(0.2 * S), cm(1.3 * S)], flat: true },
   floor: { label: 'Floor display', size: [1.3, 0.9], home: [cm(-0.55 * S), cm(-0.65 * S)] },
+  // `stored` pieces start put away; Add brings them out.
+  'floor-2': { label: 'Floor display 2', size: [1.3, 0.9], home: [cm(1.6 * S), cm(-0.3 * S)], removable: true, stored: true },
+  'floor-3': { label: 'Floor display 3', size: [1.3, 0.9], home: [cm(-2.6 * S), cm(-0.4 * S)], removable: true, stored: true },
   window: { label: 'Yard display', size: [2.8, 2.05], home: [cm(6.2 * S), cm(-0.3 * S)], yard: true },
   couch: { label: 'Couch', size: [2.4, 1], home: [cm(-1.5 * S), cm(-3 * S + 0.6)], removable: true },
+  // `item` pieces are sold at the General Store and stay stored until their owner has bought one.
+  case: { label: 'Display case', size: [1.96, 0.86], home: [cm(-2.4 * S), cm(-0.9 * S)], removable: true, stored: true, item: 'furn-case' },
+  poker: { label: 'Poker table', size: [2.4, 1.56], home: [cm(1.2 * S), cm(-0.4 * S)], removable: true, stored: true, item: 'furn-pokertable' },
 };
 // Rectangles are [minX, minZ, maxX, maxZ]. The yard area stops short of the fence and the stepping-stone path.
 const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S];
@@ -197,7 +218,7 @@ export function furnitureFits(furniture, id) {
   if (piece.flat) return !solid.some(other => overlaps(residentRect(furniture), other));
   return ![...KEEP_CLEAR, residentRect(furniture), ...solid].some(zone => overlaps(rect, zone));
 }
-export const defaultFurniture = () => Object.fromEntries(Object.entries(ROOM_FURNITURE).map(([id, piece]) => [id, { x: piece.home[0], z: piece.home[1], r: 0 }]));
+export const defaultFurniture = () => Object.fromEntries(Object.entries(ROOM_FURNITURE).map(([id, piece]) => [id, { x: piece.home[0], z: piece.home[1], r: 0, ...(piece.stored ? { off: true } : {}) }]));
 /** A complete, valid furniture map with defaults for omitted pieces, or null when anything supplied is unusable. */
 export function furnitureValid(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -224,8 +245,8 @@ export function freeSpot(furniture, id, shelves, wallDisplays, near = ROOM_FURNI
   return best && { x: best.x, z: best.z };
 }
 /** A room arranged on the earlier floor: spread its furniture over the larger one and find the new couch a clear spot. */
-export function upgradeFurniture(value, shelves, wallDisplays) {
-  const k = S / Math.sqrt(1.75), spread = {};
+export function upgradeFurniture(value, shelves, wallDisplays, plan) {
+  const k = S / (PLAN_SCALE[plan] || Math.sqrt(1.75)), spread = {};
   for (const [id, place] of Object.entries(value && typeof value === 'object' ? value : {})) spread[id] = place && typeof place === 'object' ? { ...place, x: place.x * k, z: place.z * k } : place;
   const [x, z] = ROOM_FURNITURE.couch.home, furniture = furnitureValid(spread);
   if (furniture && wallMountsFit(shelves, wallDisplays, furniture)) return furniture;
@@ -240,9 +261,9 @@ export function upgradeFurniture(value, shelves, wallDisplays) {
   const spot = freeSpot({ ...stored, couch: { x, z, r: 0 } }, 'couch', shelves, wallDisplays);
   return spot ? { ...stored, couch: { ...spot, r: 0 } } : stored;
 }
-export const roomAnchors = (shelves = defaultShelves(), furniture) => ROOM_ANCHORS.flatMap(anchor => {
-  if (furniture?.[anchor.id]?.off) return [];
-  if (anchor.type !== 'shelf') return [anchor];
+export const roomAnchors = (shelves = defaultShelves(), furniture = defaultFurniture(), wallDisplays = defaultWallDisplays()) => ROOM_ANCHORS.flatMap(anchor => {
+  if (furniture[anchor.on || anchor.id]?.off || (anchor.type === 'wall' && !wallDisplays[anchor.id])) return [];
+  if (!ROOM_SHELF_IDS.includes(anchor.id)) return [anchor];
   const shelf = shelves.find(shelf => shelf.id === anchor.id);
   return shelfSlots(shelf).map((slot, slotIndex) => ({ id: slot.id, label: slot.label, type: 'shelf', shelfId: shelf.id, slotIndex }));
 });
@@ -253,8 +274,13 @@ const TYPES = {
   jackolantern: 'shelf', ghost: 'floor', cornucopia: 'shelf', turkey: 'floor', stocking: 'wall', tumbletree: 'floor',
   medal: 'wall', flipflop: 'shelf', drone: 'shelf', abalone: 'shelf', boardingpass: 'wall',
 };
-const SURFACES = { lamp: ['shelf', 'desk'], telegraph: ['desk', 'shelf'], piano: ['shelf', 'desk'], jackolantern: ['shelf', 'desk'], cornucopia: ['shelf', 'desk'], turkey: ['floor', 'desk'], tumbletree: ['floor', 'desk'], flipflop: ['shelf', 'desk'], abalone: ['shelf', 'desk'] };
-export const ROOM_ITEMS = ABSURD_ITEMS.map(item => ({ ...item, roomType: TYPES[item.pix], roomTypes: SURFACES[item.pix] || [TYPES[item.pix]] }));
+// Anything small enough for a shelf also sits on the desk.
+const SURFACES = { telegraph: ['desk', 'shelf'], turkey: ['floor', 'desk'], tumbletree: ['floor', 'desk'] };
+/** Store items that are furniture rather than something to display. */
+export const ROOM_FURNITURE_ITEMS = FURNITURE_ITEMS.map(item => item.id);
+/** Stored pieces the owner has not bought stay stored, along with anything saved on them. */
+export const ownedFurniture = (furniture, owned) => Object.fromEntries(Object.entries(furniture).map(([id, place]) => [id, ROOM_FURNITURE[id].item && !owned.has(ROOM_FURNITURE[id].item) ? { ...place, off: true } : place]));
+export const ROOM_ITEMS = ABSURD_ITEMS.map(item => ({ ...item, roomType: TYPES[item.pix], roomTypes: SURFACES[item.pix] || (TYPES[item.pix] === 'shelf' ? ['shelf', 'desk'] : [TYPES[item.pix]]) }));
 export const ROOM_ITEM = Object.fromEntries(ROOM_ITEMS.map(item => [item.id, item]));
 
 export const roomItemFits = (item, anchor) => !!anchor && Array.isArray(item?.roomTypes) && item.roomTypes.includes(anchor.type);

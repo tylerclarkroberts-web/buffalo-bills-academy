@@ -1,7 +1,7 @@
 import { GameError } from './engine/game.js';
 import { ROOM_ANCHORS, ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FINISHES,
-  ROOM_FURNITURE, ROOM_WALL_SPOTS, defaultWallDisplays, roomWallDisplays, wallMountsFit,
-  defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture, upgradeFurniture, ROOM_PLAN } from './catalog/room.js';
+  ROOM_FURNITURE, ROOM_WALL_SPOTS, ROOM_WALL_IDS, defaultWallDisplays, roomWallDisplays, wallMountsFit,
+  defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture, upgradeFurniture, ownedFurniture, ROOM_FURNITURE_ITEMS, ROOM_PLAN } from './catalog/room.js';
 
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const signedIn = player => !!(player?.google || player?.login);
@@ -22,10 +22,11 @@ const validFinishes = value => allowedBody(value, ['floor', 'rug', 'wardrobe', '
   && ['floor', 'rug', 'wardrobe'].every(kind => validFinish(kind, value[kind])) && (!('couch' in value) || validFinish('couch', value.couch));
 const validFurniture = value => allowedBody(value, Object.keys(ROOM_FURNITURE))
   && Object.values(value).every(place => allowedBody(place, ['x', 'z', 'r', 'off'])) && !!furnitureValid(value);
-const validWallDisplays = value => allowedBody(value, Object.keys(defaultWallDisplays()))
-  && Object.keys(defaultWallDisplays()).every(id => ROOM_WALL_SPOTS.some(spot => spot.id === value[id]))
-  && new Set(Object.values(value)).size === 2;
-const maxPlacements = ROOM_ANCHORS.filter(anchor => anchor.type !== 'shelf').length
+const validWallDisplays = value => allowedBody(value, ROOM_WALL_IDS)
+  && Object.keys(defaultWallDisplays()).every(id => Object.hasOwn(value, id))
+  && Object.values(value).every(spotId => ROOM_WALL_SPOTS.some(spot => spot.id === spotId))
+  && new Set(Object.values(value)).size === Object.keys(value).length;
+const maxPlacements = ROOM_ANCHORS.length - ROOM_SHELF_IDS.length
   + ROOM_SHELF_IDS.length * Math.max(...Object.values(ROOM_SHELF_SIZES).map(size => size.capacity));
 
 export class Rooms {
@@ -39,14 +40,15 @@ export class Rooms {
   }
   owned(pid) {
     const own = this.shop.doc.inv[pid]?.own;
-    return ROOM_ITEMS.filter(item => own?.[item.id] > 0).map(item => item.id);
+    return [...ROOM_ITEMS.map(item => item.id), ...ROOM_FURNITURE_ITEMS].filter(id => own?.[id] > 0);
   }
   saved(pid) {
     const value = Object.hasOwn(this.doc.rooms, pid) ? this.doc.rooms[pid] : null;
     if (!record(value)) return defaults();
     const shelves = roomShelves(value.shelves), wallDisplays = roomWallDisplays(value.wallDisplays, shelves);
-    const furniture = value.plan === ROOM_PLAN ? roomFurniture(value.furniture) : upgradeFurniture(value.furniture, shelves, wallDisplays), availableAnchors = roomAnchors(shelves, furniture);
     const owned = new Set(this.owned(pid)), anchors = new Set(), items = new Set();
+    const furniture = ownedFurniture(value.plan === ROOM_PLAN ? roomFurniture(value.furniture) : upgradeFurniture(value.furniture, shelves, wallDisplays, value.plan), owned);
+    const availableAnchors = roomAnchors(shelves, furniture, wallDisplays);
     const placements = [];
     for (const place of Array.isArray(value.placements) ? value.placements : []) {
       if (!record(place) || anchors.has(place.anchorId) || items.has(place.itemId)
@@ -133,8 +135,9 @@ export class Rooms {
     const wallDisplays = 'wallDisplays' in body ? { ...body.wallDisplays } : current.wallDisplays;
     const finishes = 'finishes' in body ? roomFinishes(body.finishes) : current.finishes;
     const furniture = 'furniture' in body ? furnitureValid(body.furniture) : current.furniture;
+    if (Object.entries(furniture).some(([id, place]) => !place.off && ROOM_FURNITURE[id].item && !this.owned(player.id).includes(ROOM_FURNITURE[id].item))) throw new GameError('That furniture is sold at the General Store.', 400);
     if (!wallMountsFit(shelves, wallDisplays, furniture)) throw new GameError('Keep shelves and wall displays clear of each other, furniture and the resident.', 400);
-    const availableAnchors = roomAnchors(shelves, furniture);
+    const availableAnchors = roomAnchors(shelves, furniture, wallDisplays);
     const owned = new Set(this.owned(player.id)), anchors = new Set(), items = new Set();
     for (const place of body.placements) {
       if (!allowedBody(place, ['anchorId', 'itemId']) || !owned.has(place.itemId)

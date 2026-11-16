@@ -1,4 +1,4 @@
-import { ROOM_FINISHES, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
+import { ROOM_ANCHORS, anchorHost, ROOM_WALL_IDS, ROOM_WALL_SPOTS, defaultWallDisplays, ROOM_FINISHES, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
 
 export const layoutOf = room => ({ layoutRevision: room.layoutRevision, themeId: room.themeId,
   placements: room.placements.map(place => ({ ...place })), shelves: roomShelves(room.shelves), wallDisplays: roomWallDisplays(room.wallDisplays, roomShelves(room.shelves)), finishes: roomFinishes(room.finishes), furniture: roomFurniture(room.furniture) });
@@ -36,6 +36,18 @@ export function moveWallDisplay(layout, id, spotId) {
   if (wallDisplays[id] === spotId || !wallSpotAvailable(layout.shelves, wallDisplays, id, spotId, layout.furniture)) return layout;
   return { ...layout, wallDisplays: { ...wallDisplays, [id]: spotId } };
 }
+/** Hang one more wall display in the first clear spot; unchanged when all six are up or no wall is free. */
+export function addWallDisplay(layout) {
+  const wallDisplays = roomWallDisplays(layout.wallDisplays, layout.shelves), id = ROOM_WALL_IDS.find(value => !wallDisplays[value]);
+  const spot = id && ROOM_WALL_SPOTS.find(spot => wallSpotAvailable(layout.shelves, wallDisplays, id, spot.id, layout.furniture));
+  return spot ? { ...layout, wallDisplays: { ...wallDisplays, [id]: spot.id } } : layout;
+}
+/** Take down an added wall display. The first two stay up. */
+export function removeWallDisplay(layout, id) {
+  const { [id]: spotId, ...wallDisplays } = roomWallDisplays(layout.wallDisplays, layout.shelves);
+  if (!spotId || Object.hasOwn(defaultWallDisplays(), id)) return layout;
+  return { ...layout, wallDisplays, placements: layout.placements.filter(place => place.anchorId !== id) };
+}
 export function removeShelf(layout, id) {
   const shelf = layout.shelves.find(shelf => shelf.id === id);
   if (!shelf) return layout;
@@ -51,7 +63,7 @@ export function changeStyle(layout, kind, field, value, shelfId) {
 
 /** The movable piece behind a scene or panel selection, if any. */
 export const furnitureOf = selection => {
-  const id = selection?.kind === 'anchor' ? selection.anchorId : selection?.kind === 'surface' ? selection.surface : selection?.kind;
+  const id = selection?.kind === 'anchor' ? anchorHost(selection.anchorId) : selection?.kind === 'surface' ? selection.surface : selection?.kind;
   return id !== 'floor' || selection.kind === 'anchor' ? (Object.hasOwn(ROOM_FURNITURE, id) ? id : null) : null;
 };
 /** Move, turn (`r`), store (`off: true`) or restore (`off: false`) one piece; unchanged when it would not fit. */
@@ -65,5 +77,7 @@ export function placeFurniture(layout, id, change) {
     if (!spot) return layout;
     furniture = { ...furniture, [id]: { ...place, ...spot } };
   }
-  return { ...layout, furniture, placements: off ? layout.placements.filter(item => item.anchorId !== id) : layout.placements };
+  // Storing a piece also stores whatever was displayed on it.
+  const gone = off ? ROOM_ANCHORS.filter(anchor => (anchor.on || anchor.id) === id).map(anchor => anchor.id) : [];
+  return { ...layout, furniture, placements: layout.placements.filter(item => !gone.includes(item.anchorId)) };
 }

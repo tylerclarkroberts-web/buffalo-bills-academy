@@ -55,14 +55,16 @@ test('faun visits alternate room and wagon areas deterministically without chang
   assert.deepEqual(faunVisitRoute(), faunVisitRoute(undefined, undefined, undefined, NaN));
   const demo = { ...furniture, wardrobe: { x: 3.5, z: -2.25, r: 0 } };
   const firstVisit = faunVisitRoute(demo, shelves, wallDisplays, 0);
-  assert.equal(firstVisit.location, 'room'); assert.ok(firstVisit.from.x < 3, 'the first visit is visible in the room, away from the glazed divider');
+  assert.equal(firstVisit.location, 'room'); assert.ok(firstVisit.from.x < 2 * S, 'the first visit is visible in the room, away from the glazed divider');
   checkAnimatedRoute(firstVisit, demo, shelves);
 });
 
 test('animated visits follow moved and rotated wagons and avoid newly occupied indoor routes', () => {
   const furniture = defaultFurniture();
+  // Wagon spots first written for the 2.1x yard, spread to the current one.
+  const k = S / Math.sqrt(2.1);
   for (const place of [{ x: 7.95, z: -2.75, r: 0 }, { x: 10.4, z: -1.65, r: 1 }, { x: 9, z: 0.55, r: 2 }, { x: 7.65, z: -1.1, r: 3 }]) {
-    const moved = { ...furniture, window: place };
+    const moved = { ...furniture, window: { ...place, x: place.x * k, z: place.z * k } };
     assert.ok(furnitureValid(moved));
     const route = faunVisitRoute(moved, defaultShelves(), defaultWallDisplays(), 1);
     assert.equal(route.location, 'yard'); checkAnimatedRoute(route, moved);
@@ -79,11 +81,11 @@ test('animated visits follow moved and rotated wagons and avoid newly occupied i
   checkAnimatedRoute(nearShelf, storedWardrobe, shelves);
 });
 
-test('a crowded valid layout uses the clear path without moving through blocked routes', () => {
-  // A turned wagon in the middle of the yard leaves no side wide enough for him and his umbrella.
-  const furniture = { ...defaultFurniture(), wardrobe: { x: 4.4, z: 0.55, r: 0 }, pet: { x: 2.2, z: -0.9, r: 0 }, window: { x: 9.2, z: -1, r: 1 } };
+test('a crowded room sends the visit to the yard without moving through blocked routes', () => {
+  // Furniture across every indoor route. The yard is now too big for a wagon to block, so the path fallback is only a backstop.
+  const furniture = { ...defaultFurniture(), wardrobe: { x: 5.6, z: 0.6, r: 0 }, pet: { x: 2.8, z: -1.1, r: 0 }, window: { x: 11.3, z: -1.2, r: 1 } };
   assert.ok(furnitureValid(furniture));
   const route = faunVisitRoute(furniture, defaultShelves(), defaultWallDisplays(), 0);
-  assert.equal(route.location, 'path'); assert.deepEqual(route.from, route.to);
+  assert.equal(route.location, 'yard');
   checkAnimatedRoute(route, furniture);
 });

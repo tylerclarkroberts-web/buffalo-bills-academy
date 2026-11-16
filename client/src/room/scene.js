@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { ROOM_ITEM, ROOM_FINISHES, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_WALL_SPOTS, ROOM_FURNITURE, roomShelves, shelfSlots, shelfForAnchor, roomWallDisplays, wallMountsFit, wallSpotAvailable, roomFinishes, roomFurniture, furnitureFits } from '../../../server/catalog/room.js';
+import { ROOM_ITEM, anchorHost, ROOM_FINISHES, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_WALL_SPOTS, ROOM_FURNITURE, roomShelves, shelfSlots, shelfForAnchor, roomWallDisplays, wallMountsFit, wallSpotAvailable, roomFinishes, roomFurniture, furnitureFits } from '../../../server/catalog/room.js';
 import { furnitureOf } from './layout.js';
 import { coveredWagon } from './wagon.js';
 import { roomFaun } from './faun.js';
@@ -9,7 +10,7 @@ import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from '
 import { pixGrid } from '../store/pixart.js';
 import { spriteCanvas, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
-import { headParts, looks } from '../avatar/genbust.js';
+import { headParts, looks, shade as tint } from '../avatar/genbust.js';
 import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#8c6243', 'bunkhouse-sage': '#6d785b', 'bunkhouse-clay': '#9a6650' };
@@ -18,7 +19,10 @@ const mesh = (parent, geometry, mat, x = 0, y = 0, z = 0) => {
   const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); parent.add(m); return m;
 };
 const box = (p, w, h, d, color, x = 0, y = 0, z = 0) => mesh(p, new THREE.BoxGeometry(w, h, d), material(color), x, y, z);
-const cylinder = (p, rt, rb, h, color, x = 0, y = 0, z = 0, sides = 12) => mesh(p, new THREE.CylinderGeometry(rt, rb, h, sides), material(color), x, y, z);
+const cylinder = (p, rt, rb, h, color, x = 0, y = 0, z = 0, sides = 16) => mesh(p, new THREE.CylinderGeometry(rt, rb, h, sides), material(color), x, y, z);
+const tube = (p, points, radius, color) => mesh(p, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point))), 10, radius, 6), material(color));
+// [brim radius, crown bottom radius, crown top radius or 'dome', crown height]. Any other hat gets a plain flat crown.
+const HAT_SHAPES = { tophat: [0.3, 0.2, 0.21, 0.36], cowboy: [0.42, 0.22, 0.17, 0.24], tengallon: [0.46, 0.23, 0.2, 0.34], sombrero: [0.56, 0.2, 0.08, 0.3], bowler: [0.3, 0.22, 'dome'], hardhat: [0.29, 0.23, 'dome'], beanie: [0, 0.24, 'dome'], fez: [0, 0.19, 0.15, 0.22], chef: [0, 0.2, 0.27, 0.34], wizard: [0.36, 0.2, 0.01, 0.5], party: [0, 0.14, 0.01, 0.36], bucket: [0.3, 0.24, 0.2, 0.2] };
 const finishColor = (kind, style) => ROOM_FINISHES[kind].colors.find(color => color.id === style.colorId)?.color || ROOM_FINISHES[kind].colors[0].color;
 const shade = (color, amount) => new THREE.Color(color).multiplyScalar(amount).getStyle();
 const shown = object => {
@@ -98,6 +102,26 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
   box(parent, w + 0.12, h + 0.12, 0.08, '#805c30', 0, 0.45, 0);
   box(parent, w + 0.04, h + 0.04, 0.09, '#c39b52', 0, 0.45, 0.01);
   const map = paintedTexture(512, Math.round(512 * h / w), (ctx, width, height) => {
+    if (pix === 'boardingpass') { // a real one, kept flat under glass: header, stub, barcode
+      const x0 = 26, y0 = 58, cw = width - 52, ch = height - 116, tear = x0 + cw * 0.74, dark = '#26303a';
+      ctx.fillStyle = '#d9c9a0'; ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#fbf6e6'; ctx.fillRect(x0, y0, cw, ch);
+      ctx.fillStyle = '#2f6fb0'; ctx.fillRect(x0, y0, cw, 54);
+      ctx.fillStyle = '#fbf6e6'; ctx.textAlign = 'left'; ctx.font = 'bold 28px Georgia'; ctx.fillText('BOARDING PASS', x0 + 14, y0 + 37);
+      ctx.fillStyle = dark; ctx.font = 'bold 56px Georgia'; ctx.fillText('SFO', x0 + 16, y0 + 122);
+      ctx.fillRect(x0 + 150, y0 + 100, 62, 5); ctx.beginPath(); ctx.moveTo(x0 + 228, y0 + 102); ctx.lineTo(x0 + 206, y0 + 88); ctx.lineTo(x0 + 206, y0 + 116); ctx.closePath(); ctx.fill();
+      ctx.font = 'bold 30px Georgia'; ctx.fillText('HOME', x0 + 240, y0 + 113);
+      ctx.font = '12px Georgia'; ctx.fillStyle = '#7a8591';
+      for (const [label, x] of [['PASSENGER', 16], ['SEATS', 190], ['GATE CLOSES', 258]]) ctx.fillText(label, x0 + x, y0 + 158);
+      ctx.fillStyle = dark; ctx.font = 'bold 19px Georgia';
+      for (const [value, x] of [['SASQUATCH +11', 16], ['12', 190], ['0:01', 258]]) ctx.fillText(value, x0 + x, y0 + 182);
+      ctx.font = 'italic 15px Georgia'; ctx.fillText('San Francisco, Sunday. Twelve seats. One sasquatch.', x0 + 16, y0 + ch - 44);
+      ctx.font = '12px Georgia'; ctx.fillStyle = '#7a8591'; ctx.fillText('Buffalo Bill\'s Academy · No. 000001', x0 + 16, y0 + ch - 20);
+      ctx.fillStyle = '#b9c0c8'; for (let y = y0 + 58; y < y0 + ch - 4; y += 12) ctx.fillRect(tear, y, 2, 6);
+      ctx.fillStyle = dark; for (let i = 0, x = tear + 16; x < x0 + cw - 14; i++) { const bar = 1 + (i * 7) % 4; ctx.fillRect(x, y0 + 72, bar, ch - 130); x += bar + 2 + (i * 5) % 3; }
+      ctx.font = 'bold 15px Georgia'; ctx.fillText('SFO', tear + 16, y0 + ch - 34); ctx.font = '12px Georgia'; ctx.fillText('RUN', tear + 16, y0 + ch - 18);
+      return;
+    }
     const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' || pix === 'medal' || pix === 'boardingpass' ? '#345d80' : pix === 'charter' ? '#5a2f2a' : '#76572d';
     ctx.fillStyle = pix === 'railroad' ? '#e5e8ce' : '#efe0b7'; ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = ink; ctx.lineWidth = 5; ctx.strokeRect(14, 14, width - 28, height - 28);
@@ -119,13 +143,7 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
       ctx.fillRect(176, cy - 12, 150, 28); ctx.fillRect(326, cy - 4, 22, 16); ctx.fillRect(170, cy - 42, 22, 44);
       ctx.beginPath(); ctx.moveTo(236, cy + 10); ctx.lineTo(296, cy + 10); ctx.lineTo(250, cy + 50); ctx.lineTo(226, cy + 50); ctx.closePath(); ctx.fill();
       ctx.fillStyle = '#efe0b7'; for (let i = 0; i < 8; i++) ctx.fillRect(200 + i * 15, cy - 5, 8, 8);
-    } else if (pix === 'medal') { // a ribbon, a gold disc and one star
-      ctx.fillRect(226, cy - 70, 60, 58); ctx.fillStyle = '#efe0b7'; ctx.fillRect(246, cy - 70, 20, 58);
-      ctx.fillStyle = '#d8a820'; ctx.beginPath(); ctx.arc(256, cy + 22, 46, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#f0d060'; ctx.beginPath(); ctx.arc(256, cy + 22, 36, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#d8a820'; ctx.beginPath();
-      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 11 : 26; ctx.lineTo(256 + Math.cos(a) * r, cy + 22 + Math.sin(a) * r); }
-      ctx.closePath(); ctx.fill();
+    } else if (pix === 'medal') { // the medal itself is pinned on in front: see oddity()
     } else if (pix === 'sheriffbadge') {
       ctx.beginPath(); ctx.ellipse(250, cy, 68, 25, 0, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.moveTo(300, cy); ctx.lineTo(345, cy - 31); ctx.lineTo(345, cy + 31); ctx.closePath(); ctx.fill();
@@ -143,6 +161,28 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
     ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = '13px Georgia'; ctx.fillText('No. 000001', 43, height - 43);
   });
   mesh(parent, new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map }), 0, 0.45, 0.06);
+}
+/** Folds an item's plain painted parts into one mesh, colours on its corners, so detail costs no extra draw calls. */
+function bake(group) {
+  group.updateMatrixWorld(true);
+  const undo = group.matrixWorld.clone().invert(), parts = [];
+  group.traverse(part => {
+    const paint = part.material;
+    if (part.isMesh && !part.isInstancedMesh && paint?.isMeshLambertMaterial && paint.flatShading && !paint.map && !paint.transparent && !paint.wireframe && paint.side === THREE.FrontSide) parts.push(part);
+  });
+  if (parts.length < 2) return group;
+  const merged = mergeGeometries(parts.map(part => {
+    const geometry = part.geometry.index ? part.geometry.toNonIndexed() : part.geometry.clone();
+    geometry.applyMatrix4(undo.clone().multiply(part.matrixWorld));
+    const own = part.material.vertexColors && geometry.attributes.color, { r, g, b } = part.material.color, colors = [];
+    for (let i = 0; i < geometry.attributes.position.count; i++) colors.push(r * (own ? own.getX(i) : 1), g * (own ? own.getY(i) : 1), b * (own ? own.getZ(i) : 1));
+    for (const name of Object.keys(geometry.attributes)) if (name !== 'position' && name !== 'normal') geometry.deleteAttribute(name);
+    return geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  }));
+  if (!merged) return group;
+  for (const part of parts) part.removeFromParent();
+  mesh(group, merged, material('#ffffff', { vertexColors: true }));
+  return group;
 }
 /** Delivered with the deed: tied to a yard fence post so it does not wander off again. */
 function moon() {
@@ -187,25 +227,80 @@ function oddity(id) {
       for (const side of [-1, 1]) mesh(tool, new THREE.ConeGeometry(0.05, 0.34, 6), material('#e8c040'), side * 0.22, 0.86).rotation.z = side * -1.75;
       break;
     }
-    case 'odd-medal': frame(group, 'medal', 0.8, 0.9); break;
+    case 'odd-medal': { // a ribbon, a gold disc and one star, pinned to the certificate
+      frame(group, 'medal', 0.8, 0.9);
+      box(group, 0.14, 0.18, 0.012, '#345d80', 0, 0.66, 0.07); box(group, 0.045, 0.182, 0.014, '#f3ecd2', 0, 0.66, 0.07);
+      box(group, 0.05, 0.04, 0.012, '#d8a820', 0, 0.56, 0.07);
+      cylinder(group, 0.105, 0.105, 0.02, '#d8a820', 0, 0.46, 0.075, 24).rotation.x = Math.PI / 2;
+      cylinder(group, 0.085, 0.085, 0.026, '#f0d060', 0, 0.46, 0.075, 24).rotation.x = Math.PI / 2;
+      const star = new THREE.Shape();
+      for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.026 : 0.062; star[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
+      mesh(group, new THREE.ShapeGeometry(star), material('#c08a1e'), 0, 0.46, 0.0885);
+      break;
+    }
     case 'odd-boardingpass': frame(group, 'boardingpass', 0.9, 0.7); break;
     case 'odd-flipflop': { // one flip-flop, in the puddle it came with
-      cylinder(group, 0.32, 0.32, 0.008, '#7cc4f0', 0, 0.004);
-      box(group, 0.26, 0.05, 0.6, '#f08ab0', 0, 0.035, 0);
-      box(group, 0.22, 0.03, 0.03, '#fff6e4', 0, 0.1, -0.1); box(group, 0.03, 0.07, 0.03, '#fff6e4', 0, 0.085, -0.19);
+      const water = material('#7cc4f0', { transparent: true, opacity: 0.8 });
+      for (const [r, x, z] of [[0.3, 0, 0.02], [0.18, 0.24, 0.14], [0.14, -0.26, -0.1], [0.05, 0.36, -0.16]]) mesh(group, new THREE.CylinderGeometry(r, r, 0.006, 18), water, x, 0.003, z);
+      for (const [x, z] of [[0.3, 0.3], [-0.34, 0.12], [0.08, 0.4]]) mesh(group, new THREE.SphereGeometry(0.022, 8, 6), water, x, 0.012, z);
+      const shoe = new THREE.Group(); shoe.position.y = 0.008; shoe.rotation.y = 0.45; group.add(shoe);
+      const sole = new THREE.Shape();
+      sole.moveTo(-0.11, -0.3); sole.bezierCurveTo(-0.17, -0.1, -0.2, 0.2, -0.08, 0.32); sole.bezierCurveTo(0.02, 0.38, 0.17, 0.3, 0.16, 0.12);
+      sole.bezierCurveTo(0.15, -0.05, 0.14, -0.2, 0.1, -0.3); sole.bezierCurveTo(0.05, -0.36, -0.07, -0.36, -0.11, -0.3);
+      // Foam in three layers, like every flip-flop sold beside a swimming pool. The toe points away (-z).
+      let top = 0;
+      for (const [color, depth] of [['#f6efe0', 0.022], ['#3f8f8f', 0.012], ['#f08ab0', 0.024]]) {
+        mesh(shoe, new THREE.ExtrudeGeometry(sole, { depth, bevelEnabled: false, curveSegments: 8 }), material(color), 0, top, 0).rotation.x = -Math.PI / 2; top += depth;
+      }
+      // Somebody wore it for years: a heel, the ball of a foot and five toes.
+      for (const [r, x, z, long] of [[0.07, 0, 0.21, 1.2], [0.08, 0.02, -0.1, 1], [0.024, -0.09, -0.26, 1], [0.02, -0.04, -0.3, 1], [0.019, 0.015, -0.31, 1], [0.018, 0.065, -0.29, 1], [0.016, 0.105, -0.25, 1]]) cylinder(shoe, r, r, 0.003, '#d9739a', x, top + 0.001, z, 12).scale.z = long;
+      cylinder(shoe, 0.014, 0.014, 0.07, '#fff6e4', -0.065, top + 0.035, -0.2, 8);
+      for (const side of [-1, 1]) tube(shoe, [[-0.065, top + 0.07, -0.2], [side * 0.1 - 0.01, top + 0.1, -0.08], [side * 0.145, top + 0.005, 0.05]], 0.017, '#fff6e4');
       break;
     }
     case 'odd-drone': { // the long pipe off a set of bagpipes, stood on end
-      box(group, 0.3, 0.04, 0.22, '#3f8f8f', 0, 0.02);
-      cylinder(group, 0.035, 0.05, 0.7, '#22242c', 0, 0.39);
-      for (const y of [0.22, 0.5]) cylinder(group, 0.06, 0.06, 0.04, '#f3ecd2', 0, y);
-      cylinder(group, 0.08, 0.05, 0.08, '#f3ecd2', 0, 0.76);
+      const tartan = paintedTexture(64, 64, ctx => {
+        ctx.fillStyle = '#2f5f5a'; ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = 'rgba(20,30,60,0.55)'; for (const at of [8, 40]) { ctx.fillRect(at, 0, 14, 64); ctx.fillRect(0, at, 64, 14); }
+        ctx.fillStyle = '#e8c040'; for (const at of [30, 62]) { ctx.fillRect(at, 0, 2, 64); ctx.fillRect(0, at, 64, 2); }
+        ctx.fillStyle = '#b3272c'; for (const at of [2, 34]) { ctx.fillRect(at, 0, 2, 64); ctx.fillRect(0, at, 64, 2); }
+      }, true);
+      mesh(group, new THREE.BoxGeometry(0.46, 0.014, 0.34), material('#ffffff', { map: tartan }), 0, 0.007).rotation.y = 0.2;
+      cylinder(group, 0.11, 0.13, 0.05, '#6b4a30', 0, 0.039);
+      const pipe = new THREE.Group(); pipe.position.y = 0.06; pipe.rotation.z = 0.05; group.add(pipe);
+      const wood = '#24222a', ivory = '#f3ecd2', silver = '#b9bcc4';
+      // Two joints of blackwood on a silver tuning slide, each ringed and capped in ivory, with a flared bell on top.
+      for (const base of [0, 0.37]) {
+        cylinder(pipe, 0.04, 0.046, 0.3, wood, 0, base + 0.15);
+        for (const ring of [0.06, 0.1, 0.14]) cylinder(pipe, 0.049, 0.049, 0.008, silver, 0, base + ring);
+        cylinder(pipe, 0.058, 0.058, 0.04, ivory, 0, base + 0.29);
+      }
+      cylinder(pipe, 0.028, 0.028, 0.1, silver, 0, 0.34);
+      cylinder(pipe, 0.085, 0.045, 0.1, wood, 0, 0.74);
+      cylinder(pipe, 0.092, 0.092, 0.02, ivory, 0, 0.8);
+      cylinder(pipe, 0.055, 0.055, 0.004, '#0b0a0c', 0, 0.812);
+      // The cord that tied it to its two brothers, and a tassel.
+      mesh(pipe, new THREE.TorusGeometry(0.052, 0.012, 6, 14), material('#b3272c'), 0, 0.45).rotation.x = Math.PI / 2;
+      tube(pipe, [[0.05, 0.45, 0], [0.13, 0.4, 0.02], [0.12, 0.26, 0.03]], 0.008, '#b3272c');
+      mesh(pipe, new THREE.ConeGeometry(0.03, 0.1, 8), material('#b3272c'), 0.12, 0.22, 0.03);
       break;
     }
-    case 'odd-abalone': { // rough outside, an oil slick inside
-      const shell = mesh(group, new THREE.SphereGeometry(0.28, 12, 8), material('#5a4030'), 0, 0.1, 0); shell.scale.set(1.15, 0.36, 0.8);
-      const pearl = mesh(group, new THREE.SphereGeometry(0.24, 12, 8), material('#b9a0e8'), 0, 0.15, 0); pearl.scale.set(1.1, 0.2, 0.72);
-      const sheen = mesh(group, new THREE.SphereGeometry(0.12, 10, 6), material('#7cc4f0'), -0.08, 0.175, 0.02); sheen.scale.set(1.1, 0.15, 0.7);
+    case 'odd-abalone': { // rough outside, an oil slick inside, propped up so the good side shows
+      box(group, 0.5, 0.03, 0.26, '#5c4028', 0, 0.015, -0.02);
+      box(group, 0.36, 0.2, 0.03, '#6b4a30', 0, 0.11, -0.13).rotation.x = -0.35;
+      const shell = new THREE.Group(); shell.position.set(0, 0.25, 0.02); shell.rotation.x = 0.95; shell.scale.set(1.3, 0.42, 1); group.add(shell);
+      const bowl = new THREE.SphereGeometry(0.27, 18, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), colors = [], at = bowl.attributes.position;
+      for (let i = 0; i < at.count; i++) {
+        const swirl = Math.atan2(at.getZ(i), at.getX(i)) * 2 + at.getY(i) * 14;
+        const color = new THREE.Color().setHSL(0.62 + 0.2 * Math.sin(swirl), 0.6, 0.66 + 0.08 * Math.cos(swirl * 1.7));
+        colors.push(color.r, color.g, color.b);
+      }
+      bowl.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      mesh(shell, bowl, material('#6a5040'));
+      mesh(shell, bowl, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })).scale.setScalar(0.96);
+      mesh(shell, new THREE.TorusGeometry(0.27, 0.018, 6, 24), material('#4f3a2c')).rotation.x = Math.PI / 2;
+      // The row of breathing holes along one edge.
+      for (let i = 0; i < 5; i++) { const a = 2.5 + i * 0.24; mesh(shell, new THREE.SphereGeometry(0.016, 6, 4), material('#2a2024'), Math.cos(a) * 0.215, -0.02, Math.sin(a) * 0.215).scale.y = 2; }
       break;
     }
     case 'odd-horseshoe': {
@@ -369,7 +464,7 @@ function oddity(id) {
       break;
     }
   }
-  return group;
+  return bake(group);
 }
 
 /** A clickable cutaway. React owns the controls; room activity is cosmetic. */
@@ -525,7 +620,7 @@ export class RoomScene {
       this.showDragSpot(spot?.id || null); return;
     }
     if (e.pointerType === 'touch') return;
-    const target = this.targetAt(e.clientX, e.clientY), hovered = target?.kind === 'wealth';
+    const target = this.targetAt(e.clientX, e.clientY), hovered = target?.kind === 'wealth' || target?.kind === 'poker';
     this.canvas.style.cursor = this.editing && (furnitureOf(target) || this.wallDisplays?.[target?.anchorId] || shelfForAnchor(this.shelves || [], target?.anchorId)) ? 'grab' : '';
     if (this.hovered !== hovered) { this.hovered = hovered; this.onWealthHover?.(hovered); }
   }
@@ -649,7 +744,7 @@ export class RoomScene {
     this.wallMaterial.emissiveIntensity = this.editing ? (selection?.kind === 'finish' ? 0.35 : 0.12) : 0;
     if (this.editing) for (const target of this.picks) {
       const chosen = target.userData.selection;
-      if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface', 'couch'].includes(chosen.kind)) continue;
+      if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface', 'couch', 'poker'].includes(chosen.kind)) continue;
       const selected = chosen.kind === selection?.kind && (chosen.kind !== 'anchor' || chosen.anchorId === selection.anchorId) && (chosen.kind !== 'surface' || chosen.surface === selection.surface);
       const glow = new THREE.Group(); glow.position.copy(target.position); glow.rotation.copy(target.rotation); glow.scale.copy(target.scale);
       glow.userData.selection = chosen; glow.userData.wallSide = target.userData.wallSide;
@@ -768,7 +863,28 @@ export class RoomScene {
     this.wardrobe = this.fixture();
     this.rug = this.fixture(); this.couch = this.fixture();
     const moneyTable = this.fixture();
-    this.fixtures = { desk, pet: terrarium, wealth: moneyTable };
+    // Bought at the General Store: a waist-high cabinet with three velvet squares under glass.
+    const display = this.fixture();
+    box(display, 1.9, 0.7, 0.8, '#6b4a30', 0, 0.35); box(display, 1.96, 0.06, 0.86, '#805636', 0, 0.73);
+    box(display, 1.84, 0.012, 0.74, '#3d2a1c', 0, 0.766);
+    for (const x of [-0.62, 0, 0.62]) { box(display, 0.52, 0.012, 0.56, '#7c3a3a', x, 0.772); box(display, 0.2, 0.05, 0.012, '#d9bd7c', x, 0.62, 0.406); }
+    for (const x of [-0.47, 0.47]) { box(display, 0.86, 0.42, 0.02, '#7d5a38', x, 0.3, 0.405); cylinder(display, 0.025, 0.025, 0.04, '#c4a05d', x * 0.2, 0.3, 0.425, 8).rotation.x = Math.PI / 2; }
+    mesh(display, new THREE.BoxGeometry(1.88, 1.02, 0.78), material('#b3d2c8', { transparent: true, opacity: 0.13, depthWrite: false }), 0, 1.28);
+    for (const x of [-0.94, 0.94]) for (const z of [-0.39, 0.39]) box(display, 0.04, 1.04, 0.04, '#c7a66b', x, 1.28, z);
+    for (const y of [0.78, 1.8]) {
+      for (const z of [-0.39, 0.39]) box(display, 1.92, 0.04, 0.04, '#c7a66b', 0, y, z);
+      for (const x of [-0.94, 0.94]) box(display, 0.04, 0.04, 0.82, '#c7a66b', x, y, 0);
+    }
+    // Also from the store: an oval of green felt on a pedestal, with a hand nobody is playing.
+    const poker = this.fixture();
+    cylinder(poker, 0.42, 0.5, 0.06, '#49321f', 0, 0.03, 0, 20).scale.x = 1.4; cylinder(poker, 0.13, 0.18, 0.82, '#59402a', 0, 0.47);
+    cylinder(poker, 0.78, 0.74, 0.1, '#5a3a24', 0, 0.93, 0, 28).scale.x = 1.54;
+    cylinder(poker, 0.66, 0.66, 0.02, '#2f6b4f', 0, 0.975, 0, 28).scale.x = 1.62;
+    mesh(poker, new THREE.TorusGeometry(0.5, 0.006, 4, 28), material('#d9c9a0'), 0, 0.987).rotation.x = Math.PI / 2;
+    poker.children[poker.children.length - 1].scale.x = 1.7;
+    for (const [x, z, turn, color] of [[0.7, 0.36, 0.3, '#f6f1e2'], [0.78, 0.33, 0.55, '#f6f1e2'], [-0.72, -0.34, -0.4, '#8a2f33'], [-0.64, -0.38, -0.15, '#8a2f33']]) box(poker, 0.1, 0.004, 0.14, color, x, 0.988, z).rotation.y = turn;
+    cylinder(poker, 0.05, 0.05, 0.012, '#f6f1e2', 0.5, 0.992, -0.38, 12);
+    this.fixtures = { desk, pet: terrarium, wealth: moneyTable, case: display, poker };
     this.table(moneyTable, 0, 0, 2.2, 1.3, 0.95);
     box(moneyTable, 2.05, 0.08, 1.13, '#4a3526', 0, 1.04);
     for (const z of [-0.58, 0.58]) box(moneyTable, 2.12, 0.08, 0.04, '#b08b4d', 0, 1.12, z);
@@ -838,7 +954,7 @@ export class RoomScene {
         if (finishes.wardrobe.typeId === 'paneled') for (const y of [0.7, 1.8]) box(this.wardrobe, 0.48, 0.8, 0.04, shade(color, 0.82), x, y, 0.53);
         for (const y of [0.45, 2.05]) box(this.wardrobe, 0.045, 0.14, 0.035, '#514b40', x + Math.sign(x) * 0.29, y, 0.525);
       }
-      if (finishes.wardrobe.typeId === 'classic') box(this.wardrobe, 0.54, 0.85, 0.025, '#a8b5a2', -0.35, 1.65, 0.53);
+      if (finishes.wardrobe.typeId === 'classic') { box(this.wardrobe, 0.54, 0.85, 0.025, '#a8b5a2', -0.35, 1.65, 0.53); box(this.wardrobe, 1.56, 0.08, 0.9, shade(color, 0.8), 0, 2.54); }
       else { box(this.wardrobe, 1.65, 0.12, 0.96, color, 0, 2.52); box(this.wardrobe, 1.6, 0.1, 0.93, color, 0, 0.04); }
     }
     const couchKey = JSON.stringify(finishes.couch);
@@ -911,13 +1027,13 @@ export class RoomScene {
       const shelf = shelfForAnchor(this.shelves, anchorId);
       if (shelf && !shelfGroups.has(shelf.id)) shelfGroups.set(shelf.id, this.shelf(shelf, roomShelfPosition(ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId))));
       const holder = shelf ? shelfGroups.get(shelf.id) : null;
-      const wallSpot = ROOM_WALL_SPOTS.find(spot => spot.id === this.wallDisplays[anchorId]);
-      const rotation = wallSpot?.wallSide === 'left' ? Math.PI / 2 : holder ? holder.rotation.y : furniture[anchorId] ? turn(anchorId) : 0;
+      const wallSpot = ROOM_WALL_SPOTS.find(spot => spot.id === this.wallDisplays[anchorId]), host = anchorHost(anchorId);
+      const rotation = wallSpot?.wallSide === 'left' ? Math.PI / 2 : holder ? holder.rotation.y : furniture[host] ? turn(host) : 0;
       const itemId = view.placements?.find(p => p.anchorId === anchorId)?.itemId;
       if (ROOM_ITEM[itemId]) {
         const prop = oddity(itemId); if (!holder) { prop.position.set(...position); prop.rotation.y = rotation; }
         else prop.position.z = shelfSlots(shelf).find(slot => slot.id === anchorId).offset;
-        if (!holder && (furniture[anchorId] || wallSpot)) prop.userData.dragId = anchorId;
+        if (!holder && (furniture[host] || wallSpot)) prop.userData.dragId = wallSpot ? anchorId : host;
         if (wallSpot) prop.userData.wallSide = wallSpot.wallSide;
         if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y -= 0.16; this.wagon = prop; }
         if (holder) prop.traverse(part => { if (part.isMesh) { part.userData.selection = { kind: 'anchor', anchorId }; this.shelfItemPicks.push(part); } });
@@ -926,7 +1042,7 @@ export class RoomScene {
       const wall = anchorId.startsWith('wall');
       const height = anchorId === 'window' ? 1.125 : wall ? 0.4 : shelf ? -0.04 : 0.3;
       // Pick shelf boards and visible items separately so neighboring slots cannot cover each other.
-      const size = anchorId === 'window' ? [2.8, 2.25, 2.05] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : [1.25, shelf ? 0.22 : 0.9, 0.8];
+      const size = anchorId === 'window' ? [2.8, 2.25, 2.05] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : host === 'case' ? [0.6, 0.9, 0.76] : [1.25, shelf ? 0.22 : 0.9, 0.8];
       this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId }, rotation);
     }
     if (view.placements?.some(place => place.itemId === 'odd-deed')) this.dynamic.add(moon());
@@ -937,6 +1053,7 @@ export class RoomScene {
     if (!furniture.couch.off) this.pick([furniture.couch.x, 0.58, furniture.couch.z], [2.4, 1.1, 1], { kind: 'couch' }, turn('couch'));
     if (!furniture.wardrobe.off) this.pick([furniture.wardrobe.x, 1.3, furniture.wardrobe.z], [1.7, 2.6, 1], { kind: 'wardrobe' }, turn('wardrobe'));
     this.pick([furniture.wealth.x, 1.4, furniture.wealth.z], [2.1, 1, 1.25], { kind: 'wealth' }, turn('wealth'));
+    if (!furniture.poker.off) this.pick([furniture.poker.x, 0.7, furniture.poker.z], [2.4, 1.4, 1.56], { kind: 'poker' }, turn('poker'));
     this.pick([0.085 * ROOM_FLOOR_SCALE, -0.08, 0], [8.33 * ROOM_FLOOR_SCALE, 0.14, 6.5 * ROOM_FLOOR_SCALE], { kind: 'surface', surface: 'floor' });
     this.pick([furniture.rug.x, 0.045, furniture.rug.z], [3.5, 0.02, 2.1], { kind: 'surface', surface: 'rug' }, turn('rug'));
     configureShadowObjects(this.static); configureShadowObjects(this.dynamic); this.lighting?.invalidate();
@@ -1000,7 +1117,7 @@ export class RoomScene {
   }
   resident(owner, generation) {
     const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.order = 'YXZ'; group.rotation.y = 0.35; this.dynamic.add(group);
-    group.userData.dragId = 'rug';
+    group.userData.dragId = 'rug'; this.residentFace = null;
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
     this.errands = residentErrands(this.furniture); this.residentYaw = 0.35;
     const avatar = owner?.avatar, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed);
@@ -1026,48 +1143,75 @@ export class RoomScene {
     for (const side of [-1, 1]) { const collar = box(group, 0.13, 0.13, 0.03, shade(shirt, 1.2), side * 0.07, 1.3, 0.19); collar.rotation.z = side * 0.45; }
     skinParts.push(cylinder(group, 0.08, 0.1, 0.18, look.skin, 0, 1.4));
     const headGroup = this.residentHead = new THREE.Group(); group.add(headGroup);
-    const head = mesh(headGroup, new THREE.SphereGeometry(0.25, 12, 8), material(look.skin), 0, 1.65); head.scale.set(0.9, 1.16, 0.9);
-    const faceMap = paintedTexture(256, 320, ctx => {
-      ctx.scale(256 / 68, 320 / 84); ctx.translate(4, 12);
-      const h = headParts(seed);
-      for (const piece of [...h.ears, ...h.skin, ...h.beard, ...h.hair]) { ctx.fillStyle = piece.fill; ctx.fill(new Path2D(piece.d)); }
-      ctx.fillStyle = '#281c18'; ctx.fillRect(h.cx - 8, h.cy, 3, 3); ctx.fillRect(h.cx + 5, h.cy, 3, 3);
-      ctx.fillRect(h.cx - 4, h.cy + 13, 8, 1);
-    });
-    const faceMat = new THREE.MeshBasicMaterial({ map: faceMap, transparent: true, depthWrite: false });
-    const plane = mesh(headGroup, new THREE.PlaneGeometry(0.5, 0.62), faceMat, 0, 1.65, 0.23);
+    // A drawn head is round, in two halves: hair colour behind, and the face wrapped round the front rather than held up
+    // before it like a mask. A saved photo head replaces it with a flat cutout once it loads.
+    const wide = 0.86, tall = 1.1, half = from => new THREE.SphereGeometry(0.25, 24, 16, from, Math.PI);
+    const head = mesh(headGroup, half(Math.PI), material(look.hair, { flatShading: false }), 0, 1.68); head.scale.set(wide, tall, 0.9);
+    const face = mesh(headGroup, half(0), material(look.skin, { flatShading: false }), 0, 1.68); face.scale.copy(head.scale);
+    const wear = pixels => {
+      const wrap = faceWrap(pixels.data, pixels.width, pixels.height);
+      if (!wrap) return;
+      // Only the box the head fills becomes the texture; past its edge the hair and skin colours carry on.
+      const crop = document.createElement('canvas'); crop.width = wrap.w; crop.height = wrap.h;
+      crop.getContext('2d').putImageData(pixels, -wrap.x, -wrap.y, wrap.x, wrap.y, wrap.w, wrap.h);
+      const map = canvasTexture(crop); map.magFilter = map.minFilter = THREE.LinearFilter;
+      // The picture fills the head's height and may widen by a tenth to reach its sides, so the face is not a small
+      // patch in the middle; on a head still wider than that, the hair and skin colours run round the sides.
+      const shape = wrap.w / wrap.h, across = Math.min(0.5 * wide, 0.5 * tall * shape * 1.1), up = across / shape, at = face.geometry.attributes.position;
+      for (let i = 0; i < at.count; i++) face.geometry.attributes.uv.setXY(i, 0.5 + at.getX(i) * wide / across, 0.5 + at.getY(i) * tall / up);
+      face.geometry.attributes.uv.needsUpdate = true;
+      face.material.map?.dispose(); face.material.map = map; face.material.color.set('#ffffff'); face.material.needsUpdate = true;
+      const rgb = colour => `rgb(${colour.join(',')})`;
+      head.material.color.set(rgb(wrap.hair));
+      for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
+    };
+    const drawn = document.createElement('canvas'); drawn.width = 272; drawn.height = 336;
+    const pen = drawn.getContext('2d', { willReadFrequently: true });
+    if (pen?.getImageData) {
+      // The same face as the bust at the table: brows, eyes, a nose and a mouth over the low-poly head.
+      const h = headParts(seed), { L, cx, cy } = h;
+      pen.scale(4, 4); pen.translate(4, 12);
+      for (const piece of [...h.ears, ...h.skin, ...h.beard, ...h.hair]) { pen.fillStyle = pen.strokeStyle = piece.fill; pen.lineWidth = 0.4; const path = new Path2D(piece.d); pen.fill(path); pen.stroke(path); }
+      pen.lineCap = 'round';
+      if (L.brows) { pen.strokeStyle = tint(L.hair, -0.3); pen.lineWidth = 1.6; pen.beginPath(); for (const side of [-1, 1]) { pen.moveTo(cx + side * 11, cy - 5); pen.lineTo(cx + side * 4, cy - 6); } pen.stroke(); }
+      pen.fillStyle = '#1b1512'; for (const side of [-1, 1]) { pen.beginPath(); pen.ellipse(cx + side * 7, cy, 2, 2.3, 0, 0, Math.PI * 2); pen.fill(); }
+      pen.fillStyle = tint(L.skin, -0.18); pen.beginPath(); pen.moveTo(cx, cy + 1); pen.lineTo(cx - 2.5, cy + 8); pen.lineTo(cx + 2, cy + 8); pen.fill();
+      pen.strokeStyle = tint(L.skin, -0.45); pen.lineWidth = 1.3; pen.beginPath(); pen.moveTo(cx - 5, cy + 13); pen.quadraticCurveTo(cx, cy + 15.5, cx + 5, cy + 13); pen.stroke();
+      wear(pen.getImageData(0, 0, drawn.width, drawn.height));
+    }
     if (avatar?.kind === 'photo' && owner?.id) {
-      // A saved head is wrapped round the front of the head, not held up in front of it like a mask: its own hair
-      // colour covers the back, and the neck and hands take its skin colour.
       new THREE.ImageLoader().load(`/api/avatars/${encodeURIComponent(owner.id)}.png?v=${encodeURIComponent(avatar.v || 0)}`, image => {
         if (this.disposed || generation !== this.generation) return;
         const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
         const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(image, 0, 0);
-        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), wrap = faceWrap(pixels.data, canvas.width, canvas.height);
+        // A photo head is the same flat cutout as at the table, held toward whoever is looking. Wrapped round a ball, a
+        // real selfie's lighting and edges never survived. Seen from behind it is the same cutout in the hair's colour.
+        const wrap = faceWrap(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
         if (!wrap) return;
-        // Only the box the head fills becomes the texture, so past its edge the edge colour carries on.
-        const crop = document.createElement('canvas'); crop.width = wrap.w; crop.height = wrap.h;
-        crop.getContext('2d').putImageData(pixels, -wrap.x, -wrap.y, wrap.x, wrap.y, wrap.w, wrap.h);
-        const map = canvasTexture(crop); map.magFilter = map.minFilter = THREE.LinearFilter;
-        // A rounder head, as at the table, instead of one as narrow as the picture. The picture keeps its own shape on
-        // the front, undistorted from straight on; where the head is wider its edges run round the sides.
-        const wide = 0.96, tall = 1.1, shape = wrap.w / wrap.h, across = Math.min(0.5 * wide, 0.5 * tall * shape), up = across / shape;
-        const front = new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI), at = front.attributes.position;
-        for (let i = 0; i < at.count; i++) front.attributes.uv.setXY(i, 0.5 + at.getX(i) * wide / across, 0.5 + at.getY(i) * tall / up);
         const rgb = colour => `rgb(${colour.join(',')})`;
-        head.geometry.dispose(); head.geometry = new THREE.SphereGeometry(0.25, 12, 8, Math.PI, Math.PI); head.material.color.set(rgb(wrap.hair));
-        head.scale.set(wide, tall, 0.9); head.position.y += 0.03;
-        mesh(headGroup, front, material('#ffffff', { map }), 0, head.position.y, 0).scale.copy(head.scale);
-        headGroup.remove(plane); plane.geometry.dispose(); faceMat.dispose(); faceMap.dispose();
         for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
+        const behind = document.createElement('canvas'); behind.width = canvas.width; behind.height = canvas.height;
+        const ink = behind.getContext('2d'); ink.drawImage(image, 0, 0); ink.globalCompositeOperation = 'source-in'; ink.fillStyle = rgb(wrap.hair); ink.fillRect(0, 0, behind.width, behind.height);
+        // Sized and placed by the box the head fills, so a cutout with spare room round it is no smaller.
+        const high = 0.68 * canvas.height / wrap.h, across = high * canvas.width / canvas.height;
+        this.residentFace = [canvas, behind].map((source, i) => {
+          const map = canvasTexture(source); map.magFilter = map.minFilter = THREE.LinearFilter;
+          const cutout = new THREE.Sprite(new THREE.SpriteMaterial({ map, alphaTest: 0.5 }));
+          cutout.scale.set(across, high, 1); cutout.visible = !i;
+          cutout.position.set((0.5 - (wrap.x + wrap.w / 2) / canvas.width) * across, 0.25 + ((wrap.y + wrap.h / 2) / canvas.height - 0.5) * high, 0);
+          headGroup.add(cutout); return cutout;
+        });
+        head.visible = face.visible = false;
         this.render();
       });
     }
     const hat = avatar?.wear?.hat;
     if (hat) {
-      cylinder(headGroup, 0.35, 0.35, 0.04, hat.c || '#b89052', 0, 1.9);
-      cylinder(headGroup, 0.2, 0.22, 0.2, hat.c || '#b89052', 0, 2);
-      cylinder(headGroup, 0.222, 0.224, 0.04, '#4a3528', 0, 1.94);
+      const [brim, low, high, crown] = HAT_SHAPES[hat.shape] || [0.35, 0.22, 0.2, 0.2], color = hat.c || '#b89052';
+      if (brim) cylinder(headGroup, brim, brim, 0.04, color, 0, 1.9, 0, 24);
+      if (high === 'dome') mesh(headGroup, new THREE.SphereGeometry(low, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), material(color), 0, 1.9);
+      else cylinder(headGroup, high, low, crown, color, 0, 1.9 + crown / 2, 0, 24);
+      cylinder(headGroup, low + 0.004, low + 0.004, 0.04, hat.c2 || '#4a3528', 0, 1.94, 0, 24);
     }
     // Nod from the neck: a head pivoting at the feet swings a long way forward.
     headGroup.position.y = 1.45; for (const part of headGroup.children) part.position.y -= 1.45;
@@ -1079,13 +1223,18 @@ export class RoomScene {
     const table = new THREE.Group(), group = new THREE.Group(); group.position.x = -0.15; table.add(group); this.dynamic.add(table);
     table.userData.dragId = 'wealth';
     table.position.set(this.furniture.wealth.x, 1.1, this.furniture.wealth.z); table.rotation.y = this.furniture.wealth.r * Math.PI / 2;
-    const layout = wealthLayout(worth);
+    const layout = wealthLayout(worth), felt = this.furniture.poker;
+    let heap = group;
+    if (!felt.off && !layout.neutral) {
+      const top = new THREE.Group(); top.position.set(felt.x, 0.985, felt.z); top.rotation.y = felt.r * Math.PI / 2; top.userData.dragId = 'poker'; this.dynamic.add(top);
+      heap = new THREE.Group(); heap.position.x = 0.2; top.add(heap);
+    }
     if (layout.neutral) { box(group, 1.3, 0.22, 0.8, '#805636', 0.1, 0.12); box(group, 0.13, 0.12, 0.03, '#c5a25b', 0.1, 0.12, 0.42); return; }
     const chipGeometry = new THREE.CylinderGeometry(0.13, 0.13, 0.038, 16);
     for (let color = 0; color < CHIP_ART.length; color++) {
       const chips = layout.chips.filter(c => c.color === color); if (!chips.length) continue;
       const stack = new THREE.InstancedMesh(chipGeometry, chipMaterials(...CHIP_ART[color]), chips.length);
-      const transform = new THREE.Matrix4(); chips.forEach((p, i) => { transform.makeRotationY(p.turn).setPosition(p.x, p.y, p.z); stack.setMatrixAt(i, transform); }); group.add(stack);
+      const transform = new THREE.Matrix4(); chips.forEach((p, i) => { transform.makeRotationY(p.turn).setPosition(p.x, p.y, p.z); stack.setMatrixAt(i, transform); }); heap.add(stack);
     }
     if (!layout.chips.length) chipGeometry.dispose();
     const note = layout.bundles.length && billTextures();
@@ -1147,6 +1296,11 @@ export class RoomScene {
       this.residentGroup.rotation.set(look * 0.06 + grab * 0.12, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
       this.residentHead.rotation.y = pose.glance * (1 - look);
       this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * 0.32;
+      if (this.residentFace) {
+        const view = this.camera.getWorldDirection(new THREE.Vector3()), yaw = this.residentGroup.rotation.y + this.residentHead.rotation.y;
+        const front = Math.sin(yaw) * view.x + Math.cos(yaw) * view.z < 0.2;
+        this.residentFace[0].visible = front; this.residentFace[1].visible = !front;
+      }
       this.residentLegs?.forEach((leg, i) => {
         leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : -1.45 * sit;
         if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : 1.45 * sit;
