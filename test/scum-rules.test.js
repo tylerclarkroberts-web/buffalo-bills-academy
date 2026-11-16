@@ -5,7 +5,7 @@ import * as S from '../server/scum/rules.js';
 
 /** A round in play with fixed hands. order = seats in turn order; the first seat leads unless `turn` says otherwise. */
 function round(hands, { order = Object.keys(hands).map(Number), turn = order[0] } = {}) {
-  return { no: 1, phase: 'play', order, hands: Object.fromEntries(Object.entries(hands).map(([k, v]) => [k, v.slice()])), pile: null, owner: null, turn, finished: [], gone: [], exchange: null, lastPlay: null, skipped: null };
+  return { no: 1, phase: 'play', order, hands: Object.fromEntries(Object.entries(hands).map(([k, v]) => [k, v.slice()])), pile: null, owner: null, turn, finished: [], gone: [], exchange: null, lastPlay: null, skipped: null, passed: [], playOn: false };
 }
 const seq = (n) => { let i = 0; return () => (i++ % n); };
 
@@ -84,7 +84,7 @@ test('skips work for pairs too', () => {
   assert.equal(r.turn, 3);
 });
 
-test('when the skip goes all the way round, the skipper plays on: keep going or pass to clear and lead', () => {
+test('when the skip goes all the way round, the skipper plays on: keep going or pass (skipped player still gets a chance)', () => {
   const r = round({ 0: ['7h', '2c'], 1: ['7c', '3d', '8s'] });
   S.play(r, 0, ['7h']);
   const res = S.play(r, 1, ['7c']);
@@ -92,7 +92,74 @@ test('when the skip goes all the way round, the skipper plays on: keep going or 
   assert.deepEqual(r.pile.cards, ['7c'], 'the pile stays live'); assert.equal(r.turn, 1); assert.equal(r.playOn, true);
   assert.throws(() => S.play(r, 1, ['3d']), /7 or higher/, 'playing on still follows the rules');
   const p = S.pass(r, 1);
-  assert.equal(p.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'pass to clear, then lead fresh'); assert.equal(r.playOn, false);
+  assert.equal(p.cleared, false, 'Ann was skipped, not passed: the pile stays live');
+  assert.deepEqual(r.pile.cards, ['7c']); assert.equal(r.turn, 0); assert.equal(r.playOn, false);
+  assert.ok(r.passed.includes(1) && !r.passed.includes(0));
+});
+
+test('two left: skip then the skipper passes — the skipped player may still play; if they pass, the skipper leads', () => {
+  const r = round({ 0: ['7h', '9c', '2c'], 1: ['7c', '3d', '8s'] });
+  S.play(r, 0, ['7h']);
+  S.play(r, 1, ['7c']); // skips Ann, play-on for Bob
+  assert.equal(r.turn, 1); assert.equal(r.playOn, true); assert.equal(r.skipped, 0);
+  const p = S.pass(r, 1);
+  assert.equal(p.cleared, false); assert.equal(r.turn, 0, 'Ann was skipped, not passed: she gets the live pile');
+  assert.deepEqual(r.pile.cards, ['7c']); assert.equal(r.owner, 1);
+  const a = S.play(r, 0, ['9c']);
+  assert.equal(a.playOn, false); assert.equal(r.owner, 0); assert.equal(r.turn, 1, 'a new play resets passes: Bob can follow');
+  assert.deepEqual(r.passed, []);
+  // Same setup, but Ann passes instead: pile clears and Bob (last to play) leads.
+  const r2 = round({ 0: ['7h', '9c', '2c'], 1: ['7c', '3d', '8s'] });
+  S.play(r2, 0, ['7h']); S.play(r2, 1, ['7c']); S.pass(r2, 1);
+  const c = S.pass(r2, 0);
+  assert.equal(c.cleared, true); assert.equal(r2.pile, null); assert.equal(r2.turn, 1, 'Bob played last, so Bob leads');
+  assert.equal(r2.playOn, false);
+  assert.throws(() => S.pass(r2, 1), /leading/);
+});
+
+test('with 3+ players, a skipped player remains eligible the next time around', () => {
+  const r = round({ 0: ['7h', '2c'], 1: ['7c', '9d', 'Kd'], 2: ['8h', '3c'], 3: ['4c', '5d'] });
+  S.play(r, 0, ['7h']);
+  const sk = S.play(r, 1, ['7c']); // skips Cat (seat 2)
+  assert.equal(sk.skipped, 2); assert.equal(r.turn, 3);
+  S.pass(r, 3);
+  assert.equal(r.turn, 0); assert.ok(r.passed.includes(3));
+  S.pass(r, 0);
+  assert.equal(r.turn, 1); assert.equal(r.playOn, true, 'back to Bob, the owner');
+  const p = S.pass(r, 1);
+  assert.equal(p.cleared, false);
+  assert.equal(r.turn, 2, 'Cat was skipped, not passed: she gets the live pile');
+  assert.deepEqual(r.pile.cards, ['7c']); assert.equal(r.playOn, false);
+  const c = S.pass(r, 2);
+  assert.equal(c.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'Bob played last and leads');
+});
+
+test('a pass locks you out of this pile until it clears; a new play unlocks everyone', () => {
+  const r = round({ 0: ['9h', 'Qc', '2c'], 1: ['4c', 'Kd'], 2: ['3h', '5h'] });
+  S.play(r, 0, ['9h']);
+  S.pass(r, 1);
+  assert.equal(r.turn, 2); assert.ok(r.passed.includes(1));
+  S.pass(r, 2);
+  assert.equal(r.turn, 0); assert.equal(r.playOn, true);
+  // Bob already passed: he does not get another turn on this same 9.
+  assert.ok(r.passed.includes(1) && r.passed.includes(2));
+  S.play(r, 0, ['Qc']);
+  assert.deepEqual(r.passed, []); assert.equal(r.turn, 1, 'new play: Bob can follow the Queen');
+});
+
+test('bug and bots: a skipped player who gets the turn follows the live pile (they are not playing on)', () => {
+  const r = round({ 0: ['7h', '9c', '2c'], 1: ['7c', '3d', '8s'] });
+  S.play(r, 0, ['7h']); S.play(r, 1, ['7c']); S.pass(r, 1);
+  assert.equal(r.turn, 0); assert.ok(r.pile); assert.equal(r.playOn, false);
+  assert.deepEqual(S.bugMove(r, 0), { play: ['9c'] }, 'the bug plays the highest legal card on the live pile');
+  assert.deepEqual(S.autoMove(r, 0, { bot: true }), { play: ['9c'] });
+  assert.deepEqual(S.autoMove(r, 0), { pass: true }, 'a human timeout still defers to the bug (autoMove passes when following)');
+  // If the skipper times out while playing on and a skipped player remains, do not clear: give them the turn.
+  const b = round({ 0: ['7h', '9c', '2c'], 1: ['7c', '3d', '8s'] });
+  S.play(b, 0, ['7h']); S.play(b, 1, ['7c']);
+  assert.deepEqual(S.bugMove(b, 1), { pass: true }, 'play-on timeout: the bug passes on the owner’s set');
+  const after = S.pass(b, 1);
+  assert.equal(after.cleared, false); assert.equal(b.turn, 0);
 });
 
 test('aces clear the pile at once and the ace player leads again', () => {

@@ -13,11 +13,15 @@
 //  - Aces: aces beat any set of the SAME size: one ace clears singles, two aces clear a pair, three a three, four
 //    a four (fewer aces than the set is not a play). Leading, any number of aces clears. Nothing goes on an ace.
 //    Aces clear the pile at once and the same player leads again (or the next player, if that was their last card).
-//  - Play on: when the turn comes back round to whoever played last (everyone else passed or got skipped), the pile
-//    stays live and it's THEIR turn: they may keep playing on their own set (same count, equal or higher; an equal
-//    rank still skips the next player, who always exists since 2+ are still in) or pass, which clears the pile and
-//    they lead fresh. A new play on the pile gives everyone else another chance to follow. If the owner already went
-//    out, the pile clears and the next player still in leads. A pass does not lock you out.
+//  - Pass vs skip: a pass locks you out of this pile until it clears. A skip only costs that one turn: you stay in
+//    and can still play. The pile clears when every player still holding cards except the last player to play has
+//    PASSED (skipped players do not count as passed). After it clears, the last player who played leads fresh.
+//  - Play on: when the turn comes back round to whoever played last (everyone else passed or got skipped this time
+//    around), the pile stays live and it's THEIR turn: they may keep playing on their own set (same count, equal or
+//    higher; an equal rank still skips the next player still in) or pass. If they pass and a skipped player has not
+//    passed, that player gets the turn on the live pile. A new play resets passes: everyone else gets another chance
+//    to follow. If the owner already went out, remaining eligible players still get a turn; if none are left, the
+//    pile clears and the next player still in leads.
 //  - One standard 52-card deck, always: no jokers, no second deck, never more than 7 players (7 x 7 = 49 <= 52).
 //  - Going out: first out is King, then Queen, ..., second to last Baby Scum, last Scum. With 3 players there is no
 //    Queen or Baby Scum: King, Commoner, Scum (only King and Scum swap cards). Everyone in between is a Commoner.
@@ -105,7 +109,7 @@ export function nextActive(r, s) { let x = s; for (let n = 0; n < r.order.length
  */
 export function newRound({ no, order, titles = null, rng, dealOrder = null }) {
   const hands = deal(dealOrder || order, rng);
-  const r = { no, phase: 'play', order: order.slice(), hands, pile: null, owner: null, turn: null, finished: [], gone: [], exchange: null, lastPlay: null, skipped: null };
+  const r = { no, phase: 'play', order: order.slice(), hands, pile: null, owner: null, turn: null, finished: [], gone: [], exchange: null, lastPlay: null, skipped: null, passed: [], playOn: false };
   const pairs = titles ? exchangePairs(order, titles) : [];
   if (pairs.length) { r.phase = 'exchange'; r.exchange = { pairs }; }
   else r.turn = titles ? order[0] : order.find((s) => hands[s].includes('2c'));
@@ -160,10 +164,15 @@ export function dropFromExchange(r, seat) {
   return exchangeDone(r);
 }
 
+/** Seats who have passed on the current pile (they are out until it clears). Missing `passed` is treated as none. */
+const passedOf = (r) => r.passed || (r.passed = []);
+const hasPassed = (r, s) => passedOf(r).includes(s);
 /**
- * Walk the turn on from `from`. skip=true jumps one active player. Reaching the pile owner's seat (everyone between
- * passed or got skipped) hands THEM the turn with the pile still live ("play on"): they may keep playing on their own
- * set or pass to clear it and lead fresh. If the owner already went out, the pile clears and the next player leads.
+ * Walk the turn on from `from`. skip=true jumps the next eligible (not-passed) player once; they stay in.
+ * Passed players are skipped over until the pile clears. Reaching the pile owner (everyone between passed or was
+ * skipped this time around) hands THEM the turn with the pile still live ("play on"), unless they already passed or
+ * went out — then any remaining skipped-but-not-passed players get a turn on the live pile. If nobody eligible is
+ * left, the pile clears and the last player who played leads fresh.
  * Returns { skipped, cleared, playOn }.
  */
 function moveOn(r, from, skip) {
@@ -171,18 +180,18 @@ function moveOn(r, from, skip) {
   for (let n = 0; n <= r.order.length * 2; n++) {
     s = after(r, s);
     if (r.owner != null && s === r.owner) {
-      if (activeIn(r, s)) { r.turn = s; r.playOn = true; return { skipped, cleared: false, playOn: true }; }
-      clearPile(r); return { skipped, cleared: true };
+      if (activeIn(r, s) && !hasPassed(r, s)) { r.turn = s; r.playOn = true; return { skipped, cleared: false, playOn: true }; }
+      continue; // owner is out or already passed: keep walking for skipped-but-not-passed players
     }
-    if (!activeIn(r, s)) continue;
+    if (!activeIn(r, s) || hasPassed(r, s)) continue;
     if (toSkip) { toSkip--; skipped = s; continue; }
-    r.turn = s; return { skipped, cleared: false };
+    r.turn = s; r.playOn = false; return { skipped, cleared: false };
   }
   clearPile(r); return { skipped, cleared: true };
 }
 function clearPile(r) {
   const o = r.owner;
-  r.pile = null; r.owner = null; r.playOn = false;
+  r.pile = null; r.owner = null; r.playOn = false; r.passed = [];
   r.turn = o != null && activeIn(r, o) ? o : nextActive(r, o ?? r.turn);
 }
 /** The round ends when one player is left holding cards: they are Scum. */
@@ -204,6 +213,7 @@ export function play(r, seat, cards) {
   const why = playProblem(r.pile, cards); if (why) throw new Error(why);
   const prev = r.pile;
   r.playOn = false;
+  r.passed = []; // a new play gives everyone another chance to follow
   r.hands[seat] = hand.filter((c) => !cards.includes(c));
   const k = rank(cards[0]);
   r.lastPlay = { seat, cards: cards.slice() }; r.skipped = null;
@@ -211,7 +221,7 @@ export function play(r, seat, cards) {
   if (!r.hands[seat].length) { r.finished.push(seat); out = r.finished.length; }
   if (k === ACE) {
     // Trump: nothing can follow, so the pile clears right away. The same player leads unless that was their last card.
-    r.pile = null; r.owner = null;
+    r.pile = null; r.owner = null; r.passed = []; r.playOn = false;
     if (checkEnd(r)) return { skipped: null, cleared: 'ace', out, done: true };
     r.turn = out ? nextActive(r, seat) : seat;
     return { skipped: null, cleared: 'ace', out, done: false };
@@ -225,15 +235,18 @@ export function play(r, seat, cards) {
   return { skipped: m.skipped, cleared: m.cleared ? 'pass' : null, playOn: !!m.playOn, out, done: false };
 }
 /**
- * Pass. You can't pass when you are leading. Playing on (everyone else passed on your set), a pass clears the pile
- * and you lead fresh. Returns { cleared, leader, playOn }.
+ * Pass. You can't pass when you are leading. A pass locks you out of this pile until it clears. Playing on, a pass
+ * does not clear the pile if a skipped (not passed) player is still eligible: they get the turn on the live pile.
+ * When every other player still holding cards has passed, the pile clears and the last player who played leads fresh.
+ * Returns { cleared, leader, playOn }.
  */
 export function pass(r, seat) {
   if (r.phase !== 'play') throw new Error('Not now.');
   if (r.turn !== seat) throw new Error('Not your turn.');
   if (!r.pile) throw new Error("You're leading: play something.");
   r.skipped = null;
-  if (r.playOn && r.owner === seat) { clearPile(r); return { cleared: true, leader: r.turn, playOn: false }; }
+  if (!passedOf(r).includes(seat)) r.passed.push(seat);
+  r.playOn = false;
   const m = moveOn(r, seat, false);
   return { cleared: m.cleared, leader: m.cleared ? r.turn : null, playOn: !!m.playOn };
 }

@@ -41,9 +41,10 @@ export function playProblem(pile, sel) {
 const RULES = [
   'No jokers. 2 is low, K is high, A is trump.',
   'Lead a single, pair, three or four of a kind. Follow with the same number, equal or higher, or pass.',
-  'Match the rank just played and the next player is SKIPPED.',
+  'Match the rank just played and the next player is SKIPPED. A skip only costs that one turn: they stay in and can still play on this pile.',
+  'If you pass, you are out of this pile until it clears. The pile clears when everyone still holding cards except the last player to play has passed. Skipped players do not count as passed. That last player then leads fresh.',
   'Aces clear the pile: 1 ace on singles, 2 on pairs, 3 on threes, 4 on fours. Nothing goes on an ace; you lead again.',
-  'Everyone passed on your set? Keep playing on it, or pass to clear the pile and lead fresh.',
+  'Everyone else passed on your set? Keep playing on it, or pass. If someone was skipped (not passed), they still get a chance on the live pile.',
   'One 52-card deck, always. No jokers, 3–7 players. The King leads every new round.',
   'First out is King, then Queen. Second to last is Baby Scum, last is Scum. (3 players: King, Commoner, Scum.)',
   'Next round Scum gives the King their 2 best cards, Baby Scum gives the Queen their best. Both may beg. The King gives back any 2, the Queen any 1.',
@@ -151,13 +152,32 @@ function useBox() {
 }
 function useView(code) {
   const [v, setV] = useState(null); const [err, setErr] = useState('');
-  const load = useCallback(async () => { try { setV(await api('GET', `/scum/tables/${code}${document.hidden ? '?away' : ''}`)); setErr(''); } catch (e) { setErr(e.message); } }, [code]);
+  const load = useCallback(async () => {
+    try {
+      const nv = await api('GET', `/scum/tables/${code}${document.hidden ? '?away' : ''}`);
+      setErr('');
+      setV((prev) => {
+        if (!prev || prev.seq !== nv.seq) return Object.assign(nv, { _at: Date.now() });
+        // Same move: keep the same object tree (so flies and badges aren't remounted) and only refresh the clock / presence.
+        let dirty = prev.now !== nv.now;
+        const seats = prev.seats.map((s, i) => {
+          const n = nv.seats[i];
+          if (!s || !n) { if (s !== n) dirty = true; return n; }
+          if (s.here === n.here) return s;
+          dirty = true;
+          return { ...s, here: n.here };
+        });
+        if (!dirty) return prev;
+        return { ...prev, now: nv.now, here: nv.here, seats };
+      });
+    } catch (e) { setErr(e.message); }
+  }, [code]);
   useEffect(() => { load(); const id = setInterval(load, 1500); return () => clearInterval(id); }, [load]);
   return [v, setV, err, setErr];
 }
 
 /** What the playback steps through: plays, clears, your bug covering a turn, and Scum-to-King. */
-const replays = (e) => ['play', 'clear', 's2k'].includes(e.ev?.k) || (e.ev?.k === 'pass' && !!e.ev.bug);
+const replays = (e) => ['play', 'clear', 's2k', 'pass'].includes(e.ev?.k);
 const cash = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('en-US')}`;
 /** Plays new public moves one at a time: cards landing on the pile, clears, and skip blasts. Missed moves replay on return. */
 function usePlayback(v, code) {
@@ -205,13 +225,28 @@ function ScumTable({ code, me }) {
   const [handBox, hs] = useBox();
   const tiny = useMedia('(max-width: 520px)');
   const pb = usePlayback(v, code);
+  const seatEls = useRef({});
+  const pileRef = useRef(null);
+  const handEls = useRef({});
+  const handRect = useRef({});
+  const flyRef = useRef(null);
+  const [fly, setFly] = useState(null);
+  const [settled, setSettled] = useState(undefined);
+  flyRef.current = fly;
+  useLayoutEffect(() => {
+    const next = { ...handRect.current };
+    for (const [c, el] of Object.entries(handEls.current)) {
+      if (el) { const b = el.getBoundingClientRect(); if (b.width) next[c] = b; }
+    }
+    handRect.current = next;
+  });
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
   useEffect(() => { document.title = v ? `${v.round?.myTurn ? '● ' : ''}${v.name} · SCUM` : 'SCUM'; }, [v?.name, v?.round?.myTurn]);
   const r = v?.round;
   const handKey = (r?.hand || []).join(',');
   useEffect(() => { setSel((s) => s.filter((c) => r?.hand?.includes(c))); }, [handKey, r?.phase]);
 
-  // Step through queued moves: each play lands on the pile; a skip brings out the troll.
+  // Step through queued moves: cards fly from the seat (or your hand) to the pile; a skip brings out the troll after.
   const step = pb.step;
   useEffect(() => {
     if (!step) return undefined;
@@ -222,20 +257,44 @@ function ScumTable({ code, me }) {
       if (!isMuted()) sfx.bj();
       return undefined;
     }
-    if (e.k === 'pass') { const id = setTimeout(pb.next, pb.catching ? 650 : 1100); return () => clearTimeout(id); }
-    if (e.k === 'play' && e.skip != null && v) {
-      const skipped = v.seats[e.skip]; const by = v.seats[e.seat];
-      setBlast({ seq: step.seq, name: skipped?.name || 'Somebody', by: by?.name, me: skipped?.me, short: !!pb.catching });
-      if (!isMuted()) { sfx.bust(); setTimeout(() => sfx.lose(), 300); }
-      return undefined; // the blast's onDone moves on
+    if (e.k === 'pass') { const id = setTimeout(pb.next, e.bug || pb.catching ? 650 : 380); return () => clearTimeout(id); }
+    if (e.k === 'play') {
+      if (!isMuted()) sfx.deal();
+      setFly({ seq: step.seq, cards: e.cards, seat: e.seat, skip: e.skip, catching: !!pb.catching });
+      return undefined; // FlyBatch onDone continues (and may open the skip blast)
     }
-    if (e.k === 'play' && !isMuted()) sfx.deal();
-    const id = setTimeout(pb.next, pb.catching ? 650 : 420);
+    const id = setTimeout(pb.next, pb.catching ? 500 : 380);
     return () => clearTimeout(id);
   }, [step?.seq]);
   const endBlast = useCallback(() => { setBlast(null); pb.next(); }, [pb.next]);
   const endCrown = useCallback(() => { setCrown(null); pb.next(); }, [pb.next]);
+  const endFly = useCallback(() => {
+    const f = flyRef.current;
+    setFly(null);
+    if (!f) { pb.next(); return; }
+    setSettled({ cards: f.cards, seat: f.seat, key: `${f.seat}-${(f.cards || []).join('')}` });
+    if (f.skip != null && v) {
+      const skipped = v.seats[f.skip]; const by = v.seats[f.seat];
+      setBlast({ seq: f.seq, name: skipped?.name || 'Somebody', by: by?.name, me: skipped?.me, short: !!f.catching });
+      if (!isMuted()) { sfx.bust(); setTimeout(() => sfx.lose(), 300); }
+      return; // blast onDone moves on
+    }
+    pb.next();
+  }, [pb.next, v]);
   useEffect(() => { if (!bugNote) return undefined; const id = setTimeout(() => setBugNote(null), 2600); return () => clearTimeout(id); }, [bugNote?.seq]);
+  // Paint the live pile when we first have a view, and after clears. Do not run while v is still null (that
+  // would freeze an empty pile). A newer live pile than the one we have painted waits for the flight to land.
+  useEffect(() => {
+    if (!v || fly || step?.ev?.k === 'play') return;
+    if (step?.ev?.k === 'clear') { setSettled({ cards: null, seat: step.ev.seat, cleared: step.ev.why, key: `clear-${step.seq}` }); return; }
+    const pile = v.round?.pile;
+    const key = pile ? `${pile.seat}-${pile.cards.join('')}` : 'clear';
+    setSettled((prev) => {
+      if (prev && prev.key === key) return prev;
+      if (prev?.cards?.length && pile && prev.key !== key) return prev;
+      return pile ? { cards: pile.cards, seat: pile.seat, key } : { cards: null, seat: v.round?.turn, key };
+    });
+  }, [v?.seq, step?.seq, fly?.seq]);
 
   const r0 = v?.round;
   const ex0 = r0?.phase === 'exchange' ? r0.exchange : null;
@@ -246,7 +305,7 @@ function ScumTable({ code, me }) {
   const turnAdvance = useTurnAdvance({
     currentPath: `/scum/${String(code).toUpperCase()}`,
     hasAction,
-    blocked: !!pb.pending || !!blast || !!crown,
+    blocked: !!pb.pending || !!blast || !!crown || !!fly,
     enabled: true,
   });
   if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/scum')}>Back to scum</button>}</div></div>;
@@ -266,11 +325,9 @@ function ScumTable({ code, me }) {
   const bust = Math.round(Math.max(30, Math.min(64, w / (tall ? 8 : 13), h / (N > 5 ? 8 : 6.5))));
   const pos = Object.fromEntries(disp.map((s, k) => [s, seatXY(k, N, tall)]));
 
-  // What the pile shows: a move being played back, else the live pile.
-  const pe = step?.ev;
-  const frame = pe && pe.k !== 's2k' && pe.k !== 'pass' ? (pe.k === 'play' ? { cards: pe.cards, seat: pe.seat, seq: step.seq } : { cards: null, seat: pe.seat, cleared: pe.why, seq: step.seq })
-    : r?.pile ? { cards: r.pile.cards, seat: r.pile.seat, seq: `live-${r.pile.seat}-${r.pile.cards.join('')}` } : { cards: null, seat: r?.turn, seq: 'clear' };
-  const from = frame.seat != null && pos[frame.seat] ? { x: pos[frame.seat].x - 50, y: pos[frame.seat].y - 48 } : { x: 0, y: 40 };
+  // Settled pile only: flying cards are a separate overlay, so a poll never remounts and retriggers the land animation.
+  const frame = settled !== undefined ? settled
+    : (r?.pile ? { cards: r.pile.cards, seat: r.pile.seat } : { cards: null, seat: r?.turn, cleared: null });
 
   const ex = r?.phase === 'exchange' ? r.exchange : null;
   const owe = ex?.pairs.find((p) => p.from === v.mySeat);
@@ -284,15 +341,18 @@ function ScumTable({ code, me }) {
     setSel((s) => (s.includes(c) ? s.filter((x) => x !== c) : s.length && rk(s[0]) !== rk(c) ? [c] : [...s, c].slice(0, 4)));
   };
   const play = async () => { if (prob) return; const ok = await post('play', { cards: sel }); if (ok) setSel([]); };
-  const turnName = r?.turn != null ? v.seats[r.turn]?.name : null;
+  const turnSeat = fly?.seat ?? (step?.ev?.k === 'play' ? step.ev.seat : r?.turn);
+  const turnName = turnSeat != null ? v.seats[turnSeat]?.name : null;
+  const flyingTxt = fly?.cards?.length ? `${v.seats[fly.seat]?.name || ''} plays ${setName({ count: fly.cards.length, rank: rk(fly.cards[0]) })}` : '';
   const clockLeft = r?.deadline ? left(r.deadline - (v.now + (Date.now() - (v._at ||= Date.now())))) : null;
-  const pileTxt = frame.cards ? `${v.seats[frame.seat]?.name || ''}: ${setName({ count: frame.cards.length, rank: rk(frame.cards[0]) })}` : frame.cleared === 'ace' ? 'Ace! Pile cleared.' : r?.phase === 'play' ? `Pile's clear. ${turnName || ''} leads.` : '';
+  const pileTxt = frame.cards ? `${v.seats[frame.seat]?.name || ''}: ${setName({ count: frame.cards.length, rank: rk(frame.cards[0]) })}` : fly ? (flyingTxt || '') : frame.cleared === 'ace' ? 'Ace! Pile cleared.' : r?.phase === 'play' && !r.pile ? `Pile's clear. ${turnName || ''} leads.` : '';
   const status = v.status === 'lobby' ? `Waiting to deal · ${v.seats.filter(Boolean).length} seated${v.bots ? ` + ${v.bots} bot${v.bots > 1 ? 's' : ''} on deal` : ''}`
     : v.status === 'over' ? 'Game over'
     : v.hold ? 'Waiting on the Acid Mines: not enough players can cover the dues'
     : ex ? 'Royal court in session: cards changing hands'
-    : r?.myTurn ? (r.leading ? 'Your lead. Play any set.' : r.playOn ? 'Everyone passed — keep playing or pass to clear' : `Your turn: beat ${setName(r.pile)} or pass.`)
-    : r?.playOn && turnName ? `Everyone passed. ${turnName} can play on or clear`
+    : flyingTxt ? flyingTxt
+    : r?.myTurn && !fly ? (r.leading ? 'Your lead. Play any set.' : r.playOn ? 'Everyone passed — keep playing or pass to clear' : `Your turn: beat ${setName(r.pile)} or pass.`)
+    : r?.playOn && turnName && !fly ? `Everyone passed. ${turnName} can play on or clear`
     : turnName ? `${turnName}'s turn` : '';
   const invite = async () => { const url = `${location.origin}/scum/${v.code}`; try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { setErr(url); } };
   const leave = () => { if (v.status === 'playing' && mine && r?.order.includes(v.mySeat) && !r.finished.includes(v.mySeat) && !window.confirm('Walk out? Your cards go with you.')) return; post('leave'); };
@@ -319,15 +379,15 @@ function ScumTable({ code, me }) {
               : mine ? <button className="btn ghost small" onClick={leave} data-test="scum-leave">Leave</button> : null}
           </div>
         </div>
-        <div className="bj-status sc-status" data-test="scum-status"><span>{status}</span>{clockLeft && v.status === 'playing' && r?.phase === 'play' && <span className="mono">⏱ {clockLeft}</span>}</div>
+        <div className={`bj-status sc-status ${!fly && r?.myTurn ? 'mine' : ''}`} data-test="scum-status"><span>{status}</span>{clockLeft && v.status === 'playing' && r?.phase === 'play' && <span className="mono">⏱ {clockLeft}</span>}</div>
 
         <div className="sc-arena" ref={arena} style={{ '--bust': `${bust}px` }} data-test="scum-arena">
           {w > 0 && <>
             <div className="bj-oval sc-oval" style={{ left: `${tall ? 9 : 8}%`, right: `${tall ? 9 : 8}%`, top: `${tall ? 15 : 17}%`, bottom: `${tall ? 23 : 21}%` }} aria-hidden="true"><div className="bj-oval-logo script">Buffalo Bill's</div></div>
-            <div className="sc-pile" data-test="scum-pile">
+            <div className="sc-pile" ref={pileRef} data-test="scum-pile">
               {ex || v.hold ? <Court v={v} /> : <>
-                <div className="sc-pile-cards" key={frame.seq} style={{ '--fx': `${from.x * 4}%`, '--fy': `${from.y * 4}%` }}>
-                  {frame.cards ? frame.cards.map((c, i) => <span key={c} className={`sc-pc ${reduced ? '' : 'sc-land'}`} style={{ '--k': i }}><Card card={c} size="md" /></span>)
+                <div className="sc-pile-cards">
+                  {frame.cards ? frame.cards.map((c, i) => <span key={c} className="sc-pc" style={{ '--k': i }}><Card card={c} size="md" /></span>)
                     : <span className={`sc-clear ${frame.cleared === 'ace' ? 'ace' : ''}`}>{frame.cleared === 'ace' ? 'A!' : '∅'}</span>}
                 </div>
                 <div className="sc-pile-txt small">{pileTxt}</div>
@@ -338,16 +398,19 @@ function ScumTable({ code, me }) {
               </>}
             </div>
             {disp.map((i) => {
-              const s = v.seats[i]; const p = pos[i];
+              const s = v.seats[i]; const p = pos[i]; const isTurn = i === turnSeat;
               return (
-                <div key={i} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${s.turn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${p.x > 68 ? 'east' : ''}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
+                  {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${s.name}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
                   </SeatBuddy>
+                  {s.passed && <span className="sc-seatbadge pass" data-test="scum-passed">Passed</span>}
+                  {s.skipped && <span className="sc-seatbadge skip" data-test="scum-skipped">Skipped</span>}
                   {s.title && <span className={`sc-title t-${s.title}`} data-test="scum-title">{CROWN[s.title]} {TITLE[s.title]}</span>}
                   {v.payouts && s.broke ? <span className="sc-paychip broke" data-test="scum-minechip" title="Off to the Acid Mines">⛏ mines</span>
                     : v.payouts && s.pay ? <span className={`sc-paychip ${s.pay > 0 ? 'up' : 'down'}`} data-test="scum-paychip" title={s.bot ? 'House money (bots never touch a bankroll)' : 'This round’s title pay'}>{cash(s.pay)}</span> : null}
-                  {r && !s.me && !s.waiting && !s.left && !s.broke && (s.count > 0 || r.order.includes(i)) && <Fan n={s.count} bust={bust} to={{ x: ((50 - p.x) / 100) * w, y: ((48 - p.y) / 100) * h }} reduced={reduced} />}
+                  {r && !s.me && !s.waiting && !s.left && !s.broke && (s.count > 0 || r.order.includes(i)) && <Fan n={s.count} bust={bust} />}
                   <div className="bj-pill sc-pill">
                     <b>{s.here && <i className="here-dot" data-test="here-dot" title="At the table now" />}{s.bot ? '🤖 ' : ''}{s.name}</b>
                     {r && !s.waiting && !s.left && !s.broke && <span className="mono sc-count" title={`${s.count} cards`}>{s.place ? `out ${['', '1st', '2nd', '3rd'][s.place] || `${s.place}th`}` : s.count}</span>}
@@ -356,6 +419,7 @@ function ScumTable({ code, me }) {
                 </div>
               );
             })}
+            {fly && <FlyBatch key={fly.seq} cards={fly.cards} seat={fly.seat} seatEl={seatEls.current[fly.seat]} pileEl={pileRef.current} handRects={handRect.current} mine={fly.seat === v.mySeat} reduced={reduced} onDone={endFly} />}
           </>}
         </div>
 
@@ -372,7 +436,7 @@ function ScumTable({ code, me }) {
               {ex && <Exchange v={v} owe={owe} gets={gets} giving={giving} sel={sel} beg={beg} setBeg={setBeg} busy={busy} post={post} onSent={() => { setSel([]); setBeg(''); }} />}
               <div className="sc-hand" ref={handBox} style={{ '--cw': `${cw}px` }} data-test="scum-hand">
                 {hand.map((c, k) => (
-                  <button key={c} type="button" className={`sc-hc ${sel.includes(c) ? 'sel' : ''} ${fresh.has(c) ? 'fresh' : ''} ${owed.has(c) ? 'owed' : ''}`} style={{ left: `${handX + k * stepX}px`, zIndex: k }}
+                  <button key={c} type="button" ref={(el) => { if (el) handEls.current[c] = el; else delete handEls.current[c]; }} className={`sc-hc ${sel.includes(c) ? 'sel' : ''} ${fresh.has(c) ? 'fresh' : ''} ${owed.has(c) ? 'owed' : ''}`} style={{ left: `${handX + k * stepX}px`, zIndex: k }}
                     onClick={() => tap(c)} aria-pressed={sel.includes(c)} disabled={!(myTurn || giving)} data-test={`scum-card-${c}`}><Card card={c} size="md" /></button>))}
                 {!hand.length && mine.broke ? <div className="sc-broke" data-test="scum-broke"><span className="sc-broke-ic" aria-hidden="true">⛏</span><span className="small"><b>Broke.</b> You need {cash(v.payouts?.need || 10).slice(1)} to be dealt in (Scum dues). Your seat is saved.</span><button className="btn primary small" onClick={goToMines} data-test="scum-mines">Work a shift →</button></div>
                   : !hand.length && <span className="small dim sc-nohand">{mine.waiting ? 'You get dealt in next round.' : mine.place ? `You're out ${mine.place === 1 ? 'first. Long live the King.' : `#${mine.place}.`}` : ''}</span>}
@@ -386,7 +450,7 @@ function ScumTable({ code, me }) {
             </>}
         </div>
         {err && <p className="error bj-err" role="alert">{err}</p>}
-        {pb.catching > 0 && <button className="sc-catch" onClick={pb.skip} data-test="scum-catchup">↺ Catching up on {pb.catching} moves · tap to skip</button>}
+        {pb.catching > 0 && <button className="sc-catch" onClick={() => { const pile = v.round?.pile; setSettled(pile ? { cards: pile.cards, seat: pile.seat, key: `${pile.seat}-${pile.cards.join('')}` } : { cards: null, seat: v.round?.turn, key: 'clear' }); setFly(null); pb.skip(); }} data-test="scum-catchup">↺ Catching up on {pb.catching} moves · tap to skip</button>}
         {show === 'rules' && <RulesPop pay={!!v.payouts} onClose={() => setShow(null)} />}
         {show === 'log' && <div className="bj-pop" data-test="scum-log" onClick={() => setShow(null)}><div className="panel sc-logp"><h3 className="western">Table log</h3><ol className="sc-log">{v.log.slice(-40).reverse().map((e) => <li key={e.seq} className={e.ev?.skip != null ? 'skip' : ''}>{e.text}</li>)}</ol><button className="btn small">Close</button></div></div>}
         {v.status === 'over' && v.lastRound && <Final v={v} />}
@@ -401,21 +465,50 @@ function ScumTable({ code, me }) {
  * Opponent's hand as real face-down cards: one back per card, overlapped tighter as the count grows so the fan stays
  * about one avatar wide. Cards they just played lift off toward the pile. Only the count ever reaches the browser.
  */
-function Fan({ n, bust, to, reduced }) {
-  const prev = useRef(n); const [gone, setGone] = useState(0);
-  useEffect(() => {
-    if (n < prev.current && !reduced) { setGone(prev.current - n); const id = setTimeout(() => setGone(0), 650); prev.current = n; return () => clearTimeout(id); }
-    prev.current = n; setGone(0); return undefined;
-  }, [n, reduced]);
-  const total = n + gone;
+function Fan({ n, bust }) {
   const cw = Math.max(11, Math.round(bust * 0.3));
   const W = Math.max(48, bust * 1.5);
-  const step = total > 1 ? Math.min(cw * 0.55, (W - cw) / (total - 1)) : 0;
-  const width = cw + step * Math.max(0, total - 1);
-  const tilt = Math.min(2.4, 26 / Math.max(1, total));
+  const step = n > 1 ? Math.min(cw * 0.55, (W - cw) / (n - 1)) : 0;
+  const width = cw + step * Math.max(0, n - 1);
+  const tilt = Math.min(2.4, 26 / Math.max(1, n));
   return (
-    <div className="sc-fan" style={{ width, height: Math.round(cw * 1.4) + 4, '--cw': `${cw}px`, '--tx': `${Math.round(to.x)}px`, '--ty': `${Math.round(to.y)}px` }} data-test="scum-fan" data-n={n} aria-label={`${n} card${n === 1 ? '' : 's'} left`} role="img">
-      {Array.from({ length: total }, (_, k) => <i key={k} className={`sc-back ${k >= n ? 'leaving' : ''}`} style={{ left: k * step, transform: `rotate(${(k - (total - 1) / 2) * tilt}deg)` }} />)}
+    <div className="sc-fan" style={{ width, height: Math.round(cw * 1.4) + 4, '--cw': `${cw}px` }} data-test="scum-fan" data-n={n} aria-label={`${n} card${n === 1 ? '' : 's'} left`} role="img">
+      {Array.from({ length: n }, (_, k) => <i key={k} className="sc-back" style={{ left: k * step, transform: `rotate(${(k - (n - 1) / 2) * tilt}deg)` }} />)}
+    </div>
+  );
+}
+
+/** Face-up cards fly from a seat (or your hand) to the pile. Transform/opacity only; queued by the playback stepper. */
+function FlyBatch({ cards, seatEl, pileEl, handRects, mine, reduced, onDone }) {
+  const [phase, setPhase] = useState('from');
+  const [items, setItems] = useState([]);
+  const done = useRef(false);
+  useLayoutEffect(() => {
+    const pile = pileEl?.getBoundingClientRect();
+    const seat = seatEl?.querySelector('.bust')?.getBoundingClientRect() || seatEl?.getBoundingClientRect();
+    const tx = pile ? pile.left + pile.width / 2 : window.innerWidth / 2;
+    const ty = pile ? pile.top + pile.height / 2 : window.innerHeight * 0.42;
+    const list = (cards || []).map((c, i) => {
+      const hand = mine ? handRects?.[c] : null;
+      const from = hand && hand.width ? hand : seat;
+      const x = from ? from.left + from.width / 2 : tx;
+      const y = from ? from.top + from.height / 2 : ty;
+      return { c, i, x, y, dx: tx - x, dy: ty - y };
+    });
+    setItems(list);
+    if (reduced || !list.length) { done.current = true; onDone(); return undefined; }
+    const start = requestAnimationFrame(() => requestAnimationFrame(() => setPhase('to')));
+    const hold = typeof window !== 'undefined' && Number(window.__scumFlyMs);
+    const ms = (Number.isFinite(hold) && hold > 0 ? hold : 400) + Math.max(0, list.length - 1) * 50;
+    const t = setTimeout(() => { if (!done.current) { done.current = true; onDone(); } }, ms);
+    return () => { cancelAnimationFrame(start); clearTimeout(t); };
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div className="sc-flies" data-test="scum-fly" data-phase={phase} aria-hidden="true">
+      {items.map(({ c, i, x, y, dx, dy }) => (
+        <span key={c} className={`sc-fly ${phase === 'to' ? 'to' : ''}`} style={{ left: `${x}px`, top: `${y}px`, '--dx': `${dx}px`, '--dy': `${dy}px`, '--k': i }}><Card card={c} size="md" /></span>
+      ))}
     </div>
   );
 }

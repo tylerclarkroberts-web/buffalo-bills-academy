@@ -101,11 +101,20 @@ function tables(P, now) {
     log: [{ seq: 1, t: now - 300e3, round: 2, text: 'Ann leads round 2.', ev: { k: 'lead', seat: 0 } }, { seq: 2, t: now - 240e3, round: 2, text: 'Ann plays two 7s.', ev: { k: 'play', seat: 0, cards: ['7h', '7c'], left: 6 } },
       { seq: 3, t: now - 200e3, round: 2, text: 'Bob passes.', ev: { k: 'pass', seat: 1 } }, { seq: 4, t: now - 150e3, round: 2, text: 'Dee passes.', ev: { k: 'pass', seat: 3 } }, { seq: 5, t: now - 100e3, round: 2, text: 'Cat passes.', ev: { k: 'pass', seat: 2 } },
       { seq: 6, t: now - 99e3, round: 2, text: 'Everyone passed. Ann can keep playing on it or pass to clear.', ev: { k: 'playon', seat: 0 } }], seq: 6 };
-  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4, PLAYON: t5 } };
+  // Table 6: two left. Ann played a 7, Bob matched (skipped Ann) and is playing on. Bob's pass should give Ann the live pile.
+  const t6 = { code: 'SKIP2', name: 'Two Left', hostId: P.Ann.id, hostName: 'Ann', createdAt: now - 9000e3, status: 'playing', settings: { turnSec: 86400, maxSeats: 3, bots: 0 }, turnSec: 86400, maxSeats: 3,
+    seats: [seat('Ann', stats(1, 0, 0)), seat('Bob', { ...stats(0, 0, 1), skips: 1 }), seat('Cat', stats(0, 1, 0))],
+    titles: { 2: 'king', 0: 'queen', 1: 'scum' }, roundNo: 2,
+    lastRound: { no: 1, finish: [{ seat: 2, name: 'Cat', title: 'king', pay: 100, net: 100 }, { seat: 0, name: 'Ann', title: 'queen', pay: 50, net: 50 }, { seat: 1, name: 'Bob', title: 'scum', pay: -10, net: -10 }] },
+    round: { no: 2, phase: 'play', order: [2, 0, 1], hands: { 0: sort(['8h', 'Tc', 'Qs', '2c']), 1: sort(['9c', 'Jd', 'Kh', '3d']), 2: [] }, pile: { cards: ['7c'], count: 1, rank: 7, seat: 1 }, owner: 1, playOn: true, turn: 1, finished: [2], gone: [], exchange: null, lastPlay: { seat: 1, cards: ['7c'] }, skipped: 0, passed: [], turnAt: now - 60e3, deadline: now + 86340e3 },
+    log: [{ seq: 1, t: now - 300e3, round: 2, text: 'Cat is out first.', ev: { k: 'out', seat: 2, place: 1 } }, { seq: 2, t: now - 200e3, round: 2, text: 'Ann plays a 7.', ev: { k: 'play', seat: 0, cards: ['7h'], left: 4 } },
+      { seq: 3, t: now - 100e3, round: 2, text: 'Bob plays a 7. Same rank: Ann is SKIPPED!', ev: { k: 'play', seat: 1, cards: ['7c'], left: 4, skip: 0 } },
+      { seq: 4, t: now - 99e3, round: 2, text: 'Everyone passed. Bob can keep playing on it or pass to clear.', ev: { k: 'playon', seat: 1 } }], seq: 4 };
+  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4, PLAYON: t5, SKIP2: t6 } };
 }
 
-async function page(browser, who, view) {
-  const ctx = await browser.newContext({ viewport: view, deviceScaleFactor: 2, isMobile: view === PHONE, hasTouch: view === PHONE, reducedMotion: 'no-preference' });
+async function page(browser, who, view, extra = {}) {
+  const ctx = await browser.newContext({ viewport: view, deviceScaleFactor: 2, isMobile: view === PHONE, hasTouch: view === PHONE, reducedMotion: 'no-preference', ...extra });
   const [name, value] = who.cookie.split('=');
   await ctx.addCookies([{ name, value, url: BASE }]);
   // The wandering faun wears a real friend's face: keep him out of PR screenshots.
@@ -165,6 +174,8 @@ try {
   await ann.click('[data-test=scum-card-9c]', edge); await ann.click('[data-test=scum-card-9d]', edge);
   await shot(ann, 'desktop-table-midgame'); await noScroll(ann, 'desktop table');
   await shot(cat, 'phone-table-midgame'); await noScroll(cat, 'phone table');
+  check(/your turn/i.test(await ann.locator('[data-test=scum-turn-label]').innerText()), 'Ann sees a Your turn label on her seat');
+  check(/ann's turn/i.test(await cat.locator('[data-test=scum-turn-label]').innerText()), "Cat sees Ann's turn on Ann's seat");
   // Opponents' hands are real face-down cards, one per card left (counts only; never the cards themselves).
   const fans = await cat.locator('[data-test=scum-fan]').evaluateAll((els) => els.map((e) => [Number(e.dataset.n), e.querySelectorAll('.sc-back').length]));
   check(fans.length === 4 && fans.every(([n, k]) => n === k && n > 0), `card-back fans by each opponent (${fans.map((f) => f[0]).join(',')})`);
@@ -204,6 +215,73 @@ try {
   await annC.click('[data-test=scum-pass]'); await wait(1200);
   check(/Your lead/.test(await annC.locator('[data-test=scum-status]').innerText()), 'pass & clear: she leads fresh');
   await annC.context().close();
+
+  // 8. two left, skip then pass: Bob (desktop) is playing on after skipping Ann; he passes and Ann (phone) gets the live pile.
+  const annS = await page(browser, P.Ann, PHONE);
+  const bobS = await page(browser, P.Bob, DESK);
+  await annS.goto(`${BASE}/scum/SKIP2`); await bobS.goto(`${BASE}/scum/SKIP2`);
+  await annS.waitForSelector('[data-test=scum-hand]'); await bobS.waitForSelector('[data-test=scum-hand]'); await wait(800);
+  check(/your turn/i.test(await bobS.locator('[data-test=scum-turn-label]').innerText()), 'Bob (play-on) has a Your turn label');
+  check(/bob's turn/i.test(await annS.locator('[data-test=scum-turn-label]').innerText()), "Ann sees Bob's turn");
+  check(await annS.locator('[data-test=scum-skipped]').count() === 1, 'Ann is badged as skipped, not passed');
+  check(/Pass & clear/.test(await bobS.locator('[data-test=scum-pass]').innerText()), 'Bob can pass on his own set');
+  await shot(bobS, 'desktop-turn-indicator'); await noScroll(bobS, 'desktop turn indicator');
+  await shot(annS, 'phone-skip-then-pass-before'); await noScroll(annS, 'phone skip-then-pass before');
+  await bobS.click('[data-test=scum-pass]');
+  await annS.waitForFunction(() => /your turn/i.test(document.querySelector('[data-test=scum-turn-label]')?.innerText || document.querySelector('[data-test=scum-status]')?.innerText || ''), null, { timeout: 6000 })
+    .then(() => check(true, "after Bob passes, skipped Ann's turn label appears"), () => check(false, "after Bob passes, skipped Ann's turn label appears"));
+  const pileTxt = await annS.locator('[data-test=scum-pile]').innerText();
+  const statusTxt = await annS.locator('[data-test=scum-status]').innerText();
+  check(/7/.test(pileTxt) && /7/.test(statusTxt), `live 7 is still on the pile (${pileTxt.replace(/\s+/g, ' ').trim()} / ${statusTxt.trim()})`);
+  check(/your turn/i.test(await annS.locator('[data-test=scum-status]').innerText() || ''), "status says it's Ann's turn");
+  check(await bobS.locator('[data-test=scum-passed]').count() === 1, 'Bob is badged as passed');
+  check(await annS.locator('[data-test=scum-pass]').innerText() === 'Pass', 'Ann can play or pass (pile is still live)');
+  await wait(400); await shot(annS, 'phone-skipped-gets-turn'); await noScroll(annS, 'phone skipped player gets the turn');
+  await shot(bobS, 'desktop-skipped-gets-turn'); await noScroll(bobS, 'desktop skipped player gets the turn');
+  // Ann plays an 8 on the live 7: mid-flight card faces, phone and desktop, plus a short webm of the play.
+  await annS.evaluate(() => { window.__scumFlyMs = 1600; });
+  await bobS.evaluate(() => { window.__scumFlyMs = 1600; });
+  await annS.addStyleTag({ content: '.sc-fly.to { transition-duration: 1600ms !important; }' });
+  await bobS.addStyleTag({ content: '.sc-fly.to { transition-duration: 1600ms !important; }' });
+  await annS.click('[data-test=scum-card-8h]', { position: { x: 8, y: 14 } });
+  await annS.waitForFunction(() => /8/.test(document.querySelector('[data-test=scum-play]')?.innerText || '') && !document.querySelector('[data-test=scum-play]')?.disabled, null, { timeout: 4000 })
+    .then(() => check(true, '8 of hearts is selected to play'), () => check(false, '8 of hearts is selected to play'));
+  const flyShot = async (pg, name) => {
+    await pg.waitForSelector('[data-test=scum-fly][data-phase=to]', { timeout: 6000 });
+    await wait(400);
+    await shot(pg, name);
+    check(await pg.locator('[data-test=scum-fly]').count() > 0, `${name}: card is mid-flight`);
+  };
+  const frameDir = path.join(OUT, 'fly-frames');
+  fs.rmSync(frameDir, { recursive: true, force: true });
+  fs.mkdirSync(frameDir, { recursive: true });
+  const grab = (async () => {
+    await annS.waitForSelector('[data-test=scum-fly]', { timeout: 6000 });
+    for (let i = 0; i < 14; i++) {
+      await annS.screenshot({ path: path.join(frameDir, `f${String(i).padStart(2, '0')}.png`) });
+      await wait(110);
+    }
+  })();
+  await annS.click('[data-test=scum-play]');
+  await Promise.all([
+    flyShot(annS, 'phone-card-fly').catch((err) => { console.log('phone fly', err.message); check(false, 'phone-card-fly: card is mid-flight'); }),
+    flyShot(bobS, 'desktop-card-fly').catch((err) => { console.log('desktop fly', err.message); check(false, 'desktop-card-fly: card is mid-flight'); }),
+    grab.catch((err) => console.log('frames', err.message)),
+  ]);
+  await annS.waitForSelector('[data-test=scum-fly]', { state: 'detached', timeout: 5000 }).catch(() => {});
+  await wait(200);
+  await annS.context().close(); await bobS.context().close();
+  const frames = fs.readdirSync(frameDir).filter((f) => f.endsWith('.png')).sort();
+  if (frames.length >= 4) {
+    const webm = path.join(OUT, 'phone-card-fly.webm');
+    const gif = path.join(OUT, 'phone-card-fly.gif');
+    const run = (args) => new Promise((res) => { const c = spawn('ffmpeg', args, { stdio: 'ignore' }); c.on('exit', (code) => res(code)); });
+    const inpat = path.join(frameDir, 'f%02d.png');
+    const wcode = await run(['-y', '-framerate', '10', '-i', inpat, '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-crf', '32', '-b:v', '0', '-an', webm]);
+    await run(['-y', '-framerate', '10', '-i', inpat, '-vf', 'scale=390:-1:flags=lanczos', '-loop', '0', gif]);
+    check(wcode === 0 && fs.existsSync(webm) && fs.statSync(webm).size > 1000, `recorded phone-card-fly.webm (${fs.existsSync(webm) ? fs.statSync(webm).size : 0} bytes, ${frames.length} frames)`);
+    if (fs.existsSync(gif)) check(true, `recorded phone-card-fly.gif (${fs.statSync(gif).size} bytes)`);
+  } else check(false, `recorded phone-card-fly.webm (${frames.length} frames)`);
 
   // small phone and phone on its side
   for (const [vp, tag] of [[{ width: 375, height: 667 }, 'small-phone'], [{ width: 844, height: 390 }, 'phone-landscape']]) {
