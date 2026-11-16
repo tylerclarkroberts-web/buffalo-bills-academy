@@ -223,7 +223,7 @@ export class Scum {
     const players = new Map();
     const pl = (s) => { const x = t.seats[s]; if (!x || x.bot) return null; const p = this.getPlayer(x.id); if (p) { this.accounts.ensure(p); players.set(p.id, p); } return p; };
     const key = (s) => t.seats[s]?.id;
-    const move = (p, amt, note) => { if (!p || !amt) return 0; const a = amt < 0 ? -Math.min(-amt, Math.max(0, p.bankroll)) : amt; if (a) this.accounts.change(p, a, 'scum', `Async Scum: ${note} (${where})`, { save: false }); return a; };
+    const move = (p, amt, note) => { if (!p || !amt) return 0; const a = amt < 0 ? -Math.min(-amt, Math.max(0, p.bankroll)) : amt; if (a) this.accounts.change(p, a, 'scum', `SCUM: ${note} (${where})`, { save: false }); return a; };
     const NOTE = { king: 'King payout', queen: 'Queen payout', babyScum: 'Baby Scum dues', scum: 'Scum dues' };
     for (const x of t.lastRound.finish) {
       const want = S.PAY[x.title] || 0; if (!want) continue;

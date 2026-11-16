@@ -16,7 +16,7 @@ export function denverHour(t) {
 
 export const SOURCES = {
   start: 'Starting bankroll', poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', pvp: 'Mine PvP', fawn: 'Faun gifts', golf: 'Foff golf',
-  slots: 'Slots', scum: 'Async Scum', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev grants', other: 'Other',
+  slots: 'Slots', scum: 'SCUM', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev grants', other: 'Other',
 };
 /** Where a bankroll change came from: { source, sub } from its type and note. */
 export function classify(type, note = '') {

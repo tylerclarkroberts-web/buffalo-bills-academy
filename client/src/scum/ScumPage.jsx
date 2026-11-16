@@ -58,8 +58,8 @@ const PAY_RULES = [
 
 export default function ScumPage({ code }) {
   const { me } = useSession();
-  useEffect(() => { document.title = "Async Scum · Buffalo Bill's Academy"; }, []);
-  if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">Async Scum</h2><SignIn compact next={code ? `/scum/${code}` : '/scum'} /></div></div>;
+  useEffect(() => { document.title = "SCUM · Buffalo Bill's Academy"; }, []);
+  if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">SCUM</h2><SignIn compact next={code ? `/scum/${code}` : '/scum'} /></div></div>;
   return code ? <ScumTable code={code} me={me} /> : <ScumLobby me={me} />;
 }
 
@@ -122,7 +122,7 @@ function ScumLobby({ me }) {
   return (
     <div className="screen bj">
       <div className="panel bj-lobby sc-lobby">
-        <div className="bj-head"><button className="btn ghost small" onClick={() => navigate('/')}>← Lobby</button><h1 className="western">Async Scum</h1><span className="bj-sub">{info.payouts ? 'Free to play · King +$100 · Scum −$10' : 'Aces are trump · Play for pride'}</span>
+        <div className="bj-head"><button className="btn ghost small" onClick={() => navigate('/')}>← Lobby</button><h1 className="western">SCUM</h1><span className="bj-sub">{info.payouts ? 'Free to play · King +$100 · Scum −$10' : 'Aces are trump · Play for pride'}</span>
           <div className="bj-head-r"><button className="btn ghost small" onClick={() => setRules(true)} data-test="scum-rules">Rules</button></div></div>
         {err && <p className="error" role="alert">{err}</p>}
         {narrow ? <>
@@ -205,7 +205,7 @@ function ScumTable({ code, me }) {
   const tiny = useMedia('(max-width: 520px)');
   const pb = usePlayback(v, code);
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
-  useEffect(() => { document.title = v ? `${v.round?.myTurn ? '● ' : ''}${v.name} · Async Scum` : 'Async Scum'; }, [v?.name, v?.round?.myTurn]);
+  useEffect(() => { document.title = v ? `${v.round?.myTurn ? '● ' : ''}${v.name} · SCUM` : 'SCUM'; }, [v?.name, v?.round?.myTurn]);
   const r = v?.round;
   const handKey = (r?.hand || []).join(',');
   useEffect(() => { setSel((s) => s.filter((c) => r?.hand?.includes(c))); }, [handKey, r?.phase]);

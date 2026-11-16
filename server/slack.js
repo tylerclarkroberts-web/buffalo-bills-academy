@@ -157,9 +157,9 @@ export function scumMessage(f, { publicUrl, reminder = false }) {
   const url = `${publicUrl}/scum/${f.code}`;
   const when = hoursLeft(f.left);
   return {
-    text: `${reminder ? 'Reminder: still your turn' : 'Your turn'} at Async Scum ${f.table}: ${SCUM_NEED[f.phase]}. ${url}`,
+    text: `${reminder ? 'Reminder: still your turn' : 'Your turn'} at SCUM ${f.table}: ${SCUM_NEED[f.phase]}. ${url}`,
     blocks: [
-      { type: 'section', text: { type: 'mrkdwn', text: `${reminder ? 'Reminder: the table is still waiting on you' : 'Your turn'} at Async Scum *${esc(f.table)}*\n${SCUM_NEED[f.phase][0].toUpperCase()}${SCUM_NEED[f.phase].slice(1)}, ${when}, ${SCUM_FALL[f.phase]}.` } },
+      { type: 'section', text: { type: 'mrkdwn', text: `${reminder ? 'Reminder: the table is still waiting on you' : 'Your turn'} at SCUM *${esc(f.table)}*\n${SCUM_NEED[f.phase][0].toUpperCase()}${SCUM_NEED[f.phase].slice(1)}, ${when}, ${SCUM_FALL[f.phase]}.` } },
       { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open the table' }, url, style: 'primary', action_id: 'open_table' }] },
     ],
   };
