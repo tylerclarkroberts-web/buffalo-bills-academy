@@ -77,7 +77,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt });
   const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
   pvpSweep.unref?.();
-  const foff = new Foff({ store: service.store, accounts, shop, now: service.now });
+  const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
   barn.styleOf = (id) => shop.bugStyle(id);
   service.shop = shop;
@@ -306,6 +306,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/foff/quest', needPlayer, wrap((req) => foff.quest(accounts.ensure(req.player), String(req.body?.id || ''))));
   api.post('/foff/watching', needPlayer, wrap((req) => foff.startWatching(req.player)));
   api.post('/foff/watched', needPlayer, wrap((req) => foff.markWatched(req.player)));
+  api.get('/foff/board', wrap((req) => foff.board(req.player?.id)));
+  api.post('/foff/round', needPlayer, wrap((req) => foff.recordRound(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/nephew', needPlayer, wrap((req) => mines.sendNephew(accounts.ensure(req.player))));
   api.post('/mines/start', needPlayer, wrap((req) => mines.start(accounts.ensure(req.player), req.body)));
   api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));

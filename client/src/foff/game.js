@@ -10,6 +10,7 @@ import { H, SWEET, W, WILD, camFor, drawAim, drawBall, drawGolfer, drawHole, dra
 import { sfx } from './sfx.js';
 import { makeSayer } from '../guntrad-core.js';
 import { rng } from '../../../server/engine/maze.js';
+import { queueRound } from './records.js';
 
 const UP = 1, SWAY = 1.6;     // meter speeds: power in bars a second, the needle in half-widths a second
 /** How far off line a needle position sends it: nothing inside the gold, 1 (a full miss) at WILD, a shank beyond. */
@@ -223,10 +224,12 @@ export function createGame(canvas, emit) {
     if (g.hi + 1 < m.holes.length) return tee(g.hi + 1);
     const tot = g.card.map((r) => r.reduce((a, b) => a + b, 0)), best = Math.min(...tot.slice(1));
     g.result = tot[0] < best ? 'win' : tot[0] === best ? 'tie' : 'loss';
-    if (g.result === 'win') {
-      sfx.win();
-      save((s) => { s.best = { ...s.best, [m.id]: Math.min(tot[0], s.best?.[m.id] ?? 99) }; });
-    } else sfx.nope();
+    const strokes = g.took[0].reduce((a, b) => a + b, 0); // the real card, not a penciled one
+    if (g.result === 'win') sfx.win(); else sfx.nope();
+    save((s) => {
+      if (g.result === 'win') s.best = { ...s.best, [m.id]: Math.min(tot[0], s.best?.[m.id] ?? 99) };
+      queueRound(s, { matchId: m.id, strokes, holes: g.took[0].slice() });
+    });
     g.phase = 'end'; g.guest = g.result === 'win' && !!m.finale; talk(L[g.result]);
   }
 
