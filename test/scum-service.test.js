@@ -112,15 +112,33 @@ test('auto-organize: your hand is always shown low to high, aces last, suits in 
   assert.deepEqual(s.view(P.a, v.code).round.hand, ['2c', '2h', '9s', 'Tc', 'Kd', 'As']);
 });
 
-test('the clock: no move passes for you; leading plays your lowest card', () => {
+test('the clock: miss your turn and your bug plays your HIGHEST card for you (and passes when nothing is legal)', () => {
   const { s, P, clock } = svc();
   const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
   const t = s.table(v.code);
-  rig(t, { 0: ['9h', '2c'], 1: ['4c', 'Td'], 2: ['3h', '5h'] }, [0, 1, 2]); s.clock(t);
+  rig(t, { 0: ['9h', '2c', 'Kd'], 1: ['4c', 'Td'], 2: ['3h', '5h'] }, [0, 1, 2]); s.clock(t);
   clock.t += 31_000; s.tick();
-  assert.deepEqual(t.round.pile.cards, ['2c'], 'lowest single led for Ann');
+  assert.deepEqual(t.round.pile.cards, ['Kd'], 'leading: the bug plays Ann’s highest single');
+  const e = t.log.findLast((x) => x.ev?.k === 'play');
+  assert.deepEqual(e.ev.bug, { name: 'a stray bug', generic: true }, 'no hatched bug: a stray one covers');
+  assert.match(e.text, /missed their turn; a stray bug plays their highest/);
   clock.t += 31_000; s.tick();
-  assert.equal(t.round.lastPlay.seat, 0); assert.ok(t.log.at(-1).text.match(/clock/));
+  const p = t.log.findLast((x) => x.ev?.k === 'pass');
+  assert.equal(p.ev.seat, 1); assert.ok(p.ev.bug, 'Bob had nothing over a K: his bug passes');
+  const v2 = s.view(P.c, v.code);
+  assert.ok(v2.log.some((x) => x.ev?.bug), 'bug plays are in the log everyone replays');
+});
+
+test('a hatched Barn bug is named when it covers your turn', () => {
+  const barn = { view: (id) => (id === 'a' ? { pen: { stage: 'creature', species: 'beetle', name: 'Gus', speciesName: 'Beetle', level: 2 } } : { pen: null }) };
+  const { s, P, clock } = svc({ barn });
+  const v = s.create(P.a, { settings: { bots: 0, turnSec: 30 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
+  const t = s.table(v.code);
+  rig(t, { 0: ['9h', '9d', 'As'], 1: ['4c', 'Td'], 2: ['3h', '5h'] }, [0, 1, 2]); s.clock(t);
+  clock.t += 31_000; s.tick();
+  const e = t.log.findLast((x) => x.ev?.k === 'play');
+  assert.deepEqual(e.ev.cards, ['As']); assert.equal(e.ev.bug.name, 'Gus'); assert.equal(e.ev.bug.species, 'beetle');
+  assert.match(e.text, /their bug Gus plays their highest: an ace/);
 });
 
 test('the clock settles the exchange: best cards go over, the King gives his lowest, then he leads', () => {
@@ -130,7 +148,7 @@ test('the clock settles the exchange: best cards go over, the King gives his low
   rig(t, { 0: ['3h'], 1: ['Kh', '2c'], 2: ['5d', '7d'] }, [0, 1, 2]); s.clock(t);
   s.play(P.a, v.code, ['3h']); s.play(P.b, v.code, ['Kh']); s.pass(P.c, v.code); s.play(P.b, v.code, ['2c']);
   assert.equal(t.round.phase, 'exchange');
-  assert.deepEqual(t.lastRound.finish.map((x) => x.title), ['king', 'citizen', 'scum']);
+  assert.deepEqual(t.lastRound.finish.map((x) => x.title), ['king', 'commoner', 'scum']);
   const best = t.round.hands[2].slice().sort((x, y) => 'x23456789TJQKA'.indexOf(x[0]) - 'x23456789TJQKA'.indexOf(y[0])).slice(-2);
   clock.t += 31_000; s.tick();
   assert.ok(best.every((c) => t.round.hands[0].includes(c)), 'Scum’s best went to the King');

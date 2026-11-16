@@ -89,7 +89,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const bj = new Blackjack({ store: service.store, accounts, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.BJ_TICK_MS !== undefined ? Number(env.BJ_TICK_MS) : 1000, avatars, barn });
   service.blackjack = bj;
   // Async Scum (play for pride; no money). SCUM_TICK_MS=0 / SCUM_BOT_MS let tests drive the clock and the bots.
-  const scum = new Scum({ store: service.store, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.SCUM_TICK_MS !== undefined ? Number(env.SCUM_TICK_MS) : 1000, botMs: env.SCUM_BOT_MS !== undefined ? Number(env.SCUM_BOT_MS) : 1400, avatars, barn });
+  const scum = new Scum({ store: service.store, getPlayer: (id) => service.getPlayer(id), now: service.now, tickMs: env.SCUM_TICK_MS !== undefined ? Number(env.SCUM_TICK_MS) : 1000, botMs: env.SCUM_BOT_MS !== undefined ? Number(env.SCUM_BOT_MS) : 1400, avatars, barn, accounts, payouts: env.SCUM_PAYOUTS !== '0' });
   service.scum = scum;
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
@@ -414,7 +414,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     api.post(`/bj/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   // Async Scum: /scum (your tables) and /scum/CODE (invite link)
-  api.get('/scum', needPlayer, wrap((req) => ({ limits: LIMITS_SCUM, tables: scum.list(req.player) })));
+  api.get('/scum', needPlayer, wrap((req) => ({ limits: LIMITS_SCUM, payouts: scum.payouts, tables: scum.list(req.player) })));
   api.post('/scum/tables', needPlayer, wrap((req) => scum.create(req.player, req.body || {})));
   api.get('/scum/tables/:code', needPlayer, wrap((req) => scum.view(req.player, req.params.code, { away: 'away' in req.query })));
   for (const [path, fn] of Object.entries({ join: (p, c) => scum.join(p, c), start: (p, c) => scum.start(p, c), leave: (p, c) => scum.leave(p, c), close: (p, c) => scum.close(p, c),

@@ -56,11 +56,11 @@ function tables(P, now) {
   const log = (seq, text, ev) => ({ seq, t: now - (40 - seq) * 60e3, round: 2, text, ev });
   const t1 = { code: 'SCUMMY', name: 'Porch Scum', hostId: P.Ann.id, hostName: 'Ann', createdAt: now - 7200e3, status: 'playing', settings: { turnSec: 86400, maxSeats: 6, bots: 1 }, turnSec: 86400, maxSeats: 6,
     seats: [seat('Ann', stats(0, 0, 1)), seat('Bob', stats(1, 0, 0)), seat('Cat', stats(0, 0, 0)), seat('Dee', stats(0, 0, 0)), bot, null],
-    titles: { 1: 'king', 0: 'queen', 2: 'citizen', 3: 'babyScum', 4: 'scum' }, roundNo: 2,
-    lastRound: { no: 1, finish: [{ seat: 1, name: 'Bob', title: 'king' }, { seat: 0, name: 'Ann', title: 'queen' }, { seat: 2, name: 'Cat', title: 'citizen' }, { seat: 3, name: 'Dee', title: 'babyScum' }, { seat: 4, name: 'Dusty', title: 'scum' }] },
+    titles: { 1: 'king', 0: 'queen', 2: 'commoner', 3: 'babyScum', 4: 'scum' }, roundNo: 2,
+    lastRound: { no: 1, finish: [{ seat: 1, name: 'Bob', title: 'king', pay: 100, net: 100 }, { seat: 0, name: 'Ann', title: 'queen', pay: 50, net: 50 }, { seat: 2, name: 'Cat', title: 'commoner', net: 0 }, { seat: 3, name: 'Dee', title: 'babyScum', pay: -5, net: -5 }, { seat: 4, name: 'Dusty', title: 'scum', pay: -10, net: -10, house: true }] }, kingPay: { [P.Bob.id]: 100, 'scumbot-0': 0 },
     round: { no: 2, phase: 'play', order: [1, 0, 2, 3, 4], hands, pile: { cards: ['9h', '9s'], count: 2, rank: 9, seat: 1 }, owner: 1, turn: 0, finished: [], gone: [], exchange: null, lastPlay: { seat: 1, cards: ['9h', '9s'] }, skipped: null, turnAt: now - 600e3, deadline: now + 86400e3 - 600e3 },
     log: [log(30, 'Round 2: 52 cards dealt to 5.', { k: 'deal', no: 2 }), log(31, 'Bob leads round 2.', { k: 'lead', seat: 1 }), log(32, 'Bob plays a 4.', { k: 'play', seat: 1, cards: ['4c'] }), log(33, 'Ann plays a 6.', { k: 'play', seat: 0, cards: ['6h'] }),
-      log(34, 'Cat plays a 6. Same rank: Dee is SKIPPED!', { k: 'play', seat: 2, cards: ['6s'], skip: 3 }), log(35, 'Dusty plays a K.', { k: 'play', seat: 4, cards: ['Kd'] }), log(36, 'Nobody can follow that. Dusty leads.', { k: 'clear', why: 'pass', seat: 4 }),
+      log(34, 'Cat plays a 6. Same rank: Dee is SKIPPED!', { k: 'play', seat: 2, cards: ['6s'], skip: 3 }), log(35, 'Dee missed their turn; a stray bug plays their highest: a K.', { k: 'play', seat: 3, cards: ['Kd'], bug: { name: 'a stray bug', generic: true } }), log(36, 'Nobody can follow that. Dusty leads.', { k: 'clear', why: 'pass', seat: 4 }),
       log(37, 'Dusty passes the lead with a pair of 3s.', { k: 'play', seat: 4, cards: ['3c', '3d'] }), log(38, 'Bob plays two 9s.', { k: 'play', seat: 1, cards: ['9h', '9s'] })], seq: 38 };
   // Table 2: round 3 exchange. Dee is Scum and owes the King (Ann) her 2 best; Cat (Baby Scum) owes the Queen (Bob) one.
   const h2 = deal({}, { 0: 13, 1: 13, 2: 13, 3: 13 });
@@ -72,7 +72,26 @@ function tables(P, now) {
     round: { no: 3, phase: 'exchange', order: [0, 1, 2, 3], hands: h2, pile: null, owner: null, turn: null, finished: [], gone: [], lastPlay: null, skipped: null,
       exchange: { pairs: [{ from: 3, to: 0, n: 2, beg: null, tribute: null, paid: false, gift: null, given: false, at: now - 60e3, due: now + 3540e3 }, { from: 2, to: 1, n: 1, beg: null, tribute: null, paid: false, gift: null, given: false, at: now - 60e3, due: now + 3540e3 }] } },
     log: [{ seq: 1, t: now - 60e3, round: 3, text: 'Round 2 over. King: Ann · Queen: Bob · Baby Scum: Cat · Scum: Dee.', ev: { k: 'round' } }], seq: 1 };
-  return { tables: { SCUMMY: t1, COURT7: t2 } };
+  // Table 3: Dee went from Scum to King and took Ann's $200 of King pay. Round 3 exchange is waiting on Ann (now Scum).
+  const h3 = deal({}, { 0: 13, 1: 13, 2: 13, 3: 13 }, []);
+  const t3 = { code: 'THRONE', name: 'Bucket to Throne', hostId: P.Bob.id, hostName: 'Bob', createdAt: now - 9000e3, status: 'playing', settings: { turnSec: 3600, maxSeats: 4, bots: 0 }, turnSec: 3600, maxSeats: 4,
+    seats: [seat('Ann', { ...stats(2, 1, 1), cash: -10 }), seat('Bob', { ...stats(0, 0, 2), cash: 100 }), seat('Cat', { ...stats(0, 0, 0), cash: -10 }), seat('Dee', { ...stats(1, 1, 0), cash: 290 })],
+    titles: { 3: 'king', 1: 'queen', 2: 'babyScum', 0: 'scum' }, roundNo: 3, kingPay: { [P.Ann.id]: 0, [P.Dee.id]: 100 },
+    lastRound: { no: 2, finish: [{ seat: 3, name: 'Dee', title: 'king', pay: 100, bonus: 200, net: 300 }, { seat: 1, name: 'Bob', title: 'queen', pay: 50, net: 50 }, { seat: 2, name: 'Cat', title: 'babyScum', pay: -5, net: -5 }, { seat: 0, name: 'Ann', title: 'scum', pay: -10, dethroned: 200, net: -210 }],
+      s2k: { seat: 3, name: 'Dee', from: 0, fromName: 'Ann', amt: 200, owed: 200, house: false } },
+    round: { no: 3, phase: 'exchange', order: [3, 1, 2, 0], hands: h3, pile: null, owner: null, turn: null, finished: [], gone: [], lastPlay: null, skipped: null,
+      exchange: { pairs: [{ from: 0, to: 3, n: 2, beg: null, tribute: null, paid: false, gift: null, given: false, at: now - 60e3, due: now + 3540e3 }, { from: 2, to: 1, n: 1, beg: null, tribute: null, paid: false, gift: null, given: false, at: now - 60e3, due: now + 3540e3 }] } },
+    log: [{ seq: 1, t: now - 70e3, round: 2, text: 'Round 2 over. King: Dee (+$100) · Queen: Bob (+$50) · Baby Scum: Cat (-$5) · Scum: Ann (-$10).', ev: { k: 'round' } },
+      { seq: 2, t: now - 69e3, round: 2, text: "FROM SCUM TO KING! Dee takes Ann's King payouts: $200.", ev: { k: 's2k', seat: 3, from: 0, amt: 200 } }], seq: 2 };
+  // Table 4: Cat finished Scum with her last dollars: she sits out (seat saved) while Ann, Bob and Dusty play on.
+  const h4 = deal({}, { 0: 18, 1: 17, 3: 17 });
+  const t4 = { code: 'MINES1', name: 'Dry Gulch', hostId: P.Bob.id, hostName: 'Bob', createdAt: now - 9000e3, status: 'playing', settings: { turnSec: 3600, maxSeats: 4, bots: 1 }, turnSec: 3600, maxSeats: 4,
+    seats: [seat('Ann', stats(1, 0, 0)), seat('Bob', stats(0, 0, 0)), { ...seat('Cat', { ...stats(0, 1, 0), cash: -10 }), broke: true }, { ...bot, stats: stats(0, 0, 0) }],
+    titles: { 0: 'king', 1: 'queen', 3: 'babyScum', 2: 'scum' }, roundNo: 2,
+    lastRound: { no: 1, finish: [{ seat: 0, name: 'Ann', title: 'king', pay: 100, net: 100 }, { seat: 1, name: 'Bob', title: 'queen', pay: 50, net: 50 }, { seat: 3, name: 'Dusty', title: 'babyScum', pay: -5, net: -5, house: true }, { seat: 2, name: 'Cat', title: 'scum', pay: -10, net: -10 }] },
+    round: { no: 2, phase: 'play', order: [0, 1, 3], hands: h4, pile: null, owner: null, turn: 0, finished: [], gone: [], exchange: null, lastPlay: null, skipped: null, turnAt: now - 60e3, deadline: now + 3540e3 },
+    log: [{ seq: 1, t: now - 70e3, round: 1, text: "Cat can't cover the $10 Scum dues. Off to the Acid Mines; the seat is saved.", ev: { k: 'broke', seat: 2 } }], seq: 1 };
+  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4 } };
 }
 
 async function page(browser, who, view) {
@@ -93,6 +112,8 @@ try {
   for (const n of NAMES) await call(P[n].cookie, 'POST', '/api/me/avatar', { kind: 'gen', seed: `scum-demo-${n}` });
   await stop(srv);
   fs.writeFileSync(path.join(DATA, 'scum.json'), JSON.stringify(tables(P, Date.now())));
+  // Cat paid her last $10 as Scum: broke until a shift in the mines.
+  const pf = path.join(DATA, 'players.json'); const pl = JSON.parse(fs.readFileSync(pf, 'utf8')); pl[P.Cat.id].bankroll = 0; fs.writeFileSync(pf, JSON.stringify(pl));
   srv = await boot();
   P = await loginAll();
   const browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox'] });
@@ -168,6 +189,42 @@ try {
   await shot(bob, 'phone-exchange-court');
   await king.click('[data-test=scum-give-btn]'); await wait(600);
   await shot(dee, 'phone-exchange-got-back');
+
+  // 5. your bug covered a missed turn: Dee comes back to the replay with the bug note
+  const deeB = await page(browser, P.Dee, PHONE);
+  await deeB.goto(`${BASE}/scum/SCUMMY`); await deeB.waitForSelector('[data-test=scum-arena]');
+  await deeB.evaluate(() => localStorage.setItem('bba.scum.seen.SCUMMY', '34')); await deeB.reload();
+  await deeB.waitForSelector('[data-test=scum-bugnote]', { timeout: 6000 }).then(() => check(true, 'replay shows the bug that played a missed turn'), () => check(false, 'replay shows the bug that played a missed turn'));
+  check(/Your bug played for you/.test(await deeB.locator('[data-test=scum-bugnote]').innerText().catch(() => '')), 'it says "Your bug played for you"');
+  await wait(250); await shot(deeB, 'phone-bug-played'); await deeB.context().close();
+
+  // 6. From Scum to King: Dee (new King) on her phone, Ann (dethroned) on desktop; then the round's payouts
+  const deeK = await page(browser, P.Dee, PHONE); const annK = await page(browser, P.Ann, DESK);
+  for (const p of [deeK, annK]) { await p.goto(`${BASE}/scum/THRONE`); await p.waitForSelector('[data-test=scum-arena]'); await p.evaluate(() => localStorage.setItem('bba.scum.seen.THRONE', '1')); }
+  await Promise.all([deeK.reload(), annK.reload()]);
+  await Promise.all([
+    deeK.waitForSelector('[data-test=scum-s2k]', { timeout: 6000 }).then(async () => { check(/You take Ann's King payouts: \+\$200/.test(await deeK.locator('[data-test=scum-s2k]').innerText()), 'From Scum to King! on the new King’s phone'); await wait(900); await shot(deeK, 'phone-scum-to-king'); }, () => check(false, 'From Scum to King! on the new King’s phone')),
+    annK.waitForSelector('[data-test=scum-s2k]', { timeout: 6000 }).then(async () => { await wait(900); await shot(annK, 'desktop-scum-to-king'); }, () => check(false, 'dethroned King sees it too')),
+  ]);
+  await annK.waitForSelector('[data-test=scum-s2k]', { state: 'detached', timeout: 8000 }); await deeK.waitForSelector('[data-test=scum-s2k]', { state: 'detached', timeout: 8000 });
+  const pays = await annK.locator('[data-test=scum-standpay]').allInnerTexts();
+  check(pays.join(' ') === '+$300 +$50 −$5 −$210', `round payouts in the standings (${pays.join(' ')})`);
+  check(await annK.locator('[data-test=scum-s2k-line]').count() === 1, 'the standings call out the Scum-to-King haul');
+  check(await annK.locator('[data-test=scum-paychip]').count() === 4, '+$/−$ chips by the avatars');
+  await shot(annK, 'desktop-round-payouts'); await noScroll(annK, 'desktop payouts');
+  await shot(deeK, 'phone-round-payouts'); await noScroll(deeK, 'phone payouts');
+  await deeK.context().close(); await annK.context().close();
+
+  // 7. mines lockout: Cat is broke; her seat is saved and the prompt sends her to the mines
+  const catM = await page(browser, P.Cat, PHONE);
+  await catM.goto(`${BASE}/scum/MINES1`); await catM.waitForSelector('[data-test=scum-broke]', { timeout: 6000 }).then(() => check(true, 'broke player gets the mines prompt'), () => check(false, 'broke player gets the mines prompt'));
+  check(await catM.locator('[data-test=scum-minechip]').count() === 1, 'her seat is saved and marked ⛏ mines');
+  await wait(400); await shot(catM, 'phone-mines-lockout'); await noScroll(catM, 'phone mines lockout');
+  await catM.click('[data-test=scum-mines]'); await wait(1500);
+  check(/\/mines/.test(catM.url()), `the button goes to the Acid Mines (${catM.url().replace(BASE, '')})`);
+  await catM.context().close();
+  const annM = await page(browser, P.Ann, DESK); await annM.goto(`${BASE}/scum/MINES1`); await annM.waitForSelector('[data-test=scum-hand]'); await wait(600);
+  await shot(annM, 'desktop-mines-lockout'); await noScroll(annM, 'desktop mines lockout'); await annM.context().close();
   clearInterval(keepHere);
   await browser.close();
 } finally { await stop(srv); fs.rmSync(DATA, { recursive: true, force: true }); }

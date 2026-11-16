@@ -61,3 +61,25 @@ export function SkipBlast({ name, by, me, short = false, onDone }) {
     </div>
   );
 }
+
+/** From Scum to King: a gold full-screen moment. Same dismissal rules as the skip blast. */
+export function CrownBlast({ name, from, amt, me, dethroned, short = false, onDone }) {
+  useEffect(() => {
+    const id = setTimeout(onDone, short ? 2000 : 3400);
+    const key = () => onDone();
+    window.addEventListener('keydown', key);
+    return () => { clearTimeout(id); window.removeEventListener('keydown', key); };
+  }, [onDone, short]);
+  const words = 'FROM SCUM TO KING!'.split(' ');
+  const money = `$${Number(amt || 0).toLocaleString('en-US')}`;
+  return (
+    <div className={`sc-blast sc-crownblast ${me ? 'me' : ''}`} role="alert" aria-live="assertive" data-test="scum-s2k" onPointerDown={onDone}>
+      <div className="sc-rays" aria-hidden="true" />
+      <div className="sc-blast-in">
+        <div className="sc-bigcrown" aria-hidden="true">♚</div>
+        <h2 className="sc-skip-txt sc-crown-txt" aria-label="From Scum to King!">{words.map((w, i) => <span key={i} style={{ '--i': i }}>{w}</span>)}</h2>
+        <p className="sc-skip-sub">{me ? `You take ${from}'s King payouts: +${money}.` : dethroned ? `${name} climbed out of the bucket and took your King payouts: −${money}.` : `${name} takes ${from}'s King payouts: ${money}.`}</p>
+      </div>
+    </div>
+  );
+}

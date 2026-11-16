@@ -7,7 +7,7 @@
 //    not split evenly (round 1: the first seats; later rounds: from Scum up, so the bottom gets the extras).
 //  - Low to high 2 3 4 5 6 7 8 9 10 J Q K, then A is trump. Suits never matter.
 //  - Round 1 is led by whoever holds the 2 of clubs (any set; it need not include that card). From round 2 on the
-//    King leads and the order is by title: King, Queen, Citizens, (newcomers), Baby Scum, Scum last.
+//    King leads and the order is by title: King, Queen, Commoners, (newcomers), Baby Scum, Scum last.
 //  - Lead any single, double, triple or quad of one rank. Followers play the same count of an equal or higher rank,
 //    or pass. Playing the SAME rank as the play right before skips the next player ("You're skipped!").
 //  - Aces: aces beat any set of the SAME size: one ace clears singles, two aces clear a pair, three a three, four
@@ -17,7 +17,7 @@
 //    and they lead. If they already went out, the next player still in leads. A pass does not lock you out; there
 //    is simply no second lap before the pile clears.
 //  - Going out: first out is King, then Queen, ..., second to last Baby Scum, last Scum. With 3 players there is no
-//    Queen or Baby Scum: King, Citizen, Scum (only King and Scum swap cards). Everyone in between is a Citizen.
+//    Queen or Baby Scum: King, Commoner, Scum (only King and Scum swap cards). Everyone in between is a Commoner.
 //  - Exchange, before every round after the first: Scum hands the King their 2 highest cards and Baby Scum hands
 //    the Queen their highest (the server picks them, no hiding). Each may type a beg with it. Then the King gives
 //    Scum any 2 cards and the Queen gives Baby Scum any 1.
@@ -33,7 +33,11 @@ export const rankName = (r) => RANK_NAME[r] || String(r);
 const SETS = { 1: 'single', 2: 'pair', 3: 'three', 4: 'four' };
 /** High card last; ties by suit so the order is stable. */
 export const sortHand = (cards) => cards.slice().sort((a, b) => rank(a) - rank(b) || 'cdhs'.indexOf(a[1]) - 'cdhs'.indexOf(b[1]));
-export const TITLES = { king: 'King', queen: 'Queen', citizen: 'Citizen', babyScum: 'Baby Scum', scum: 'Scum' };
+/** Bankroll per title, settled when the titles are set at the end of each round (no buy-in; bots are house-funded). */
+export const PAY = { king: 100, queen: 50, commoner: 0, babyScum: -5, scum: -10 };
+/** You need this much to be dealt in: enough to cover the worst title (Scum). Below it, off to the mines. */
+export const DUES_MAX = 10;
+export const TITLES = { king: 'King', queen: 'Queen', commoner: 'Commoner', babyScum: 'Baby Scum', scum: 'Scum' };
 
 /** Titles by finishing position for n players (index 0 went out first). */
 export function titlesFor(n) {
@@ -42,7 +46,7 @@ export function titlesFor(n) {
     if (i === n - 1) return 'scum';
     if (n >= 4 && i === 1) return 'queen';
     if (n >= 4 && i === n - 2) return 'babyScum';
-    return 'citizen';
+    return 'commoner';
   });
 }
 
@@ -258,6 +262,22 @@ export function autoMove(r, seat, { bot = false } = {}) {
   }
   return aceOrPass();
   function aceOrPass() { return aces.length >= p.count && hand.length - aces.length <= 4 ? { play: aces.slice(0, p.count) } : { pass: true }; }
+}
+/**
+ * Missed your turn? Your bug plays for you, and it always plays your HIGHEST card. Leading: your single highest card
+ * (an ace if you have one). Following: the highest-ranked legal set of the pile's size (aces first, but only when you
+ * hold as many aces as the set; see playProblem); nothing legal, it passes.
+ */
+export function bugMove(r, seat) {
+  const hand = sortHand(r.hands[seat]);
+  if (!hand.length) return { pass: true };
+  if (!r.pile) return { play: [hand[hand.length - 1]] };
+  const byRank = new Map(); for (const c of hand) byRank.set(rank(c), [...(byRank.get(rank(c)) || []), c]);
+  for (const k of [...byRank.keys()].sort((a, b) => b - a)) {
+    const set = byRank.get(k).slice(-r.pile.count);
+    if (set.length === r.pile.count && !playProblem(r.pile, set)) return { play: set };
+  }
+  return { pass: true };
 }
 /** The King/Queen robot (or a timeout) gives back their lowest cards. */
 export const autoGift = (r, seat, n) => lowest(r.hands[seat], n);

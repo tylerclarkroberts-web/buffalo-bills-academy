@@ -143,10 +143,10 @@ test('finishing order: last one holding cards is Scum and the round ends', () =>
   assert.deepEqual(r.finished, [0, 1, 2]);
 });
 
-test('titles: King, Queen, Citizens, Baby Scum, Scum; three players have no Queen or Baby Scum', () => {
-  assert.deepEqual(S.titlesFor(3), ['king', 'citizen', 'scum']);
+test('titles: King, Queen, Commoners, Baby Scum, Scum; three players have no Queen or Baby Scum', () => {
+  assert.deepEqual(S.titlesFor(3), ['king', 'commoner', 'scum']);
   assert.deepEqual(S.titlesFor(4), ['king', 'queen', 'babyScum', 'scum']);
-  assert.deepEqual(S.titlesFor(6), ['king', 'queen', 'citizen', 'citizen', 'babyScum', 'scum']);
+  assert.deepEqual(S.titlesFor(6), ['king', 'queen', 'commoner', 'commoner', 'babyScum', 'scum']);
 });
 
 test('seating: King leads, Scum last, newcomers just above the bottom two', () => {
@@ -177,12 +177,12 @@ test('exchange: Scum hands the King their 2 best, Baby Scum the Queen their best
 });
 
 test('exchange with three players: only King and Scum swap', () => {
-  const pairs = S.exchangePairs([2, 0, 1], { 2: 'king', 0: 'citizen', 1: 'scum' });
+  const pairs = S.exchangePairs([2, 0, 1], { 2: 'king', 0: 'commoner', 1: 'scum' });
   assert.equal(pairs.length, 1); assert.deepEqual([pairs[0].from, pairs[0].to, pairs[0].n], [1, 2, 2]);
 });
 
 test('beg text is trimmed and capped', () => {
-  const r = S.newRound({ no: 2, order: [0, 1, 2], titles: { 0: 'king', 1: 'citizen', 2: 'scum' }, rng: seq(3) });
+  const r = S.newRound({ no: 2, order: [0, 1, 2], titles: { 0: 'king', 1: 'commoner', 2: 'scum' }, rng: seq(3) });
   const p = S.payTribute(r, 2, 'x'.repeat(500));
   assert.equal(p.beg.length, S.BEG_MAX);
 });
@@ -224,4 +224,22 @@ test('a whole bot game always finishes with a full order', () => {
     for (let i = 0; i < 2000 && r.phase === 'play'; i++) { const m = S.autoMove(r, r.turn, { bot: true }); if (m.play) S.play(r, r.turn, m.play); else S.pass(r, r.turn); }
     assert.equal(r.phase, 'done', `game ${g}`); assert.equal(r.finished.length, n);
   }
+});
+
+test('bug auto-play: always your highest legal play', () => {
+  const r = round({ 0: ['3h', '9c', 'Kd', 'Ah'], 1: ['4c', '4d', 'Qs', 'Qh', 'Ac', 'Ad', '2s'], 2: ['5h', '5c', '7d', 'Jh', 'Jd', 'Js'] });
+  assert.deepEqual(S.bugMove(r, 0), { play: ['Ah'] }, 'leading: the single highest card, an ace if you have one');
+  r.pile = { cards: ['9h', '9s'], count: 2, rank: 9, seat: 2 }; r.owner = 2;
+  assert.deepEqual(S.bugMove(r, 1), { play: ['Ac', 'Ad'] }, 'following a pair: two aces beat two queens');
+  assert.deepEqual(S.bugMove(r, 2), { play: ['Jh', 'Js'] }, 'two of the three jacks (the highest legal pair)');
+  assert.deepEqual(S.bugMove(r, 0), { pass: true }, 'one ace cannot clear a pair, no pair: pass');
+  r.pile = { cards: ['8h'], count: 1, rank: 8, seat: 2 };
+  assert.deepEqual(S.bugMove(r, 0), { play: ['Ah'] }, 'single: the ace');
+  r.pile = { cards: ['Ks'], count: 1, rank: 13, seat: 2 };
+  assert.deepEqual(S.bugMove(r, 2), { pass: true }, 'nothing over a king: pass');
+  r.pile = { cards: ['As'], count: 1, rank: 14, seat: 2 };
+  assert.deepEqual(S.bugMove(r, 1), { pass: true }, 'nothing goes on an ace');
+  r.pile = { cards: ['6h', '6c', '6d'], count: 3, rank: 6, seat: 0 };
+  assert.deepEqual(S.bugMove(r, 2), { play: ['Jd', 'Jh', 'Js'] }, 'three jacks on threes');
+  for (const p of [S.bugMove(r, 0), S.bugMove(r, 1), S.bugMove(r, 2)]) if (p.play) assert.equal(S.playProblem(r.pile, p.play), null, 'every bug play is legal');
 });

@@ -1,14 +1,15 @@
-// Async Scum: lobby (/scum) and table (/scum/CODE). One screen each, never scrolls. Play for pride: no money moves.
+// Async Scum: lobby (/scum) and table (/scum/CODE). One screen each, never scrolls. Free to play; title pay (King +$100 … Scum −$10) moves the real bankroll when the payouts flag is on.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useSession, refreshSession } from '../api.js';
-import { navigate } from '../App.jsx';
+import { navigate, goToMines } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
 import { useMedia } from '../ui.jsx';
 import { Bust } from '../avatar/Bust.jsx';
 import { SeatBuddy } from '../table/TableBug.jsx';
 import { Card } from '../Card.jsx';
 import { sfx, isMuted, setMuted } from '../bj/sfx.js';
-import { SkipBlast } from './Trollface.jsx';
+import { SkipBlast, CrownBlast } from './Trollface.jsx';
+import { TableBugSprite } from '../table/TableBug.jsx';
 import '../bj/bj.css';
 import './scum.css';
 
@@ -19,8 +20,8 @@ export const sortCards = (cards) => cards.slice().sort((a, b) => rk(a) - rk(b) |
 const RN = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
 const rn = (r) => (r === 10 ? '10' : RN[r] || String(r));
 const SET = ['', 'single', 'pair', 'three', 'four'];
-const TITLE = { king: 'King', queen: 'Queen', citizen: 'Citizen', babyScum: 'Baby Scum', scum: 'Scum' };
-const CROWN = { king: '♚', queen: '♛', citizen: '', babyScum: '🪣', scum: '🪣' };
+const TITLE = { king: 'King', queen: 'Queen', commoner: 'Commoner', babyScum: 'Baby Scum', scum: 'Scum' };
+const CROWN = { king: '♚', queen: '♛', commoner: '', babyScum: '🪣', scum: '🪣' };
 const TURN = { 30: '30 s', 120: '2 min', 600: '10 min', 3600: '1 hour', 86400: '1 day' };
 const left = (ms) => { if (ms <= 0) return '0s'; const s = Math.ceil(ms / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.ceil(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`; };
 const setName = (p) => (p ? `${p.count === 1 ? 'a' : SET[p.count] === 'pair' ? 'a pair of' : SET[p.count]} ${rn(p.rank)}${p.count > 1 ? 's' : ''}` : '');
@@ -41,9 +42,16 @@ const RULES = [
   'Match the rank just played and the next player is SKIPPED.',
   'Aces clear the pile: 1 ace on singles, 2 on pairs, 3 on threes, 4 on fours. Nothing goes on an ace; you lead again.',
   'When everyone passes, the last player to play leads fresh.',
-  'First out is King, then Queen. Second to last is Baby Scum, last is Scum. (3 players: King, Citizen, Scum.)',
+  'First out is King, then Queen. Second to last is Baby Scum, last is Scum. (3 players: King, Commoner, Scum.)',
   'Next round Scum gives the King their 2 best cards, Baby Scum gives the Queen their best. Both may beg. The King gives back any 2, the Queen any 1.',
   'The King leads; Scum goes last. Round 1: whoever has the 2♣ leads.',
+  'Miss your turn and your bug plays for you. It always plays your highest card (or passes if nothing beats the pile).',
+];
+/** Title pay is on your real bankroll; listed only while the payouts flag is on. */
+const PAY_RULES = [
+  'Free to play. Each round’s titles pay: King +$100, Queen +$50, Commoner $0, Baby Scum −$5, Scum −$10.',
+  'From Scum straight to King? You also take every King payout the old King collected at this table.',
+  'Under $10 you sit out (seat saved) until a shift in the Acid Mines covers the dues.',
 ];
 
 export default function ScumPage({ code }) {
@@ -60,8 +68,8 @@ function Seg({ label, value, options, onChange, test }) {
     </div>
   );
 }
-function RulesPop({ onClose }) {
-  return <div className="bj-pop" data-test="scum-rules-pop" onClick={onClose}><div className="panel"><h3 className="western">House rules</h3><ul>{RULES.map((x) => <li key={x}>{x}</li>)}<li>Play for pride. No chips change hands.</li></ul><button className="btn small">Close</button></div></div>;
+function RulesPop({ onClose, pay }) {
+  return <div className="bj-pop" data-test="scum-rules-pop" onClick={onClose}><div className="panel"><h3 className="western">House rules</h3><ul>{RULES.map((x) => <li key={x}>{x}</li>)}{pay ? PAY_RULES.map((x) => <li key={x}>{x}</li>) : <li>Play for pride. No chips change hands.</li>}</ul><button className="btn small">Close</button></div></div>;
 }
 
 // ---------------------------------------------------------------- lobby + setup
@@ -103,7 +111,7 @@ function ScumLobby({ me }) {
         <Seg label="Seats" value={st.maxSeats} onChange={(v) => S('maxSeats', v)} options={info.limits.maxSeats.map((x) => [x, String(x)])} />
       </div>
       {narrow ? <p className="small bj-note sc-pitch">Aces are trump. Match the last card and the next sap is skipped. Finish first, be King. Finish last, hand over your best cards.</p>
-        : <div className="sc-howto"><h3 className="western">How it plays</h3><ul className="small">{RULES.map((x) => <li key={x}>{x}</li>)}</ul></div>}
+        : <div className="sc-howto"><h3 className="western">How it plays</h3><ul className="small">{[...RULES, ...(info.payouts ? PAY_RULES : [])].map((x) => <li key={x}>{x}</li>)}</ul></div>}
       <div className="bj-create"><span className="small dim">3–7 players · invite friends with the link · out of time = pass</span>
         <button className="btn ghost small" onClick={() => create()} data-test="scum-create">Open lobby</button>
         <button className="btn primary" onClick={() => create({ deal: true })} disabled={!canDeal} title={canDeal ? 'Create and deal with the bots' : 'Needs 2 bots to deal right away'} data-test="scum-create-deal">Open & deal →</button></div>
@@ -112,14 +120,14 @@ function ScumLobby({ me }) {
   return (
     <div className="screen bj">
       <div className="panel bj-lobby sc-lobby">
-        <div className="bj-head"><button className="btn ghost small" onClick={() => navigate('/')}>← Lobby</button><h1 className="western">Async Scum</h1><span className="bj-sub">Aces are trump · Play for pride</span>
+        <div className="bj-head"><button className="btn ghost small" onClick={() => navigate('/')}>← Lobby</button><h1 className="western">Async Scum</h1><span className="bj-sub">{info.payouts ? 'Free to play · King +$100 · Scum −$10' : 'Aces are trump · Play for pride'}</span>
           <div className="bj-head-r"><button className="btn ghost small" onClick={() => setRules(true)} data-test="scum-rules">Rules</button></div></div>
         {err && <p className="error" role="alert">{err}</p>}
         {narrow ? <>
           <div className="bj-sectabs top" role="tablist">{[['new', 'Start a table'], ['tables', `Your tables${info.tables.length ? ` (${info.tables.length})` : ''}`]].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-test={`scum-tab-${k}`}>{l}</button>)}</div>
           {tab === 'new' ? form : tables}
         </> : <div className="bj-cols"><section>{form}</section><section><h3 className="western">Your tables</h3>{tables}</section></div>}
-        {rules && <RulesPop onClose={() => setRules(false)} />}
+        {rules && <RulesPop pay={info.payouts} onClose={() => setRules(false)} />}
       </div>
     </div>
   );
@@ -145,6 +153,9 @@ function useView(code) {
   return [v, setV, err, setErr];
 }
 
+/** What the playback steps through: plays, clears, your bug covering a turn, and Scum-to-King. */
+const replays = (e) => ['play', 'clear', 's2k'].includes(e.ev?.k) || (e.ev?.k === 'pass' && !!e.ev.bug);
+const cash = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('en-US')}`;
 /** Plays new public moves one at a time: cards landing on the pile, clears, and skip blasts. Missed moves replay on return. */
 function usePlayback(v, code) {
   const seen = useRef(null); const [queue, setQueue] = useState([]); const [catching, setCatching] = useState(0);
@@ -153,11 +164,11 @@ function usePlayback(v, code) {
     if (seen.current == null) {
       const stored = Number(localStorage.getItem(SEEN(code)));
       seen.current = Number.isFinite(stored) && stored > 0 && stored <= v.seq ? stored : v.seq; // first visit: nothing to catch up on
-      const missed = v.log.filter((e) => e.seq > seen.current && ['play', 'clear'].includes(e.ev?.k)).slice(-16);
+      const missed = v.log.filter((e) => e.seq > seen.current && replays(e)).slice(-16);
       if (missed.length > 1) setCatching(missed.length);
       if (missed.length) setQueue(missed);
     } else {
-      const fresh = v.log.filter((e) => e.seq > seen.current && ['play', 'clear'].includes(e.ev?.k));
+      const fresh = v.log.filter((e) => e.seq > seen.current && replays(e));
       if (fresh.length) setQueue((q) => [...q, ...fresh].slice(-16));
     }
     seen.current = Math.max(seen.current, v.seq);
@@ -181,6 +192,8 @@ function ScumTable({ code, me }) {
   const [show, setShow] = useState(null);
   const [busy, setBusy] = useState(false);
   const [blast, setBlast] = useState(null);
+  const [crown, setCrown] = useState(null);
+  const [bugNote, setBugNote] = useState(null);
   const [muted, setMute] = useState(isMuted());
   const [copied, setCopied] = useState(false);
   const [, tick] = useState(0);
@@ -200,6 +213,13 @@ function ScumTable({ code, me }) {
   useEffect(() => {
     if (!step) return undefined;
     const e = step.ev;
+    if (e.bug && v) { const who = v.seats[e.seat]; setBugNote({ seq: step.seq, bug: e.bug, me: !!who?.me, name: who?.name || 'Someone', pass: e.k === 'pass' }); }
+    if (e.k === 's2k' && v) {
+      setCrown({ seq: step.seq, name: v.seats[e.seat]?.name || 'Somebody', from: v.seats[e.from]?.name || 'the King', amt: e.amt, me: !!v.seats[e.seat]?.me, dethroned: !!v.seats[e.from]?.me, short: !!pb.catching });
+      if (!isMuted()) sfx.bj();
+      return undefined;
+    }
+    if (e.k === 'pass') { const id = setTimeout(pb.next, pb.catching ? 650 : 1100); return () => clearTimeout(id); }
     if (e.k === 'play' && e.skip != null && v) {
       const skipped = v.seats[e.skip]; const by = v.seats[e.seat];
       setBlast({ seq: step.seq, name: skipped?.name || 'Somebody', by: by?.name, me: skipped?.me, short: !!pb.catching });
@@ -211,6 +231,8 @@ function ScumTable({ code, me }) {
     return () => clearTimeout(id);
   }, [step?.seq]);
   const endBlast = useCallback(() => { setBlast(null); pb.next(); }, [pb.next]);
+  const endCrown = useCallback(() => { setCrown(null); pb.next(); }, [pb.next]);
+  useEffect(() => { if (!bugNote) return undefined; const id = setTimeout(() => setBugNote(null), 2600); return () => clearTimeout(id); }, [bugNote?.seq]);
 
   if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/scum')}>Back to scum</button>}</div></div>;
   const post = async (path, body) => {
@@ -231,7 +253,7 @@ function ScumTable({ code, me }) {
 
   // What the pile shows: a move being played back, else the live pile.
   const pe = step?.ev;
-  const frame = pe ? (pe.k === 'play' ? { cards: pe.cards, seat: pe.seat, seq: step.seq } : { cards: null, seat: pe.seat, cleared: pe.why, seq: step.seq })
+  const frame = pe && pe.k !== 's2k' && pe.k !== 'pass' ? (pe.k === 'play' ? { cards: pe.cards, seat: pe.seat, seq: step.seq } : { cards: null, seat: pe.seat, cleared: pe.why, seq: step.seq })
     : r?.pile ? { cards: r.pile.cards, seat: r.pile.seat, seq: `live-${r.pile.seat}-${r.pile.cards.join('')}` } : { cards: null, seat: r?.turn, seq: 'clear' };
   const from = frame.seat != null && pos[frame.seat] ? { x: pos[frame.seat].x - 50, y: pos[frame.seat].y - 48 } : { x: 0, y: 40 };
 
@@ -252,6 +274,7 @@ function ScumTable({ code, me }) {
   const pileTxt = frame.cards ? `${v.seats[frame.seat]?.name || ''}: ${setName({ count: frame.cards.length, rank: rk(frame.cards[0]) })}` : frame.cleared === 'ace' ? 'Ace! Pile cleared.' : r?.phase === 'play' ? `Pile's clear. ${turnName || ''} leads.` : '';
   const status = v.status === 'lobby' ? `Waiting to deal · ${v.seats.filter(Boolean).length} seated${v.bots ? ` + ${v.bots} bot${v.bots > 1 ? 's' : ''} on deal` : ''}`
     : v.status === 'over' ? 'Game over'
+    : v.hold ? 'Waiting on the Acid Mines: not enough players can cover the dues'
     : ex ? 'Royal court in session: cards changing hands'
     : r?.myTurn ? (r.leading ? 'Your lead. Play any set.' : `Your turn: beat ${setName(r.pile)} or pass.`)
     : turnName ? `${turnName}'s turn` : '';
@@ -286,25 +309,31 @@ function ScumTable({ code, me }) {
           {w > 0 && <>
             <div className="bj-oval sc-oval" style={{ left: `${tall ? 9 : 8}%`, right: `${tall ? 9 : 8}%`, top: `${tall ? 15 : 17}%`, bottom: `${tall ? 23 : 21}%` }} aria-hidden="true"><div className="bj-oval-logo script">Buffalo Bill's</div></div>
             <div className="sc-pile" data-test="scum-pile">
-              {ex ? <Court v={v} /> : <>
+              {ex || v.hold ? <Court v={v} /> : <>
                 <div className="sc-pile-cards" key={frame.seq} style={{ '--fx': `${from.x * 4}%`, '--fy': `${from.y * 4}%` }}>
                   {frame.cards ? frame.cards.map((c, i) => <span key={c} className={`sc-pc ${reduced ? '' : 'sc-land'}`} style={{ '--k': i }}><Card card={c} size="md" /></span>)
                     : <span className={`sc-clear ${frame.cleared === 'ace' ? 'ace' : ''}`}>{frame.cleared === 'ace' ? 'A!' : '∅'}</span>}
                 </div>
                 <div className="sc-pile-txt small">{pileTxt}</div>
+                {bugNote && <div className={`sc-bugnote ${bugNote.me ? 'me' : ''}`} key={bugNote.seq} data-test="scum-bugnote" role="status">
+        {bugNote.bug.generic ? <span className="sc-bug-ic" aria-hidden="true">🐞</span> : <TableBugSprite bug={bugNote.bug} size={30} reduced={reduced} />}
+        <span>{bugNote.me ? 'Your bug played for you' : `${bugNote.name}'s bug played for them`}<small>{bugNote.pass ? 'Nothing beat it: pass' : 'Always the highest card'}</small></span>
+      </div>}
               </>}
             </div>
             {disp.map((i) => {
               const s = v.seats[i]; const p = pos[i];
               return (
-                <div key={i} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${s.turn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
+                <div key={i} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${s.turn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${p.x > 68 ? 'east' : ''}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
                   </SeatBuddy>
                   {s.title && <span className={`sc-title t-${s.title}`} data-test="scum-title">{CROWN[s.title]} {TITLE[s.title]}</span>}
+                  {v.payouts && s.broke ? <span className="sc-paychip broke" data-test="scum-minechip" title="Off to the Acid Mines">⛏ mines</span>
+                    : v.payouts && s.pay ? <span className={`sc-paychip ${s.pay > 0 ? 'up' : 'down'}`} data-test="scum-paychip" title={s.bot ? 'House money (bots never touch a bankroll)' : 'This round’s title pay'}>{cash(s.pay)}</span> : null}
                   <div className="bj-pill sc-pill">
                     <b>{s.here && <i className="here-dot" data-test="here-dot" title="At the table now" />}{s.bot ? '🤖 ' : ''}{s.name}</b>
-                    {r && !s.waiting && !s.left && <span className="mono sc-count" title={`${s.count} cards`}>{s.place ? `out ${['', '1st', '2nd', '3rd'][s.place] || `${s.place}th`}` : `🂠${s.count}`}</span>}
+                    {r && !s.waiting && !s.left && !s.broke && <span className="mono sc-count" title={`${s.count} cards`}>{s.place ? `out ${['', '1st', '2nd', '3rd'][s.place] || `${s.place}th`}` : `🂠${s.count}`}</span>}
                     {s.waiting && <span className="mono dim">next round</span>}{s.left && <span className="mono dim">left</span>}
                   </div>
                 </div>
@@ -327,7 +356,8 @@ function ScumTable({ code, me }) {
                 {hand.map((c, k) => (
                   <button key={c} type="button" className={`sc-hc ${sel.includes(c) ? 'sel' : ''} ${fresh.has(c) ? 'fresh' : ''} ${owed.has(c) ? 'owed' : ''}`} style={{ left: `${handX + k * stepX}px`, zIndex: k }}
                     onClick={() => tap(c)} aria-pressed={sel.includes(c)} disabled={!(myTurn || giving)} data-test={`scum-card-${c}`}><Card card={c} size="md" /></button>))}
-                {!hand.length && <span className="small dim sc-nohand">{mine.waiting ? 'You get dealt in next round.' : mine.place ? `You're out ${mine.place === 1 ? 'first. Long live the King.' : `#${mine.place}.`}` : ''}</span>}
+                {!hand.length && mine.broke ? <div className="sc-broke" data-test="scum-broke"><span className="sc-broke-ic" aria-hidden="true">⛏</span><span className="small"><b>Broke.</b> You need {cash(v.payouts?.need || 10).slice(1)} to be dealt in (Scum dues). Your seat is saved.</span><button className="btn primary small" onClick={goToMines} data-test="scum-mines">Work a shift →</button></div>
+                  : !hand.length && <span className="small dim sc-nohand">{mine.waiting ? 'You get dealt in next round.' : mine.place ? `You're out ${mine.place === 1 ? 'first. Long live the King.' : `#${mine.place}.`}` : ''}</span>}
               </div>
               {r?.phase === 'play' && <div className="bj-acts sc-acts">
                 {r.myTurn ? <>
@@ -339,10 +369,11 @@ function ScumTable({ code, me }) {
         </div>
         {err && <p className="error bj-err" role="alert">{err}</p>}
         {pb.catching > 0 && <button className="sc-catch" onClick={pb.skip} data-test="scum-catchup">↺ Catching up on {pb.catching} moves · tap to skip</button>}
-        {show === 'rules' && <RulesPop onClose={() => setShow(null)} />}
+        {show === 'rules' && <RulesPop pay={!!v.payouts} onClose={() => setShow(null)} />}
         {show === 'log' && <div className="bj-pop" data-test="scum-log" onClick={() => setShow(null)}><div className="panel sc-logp"><h3 className="western">Table log</h3><ol className="sc-log">{v.log.slice(-40).reverse().map((e) => <li key={e.seq} className={e.ev?.skip != null ? 'skip' : ''}>{e.text}</li>)}</ol><button className="btn small">Close</button></div></div>}
         {v.status === 'over' && v.lastRound && <Final v={v} />}
       </div>
+      {crown && <CrownBlast key={crown.seq} {...crown} onDone={endCrown} />}
       {blast && <SkipBlast key={blast.seq} name={blast.name} by={blast.by} me={blast.me} short={blast.short} onDone={endBlast} />}
     </div>
   );
@@ -350,11 +381,13 @@ function ScumTable({ code, me }) {
 
 /** Center of the felt during the exchange: last round's titles and who still owes whom. */
 function Court({ v }) {
-  const pairs = v.round.exchange.pairs;
+  const pairs = v.round?.exchange?.pairs || [];
   return (
     <div className="sc-court" data-test="scum-court">
       <b className="western">Round {v.lastRound?.no} standings</b>
-      <ol className="sc-stand">{(v.lastRound?.finish || []).map((x) => <li key={x.seat} className={`t-${x.title}`}><span>{CROWN[x.title]} {TITLE[x.title]}</span><b>{x.name}</b></li>)}</ol>
+      <ol className="sc-stand">{(v.lastRound?.finish || []).map((x) => <li key={x.seat} className={`t-${x.title}`}><span>{CROWN[x.title]} {TITLE[x.title]}</span><b>{x.name}</b>{v.payouts && <i className={`mono sc-pay ${x.net > 0 ? 'up' : x.net < 0 ? 'down' : ''}`} data-test="scum-standpay" title={x.house ? 'House money' : x.short ? 'Paid what they had' : ''}>{x.net ? cash(x.net) : '$0'}</i>}</li>)}</ol>
+      {v.lastRound?.s2k?.amt > 0 && <div className="sc-s2k small" data-test="scum-s2k-line">♚ From Scum to King: {v.lastRound.s2k.name} took {cash(v.lastRound.s2k.amt).slice(1)} of {v.lastRound.s2k.fromName}'s King pay</div>}
+      {v.hold && <div className="sc-owes small" data-test="scum-hold">⛏ Waiting for {v.seats.filter((s) => s?.broke).map((s) => s.name).join(' & ') || 'players'} to earn {cash(v.payouts?.need || 10).slice(1)} in the Acid Mines</div>}
       <div className="sc-owes small">{pairs.map((p) => <span key={p.from}>{v.seats[p.from]?.name} → {v.seats[p.to]?.name}: {p.given ? 'done' : p.paid ? `${v.seats[p.to]?.name} picking` : 'owes'}</span>)}</div>
     </div>
   );
@@ -388,7 +421,7 @@ function Final({ v }) {
   const rows = v.seats.filter(Boolean).filter((s) => !s.bot || true).sort((a, b) => (b.stats?.king || 0) - (a.stats?.king || 0) || (a.stats?.scum || 0) - (b.stats?.scum || 0));
   return (
     <div className="bj-pop final" data-test="scum-final"><div className="panel"><h3 className="western">Final court</h3>
-      <ol className="bj-stand sc-final">{rows.map((s) => <li key={s.i}><b>{s.name}</b><span className="mono">♚ {s.stats?.king || 0}</span><span className="mono">🪣 {s.stats?.scum || 0}</span><span className="mono">skips {s.stats?.skips || 0}</span></li>)}</ol>
+      <ol className="bj-stand sc-final">{rows.map((s) => <li key={s.i}><b>{s.name}</b><span className="mono">♚ {s.stats?.king || 0}</span><span className="mono">🪣 {s.stats?.scum || 0}</span><span className="mono">skips {s.stats?.skips || 0}</span>{v.payouts && !s.bot && <span className={`mono sc-pay ${(s.stats?.cash || 0) > 0 ? 'up' : (s.stats?.cash || 0) < 0 ? 'down' : ''}`}>{cash(s.stats?.cash || 0)}</span>}</li>)}</ol>
       <button className="btn primary small" onClick={() => navigate('/scum')}>Back to scum</button></div></div>
   );
 }

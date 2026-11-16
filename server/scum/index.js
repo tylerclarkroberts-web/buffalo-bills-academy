@@ -1,8 +1,13 @@
 // Async Scum service: tables in scum.json, invite links (/scum/CODE), a clock that passes for you, bots, seat
-// avatars and who-is-here dots. Play for pride: no bankroll ever moves here (betting stays off everywhere).
+// avatars and who-is-here dots. No buy-in and no betting (canBet stays off). Title payouts (flag `payouts`, default
+// on): when a round's titles are set, King +$100, Queen +$50, Commoner $0, Baby Scum -$5, Scum -$10, on the real
+// bankroll through Accounts (txn type 'scum'). From Scum straight to King also takes the dethroned King's
+// accumulated King payouts at this table (moved from their bankroll, capped at what they have; the house covers a
+// bot King). Humans need $10 (the worst dues) to be dealt in; below that the seat is saved and they sit out until
+// the Acid Mines pay for their way back. Bots never touch money.
 import crypto from 'node:crypto';
 import { GameError } from '../engine/game.js';
-import { attachSeatBugs } from '../tableBug.js';
+import { attachSeatBugs, tableBugOf } from '../tableBug.js';
 import * as S from './rules.js';
 
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -17,11 +22,13 @@ export function cleanSettings(s = {}) {
   return { turnSec: pick(s.turnSec, LIMITS.turnSecs, 86400), maxSeats, bots: Math.min(maxSeats - 1, pick(s.bots, LIMITS.bots, 2)) };
 }
 const stats0 = () => ({ rounds: 0, king: 0, scum: 0, skips: 0, skipped: 0 });
+const money = (x) => `$${Math.abs(x).toLocaleString('en-US')}`;
 const err = (e) => (e instanceof GameError ? e : new GameError(e.message, 409));
 
 export class Scum {
-  constructor({ store, getPlayer, now, rng = cryptoRng, tickMs = 1000, botMs = 1400, avatars = null, barn = null }) {
-    Object.assign(this, { store, getPlayer, now, rng, botMs, avatars, barn });
+  constructor({ store, getPlayer, now, rng = cryptoRng, tickMs = 1000, botMs = 1400, avatars = null, barn = null, accounts = null, payouts = true }) {
+    Object.assign(this, { store, getPlayer, now, rng, botMs, avatars, barn, accounts });
+    this.payouts = !!(payouts && accounts);
     this.doc = store.loadDoc('scum', { tables: {} }); this.doc.tables ||= {};
     this.seen = new Map(); // `${code}:${playerId}` -> last time their table page was in front (memory only)
     if (tickMs) { this.timer = setInterval(() => this.tick(), tickMs); this.timer.unref?.(); }
@@ -89,9 +96,35 @@ export class Scum {
       for (let b = 0; b < t.settings.bots; b++) { const i = t.seats.findIndex((s) => !s); if (i < 0) break; t.seats[i] = { id: `scumbot-${b}`, name: BOT_NAMES[b], bot: true, stats: stats0() }; added.push(i); }
       const order = this.present(t);
       if (order.length < S.MIN_PLAYERS) { for (const i of added) t.seats[i] = null; throw new GameError(`Scum needs ${S.MIN_PLAYERS} players. Add a bot or wait for friends.`, 409); }
+      const ok = order.filter((s) => this.funded(t, s));
+      if (ok.length < S.MIN_PLAYERS || !ok.some((s) => !t.seats[s].bot)) {
+        for (const i of added) t.seats[i] = null;
+        const broke = order.filter((s) => !this.funded(t, s)).map((s) => this.nm(t, s));
+        throw new GameError(`${broke.join(' and ')} need${broke.length === 1 ? 's' : ''} ${money(S.DUES_MAX)} to be dealt in (Scum pays ${money(S.DUES_MAX)}). Work a shift in the Acid Mines first.`, 402);
+      }
       t.status = 'playing'; t.startedAt = this.now();
-      this.deal(t, order, null);
+      this.dealIn(t, order, null);
     });
+  }
+  /** Can this seat cover the worst dues? Bots always can (the house backs them); so can everyone with payouts off. */
+  funded(t, s) {
+    const x = t.seats[s]; if (!this.payouts || !x || x.bot) return true;
+    const p = this.getPlayer(x.id); if (!p) return false;
+    this.accounts.ensure(p);
+    return p.bankroll + 1e-9 >= S.DUES_MAX;
+  }
+  /** Deal the funded seats in; broke humans keep their seat and sit out. Too few funded players: hold until they're back. */
+  dealIn(t, order, titles) {
+    const ok = order.filter((s) => this.funded(t, s));
+    for (const s of order) {
+      const x = t.seats[s]; const broke = !ok.includes(s);
+      if (broke && !x.broke) this.log(t, `${x.name} can't cover the ${money(S.DUES_MAX)} Scum dues. Off to the Acid Mines; the seat is saved.`, { k: 'broke', seat: s });
+      if (!broke && x.broke) this.log(t, `${x.name} is back from the mines with money in their pocket.`, { k: 'unbroke', seat: s });
+      if (broke) x.broke = true; else delete x.broke;
+    }
+    if (ok.length >= S.MIN_PLAYERS && ok.some((s) => !t.seats[s].bot)) { delete t.hold; return this.deal(t, ok, titles); }
+    if (!t.hold) this.log(t, `Waiting on the Acid Mines: ${S.MIN_PLAYERS} players with ${money(S.DUES_MAX)} needed to deal.`, { k: 'hold' });
+    t.hold = { order, titles }; t.round = null;
   }
   present(t) { return t.seats.map((s, i) => (s && !s.left ? i : -1)).filter((i) => i >= 0); }
   deal(t, order, titles) {
@@ -112,27 +145,33 @@ export class Scum {
 
   // ---------------------------------------------------------------- play
   mySeat(t, p) { const i = t.seats.findIndex((s) => s && !s.left && s.id === p.id); if (i < 0) throw new GameError('Take a seat first.', 409); return i; }
-  live(t) { if (t.status !== 'playing' || !t.round) throw new GameError('The game is not running.', 409); return t.round; }
+  live(t) { if (t.status !== 'playing' || !t.round) throw new GameError(t.hold ? 'The table is waiting on the Acid Mines.' : 'The game is not running.', 409); return t.round; }
   cardList(cards) { return Array.isArray(cards) ? cards.slice(0, 8).map(String) : []; }
   play(p, code, cards) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doPlay(t, this.mySeat(t, p), this.cardList(cards))); }
   pass(p, code) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doPass(t, this.mySeat(t, p))); }
   tribute(p, code, beg) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doTribute(t, this.mySeat(t, p), beg)); }
   give(p, code, cards) { const t = this.table(code); this.live(t); return this.mutate(t, p.id, () => this.doGive(t, this.mySeat(t, p), this.cardList(cards))); }
-  doPlay(t, seat, cards, auto = false) {
+  /** The bug that covers a missed turn: their hatched Barn bug, or a generic one. */
+  bugOf(t, s) {
+    const b = tableBugOf(this.barn, t.seats[s]?.id);
+    return b ? { name: b.name || b.speciesName || 'their bug', species: b.species, ...(b.style ? { style: b.style } : {}) } : { name: 'a stray bug', generic: true };
+  }
+  doPlay(t, seat, cards, auto = null) {
     const r = t.round; const over = r.pile?.seat;
     const res = S.play(r, seat, cards);
     const who = this.nm(t, seat);
     const skipTxt = res.skipped != null ? ` Same rank: ${this.nm(t, res.skipped)} is SKIPPED!` : '';
-    this.log(t, `${who} ${auto ? '(clock) ' : ''}plays ${S.describe(cards)}.${skipTxt}`, { k: 'play', seat, cards: cards.slice(), left: r.hands[seat].length, ...(res.skipped != null ? { skip: res.skipped, over } : {}) });
+    const by = auto ? `${who} missed their turn; ${auto.generic ? 'a stray bug' : `their bug ${auto.name}`} plays their highest: ${S.describe(cards)}.` : `${who} plays ${S.describe(cards)}.`;
+    this.log(t, `${by}${skipTxt}`, { k: 'play', seat, cards: cards.slice(), left: r.hands[seat].length, ...(auto ? { bug: auto } : {}), ...(res.skipped != null ? { skip: res.skipped, over } : {}) });
     if (res.skipped != null) { t.seats[seat].stats.skips++; t.seats[res.skipped].stats.skipped++; }
     if (res.out) this.log(t, `${who} is out ${PLACE[res.out] || `#${res.out}`}.`, { k: 'out', seat, place: res.out });
     if (res.cleared === 'ace') this.log(t, `Ace! The pile clears.${r.turn != null ? ` ${this.nm(t, r.turn)} leads.` : ''}`, { k: 'clear', why: 'ace', seat: r.turn });
     else if (res.cleared === 'pass') this.log(t, `Nobody can follow that. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
     if (r.phase === 'done') this.finishRound(t); else this.clock(t);
   }
-  doPass(t, seat, auto = false) {
+  doPass(t, seat, auto = null) {
     const r = t.round; const res = S.pass(r, seat);
-    this.log(t, `${this.nm(t, seat)} ${auto ? 'ran out the clock and passes' : 'passes'}.`, { k: 'pass', seat });
+    this.log(t, auto ? `${this.nm(t, seat)} missed their turn; ${auto.generic ? 'a stray bug' : `their bug ${auto.name}`} has nothing that beats it and passes.` : `${this.nm(t, seat)} passes.`, { k: 'pass', seat, ...(auto ? { bug: auto } : {}) });
     if (res.cleared) this.log(t, `Everyone passed. ${this.nm(t, r.turn)} leads.`, { k: 'clear', why: 'pass', seat: r.turn });
     this.clock(t);
   }
@@ -157,20 +196,69 @@ export class Scum {
   finishRound(t) {
     const r = t.round;
     const finish = r.finished.filter((s) => t.seats[s] && !t.seats[s].left);
+    const prevTitles = t.titles || null;
     const titles = S.titlesFor(finish.length);
     t.titles = Object.fromEntries(finish.map((s, k) => [s, titles[k]]));
     for (const s of finish) { const st = t.seats[s].stats; st.rounds++; if (t.titles[s] === 'king') st.king++; if (t.titles[s] === 'scum') st.scum++; }
     t.lastRound = { no: r.no, finish: finish.map((s) => ({ seat: s, name: this.nm(t, s), title: t.titles[s] })) };
-    this.log(t, `Round ${r.no} over. ${t.lastRound.finish.map((x) => `${S.TITLES[x.title]}: ${x.name}`).join(' · ')}.`, { k: 'round', no: r.no, finish: t.lastRound.finish });
+    if (this.payouts) this.settle(t, prevTitles, r.no);
+    this.log(t, `Round ${r.no} over. ${t.lastRound.finish.map((x) => `${S.TITLES[x.title]}: ${x.name}${x.pay ? ` (${x.pay > 0 ? '+' : '-'}${money(x.pay)})` : ''}`).join(' · ')}.`, { k: 'round', no: r.no, finish: t.lastRound.finish });
+    if (t.lastRound.s2k) { const z = t.lastRound.s2k; this.log(t, `FROM SCUM TO KING! ${z.name} takes ${z.fromName}'s King payouts: ${money(z.amt)}.`, { k: 's2k', seat: z.seat, from: z.from, amt: z.amt }); }
     const newcomers = this.present(t).filter((s) => !finish.includes(s));
     const order = S.nextOrder(finish, newcomers);
     if (order.length < S.MIN_PLAYERS || !order.some((s) => !t.seats[s].bot)) return this.endGame(t, order.length < S.MIN_PLAYERS ? 'Not enough players left for another round.' : 'Only bots left.');
-    this.deal(t, order, t.titles);
+    this.dealIn(t, order, t.titles);
+  }
+  /**
+   * Title payouts on the real bankroll (txn type 'scum'). Dues take what you have if you spent below them mid-round
+   * (you were dealt in with at least $10, so that is the only way to come up short). From Scum to King: the new King
+   * also takes the dethroned King's accumulated King payouts at this table, moved from that player's bankroll
+   * (capped at what they have); the house pays it for a bot King. The dethroned King's tally resets. Bots move no money.
+   */
+  settle(t, prev, no) {
+    t.kingPay ||= {};
+    const where = `${t.name}, round ${no}`;
+    const players = new Map();
+    const pl = (s) => { const x = t.seats[s]; if (!x || x.bot) return null; const p = this.getPlayer(x.id); if (p) { this.accounts.ensure(p); players.set(p.id, p); } return p; };
+    const key = (s) => t.seats[s]?.id;
+    const move = (p, amt, note) => { if (!p || !amt) return 0; const a = amt < 0 ? -Math.min(-amt, Math.max(0, p.bankroll)) : amt; if (a) this.accounts.change(p, a, 'scum', `Async Scum: ${note} (${where})`, { save: false }); return a; };
+    const NOTE = { king: 'King payout', queen: 'Queen payout', babyScum: 'Baby Scum dues', scum: 'Scum dues' };
+    for (const x of t.lastRound.finish) {
+      const want = S.PAY[x.title] || 0; if (!want) continue;
+      const bot = !!t.seats[x.seat]?.bot;
+      x.pay = bot ? want : move(pl(x.seat), want, NOTE[x.title]);
+      if (bot) x.house = true;
+      if (x.pay < 0 && x.pay > want) x.short = true;
+      if (x.title === 'king') t.kingPay[key(x.seat)] = (t.kingPay[key(x.seat)] || 0) + want;
+    }
+    const king = t.lastRound.finish.find((x) => x.title === 'king');
+    const oldKing = prev && Object.keys(prev).map(Number).find((s) => prev[s] === 'king');
+    if (king && prev?.[king.seat] === 'scum' && oldKing != null && oldKing !== king.seat && t.seats[oldKing]) {
+      const k0 = key(oldKing); const owed = t.kingPay[k0] || 0;
+      let amt = owed;
+      if (owed > 0) {
+        if (!t.seats[oldKing].bot) { const p0 = pl(oldKing); amt = p0 ? -move(p0, -owed, `dethroned by ${king.name}, paid their King payouts`) : 0; }
+        if (amt) move(pl(king.seat), amt, `from Scum to King, took ${this.nm(t, oldKing)}'s King payouts`);
+      }
+      t.kingPay[k0] = 0;
+      t.lastRound.s2k = { seat: king.seat, name: king.name, from: oldKing, fromName: this.nm(t, oldKing), amt, owed, house: !!t.seats[oldKing].bot };
+      king.bonus = amt;
+      const d = t.lastRound.finish.find((x) => x.seat === oldKing); if (d) d.dethroned = amt;
+    }
+    for (const x of t.lastRound.finish) { x.net = (x.pay || 0) + (x.bonus || 0) - (x.dethroned || 0); const st = t.seats[x.seat]?.stats; if (st) st.cash = (st.cash || 0) + x.net; }
+    if (players.size) this.accounts.save();
   }
   endGame(t, why) { t.status = 'over'; t.endedAt = this.now(); if (t.round) t.round.turn = null; this.log(t, `Game over. ${why}`, { k: 'over' }); }
 
   /** The clock and the bots. Loops until nothing is due (a bot may answer a bot). */
   advance(t) {
+    if (t.status === 'playing' && t.hold && !t.round) {
+      const order = t.hold.order.filter((s) => t.seats[s] && !t.seats[s].left);
+      const extra = this.present(t).filter((s) => !order.includes(s));
+      const all = S.nextOrder(order, extra);
+      if (all.length < S.MIN_PLAYERS || !all.some((s) => !t.seats[s].bot)) return this.endGame(t, all.length < S.MIN_PLAYERS ? 'Not enough players left for another round.' : 'Only bots left.');
+      if (all.filter((s) => this.funded(t, s)).length >= S.MIN_PLAYERS) this.dealIn(t, all, t.hold.titles);
+    }
     for (let n = 0; n < 400 && t.status === 'playing' && t.round; n++) {
       const r = t.round; const now = this.now();
       const bot = (s) => !!t.seats[s]?.bot;
@@ -185,8 +273,9 @@ export class Scum {
       const s = r.turn; if (s == null) return;
       const isBot = bot(s);
       if (!(isBot ? now >= (r.turnAt || 0) + this.botMs : now >= r.deadline)) return;
-      const m = S.autoMove(r, s, { bot: isBot });
-      if (m.play) this.doPlay(t, s, m.play, !isBot); else this.doPass(t, s, !isBot);
+      if (isBot) { const m = S.autoMove(r, s, { bot: true }); if (m.play) this.doPlay(t, s, m.play); else this.doPass(t, s); continue; }
+      const m = S.bugMove(r, s); const bug = this.bugOf(t, s);
+      if (m.play) this.doPlay(t, s, m.play, bug); else this.doPass(t, s, bug);
     }
   }
   /** Seats the table is waiting on right now (humans and bots). */
@@ -242,7 +331,7 @@ export class Scum {
       const pl = s.bot ? null : this.getPlayer(s.id);
       const avatar = s.bot ? { kind: 'gen', seed: `scumbot:${s.name}`, bot: true } : this.avatars && pl ? this.avatars.info(pl) : { kind: 'gen', seed: s.id };
       return { i, id: s.bot ? null : s.id, name: s.name, me: i === me, bot: !!s.bot, left: !!s.left, waiting: !!s.waiting, count: r?.hands?.[i]?.length ?? 0,
-        title: t.titles?.[i] || null, place: r ? r.finished.indexOf(i) + 1 || null : null, here: !s.bot && here.includes(s.id), turn: waiting.includes(i), avatar, stats: s.stats };
+        title: t.titles?.[i] || null, broke: !!s.broke, pay: (t.lastRound?.finish || []).find((x) => x.seat === i)?.net ?? null, place: r ? r.finished.indexOf(i) + 1 || null : null, here: !s.bot && here.includes(s.id), turn: waiting.includes(i), avatar, stats: s.stats };
     });
     attachSeatBugs(seats, this.barn, (s) => s?.id);
     let round = null;
@@ -256,7 +345,8 @@ export class Scum {
     }
     return {
       game: 'scum', code: t.code, name: t.name, status: t.status, isHost: t.hostId === viewerId, hostName: t.hostName, turnSec: t.turnSec, maxSeats: t.maxSeats, bots: t.settings.bots,
-      minPlayers: S.MIN_PLAYERS, mySeat: me, seats, round, lastRound: t.lastRound, titles: t.titles, waiting, here, seq: t.seq, now,
+      minPlayers: S.MIN_PLAYERS, payouts: this.payouts ? { ...S.PAY, need: S.DUES_MAX } : null, hold: !!t.hold, mySeat: me,
+      bankroll: me >= 0 && this.payouts && !t.seats[me].bot ? this.getPlayer(viewerId)?.bankroll ?? null : null, seats, round, lastRound: t.lastRound, titles: t.titles, waiting, here, seq: t.seq, now,
       log: t.log.filter((e) => !e.vis || e.vis.includes(me)).slice(-80),
     };
   }
