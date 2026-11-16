@@ -10,8 +10,9 @@
 //    King leads and the order is by title: King, Queen, Citizens, (newcomers), Baby Scum, Scum last.
 //  - Lead any single, double, triple or quad of one rank. Followers play the same count of an equal or higher rank,
 //    or pass. Playing the SAME rank as the play right before skips the next player ("You're skipped!").
-//  - Aces: any number of aces (even one) can go on anything, and nothing goes on an ace. Aces clear the pile at
-//    once and the same player leads again (or the next player in order, if that was their last card).
+//  - Aces: aces beat any set of the SAME size: one ace clears singles, two aces clear a pair, three a three, four
+//    a four (fewer aces than the set is not a play). Leading, any number of aces clears. Nothing goes on an ace.
+//    Aces clear the pile at once and the same player leads again (or the next player, if that was their last card).
 //  - When the turn comes back round to whoever played last (everyone else passed or got skipped), the pile clears
 //    and they lead. If they already went out, the next player still in leads. A pass does not lock you out; there
 //    is simply no second lap before the pile clears.
@@ -64,8 +65,10 @@ export function isSet(cards) {
 export function playProblem(pile, cards) {
   if (!isSet(cards)) return 'Play one to four cards of the same rank.';
   if (!pile) return null;
-  if (rank(cards[0]) === ACE) return null; // trump: any number of aces beats anything
   if (pile.rank === ACE) return 'Nothing goes on an ace.';
+  if (rank(cards[0]) === ACE) { // trump, but only as many aces as the set on the pile
+    return cards.length === pile.count ? null : `It takes ${['', 'one ace', 'two aces', 'three aces', 'four aces'][pile.count]} to clear ${pile.count === 1 ? 'a single' : `a ${SETS[pile.count]}`}.`;
+  }
   if (cards.length !== pile.count) return `Play ${pile.count === 1 ? 'a single' : `a ${SETS[pile.count]}`} to follow.`;
   if (rank(cards[0]) < pile.rank) return `You need ${rankName(pile.rank)} or higher.`;
   return null;
@@ -254,7 +257,7 @@ export function autoMove(r, seat, { bot = false } = {}) {
     return { play: pick.slice(0, p.count) };
   }
   return aceOrPass();
-  function aceOrPass() { return aces.length && hand.length - aces.length <= 4 ? { play: [aces[0]] } : { pass: true }; }
+  function aceOrPass() { return aces.length >= p.count && hand.length - aces.length <= 4 ? { play: aces.slice(0, p.count) } : { pass: true }; }
 }
 /** The King/Queen robot (or a timeout) gives back their lowest cards. */
 export const autoGift = (r, seat, n) => lowest(r.hands[seat], n);

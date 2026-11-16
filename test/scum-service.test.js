@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { Scum } from '../server/scum/index.js';
+import * as R from '../server/scum/rules.js';
 import { scumTurns, scumMessage } from '../server/slack.js';
 
 function svc(extra = {}) {
@@ -95,7 +96,20 @@ test('full round to titles, then the exchange with private begs, then the King l
   const q = s.view(P.b, v.code);
   const done = s.give(P.b, v.code, [q.round.hand[0]]);
   assert.equal(done.round.phase, 'play'); assert.equal(done.round.turn, 0, 'the King leads');
+  // Auto-organize: every hand reads low to high (aces last) after cards changed hands.
+  for (const p of [P.a, P.b, P.c, P.d]) {
+    const h = s.view(p, v.code).round.hand;
+    assert.deepEqual(h, R.sortHand(h), 'hand sorted low to high');
+    assert.ok(h.every((c, k) => !k || R.rank(h[k - 1]) <= R.rank(c)));
+  }
   assert.equal(done.seats.reduce((n, x) => n + (x?.count || 0), 0), 52);
+});
+
+test('auto-organize: your hand is always shown low to high, aces last, suits in a fixed order', () => {
+  const { s, P } = svc();
+  const v = s.create(P.a, { settings: { bots: 0 } }); s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
+  rig(s.table(v.code), { 0: ['As', 'Kd', '2h', 'Tc', '2c', '9s'], 1: ['4c', 'Td'], 2: ['3h', '5h'] }, [0, 1, 2]);
+  assert.deepEqual(s.view(P.a, v.code).round.hand, ['2c', '2h', '9s', 'Tc', 'Kd', 'As']);
 });
 
 test('the clock: no move passes for you; leading plays your lowest card', () => {

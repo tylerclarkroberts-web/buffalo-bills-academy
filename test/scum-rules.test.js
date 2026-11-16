@@ -19,15 +19,25 @@ test('sets: one to four of one rank only', () => {
   assert.ok(!S.isSet([])); assert.ok(!S.isSet(['7h', '8h'])); assert.ok(!S.isSet(['7h', '7h'])); assert.ok(!S.isSet(['Xx']));
 });
 
-test('following: same count, equal or higher rank; nothing on an ace; any aces on anything', () => {
+test('following: same count, equal or higher rank; nothing on an ace; aces must match the set size', () => {
   const pile = { cards: ['9h', '9c'], count: 2, rank: 9 };
   assert.equal(S.playProblem(pile, ['Th', 'Tc']), null);
   assert.equal(S.playProblem(pile, ['9d', '9s']), null, 'equal rank is allowed (it skips)');
   assert.match(S.playProblem(pile, ['8h', '8c']), /9 or higher/);
   assert.match(S.playProblem(pile, ['Th']), /pair/);
   assert.match(S.playProblem(pile, ['Th', 'Tc', 'Td']), /pair/);
-  assert.equal(S.playProblem(pile, ['As']), null, 'a single ace beats a pair');
-  assert.equal(S.playProblem({ cards: ['Kh', 'Kc', 'Kd', 'Ks'], count: 4, rank: 13 }, ['Ah']), null, 'and quads');
+  assert.match(S.playProblem(pile, ['As']), /two aces/, 'one ace does not clear a pair');
+  assert.equal(S.playProblem(pile, ['As', 'Ah']), null, 'two aces clear a pair');
+  assert.match(S.playProblem(pile, ['As', 'Ah', 'Ad']), /two aces/, 'exactly as many aces as the set');
+  assert.equal(S.playProblem({ cards: ['5h'], count: 1, rank: 5 }, ['Ah']), null, 'one ace clears a single');
+  assert.match(S.playProblem({ cards: ['5h'], count: 1, rank: 5 }, ['Ah', 'Ac']), /one ace/);
+  const trips = { cards: ['Jh', 'Jc', 'Jd'], count: 3, rank: 11 };
+  assert.match(S.playProblem(trips, ['Ah', 'Ac']), /three aces/);
+  assert.equal(S.playProblem(trips, ['Ah', 'Ac', 'Ad']), null, 'three aces clear a three');
+  const quads = { cards: ['Kh', 'Kc', 'Kd', 'Ks'], count: 4, rank: 13 };
+  assert.match(S.playProblem(quads, ['Ah']), /four aces/);
+  assert.equal(S.playProblem(quads, ['Ah', 'Ac', 'Ad', 'As']), null, 'four aces clear quads');
+  for (const n of [1, 2, 3, 4]) assert.equal(S.playProblem(null, ['Ah', 'Ac', 'Ad', 'As'].slice(0, n)), null, `leading ${n} ace(s) is fine`);
   assert.match(S.playProblem({ cards: ['Ah'], count: 1, rank: 14 }, ['Kh']), /Nothing goes on an ace/);
   assert.equal(S.playProblem(null, ['3h', '3c', '3d']), null, 'lead anything');
 });
@@ -83,9 +93,11 @@ test('when the skip goes all the way round, the player who skipped leads', () =>
 });
 
 test('aces clear the pile at once and the ace player leads again', () => {
-  const r = round({ 0: ['Ks', 'Kc', '3h'], 1: ['Ah', '4c', '4d'], 2: ['Qs', 'Qd', '9h'] });
+  const r = round({ 0: ['Ks', 'Kc', '3h'], 1: ['Ah', 'Ad', '4c', '4d'], 2: ['Qs', 'Qd', '9h'] });
   S.play(r, 0, ['Ks', 'Kc']);
-  const res = S.play(r, 1, ['Ah']);
+  assert.throws(() => S.play(r, 1, ['Ah']), /two aces/, 'one ace is not a play on a pair');
+  assert.equal(r.turn, 1); assert.equal(r.hands[1].length, 4, 'nothing moved');
+  const res = S.play(r, 1, ['Ah', 'Ad']);
   assert.equal(res.cleared, 'ace'); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'same player leads');
   assert.throws(() => S.pass(r, 1), /leading/);
 });
@@ -175,12 +187,14 @@ test('beg text is trimmed and capped', () => {
   assert.equal(p.beg.length, S.BEG_MAX);
 });
 
-test('quads: four of a kind lead, only quads or aces follow', () => {
-  const r = round({ 0: ['6h', '6c', '6d', '6s', '2c'], 1: ['9h', '9c', '9d', '9s'], 2: ['Ah', '3c'] });
+test('quads: four of a kind lead, only quads or four aces follow', () => {
+  const r = round({ 0: ['6h', '6c', '6d', '6s', '2c'], 1: ['9h', '9c', '9d', '9s'], 2: ['Ah', 'Ac', 'Ad', 'As', '3c'] });
   S.play(r, 0, ['6h', '6c', '6d', '6s']);
   S.play(r, 1, ['9h', '9c', '9d', '9s']);
   assert.equal(r.phase, 'play');
-  assert.equal(S.play(r, 2, ['Ah']).cleared, 'ace');
+  assert.throws(() => S.play(r, 2, ['Ah']), /four aces/);
+  assert.throws(() => S.play(r, 2, ['Ah', 'Ac', 'Ad']), /four aces/);
+  assert.equal(S.play(r, 2, ['Ah', 'Ac', 'Ad', 'As']).cleared, 'ace');
 });
 
 test('walking out mid-round: cards go with them and the turn moves on', () => {

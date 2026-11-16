@@ -14,6 +14,8 @@ import './scum.css';
 
 const RK = '23456789TJQKA';
 const rk = (c) => RK.indexOf(c[0]) + 2;
+/** Auto-organize: your hand always reads low to high (2 … K, aces last), suits in a fixed order (♣ ♦ ♥ ♠). */
+export const sortCards = (cards) => cards.slice().sort((a, b) => rk(a) - rk(b) || 'cdhs'.indexOf(a[1]) - 'cdhs'.indexOf(b[1]));
 const RN = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
 const rn = (r) => (r === 10 ? '10' : RN[r] || String(r));
 const SET = ['', 'single', 'pair', 'three', 'four'];
@@ -26,8 +28,9 @@ const setName = (p) => (p ? `${p.count === 1 ? 'a' : SET[p.count] === 'pair' ? '
 export function playProblem(pile, sel) {
   if (!sel.length) return 'Pick cards';
   if (sel.length > 4 || !sel.every((c) => rk(c) === rk(sel[0]))) return 'Same rank only';
-  if (!pile || rk(sel[0]) === 14) return null;
+  if (!pile) return null;
   if (pile.rank === 14) return 'Nothing beats an ace';
+  if (rk(sel[0]) === 14) return sel.length === pile.count ? null : `Needs ${pile.count} ace${pile.count > 1 ? 's' : ''}`;
   if (sel.length !== pile.count) return `Needs ${pile.count === 1 ? 'a single' : `a ${SET[pile.count]}`}`;
   if (rk(sel[0]) < pile.rank) return `${rn(pile.rank)} or higher`;
   return null;
@@ -36,7 +39,7 @@ const RULES = [
   'No jokers. 2 is low, K is high, A is trump.',
   'Lead a single, pair, three or four of a kind. Follow with the same number, equal or higher, or pass.',
   'Match the rank just played and the next player is SKIPPED.',
-  'Any ace (even one) beats anything and clears the pile. Nothing goes on an ace; you lead again.',
+  'Aces clear the pile: 1 ace on singles, 2 on pairs, 3 on threes, 4 on fours. Nothing goes on an ace; you lead again.',
   'When everyone passes, the last player to play leads fresh.',
   'First out is King, then Queen. Second to last is Baby Scum, last is Scum. (3 players: King, Citizen, Scum.)',
   'Next round Scum gives the King their 2 best cards, Baby Scum gives the Queen their best. Both may beg. The King gives back any 2, the Queen any 1.',
@@ -255,7 +258,7 @@ function ScumTable({ code, me }) {
   const invite = async () => { const url = `${location.origin}/scum/${v.code}`; try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { setErr(url); } };
   const leave = () => { if (v.status === 'playing' && mine && r?.order.includes(v.mySeat) && !r.finished.includes(v.mySeat) && !window.confirm('Walk out? Your cards go with you.')) return; post('leave'); };
   const cw = hs.w < 420 ? 42 : hs.w < 700 ? 50 : 58;
-  const hand = r?.hand || [];
+  const hand = sortCards(r?.hand || []);
   const stepX = hand.length > 1 ? Math.max(14, Math.min(cw * 0.82, (hs.w - cw - 8) / (hand.length - 1))) : 0;
   const handX = Math.max(0, (hs.w - (stepX * Math.max(0, hand.length - 1) + cw)) / 2);
   const fresh = new Set(gets?.paid ? gets.tribute || [] : owe?.paid ? owe.gift || [] : []);

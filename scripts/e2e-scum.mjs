@@ -124,6 +124,11 @@ try {
   check(await ann.locator('.sc-seat .bust').count() === 5, 'five avatars round the felt');
   check(await ann.locator('[data-test=here-dot]').count() >= 2, 'presence dots for players at the table');
   const edge = { position: { x: 8, y: 14 } };
+  const order = await ann.locator('[data-test=scum-hand] [data-test^=scum-card-]').evaluateAll((els) => els.map((e) => e.dataset.test.slice(10)));
+  const RK = '23456789TJQKA'; check(order.length === 9 && order.every((c, k) => !k || RK.indexOf(order[k - 1][0]) <= RK.indexOf(c[0])) && order.at(-1) === 'Ah', `hand auto-organized low to high, aces last (${order.join(' ')})`);
+  await ann.click('[data-test=scum-card-Ah]', edge);
+  check(await ann.locator('[data-test=scum-play]').isDisabled() && /2 aces/.test(await ann.locator('[data-test=scum-play]').innerText()), 'one ace cannot clear a pair (needs 2 aces)');
+  await ann.click('[data-test=scum-card-Ah]', edge);
   await ann.click('[data-test=scum-card-9c]', edge); await ann.click('[data-test=scum-card-9d]', edge);
   await shot(ann, 'desktop-table-midgame'); await noScroll(ann, 'desktop table');
   await shot(cat, 'phone-table-midgame'); await noScroll(cat, 'phone table');
