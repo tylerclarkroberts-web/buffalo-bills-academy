@@ -1,9 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DoomRoom from './DoomRoom.jsx';
 import NanosaurRoom from './NanosaurRoom.jsx';
 import PicnicRoom from './PicnicRoom.jsx';
 import { HALL_DOORS, LOCKED_LINES } from './doorHall.js';
+
+// EL HALO is our own three.js game; its code is a separate chunk that only downloads when its door opens.
+const ElHaloRoom = lazy(() => import('./elhalo/ElHaloRoom.jsx'));
 
 // Behind the mine door (v89): a stone hall with a row of doors. Doom and Nanosaur open into their games (each game's
 // files only load once its door opens) and the last door goes outside to the company picnic; the rest are locked for
@@ -12,7 +15,7 @@ import { HALL_DOORS, LOCKED_LINES } from './doorHall.js';
 const EMBLEM = {
   hell: <path d="M12 3c-4 0-7 3-7 7 0 3 1.6 4.6 3 5.4V19h8v-3.6c1.4-.8 3-2.4 3-5.4 0-4-3-7-7-7zM9 11.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM10 19v2m2-2v2m2-2v2" />,
   jungle: <path d="M12 21c-2.5 0-4-1.6-4-3.5S10 13 12 13s4 2.6 4 4.5-1.5 3.5-4 3.5zM6.5 12.5 4 6M12 11V3m5.5 9.5L20 6" />,
-  ring: <><ellipse cx="12" cy="12" rx="9" ry="4" /><ellipse cx="12" cy="12" rx="5.5" ry="2" /></>,
+  sol: <><ellipse cx="12" cy="5" rx="5" ry="1.6" /><path d="M8.6 15c0-4.2 1.4-6.8 3.4-6.8s3.4 2.6 3.4 6.8" /><ellipse cx="12" cy="15.5" rx="9.5" ry="2.8" /><path d="M5 19.5l1.5 1.5 1.5-1.5 1.5 1.5 1.5-1.5 1.5 1.5 1.5-1.5 1.5 1.5 1.5-1.5 1.5 1.5" /></>,
   vault: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" /><path d="M12 4v5.5M12 14.5V20M4 12h5.5M14.5 12H20" /></>,
   neon: <><rect x="4" y="9" width="16" height="9" rx="2" /><path d="M9 9V5m-1.5 0h3M15 13.5h2M8 13.5h2M9 12.5v2" /></>,
   deep: <><circle cx="12" cy="12" r="7" /><path d="M6 13c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 2.2-1 3-.6" /></>,
@@ -43,8 +46,12 @@ function Door({ d, onOpen, onLocked, shake }) {
   );
 }
 
+function ElHaloLoading() {
+  return createPortal(<div className="m-doom m-elh-loading" data-test="elhalo-loading"><span>EL HALO · CARGANDO…</span></div>, document.querySelector('.mines') || document.body);
+}
+
 export default function DoorHall({ onExit, elapsedMs }) {
-  const [inside, setInside] = useState(null); // null | 'doom' | 'nanosaur' | 'picnic'
+  const [inside, setInside] = useState(null); // null | 'doom' | 'nanosaur' | 'elhalo' | 'picnic'
   const [shaking, setShaking] = useState(null);
   const [note, setNote] = useState(null);
   const tries = useRef(0);
@@ -67,6 +74,7 @@ export default function DoorHall({ onExit, elapsedMs }) {
   const host = document.querySelector('.mines') || document.body;
   if (inside === 'doom') return <DoomRoom elapsedMs={elapsedMs} onExit={back} exitLabel="◄ BACK TO THE HALL" />;
   if (inside === 'nanosaur') return <NanosaurRoom elapsedMs={elapsedMs} onExit={back} />;
+  if (inside === 'elhalo') return <Suspense fallback={<ElHaloLoading />}><ElHaloRoom elapsedMs={elapsedMs} onExit={back} /></Suspense>;
   if (inside === 'picnic') return <PicnicRoom elapsedMs={elapsedMs} onExit={back} />;
   return createPortal(
     <div className="m-hall" role="dialog" aria-label="Hall of doors" data-test="door-hall">
