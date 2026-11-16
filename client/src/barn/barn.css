@@ -141,7 +141,7 @@
 @media (max-height: 500px) { .barn-abil li { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 
 /* The ring: every bug, challenges, open bouts and recent fights, in two columns that scroll together. */
-.barn-head-acts { display: flex; align-items: center; gap: 8px; }
+.barn-head-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .barn-ring { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; align-content: start; min-height: 0; overflow-y: auto; padding-right: 4px; }
 .barn-ring p { margin: 0; }
 .barn-ring-note { grid-column: 1 / -1; }

@@ -130,7 +130,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   const mine = b.pen?.stage === 'creature' ? b.pen : null;
   const [calling, setCalling] = useState(null), [callStake, setCallStake] = useState('0');
   const cooldown = mine ? Math.max(0, b.serverNow + mine.boutCoolMs - now) : 0;
-  const grown = !!mine?.arena, locked = busy || unsaved || !grown || cooldown > 0 || !!mine?.fainted;
+  const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted || cooldown > 0;
   const others = roster.filter((bug) => bug.ownerId !== meId), full = challenges.outgoing.length >= challenges.max;
   const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
   const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{Math.round((fighter.gear || 0) * 100)}% damage</p><p className="small">{movesFor(fighter.species, fighter.level, fighter.legacyAbilities).filter((move) => fighter.battle.specials.includes(move.id)).map((move) => move.name).join(' · ') || 'Basic attack only'}</p></details>;
@@ -169,7 +169,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
             <button className="btn" type="submit" disabled={busy || callStake === ''} data-test="challenge-send">Send{stakeLabel(callStake)}</button>
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
           </form>
-          : grown && bug.fights && <button className="btn" onClick={() => setCalling(bug.ownerId)} disabled={busy || unsaved || full} data-test="challenge-open">Challenge</button>}
+          : grown && bug.fights && <button className="btn" onClick={() => setCalling(bug.ownerId)} disabled={busy || unsaved || full || fainted} data-test="challenge-open">Challenge</button>}
       </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>}
     </section>
     <section className="barn-board">
