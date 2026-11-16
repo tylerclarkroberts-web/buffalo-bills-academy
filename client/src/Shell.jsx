@@ -7,6 +7,7 @@ import { Bust } from './avatar/Bust.jsx';
 import { BrokeHost } from './Broke.jsx';
 import { money } from './util.js';
 import { useMedia } from './ui.jsx';
+import { TurnsEntry } from './turns/TurnsPill.jsx';
 
 export function Link({ to, className = '', children, ...rest }) {
   return <a href={to} className={className} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); navigate(to); }} {...rest}>{children}</a>;
@@ -123,6 +124,7 @@ export function Shell({ path, children }) {
         {!compactNav && <Link to="/" className="wordmark" aria-label={`${VENUE.name}, the card room`}><Mark size={24} /><b className="script">{VENUE.short}</b><span className="hide-xs">Academy</span></Link>}
         {compactNav && <Link to="/?tab=tables" className="btn small tables-link"><Ico k="tables" />Tables</Link>}
         <div className="tb-right">
+          {me && <TurnsEntry />}
           {compactNav ? <GamesMenu me={me} /> : <>
           <Link to="/conquest" className="barn-btn" title="ConquestK and play-money Risk bets"><Ico k="board" /><span>Risk bets</span></Link>
           <button className="mines-btn" onClick={goToMines} title="Work a shift in the Acid Mines"><Ico k="pick" /><span>Acid Mines</span></button>

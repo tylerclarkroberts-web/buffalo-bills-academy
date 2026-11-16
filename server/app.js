@@ -32,6 +32,7 @@ import { Pvp, PVP } from './pvp.js';
 import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
+import { listTurns } from './turns.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
@@ -184,6 +185,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     return meView(req.player);
   }));
   api.get('/my-tables', needPlayer, wrap((req) => service.tablesFor(req.player)));
+  api.get('/turns', needPlayer, wrap((req) => ({ turns: listTurns({ player: req.player, service, bj, now: service.now() }) })));
   api.get('/public-tables', needPlayer, wrap((req) => service.publicTables(req.player)));
   api.post('/tables', needPlayer, wrap((req) => {
     const t = service.createTable(req.player, req.body || {});

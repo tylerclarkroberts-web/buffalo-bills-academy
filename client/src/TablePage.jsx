@@ -27,6 +27,8 @@ import { chipSpot, rectAt } from './table/chipspot.js';
 import { betPresets, betToSlider, clampBet, sliderToBet, stepBet, SLIDER_MAX } from './table/betsize.js';
 import { Paged, Tabs, tableScale, useShortLand, useSize, useWide } from './ui.jsx';
 import { showBroke, showBrokeOnce, clearBrokeSeen } from './Broke.jsx';
+import { useTurnAdvance, refreshTurns } from './turns/useTurns.js';
+import { NextTablePill } from './turns/TurnsPill.jsx';
 import { FightScreen, useFightWatchPill } from './fight/FightScreen.jsx';
 import { FightOffer } from './fight/FightOffer.jsx';
 import { isPracticePhrase } from '../../server/engine/fight.js';
@@ -116,6 +118,8 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const takeView = useCallback((v) => { skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); }, []);
   const mySeat = view?.me?.seat;
   const myTurn = !!view?.hand && view.hand.toAct !== null && view.hand.toAct === mySeat;
+  const turnBlocked = rp.pending || !!sdPlay || !!(sdDue && cinematicPlays(sdDue, view?.log, rp.enabled)) || !!fightMode;
+  const turnAdvance = useTurnAdvance({ currentPath: `/t/${String(code).toUpperCase()}`, hasAction: myTurn, blocked: turnBlocked, enabled: !pane });
   useEffect(() => { if (myTurn) setTab('table'); }, [myTurn]);
   // The big blind's fight offer: a centered prompt (FightOffer). Decline is remembered per hand.
   const offer = view?.fightOffer || null;
@@ -154,6 +158,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     try {
       const v = await api('POST', `/tables/${code}/${path}`, body); skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); setErr('');
       if (['join', 'rebuy', 'leave'].includes(path)) refreshSession();
+      refreshTurns();
       return true;
     } catch (e) {
       if (e.status === 402 && ['join', 'rebuy'].includes(path)) { setErr(''); showBroke('join', { need: view?.settings?.buyIn }); }
@@ -246,7 +251,8 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
         onDecline={() => { setPassed(new Set([...passed, offerKey])); post('fight/decline'); }} />}
     </div>
   );
-  const bottom = <Bottom blocked={offerUp || !!sdPlay} replaying={rp.pending} view={view} me={me} seated={seated} myTurn={myTurn} now={now} code={code} inviteUrl={inviteUrl} copyInvite={copyInvite} join={join} post={post} players={players} />;
+  const bar = <Bottom blocked={offerUp || !!sdPlay} replaying={rp.pending} view={view} me={me} seated={seated} myTurn={myTurn} now={now} code={code} inviteUrl={inviteUrl} copyInvite={copyInvite} join={join} post={post} players={players} />;
+  const bottom = pane ? bar : <div className="tp-turnq">{!turnBlocked && <NextTablePill advance={turnAdvance} />}{bar}</div>;
   const panels = {
     players: <Standings view={view} />,
     log: <HandLog view={view} />,
