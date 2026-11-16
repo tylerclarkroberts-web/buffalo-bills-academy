@@ -167,7 +167,8 @@ try {
   await shot(H, '18-healed-phone');
   const after = await (await fetch(B + '/api/barn', { headers: { cookie: loser.cookie } })).json();
   check(after.pen.fainted === false, 'the bug is no longer fainted');
-  check(after.bankroll === money0, `healing was free (${money0} → ${after.bankroll})`);
+  // #107: a bug that fainted under an hour ago costs the $50 expedited fee (the nurse is free after RECOVER_MS)
+  check(after.bankroll === money0 - 50, `healing a fresh faint cost the $50 fee (${money0} → ${after.bankroll})`);
   // desktop: the healing too, for a wide screenshot (the bug is healthy now; she checks it anyway)
   await barnDesk.reload(); await barnDesk.waitForSelector('[data-test=bug-center]');
   await barnDesk.click('[data-test=bc-talk]');
