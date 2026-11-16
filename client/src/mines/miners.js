@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { headParts, looks } from '../avatar/genbust.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { spriteCanvas } from '../barn/sprite.js';
+import { danceId } from '../../../server/engine/dances.js';
+import { resetPose, danceStep } from './dance.js';
 
 const TILE = 2.2;
 const mat = (color, extras = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extras });
@@ -41,24 +43,36 @@ function nameTag(text) {
   s.scale.set(1.2, 0.3, 1); return s;
 }
 
+/**
+ * A hard-hat miner. v89: jointed so it can dance. Legs and arms hang from hip and shoulder pivots, the upper body
+ * pivots at the hips and the head on the neck; `body` carries everything but the name tag and the bug, so a spin or a
+ * drop to the floor never drags the label along. Front is +z.
+ */
 export function buildMiner({ id, name, avatar, bug }) {
   const L = looks(id);
   const g = new THREE.Group();
-  const add = (geo, m, x, y, z) => { const mesh = new THREE.Mesh(geo, m); mesh.position.set(x, y, z); g.add(mesh); return mesh; };
+  const body = new THREE.Group(); g.add(body);
+  const add = (parent, geo, m, x, y, z) => { const mesh = new THREE.Mesh(geo, m); mesh.position.set(x, y, z); parent.add(mesh); return mesh; };
+  const pivot = (parent, x, y, z) => { const p = new THREE.Group(); p.position.set(x, y, z); parent.add(p); return p; };
   const denim = mat('#2d3c5a'), boot = mat('#2a1c14'), shirt = mat(L.shirt), skin = mat(L.skin), hair = mat(L.hair), hat = mat('#e8b923');
-  const legL = add(new THREE.CylinderGeometry(0.08, 0.07, 0.78, 6), denim, -0.1, 0.39, 0);
-  const legR = add(new THREE.CylinderGeometry(0.08, 0.07, 0.78, 6), denim, 0.1, 0.39, 0);
-  add(new THREE.BoxGeometry(0.14, 0.08, 0.24), boot, -0.1, 0.04, 0.04); add(new THREE.BoxGeometry(0.14, 0.08, 0.24), boot, 0.1, 0.04, 0.04);
-  add(new THREE.CylinderGeometry(0.2, 0.17, 0.62, 7), shirt, 0, 1.08, 0);
-  const armL = add(new THREE.CylinderGeometry(0.055, 0.05, 0.56, 5), shirt, -0.26, 1.06, 0);
-  const armR = add(new THREE.CylinderGeometry(0.055, 0.05, 0.56, 5), shirt, 0.26, 1.06, 0);
-  add(new THREE.SphereGeometry(0.17, 10, 8), hair, 0, 1.57, -0.01); // back of the head
+  const HIP = 0.78, SHOULDER = 1.32 - HIP, NECK = 1.56 - HIP;
+  const legL = pivot(body, -0.1, HIP, 0), legR = pivot(body, 0.1, HIP, 0);
+  for (const leg of [legL, legR]) {
+    add(leg, new THREE.CylinderGeometry(0.08, 0.07, 0.78, 6), denim, 0, -0.39, 0);
+    add(leg, new THREE.BoxGeometry(0.14, 0.08, 0.24), boot, 0, -0.74, 0.04);
+  }
+  const upper = pivot(body, 0, HIP, 0);
+  add(upper, new THREE.CylinderGeometry(0.2, 0.17, 0.62, 7), shirt, 0, 1.08 - HIP, 0);
+  const armL = pivot(upper, -0.26, SHOULDER, 0), armR = pivot(upper, 0.26, SHOULDER, 0);
+  for (const arm of [armL, armR]) add(arm, new THREE.CylinderGeometry(0.055, 0.05, 0.56, 5), shirt, 0, -0.26, 0);
+  const head = pivot(upper, 0, NECK, 0);
+  add(head, new THREE.SphereGeometry(0.17, 10, 8), hair, 0, 0.01, -0.01); // back of the head
   const tex = faceTexture(id, avatar);
-  const face = add(new THREE.PlaneGeometry(0.3, 0.36), tex ? new THREE.MeshLambertMaterial({ map: tex, transparent: true }) : skin, 0, 1.56, 0.16);
-  add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 1.66, 0);
-  const brim = add(new THREE.CylinderGeometry(0.25, 0.25, 0.025, 12), hat, 0, 1.66, 0.03);
+  add(head, new THREE.PlaneGeometry(0.3, 0.36), tex ? new THREE.MeshLambertMaterial({ map: tex, transparent: true }) : skin, 0, 0, 0.16);
+  add(head, new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 0.1, 0);
+  add(head, new THREE.CylinderGeometry(0.25, 0.25, 0.025, 12), hat, 0, 0.1, 0.03);
   // the headlamp stays visible past the fog: you see a light bobbing in the dark before you see who it is
-  const lamp = add(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff6c8', fog: false }), 0, 1.74, 0.19);
+  const lamp = add(head, new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff6c8', fog: false }), 0, 0.18, 0.19);
   const tag = nameTag(String(name || 'A MINER').toUpperCase()); if (tag) { tag.position.set(0, 2.08, 0); g.add(tag); }
   let pet = null;
   const species = bug && BY_ID[bug.species];
@@ -68,8 +82,15 @@ export function buildMiner({ id, name, avatar, bug }) {
     pet = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     pet.position.set(0.45, 0.32, 0.2); g.add(pet);
   }
-  void face; void brim;
-  return { group: g, legL, legR, armL, armR, lamp, tag, pet };
+  return { group: g, body, upper, head, legL, legR, armL, armR, lamp, tag, pet };
+}
+
+/** Walking (or standing): swing the legs and arms from the joints, and put everything a dance moved back. */
+export function walkPose(m, phase, moving, reduce) {
+  resetPose(m);
+  const sw = moving && !reduce ? Math.sin(phase) * 0.45 : 0;
+  m.legL.rotation.x = sw; m.legR.rotation.x = -sw; m.armL.rotation.x = -sw * 0.8; m.armR.rotation.x = sw * 0.8;
+  m.body.position.y = moving && !reduce ? Math.abs(Math.sin(phase)) * 0.03 : 0;
 }
 
 /** All of them, keyed by player id. `set()` takes the server's list; `update()` runs every frame. */
@@ -87,6 +108,7 @@ export class OtherMiners {
         this.scene.add(m.group); this.map.set(o.id, m);
       }
       m.tx = o.x * TILE; m.tz = o.y * TILE; m.tyaw = o.yaw; m.shield = o.shield; m.cooling = o.cooling;
+      const d = danceId(o.dance); if (d !== (m.dance || null)) { m.dance = d; m.danceT = 0; }
     }
     for (const id of [...this.map.keys()]) if (!seen.has(id)) this.remove(id);
   }
@@ -105,9 +127,8 @@ export class OtherMiners {
       m.group.position.set(m.x, 0, m.z); m.group.rotation.y = m.yaw + Math.PI;
       const moving = far > 0.05;
       m.walk += moving && !this.reduce ? dt * 9 : 0;
-      const sw = moving && !this.reduce ? Math.sin(m.walk) * 0.45 : 0;
-      m.legL.rotation.x = sw; m.legR.rotation.x = -sw; m.armL.rotation.x = -sw * 0.8; m.armR.rotation.x = sw * 0.8;
-      m.group.position.y = moving && !this.reduce ? Math.abs(Math.sin(m.walk)) * 0.03 : 0;
+      if (m.dance && !moving) { m.danceT += dt; danceStep(m, m.dance, m.danceT, { reduce: this.reduce }); } // v89: the server says they're dancing
+      else walkPose(m, m.walk, moving, this.reduce);
       if (m.pet) { m.pet.rotation.y = cameraYaw - m.group.rotation.y; m.pet.position.y = 0.32 + (this.reduce ? 0 : Math.sin(now / 300) * 0.04); }
     }
   }

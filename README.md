@@ -40,6 +40,6 @@ Pushing or merging here does not deploy the live site. Releases require the main
 
 ## License
 
-Original application code is MIT licensed; see [LICENSE](LICENSE). Included character art accompanies this project. Third-party components retain their own licenses: the embedded Doom engine is GPL-2.0 and Freedoom game data has its own BSD-style license. Their license, credits, notices and corresponding source are preserved under `client/public/doom/`.
+Original application code is MIT licensed; see [LICENSE](LICENSE). Included character art accompanies this project. Third-party components retain their own licenses: the embedded Doom engine is GPL-2.0 and Freedoom game data has its own BSD-style license. Their license, credits, notices and corresponding source are preserved under `client/public/doom/`. The Hall of Doors also hosts Nanosaur (© 1998 Pangea Software; source port by Iliyas Jorio; WebAssembly port by Lachlan Wright) under CC BY-NC-SA 4.0, non-commercial: its licence and notice are under `client/public/nanosaur/`.
 
 Selfie background removal uses the Apache-2.0 licensed MediaPipe Tasks Vision library and SelfieMulticlass model. Their [license](client/public/avatar-model/LICENSE.txt) and [attribution and model hash](client/public/avatar-model/NOTICE.txt) are included with the public model assets.

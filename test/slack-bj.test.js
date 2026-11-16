@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { bjTurns, bjMessage } from '../server/slack.js';
+import { bjTurns, bjMessage, tableHasBots } from '../server/slack.js';
 
 const TOKEN = 'xoxb-test-not-real';
 const USERS = { 'ann@x.test': 'UANN', 'bob@x.test': 'UBOB' }; // cat has no Slack account
@@ -105,7 +105,11 @@ test('bots, spectators and players who turned alerts off are never DMed', async 
   await s.call(ck.bob, 'POST', '/api/me/slack/prefs', { on: true });
   const tb = s.bj.doc.tables[code];
   assert.ok(tb.seats.some((x) => x?.bot));
-  assert.ok(bjTurns(tb, s.clock.t).every((f) => !String(f.playerId).startsWith('bot-')), 'bots never appear in turn facts');
+  assert.ok(tableHasBots(tb));
+  assert.deepEqual(bjTurns(tb, s.clock.t), [], 'a table with bots yields no turn facts at all, so humans are not pinged either');
+  s.slack.dms.length = 0;
+  s.clock.t += 21 * 3600000; s.service.slack.sweep(); await s.idle();
+  assert.equal(s.slack.dms.length, 0, 'no reminder after Bob turns alerts back on');
 });
 
 test('reminder about 4h before a 1-day deadline, once; message builder wording', async (t) => {
@@ -122,4 +126,24 @@ test('reminder about 4h before a 1-day deadline, once; message builder wording',
   const m = bjMessage({ code: 'ABC', table: 'T', phase: 'play', deadline: 1, left: 3600000 }, { publicUrl: 'https://x' });
   assert.match(m.blocks[0].text.text, /Guntrad here/); assert.match(m.blocks[0].text.text, /stands for you/);
   assert.equal(m.blocks[1].elements[0].url, 'https://x/bj/ABC');
+});
+
+test('blackjack tables with bots never Slack seated humans; human-only tables still ping', async (t) => {
+  const s = await boot(); t.after(s.stop);
+  const ck = { ann: await s.login('Ann'), bob: await s.login('Bob') };
+  for (const n of ['ann', 'bob']) await s.call(ck[n], 'POST', '/api/me/slack', { email: `${n}@x.test` });
+  await s.idle(); s.slack.dms.length = 0;
+
+  const botCode = await table(s, ck, { bots: 2 });
+  assert.equal(s.slack.dms.length, 0, 'Ann started a table with bots: Bob is not pinged to bet');
+  const tb = s.bj.doc.tables[botCode];
+  assert.ok(tableHasBots(tb));
+  assert.deepEqual(bjTurns(tb, s.clock.t), []);
+  s.clock.t += 21 * 3600000; s.service.slack.sweep(); await s.idle();
+  assert.equal(s.slack.dms.length, 0, 'no 4-hour reminder on a bot table');
+
+  s.clock.t = 1_800_000_000_000;
+  const humanCode = await table(s, ck, { bots: 0 });
+  assert.equal(to(s, 'UBOB').filter((d) => d.text.includes(humanCode)).length, 1, 'human-only table still DMs Bob to bet');
+  assert.ok(s.slack.dms.every((d) => !d.text.includes(botCode)), 'the bot-table link is never sent');
 });

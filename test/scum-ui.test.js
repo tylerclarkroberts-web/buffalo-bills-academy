@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canDealNow, canStartDeal } from '../client/src/scum/setup.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -60,4 +61,45 @@ test('the 1.5s poll diffs on seq so a repeat fetch does not remount the pile', (
   assert.match(page, /Same move: keep the same object tree/);
   assert.match(page, /data-test="scum-passed"/);
   assert.match(page, /data-test="scum-skipped"/);
+});
+
+test('with fewer than 2 bots the primary action is Open lobby, not a disabled Open & deal', () => {
+  assert.equal(canDealNow(0), false);
+  assert.equal(canDealNow(1), false);
+  assert.equal(canDealNow(2), true);
+  assert.equal(canDealNow(3), true);
+  const page = read('client/src/scum/ScumPage.jsx');
+  assert.match(page, /canDealNow\(st\.bots\)/);
+  assert.match(page, /data-test="scum-create">Open lobby →/);
+  assert.match(page, /data-test="scum-create-deal">Open & deal →/);
+  assert.doesNotMatch(page, /Needs 2 bots to deal right away/);
+  assert.doesNotMatch(page, /disabled=\{!canDeal\}/);
+  // With bots: ghost Open lobby + primary Open & deal. Without: a single primary Open lobby.
+  const block = page.slice(page.indexOf('{canDeal'), page.indexOf('</div>', page.indexOf('{canDeal')));
+  assert.match(block, /btn ghost small[\s\S]*data-test="scum-create">Open lobby<\/button>/);
+  assert.match(block, /: <button className="btn primary"[\s\S]*data-test="scum-create">Open lobby →/);
+  assert.equal((block.match(/data-test="scum-create-deal"/g) || []).length, 1);
+});
+
+test('Deal in the lobby waits until 3 players (seated humans plus reserved bots)', () => {
+  assert.equal(canStartDeal(1, 0), false);
+  assert.equal(canStartDeal(1, 1), false);
+  assert.equal(canStartDeal(1, 2), true);
+  assert.equal(canStartDeal(2, 1), true);
+  assert.equal(canStartDeal(3, 0), true);
+  const page = read('client/src/scum/ScumPage.jsx');
+  assert.match(page, /disabled=\{busy \|\| !readyToDeal\}/);
+  assert.match(page, /Invite friends with the link/);
+});
+
+test('the lobby Deal button actually deals, and a server rejection stays on screen (regression: Z5G38Q)', () => {
+  const page = read('client/src/scum/ScumPage.jsx');
+  const i = page.indexOf('data-test="scum-deal"');
+  const btn = page.slice(page.lastIndexOf('<button', i), page.indexOf('</button>', i));
+  assert.match(btn, /onClick=\{\(\) => post\('start'\)\}/, 'Deal must POST /start');
+  // Move errors live apart from the poll error, which the 1.5s poll clears on every success.
+  const post = page.slice(page.indexOf('const post = async'), page.indexOf('};', page.indexOf('const post = async')));
+  assert.match(post, /setActErr\(e\.message/);
+  assert.doesNotMatch(post, /setErr\(/);
+  assert.match(page, /\(actErr \|\| err\) && <p className="error bj-err" role="alert"/);
 });

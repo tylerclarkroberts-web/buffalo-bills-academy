@@ -1,0 +1,30 @@
+Nanosaur (Hall of Doors, Acid Mines)
+====================================
+
+Nanosaur © 1998 Pangea Software, Inc.
+Modern source port © Iliyas Jorio — https://github.com/jorio/Nanosaur
+WebAssembly port by Lachlan Wright — https://github.com/LachlanBWWright/Nanosaur-android
+
+Licence: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0); full text in LICENSE-CC-BY-NC-SA-4.0.md, as shipped by the projects above.
+The source port is distributed with Pangea Software's permission under that licence.
+
+What is hosted here
+-------------------
+Nanosaur.js, Nanosaur.wasm and Nanosaur.data are the unmodified build artifacts of the WebAssembly port's
+"Build WebAssembly" / "Deploy to GitHub Pages" workflow for master commit
+42c543f (https://github.com/LachlanBWWright/Nanosaur-android/tree/42c543f), as published at
+https://lachlanbwwright.github.io/Nanosaur-android/game/ (downloaded 2026-11-16; the workflow's own
+artifact had expired). Nanosaur.data is byte-identical to the gh-pages branch build (5fa0ce5).
+
+  sha256
+  6dc4c67d37d32f316ea3040c9c21a75774a9f49b1c2fc0d4e196ee90e6ee6a0b  Nanosaur.data
+  446a99917a10113888fe30816f1b617bc18a085b06c055675b0618869d1972a2  Nanosaur.js
+  4469c01aa2ef13fc514f1218298236db77c7b840269b116752cb89c57cb82776  Nanosaur.wasm
+
+index.html, play.js, play.css and webgl-fixes.js (the page around the game: loader, touch buttons,
+credits, and a small WebGL compatibility layer that converts texture formats and index sizes the
+browser can't take) were written for this site. The game files themselves are not modified.
+
+Non-commercial use only: the game is free to play here, nothing is sold, and it is not part
+of any wagering. Not affiliated with or endorsed by Pangea Software, Iliyas Jorio, or Lachlan Wright.
