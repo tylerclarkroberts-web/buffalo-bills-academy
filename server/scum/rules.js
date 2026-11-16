@@ -13,9 +13,12 @@
 //  - Aces: aces beat any set of the SAME size: one ace clears singles, two aces clear a pair, three a three, four
 //    a four (fewer aces than the set is not a play). Leading, any number of aces clears. Nothing goes on an ace.
 //    Aces clear the pile at once and the same player leads again (or the next player, if that was their last card).
-//  - When the turn comes back round to whoever played last (everyone else passed or got skipped), the pile clears
-//    and they lead. If they already went out, the next player still in leads. A pass does not lock you out; there
-//    is simply no second lap before the pile clears.
+//  - Play on: when the turn comes back round to whoever played last (everyone else passed or got skipped), the pile
+//    stays live and it's THEIR turn: they may keep playing on their own set (same count, equal or higher; an equal
+//    rank still skips the next player, who always exists since 2+ are still in) or pass, which clears the pile and
+//    they lead fresh. A new play on the pile gives everyone else another chance to follow. If the owner already went
+//    out, the pile clears and the next player still in leads. A pass does not lock you out.
+//  - One standard 52-card deck, always: no jokers, no second deck, never more than 7 players (7 x 7 = 49 <= 52).
 //  - Going out: first out is King, then Queen, ..., second to last Baby Scum, last Scum. With 3 players there is no
 //    Queen or Baby Scum: King, Commoner, Scum (only King and Scum swap cards). Everyone in between is a Commoner.
 //  - Exchange, before every round after the first: Scum hands the King their 2 highest cards and Baby Scum hands
@@ -25,6 +28,8 @@ import { newDeck, shuffle } from '../engine/cards.js';
 
 export const ACE = 14;
 export const MIN_PLAYERS = 3, MAX_PLAYERS = 7;
+/** Single deck, always: 52 cards, no jokers. There is no multi-deck option anywhere. */
+export const DECK_SIZE = 52;
 export const BEG_MAX = 140;
 const R = '23456789TJQKA';
 export const rank = (c) => R.indexOf(String(c)[0]) + 2; // 2..14 (A = 14, trump)
@@ -52,7 +57,9 @@ export function titlesFor(n) {
 
 /** Deal the whole deck round-robin over `seats` (in deal order). Returns { seat: sortedCards }. */
 export function deal(seats, rng) {
+  if (seats.length > MAX_PLAYERS) throw new Error(`Scum is single deck: ${MAX_PLAYERS} players at most.`);
   const deck = shuffle(newDeck(), rng);
+  if (deck.length !== DECK_SIZE || new Set(deck).size !== DECK_SIZE) throw new Error('Scum is played with one 52-card deck.');
   const hands = Object.fromEntries(seats.map((s) => [s, []]));
   deck.forEach((c, k) => hands[seats[k % seats.length]].push(c));
   for (const s of seats) hands[s] = sortHand(hands[s]);
@@ -154,14 +161,19 @@ export function dropFromExchange(r, seat) {
 }
 
 /**
- * Walk the turn on from `from`. skip=true jumps one active player. Reaching the pile owner's seat clears the pile
- * (everyone between passed or got skipped). Returns { skipped, cleared }.
+ * Walk the turn on from `from`. skip=true jumps one active player. Reaching the pile owner's seat (everyone between
+ * passed or got skipped) hands THEM the turn with the pile still live ("play on"): they may keep playing on their own
+ * set or pass to clear it and lead fresh. If the owner already went out, the pile clears and the next player leads.
+ * Returns { skipped, cleared, playOn }.
  */
 function moveOn(r, from, skip) {
   let s = from; let toSkip = skip ? 1 : 0; let skipped = null;
   for (let n = 0; n <= r.order.length * 2; n++) {
     s = after(r, s);
-    if (r.owner != null && s === r.owner) { clearPile(r); return { skipped, cleared: true }; }
+    if (r.owner != null && s === r.owner) {
+      if (activeIn(r, s)) { r.turn = s; r.playOn = true; return { skipped, cleared: false, playOn: true }; }
+      clearPile(r); return { skipped, cleared: true };
+    }
     if (!activeIn(r, s)) continue;
     if (toSkip) { toSkip--; skipped = s; continue; }
     r.turn = s; return { skipped, cleared: false };
@@ -170,7 +182,7 @@ function moveOn(r, from, skip) {
 }
 function clearPile(r) {
   const o = r.owner;
-  r.pile = null; r.owner = null;
+  r.pile = null; r.owner = null; r.playOn = false;
   r.turn = o != null && activeIn(r, o) ? o : nextActive(r, o ?? r.turn);
 }
 /** The round ends when one player is left holding cards: they are Scum. */
@@ -191,6 +203,7 @@ export function play(r, seat, cards) {
   if (!Array.isArray(cards) || !cards.every((c) => hand.includes(c))) throw new Error("Those aren't your cards.");
   const why = playProblem(r.pile, cards); if (why) throw new Error(why);
   const prev = r.pile;
+  r.playOn = false;
   r.hands[seat] = hand.filter((c) => !cards.includes(c));
   const k = rank(cards[0]);
   r.lastPlay = { seat, cards: cards.slice() }; r.skipped = null;
@@ -209,16 +222,20 @@ export function play(r, seat, cards) {
   if (checkEnd(r)) return { skipped: null, cleared: null, out, done: true };
   const m = moveOn(r, seat, skip);
   r.skipped = m.skipped;
-  return { skipped: m.skipped, cleared: m.cleared ? 'pass' : null, out, done: false };
+  return { skipped: m.skipped, cleared: m.cleared ? 'pass' : null, playOn: !!m.playOn, out, done: false };
 }
-/** Pass. You can't pass when you are leading. Returns { cleared, leader }. */
+/**
+ * Pass. You can't pass when you are leading. Playing on (everyone else passed on your set), a pass clears the pile
+ * and you lead fresh. Returns { cleared, leader, playOn }.
+ */
 export function pass(r, seat) {
   if (r.phase !== 'play') throw new Error('Not now.');
   if (r.turn !== seat) throw new Error('Not your turn.');
   if (!r.pile) throw new Error("You're leading: play something.");
   r.skipped = null;
+  if (r.playOn && r.owner === seat) { clearPile(r); return { cleared: true, leader: r.turn, playOn: false }; }
   const m = moveOn(r, seat, false);
-  return { cleared: m.cleared, leader: m.cleared ? r.turn : null };
+  return { cleared: m.cleared, leader: m.cleared ? r.turn : null, playOn: !!m.playOn };
 }
 /** A player walked out mid-round: their cards leave with them; the turn moves on if it was theirs. */
 export function walkOut(r, seat) {
@@ -250,6 +267,8 @@ export function autoMove(r, seat, { bot = false } = {}) {
     if (!plain.length) return { play: aces };
     return { play: plain[0] }; // dump the lowest rank, all copies
   }
+  // Everyone passed on our own set: go out if the whole hand is one legal set on it, else clear and lead fresh.
+  if (r.playOn && r.owner === seat) return bot && !playProblem(r.pile, hand) ? { play: hand } : { pass: true };
   if (!bot) return { pass: true };
   const p = r.pile;
   const fits = plain.filter((g) => rank(g[0]) >= p.rank && g.length >= p.count);
@@ -272,6 +291,7 @@ export function bugMove(r, seat) {
   const hand = sortHand(r.hands[seat]);
   if (!hand.length) return { pass: true };
   if (!r.pile) return { play: [hand[hand.length - 1]] };
+  if (r.playOn && r.owner === seat) return { pass: true }; // everyone passed on your set: the bug clears it, then leads your highest
   const byRank = new Map(); for (const c of hand) byRank.set(rank(c), [...(byRank.get(rank(c)) || []), c]);
   for (const k of [...byRank.keys()].sort((a, b) => b - a)) {
     const set = byRank.get(k).slice(-r.pile.count);
