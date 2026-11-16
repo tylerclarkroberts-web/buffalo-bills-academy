@@ -11,7 +11,7 @@ import { movesFor, STANCES } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
-import Bout from './Bout.jsx';
+import Bout, { mergeFight } from './Bout.jsx';
 import Dizzy from './Dizzy.jsx';
 import { navigate } from '../App.jsx';
 import './barn.css';
@@ -132,10 +132,10 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
   const others = roster.filter((bug) => bug.ownerId !== meId);
   const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
-  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{Math.round((fighter.gear || 0) * 100)}% damage</p><p className="small">{movesFor(fighter.species, fighter.level, fighter.legacyAbilities).filter((move) => fighter.battle.specials.includes(move.id)).map((move) => move.name).join(' · ') || 'Basic attack only'}</p></details>;
+  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{Math.round((fighter.gear || 0) * 100)}% damage</p></details>;
   const stakeLabel = (amount) => (Number(amount) > 0 ? ` for ${money(Number(amount))}` : ' for free');
   return <div className="barn-ring" data-test="barn-ring">
-    <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug at level 3 to fight. Watching is free.'
+    <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
       : !grown ? `Bouts unlock at level ${mine.arenaLevel}. Watching is free.`
       : mine.fainted ? <>{mine.name} fainted. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> has a bed for it.</>
       : unsaved ? 'Save or discard your Combat changes before fighting.'
@@ -259,6 +259,27 @@ function BarnHome({ me }) {
     return () => { mutation.current += 1; clearInterval(id); clearInterval(t); };
   }, [me?.id]);
   const pen = b?.pen;
+  // Your bug is in the ring right now: follow it blow by blow. When it ends, the next look at the Barn (take) swaps
+  // in the finished bout, with its payout and XP, on the same ring. Walking away leaves the bug to its own picks.
+  const [left, setLeft] = useState(null);
+  const liveId = b?.live && b.live !== left ? b.live : null, held = useRef(null);
+  useEffect(() => {
+    if (!liveId) return undefined;
+    let off = false; held.current = null;
+    const pull = async () => {
+      try {
+        const { fight } = await api('GET', `/barn/fight?id=${encodeURIComponent(liveId)}&have=${held.current?.rounds.length || 0}`);
+        if (off || !fight) return;
+        held.current = mergeFight(held.current, fight); setReplay(false); setBout(held.current);
+        if (!fight.live) { off = true; load(); }
+      } catch { /* the next beat tries again */ }
+    };
+    pull(); const id = setInterval(pull, 1000);
+    return () => { off = true; clearInterval(id); };
+  }, [liveId]);
+  const lineUp = async (moves) => {
+    try { const { fight } = await api('POST', `/barn/fight/${liveId}/moves`, { moves, have: held.current?.rounds.length || 0 }); held.current = mergeFight(held.current, fight); setBout(held.current); } catch (e) { setErr(e.message); }
+  };
   useEffect(() => { if (b && !ringOpened.current) { ringOpened.current = true; if (b.challenges.incoming.length) setRing(true); } }, [b]);
   const battle = battleDraft || pen?.battle;
   // hatch moment: the egg's countdown ran out on this screen, so ask the server (it decides)
@@ -285,7 +306,7 @@ function BarnHome({ me }) {
   };
   const watch = (id) => act(async () => { const fight = await api('GET', `/barn/fights/${id}`); setReplay(true); setBout(fight); });
   const saveBattle = () => act(async () => {
-    take(await api('PATCH', '/barn/battle', battleDraft)); setBattleDraft(null); setMsg('Combat setup saved. Your next bout will use it.');
+    take(await api('PATCH', '/barn/battle', { stance: battleDraft.stance })); setBattleDraft(null); setMsg('Stance saved.');
   });
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
   if (!b) return <div className="screen barn"><div className="barn-empty muted">{err ? <><p role="alert">{err}</p><button className="btn" onClick={() => { setErr(''); load(); }}>Try again</button></> : 'Opening the barn doors…'}</div></div>;
@@ -377,7 +398,7 @@ function BarnHome({ me }) {
                 <div className="barn-acts">
                   {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
                 </div>
-                <p className="small muted barn-xp-limit">Keep all three needs up for stronger bouts. Visit Combat to choose a stance and special moves.</p>
+                <p className="small muted barn-xp-limit">Keep all three needs up for stronger bouts. Visit Combat for its stance, moves and trait.</p>
                 </div> : <div className="barn-tab-content" id="barn-panel-combat" role="tabpanel" aria-labelledby="barn-tab-combat">
                   <dl className="barn-combat-stats">
                     <div><dt>Health</dt><dd>{pen.combat.maxHp} HP</dd></div>
@@ -387,15 +408,16 @@ function BarnHome({ me }) {
                     <div><dt>Speed</dt><dd>{pen.combat.stats.spd}/5</dd></div>
                   </dl>
                   <p className="small muted">Attack increases damage; defense softens hits; speed helps with initiative and dodging. Each level from 3 to 10 adds health and damage.</p>
+                  {pen.trait && <p className="small" data-test="barn-trait"><b>{pen.trait.name}.</b> {pen.trait.description}</p>}
                   {b.openBout && <p className="small barn-warn">Cancel your waiting bout in the ring to change your setup.</p>}
                   <fieldset className="barn-setup" disabled={busy || !!b.openBout}>
                     <legend>Combat setup</legend>
                     <label className="barn-stance">Stance<select value={battle.stance} onChange={(e) => setBattleDraft({ ...battle, stance: e.target.value })} data-test="battle-stance">{Object.values(STANCES).map((stance) => <option key={stance.id} value={stance.id}>{stance.name}</option>)}</select></label>
                     <p className="small muted">{STANCES[battle.stance].description}</p>
-                    <p className="small">Choose up to two specials. Your basic move fills the gaps while specials recover.</p>
+                    <p className="small">In the ring you choose its moves. The stance is how it fights when you leave it to it.</p>
                     <ul className="barn-moves">
                       {pen.abilities.map((a) => <li key={a.id} className={!a.unlocked ? 'locked' : ''}>
-                        <label>{a.id !== 'basic' && <input type="checkbox" checked={battle.specials.includes(a.id)} disabled={!a.unlocked || !battle.specials.includes(a.id) && battle.specials.length >= 2} onChange={(e) => setBattleDraft({ ...battle, specials: e.target.checked ? [...battle.specials, a.id] : battle.specials.filter((id) => id !== a.id) })} />}<b>{a.name}</b><span className="small muted">{battle.specials.includes(a.id) && `Selected ${battle.specials.indexOf(a.id) + 1} · `}{!a.unlocked ? `Unlocks at level ${a.level}` : a.level > pen.level ? 'Previously learned' : a.id === 'basic' ? 'Basic · always available' : `Level ${a.level} special`}</span></label>
+                        <b>{a.name}</b> <span className="small muted">{!a.unlocked ? `Unlocks at level ${a.level}` : a.id === 'basic' ? 'Plain strike' : 'Special'}</span>
                         <p className="small muted">{a.heal ? `Base healing: ${a.heal} HP` : `Power ${a.power} · Base accuracy ${Math.round(a.accuracy * 100)}%`}{a.venom ? ` · Venom: ${a.venom} base damage × ${a.duration} turns` : ''}</p>
                         <p className="small">{a.description}{a.cooldown > 0 ? ` Cooldown: ${a.cooldown} own turns.` : ''}</p>
                       </li>)}
@@ -412,7 +434,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {bout && <Bout key={bout.id || bout.at} bout={bout} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
+        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setLeft(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>

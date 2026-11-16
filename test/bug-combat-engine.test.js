@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ROSTER, ABILITY_LEVELS } from '../server/engine/creatures.js';
 import { MOVE_IDS, STANCES, movesFor, battleFor, combatStats } from '../server/engine/bug-combat.js';
-import { simulateBout, MAX_ROUNDS } from '../server/engine/bout.js';
+import { simulateBout, startBout, stepBout, MAX_ROUNDS } from '../server/engine/bout.js';
 
-const fighter = (species, specials = [], stance = 'balanced', level = 10) => ({ species, name: species, level, mood: 80, battle: { stance, specials } });
+const fighter = (species, specials = [], stance = 'balanced', level = 10) => ({ species, name: species, level, mood: 80, plain: true, battle: { stance, specials } });
 const firstMove = (bout, by) => bout.rounds.find(event => event.by === by && event.type === 'move');
 
-test('every species has five distinct moves at 3/4/6/8/10 and retains its three original names', () => {
-  assert.deepEqual(ABILITY_LEVELS, [3, 4, 6, 8, 10]);
+test('every species has five distinct moves at 1/1/4/7/10 and retains its three original names', () => {
+  assert.deepEqual(ABILITY_LEVELS, [1, 1, 4, 7, 10]);
   for (const bug of ROSTER) {
     const moves = movesFor(bug.id, 10);
     assert.deepEqual(moves.map(move => move.id), MOVE_IDS);
@@ -22,13 +22,13 @@ test('every species has five distinct moves at 3/4/6/8/10 and retains its three 
   assert.throws(() => movesFor('unknown', 10), /Unknown bug/);
 });
 
-test('battle defaults and saved choices never equip locked, duplicate or more than two specials', () => {
-  assert.deepEqual(battleFor('ceroplophana', 3), { stance: 'balanced', specials: [] });
+test('a bug left alone reaches for every special it has learned; only the stance is saved', () => {
+  const all = ['technique', 'signature', 'tactic', 'capstone'];
+  assert.deepEqual(battleFor('ceroplophana', 1), { stance: 'balanced', specials: ['technique'] });
   assert.deepEqual(battleFor('ceroplophana', 6), { stance: 'balanced', specials: ['technique', 'signature'] });
-  assert.deepEqual(battleFor('ceroplophana', 10, 0, { stance: 'defensive', specials: [] }), { stance: 'defensive', specials: [] });
-  assert.deepEqual(battleFor('ceroplophana', 4, 0, { stance: 'constructor', specials: ['capstone', 'basic', 'technique', 'technique'] }), { stance: 'balanced', specials: ['technique'] });
-  assert.deepEqual(battleFor('ceroplophana', 10, 0, { stance: 'aggressive', specials: ['tactic', 'signature', 'technique'] }).specials, ['tactic', 'signature']);
-  assert.deepEqual(battleFor('ceroplophana', 3, 3).specials, ['technique', 'signature']);
+  assert.deepEqual(battleFor('ceroplophana', 10, 0, { stance: 'defensive', specials: [] }), { stance: 'defensive', specials: all }, 'an older save that chose two no longer limits it');
+  assert.deepEqual(battleFor('ceroplophana', 4, 0, { stance: 'constructor', specials: ['capstone', 'basic'] }), { stance: 'balanced', specials: ['technique', 'signature'] });
+  assert.deepEqual(battleFor('ceroplophana', 3, 3).specials, ['technique', 'signature'], 'a move learned on the old schedule stays learned');
   assert.deepEqual(combatStats(3), { maxHp: 100, damageMultiplier: 1 });
   assert.deepEqual(combatStats(10), { maxHp: 121, damageMultiplier: 1.14 });
   assert.deepEqual(combatStats(100), combatStats(10));
@@ -48,7 +48,7 @@ test('automatic fights are deterministic, bounded and respect loadouts, HP and o
       assert.equal(event.hp[1 - event.by], Math.max(0, previous[1 - event.by] - event.dmg));
       assert.equal(event.hp[event.by], previous[event.by] + (event.healed || 0));
       if (event.type === 'move') {
-        const actor = [a, b][event.by]; assert.ok(event.moveId === 'basic' || actor.battle.specials.includes(event.moveId));
+        const actor = [a, b][event.by]; assert.ok(movesFor(actor.species, actor.level).find(move => move.id === event.moveId).unlocked);
         const move = movesFor(actor.species, actor.level).find(move => move.id === event.moveId);
         if (lastUsed[event.by][event.moveId]) assert.ok(event.ownTurn - lastUsed[event.by][event.moveId] >= move.cooldown);
         lastUsed[event.by][event.moveId] = event.ownTurn;
@@ -62,19 +62,23 @@ test('automatic fights are deterministic, bounded and respect loadouts, HP and o
 });
 
 test('guard and weakening reduce the next attack; piercing bypasses half the guard', () => {
+  // Side 0 opens with the move under test and umbonia answers; the same seed gives both versions the same rolls.
+  const exchange = (species, opener, reply, seed) => {
+    const S = startBout(fighter(species), fighter('umbonia'), seed);
+    if (S.by !== 0) return null;
+    const first = stepBout(S, opener).find(event => event.type === 'move'), second = stepBout(S, reply).find(event => event.type === 'move');
+    return first.hit && second.hit ? { first, second } : null;
+  };
   for (const [species, effect, ratio] of [['ceroplophana', 'guard', 0.5], ['graphocephala', 'weaken', 0.65]]) {
     let checked = 0;
     for (let seed = 0; seed < 50; seed++) {
-      const target = fighter('umbonia');
-      const boosted = simulateBout(fighter(species, ['technique']), target, seed);
-      const plain = simulateBout(fighter(species), target, seed);
-      if (boosted.rounds[0].by !== 0 || !boosted.rounds[0].hit || !firstMove(boosted, 1).hit) continue;
-      assert.equal(boosted.rounds[0].effect, effect);
-      assert.ok(Math.abs(firstMove(boosted, 1).dmg - firstMove(plain, 1).dmg * ratio) <= 1);
-      if (effect === 'guard') {
-        const piercing = simulateBout(fighter(species, ['technique']), fighter('umbonia', ['technique']), seed);
-        const unguarded = simulateBout(fighter(species), fighter('umbonia', ['technique']), seed);
-        if (firstMove(piercing, 1).hit) assert.ok(Math.abs(firstMove(piercing, 1).dmg - firstMove(unguarded, 1).dmg * 0.75) <= 1);
+      const boosted = exchange(species, 'technique', 'basic', seed), plain = exchange(species, 'basic', 'basic', seed);
+      if (!boosted || !plain) continue;
+      assert.equal(boosted.first.effect, effect);
+      assert.ok(Math.abs(boosted.second.dmg - plain.second.dmg * ratio) <= 1);
+      if (effect === 'guard') { // umbonia's technique is its pierce
+        const piercing = exchange(species, 'technique', 'technique', seed), unguarded = exchange(species, 'basic', 'technique', seed);
+        if (piercing && unguarded) assert.ok(Math.abs(piercing.second.dmg - unguarded.second.dmg * 0.75) <= 1);
       }
       checked++;
     }
@@ -115,11 +119,11 @@ test('only piercing capstones advertise the 5% critical chance', () => {
 });
 
 test('rare seeded criticals leave 1 HP, keep normal knockouts and never heal or affect other moves', () => {
-  const a = fighter('bocydium', ['capstone']), b = fighter('bocydium', ['capstone']);
+  const a = fighter('bocydium'), b = fighter('bocydium');
   let criticals = 0, firstHits = 0, firstCriticals = 0, capstoneKnockouts = 0, oneHpKnockouts = 0;
   for (let seed = 0; seed < 1000; seed++) {
-    const bout = simulateBout(a, b, `critical-${seed}`);
-    assert.deepEqual(bout, simulateBout(a, b, `critical-${seed}`));
+    const bout = startBout(a, b, `critical-${seed}`); // both owners ask for the capstone whenever it is ready
+    while (!bout.over) stepBout(bout, 'capstone');
     const first = bout.rounds[0];
     if (first.hit) { firstHits++; if (first.critical) firstCriticals++; }
     let previous = bout.maxHp;

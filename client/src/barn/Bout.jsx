@@ -1,11 +1,13 @@
-// Barn bouts (v35): replays a bout the server already decided (pen.lastBout) as a staged fight. The timeline and
-// the ring live in boutFx.js; this is the dialog, HP bars, callouts and sounds. Nothing here can change the result.
+// The ring. Every bug fight plays here: a Barn bout, a mine battle, or a replay of either. The server decides each
+// blow; this stages them (boutFx.js has the timeline and the drawing) with HP bars, callouts and sounds. While a
+// fight is live, the panel under the ring lines up your bug's next moves; nothing else here can change a result.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, verdictLine } from './boutFx.js';
 import { voice, sfx, music } from './sfx.js';
 import { navigate } from '../App.jsx';
+import './barn.css';
 
 const EXTRA = { pierce: 'pierce', guard: 'guard', venom: 'venom', weaken: 'weaken' };
 function landSound({ kind, r }) {
@@ -16,13 +18,49 @@ function landSound({ kind, r }) {
   sfx.whack(r.tier); if (EXTRA[r.effect]) sfx[EXTRA[r.effect]]();
 }
 const STATUS = [['guard', 'Guarded'], ['poison', 'Poisoned'], ['weak', 'Weakened']];
+const DOES = { strike: 'Strike', guard: 'Hit + guard', venom: 'Hit + poison', pierce: 'Pierce', heal: 'Heal', weaken: 'Hit + weaken' };
+export const QUEUE_MAX = 3;
 
-export default function Bout({ bout, replay = false, reduced, sound, onSound, onClose }) {
+/** Merge a page of a live fight (the server sends only the blows after `from`) into what the page already holds. */
+export const mergeFight = (held, page) => ({ ...page, rounds: [...(held?.id === page.id ? held.rounds : []).slice(0, page.from || 0), ...page.rounds] });
+
+/** Under the ring while a fight is live: what your bug does next, and the buttons to decide that for it. */
+function Moves({ bout, onLine }) {
+  const [mine, setMine] = useState(null); // what you just tapped, until the server answers
+  const sent = JSON.stringify(bout.queue || []);
+  useEffect(() => { setMine(null); }, [sent]);
+  const queue = mine || bout.queue || [], name = (id) => bout.moves.find((m) => m.id === id)?.name || id;
+  const latest = useRef(queue); latest.current = queue; // two quick taps both count, even before the first one redraws
+  const line = (change) => { const next = change(latest.current); if (!next) return; latest.current = next; setMine(next); onLine(next); };
+  return (
+    <div className="bout-panel" data-test="bout-panel">
+      <div className="bout-queue" aria-live="polite">
+        <span className="small muted">{queue.length ? 'Lined up' : `${bout.you.name} will use`}</span>
+        {queue.length
+          ? queue.map((id, k) => <button key={`${id}${k}`} className="bout-pick" onClick={() => line((q) => q.filter((_, j) => j !== k))} aria-label={`Remove ${name(id)}`} data-test="bout-queued">{k + 1}. {name(id)} <span aria-hidden="true">×</span></button>)
+          : <b data-test="bout-next">{name(bout.next)}</b>}
+        {!queue.length && <span className="small muted">unless you pick. Up to {QUEUE_MAX}.</span>}
+      </div>
+      <div className="bout-moves" role="group" aria-label={`${bout.you.name}'s moves`}>
+        {bout.moves.map((m) => (
+          <button key={m.id} className="bout-move" style={{ '--fx': EFFECT_COLOR[m.effect] }} disabled={queue.length >= QUEUE_MAX} onClick={() => line((q) => (q.length < QUEUE_MAX ? [...q, m.id] : null))} title={m.description} data-test={`bout-move-${m.id}`}>
+            <b>{m.name}</b><small>{DOES[m.effect]}{m.readyIn > 0 ? ` · ready in ${m.readyIn}` : ''}</small>
+          </button>
+        ))}
+      </div>
+      {bout.trait && <p className="small muted bout-trait"><b>{bout.trait.name}.</b> {bout.trait.description}</p>}
+    </div>
+  );
+}
+
+export default function Bout({ bout, replay = false, reduced, sound, onSound, onClose, onLine, onForfeit, closeLabel = 'Back to the stall' }) {
   const plan = useMemo(() => planBout(bout), [bout]);
   const ref = useRef(null), dialog = useRef(null), closeButton = useRef(null);
   const clock = useRef({ t0: 0, skip: 0 });
-  const [pos, setPos] = useState(() => (reduced ? { i: plan.beats.length, phase: 'done' } : { i: -1, phase: 'intro' }));
-  const done = pos.phase === 'done';
+  const now = useRef({ plan, bout }); now.current = { plan, bout };
+  const [pos, setPos] = useState(() => (reduced && !plan.open ? { i: plan.beats.length, phase: 'done' } : { i: -1, phase: 'intro' }));
+  const [quit, setQuit] = useState(false);
+  const done = pos.phase === 'done', live = !!bout.live;
   const fighters = [bout.you, bout.them];
   const skip = () => { clock.current.skip = plan.total + 1 - (performance.now() - clock.current.t0); };
   useEffect(() => {
@@ -34,22 +72,30 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
     const c = ref.current; if (!c) return undefined;
     const fx = { parts: [], fired: new Set() }; let id = 0, drawn = '';
     clock.current.t0 = performance.now();
-    const frame = (now) => {
-      const t = reduced ? plan.total + 1 : now - clock.current.t0 + clock.current.skip, loc = locate(plan, t);
-      setPos((p) => (p.i === loc.i && p.phase === loc.phase ? p : { i: loc.i, phase: loc.phase }));
+    const frame = (at) => {
+      const { plan: p, bout: b } = now.current; // a live fight grows: always the latest plan, on the same clock
+      let t = reduced ? p.total + 1 : at - clock.current.t0 + clock.current.skip;
+      if (p.open && !reduced) {
+        if (t > p.end) { clock.current.t0 += t - p.end; t = p.end; } // nothing new yet: hold the clock where the last blow ended
+        const behind = p.beats.length - 2; // opened late or fell behind: jump to the blow before the latest
+        if (behind > 0 && t < p.beats[behind].at) { clock.current.skip += p.beats[behind].at - t; t = p.beats[behind].at; }
+      }
+      const loc = locate(p, t);
+      setPos((q) => (q.i === loc.i && q.phase === loc.phase ? q : { i: loc.i, phase: loc.phase }));
       const box = c.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
       const W = Math.max(1, Math.round(box.width * dpr)), H = Math.max(1, Math.round(box.height * dpr));
       if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
-      if (!reduced || drawn !== `${W}x${H}`) { // reduced motion: one still frame, redrawn only on resize
-        drawn = `${W}x${H}`;
+      const key = `${W}x${H}:${p.beats.length}:${p.open}`;
+      if (!reduced || drawn !== key) { // reduced motion: one still frame, redrawn on resize or a new blow
+        drawn = key;
         const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0);
-        drawBout(x, { W, H, bout, plan, t, reduced, fx });
+        drawBout(x, { W, H, bout: b, plan: p, t, reduced, fx });
       }
       id = requestAnimationFrame(frame);
     };
     id = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(id);
-  }, [plan, reduced]);
+  }, [reduced]);
 
   const beat = pos.i >= 0 && pos.i < plan.beats.length ? plan.beats[pos.i] : null;
   useEffect(() => {
@@ -59,7 +105,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
     else if (beat && pos.phase === 'land') landSound(beat);
     else if (pos.phase === 'finish') { if (plan.ending === 'ko') sfx.ko(); else sfx.bell(); }
     // Music runs from the first blow to the last, and follows the sound switch.
-    if (['charge', 'act', 'land'].includes(pos.phase)) music.start(); else music.stop();
+    if (['charge', 'act', 'land'].includes(pos.phase) || (pos.phase === 'wait' && plan.beats.length)) music.start(); else music.stop();
   }, [pos.i, pos.phase]);
   useEffect(() => () => music.stop(), []);
   useEffect(() => {
@@ -74,13 +120,13 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const landed = beat ? pos.phase === 'land' : pos.i >= plan.beats.length;
   const shown = beat ? (landed ? beat.r : bout.rounds[pos.i - 1]) : landed ? bout.rounds[bout.rounds.length - 1] : null;
   const hp = shown ? shown.hp : bout.startHp || maxHp;
-  // v76: your bug keeps its damage; only the Bug Center heals it. Live bouts only, not replays or the rafters.
+  // v76: your bug keeps its damage; only the Bug Center heals it. Barn bouts only, not replays or the rafters.
   const hurt = !replay && Number.isFinite(bout.healthAfter) && bout.healthAfter < 100;
-  const status = beat ? (landed ? beat.after : beat.before) : null;
+  const status = beat ? (landed ? beat.after : beat.before) : pos.phase === 'wait' && plan.beats.length ? plan.beats[plan.beats.length - 1].after : null;
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
   return (
-    <dialog ref={dialog} className="bout" data-test="bout" data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Barn bout replay' : 'Barn bout'} onCancel={(e) => { e.preventDefault(); onClose(); }}>
+    <dialog ref={dialog} className={`bout${live ? ' live' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
       <div className="bout-top">
         {fighters.map((c, i) => {
           const pct = Math.max(0, Math.min(100, (hp[i] / maxHp[i]) * 100));
@@ -110,12 +156,23 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           {pos.phase === 'finish' && <strong className="bout-stamp end">{plan.ending === 'ko' ? 'K.O.' : 'TIME!'}</strong>}
         </div>
       </div>
-      <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <><b>{verdictLine(bout)}</b>{bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}{bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}{bout.pot > 0 && <p className="bout-payment">{money(bout.pot)} pot</p>}{replay && <p className="small muted">{bout.you.owner ? 'Seen from the rafters. No XP, no money.' : 'Replay only. No extra XP or money.'}</p>}</> : line}</div>
+      <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <>
+        <b>{bout.verdict || verdictLine(bout)}</b>
+        {bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}
+        {bout.spoils?.length > 0 && <p className="bout-payment" data-test="bout-spoils">{bout.spoils.join(' · ')}</p>}
+        {bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}
+        {bout.pot > 0 && <p className="bout-payment">{money(bout.pot)} pot</p>}
+        {replay && <p className="small muted">{bout.you.owner ? 'Seen from the rafters. No XP, no money.' : 'Replay only. No extra XP or money.'}</p>}
+      </> : quit ? 'There is no running from a bug fight. Giving up counts as a loss.' : line}</div>
+      {live && bout.moves && !quit && <Moves bout={bout} onLine={onLine} />}
       <div className="bout-acts">
-        {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Bout sounds" title="Bout sounds">{sound ? '🔊' : '🔈'}</button>}
-        {!done && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
+        {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Fight sounds" title="Fight sounds">{sound ? '🔊' : '🔈'}</button>}
+        {!done && !live && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
+        {live && !onForfeit && <button className="btn ghost small" onClick={onClose} data-test="bout-leave">Leave it to {bout.you.name}</button>}
+        {live && onForfeit && !quit && <button className="btn ghost small" onClick={() => setQuit(true)} data-test="bout-run">Run</button>}
+        {live && quit && <><button className="btn small" onClick={() => setQuit(false)}>Fight on</button><button className="btn ghost small" onClick={() => { setQuit(false); onForfeit(); }} data-test="bout-forfeit">Give up</button></>}
         {done && hurt && <button className="btn small bout-center" onClick={() => { onClose(); navigate('/barn/center'); }} data-test="bout-hurt">{bout.healthAfter <= 0 ? `${bout.you.name} fainted` : 'Your bug is hurt'} — visit the Bug Center →</button>}
-        {done && <button ref={closeButton} className={`btn small${hurt ? ' ghost' : ''}`} onClick={onClose} data-test="bout-close">{hurt ? 'Later' : 'Back to the stall'}</button>}
+        {done && <button ref={closeButton} className={`btn small${hurt ? ' ghost' : ''}`} onClick={onClose} data-test="bout-close">{hurt ? 'Later' : closeLabel}</button>}
       </div>
     </dialog>
   );

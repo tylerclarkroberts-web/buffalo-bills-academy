@@ -1,7 +1,7 @@
 // Two (then three) real browsers in today's shared mine (v71). Boots a throwaway server with the PvP test hook
 // (greenhorn rules and the clock-in grace off), clocks everyone in, walks them to the same tunnel by the server's
 // own speed rules, and checks: you can see the other miner, the ASSASSINATE prompt shows behind an unaware miner,
-// meeting face to face starts a Game Boy bug battle on both screens, the battle plays out, and the loser gets the
+// meeting face to face starts a bug fight in the ring on both screens, the battle plays out, and the loser gets the
 // receipt. A third miner then stabs the winner in the back.   npm run build && PLAYWRIGHT_DIR=... OUT=dir node scripts/e2e-pvp.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -100,37 +100,37 @@ try {
   check(noScroll, 'phone: no page scroll with the prompt up');
   // ...but Ann holds off. Bob turns around: they see each other and they are touching. Bugs out.
   await Bp.evaluate((a) => { window.__acidMine.yaw = a; }, WEST);
-  await Promise.all([A.waitForSelector('[data-test=bug-battle]', { timeout: 6000 }).catch(() => null), Bp.waitForSelector('[data-test=bug-battle]', { timeout: 6000 }).catch(() => null)]);
-  check(!!(await A.$('[data-test=bug-battle]')) && !!(await Bp.$('[data-test=bug-battle]')), 'face to face and touching: a bug battle opens on both screens');
+  await Promise.all([A.waitForSelector('[data-test=bout][data-kind=mine]', { timeout: 6000 }).catch(() => null), Bp.waitForSelector('[data-test=bout][data-kind=mine]', { timeout: 6000 }).catch(() => null)]);
+  check(!!(await A.$('[data-test=bout][data-kind=mine]')) && !!(await Bp.$('[data-test=bout][data-kind=mine]')), 'face to face and touching: a bug battle opens on both screens');
   check(!(await A.$('[data-test=ambush-prompt]')), 'no assassinate prompt once he has seen you');
   await wait(400);
   await shot(A, '3-bug-battle-phone'); await shot(Bp, '3-bug-battle-desktop');
-  const fits = await A.evaluate(() => { const r = document.querySelector('.gb-screen').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; });
+  const fits = await A.evaluate(() => { const r = document.querySelector('[data-test=bout]').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; });
   check(fits, 'phone: the whole battle screen fits without scrolling');
-  await A.waitForSelector('[data-test=battle-run]', { timeout: 9000 }).catch(() => null); // after the v75 intro (flash, versus, "wants to battle!")
-  check(await A.evaluate(() => !!document.querySelector('[data-test=battle-run]')), 'RUN is on screen');
-  // play it out: both pick their first usable move, turn after turn
+  await A.waitForSelector('[data-test=bout-run]', { timeout: 9000 }).catch(() => null);
+  check(await A.evaluate(() => !!document.querySelector('[data-test=bout-run]')), 'RUN is on screen');
+  // play it out: both keep lining up their first move; the fight keeps its own time (up to about two minutes)
   let over = false;
-  for (let t = 0; t < 40 && !over; t++) {
+  for (let t = 0; t < 130 && !over; t++) {
     for (const p of [A, Bp]) {
-      const btn = await p.$('[data-test^=battle-move-]:not([disabled])');
+      const btn = await p.$('[data-test^=bout-move-]:not([disabled])');
       if (btn) await btn.click().catch(() => {});
     }
     await wait(1200);
     if (t === 1) { await shot(A, '4-bug-battle-midfight-phone'); }
-    over = !!(await A.$('[data-test=battle-over]')) && !!(await Bp.$('[data-test=battle-over]'));
+    over = !!(await A.$('[data-test=bout][data-done="1"]')) && !!(await Bp.$('[data-test=bout][data-done="1"]'));
   }
   await wait(1500);
   check(over, 'the battle ends on both screens');
   await shot(A, '5-battle-over-phone'); await shot(Bp, '5-battle-over-desktop');
-  const annWon = await A.evaluate(() => document.querySelector('[data-test=battle-over]')?.textContent.includes('YOU WON'));
+  const annWon = await A.evaluate(() => document.querySelector('[data-test=bout]')?.dataset.result === 'won');
   const [W, L, winner] = annWon ? [A, Bp, ann] : [Bp, A, bob];
   console.log('     winner:', winner.name);
-  await L.click('[data-test=battle-done]'); await L.waitForSelector('[data-test=pvp-receipt]', { timeout: 5000 }).catch(() => null);
+  await L.click('[data-test=bout-close]'); await L.waitForSelector('[data-test=pvp-receipt]', { timeout: 5000 }).catch(() => null);
   check(!!(await L.$('[data-test=pvp-receipt]')), 'the loser gets a YOUR BUG LOST receipt');
   await shot(L, '6-loser-receipt');
-  await W.click('[data-test=battle-done]'); await wait(500);
-  check(!!(await W.$('.m-canvas')) && !(await W.$('[data-test=bug-battle]')), 'the winner is back in the tunnels');
+  await W.click('[data-test=bout-close]'); await wait(500);
+  check(!!(await W.$('.m-canvas')) && !(await W.$('[data-test=bout][data-kind=mine]')), 'the winner is back in the tunnels');
   // Cal comes down and stabs the winner in the back
   const C = await open(browser, cal, { w: 1280, h: 720 });
   const wpos = await W.evaluate(() => ({ x: window.__acidMine.pos.x / 2.2, y: window.__acidMine.pos.y / 2.2 }));
