@@ -206,6 +206,12 @@ test('voladores and gordos are drawn: their own models, poses, a health bar and 
   const models = src('client/src/mines/elhalo/models.js'), game = src('client/src/mines/elhalo/game.js');
   for (const k of ['makeVolador', 'makeGordo', 'makeDog', 'makeEloteCart', 'makeBubble', 'makeLandRing']) assert.match(models, new RegExp(`export function ${k}\\(`));
   assert.match(models, /ENEMY_MAKERS\.volador = makeVolador; ENEMY_MAKERS\.gordo = makeGordo/);
+  assert.match(models, /huipil/, 'La Doña wears a flowered huipil');
+  assert.match(models, /rebozo/, 'and a rebozo shawl');
+  assert.match(models, /braid/, 'and braids with ribbons');
   assert.match(game, /¡ÁGUILA!/); assert.match(game, /st === 'leap'/); assert.match(game, /m\.bar/); assert.match(game, /dogsAt\(/);
   assert.match(game, /touch \? DOG_COUNT\.phone : DOG_COUNT\.free/, 'fewer dogs on phones');
+  assert.match(game, /LA DOÑA/, 'HUD and killfeed say La Doña');
+  assert.match(game, /¡TORTA!/);
+  assert.match(src('client/src/mines/elhalo/audio.js'), /torta\(\)/);
 });

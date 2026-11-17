@@ -418,7 +418,7 @@ export function makeLechuza() { // an owl the size of a person with a pale woman
   const ey = eyes(root, 0xffffff, [[-0.08, 0.9, -0.37], [0.08, 0.9, -0.37]], 0.03);
   return { root, legs: [new THREE.Group(), new THREE.Group()], arms, mats: [m], eyes: ey, kind: 'fly' };
 }
-// ---- v3: the luchador volador and el gordo
+// ---- v3: the luchador volador and La Doña (the heavyweight, still type id gordo)
 export function makeVolador(R) { // a white eagle mask with a gold beak and feathered brows, a long red cape notched like wing tips
   const gold = [1, 0.8, 0.2], white = [0.97, 0.96, 0.94], red = [0.85, 0.1, 0.18], tights = pickR(R, [[0.1, 0.25, 0.75], [0.12, 0.12, 0.14], [0.85, 0.1, 0.18]]), skin = pickR(R, SKIN);
   const extra = [
@@ -437,29 +437,71 @@ export function makeVolador(R) { // a white eagle mask with a gold beak and feat
   const b = person(R, { shirt: skin, pants: tights, boots: [1, 0.8, 0.2], skin, bulk: 1.2, extra, faceExtra, sleeve: skin, hand: white });
   return { ...b, kind: 'volador' };
 }
-export function makeGordo(R) { // the heavyweight: a huge round belly, a tight mask, a championship belt, little legs
-  const mask = pickR(R, [[0.1, 0.1, 0.12], [0.6, 0.1, 0.6], [0.95, 0.45, 0.1]]), trim = [1, 0.85, 0.25], skin = pickR(R, SKIN), tights = [0.15, 0.15, 0.2];
+export function makeGordo(R) { // La Doña: a huge, proud woman in a flowered huipil, a layered skirt, a rebozo and braids with ribbons. Fun and powerful, not a caricature. Same heavyweight scale as before. The dress covers her; nothing is drawn as bare skin below the neck.
+  const skin = pickR(R, SKIN);
+  const huipil = pickR(R, [[0.96, 0.55, 0.18], [0.2, 0.62, 0.58], [0.85, 0.18, 0.42], [0.95, 0.88, 0.55]]); // a bright, clearly-a-blouse colour
+  const yoke = pickR(R, [[0.15, 0.42, 0.48], [0.75, 0.12, 0.28], [0.2, 0.35, 0.7]]);
+  const skirtA = pickR(R, [[0.72, 0.1, 0.2], [0.12, 0.38, 0.52], [0.16, 0.42, 0.36]]);
+  const skirtB = pickR(R, [[0.95, 0.62, 0.14], [0.88, 0.22, 0.48], [0.2, 0.55, 0.52]]);
+  const skirtC = pickR(R, [[0.14, 0.28, 0.55], [0.78, 0.12, 0.28], [0.82, 0.72, 0.18]]);
+  const rebozo = pickR(R, [[0.14, 0.4, 0.46], [0.48, 0.14, 0.4], [0.68, 0.16, 0.2]]);
+  const stripe = pickR(R, [[0.95, 0.75, 0.15], [0.95, 0.9, 0.75], [0.9, 0.2, 0.35]]);
+  const ribbon = pickR(R, [[0.9, 0.15, 0.35], [0.95, 0.75, 0.15], [0.15, 0.58, 0.52]]);
+  const hair = pickR(R, [[0.12, 0.07, 0.04], [0.2, 0.11, 0.06], [0.08, 0.05, 0.03]]);
+  const flowers = [[0.95, 0.12, 0.22], [1, 0.55, 0.08], [0.9, 0.2, 0.55], [0.15, 0.4, 0.9], [0.15, 0.65, 0.25], [1, 0.9, 0.15], [0.98, 0.98, 0.95]];
+  const leaf = [0.18, 0.48, 0.18];
   const m = mat(), root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const g = [
-    painted(new THREE.SphereGeometry(0.78, 10, 8).scale(1.05, 0.95, 0.95).translate(0, 1.05, -0.05), skin),           // the belly
-    painted(new THREE.SphereGeometry(0.6, 9, 7).scale(1.15, 0.8, 0.9).translate(0, 1.62, 0.05), skin),               // chest and shoulders
-    painted(new THREE.SphereGeometry(0.06, 5, 4).translate(0, 1.05, -0.8), skin.map((v) => v * 0.8)),               // belly button
-    painted(new THREE.CylinderGeometry(0.8, 0.82, 0.24, 12).translate(0, 0.62, 0), tights),                          // trunks
-    painted(new THREE.CylinderGeometry(0.84, 0.84, 0.18, 12).translate(0, 0.8, 0), trim),                            // the belt
-    B(0.46, 0.3, 0.08, 0, 0.8, -0.84, [1, 0.95, 0.55]), B(0.26, 0.18, 0.04, 0, 0.8, -0.89, [0.85, 0.15, 0.2]),       // buckle
-    B(0.44, 0.44, 0.42, 0, 2.02, -0.02, mask),                                                                         // a tight mask
-    B(0.44, 0.06, 0.43, 0, 2.15, -0.02, trim), B(0.06, 0.4, 0.44, 0, 2.05, -0.02, trim),
-    B(0.08, 0.06, 0.03, -0.1, 2.06, -0.24, [1, 1, 1]), B(0.08, 0.06, 0.03, 0.1, 2.06, -0.24, [1, 1, 1]),
-    B(0.04, 0.04, 0.02, -0.1, 2.06, -0.255, [0.05, 0.05, 0.05]), B(0.04, 0.04, 0.02, 0.1, 2.06, -0.255, [0.05, 0.05, 0.05]),
-    B(0.14, 0.06, 0.03, 0, 1.92, -0.24, [0.6, 0.15, 0.15]),                                                           // mouth hole
+    // a full, powerful figure — the huipil covers every bit of the torso
+    painted(new THREE.SphereGeometry(0.72, 10, 8).scale(1.15, 0.95, 0.95).translate(0, 1.12, 0), huipil),
+    painted(new THREE.SphereGeometry(0.55, 9, 7).scale(1.25, 0.9, 1.0).translate(0, 1.58, 0.04), huipil),
+    B(1.2, 0.7, 0.75, 0, 1.5, 0.02, huipil),
+    B(0.7, 0.2, 0.62, 0, 1.86, 0, yoke), // square embroidered yoke / neckline
+    // three layered, flared skirt tiers plus a light hem — a full, heavy skirt
+    painted(new THREE.CylinderGeometry(1.12, 0.82, 0.46, 12).translate(0, 0.28, 0), skirtC),
+    painted(new THREE.CylinderGeometry(0.96, 0.74, 0.4, 12).translate(0, 0.62, 0), skirtB),
+    painted(new THREE.CylinderGeometry(0.8, 0.64, 0.38, 12).translate(0, 0.94, 0), skirtA),
+    painted(new THREE.CylinderGeometry(1.15, 1.12, 0.1, 12).translate(0, 0.08, 0), [0.97, 0.95, 0.9]),
+    // a proud, kind face (ordinary proportions — not a mask, not a caricature)
+    B(0.48, 0.48, 0.44, 0, 2.04, -0.02, skin),
+    B(0.09, 0.08, 0.03, -0.11, 2.08, -0.24, [1, 1, 1]), B(0.09, 0.08, 0.03, 0.11, 2.08, -0.24, [1, 1, 1]),
+    B(0.045, 0.045, 0.02, -0.11, 2.075, -0.255, [0.12, 0.08, 0.06]), B(0.045, 0.045, 0.02, 0.11, 2.075, -0.255, [0.12, 0.08, 0.06]),
+    B(0.09, 0.1, 0.08, 0, 1.98, -0.23, skin.map((v) => v * 0.9)),
+    B(0.16, 0.035, 0.03, 0, 1.9, -0.23, [0.72, 0.35, 0.38]),
+    // dark hair, a center part, two long braids with ribbons
+    painted(new THREE.SphereGeometry(0.3, 8, 6).scale(1.2, 0.9, 1.1).translate(0, 2.24, 0.04), hair),
+    B(0.02, 0.22, 0.3, 0, 2.24, -0.08, skin),
   ];
+  // flower embroidery on the huipil: little blossoms and leaves, front and sides
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2, fx = Math.sin(ang) * 0.55, fz = -0.38 + Math.cos(ang) * 0.12, fy = 1.35 + (i % 4) * 0.12;
+    const fc = flowers[i % flowers.length];
+    g.push(B(0.12, 0.12, 0.05, fx, fy, fz, fc));
+    g.push(B(0.08, 0.05, 0.04, fx + 0.09, fy - 0.05, fz, leaf));
+  }
+  // rebozo shawl: draped over the shoulders, striped, hanging down the back
+  g.push(B(1.45, 0.18, 0.75, 0, 1.82, 0.1, rebozo));
+  g.push(B(0.6, 1.25, 0.14, -0.38, 1.12, 0.48, rebozo));
+  g.push(B(0.6, 0.09, 0.16, -0.38, 1.12, 0.48, stripe));
+  g.push(B(0.6, 0.09, 0.16, -0.38, 0.7, 0.48, stripe));
+  // braids
+  for (const sd of [-1, 1]) {
+    g.push(painted(new THREE.CylinderGeometry(0.08, 0.06, 1.15, 6).rotateZ(sd * 0.22).translate(sd * 0.32, 1.52, 0.32), hair));
+    g.push(B(0.16, 0.11, 0.09, sd * 0.2, 2.14, 0.2, ribbon)); // ribbon at the crown
+    g.push(B(0.14, 0.16, 0.09, sd * 0.48, 1.02, 0.36, ribbon)); // ribbon at the tip
+  }
   body.add(new THREE.Mesh(mergeGeometries(g), m));
   const legs = [], arms = [];
   for (const sd of [-1, 1]) {
-    const l = limb([B(0.3, 0.5, 0.32, 0, -0.25, 0, tights), B(0.32, 0.14, 0.42, 0, -0.52, -0.06, [1, 1, 1])], sd * 0.34, 0.55, 0, m); root.add(l); legs.push(l);
-    const a = limb([painted(new THREE.CylinderGeometry(0.17, 0.14, 0.7, 7).translate(0, -0.32, 0), skin), B(0.2, 0.2, 0.2, 0, -0.72, 0, trim)], sd * 0.88, 1.75, 0, m); body.add(a); arms.push(a);
+    // little shoes peeking from under the hem; legs stay for the walk cycle
+    const l = limb([B(0.22, 0.28, 0.26, 0, -0.16, 0, skirtC), B(0.24, 0.1, 0.32, 0, -0.34, -0.04, [0.2, 0.12, 0.08])], sd * 0.28, 0.22, 0, m); root.add(l); legs.push(l);
+    const a = limb([
+      B(0.24, 0.3, 0.24, 0, -0.12, 0, huipil), // short huipil sleeve
+      painted(new THREE.CylinderGeometry(0.13, 0.11, 0.42, 7).translate(0, -0.42, 0), skin),
+      B(0.16, 0.16, 0.16, 0, -0.68, 0, skin),
+    ], sd * 0.85, 1.72, 0, m); body.add(a); arms.push(a);
   }
-  // a health bar over its head (unlit, always faces the camera)
+  // a health bar over her head (unlit, always faces the camera)
   const bar = new THREE.Group(); bar.position.y = 2.75;
   const bg = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.16), new THREE.MeshBasicMaterial({ color: 0x220810, transparent: true, opacity: 0.75, depthTest: false }));
   const fg = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.1).translate(0.62, 0, 0), new THREE.MeshBasicMaterial({ color: 0xff3d5a, transparent: true, depthTest: false })); fg.position.x = -0.62; // (transparent too, so it draws after the backing)

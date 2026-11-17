@@ -57,8 +57,9 @@ export function falloff(id, dist) {
 //   granjero   a farmer with a pitchfork: slow, tanky
 //   volador    one luchador in five: a winged mask and a long cape. Crouches, shouts, then sails high across the
 //              canyon in a diving-eagle arc and lands on you with a shockwave (an original move)
-//   gordo      (wave 3+) the heavyweight: a huge belly, ten times a luchador's toughness, slow. Belly-flops on you from a
-//              few metres out, or wraps you in a bear hug up close. Both wind up first, so you can get out of the way
+//   gordo      (wave 3+) La Doña, the heavyweight: a huge woman in a flowered huipil, ten times a luchador's toughness, slow.
+//              Belly-flops on you from a few metres out (and shouts ¡TORTA! when she lands), or wraps you in a bear hug up close.
+//              Both wind up first, so you can get out of the way
 //   padre      blesses nearby foes (heals them, hurries them along), weak in a scrap
 //   chupacabra (wave 5+) gaunt, spiny and horribly fast, twitchy, pounces, climbs the fort walls
 //   llorona    (wave 10+) floats, weeps, drifts through walls, wails, appears behind you

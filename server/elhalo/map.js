@@ -1,11 +1,39 @@
 // EL HALO horde map, shared by the server (collision, enemy routes, hit checks) and the client (world.js draws it).
-// Pure data and maths: no three.js, no DOM. An original layout of the long-box-canyon kind: cliff walls on both
-// sides, a shallow creek winding down the middle, rolling hills, an adobe fort at each end, and three buildings you
+// Pure data and maths: no three.js, no DOM. An original layout of the long-box-canyon kind: solid cliff walls on both
+// sides (the visible rock face is the same plane the server collides with), a shallow creek winding down the middle, rolling hills, an adobe fort at each end, and three buildings you
 // can run through (a mission, La Michoacana ice-cream parlour and a mansion). Every door and window is open: no boards.
 // Units are metres; x runs across the canyon, z runs along it (north is -z).
 
 export const BOUNDS = { x0: -24, x1: 24, z0: -64, z1: 64 };
 export const STEP = 0.45;      // what you can walk up without jumping
+// The visible rock face sits on this rectangle (world.js draws it there). Bodies are kept a
+// radius inside the face so nobody melts into the mesh. Thick slabs just outside the face stop
+// rays, leaps, launches, the jeep, and anything else that would otherwise pass through the rock.
+export const CANYON_THICK = 8;
+export const CANYON_Y0 = -20;
+export const CANYON_Y1 = 40;
+export const CANYON_WALLS = [
+  { x0: BOUNDS.x0 - CANYON_THICK, x1: BOUNDS.x0, y0: CANYON_Y0, y1: CANYON_Y1, z0: BOUNDS.z0 - CANYON_THICK, z1: BOUNDS.z1 + CANYON_THICK, k: 'canyon' },
+  { x0: BOUNDS.x1, x1: BOUNDS.x1 + CANYON_THICK, y0: CANYON_Y0, y1: CANYON_Y1, z0: BOUNDS.z0 - CANYON_THICK, z1: BOUNDS.z1 + CANYON_THICK, k: 'canyon' },
+  { x0: BOUNDS.x0, x1: BOUNDS.x1, y0: CANYON_Y0, y1: CANYON_Y1, z0: BOUNDS.z0 - CANYON_THICK, z1: BOUNDS.z0, k: 'canyon' },
+  { x0: BOUNDS.x0, x1: BOUNDS.x1, y0: CANYON_Y0, y1: CANYON_Y1, z0: BOUNDS.z1, z1: BOUNDS.z1 + CANYON_THICK, k: 'canyon' },
+];
+export function inCanyon(x, z, r = 0) {
+  return x >= BOUNDS.x0 + r && x <= BOUNDS.x1 - r && z >= BOUNDS.z0 + r && z <= BOUNDS.z1 - r;
+}
+export function clampInCanyon(o, r = 0) {
+  o.x = Math.max(BOUNDS.x0 + r, Math.min(BOUNDS.x1 - r, o.x));
+  o.z = Math.max(BOUNDS.z0 + r, Math.min(BOUNDS.z1 - r, o.z));
+  return o;
+}
+// Push a circle of radius r out of the rock face. Used by collide, leap landings, launches, the jeep.
+export function canyonCollide(o, r = 0) {
+  for (const c of CANYON_WALLS) {
+    const q = pushOut(o.x, o.z, r, c);
+    if (q) { o.x = q.x; o.z = q.z; }
+  }
+  return clampInCanyon(o, r);
+}
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 export const creekX = (z) => 2.6 * Math.sin(z * 0.055 + 0.6) + 1.2 * Math.sin(z * 0.13);
@@ -232,7 +260,7 @@ export function collide(o, r, feet, height, skipSills = false) {
     if (c.r) { const dx = o.x - c.x, dz = o.z - c.z, d = Math.hypot(dx, dz), m = c.r + r; if (d < m && d > 1e-6) { o.x = c.x + dx / d * m; o.z = c.z + dz / d * m; } }
     else { const q = pushOut(o.x, o.z, r, c); if (q) { o.x = q.x; o.z = q.z; } }
   }
-  o.x = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, o.x)); o.z = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, o.z));
+  canyonCollide(o, r);
 }
 
 // Ray against an axis-aligned box {x0,x1,y0,y1,z0,z1}: entry distance or Infinity (slab method).
@@ -257,10 +285,12 @@ export function wallDist(o, d, max, noGround = false) {
     const b = c.r ? { x0: c.x - c.r * 0.8, x1: c.x + c.r * 0.8, z0: c.z - c.r * 0.8, z1: c.z + c.r * 0.8, y0: c.y0, y1: c.y1 } : c;
     const h = rayBox(o, d, b); if (h < best) best = h;
   }
+  for (const c of CANYON_WALLS) { const h = rayBox(o, d, c); if (h < best) best = h; }
   if (!noGround && d.y < 0.5) for (let s = 0.5; s < best; s += 0.5) { if (o.y + d.y * s < terrain(o.x + d.x * s, o.z + d.z * s)) { best = s; break; } }
   return best;
 }
-export const insideSolid = (p) => SOLIDS.some((c) => (c.r ? (p.x - c.x) ** 2 + (p.z - c.z) ** 2 < c.r * c.r : p.x > c.x0 && p.x < c.x1 && p.z > c.z0 && p.z < c.z1) && p.y > c.y0 && p.y < c.y1);
+const inBox = (p, c) => p.x > c.x0 && p.x < c.x1 && p.z > c.z0 && p.z < c.z1 && p.y > c.y0 && p.y < c.y1;
+export const insideSolid = (p) => SOLIDS.some((c) => (c.r ? (p.x - c.x) ** 2 + (p.z - c.z) ** 2 < c.r * c.r && p.y > c.y0 && p.y < c.y1 : inBox(p, c))) || CANYON_WALLS.some((c) => inBox(p, c));
 
 // Does the segment a→b (xz) cross rect r (padded by m)? Liang-Barsky.
 export function segHitsRect(a, b, r, m = 0) {
