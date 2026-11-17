@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Barn, CARE, DECAY_PER_HOUR } from '../server/barn.js';
+import { Barn, CARE, DECAY_PER_HOUR, BOUT_LEVEL, BOUT_XP, BOUT_WIN_XP, MAX_BOUT_STAKE } from '../server/barn.js';
 import { Shop, USE_COOLDOWN_MS } from '../server/shop.js';
 import { BUG_ITEMS } from '../server/catalog/bug.js';
 
@@ -134,7 +134,12 @@ test('toys are reusable Play bonuses; equipment slots replace rather than stack'
   own('gear-armor'); own('gear-bandage');
   shop.equip(player, { id: 'gear-armor' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.06);
   shop.equip(player, { id: 'gear-bandage' }); assert.equal(shop.bugStyle(player.id).gearBonus, 0.01);
-  assert.ok(item('gear-boots').desc.includes('+2.5% attack damage'));
+  const gearDesc = item('gear-boots').desc;
+  assert.ok(gearDesc.includes('+2.5% attack damage'));
+  // the bout rules it quotes are the Barn's own: who can fight, the XP, and that a bout can be for money
+  assert.equal(BOUT_LEVEL, 1); assert.ok(gearDesc.includes('Any hatched bug can fight'));
+  assert.ok(gearDesc.includes(`${BOUT_XP + BOUT_WIN_XP} XP for a win and ${BOUT_XP} for a loss or draw`));
+  assert.ok(gearDesc.includes(`a matched stake of up to $${MAX_BOUT_STAKE.toLocaleString('en-US')}`));
   const before = structuredClone(pen);
   for (const id of ['bugskin-ruby', 'bugwear-tophat', 'bugwear-bow']) { own(id); shop.equip(player, { id }); }
   assert.deepEqual(pen, before, 'cosmetics do not change needs, XP or species');
