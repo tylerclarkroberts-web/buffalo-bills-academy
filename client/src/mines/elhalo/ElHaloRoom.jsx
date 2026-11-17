@@ -2,13 +2,74 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import './elhalo.css';
 import { createGame } from './game.js';
+import { getLook, saveLook } from './net.js';
+import { LOOK, LOOK_KEYS, DEFAULT_LOOK, cleanLook } from './logic.js';
+import { MUSIC_LEVELS } from './audio.js';
+import { LOOK_SWATCH } from './models.js';
 
-// The EL HALO door in the Hall of Doors: a shared horde match in a sunset box canyon. Everyone who walks in drops into
-// the same world: waves of luchadores, mariachis, granjeros and padres, boards to nail back over the windows of the
-// mission, the hacienda and the mansion, and friendly fire very much on. The server runs the match (server/elhalo);
-// this folder is its own chunk, loaded when the door opens. Free play: nothing here touches money.
+// The EL HALO door in the Hall of Doors: a shared horde match in a sunset box canyon. You wait in the lobby first (pick
+// your poncho, sombrero, bigote, bandana and boots; get ready), then everyone drops into the same world: waves of
+// luchadores, mariachis, granjeros, padres, chupacabras and worse after dark, a supply truck between waves, boards to
+// nail over the hacienda and mansion windows (the mission stays wide open) and friendly fire very much on. The server
+// runs the match (server/elhalo); this folder is its own chunk, loaded when the door opens. Free play: no money.
 const isTouch = () => window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
-const ph = (i) => (!i ? '' : i.phase === 'wave' ? `OLEADA ${i.wave}` : i.phase === 'break' ? (i.wave ? `OLEADA ${i.wave + 1} EN ${i.cd}` : `EMPIEZA EN ${i.cd}`) : i.phase === 'over' ? 'SE ACABÓ' : 'VACÍO');
+const ph = (i) => (!i ? '' : i.phase === 'wave' ? `OLEADA ${i.wave}` : i.phase === 'truck' ? `LA TROCA · OLEADA ${i.wave}` : i.phase === 'break' ? (i.wave ? `OLEADA ${i.wave + 1} EN ${i.cd}` : `EMPIEZA EN ${i.cd}`) : i.phase === 'over' ? 'SE ACABÓ' : i.phase === 'lobby' ? 'EN EL LOBBY' : 'VACÍO');
+const LOOK_LABEL = { poncho: 'PONCHO', sombrero: 'SOMBRERO', hatColor: 'COLOR', bigote: 'BIGOTE', cuello: 'CUELLO', cuelloColor: 'COLOR', botas: 'BOTAS' };
+const rgb = (c) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`;
+const DOTS = ['#1aa6a6', '#f2598c', '#ffbf26', '#8c66f2', '#66cc4d', '#ff8026', '#4d8cff', '#f2f2f2'];
+
+// the lobby: who's here and ready, your look with a live turntable preview, and the button that gets you in
+function Lobby({ m, info, touch, look, setLookAt, game, note }) {
+  const joined = m === 'lobby';
+  const running = info && !['lobby', 'idle', undefined].includes(info.phase);
+  const roster = info?.roster || [];
+  const [busy, setBusy] = useState(false);
+  const act = async (fn) => { if (busy) return; setBusy(true); try { await fn(); } finally { setBusy(false); } };
+  return (
+    <div className="elh-lobby" data-test="elhalo-lobby">
+      <div className="elh-lb-head">
+        <h2 className="elh-logo elh-lb-logo">EL HALO</h2>
+        <p className="elh-sub">HORDA EN EL CAÑÓN</p>
+      </div>
+      <div className="elh-lb-preview" data-preview data-test="elhalo-preview" aria-label="Your character, turning slowly" role="img" />
+      <div className="elh-lb-panel">
+        <div className="elh-lb-looks" data-test="elhalo-looks">
+          {LOOK_KEYS.map((k, i) => {
+            const opts = LOOK[k], v = look[i] ?? 0, o = opts[v];
+            const name = typeof o === 'string' ? o : o?.name ?? String(v);
+            const sw = LOOK_SWATCH[k]?.[v] || null;
+            return (
+              <div className="elh-sel" key={k} data-test={`look-${k}`}>
+                <small>{LOOK_LABEL[k] || k.toUpperCase()}</small>
+                <button type="button" aria-label={`Previous ${LOOK_LABEL[k]}`} onClick={() => setLookAt(i, (v + opts.length - 1) % opts.length)} data-test={`look-${k}-prev`}>‹</button>
+                <span>{sw && <i style={{ background: rgb(sw) }} />}{name}</span>
+                <button type="button" aria-label={`Next ${LOOK_LABEL[k]}`} onClick={() => setLookAt(i, (v + 1) % opts.length)} data-test={`look-${k}-next`}>›</button>
+              </div>
+            );
+          })}
+        </div>
+        <ul className="elh-roster" data-test="elhalo-roster" aria-label="Players">
+          {roster.length ? roster.map((r) => (
+            <li key={r.id} className={`${r.me ? 'me' : ''}${r.ready ? ' ready' : ''}`} data-test="roster-row">
+              <i style={{ background: DOTS[r.color % DOTS.length] }} />
+              <b>{r.name}</b>{r.host && <em title="Host">★</em>}
+              <span>{running ? 'JUGANDO' : r.ready ? '✓ LISTO' : '…'}</span>
+            </li>
+          )) : <li className="empty">NADIE TODAVÍA</li>}
+        </ul>
+        <p className="elh-live" data-test="elhalo-live">{info ? (info.players ? `${info.players} EN LA CANCHA · ${ph(info)}` : 'NADIE TODAVÍA · YOU START IT') : 'CONECTANDO…'}</p>
+        {note && <p className="elh-note" role="alert">{note}</p>}
+        <div className="elh-lb-btns">
+          {!joined && <button className="m-btn" onClick={() => act(() => game()?.start())} disabled={m === 'loading' || busy} data-test="elhalo-start">▸ {running ? '¡ENTRAR!' : 'UNIRME'}</button>}
+          {joined && <button className={`m-btn${info?.ready ? ' on' : ''}`} onClick={() => act(() => game()?.ready(!info?.ready))} aria-pressed={!!info?.ready} data-test="elhalo-ready">{info?.ready ? '✓ LISTO' : '¿LISTO?'}</button>}
+          {joined && info?.host && <button className="m-btn alt" onClick={() => act(() => game()?.begin())} data-test="elhalo-begin">▸ EMPEZAR</button>}
+        </div>
+        {joined && !info?.host && <p className="elh-keys">{info?.hostName ? `${info.hostName} ★ EMPIEZA` : ''} · TODOS LISTOS Y ARRANCA</p>}
+        {!touch && !joined && <p className="elh-keys">WASD · mouse · click fire · right-click zoom · E action · G grenade · T grenade type · F smack · R reload · Q swap · Tab scores</p>}
+      </div>
+    </div>
+  );
+}
 
 function Board({ rows, onClose, touch }) {
   return (
@@ -36,16 +97,20 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
   const [mode, setMode] = useState({ mode: 'loading' });
   const [info, setInfo] = useState(null);
   const [board, setBoard] = useState(null); // rows while the scoreboard is open
+  const [look, setLook] = useState(DEFAULT_LOOK);
+  const [music, setMusic] = useState(() => Math.max(0, Math.min(MUSIC_LEVELS.length - 1, +(localStorage.getItem('bba.elhalo.music') || 0) || 0)));
+  const saveT = useRef(0);
   const exitRef = useRef(onExit); exitRef.current = onExit;
 
   useEffect(() => {
     const prevTitle = document.title; document.title = 'EL HALO · HALL OF DOORS';
     let g;
     try {
-      g = createGame({ canvas: canvas.current, root: stage.current, touch, muted, reduceMotion: !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+      g = createGame({ canvas: canvas.current, root: stage.current, touch, muted, musicLevel: music, reduceMotion: !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
         onMode: (m, extra) => setMode({ mode: m, ...extra }), onInfo: setInfo });
     } catch (err) { setMode({ mode: 'error', msg: String(err?.message || err) }); return () => { document.title = prevTitle; }; }
     game.current = g; window.__elHalo = g;
+    getLook().then((l) => { if (l && game.current === g) { const c = cleanLook(l); setLook(c); g.setLook(c); } });
     const onKey = (e) => {
       if (e.key === 'Tab' && g.mode === 'playing') { e.preventDefault(); if (e.type === 'keydown') setBoard(g.board()); else setBoard(null); return; }
       if (e.type !== 'keydown' || e.key !== 'Escape') return;
@@ -56,6 +121,15 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); g.dispose(); if (window.__elHalo === g) delete window.__elHalo; game.current = null; document.title = prevTitle; };
   }, []);
   useEffect(() => { localStorage.setItem('bba.elhalo.muted', muted ? '1' : '0'); game.current?.setMuted(muted); }, [muted]);
+  useEffect(() => { if (info?.myColor !== null && info?.myColor !== undefined) game.current?.setLook(look, info.myColor); }, [info?.myColor]);
+  const setLookAt = (i, v) => {
+    setLook((cur) => {
+      const next = cur.slice(); next[i] = v; game.current?.setLook(next, info?.myColor ?? undefined);
+      clearTimeout(saveT.current); saveT.current = setTimeout(() => saveLook(next), 250); // the server keeps it on your profile
+      return next;
+    });
+  };
+  const cycleMusic = () => { const n = (music + 1) % MUSIC_LEVELS.length; setMusic(n); localStorage.setItem('bba.elhalo.music', String(n)); game.current?.setMusicLevel(n); };
   useEffect(() => { // keep an open scoreboard fresh
     if (!board) return undefined;
     const id = setInterval(() => game.current && setBoard(game.current.board()), 500);
@@ -73,6 +147,7 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
         <span className="m-elh-name" aria-hidden="true">EL HALO</span>
         <span className="m-dim m-doom-clock" title="Your shift is still on the clock while you're in here">SHIFT {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</span>
         {touch && m === 'playing' && <button className="m-link" onClick={() => setBoard((b) => (b ? null : game.current.board()))} data-test="elhalo-board-btn">MARCADOR</button>}
+        <button className="m-link" onClick={cycleMusic} data-test="elhalo-music" title="Music volume">MÚSICA {MUSIC_LEVELS[music][0]}</button>
         <button className="m-link" onClick={() => setMuted((v) => !v)} aria-pressed={!muted} data-test="elhalo-mute">{muted ? '♪ OFF' : '♪ ON'}<span className="sr-only"> game sound</span></button>
       </div>
       <div className="elh-stage" ref={stage}>
@@ -89,12 +164,16 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
             </div>
             <div className="elh-ammo" data-h="ammo">
               <b data-h="mag">32</b><small data-h="reserve">192</small>
-              <span className="elh-wname" data-h="wname">LA CHICHARRA</span>
-              <span className="elh-nades" data-h="nades" aria-label="Piñata grenades">✶✶··</span>
+              <span className="elh-wname" data-h="wname">RIFLE DE ASALTO</span>
+              <span className="elh-slots" data-h="slots" />
+              <span className="elh-nades" data-h="nades" aria-label="Grenades: piñatas and stickies">✶2 ◆0</span>
             </div>
           </div>
           <div className="elh-feed" data-h="feed" data-test="elhalo-feed" />
-          <div className="elh-reticle" data-h="reticle"><span /></div>
+          <div className="elh-scope" data-h="scope" data-test="elhalo-scope" />
+          <div className="elh-reticle" data-h="reticle" data-test="elhalo-reticle"><span /></div>
+          <div className="elh-hs" data-h="hs" data-test="elhalo-headshot">¡CABEZA!</div>
+          <div className="elh-bleed" data-h="bleed" data-test="elhalo-bleed"><i /></div>
           <div className="elh-banner" data-h="banner" role="status" />
           <div className="elh-prompt" data-h="prompt" data-test="elhalo-prompt" />
           <div className="elh-pbar"><i data-h="promptbar" /></div>
@@ -112,20 +191,14 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
               <button data-pad-btn="melee" className="melee" data-test="pad-melee">SMACK</button>
               <button data-pad-btn="reload" className="reload" data-test="pad-reload">RELOAD</button>
               <button data-pad-btn="swap" className="swap" data-test="pad-swap">SWAP</button>
+              <button data-pad-btn="nadekind" className="nkind" data-h="nadekind" data-test="pad-nadekind">✶ PIÑATA</button>
+              <button data-pad-btn="zoom" className="zoom" data-h="zoombtn" data-test="pad-zoom">ZOOM</button>
             </div>
           </div>
         )}
         {board && m === 'playing' && <Board rows={board} touch={touch} onClose={() => setBoard(null)} />}
-        {(m === 'title' || m === 'loading') && (
-          <div className="elh-card elh-title" data-test="elhalo-title">
-            <h2 className="elh-logo">EL HALO</h2>
-            <p className="elh-sub">HORDA EN EL CAÑÓN</p>
-            <p>The whole fiesta followed you into the canyon. Board up the windows. Watch your aim: your friends bruise too.</p>
-            <p className="elh-live" data-test="elhalo-live">{info ? (info.players ? `${info.players} EN LA CANCHA · ${ph(info)}` : 'NADIE TODAVÍA · YOU START IT') : 'CONECTANDO…'}</p>
-            {mode.note && <p className="elh-note" role="alert">{mode.note}</p>}
-            <button className="m-btn" onClick={() => game.current?.start()} disabled={m === 'loading'} data-test="elhalo-start">▸ {info?.players ? '¡ENTRAR!' : '¡A DARLE!'}</button>
-            {!touch && <p className="elh-keys">WASD move · mouse aim · click fire · E hold to board / revive / buy · G piñata · F smack · R reload · Q swap · Tab scores</p>}
-          </div>
+        {(m === 'title' || m === 'loading' || m === 'lobby') && (
+          <Lobby m={m} info={info} touch={touch} look={look} setLookAt={setLookAt} game={() => game.current} note={mode.note} />
         )}
         {m === 'paused' && !over && (
           <div className="elh-card" data-test="elhalo-paused">

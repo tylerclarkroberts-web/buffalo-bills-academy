@@ -171,6 +171,7 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   // ---- the boards on every opening: BOARDS_MAX planks each, shown according to the live count
   const plankMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const boards = OPENINGS.map((o) => {
+    if (o.open) return { o, g: null, planks: [], shown: 0 }; // la misión stays wide open: nothing to nail up
     const g = new THREE.Group(); g.position.set(o.x, 0, o.z); if (o.nx !== 0) g.rotation.y = Math.PI / 2;
     const planks = [];
     for (let k = 0; k < BOARDS_MAX; k++) {
@@ -218,7 +219,7 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
     for (let j = 0; j < 3; j++) sc[i * 3 + j] = a[1][j] + (b[1][j] - a[1][j]) * f;
   }
   sky.setAttribute('color', new THREE.BufferAttribute(sc, 3));
-  scene.add(new THREE.Mesh(sky, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+  const skyMesh = new THREE.Mesh(sky, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); scene.add(skyMesh);
   const sun = new THREE.Mesh(new THREE.CircleGeometry(16, 20), new THREE.MeshBasicMaterial({ color: 0xffd27a, fog: false }));
   sun.position.set(-250, 22, 60); sun.lookAt(0, 22, 0); scene.add(sun);
   const mts = [];
@@ -227,14 +228,60 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
     const g = new THREE.ConeGeometry(25 + R() * 25, h, 5); g.translate(Math.cos(a) * r, h / 2 - 2, Math.sin(a) * r); mts.push(paint(g.toNonIndexed(), [0.32 + R() * 0.06, 0.18, 0.3 + R() * 0.06]));
   }
   for (const g of mts) { g.deleteAttribute('uv'); }
-  scene.add(new THREE.Mesh(mergeGeometries(mts), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false })));
+  const mtsMesh = new THREE.Mesh(mergeGeometries(mts), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false })); scene.add(mtsMesh);
 
   scene.fog = new THREE.Fog(0xd9876e, 35, 120);
-  scene.add(new THREE.HemisphereLight(0xffc49a, 0x7a4a3a, 2.1));
+  const hemi = new THREE.HemisphereLight(0xffc49a, 0x7a4a3a, 2.1); scene.add(hemi);
   const sunLight = new THREE.DirectionalLight(0xffb070, 2.2); sunLight.position.set(-60, 25, 25); scene.add(sunLight);
 
   scene.fog.near = 45; scene.fog.far = 160;
-  return { water, picado, boards, stations };
+  const night = buildNight(scene, { skyMesh, mtsMesh, sun, hemi, sunLight, lowEnd });
+  return { water, picado, boards, stations, night };
+}
+
+// ---- la noche (wave 10+): the sky bruises over, fog rolls down the canyon, a moon comes up, the lanterns gutter.
+// Everything is built up front and only faded, so turning night on costs no shader recompiles mid-fight.
+function buildNight(scene, { skyMesh, mtsMesh, sun, hemi, sunLight, lowEnd }) {
+  const DAY = { fog: new THREE.Color(0xd9876e), near: 45, far: 160, hemiSky: new THREE.Color(0xffc49a), hemiGround: new THREE.Color(0x7a4a3a), hemiI: 2.1, sun: new THREE.Color(0xffb070), sunI: 2.2 };
+  const NIGHT = { fog: new THREE.Color(0x0d1020), near: 10, far: 62, hemiSky: new THREE.Color(0x5a6aa8), hemiGround: new THREE.Color(0x1a1420), hemiI: 0.75, sun: new THREE.Color(0x9fb4ff), sunI: 0.55 };
+  const moon = new THREE.Mesh(new THREE.CircleGeometry(11, 24), new THREE.MeshBasicMaterial({ color: 0xe8ecff, fog: false, transparent: true, opacity: 0 }));
+  moon.position.set(120, 140, -160); moon.lookAt(0, 0, 0); scene.add(moon);
+  const halo = new THREE.Mesh(new THREE.CircleGeometry(22, 24), new THREE.MeshBasicMaterial({ color: 0x8090c0, fog: false, transparent: true, opacity: 0, depthWrite: false }));
+  halo.position.copy(moon.position).multiplyScalar(1.01); halo.lookAt(0, 0, 0); scene.add(halo);
+  const sp = [], R = rng(4242);
+  for (let i = 0; i < (lowEnd ? 160 : 320); i++) { const a = R() * Math.PI * 2, e = 0.15 + R() * 1.3, r = 280; sp.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+  const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0 }));
+  scene.add(stars);
+  // lanterns at the three buildings and the forts: a glowing box that flickers, and a few real lights (always present)
+  const LANTERNS = [[-9.6, 3.2, -27], [-9.6, 3.2, -21], [8.9, 3, 0], [8.9, 3, 9], [-7.6, 3.4, 24], [-7.6, 3.4, 32], [0, 7.6, -48], [0, 7.6, 48]];
+  const lamps = new THREE.Group(); scene.add(lamps);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffb24a, fog: false });
+  for (const [x, y, z] of LANTERNS) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.3, 0.22), lampMat); m.position.set(x, y + terrain(x, z), z); lamps.add(m); }
+  const lights = (lowEnd ? [0, 4] : [0, 2, 4]).map((i) => { const [x, y, z] = LANTERNS[i]; const l = new THREE.PointLight(0xffa040, 0, 16, 1.6); l.position.set(x, y + terrain(x, z), z); scene.add(l); return l; });
+  let k = 0;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  function set(v) {
+    k = Math.max(0, Math.min(1, v));
+    scene.fog.color.copy(DAY.fog).lerp(NIGHT.fog, k); scene.fog.near = lerp(DAY.near, NIGHT.near, k); scene.fog.far = lerp(DAY.far, NIGHT.far, k);
+    hemi.color.copy(DAY.hemiSky).lerp(NIGHT.hemiSky, k); hemi.groundColor.copy(DAY.hemiGround).lerp(NIGHT.hemiGround, k); hemi.intensity = lerp(DAY.hemiI, NIGHT.hemiI, k);
+    sunLight.color.copy(DAY.sun).lerp(NIGHT.sun, k); sunLight.intensity = lerp(DAY.sunI, NIGHT.sunI, k);
+    sunLight.position.set(lerp(-60, 60, k), lerp(25, 70, k), lerp(25, -80, k));
+    skyMesh.material.color.setRGB(lerp(1, 0.12, k), lerp(1, 0.14, k), lerp(1, 0.3, k));
+    mtsMesh.material.color.setRGB(lerp(1, 0.18, k), lerp(1, 0.2, k), lerp(1, 0.35, k));
+    sun.visible = k < 0.6; sun.material.opacity = 1 - k;
+    moon.material.opacity = k; halo.material.opacity = k * 0.25; stars.material.opacity = k;
+    lamps.visible = k > 0.05; moon.visible = halo.visible = stars.visible = k > 0.01;
+    if (k <= 0.01) for (const l of lights) l.intensity = 0;
+  }
+  function tick(t) { // the lanterns gutter, now and then everything blinks
+    if (k <= 0.01) return;
+    const f = 0.65 + 0.25 * Math.sin(t * 13.7) * Math.sin(t * 5.3) + (Math.sin(t * 0.9) > 0.97 ? -0.6 : 0);
+    lights.forEach((l, i) => { l.intensity = k * 9 * Math.max(0, f + 0.15 * Math.sin(t * 7 + i * 2)); });
+    lampMat.color.setRGB(1, 0.55 + 0.25 * f, 0.2 + 0.1 * f);
+  }
+  set(0);
+  return { set, tick, get k() { return k; } };
 }
 
 // Each flag is a quad with a cut-paper texture (holes via alphaTest), coloured per vertex; one draw call for all of them.

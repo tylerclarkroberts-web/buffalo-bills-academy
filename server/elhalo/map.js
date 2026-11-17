@@ -25,7 +25,7 @@ function creekCut(x, z, h) {
 
 // ---- buildings. Openings: side n|s|e|w, u = metres from the low corner along that side, w = width.
 export const BUILDINGS = [
-  { id: 'mision', name: 'LA MISIÓN', x0: -20, x1: -10, z0: -31, z1: -17, h: 4.6, wall: 0.45,
+  { id: 'mision', name: 'LA MISIÓN', x0: -20, x1: -10, z0: -31, z1: -17, h: 4.6, wall: 0.45, open: true, // no boards: the church is always open
     openings: [{ side: 'e', u: 7, w: 1.8, door: true }, { side: 'e', u: 11.5, w: 1.3 }, { side: 'n', u: 5, w: 1.3 }, { side: 'w', u: 4, w: 1.3 }, { side: 'w', u: 10, w: 1.3 }, { side: 's', u: 5, w: 1.3 }],
     buy: { kind: 'ammo', x: -19.2, z: -24, label: 'PARQUE', cost: 500 } },
   { id: 'hacienda', name: 'LA HACIENDA', x0: 9, x1: 22, z0: -2, z1: 8, h: 3.4, wall: 0.45,
@@ -98,7 +98,7 @@ function buildStatic() {
         const bar = sideBox(bd, side, o.u - o.w / 2, o.u + o.w / 2, y + sill, y + top, t);
         const cx = (bar.x0 + bar.x1) / 2, cz = (bar.z0 + bar.z1) / 2;
         const nx = side === 'e' ? 1 : side === 'w' ? -1 : 0, nz = side === 's' ? 1 : side === 'n' ? -1 : 0; // outward normal
-        openings.push({ i: openings.length, b: bd.id, side, door: !!o.door, w: o.w, y0: y + sill, y1: y + top, x: cx, z: cz, y,
+        openings.push({ i: openings.length, b: bd.id, side, door: !!o.door, open: !!bd.open, w: o.w, y0: y + sill, y1: y + top, x: cx, z: cz, y,
           nx, nz, out: { x: cx + nx * 1.3, z: cz + nz * 1.3 }, in: { x: cx - nx * 1.3, z: cz - nz * 1.3 }, box: { ...bar, y0: y - 0.6, y1: y + top } });
       }
     }
@@ -122,11 +122,14 @@ function buildStatic() {
       }
     }
     add({ x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, y0: y + FORT.h - 0.2, y1: y + FORT.h + 0.05 }, 'deck', f.id);
-    // the outside stair up to the deck: 8 steps of 0.4 along the east wall (west wall for the south fort)
-    for (let i = 0; i < 8; i++) {
-      const za = -48.6 - (i + 1) * 1.1, zb = -48.6 - i * 1.1, xa = 6, xb = 7.5;
-      const st = s > 0 ? { x0: xa, x1: xb, z0: za, z1: zb } : { x0: -xb, x1: -xa, z0: -zb, z1: -za };
-      add({ ...st, y0: y - 0.6, y1: y + (i + 1) * 0.4 }, 'step', f.id);
+    // two outside stairs up to the deck, one along each side wall: 8 steps of 0.4 (the horde uses them too)
+    for (const side of [1, -1]) {
+      for (let i = 0; i < 8; i++) {
+        const za = -48.6 - (i + 1) * 1.1, zb = -48.6 - i * 1.1, xa = 6, xb = 7.5;
+        const st0 = side > 0 ? { x0: xa, x1: xb } : { x0: -xb, x1: -xa };
+        const st = s > 0 ? { ...st0, z0: za, z1: zb } : { x0: -st0.x1, x1: -st0.x0, z0: -zb, z1: -za };
+        add({ ...st, y0: y - 0.6, y1: y + (i + 1) * 0.4 }, 'step', f.id);
+      }
     }
   }
   // boulders (circle colliders), placed off the pads and out of the creek
@@ -152,10 +155,42 @@ export const fortRects = FORTS.map((f) => ({ id: f.id, ...fortRect(f), y: padOf(
 // inside a fort, down on its floor (not up on the deck)
 export const fortAt = (x, z, y) => fortRects.find((f) => x > f.x0 && x < f.x1 && z > f.z0 && z < f.z1 && (y === undefined || y < f.y + 2.4)) || null;
 // obstacle rects (slightly padded) enemies walk round when they are not trying to get in
-export const OBSTACLES = [...BUILDINGS.map((b) => ({ id: b.id, x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 })), ...fortRects.map((f) => ({ id: f.id, x0: f.x0, x1: f.x1 + (f.id === 'norte' ? 1.5 : 0), z0: f.z0, z1: f.z1 })),
-  ...fortRects.filter((f) => f.id === 'sur').map((f) => ({ id: 'sur-stair', x0: f.x0 - 1.5, x1: f.x0, z0: f.z0, z1: f.z1 }))];
-// the way up a fort: bottom of the stair, then the top
-export const FORT_ROUTES = Object.fromEntries(fortRects.map((f) => [f.id, f.id === 'norte' ? [{ x: 6.75, z: -47.4 }, { x: 6.75, z: -57.2 }, { x: 4.5, z: -56 }] : [{ x: -6.75, z: 47.4 }, { x: -6.75, z: 57.2 }, { x: -4.5, z: 56 }]]));
+export const OBSTACLES = [...BUILDINGS.map((b) => ({ id: b.id, x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 })), ...fortRects.map((f) => ({ id: f.id, x0: f.x0 - 1.5, x1: f.x1 + 1.5, z0: f.z0, z1: f.z1 }))];
+// the ways up a fort: bottom of a stair, its top, then onto the deck (one stair on each side)
+export const FORT_ROUTES = Object.fromEntries(fortRects.map((f) => {
+  const s = f.id === 'norte' ? 1 : -1;
+  return [f.id, [1, -1].map((side) => [{ x: 6.75 * side, z: -47.4 * s }, { x: 6.75 * side, z: -57.2 * s }, { x: 4.5 * side, z: -56 * s }])];
+}));
+export const FORT_DECK = FORT.h + 0.05; // deck surface above the fort's pad
+
+// ---- the supply truck's drive through the canyon: in from the north caves, two stops, out the south end
+export const TRUCK_PATH = [[11, -68], [11, -44], [9, -30], [7.5, -18], [3, -4], [-1, 10], [-1, 22], [1.5, 37], [-14, 45], [-15, 68]];
+export const TRUCK_STOPS = [{ at: 3, secs: 4 }, { at: 6, secs: 4 }]; // stop at these path points
+export const TRUCK_SPEED = 11;
+function truckPlan() {
+  const legs = []; let t = 0;
+  for (let i = 0; i < TRUCK_PATH.length - 1; i++) {
+    const [ax, az] = TRUCK_PATH[i], [bx, bz] = TRUCK_PATH[i + 1], len = Math.hypot(bx - ax, bz - az);
+    legs.push({ a: [ax, az], b: [bx, bz], t0: t, t1: t + len / TRUCK_SPEED }); t += len / TRUCK_SPEED;
+    const stop = TRUCK_STOPS.find((s) => s.at === i + 1);
+    if (stop) { legs.push({ a: [bx, bz], b: [bx, bz], t0: t, t1: t + stop.secs, stop: true, yaw: Math.atan2(-(bx - ax), -(bz - az)) }); t += stop.secs; }
+  }
+  return { legs, secs: t };
+}
+export const TRUCK = truckPlan();
+// where the truck is `t` seconds into its drive: { x, z, yaw, stopped, done }
+export function truckAt(t) {
+  const L = TRUCK.legs;
+  if (t >= TRUCK.secs) { const l = L[L.length - 1]; return { x: l.b[0], z: l.b[1], yaw: Math.atan2(-(l.b[0] - l.a[0]), -(l.b[1] - l.a[1])), stopped: false, done: true }; }
+  const l = L.find((q) => t <= q.t1) || L[0];
+  if (l.stop) return { x: l.a[0], z: l.a[1], yaw: l.yaw, stopped: true, done: false };
+  const k = Math.max(0, Math.min(1, (t - l.t0) / (l.t1 - l.t0)));
+  return { x: l.a[0] + (l.b[0] - l.a[0]) * k, z: l.a[1] + (l.b[1] - l.a[1]) * k, yaw: Math.atan2(-(l.b[0] - l.a[0]), -(l.b[1] - l.a[1])), stopped: false, done: false };
+}
+// ammo crates and grenades turn up at these spots now and then (out in the open, never inside a wall)
+export const AMMO_SPOTS = [[0, -30], [-6, -6], [16, -14], [6, 14], [-4, 32], [14, 30], [-16, 4], [2, -40], [-2, 40]];
+export const NADE_SPOTS = [[-8, -40], [18, 16], [-18, 14], [8, -10], [0, 52], [0, -52], [12, 44]];
+export const JEEP_SPAWN = { x: 0, z: -2, yaw: 0 };
 
 // ---- queries. `bars` is the live board count per opening: an opening with boards is solid.
 export function groundAt(x, z, feet, bars) {

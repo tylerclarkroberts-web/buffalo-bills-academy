@@ -43,16 +43,32 @@ test('El Halo horde over HTTP', { timeout: 30000 }, async (t) => {
 
   const sT = await stream(base, ty.token); streams.push(sT);
   assert.ok(await sT.until((f) => f.s && f.me && f.me.in === false), 'spectating before joining');
+  // his look: the default until he picks one, then saved on his profile (junk is cleaned up)
+  assert.deepEqual((await ty.api.get('/elhalo/look')).body.look, [0, 0, 0, 0, 1, 0, 0]);
+  const LOOK = [2, 1, 3, 1, 2, 4, 2];
+  assert.deepEqual((await ty.api.post('/elhalo/look', { look: LOOK })).body.look, LOOK);
+  assert.deepEqual((await ty.api.post('/elhalo/look', { look: [99, -1, 'x'] })).body.look.length, 7, 'junk is clamped');
+  await ty.api.post('/elhalo/look', { look: LOOK });
+  assert.deepEqual((await ty.api.get('/elhalo/look')).body.look, LOOK);
   const j = await ty.api.post('/elhalo/join');
   assert.equal(j.status, 200); assert.ok(j.body.me.in);
   const f1 = await sT.until((f) => f.s.pl.some((r) => r[1] === 'Tyler') && f.me.in);
-  assert.ok(f1, 'Tyler is in the snapshot'); assert.ok(['break', 'wave'].includes(f1.s.ph));
+  assert.ok(f1, 'Tyler is in the snapshot'); assert.equal(f1.s.ph, 'lobby', 'everyone waits in the lobby first');
+  assert.equal(f1.s.pl.find((r) => r[1] === 'Tyler')[19], LOOK.join(''), 'everyone sees his look');
+  assert.equal(f1.s.host, ty.id ?? f1.me.id, 'first one in is the host');
 
   // Joe arrives late and sees Tyler right away
   const sJ = await stream(base, joe.token); streams.push(sJ);
   assert.equal((await joe.api.post('/elhalo/join')).status, 200);
   const f2 = await sJ.until((f) => f.me.in && f.s.pl.some((r) => r[1] === 'Tyler') && f.s.pl.some((r) => r[1] === 'Joe'));
   assert.ok(f2, 'Joe sees both of them'); assert.equal(f2.s.bd.length, 17);
+  assert.equal(f2.s.ph, 'lobby');
+  // only the host can hit start; everyone ready starts the countdown too
+  assert.equal((await joe.api.post('/elhalo/begin')).status, 403);
+  assert.equal((await ty.api.post('/elhalo/ready', { ready: true })).body.phase, 'lobby');
+  assert.ok(await sJ.until((f) => f.s.pl.find((r) => r[1] === 'Tyler')?.[18] === 1), 'Joe sees Tyler is ready');
+  assert.equal((await joe.api.post('/elhalo/ready', { ready: true })).body.phase, 'break', 'all ready: countdown');
+  assert.ok(await sJ.until((f) => f.s.ph === 'break' && f.s.cd > 0), 'the countdown is on');
 
   // inputs: a normal one is fine, junk is harmless, a flood is cut off
   const me = f2.s.pl.find((r) => r[1] === 'Joe');
@@ -66,4 +82,8 @@ test('El Halo horde over HTTP', { timeout: 30000 }, async (t) => {
   assert.equal((await joe.api.post('/elhalo/leave')).status, 200);
   assert.ok(await sT.until((f) => !f.s.pl.some((r) => r[1] === 'Joe' && !(r[7] & 8)) || f.s.ev.some((e) => e[0] === 'l')), 'Joe left');
   assert.equal((await ty.api.get('/me')).body.bankroll, bank, 'free play: bankroll untouched');
+  // the look survives a restart (it lives on disk, keyed by player)
+  const again = createApp({ dataDir, env: { ...process.env, ELHALO_TICK_MS: '50' } });
+  assert.deepEqual(again.elhalo.lookDoc[f1.me.id], LOOK);
+  again.elhalo?.shutdown(); again.service.shutdown();
 });
