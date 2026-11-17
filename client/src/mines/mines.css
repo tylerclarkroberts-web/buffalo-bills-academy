@@ -365,3 +365,28 @@ body.in-mines { background: #020402; }
 .s-gold { --c1: #6a4a10; --c2: #2a1a04; --frame: #8a6a2a; --glow: rgba(255,210,80,.4); --ink: #ffe9a8; --sign: #2a1a04; --knob: #ffd860; }
 .s-sky { --c1: #8aa6c0; --c2: #3a5470; --frame: #c8d4de; --glow: rgba(190,230,255,.45); --ink: #ffffff; --sign: #22344a; --knob: #e8eef4; }
 .m-nano .m-doom-bar { border-bottom-color: var(--g3); background: #040803; }
+
+/* Horror Night (horror.js). The veil darkens the edges and tightens as one of them gets close (--near). */
+.m-horror-veil { position: absolute; inset: 0; z-index: 13; pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
+  background: radial-gradient(ellipse at 50% 52%, transparent calc(48% - var(--near, 0) * 22%), rgba(0,0,0,.55) 78%, rgba(0,0,0,.92) 100%); }
+.m-horror-veil.on { opacity: 1; }
+.m-horror-banner { position: absolute; z-index: 21; top: 36%; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px);
+  padding: 4px 12px; font-size: 18px; letter-spacing: .08em; color: #d8d2c0; text-shadow: 0 0 6px #000; white-space: nowrap; pointer-events: none;
+  animation: m-horror-banner 6.5s ease forwards; }
+@keyframes m-horror-banner { 0% { opacity: 0; } 15% { opacity: .9; } 80% { opacity: .9; } 100% { opacity: 0; } }
+.m-flash-btn { font-size: .8em; opacity: .75; }
+.m-scare { position: absolute; inset: 0; z-index: 35; pointer-events: none; display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(circle, rgba(0,0,0,.2), rgba(0,0,0,.85)); animation: m-scare-bg .9s ease-out forwards; }
+.m-scare-face { width: min(78vw, 70vh); height: auto; filter: contrast(1.15); animation: m-scare-lunge .9s cubic-bezier(.2,1.6,.4,1) forwards; }
+@keyframes m-scare-lunge { 0% { transform: scale(.15) rotate(-6deg); opacity: 0; } 12% { transform: scale(1.35) rotate(3deg); opacity: 1; } 22% { transform: scale(1.18) rotate(-2deg); } 75% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes m-scare-bg { 0% { background-color: rgba(255,255,255,.55); } 8% { background-color: rgba(0,0,0,0); } 100% { opacity: 0; } }
+.m-scare.calm { animation: m-scare-fade .9s ease forwards; background: rgba(0,0,0,.6); }
+.m-scare.calm .m-scare-face { animation: m-scare-fade .9s ease forwards; transform: scale(1.05); }
+@keyframes m-scare-fade { 0% { opacity: 0; } 25% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.m-play.m-shake .m-canvas { animation: m-shake .42s linear; }
+@keyframes m-shake { 10% { transform: translate(-9px, 5px); } 25% { transform: translate(8px, -6px); } 40% { transform: translate(-6px, -4px); } 55% { transform: translate(5px, 6px); } 75% { transform: translate(-3px, 2px); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .m-play.m-shake .m-canvas { animation: none; }
+  .m-scare, .m-scare .m-scare-face { animation: m-scare-fade .9s ease forwards; transform: none; }
+}
+@media (max-width: 720px) { .m-horror-banner { font-size: 16px; } }
