@@ -72,6 +72,35 @@ body.in-mines { background: #020402; }
 .m-rod b { font-size: 1.3em; }
 .m-bucket-status { display: grid; gap: 4px; width: 160px; max-width: 100%; }
 .m-bucket-status .m-bucket { width: 100%; height: 12px; border-width: 1px; padding: 1px; }
+.m-tools { display: flex; align-items: center; gap: 12px; }
+.m-tools .m-link { min-height: 44px; }
+.m-map { position: fixed; inset: 0; width: min(960px, calc(100vw - 24px)); height: calc(100dvh - 24px); max-width: none; max-height: none; margin: auto; padding: 16px 20px; border: 1px solid var(--g2); color: var(--g); background: #070d08; font: inherit; text-shadow: none; }
+.m-map[open] { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 8px; }
+.m-map::backdrop { background: rgba(0, 0, 0, .85); }
+.m-map-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.m-map-head h2 { margin: 0; font-size: 28px; font-weight: 400; color: var(--y); }
+.m-map-head .m-link { min-height: 44px; }
+.m-map-note { margin: 0; color: #a0b095; font-size: 18px; }
+.m-map-chart { min-height: 0; overflow: hidden; background: #020402; }
+.m-map-chart svg { display: block; width: 100%; height: 100%; }
+.m-map-tunnel { fill: #8a967c; }
+.m-map-rock { fill: #253322; }
+.m-map-rubble { stroke: #dab97e; stroke-width: .15; }
+.m-map-pool { fill: #152111; stroke: #d7e4c9; stroke-width: .12; }
+.m-map-pool.wet { fill: #7dff3a; stroke: #16260d; }
+.m-map-door { fill: #ff6256; stroke: #240706; stroke-width: .08; }
+.m-map-you { fill: #fff; stroke: #101a0b; stroke-width: .08; }
+.m-map-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; font-size: 18px; color: #c3d0b8; }
+.m-map-legend span { white-space: nowrap; }
+.m-map-legend i { font-style: normal; }
+.m-map-key-you { color: #fff; } .m-map-key-acid { color: #7dff3a; } .m-map-key-door { color: #ff6256; }
+@media (max-width: 560px), (max-height: 450px) {
+  .m-map { width: calc(100vw - 12px); height: calc(100dvh - 12px); padding: 6px 10px; }
+  .m-map[open] { gap: 4px; }
+  .m-map-head h2 { font-size: 24px; }
+  .m-map-legend, .m-map-note { font-size: 16px; }
+  .m-map-legend { gap: 2px 12px; }
+}
 .m-recovery { position: absolute; z-index: 28; top: 190px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100% - 24px)); display: flex; align-items: center; gap: 12px; padding: 12px; background: #160e08; border: 1px solid #c96737; color: #ffd3a8; text-shadow: none; }
 .m-recovery span { flex: 1; }
 .m-recovery .m-btn { flex: none; font-size: 20px; padding: 8px 12px; min-height: 44px; }

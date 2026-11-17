@@ -10,6 +10,8 @@ import { WormSwarm } from './worms.js';
 import Worms from './Worms.jsx';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
+import MineMap from './MineMap.jsx';
+import { readExploration, rememberExploration, revealExploration } from './exploration.js';
 
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
 import { MineScene, TILE } from './scene.js';
@@ -397,6 +399,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
   const holdingRef = useRef(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapRef = useRef(false), mapButton = useRef(null);
   const hold = value => { if (value) stopDance(); holdingRef.current = value; setHolding(value); };
   // v89: dances. Cosmetic only: the server passes the id on to the other miners and nothing else reads it.
   const [dance, setDance] = useState(null);
@@ -410,7 +414,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   }
   function startDance(id) {
     const d = DANCE_BY_ID[id]; showPicker(false);
-    if (!d || !sceneRef.current || battleRef.current || doomRef.current || done.current) return;
+    if (!d || !sceneRef.current || battleRef.current || doomRef.current || mapRef.current || done.current) return;
     if (holdingRef.current) { holdingRef.current = false; setHolding(false); client.current?.stop().catch(() => {}); }
     keys.clear();
     sceneRef.current.startDance(id);
@@ -441,6 +445,17 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const eggLocation = useRef(eggSpot(maze, shift.seed)).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
   const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker(chain);
+  const mapPools = () => bucketShift ? bucketRef.current.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}`, quantity: i < vein.current.i ? 0 : null, remaining: i === vein.current.i && vein.current.flowing ? 1 : 0 }));
+  const explored = useRef(null);
+  if (!explored.current) explored.current = readExploration(me?.id, shift.shiftId, maze.grid, bucketShift ? shift.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}` })));
+  const chartPosition = () => {
+    const s = sceneRef.current;
+    return s ? { x: s.pos.x / TILE, y: s.pos.y / TILE, yaw: s.yaw } : { ...maze.start, yaw: -maze.facing - Math.PI / 2 };
+  };
+  const chart = () => {
+    const pos = chartPosition();
+    if (revealExploration(explored.current, maze.grid, pos.x, pos.y, mapPools(), bucketShift ? bucketRef.current.currentPoolId : `legacy-${vein.current.i}`)) rememberExploration(me?.id, shift.shiftId, explored.current);
+  };
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
@@ -524,8 +539,13 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
   const freeze = () => { stopDance(); showPicker(false); release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
+  const showMap = (open) => {
+    if (open) { freeze(); chart(); }
+    mapRef.current = open; setMapOpen(open);
+  };
   const showBattle = (b) => {
     if (!b || dismissed.current.has(b.id)) return;
+    if (mapRef.current) showMap(false);
     if (!battleRef.current) { freeze(); audio?.dread(false); }
     // The server sends only the blows this page has not seen; the ring wants the whole fight so far, plus what the mine adds at the end.
     const m = mergeFight(battleRef.current, b), raid = m.over?.raid, sign = m.over?.won ? '+' : '−';
@@ -576,7 +596,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const move = (f, t) => {
     const s = sceneRef.current;
-    if (!s || doomRef.current || battleRef.current) return;
+    if (!s || doomRef.current || battleRef.current || mapRef.current) return;
     if (danceRef.current) { if (!f && !t) return; stopDance(); } // moving ends the dance
     s.input.f = f; s.input.t = t; s.input.s = 0;
   };
@@ -590,7 +610,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
   const openDoor = useRef(null);
   openDoor.current = () => {
-    if (doomRef.current) return;
+    if (doomRef.current || mapRef.current) return;
     stopDance(); showPicker(false);
     doomRef.current = true; setDoom(true); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
@@ -681,6 +701,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       },
     });
     sceneRef.current = scene;
+    chart();
     if (me) scene.setSelf(me);
     if (!bucketShift) scene.setAcid(vein.current.flowing);
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
@@ -727,7 +748,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
     const sync = () => {
-      if (tiltActiveRef.current) return;
+      if (tiltActiveRef.current || mapRef.current) return;
       scene.input.f = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
       scene.input.s = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
       scene.input.t = (keys.has('arrowright') || keys.has('e') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
@@ -736,6 +757,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (battleRef.current) return;
       if (doomRef.current || closing.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
+      if (k === 'm' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); if (!e.repeat) showMap(!mapRef.current); return; }
+      if (mapRef.current) return;
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
       if (k === 'f' && doorRef.current) { openDoor.current(); return; }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
@@ -758,13 +781,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     let drag = null;
     const c = canvas.current;
     let tap = null;
-    const pd = (e) => { drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
-    const pm = (e) => { if (!drag) return; if (scene.dance) { scene.danceOrbit = (scene.danceOrbit || 0) - (e.clientX - drag.x) * 0.006; drag = { x: e.clientX, y: e.clientY }; return; } scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
-    const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
+    const pd = (e) => { if (mapRef.current) return; drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
+    const pm = (e) => { if (mapRef.current) { drag = tap = null; return; } if (!drag) return; if (scene.dance) { scene.danceOrbit = (scene.danceOrbit || 0) - (e.clientX - drag.x) * 0.006; drag = { x: e.clientX, y: e.clientY }; return; } scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
+    const pu = (e) => { drag = null; if (!mapRef.current && tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
     const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
     const tick = setInterval(() => {
+      if (!doomRef.current && !done.current && !document.hidden) chart();
       setElapsed(Date.now() - shift.localStart);
       const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
       const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden });
@@ -904,8 +928,11 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         </div>}
         <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
         {dark && <button className="m-link m-flash-btn" data-test="flash-toggle" aria-pressed={lowFlash} onClick={toggleFlash}>{lowFlash ? 'FLASHING: LOW' : 'FLASHING: ON'}</button>}
-        {!doom && !battle && <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
-          onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>}
+        {!doom && !battle && <div className="m-tools">
+          <button ref={mapButton} className="m-link" data-test="map-button" aria-haspopup="dialog" aria-expanded={mapOpen} disabled={clockingOut} onClick={() => showMap(true)}>MAP<span className="m-key"> M</span></button>
+          <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
+            onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>
+        </div>}
       </div>
       {picker && !doom && !battle && <DancePicker current={dance} onPick={startDance} onClose={() => showPicker(false)} />}
       {mineError && <div className="m-recovery" role="alert">
@@ -949,10 +976,11 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
+      {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
-        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
+        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle || mapOpen} />
         {!tiltActive && <MovePad apply={move} />}
       </div>
     </div>
