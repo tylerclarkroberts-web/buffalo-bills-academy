@@ -51,7 +51,6 @@ export class FaunFollower {
     }
     if (this.state !== 'following') return;
     this.nextMoon -= dt;
-    this.clearPool(p);
     const dx = p.x - this.x, dz = p.z - this.z, dist = Math.hypot(dx, dz);
     this.nextBleat -= dt;
     if (this.nextBleat <= 0) {
@@ -59,14 +58,15 @@ export class FaunFollower {
       this.scheduleBleat();
     }
     this.moving = false;
-    if (dist > REJOIN_GAP) this.aside = null;
-    else if (!this.aside && (dist < YIELD_GAP || p.pushing)) this.yieldTo(p);
     if (this.aside && this.walkTo(...this.aside, WALK_SPEED * dt)) return;
+    if (dist > REJOIN_GAP) this.aside = null;
+    else if (!this.aside && (dist < YIELD_GAP || p.pushing)) { this.yieldTo(p); return; }
 
     // Once settled, stay put through nearby turns, stops and backtracking.
     if (dist <= (this.next ? FOLLOW_GAP : REJOIN_GAP) + 1e-6) {
       this.next = null;
-      if (p.busy || p.pushing || dist < YIELD_GAP || dist > FOLLOW_GAP + 1e-6) this.moonLeft = 0;
+      // He can cross a deposit en route; only choose a place beside it when he stops.
+      if (this.stepOffPool(p) || p.busy || p.pushing || dist < YIELD_GAP || dist > FOLLOW_GAP + 1e-6) this.moonLeft = 0;
       else if (this.moonLeft > 0) this.moonLeft = Math.max(0, this.moonLeft - dt);
       else if (this.nextMoon <= 0) {
         this.facing = Math.atan2(dx, dz);
@@ -144,16 +144,17 @@ export class FaunFollower {
     this.events.push('yield');
   }
 
-  clearPool(p) {
+  stepOffPool(p) {
     if (!this.pool) return;
     const [etx, ety] = tileOf(this.x, this.z);
     if (etx !== this.pool.x || ety !== this.pool.y) return;
     const [ptx, pty] = tileOf(p.x, p.z);
     const n = neighbors(this.grid, etx, ety).filter(([x, y]) => !(x === ptx && y === pty));
-    if (!n.length) { if (!this.aside) this.yieldTo(p); return; }
+    if (!n.length) { if (!this.aside) this.yieldTo(p); return true; }
     const d = bfs(this.grid, ptx, pty);
     n.sort((a, b) => (d[b[1]]?.[b[0]] ?? 0) - (d[a[1]]?.[a[0]] ?? 0));
-    this.x = n[0][0] * TILE; this.z = n[0][1] * TILE; this.next = null; this.aside = null;
+    this.aside = [n[0][0] * TILE, n[0][1] * TILE];
+    return true;
   }
 
   scheduleBleat() { this.nextBleat = BLEAT_MIN_S + this.rand() * (BLEAT_MAX_S - BLEAT_MIN_S); }

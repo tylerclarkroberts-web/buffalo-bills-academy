@@ -93,6 +93,18 @@ test('an unarmed faun never appears; an armed one trots in after the delay and b
   assert.ok(Math.abs(tx - MAZE.pool.x) + Math.abs(ty - MAZE.pool.y) > 1, 'not on the acid');
 });
 
+test('at a dead end the faun appears once and stays put when the miner does', () => {
+  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
+  const p = at(3, 5);
+  feed(fn, p);
+  const resting = [fn.x, fn.z];
+  for (let i = 0; i < 1800; i++) {
+    feed(fn, p);
+    assert.deepEqual([fn.x, fn.z], resting);
+  }
+  assert.equal(fn.events.filter(e => e === 'appear').length, 1);
+});
+
 test('bleats leave a quiet stretch and a distant faun stays inaudible', () => {
   const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
   feed(fn, at(1, 1));
@@ -156,12 +168,33 @@ test('he yields even in a two-tile alcove with the pool at his feet', () => {
   assert.equal(fn.z, TILE, 'does not swap onto the miner');
 });
 
-test('a faun standing on the acid steps off so the pool stays reachable', () => {
+test('he crosses a pool between him and a stationary miner once, then settles', () => {
+  const fn = new FaunFollower({ ...MAZE, pool: { x: 3, y: 1 } }, { armed: true, afterMs: 0 });
+  const p = at(7, 1);
+  feed(fn, { ...at(3, 1), yaw: -Math.PI / 2 }); // spawn at (1,1)
+  assert.equal(fn.x, TILE);
+  for (let i = 0; i < 1800; i++) {
+    const before = fn.x;
+    feed(fn, p);
+    assert.ok(fn.x >= before && fn.x - before < .06, 'continuous travel toward the miner');
+  }
+  assert.equal(fn.events.filter(e => e === 'appear').length, 1);
+  assert.ok(Math.abs(p.x - fn.x - FOLLOW_GAP) < 1e-6);
+  assert.equal(fn.moving, false);
+});
+
+test('a deposit retargeted under a resting faun makes him walk off once', () => {
   const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
-  fn.state = 'following'; fn.x = 7 * TILE; fn.z = 1 * TILE; fn.pool = { x: 7, y: 1 };
-  fn.update(1 / 60, { t: 10, x: 5 * TILE, z: 1 * TILE, yaw: -Math.PI / 2, elapsedMs: 20000, pushing: false });
-  const [tx, ty] = tileOf(fn.x, fn.z);
-  assert.ok(!(tx === 7 && ty === 1), `stepped off the pool onto ${tx},${ty}`);
+  fn.state = 'following'; fn.x = 4 * TILE; fn.z = TILE;
+  const p = at(5, 1);
+  for (let i = 0; i < 240; i++) {
+    fn.setPool({ x: 4, y: 1 }); // repeated confirmations of the same target
+    const before = fn.x;
+    feed(fn, p);
+    assert.ok(before - fn.x >= 0 && before - fn.x < .05);
+  }
+  assert.deepEqual(tileOf(fn.x, fn.z), [3, 1]);
+  assert.equal(fn.moving, false);
 });
 
 test('the faun only moons occasionally while idle, then returns to his normal pose', () => {
