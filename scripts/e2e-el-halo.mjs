@@ -141,7 +141,7 @@ async function main() {
   const pk = kd.filter((d) => d.pair), ptd = td.filter((d) => d.pair);
   check(Math.hypot(pk[0].x - ptd[0].x, pk[0].z - ptd[0].z) < 2.5 && Math.abs(Math.hypot(pk[0].x - pk[1].x, pk[0].z - pk[1].z) - 0.84) < 0.05, `Kash: the pair is where Tyler sees it, stuck together (${JSON.stringify(pk)} vs ${JSON.stringify(ptd)})`);
   check(await inView(K, '[data-test^=pad-]') && await noScroll(K), 'Kash: phone pad on screen (incl. ACCIÓN), no scroll');
-  // the phone's ACCIÓN button buys you an elote (a small heal, once a minute)
+  // the phone's ACCIÓN button buys you an elote (heal + ammo, once per wave)
   await hook(K, { calm: true, hp: 45 });
   const el = (await st(K)).elote;
   await place(K, el.x + 1.2, el.z - 0.6, yawTo({ x: el.x + 1.2, z: el.z - 0.6 }, el));
@@ -150,7 +150,7 @@ async function main() {
   check(ready, `Kash: ACCIÓN lights up at the elote cart (${JSON.stringify((await st(K)).prompt)} / ${await K.getAttribute('[data-test=pad-act]', 'class')})`);
   await holdPad(K, 'act', 400);
   check(await until(K, () => window.__elHalo.state().health >= 70, null, 3000), `Kash: ACCIÓN buys an elote, +30 health (45 → ${(await st(K)).health})`);
-  check(await until(K, () => /OTRO ELOTE/.test(window.__elHalo.state().prompt?.label || ''), null, 2000), `Kash: then the elote man needs a minute (${JSON.stringify((await st(K)).prompt)})`);
+  check(await until(K, () => /Ya comiste este round/.test(window.__elHalo.state().prompt?.label || ''), null, 2000), `Kash: already ate this wave (${JSON.stringify((await st(K)).prompt)})`);
   await K.evaluate(() => window.__elHalo.face(Math.PI * 0.75, -0.05));
   await K.waitForTimeout(400); await shot(K, '07-mobile-playing');
   await K.tap('[data-test=elhalo-board-btn]'); await K.waitForTimeout(300);
@@ -163,7 +163,7 @@ async function main() {
   await J.evaluate(() => window.__elHalo.face(0, -0.08)); await J.waitForTimeout(300);
   await shot(J, '04-multiple-players');
   await T.evaluate(() => window.__elHalo.overview(true)); await T.waitForTimeout(500); await shot(T, '02-map-overview'); await T.evaluate(() => window.__elHalo.overview(false));
-  await hook(T, { calm: true, clear: true, spawn: [{ type: 'luchador', x: -3, z: 24 }, { type: 'padre', x: 0, z: 26 }, { type: 'granjero', x: -6, z: 25 }, { type: 'mariachi', x: 3, z: 27 }, { type: 'luchador', x: 1, z: 22 }] });
+  await hook(T, { calm: true, clear: true, spawn: [{ type: 'luchador', x: -3, z: 24, still: true }, { type: 'padre', x: 0, z: 26, still: true }, { type: 'granjero', x: -6, z: 25, still: true }, { type: 'mariachi', x: 3, z: 27, still: true }, { type: 'luchador', x: 1, z: 22, still: true }] });
   await hook(J, { give: 'rifle' }); await until(J, () => window.__elHalo.state().weapon === 'rifle', null, 3000); // the truck may have handed Joe a semi-auto
   for (let k = 0; k < 18; k++) { await J.evaluate(() => window.__elHalo.aimAtNearest()); await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(330); await J.evaluate(() => window.__elHalo.fire(false)); if (k === 6) await J.keyboard.press('KeyG'); if ((await st(J)).mag < 8) { await J.keyboard.press('KeyR'); await J.waitForTimeout(2000); } }
   a = await st(J);

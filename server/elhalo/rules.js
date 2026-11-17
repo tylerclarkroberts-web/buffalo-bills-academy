@@ -192,6 +192,15 @@ export function swapWeapon(p) {
   [p.current, p.other] = [p.other, p.current];
 }
 export function addAmmo(p, id, n) { const s = p.weapons[id]; if (!s || !WEAPONS[id].reserve) return; s.reserve = Math.min(WEAPONS[id].reserve * 2, s.reserve + n); }
+// top up one gun (or melee charges) to a full magazine and at least a full reserve; cancels a reload in progress
+export function refillWeapon(p, id) {
+  const w = WEAPONS[id], s = p.weapons[id];
+  if (!w || !s) return false;
+  s.mag = w.mag;
+  if (w.reserve) s.reserve = Math.max(s.reserve, w.reserve);
+  s.reloadUntil = 0;
+  return true;
+}
 // one ammo box: about a third of a full reserve for each gun you carry (melee charges don't come in boxes)
 export const ammoPack = (id) => Math.ceil((WEAPONS[id]?.reserve || 0) / 3);
 export function addGrenade(p, n = 1, kind = 'frag') {

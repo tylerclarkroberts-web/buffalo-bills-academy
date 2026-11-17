@@ -94,7 +94,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   // ---- local state
   let mode = 'loading', t = 0, raf = 0, last = performance.now(), frames = 0, fps = 60, fpsT = 0, fpsN = 0;
   let P = L.createPlayer(), pos = { x: 0, y: 2, z: 0 }, vy = 0, onGround = true, yaw = 0, pitch = 0;
-  let banner = { text: '', until: 0 }, shake = 0, vmKick = 0, swing = -1, swapAnim = 0, hurtFlash = 0, shieldFlash = 0, alarmT = 0, dirHit = null, bob = 0, emptyT = 0, hitMark = 0, headMark = 0;
+  let banner = { text: '', until: 0 }, ammoToast = { n: 0, until: 0 }, shake = 0, vmKick = 0, swing = -1, swapAnim = 0, hurtFlash = 0, shieldFlash = 0, alarmT = 0, dirHit = null, bob = 0, emptyT = 0, hitMark = 0, headMark = 0;
   let overview = false, autopilot = null, zoom = false, charging = null, burstQ = 0, burstT = 0, lunge = null, nadeKind = 'frag', wvSeen = -1, nightK = 0, engineT = 0, actTap = false;
   let veh = null; // the jeep, while you drive it: { x, y, z, yaw, spd }
   const spent = { frag: 0, sticky: 0 };
@@ -189,7 +189,16 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       if (me.nd) { spent.frag = 0; spent.sticky = 0; }
       syncWeapons();
       if (lastAg === null) lastAg = me.ag;
-      if (me.ag > lastAg) { for (let k = lastAg; k < me.ag; k++) for (const id of Object.keys(P.weapons)) L.addAmmo(P, id, L.ammoPack(id)); lastAg = me.ag; }
+      if (me.ag > lastAg) {
+        let gained = 0;
+        for (let k = lastAg; k < me.ag; k++) for (const id of Object.keys(P.weapons)) {
+          const before = P.weapons[id].reserve;
+          L.addAmmo(P, id, L.ammoPack(id));
+          if (id === P.current) gained += P.weapons[id].reserve - before;
+        }
+        lastAg = me.ag;
+        if (gained > 0) ammoToast = { n: gained, until: t + 1.8 };
+      }
       if (me.corr) { pos.x = me.corr[0]; pos.y = me.corr[1]; pos.z = me.corr[2]; vy = 0; lunge = null; if (me.corr.length > 3) { yaw = me.corr[3]; pitch = 0; } }
       // the jeep: get in, drive, get out
       if (me.seat === 'd' && !veh && jeepObj) { const j = cur(jeepObj, now); veh = { x: j.x, y: j.y, z: j.z, yaw: j.yaw, spd: 0 }; yaw = j.yaw; pitch = -0.12; }
@@ -288,7 +297,16 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     else if (k === 'kb') { if (e[1] === myId) { banner = { text: '¡TE APLASTARON!', until: t + 1.4 }; shake = Math.max(shake, 0.6); } }
     else if (k === 'gb') { const en = ents.en.get(e[1]); if (en && near(en.to.x, en.to.z, 25)) sfx('huff'); }
     else if (k === 'gs') { const en = ents.en.get(e[1]); if (en && e[2] && near(en.to.x, en.to.z, 25)) sfx('smack'); }
-    else if (k === 'el') { if (e[1] === myId) { banner = { text: '¡QUÉ RICO ELOTE! +30', until: t + 1.6 }; sfx('pickup'); } else feed(`${nameOf(e[1])} SE COMPRÓ UN ELOTE`); }
+    else if (k === 'el') {
+      if (e[1] === myId) {
+        if (e[2]) {
+          const id = e[3], slot = P.weapons[id];
+          if (slot && Number.isFinite(e[4])) { slot.mag = e[4]; slot.reserve = Number.isFinite(e[5]) ? e[5] : slot.reserve; slot.reloadUntil = 0; }
+          banner = { text: '¡Elote y balas!', until: t + 1.8 };
+        } else banner = { text: '¡QUÉ RICO ELOTE! +30', until: t + 1.6 };
+        sfx('pickup');
+      } else feed(`${nameOf(e[1])} SE COMPRÓ UN ELOTE`);
+    }
     else if (k === 'pk') { if (e[2] === myId) { sfx('pickup'); if (e[3] === 'sticky' || e[3] === 'frag') banner = { text: e[3] === 'sticky' ? '+1 PEGAJOSA' : '+1 PIÑATA', until: t + 1 }; } }
     else if (k === 'wave') { banner = { text: `OLEADA ${e[1]}`, until: t + 2.4 }; sfx('wave'); }
     else if (k === 'clear') { banner = { text: `¡OLEADA ${e[1]} LIMPIA!`, until: t + 3 }; sfx('pickup'); }
@@ -511,7 +529,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   // ---- HUD by ref
   const H = {}; for (const el of root.querySelectorAll('[data-h]')) H[el.dataset.h] = el;
   const prev = {};
-  const set = (k, prop, v) => { const key = k + prop; if (prev[key] === v || !H[k]) return; prev[key] = v; if (prop === 'text') H[k].textContent = v; else if (prop === 'w') H[k].style.transform = `scaleX(${v})`; else if (prop.startsWith('.')) H[k].classList.toggle(prop.slice(1), v); else if (prop === 'rot') H[k].style.transform = `rotate(${v}rad)`; else if (prop === 'op') H[k].style.opacity = v; else if (prop.startsWith('--')) H[k].style.setProperty(prop, v); };
+  const set = (k, prop, v) => { const key = k + prop; if (prev[key] === v || !H[k]) return; prev[key] = v; if (prop === 'text') H[k].textContent = v; else if (prop === 'w') H[k].style.transform = `scaleX(${v})`; else if (prop.startsWith('.')) H[k].classList.toggle(prop.slice(1), v); else if (prop === 'rot') H[k].style.transform = `rotate(${v}rad)`; else if (prop === 'op') H[k].style.opacity = v; else if (prop === 'data-w') H[k].setAttribute('data-w', v); else if (prop.startsWith('--')) H[k].style.setProperty(prop, v); };
   function hud() {
     const id = P.current, s = P.weapons[id] || { mag: 0, reserve: 0 }, w = L.WEAPONS[id];
     set('shield', 'w', (P.shield / L.SHIELD.max).toFixed(3)); set('health', 'w', (P.health / L.HEALTH.max).toFixed(3));
@@ -519,8 +537,29 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     set('bars', '.down', down); set('bars', '.charging', chargingS && shieldFlash < 0.2); set('bars', '.flash', shieldFlash > 0.5);
     set('bars', '.low', P.health < 35);
     const melee = w.kind === 'melee', driving = me?.seat === 'd';
-    set('mag', 'text', driving ? '—' : String(s.mag)); set('reserve', 'text', driving || melee || w.mounted ? (melee ? '⚡' : '') : String(s.reserve)); set('wname', 'text', driving ? 'EL TORO' : w.name);
-    set('ammo', '.reloading', L.reloading(P, t)); set('ammo', '.empty', !driving && s.mag === 0 && (s.reserve === 0 || melee));
+    const cap = Math.max(1, w.mag || 1);
+    const low = !driving && !melee && s.mag > 0 && s.mag <= Math.ceil(cap * 0.25);
+    const dry = !driving && s.mag === 0 && (melee || !w.reserve || s.reserve <= 0);
+    const needReload = !driving && !melee && s.mag === 0 && s.reserve > 0;
+    let read;
+    if (driving) read = '—';
+    else if (melee) read = w.mag ? String(s.mag) : '∞';
+    else if (w.mounted) read = String(s.mag);
+    else read = `${s.mag} / ${s.reserve}`;
+    set('magread', 'text', read);
+    set('mag', 'text', driving ? '—' : String(s.mag));
+    set('reserve', 'text', driving || melee || w.mounted ? (melee ? '⚡' : '') : String(s.reserve));
+    set('wname', 'text', driving ? 'EL TORO' : w.name);
+    set('wicon', 'data-w', driving ? 'jeep' : id);
+    set('ammo', '.reloading', L.reloading(P, t)); set('ammo', '.empty', dry); set('ammo', '.low', low);
+    const hint = dry && !melee ? 'SIN BALAS' : (needReload || low ? 'RECARGA' : (melee && w.mag ? '⚡' : ''));
+    set('ammohint', 'text', hint);
+    const rl = L.reloading(P, t);
+    const span = w.reload || 1;
+    const rp = rl ? Math.max(0, Math.min(1, 1 - (s.reloadUntil - t) / span)) : 0;
+    set('reloadfill', 'w', rp.toFixed(3));
+    set('ammotoast', 'text', ammoToast.n ? `+${ammoToast.n}` : '');
+    set('ammotoast', '.on', t < ammoToast.until);
     const other = (me?.ws || []).find((q) => q !== id);
     set('slots', 'text', other && !me?.seat ? `${PAD ? '⇄' : 'Q'} ${L.WEAPONS[other].name}` : '');
     const f = Math.max(0, (P.nades.frag || 0) - spent.frag), st2 = Math.max(0, (P.nades.sticky || 0) - spent.sticky);
@@ -941,6 +980,24 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     hold(code, onOff) { if (onOff) { if (!input.keys.has(code)) input.edges.add(code); input.keys.add(code); } else input.keys.delete(code); },
     setZoom(onOff) { zoom = !!onOff && !!L.WEAPONS[P.current]?.zoom; },
     overview(onOff) { overview = !!onOff; },
+    // e2e / screenshot hook: force magazine state, a reload bar, a +N toast or a banner
+    setAmmo({ mag, reserve, weapon, reload, toast, banner: bn } = {}) {
+      if (weapon && L.WEAPONS[weapon]) {
+        if (!P.weapons[weapon]) P.weapons[weapon] = L.loadout(weapon);
+        P.current = weapon;
+      }
+      const slot = P.weapons[P.current];
+      if (slot) {
+        if (mag !== undefined) slot.mag = mag;
+        if (reserve !== undefined) slot.reserve = reserve;
+        if (reload) slot.reloadUntil = t + (L.WEAPONS[P.current].reload || 1.2);
+        else if (reload === false) slot.reloadUntil = 0;
+      }
+      if (toast) ammoToast = { n: toast, until: t + 2.2 };
+      else if (toast === 0 || toast === false) ammoToast = { n: 0, until: 0 };
+      if (bn) banner = { text: bn, until: t + 2.2 };
+      hud();
+    },
     dispose() {
       cancelAnimationFrame(raf);
       if (joined) leave().catch(() => {});

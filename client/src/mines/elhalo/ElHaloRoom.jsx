@@ -167,9 +167,16 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
               <div className="elh-health"><i data-h="health" /></div>
               <small className="elh-count" data-h="count" />
             </div>
-            <div className="elh-ammo" data-h="ammo">
-              <b data-h="mag">32</b><small data-h="reserve">192</small>
-              <span className="elh-wname" data-h="wname">RIFLE DE ASALTO</span>
+            <div className="elh-ammo" data-h="ammo" data-test="elhalo-ammo-hud">
+              <span className="elh-wmeta">
+                <i className="elh-wicon" data-h="wicon" data-w="rifle" aria-hidden="true" />
+                <span className="elh-wname" data-h="wname">RIFLE DE ASALTO</span>
+              </span>
+              <b className="elh-ammo-read" data-h="magread" data-test="elhalo-ammo">32 / 192</b>
+              <span hidden data-h="mag">32</span><span hidden data-h="reserve">192</span>
+              <div className="elh-ammo-toast" data-h="ammotoast" data-test="elhalo-ammo-toast" />
+              <span className="elh-ammo-hint" data-h="ammohint" data-test="elhalo-ammo-hint" />
+              <i className="elh-reload" data-h="reloadbar"><em data-h="reloadfill" /></i>
               <span className="elh-slots" data-h="slots" />
               <span className="elh-nades" data-h="nades" aria-label="Grenades: piñatas and stickies">✶2 ◆0</span>
             </div>
