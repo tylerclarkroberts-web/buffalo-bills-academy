@@ -384,7 +384,8 @@ export class MineScene {
 
   updateFaun(now, dt) {
     const fn = this.faun, m = this.faunMesh; if (!fn || !m) return;
-    fn.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart, pushing: this.pushing });
+    fn.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart, pushing: this.pushing,
+      busy: this.mining || !!this.dance || this.distanceToPool() < 1.8 });
     while (fn.events.length) {
       const ev = fn.events.shift();
       this.onEvent?.(ev === 'appear' ? 'faun-appear' : ev === 'bleat' ? 'faun-bleat' : ev === 'yield' ? 'faun-yield' : ev);
@@ -393,8 +394,8 @@ export class MineScene {
     if (!fn.present) { g.visible = false; return; }
     g.visible = true;
     g.position.set(fn.x, 0, fn.z);
-    g.rotation.y = fn.facing;
-    trotFaun(m, now, fn.moving, this.reduce);
+    g.rotation.y = fn.facing + Math.PI * (this.reduce ? Number(fn.moon > 0) : fn.moon);
+    trotFaun(m, now, fn.moving, this.reduce, fn.moon);
   }
 
   /** Barn bug sprite as a small billboard that floats ahead toward the acid. */

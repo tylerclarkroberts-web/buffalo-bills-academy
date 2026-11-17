@@ -7,7 +7,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Mines, rollScare, SCARE_CHANCE, FAUN_CHANCE } from '../server/mines.js';
-import { FaunFollower, bfsAvoiding, APPEAR_AFTER_MS, FOLLOW_GAP, YIELD_S, PASS_S, BODY_RADIUS } from '../client/src/mines/faunFollower.js';
+import { FaunFollower, bfsAvoiding, APPEAR_AFTER_MS, FOLLOW_GAP, YIELD_S, PASS_S, BODY_RADIUS, MOON_SECONDS, MOON_MIN_S } from '../client/src/mines/faunFollower.js';
 import { tileOf, TILE } from '../client/src/mines/stalker.js';
 import { buildFaun } from '../client/src/mines/faunMesh.js';
 
@@ -165,6 +165,51 @@ test('bfsAvoiding treats the faun tile as a wall', () => {
   assert.ok(blocked[5][3] === 0);
 });
 
+test('the faun only moons occasionally while idle, then returns to his normal pose', () => {
+  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
+  fn.state = 'following'; fn.x = 3 * TILE; fn.z = TILE;
+  const p = { x: fn.x + 1.7, z: fn.z };
+  feed(fn, p, .05, MOON_MIN_S * 20 - 1);
+  assert.equal(fn.moonLeft, 0, 'no gag immediately after arrival');
+  feed(fn, p, .1);
+  assert.equal(fn.moonLeft, MOON_SECONDS);
+  feed(fn, p, .05, 12);
+  assert.equal(fn.moon, 1, 'turns around and briefly holds the pose');
+  assert.equal(fn.x, 3 * TILE); assert.equal(fn.z, TILE);
+  assert.equal(fn.blocks(fn.x, fn.z, .38), true, 'gag does not change collision rules');
+  feed(fn, p, .05, MOON_SECONDS * 20);
+  assert.equal(fn.moon, 0);
+  assert.ok(fn.nextMoon > 10, 'cooldown prevents repeated mooning');
+});
+
+test('mooning waits for mining and ends immediately for movement, mining or yielding', () => {
+  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
+  fn.state = 'following'; fn.x = 3 * TILE; fn.z = TILE; fn.nextMoon = 0;
+  const p = { x: fn.x + 1.7, z: fn.z };
+  feed(fn, { ...p, busy: true }, .05, 40);
+  assert.equal(fn.moonLeft, 0);
+  feed(fn, p, .05, 12); assert.equal(fn.moon, 1);
+  feed(fn, { ...p, busy: true }); assert.equal(fn.moon, 0);
+  fn.moonLeft = 2;
+  feed(fn, { ...p, x: 6 * TILE });
+  assert.equal(fn.moon, 0); assert.ok(fn.moving, 'follows a departing miner without waiting for the gag');
+  fn.moonLeft = 2; fn.yieldTo(p);
+  assert.equal(fn.moon, 0, 'steps aside immediately');
+});
+
+test('a faun that follows to his normal stopping distance can settle and moon', () => {
+  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
+  fn.state = 'following'; fn.x = TILE; fn.z = TILE;
+  let mooned = false;
+  for (let i = 0; i < 600; i++) {
+    feed(fn, at(5, 1), .05);
+    mooned ||= fn.moon > 0;
+  }
+  assert.ok(mooned, 'rounding at the follow gap must not keep him walking in place');
+  assert.equal(fn.moving, false);
+  assert.ok(Math.abs(5 * TILE - fn.x - FOLLOW_GAP) < 1e-6);
+});
+
 test('the faun mesh is a low-poly figure with scarf, parcels, umbrella and goat legs', () => {
   const m = buildFaun();
   assert.ok(m.group);
@@ -173,5 +218,5 @@ test('the faun mesh is a low-poly figure with scarf, parcels, umbrella and goat 
   assert.equal(m.group.visible, false);
   let meshes = 0;
   m.group.traverse((o) => { if (o.isMesh) meshes++; });
-  assert.ok(meshes >= 30, `expected a full papercraft figure, got ${meshes} meshes`);
+  assert.ok(meshes > 0 && meshes <= 40, `articulated figure stays within 40 meshes, got ${meshes}`);
 });

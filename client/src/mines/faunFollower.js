@@ -15,6 +15,8 @@ export const PASS_S = 0.55;          // brief window where he is not solid, so a
 export const BLEAT_MIN_S = 2.2;
 export const BLEAT_MAX_S = 5.0;
 export const PLAYER_RADIUS = 0.38;
+export const MOON_SECONDS = 3;
+export const MOON_MIN_S = 18, MOON_MAX_S = 40;
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const open = (g, x, y) => g[y]?.[x] === 0;
@@ -49,8 +51,14 @@ export class FaunFollower {
     this.x = 0; this.z = 0; this.facing = 0; this.moving = false;
     this.next = null; this.repath = 0; this.shove = 0; this.stuck = 0; this.pass = 0;
     this.nextBleat = 0; this.events = [];
+    this.nextMoon = MOON_MIN_S; this.moonLeft = 0;
   }
   get present() { return this.state === 'following'; }
+  get moon() {
+    if (!this.moonLeft) return 0;
+    const k = Math.max(0, Math.min(1, (MOON_SECONDS - this.moonLeft) / .55, this.moonLeft / .55));
+    return k * k * (3 - 2 * k);
+  }
   /** Solid body: false while he is yielding so a swap can finish. */
   blocks(x, z, r) { return this.present && this.pass <= 0 && Math.hypot(x - this.x, z - this.z) < r + BODY_RADIUS; }
 
@@ -79,7 +87,7 @@ export class FaunFollower {
   }
 
   /**
-   * One frame. p = { t (s), x, z, yaw, elapsedMs, pushing (forward input but blocked by him) }.
+   * One frame. p = { t (s), x, z, yaw, elapsedMs, pushing (blocked by him), busy (mining or dancing) }.
    */
   update(dt, p) {
     if (this.state === 'dormant') {
@@ -87,6 +95,7 @@ export class FaunFollower {
       return;
     }
     if (this.state !== 'following') return;
+    this.nextMoon -= dt;
     if (this.pass > 0) this.pass = Math.max(0, this.pass - dt);
     this.nextBleat -= dt;
     if (this.nextBleat <= 0) { this.events.push('bleat'); this.scheduleBleat(); }
@@ -100,7 +109,17 @@ export class FaunFollower {
     const d = bfs(this.grid, ptx, pty);
     const pathTiles = d[ety]?.[etx] ?? -1;
     this.moving = false;
-    if (this.pass <= 0 && dist <= FOLLOW_GAP) { this.facing = Math.atan2(dx, dz); return; }
+    if (this.pass <= 0 && dist <= FOLLOW_GAP + 1e-6) {
+      this.facing = Math.atan2(dx, dz);
+      if (p.busy || p.pushing || this.stuck > 0) this.moonLeft = 0;
+      else if (this.moonLeft > 0) this.moonLeft = Math.max(0, this.moonLeft - dt);
+      else if (this.nextMoon <= 0) {
+        this.moonLeft = MOON_SECONDS;
+        this.nextMoon = MOON_MIN_S + this.rand() * (MOON_MAX_S - MOON_MIN_S);
+      }
+      return;
+    }
+    this.moonLeft = 0;
     this.repath -= dt;
     if (!this.next || this.repath <= 0 || (Math.abs(this.x - this.next[0] * TILE) < 0.05 && Math.abs(this.z - this.next[1] * TILE) < 0.05)) {
       this.repath = 0.25;
@@ -156,10 +175,12 @@ export class FaunFollower {
     this.x = at[0] * TILE; this.z = at[1] * TILE;
     this.facing = Math.atan2(p.x - this.x, p.z - this.z);
     this.state = 'following'; this.next = null; this.pass = 0;
+    this.moonLeft = 0; this.nextMoon = MOON_MIN_S + this.rand() * (MOON_MAX_S - MOON_MIN_S);
     this.events.push('appear'); this.events.push('bleat'); this.scheduleBleat();
   }
 
   yieldTo(p) {
+    this.moonLeft = 0;
     const [ptx, pty] = tileOf(p.x, p.z);
     const [etx, ety] = tileOf(this.x, this.z);
     const d = bfs(this.grid, ptx, pty);
