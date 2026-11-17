@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { Barn } from '../server/barn.js';
 
-test('eggs have a 15% roll in an empty barn, half that for each bug already kept, and none with every stall taken', () => {
+test('only an empty barn gets the 15% egg roll', () => {
   let roll = 14999, calls = 0;
   const barn = new Barn({
     store: { loadDoc: (key, fallback) => fallback }, now: () => 1,
@@ -15,15 +15,18 @@ test('eggs have a 15% roll in an empty barn, half that for each bug already kept
   assert.equal(barn.rollEgg('miner'), true);
   roll = 15000;
   assert.equal(barn.rollEgg('miner'), false);
-  barn.doc.pens.miner = { stage: 'creature', eggAt: 1 };
-  roll = 7499; assert.equal(barn.rollEgg('miner'), true, 'one bug kept: 7.5%');
-  roll = 7500; assert.equal(barn.rollEgg('miner'), false);
   roll = 0;
-  barn.doc.bench.miner = [{ stage: 'egg', eggAt: 2 }, { stage: 'dead', eggAt: 3 }];
-  assert.equal(barn.rollEgg('miner'), false, 'an egg, a bug and a grave each take a stall');
-  assert.equal(calls, 4, 'a full barn does not roll');
   barn.doc.stalls.miner = 1;
-  assert.equal(barn.rollEgg('miner'), true, 'a fourth stall makes room');
+  for (const stage of ['egg', 'creature', 'dead']) {
+    barn.doc.pens.miner = { stage, eggAt: 1 };
+    assert.equal(barn.rollEgg('miner'), false, stage);
+  }
+  delete barn.doc.pens.miner;
+  barn.doc.bench.miner = [{ stage: 'creature', eggAt: 2 }];
+  assert.equal(barn.rollEgg('miner'), false, 'a benched bug occupies a stall');
+  barn.forceEgg = true;
+  assert.equal(barn.rollEgg('miner'), false);
+  assert.equal(calls, 2, 'only an empty barn draws a random number');
 });
 
 async function fixture(t) {
@@ -68,7 +71,7 @@ test('resuming a shift keeps its original egg roll', async t => {
     assert.equal(start.status, 200);
     assert.equal(start.body.egg, egg);
     const calls = random.calls;
-    random.roll = egg ? 149999 : 0;
+    random.roll = egg ? 99999 : 0;
     clock.now += 15000;
     const resume = await user.api('POST', '/api/mines/start', { rulesVersion: 2 });
     assert.equal(resume.status, 200);
@@ -77,6 +80,28 @@ test('resuming a shift keeps its original egg roll', async t => {
     assert.equal(resume.body.egg, egg);
     assert.equal(random.calls, calls);
   }
+});
+
+test('a previously rolled egg stays hidden and cannot be picked up once the barn is occupied', async t => {
+  const { service, login } = await fixture(t);
+  const { api, id } = await login('miner');
+  const start = await api('POST', '/api/mines/start', { rulesVersion: 2 });
+  assert.equal(start.body.egg, true);
+  const shiftId = start.body.shiftId;
+  const tick = () => api('POST', '/api/mines/pvp/tick', { rulesVersion: 2, shiftId });
+  assert.equal((await tick()).body.egg, true);
+  service.barn.layEgg(id);
+  assert.equal((await tick()).body.egg, false);
+  for (const [action, payload] of [
+    ['start', {}], ['probe', { poolId: start.body.currentPoolId }], ['extract', { poolId: start.body.currentPoolId, action: 'stop' }],
+  ]) {
+    const state = await api('POST', '/api/mines/' + action, { rulesVersion: 2, shiftId, ...payload });
+    assert.equal(state.status, 200, action);
+    assert.equal(state.body.egg, undefined, action);
+  }
+  const pickup = await api('POST', '/api/mines/egg', { shiftId });
+  assert.equal(pickup.status, 409);
+  assert.equal(service.barn.bugs(id).length, 1);
 });
 
 test('egg pickup allows 30 seconds plus network grace and rejects invalid or repeated claims', async t => {

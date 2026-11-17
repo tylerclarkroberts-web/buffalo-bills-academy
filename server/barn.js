@@ -6,8 +6,7 @@
 // v33: residents are real bugs (engine/bugs.js); old hybrid rows are migrated once, quietly, on load.
 // v33: bugs can die of neglect, tamagotchi-style, but only slowly: STARVE_MS (21 days) after the last feed (or the
 // end of an automatic feeder's run). Warnings start at 7 days. Death is computed from stored times, never a timer,
-// so a server restart can't cause or skip one. A dead bug leaves a gravestone until it's laid to rest; then the
-// stall is empty and a new egg can turn up in the mines.
+// so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
@@ -16,7 +15,7 @@ import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, upsetXp }
 import { line } from './engine/bout.js';
 import { cents } from './accounts.js';
 
-export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn; halved for each occupied stall
+export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
 export const STALL_COSTS = [1500, 4000, 10000]; // the fourth, fifth and sixth stall
 export const BENCH_SLOW = 5;                    // a stalled bug lives this many times slower than the partner
@@ -163,18 +162,15 @@ export class Barn {
   /** A stall is free. An egg, a bug and a grave not yet laid to rest each take one. */
   room(playerId) { return this.bugs(playerId).length < this.stalls(playerId); }
 
-  /** At clock-in: does this shift have an egg in it? Only with a stall free, and half as often for each bug already kept. */
-  rollEgg(playerId) { return this.room(playerId) && (this.forceEgg || this.eggInt(100000) < EGG_CHANCE / 2 ** this.bugs(playerId).length); }
+  rollEgg(playerId) { return !this.has(playerId) && (this.forceEgg || this.eggInt(100000) < EGG_CHANCE); }
 
   /** Picking the egg up in the mine. Which creature is inside is decided now and kept secret until it hatches. */
   layEgg(playerId) {
-    if (!this.room(playerId)) throw new GameError('Every stall is taken. The egg stays where it is.', 409);
+    if (this.has(playerId)) throw new GameError('Mine eggs only turn up for an empty barn.', 409);
     const now = this.now();
     const species = ROSTER[this.eggInt(ROSTER.length)].id;
-    let eggAt = now; while (this.bugs(playerId).some((pen) => idOf(pen) === eggAt)) eggAt++; // this bug's id among its owner's
-    const egg = { stage: 'egg', species, eggAt, hatchAt: now + this.incubateMs, warmedAt: 0 };
-    if (this.doc.pens[playerId]) (this.doc.bench[playerId] ||= []).push(egg); else this.doc.pens[playerId] = egg;
-    this.save();
+    const egg = { stage: 'egg', species, eggAt: now, hatchAt: now + this.incubateMs, warmedAt: 0 };
+    this.commitPen(playerId, egg);
     return this.view(playerId);
   }
   wildCaught(id, battleId) {

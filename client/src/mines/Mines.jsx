@@ -593,6 +593,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     }
     sceneRef.current?.setOthers(v.others || []); setOthers(v.others?.length || 0); guideRef.current?.setOthers(v.others || []);
     if (v.wilds) sceneRef.current?.setWilds(v.wilds);
+    if (v.egg === false && eggRef.current === 'there') {
+      eggRef.current = 'gone'; sceneRef.current?.removeEgg('sink'); setEggNear(false);
+    }
     if (typeof v.canFightWild === 'boolean') canFightWild.current = v.canFightWild;
     const p = v.battle ? null : v.ambush; if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
     if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);

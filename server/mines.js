@@ -219,7 +219,7 @@ export class Mines {
       this.requireVersion(request); return this.completionView(player, last);
     }
     if (this.foreman?.pending(player.id)) { const e = new GameError('The foreman is waiting on an answer before you clock in again.', 409); e.code = 'foreman'; throw e; }
-    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true, player.id); }
+    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true, player.id, this.guideBug(player.id)); }
     this.requireVersion(request);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
@@ -247,7 +247,7 @@ export class Mines {
     this.store.commitPlayerDrafts([draft]);
     this.commit(player.id, shift); this.holds.delete(player.id);
     try { this.onShiftStart?.(player.id, shift, shaft.fare || 0); } catch { /* admin stats only */ }
-    return this.publicShift(shift, false, player.id);
+    return this.publicShift(shift, false, player.id, this.guideBug(player.id));
   }
   /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
   guideBug(playerId) {
@@ -268,11 +268,13 @@ export class Mines {
       return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
     } catch { return null; }
   }
-  publicShift(s, resumed, playerId) {
-    const guide = playerId != null ? this.guideBug(playerId) : null;
+  eggAvailable(s, playerId) { return !!(s?.egg && !s.eggTaken && this.barn && !this.barn.has(playerId)); }
+
+  publicShift(s, resumed, playerId, guide = null) {
     const bug = guide?.fainted ? null : guide;
     const wilds = this.wildsFor(s);
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    const egg = this.eggAvailable(s, playerId);
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
@@ -296,7 +298,7 @@ export class Mines {
       this.requireVersion(request);
       if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
       const i = this.target(cur, request.poolId);
-      if (i < cur.index || cur.pools[i].quantity !== null) return this.publicShift(cur, true);
+      if (i < cur.index || cur.pools[i].quantity !== null) return this.publicShift(cur, true, player.id);
       const next = structuredClone(cur), pool = next.pools[i];
       if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the fill roll is then clamped to what's left
         const lost = Math.floor(next.collected * CAVE_IN_SPILL);
@@ -307,7 +309,7 @@ export class Mines {
       this.advance(next); this.commit(player.id, next);
       // the shift is already saved, so a barn hiccup costs the bug 2 XP, not the miner a pool
       if (pool.quantity > 0) try { this.barn?.foundAcid?.(player.id); } catch { /* XP only */ }
-      return this.publicShift(next, true);
+      return this.publicShift(next, true, player.id);
     }
     return { flowing: true, seeping: false };
   }
@@ -321,19 +323,19 @@ export class Mines {
     const now = this.now();
     if (cur.settlement || cur.collected >= cap(cur) || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
     const i = this.target(cur, request.poolId);
-    if (i < cur.index) return this.publicShift(cur, true);
+    if (i < cur.index) return this.publicShift(cur, true, player.id);
     if (cur.pools[i].remaining === null) throw new GameError('Inspect the pool before mining.', 425);
     if (this.busy(player.id)) { this.holds.delete(player.id); throw new GameError('Your bug is mid-battle. Mining can wait.', 409); }
     const hold = this.holds.get(player.id);
     const live = hold?.shiftId === shiftId && hold.poolId === request.poolId && now >= hold.at && now - hold.at <= PULSE_GAP_MS;
     if (request.action === 'start') {
       if (!live) this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
-      return this.publicShift(cur, true);
+      return this.publicShift(cur, true, player.id);
     }
     if (!live) {
       this.holds.delete(player.id);
       if (request.action === 'continue') throw new GameError('Mining stopped. Hold Mine again.', 409);
-      return this.publicShift(cur, true);
+      return this.publicShift(cur, true, player.id);
     }
     let next = cur;
     if (now > hold.at) {
@@ -345,7 +347,7 @@ export class Mines {
     if (request.action === 'stop' || next.index !== i || next.collected >= cap(next)) this.holds.delete(player.id);
     else this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
     if (next.collected >= cap(next)) return this.settle(player, next);
-    return this.publicShift(next, true);
+    return this.publicShift(next, true, player.id);
   }
 
   /** All shafts share the day's roster. Catches retire a bug for everyone; other encounters end for this shift. */
@@ -438,7 +440,7 @@ export class Mines {
     const cur = this.doc.active[player.id];
     if (!cur || cur.rulesVersion !== 2) return null;
     if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
-    return this.publicShift(cur, true, player.id);
+    return this.publicShift(cur, true, player.id, this.guideBug(player.id));
   }
 
   /**

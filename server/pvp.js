@@ -191,9 +191,10 @@ export class Pvp {
     const notice = pr?.notice || null; if (pr) pr.notice = null;
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
     const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id, have) : null;
-    const wilds = this.wildsFor(this.shiftOf(player.id));
+    const shift = this.shiftOf(player.id), wilds = this.wildsFor(shift);
     const canFightWild = wilds.length > 0 && !this.fights.fightOf(player.id) && !!this.bugOf(player.id, false);
     return { serverNow: this.now(), others, wilds, canFightWild, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
+      ...(shift?.egg ? { egg: this.mines.eggAvailable(shift, player.id) } : {}),
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
       ...(notice ? { notice, shift: this.mines.stateFor(player) } : {}) };
   }

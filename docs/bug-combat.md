@@ -16,7 +16,7 @@ A Barn starts with three stalls. Each holds an egg, a living bug or an unburied 
 
 - **Stalls.** Three to start. The fourth, fifth and sixth cost $1,500, $4,000 and $10,000 (`STALL_COSTS` in `server/barn.js`), bought from the last slot in the Barn's stall row. An egg, a bug and a memorial not yet laid to rest each take one.
 - **Wild bugs.** A bug jarred in the mine takes a free stall at the level and health it was caught at; the rules are in [Acid Mines](acid-mines.md).
-- **Eggs.** A mine shift can only hold an egg while a stall is free. The chance is 15% per shift with an empty Barn and halves for each occupied stall.
+- **Eggs.** An empty Barn gives you a 15% chance to find an egg each new shift. Any occupied stall takes you out of the roll, including an unhatched egg or an unburied memorial. Catch wild bugs to fill additional stalls.
 - **The partner.** The first bug is the partner; **Make partner** on any other hatched, living bug swaps them, except while one of your bugs is in a fight. The mine guide, mine battles, My Room and store items (food, feeders, misters, toys) all act on the partner.
 - **A stalled bug lives five times slower** (`BENCH_SLOW`). Its needs decay at a fifth of the rate, it starves after 105 days instead of 21, and its 24-hour XP checkpoint comes every five days. It still needs looking after: care works on any bug, on the usual cooldowns, and gives the usual 12 XP. Swapping partners carries each bug's needs over as they are. A feeder's dates stay on the wall clock, so one bought for a bug that is later stalled covers fewer of its slow days.
 - **No empty partner's place.** When the partner is laid to rest, the first living stalled bug becomes the partner.
