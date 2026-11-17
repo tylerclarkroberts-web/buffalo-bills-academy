@@ -974,7 +974,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
 
   const secs = Math.floor(elapsed / 1000);
   return (
-    <div className={`m-play${dark ? ' horror' : ''}${scare && !lowFlash ? ' m-shake' : ''}`}>
+    <><div className={`m-play${dark ? ' horror' : ''}${scare && !lowFlash ? ' m-shake' : ''}`}>
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       {tier && <div className="m-dark" style={{ '--dark': [0, 0.15, 0.35, 0.65, 1][tier.tier - 1] }} aria-hidden="true" />}
       <Worms worms={worms} cutting={cutting} onCut={(id, a) => cutWorm.current(id, a)} />
@@ -997,7 +997,6 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         </div>}
       </div>
       {picker && !doom && !battle && <DancePicker current={dance} onPick={startDance} onClose={() => showPicker(false)} />}
-      {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}
       {mineError && <div className="m-recovery" role="alert">
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
@@ -1054,6 +1053,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         {!tiltActive && <MovePad apply={move} />}
       </div>
     </div>
+    {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}</>
   );
 }
 
@@ -1079,7 +1079,7 @@ function BugOrders({ current, onPick, onClose }) {
   return (
     <div className="m-dances m-orders" role="dialog" aria-label="Tell your bug" data-test="bug-orders" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       {BUG_ORDERS.map((o, i) => (
-        <button key={o.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === o.id ? ' on' : ''}`} data-test={`bug-order-${o.id}`} onClick={() => onPick(o.id)}>
+        <button key={o.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === o.id ? ' on' : ''}`} aria-pressed={current === o.id} data-test={`bug-order-${o.id}`} onClick={() => onPick(o.id)}>
           <span className="m-dance-icon" aria-hidden="true">{o.icon}</span><span className="m-dance-name">{o.name}</span><span className="m-key">{i + 1}</span>
         </button>
       ))}
