@@ -157,3 +157,16 @@ test('big sprites are drawn on a finer grid: the same bug, twice the pixels, mor
     assert.ok(tones(fine) > tones(coarse), `${bug.id} at level ${level} gains half-tones`);
   }
 });
+
+test('shades and monocles sit on the eyes of every bug, long snouts included', (t) => {
+  mockCanvas(t);
+  for (const bug of ROSTER) for (const level of [1, 10]) {
+    const grid = spriteGrid(bug, level), eye = (x, y) => grid[y]?.[x] === '#141414'; // the eyes' own tone
+    assert.ok(grid.some((row, y) => row.some((_, x) => eye(x, y))), `${bug.id} has eyes to find`);
+    const body = spriteCanvas(bug, undefined, level).getContext().pixels.length;
+    for (const shape of ['shades', 'monocle', 'dapper']) {
+      const worn = spriteCanvas(bug, { bugacc: { shape } }, level).getContext().pixels.slice(body); // what the accessory painted
+      assert.ok(worn.some(([, x, y]) => eye(x, y)), `${shape} covers an eye on ${bug.id} at level ${level}`);
+    }
+  }
+});
