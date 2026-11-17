@@ -1,4 +1,4 @@
-export const WALK_SPEED = 3.6; // m/s, shared by the miner and the guide bug
+export { WALK_SPEED, RUN_SPEED } from '../../../server/engine/mine-movement.js';
 
 // A fixed deadzone absorbs sideways thumb drift without a steering jump while walking.
 export function stickTurn(x) {

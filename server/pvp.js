@@ -10,6 +10,7 @@ import { GameError } from './engine/game.js';
 import { FIRST_POOL_STEPS } from './engine/maze.js';
 import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
+import { RUN_SPEED } from './engine/mine-movement.js';
 import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
 import { levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
@@ -22,7 +23,7 @@ export const PVP = {
   awareMs: 4000,            // "has seen you": within the last four seconds
   graceMs: 15000,           // the first 15 s of a shift, nobody can touch you (or touch anyone)
   safeTiles: 2.5,           // the elevator landing is neutral ground
-  maxTilesPerSec: 1.64 * 1.5, // walking speed (3.6 m/s, 2.2 m tiles) with room for network jitter
+  maxTilesPerSec: (RUN_SPEED / 2.2) * 1.5, // running speed in tiles, with room for network jitter
   slackTiles: 0.6,
   pairCooldownMs: 2 * 3600e3, // the same two miners can only rob each other once every two hours (either way round)
   maxCashLossesPerDay: 3,   // after three cash losses in a mine day you still lose acid (and smokes) but not money
@@ -116,7 +117,7 @@ export class Pvp {
   /**
    * The browser reports where its miner is about four times a second. Returns who else is down here, whether there is
    * someone to ambush, and the battle this miner is in (if any). A position that is inside rock or further than anyone
-   * can walk since the last report is refused and the miner is put back (`snap`).
+   * can run since the last report is refused and the miner is put back (`snap`).
    */
   tick(player, body = {}) {
     if (body.rulesVersion !== 2) { const e = new GameError('The mine has changed. Reload.', 409); e.code = 'mine_reload'; throw e; }

@@ -10,6 +10,7 @@ import { Barn } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines } from '../server/mines.js';
 import { Pvp, PVP } from '../server/pvp.js';
+import { RUN_SPEED } from '../server/engine/mine-movement.js';
 import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { sees, behind, touching, lineOfSight, bearing, onTunnel, TOUCH_TILES, SIGHT_TILES } from '../server/engine/pvp-geometry.js';
 import { createApp } from '../server/app.js';
@@ -115,6 +116,31 @@ test('positions are checked: no walking through rock, no teleporting, but a relo
   f.clock.now += 60000;
   assert.equal(f.tick(f.ann, a, { x: at.x, y: at.y, yaw: 0 }).snap, undefined);
   assert.equal(f.tick(f.ann, a, { x: 1, y: 1, yaw: 0, fresh: true }).snap, undefined, 'back at the elevator after a reload');
+});
+
+test('sustained running survives normal and delayed heartbeats without allowing teleports or rock positions', (t) => {
+  for (const diagonal of [1, .75 * Math.SQRT2]) {
+    const f = fixture(t), a = f.clockIn(f.ann);
+    const { key } = f.pvp.maze(f.mines.doc.active.ann);
+    // A long corridor isolates speed from turns; forward+strafe can also align along it at a 45-degree yaw.
+    const grid = [Array(50).fill(1), [1, ...Array(48).fill(0), 1], Array(50).fill(1)];
+    f.pvp.mazes.set(key, { grid, start: { x: 1, y: 1 } });
+    let x = 1;
+    f.tick(f.ann, a, { x, y: 1, yaw: EAST, fresh: true });
+    for (const ms of [...Array(8).fill(250), 1500, 5000, ...Array(8).fill(250)]) {
+      f.clock.now += ms; x += (RUN_SPEED * diagonal / 2.2) * ms / 1000;
+      assert.equal(f.tick(f.ann, a, { x, y: 1, yaw: EAST }).snap, undefined, `${diagonal} speed multiplier, ${ms}ms heartbeat`);
+      assert.equal(f.pvp.presence.get('ann').x, x);
+    }
+    const confirmed = { x, y: 1 };
+    f.clock.now += 250;
+    const tooFar = x + PVP.maxTilesPerSec * .25 + PVP.slackTiles + .01;
+    assert.deepEqual(f.tick(f.ann, a, { x: tooFar, y: 1, yaw: EAST, fresh: true }).snap, confirmed, 'fresh does not excuse a jump away from the entrance');
+    for (const y of [0, -1]) {
+      f.clock.now += 1000;
+      assert.deepEqual(f.tick(f.ann, a, { x, y, yaw: EAST }).snap, confirmed, 'rock and out-of-bounds destinations remain blocked');
+    }
+  }
 });
 
 test('an ambush from behind: victim\'s shift ends, attacker takes all their acid and $20-$100, logged on both sides', (t) => {

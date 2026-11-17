@@ -12,7 +12,7 @@ import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
 import { buildMineHands, resizeMineHands, stepMineHands } from './hands.js';
 import { buildMineEntrance } from './entrance.js';
-import { WALK_SPEED } from './controls.js';
+import { WALK_SPEED, RUN_SPEED } from './controls.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, TURN = 2.3;
 
@@ -273,7 +273,7 @@ export class MineScene {
     if (this.bugGuide?.armed) this.addBugGuide(this.bugGuide.bug);
     this.pos = new THREE.Vector2(maze.start.x * TILE, maze.start.y * TILE);
     this.yaw = -maze.facing - Math.PI / 2; this.pitch = 0;
-    this.input = { f: 0, s: 0, t: 0 };
+    this.input = { f: 0, s: 0, t: 0, run: false };
     this.bob = 0; this.mining = false; this.t0 = performance.now(); this.last = this.t0;
     this.resize();
     this.loop = this.loop.bind(this);
@@ -317,7 +317,7 @@ export class MineScene {
   startDance(id) {
     const d = danceId(id); if (!d) return false;
     if (d !== this.dance) { this.dance = d; this.danceT = 0; }
-    this.danceOrbit = 0; this.input.f = this.input.s = this.input.t = 0;
+    this.danceOrbit = 0; this.input.f = this.input.s = this.input.t = 0; this.input.run = false;
     return true;
   }
   stopDance() { this.dance = null; }
@@ -608,7 +608,7 @@ export class MineScene {
     const { f, s, t } = this.input;
     if (!this.dance) this.yaw -= t * TURN * dt;
     if (!this.mining && !this.dance && (f || s)) {
-      const sp = WALK_SPEED * dt * (f && s ? 0.75 : 1);
+      const sp = (this.input.run ? RUN_SPEED : WALK_SPEED) * dt * (f && s ? 0.75 : 1);
       const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw); // forward
       const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw); // right
       const dx = (fx * f + rx * s) * sp, dz = (fz * f + rz * s) * sp;

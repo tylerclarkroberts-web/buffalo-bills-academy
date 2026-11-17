@@ -343,7 +343,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
         <section className="m-box">
           <h2>&gt; SHIFT ORIENTATION</h2>
           <ol>
-            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
+            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · hold Shift to run · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
             <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
             <li>Follow the clicks. Closer is faster; facing the right tunnel gives them a little boost.</li>
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
@@ -545,7 +545,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (closing.current || done.current) return;
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
-  const freeze = (stopMining = true) => { stopDance(); showPicker(false); if (stopMining) release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
+  const freeze = (stopMining = true) => { stopDance(); showPicker(false); if (stopMining) release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.input.run = false; s.mining = false; } };
   const showMap = (open) => {
     if (open) { freeze(); chart(); }
     mapRef.current = open; setMapOpen(open);
@@ -605,7 +605,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const s = sceneRef.current;
     if (!s || doomRef.current || battleRef.current || mapRef.current) return;
     if (danceRef.current) { if (!f && !t) return; stopDance(); } // moving ends the dance
-    s.input.f = f; s.input.t = t; s.input.s = 0;
+    s.input.f = f; s.input.t = t; s.input.s = 0; s.input.run = false;
   };
   const setTiltMode = (active) => {
     tiltActiveRef.current = active; setTiltActive(active); keys.clear();
@@ -624,9 +624,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const openDoor = useRef(null);
   openDoor.current = () => {
     if (doomRef.current || mapRef.current || battleRef.current || closing.current || done.current) return;
-    stopDance(); showPicker(false);
-    doomRef.current = true; setDoom(true); release();
-    const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
+    freeze();
+    doomRef.current = true; setDoom(true);
+    sceneRef.current?.setPaused(true);
     soundWas.current = !!audio?.on; if (audio?.on) audio.stop();
   };
   const closeDoor = () => {
@@ -758,6 +758,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       scene.input.f = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
       scene.input.s = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
       scene.input.t = (keys.has('arrowright') || keys.has('e') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
+      scene.input.run = keys.has('ShiftLeft') || keys.has('ShiftRight');
     };
     const down = (e) => {
       if (battleRef.current) return;
@@ -779,10 +780,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (danceRef.current && ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) stopDance();
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
-      keys.add(k); sync();
+      keys.add(k === 'shift' ? e.code : k); sync();
     };
-    const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { release(); return; } keys.delete(k); sync(); };
-    const stopInput = () => { release(); keys.clear(); scene.input.f = scene.input.s = scene.input.t = 0; };
+    const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { release(); return; } keys.delete(k === 'shift' ? e.code : k); sync(); };
+    const stopInput = () => { release(); keys.clear(); scene.input.f = scene.input.s = scene.input.t = 0; scene.input.run = false; };
     const hidden = () => { if (document.hidden) stopInput(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);
     window.addEventListener('blur', stopInput); document.addEventListener('visibilitychange', hidden);
