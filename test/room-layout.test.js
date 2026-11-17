@@ -18,6 +18,17 @@ test('furniture drafts copy saved data and every furniture/style change marks th
   assert.notEqual(layoutKey(changeStyle(saved, 'wardrobe', 'colorId', 'sage')), key);
   assert.notEqual(layoutKey(changeStyle(saved, 'shelf', 'typeId', 'braced', 'shelf-left')), key);
 });
+test('changing a wing finish or moving one fixture stays in the draft until saved', () => {
+  const saved = room(), draft = layoutOf(saved);
+  assert.equal(layoutKey(draft), layoutKey(saved), 'a legacy room opens without unsaved changes');
+  const painted = changeStyle(draft, 'bedroom', 'colorId', 'indigo');
+  const moved = changeStyle(painted, 'bed', 'layoutId', 'alternate');
+  assert.notEqual(layoutKey(moved), layoutKey(painted));
+  assert.equal(moved.homestead.bedroom.colorId, 'indigo');
+  assert.equal(draft.homestead.bed.layoutId, 'classic');
+  assert.deepEqual(moved.furniture, draft.furniture);
+  assert.equal(changeStyle(moved, 'bed', 'layoutId', 'in-the-trough'), moved);
+});
 test('moving a filled shelf retains its item; removing it returns that display to storage without mutating the saved layout', () => {
   const saved = room(), open = ROOM_SHELF_SPOTS.find(spot => !saved.shelves.some(shelf => shelf.spotId === spot.id));
   const moved = moveShelf(saved, 'shelf-left', open.id);

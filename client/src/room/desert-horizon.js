@@ -26,7 +26,7 @@ export function desertHorizon(soilMaterial) {
     for (let y = 0; y < height; y++) {
       const v = y / height, dusk = Math.min(1, v * 1.22), i = (y * width + x) * 4;
       let r = 249 - 95 * dusk, g = 214 - 32 * dusk, b = 168 + 21 * dusk;
-      const sun = sunX * sunX + ((v - .545) / .086) ** 2;
+      const sun = sunX * sunX + ((v - .485) / .075) ** 2;
       if (sun < 1) { r = 252; g = 227; b = 177; }
       if (cloudWidths > 0 && Math.abs(v - cloud) < cloudWidths * .046) { r += 12; g += 8; b += 3; }
       if (v < ridges) { r = 178; g = 157; b = 146; }
@@ -65,7 +65,8 @@ export function desertHorizon(soilMaterial) {
   const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
   backdrop.name = 'ranch-horizon'; backdrop.frustumCulled = false; backdrop.renderOrder = -10;
   const S = ROOM_FLOOR_SCALE, forward = new THREE.Vector3(), point = new THREE.Vector3();
-  const yard = [[-4.3,-3.3],[6.0,-5.15],[8.25,-5.15],[8.5,-3.3],[8.5,5], [2.7,6.6], [-4.3,6.6]];
+  // Ground outline includes both wings, the windpump, front steps and garden.
+  const yard = [[-4.3, -7.3], [3.8, -7.3], [8.3, -5.3], [8.6, -3.15], [8.98, 3.26], [8.65, 4.95], [5.55, 7.55], [3.5, 7.4], [-3.1, 7.4], [-4.3, 3.6]];
   backdrop.onBeforeRender = (renderer, scene, camera) => {
     camera.getWorldDirection(forward);
     let skyline = 0.50;
@@ -76,7 +77,7 @@ export function desertHorizon(soilMaterial) {
     const depth = point.project(camera).z;
     // An upright backdrop clips distant rocks at their bases; a camera-facing plane cuts their tops loose.
     uniforms.depthSlope.value = (top.z - depth) / (top.y - point.y);
-    uniforms.frame.value.set(Math.atan2(forward.x, -forward.z) / tau + .14, (camera.right - camera.left) / (camera.top - camera.bottom) * .11, skyline, Math.min(.999, depth));
+    uniforms.frame.value.set(Math.atan2(forward.x, -forward.z) / tau + .265, (camera.right - camera.left) / (camera.top - camera.bottom) * .11, skyline, Math.min(.999, depth));
   };
   return backdrop;
 }

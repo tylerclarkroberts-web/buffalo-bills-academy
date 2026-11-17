@@ -88,7 +88,7 @@ export function roomWallDisplays(value, shelves = []) {
   return result;
 }
 /** Fixed wall footprints keep shelves, their contents and framed displays clear, including corners. */
-export function wallMountsFit(shelves, wallDisplays, furniture) {
+export function wallMountsFit(shelves, wallDisplays, furniture, couchScale) {
   const scale = ROOM_FLOOR_SCALE;
   const bounds = (spot, shelf) => {
     const [x, y, z] = spot.position, half = shelf ? (shelf.sizeId === 'wide' ? 1.25 : 0.45) : 0.6;
@@ -107,11 +107,11 @@ export function wallMountsFit(shelves, wallDisplays, furniture) {
   if (boxes.some(box => box[0][0] < -4 * scale + 0.08 || box[1][0] > 4 * scale - 0.08
     || box[0][2] < -3 * scale + 0.08 || box[1][2] > 3 * scale - 0.08 || intersects(box, window))) return false;
   const furnitureBoxes = furniture ? Object.entries(ROOM_FURNITURE).filter(([id, piece]) => !piece.yard && !furniture[id].off).map(([id]) => {
-    const place = furniture[id], rect = id === 'rug' ? residentRect(furniture) : furnitureRect(id, place);
+    const place = furniture[id], rect = id === 'rug' ? residentRect(furniture) : furnitureRect(id, place, couchScale);
     // Include wardrobe trim/handles, desk decorations and the taller resident's hat, regardless of current styling.
     const pad = id === 'wardrobe' ? [0.075, 0.175] : id === 'desk' ? [0, 0.075] : [0, 0];
     if (place.r % 2) pad.reverse();
-    const height = { wardrobe: 2.6, pet: 1.8, wealth: 1.8, desk: 1.7, rug: 2.95, couch: 1.15, case: 1.85, poker: 1.4 }[id] ?? 0.9;
+    const height = { wardrobe: 2.6, pet: 1.8, wealth: 1.8, desk: 1.7, rug: 2.95, couch: 1.15 * (couchScale?.[1] ?? 1), case: 1.85, poker: 1.4 }[id] ?? 0.9;
     return [[rect[0] - pad[0], 0, rect[1] - pad[1]], [rect[2] + pad[0], height, rect[3] + pad[1]]];
   }) : [];
   return boxes.every((a, i) => boxes.slice(i + 1).every(b => !intersects(a, b)) && furnitureBoxes.every(b => !intersects(a, b)));
@@ -139,6 +139,11 @@ export const ROOM_FINISHES = {
     colors: [{ id: 'oxblood', name: 'Oxblood', color: '#7c3a3a' }, { id: 'sage', name: 'Sage', color: '#66755a' }, { id: 'indigo', name: 'Indigo', color: '#3d5273' }, { id: 'saddle', name: 'Saddle tan', color: '#a8743f' }],
     default: { typeId: 'settee', colorId: 'oxblood' },
   },
+  fence: {
+    types: [{ id: 'splitrail', name: 'Split rail' }, { id: 'picket', name: 'Pickets' }, { id: 'wire', name: 'Ranch wire' }],
+    colors: [{ id: 'weathered', name: 'Weathered wood', color: '#ae956b' }, { id: 'walnut', name: 'Walnut', color: '#77563d' }, { id: 'whitewash', name: 'Whitewash', color: '#dfd9b9' }],
+    default: { typeId: 'splitrail', colorId: 'weathered' },
+  },
   shelf: {
     types: [{ id: 'plank', name: 'Plain shelf' }, { id: 'braced', name: 'Braced shelf' }],
     colors: [{ id: 'honey', name: 'Honey pine', color: '#c39b58' }, { id: 'walnut', name: 'Walnut', color: '#805637' }, { id: 'sage', name: 'Sage', color: '#6d785b' }, { id: 'clay', name: 'Clay', color: '#9a6650' }],
@@ -163,9 +168,34 @@ export function roomShelves(value) {
     return [{ id: shelf.id, spotId: shelf.spotId, ...finishOf('shelf', shelf), ...(typeof shelf.sizeId === 'string' && Object.hasOwn(ROOM_SHELF_SIZES, shelf.sizeId) ? { sizeId: shelf.sizeId } : {}) }];
   });
 }
-export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe', 'couch'].map(kind => [kind, finishOf(kind, value?.[kind])]));
+export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe', 'couch', 'fence'].map(kind => [kind, finishOf(kind, value?.[kind])]));
 
-/** The room and yard keep their original furniture sizes on floors scaled to 3.15x their first area. */
+const swatches = {
+  sage: ['Sage', '#81977d'], clay: ['Clay', '#b98168'], blue: ['Sky blue', '#8aabba'],
+  rust: ['Rust', '#b2684e'], indigo: ['Indigo', '#515b7c'], honey: ['Honey', '#bd976b'],
+  walnut: ['Walnut', '#795d48'], slate: ['Slate', '#6c7b80'], ivory: ['Ivory', '#eee1c5'],
+};
+function homesteadChoices(label, area, materials, colors, classic, alternate) {
+  const types = Object.entries(materials).map(([id, name]) => ({ id, name }));
+  return { label, area, types, colors: colors.map(id => ({ id, name: swatches[id][0], color: swatches[id][1] })),
+    layouts: [{ id: 'classic', name: classic }, { id: 'alternate', name: alternate }],
+    default: { typeId: types[0].id, colorId: colors[0], layoutId: 'classic' } };
+}
+export const ROOM_HOMESTEAD = {
+  bathroom: homesteadChoices('Bathroom', 'bathroom', { checker: 'Checker tile', stone: 'Stone tile' }, ['sage', 'clay', 'blue'], 'Cupboard by the porch window', 'Cupboard by the parlor wall'),
+  bedroom: homesteadChoices('Bedroom', 'bunk', { planks: 'Floorboards', parquet: 'Parquet' }, ['rust', 'sage', 'indigo'], 'Nightstand left of bed', 'Nightstand right of bed'),
+  kitchen: homesteadChoices('Kitchen', 'bunk', { timber: 'Timber', enamel: 'Enamel' }, ['honey', 'sage', 'slate'], 'Range at the front', 'Range at the rear'),
+  porch: homesteadChoices('Porch', 'porch', { pine: 'Pine', cedar: 'Cedar' }, ['honey', 'walnut', 'sage'], 'Plant by the house', 'Plant by the steps'),
+  bed: homesteadChoices('Bed', 'bunk', { quilt: 'Patchwork quilt', striped: 'Striped blanket' }, ['rust', 'sage', 'indigo'], 'Rear window', 'Porch window'),
+  tub: homesteadChoices('Bathtub', 'bathroom', { enamel: 'Enamel', copper: 'Copper' }, ['ivory', 'sage', 'slate'], 'Under the side window', 'Along the rear wall'),
+  porchChair: homesteadChoices('Porch chair', 'porch', { wood: 'Wood', painted: 'Painted wood' }, ['sage', 'honey', 'indigo'], 'By the steps', 'By the house'),
+};
+export const roomHomestead = value => Object.fromEntries(Object.entries(ROOM_HOMESTEAD).map(([id, choices]) => {
+  const pick = (field, options) => choices[options].some(option => option.id === value?.[id]?.[field]) ? value[id][field] : choices.default[field];
+  return [id, { typeId: pick('typeId', 'types'), colorId: pick('colorId', 'colors'), layoutId: pick('layoutId', 'layouts') }];
+}));
+
+/** Saved furniture coordinates use the expanded parlor and yard floor plan. */
 export const ROOM_FLOOR_SCALE = Math.sqrt(3.15);
 /** Saved rooms carry this marker. Plan 2 was the 2.1x floor; records without one were arranged on the 1.75x floor. */
 export const ROOM_PLAN = 3;
@@ -186,12 +216,12 @@ export const ROOM_FURNITURE = {
   'floor-2': { label: 'Floor display 2', size: [1.3, 0.9], home: [cm(1.6 * S), cm(-0.3 * S)], removable: true, stored: true },
   'floor-3': { label: 'Floor display 3', size: [1.3, 0.9], home: [cm(-2.6 * S), cm(-0.4 * S)], removable: true, stored: true },
   window: { label: 'Yard display', size: [2.8, 2.05], home: [cm(6.2 * S), cm(-0.3 * S)], yard: true },
-  couch: { label: 'Couch', size: [2.4, 1], home: [cm(-1.5 * S), cm(-3 * S + 0.6)], removable: true },
+  couch: { label: 'Couch', size: [2.4, 1], home: [cm(-1.5 * S), cm(-3 * S + 0.75)], removable: true },
   // `item` pieces are sold at the General Store and stay stored until their owner has bought one.
   case: { label: 'Display case', size: [1.96, 0.86], home: [cm(-2.4 * S), cm(-0.9 * S)], removable: true, stored: true, item: 'furn-case' },
   poker: { label: 'Poker table', size: [2.4, 1.56], home: [cm(1.2 * S), cm(-0.4 * S)], removable: true, stored: true, item: 'furn-pokertable' },
 };
-// Rectangles are [minX, minZ, maxX, maxZ]. The yard area stops short of the fence and the stepping-stone path.
+// Rectangles are [minX, minZ, maxX, maxZ]. The wagon stays in its paddock, clear of the deck.
 const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S];
 const KEEP_CLEAR = [
   [-4 * S, -1.7 * S - 0.45, -4 * S + 1.4, -0.4 * S + 0.45], // under the shelf mounts
@@ -201,22 +231,31 @@ const SLACK = 0.011;
 /** The resident stands at the centre of the rug spot, wherever that is moved (even with no rug laid). */
 export const residentRect = furniture => [furniture.rug.x - 0.45, furniture.rug.z - 0.35, furniture.rug.x + 0.45, furniture.rug.z + 0.35];
 const overlaps = (a, b) => a[0] < b[2] - SLACK && b[0] < a[2] - SLACK && a[1] < b[3] - SLACK && b[1] < a[3] - SLACK;
-export function furnitureRect(id, place) {
-  const [w, d] = ROOM_FURNITURE[id].size, hw = (place.r % 2 ? d : w) / 2, hd = (place.r % 2 ? w : d) / 2;
+export function furnitureRect(id, place, couchScale) {
+  let [w, d] = ROOM_FURNITURE[id].size;
+  if (id === 'couch' && couchScale) { w *= couchScale[0]; d *= couchScale[2]; }
+  const hw = (place.r % 2 ? d : w) / 2, hd = (place.r % 2 ? w : d) / 2;
   return [place.x - hw, place.z - hd, place.x + hw, place.z + hd];
 }
 /** Whether one piece stays inside its floor, clear of reserved space and of every other solid piece. */
-export function furnitureFits(furniture, id) {
+export function furnitureFits(furniture, id, couchScale) {
   const piece = ROOM_FURNITURE[id], place = furniture[id];
   if (place.off) return true;
-  const rect = furnitureRect(id, place), area = piece.yard ? YARD : INDOORS;
+  const rect = furnitureRect(id, place, couchScale), area = piece.yard ? YARD : INDOORS;
   if (rect[0] < area[0] - SLACK || rect[1] < area[1] - SLACK || rect[2] > area[2] + SLACK || rect[3] > area[3] + SLACK) return false;
   if (piece.yard) return true;
   const solid = Object.entries(ROOM_FURNITURE).filter(([other, { flat, yard }]) => other !== id && !flat && !yard && !furniture[other].off)
-    .map(([other]) => furnitureRect(other, furniture[other]));
+    .map(([other]) => furnitureRect(other, furniture[other], couchScale));
   // A rug may lie under furniture, but the resident standing on it needs clear floor.
   if (piece.flat) return !solid.some(other => overlaps(residentRect(furniture), other));
   return ![...KEEP_CLEAR, residentRect(furniture), ...solid].some(zone => overlaps(rect, zone));
+}
+/** Grow the settee where it fits. Older rooms may have a wall shelf or another piece right up against it. */
+export function roomCouchScale(furniture, shelves = defaultShelves(), wallDisplays = roomWallDisplays(undefined, shelves)) {
+  for (const scale of [[1.3, 1.16, 1.25], [1.3, 1.16, 1.05]]) {
+    if (furnitureFits(furniture, 'couch', scale) && wallMountsFit(shelves, wallDisplays, furniture, scale)) return scale;
+  }
+  return [1, 1, 1];
 }
 export const defaultFurniture = () => Object.fromEntries(Object.entries(ROOM_FURNITURE).map(([id, piece]) => [id, { x: piece.home[0], z: piece.home[1], r: 0, ...(piece.stored ? { off: true } : {}) }]));
 /** A complete, valid furniture map with defaults for omitted pieces, or null when anything supplied is unusable. */

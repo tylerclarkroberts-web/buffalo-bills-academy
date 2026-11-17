@@ -1,10 +1,10 @@
-import { ROOM_ANCHORS, anchorHost, ROOM_WALL_IDS, ROOM_WALL_SPOTS, defaultWallDisplays, ROOM_FINISHES, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
+import { ROOM_ANCHORS, anchorHost, ROOM_WALL_IDS, ROOM_WALL_SPOTS, defaultWallDisplays, ROOM_FINISHES, ROOM_HOMESTEAD, roomHomestead, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
 
 export const layoutOf = room => ({ layoutRevision: room.layoutRevision, themeId: room.themeId,
-  placements: room.placements.map(place => ({ ...place })), shelves: roomShelves(room.shelves), wallDisplays: roomWallDisplays(room.wallDisplays, roomShelves(room.shelves)), finishes: roomFinishes(room.finishes), furniture: roomFurniture(room.furniture) });
+  placements: room.placements.map(place => ({ ...place })), shelves: roomShelves(room.shelves), wallDisplays: roomWallDisplays(room.wallDisplays, roomShelves(room.shelves)), finishes: roomFinishes(room.finishes), furniture: roomFurniture(room.furniture), homestead: roomHomestead(room.homestead) });
 export const layoutKey = room => JSON.stringify([room.themeId,
   [...room.placements].sort((a, b) => a.anchorId.localeCompare(b.anchorId)),
-  [...room.shelves].sort((a, b) => a.id.localeCompare(b.id)), roomWallDisplays(room.wallDisplays, room.shelves), room.finishes,
+  [...room.shelves].sort((a, b) => a.id.localeCompare(b.id)), roomWallDisplays(room.wallDisplays, room.shelves), roomFinishes(room.finishes), roomHomestead(room.homestead),
   Object.entries(roomFurniture(room.furniture)).map(([id, place]) => [id, place.x, place.z, place.r, !!place.off])]);
 
 export function addShelf(layout, spotId, sizeId = 'standard') {
@@ -55,8 +55,10 @@ export function removeShelf(layout, id) {
   return { ...layout, shelves: layout.shelves.filter(shelf => shelf.id !== id), placements: layout.placements.filter(place => !slots.includes(place.anchorId)) };
 }
 export function changeStyle(layout, kind, field, value, shelfId) {
-  const options = ROOM_FINISHES[kind];
-  if (!options || !['typeId', 'colorId'].includes(field) || !options[field === 'typeId' ? 'types' : 'colors'].some(option => option.id === value)) return layout;
+  const home = ROOM_HOMESTEAD[kind], options = home || ROOM_FINISHES[kind];
+  const choices = { typeId: 'types', colorId: 'colors', layoutId: 'layouts' }[field];
+  if (!options?.[choices]?.some(option => option.id === value)) return layout;
+  if (home) return { ...layout, homestead: { ...layout.homestead, [kind]: { ...home.default, ...layout.homestead?.[kind], [field]: value } } };
   if (kind === 'shelf') return { ...layout, shelves: layout.shelves.map(shelf => shelf.id === shelfId ? { ...shelf, [field]: value } : shelf) };
   return { ...layout, finishes: { ...layout.finishes, [kind]: { ...layout.finishes[kind], [field]: value } } };
 }
