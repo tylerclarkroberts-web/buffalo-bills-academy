@@ -11,7 +11,7 @@ export const FIGHT = {
   basicMs: 3400,   // a plain strike played out, plus a breath to change your mind
   specialMs: 4400,
   critMs: 900,
-  tickMs: 1600,    // a venom tick or a bombardier's pop, shown as its own beat
+  tickMs: 1600,    // a venom tick, a bombardier's pop or a packed lunch, shown as its own beat
   watchMs: 6000,   // an owner not heard from in this long is not watching
   keepMs: 60000,   // a finished fight stays readable for a minute
 };
@@ -45,7 +45,7 @@ export class Fights {
 
   advance(fight) {
     const S = fight.S, events = stepBout(S, fight.queue[S.by].shift());
-    fight.nextAt = this.now() + events.reduce((ms, e) => ms + (e.type === 'venom' ? FIGHT.tickMs : (e.moveId === 'basic' ? FIGHT.basicMs : FIGHT.specialMs) + (e.critical ? FIGHT.critMs : 0)), 0);
+    fight.nextAt = this.now() + events.reduce((ms, e) => ms + (e.type !== 'move' ? FIGHT.tickMs : (e.moveId === 'basic' ? FIGHT.basicMs : FIGHT.specialMs) + (e.critical ? FIGHT.critMs : 0)), 0);
     if (S.over) this.finish(fight, S.winner);
   }
   /** `reason` is set when a fight is stopped from outside (a forfeit in the mine): the named side wins as it stands. */

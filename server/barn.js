@@ -29,7 +29,7 @@ export const CARE = {
 };
 export const CARE_XP = 12;   // per care action. No daily cap: the care cooldowns are the only brake
 export const DAY_XP = 10;    // per full day since hatching, while it's not neglected
-export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action
+export const BOOST_XP = 6;   // a mister or heat lamp (no longer sold; ones already held still work): half a care action
 export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
 export const BOUT_LEVEL = 1; // any hatched bug: they could already fight in the mine
 export const BOUT_XP = 20;
@@ -143,7 +143,7 @@ export class Barn {
     for (const s of STATS) {
       const v = pen.stats[s];
       let dt = Math.max(0, now - v.at);
-      if (s === 'hunger' && pen.feederUntil) dt -= Math.max(0, Math.min(now, pen.feederUntil) - Math.max(v.at, pen.feederFrom || 0)); // the feeder keeps the bowl full
+      if (pen.feederUntil) dt -= Math.max(0, Math.min(now, pen.feederUntil) - Math.max(v.at, pen.feederFrom || 0)); // the feeder keeps all three where they were
       out[s] = Math.max(0, Math.min(100, v.v - (DECAY_PER_HOUR[s] * Math.max(0, dt)) / 3600e3));
     }
     return out;
@@ -156,13 +156,14 @@ export class Barn {
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 80, at }])) });
     return true;
   }
-  /** Day bonus: every full day alive adds DAY_XP, if its needs averaged at least 25 at the end of that day. */
-  accrue(pen, now) {
+  /** Day bonus: every full day alive adds DAY_XP, if its needs averaged at least 25 at the end of that day, and `toyXp` for the toy it is left with. */
+  accrue(pen, now, toyXp = 0) {
     now = Math.min(now, pen.diedAt || Infinity);
     while (now - pen.dayXpAt >= 24 * 3600e3) {
       pen.dayXpAt += 24 * 3600e3;
       const n = this.needs(pen, pen.dayXpAt);
       if ((n.hunger + n.mood + n.clean) / 3 >= 25) pen.xp += DAY_XP;
+      pen.xp += toyXp;
       if ((pen.feederUntil || 0) >= pen.dayXpAt && (pen.feederFrom || 0) < pen.dayXpAt) pen.xp += FEEDER_DAY_XP;
     }
   }
@@ -174,7 +175,7 @@ export class Barn {
     if (pen.stage === 'creature') {
       const before = pen.xp; const dies = this.deathAt(pen);
       if (now >= dies) { pen.diedAt = dies; }
-      this.accrue(pen, now); dirty ||= pen.xp !== before;
+      this.accrue(pen, now, this.styleOf?.(playerId).toyXp || 0); dirty ||= pen.xp !== before;
       if (pen.diedAt) { pen.stage = 'dead'; dirty = true; }
     }
     if (dirty) this.save();
@@ -236,7 +237,7 @@ export class Barn {
     const cool = Object.fromEntries(Object.entries(CARE).map(([k, a]) => [k, Math.max(0, (pen.cool[k] || 0) + a.cooldownMs - now)]));
     const dies = this.deathAt(pen); const warn = this.starving(pen, now);
     return { pen: { stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt,
-      fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, style: this.looksOf(playerId) || null, gearBonus: this.styleOf?.(playerId).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
+      fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId) || null, gearBonus: this.styleOf?.(playerId).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= 10 ? null : xpFor(level + 1),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
       abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
@@ -304,7 +305,7 @@ export class Barn {
     const level = levelFor(pen.xp);
     return { species: pen.species, name: pen.name, level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
-      gear: this.styleOf?.(playerId).gearBonus || 0, style: this.looksOf(playerId),
+      gear: this.styleOf?.(playerId).gearBonus || 0, defense: this.styleOf?.(playerId).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId),
       legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
   }
 
@@ -472,6 +473,7 @@ export class Barn {
   settle(fight, entrants, stake, seed) {
     const now = this.now(), id = fight.id, winner = fight.over.winner, { rounds, maxHp, startHp, hp: endHp } = fight.S;
     const fighters = entrants.map(e => e.fighter);
+    entrants.forEach((e, side) => { if (fight.S.side[side].ate) this.lunchEaten(e.id, e.bornAt); });
     const drafts = entrants.flatMap((e, side) => {
       const p = this.store.players[e.id];
       if (!p) return []; // the account was deleted mid-fight
@@ -563,7 +565,7 @@ export class Barn {
     const hostPen = this.ready(host.id), guestPen = this.ready(playerId);
     const open = host.barnBouts.open;
     this.accounts.requireFunds(player, open.stake, 'this bout');
-    this.startFight(id, [{ player: host, pen: hostPen, fighter: { ...open.fighter, health: healthOf(hostPen) } }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true, playerId);
+    this.startFight(id, [{ player: host, pen: hostPen, fighter: { ...open.fighter, health: healthOf(hostPen), lunch: hostPen.lunch || null } }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true, playerId);
     return this.view(playerId);
   }
 
@@ -640,7 +642,7 @@ export class Barn {
   looksOf(playerId) {
     const st = this.styleOf?.(playerId) || {};
     const o = {}; for (const k of ['bugskin', 'bughat', 'bugacc']) if (st[k]) o[k] = st[k];
-    if (typeof st.gear === 'string' && st.gear.startsWith('gear-')) o.gear = { id: st.gear, shape: st.gear.slice(5) };
+    for (const k of ['gear', 'defense']) if (typeof st[k] === 'string' && st[k].startsWith('gear-')) o[k] = { id: st[k], shape: st[k].slice(5) };
     return Object.keys(o).length ? o : undefined;
   }
   /** After a death: lay it to rest. The stall empties (a new egg can turn up in the mines); a small grave record stays. */
@@ -652,8 +654,18 @@ export class Barn {
     delete this.doc.pens[playerId]; this.save();
     return { ...this.view(playerId), graves: this.doc.graves[playerId] };
   }
-  /** A store consumable: bump one need and earn `xp` care XP (food also counts as a feed). */
-  boost(playerId, { stat, gain, fed = false, xp = fed ? CARE_XP : 0 }) {
+  /** A fight is over and this bug ate its packed lunch in it: the lunch is gone. Only for the bug that fought. */
+  lunchEaten(playerId, bornAt) {
+    const pen = this.doc.pens[playerId];
+    if (!pen?.lunch || pen.bornAt !== bornAt) return;
+    const { lunch: _lunch, ...rest } = pen;
+    this.commitPen(playerId, rest);
+  }
+  /**
+   * A store consumable: bump one need and earn `xp` care XP (food also counts as a feed). Food leaves a `lunch`
+   * ({ name, heal }) for the bug's next fight; it carries one, and keeps the bigger.
+   */
+  boost(playerId, { stat, gain, fed = false, xp = fed ? CARE_XP : 0, lunch = null }) {
     const pen = this.refresh(playerId);
     if (!pen || pen.stage !== 'creature') throw new GameError('You need a hatched bug for that.', 409);
     const now = this.now(); const n = this.needs(pen, now);
@@ -661,17 +673,16 @@ export class Barn {
     pen.stats[stat].v = Math.min(100, n[stat] + Math.max(0, Math.min(100, gain)));
     if (fed) pen.fedAt = now;
     if (xp > 0) pen.xp += xp;
+    if (lunch?.heal > 0 && lunch.heal >= (pen.lunch?.heal || 0)) pen.lunch = { name: lunch.name, heal: lunch.heal };
     this.save();
     return this.view(playerId);
   }
-  /** Automatic feeder (bought in the General Store): keeps the bowl full and the starvation clock paused for `ms`. */
+  /** Automatic feeder (bought in the General Store): fills Fed, Mood and Clean, keeps them full and pauses the starvation clock for `ms`. */
   addFeeder(playerId, ms) {
     const pen = this.refresh(playerId);
     if (!pen || pen.stage !== 'creature') throw new GameError('The feeder needs a hatched bug to feed.', 409);
     const now = this.now();
-    const n = this.needs(pen, now);
-    for (const st of STATS) pen.stats[st] = { v: n[st], at: now };
-    pen.stats.hunger.v = 100;
+    for (const st of STATS) pen.stats[st] = { v: 100, at: now };
     if (!pen.feederUntil || pen.feederUntil < now) { pen.feederFrom = now; pen.feederUntil = now; }
     pen.feederUntil += ms; this.save();
     return this.view(playerId);

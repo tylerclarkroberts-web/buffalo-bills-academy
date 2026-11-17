@@ -148,6 +148,7 @@
   .barn-side { gap: 4px; }
 }
 .barn-feeder { color: #b8e6a0; white-space: nowrap; }
+.barn-supplies { display: flex; flex-wrap: wrap; gap: 0 14px; }
 /* v34: measured Field notes pages: each row/fact is its own block, a hidden copy is measured to pack pages */
 .barn-page { position: relative; display: flex; flex-direction: column; gap: 5px; }
 .barn-page ol { padding-left: 1.6em; }

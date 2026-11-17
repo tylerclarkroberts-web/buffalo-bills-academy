@@ -1,7 +1,7 @@
 // Barn combat is deterministic; player-joined wager flows are covered in barn-combat-api.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateBout, MAX_ROUNDS } from '../server/engine/bout.js';
+import { simulateBout, MAX_ROUNDS, LUNCH_CAP } from '../server/engine/bout.js';
 import { ROSTER } from '../server/engine/creatures.js';
 
 const A = { species: ROSTER[0].id, name: 'A', level: 5, mood: 60 };
@@ -13,6 +13,45 @@ test('bout sim is deterministic and keeps combat events and HP bounded', () => {
   assert.ok(r1.rounds.length >= 1 && r1.rounds.length <= MAX_ROUNDS * 2);
   for (const r of r1.rounds) { r.hp.forEach((hp, i) => assert.ok(hp >= 0 && hp <= r1.maxHp[i])); assert.ok(r.dmg >= 0); assert.ok(r.line.length > 10); }
   assert.ok([0, 1, null].includes(r1.winner));
+});
+
+test('attack gear adds to the hits a bug lands, defense gear takes off the hits it takes, each capped at 6%', () => {
+  // The first hit side A lands uses the same rolls whatever either bug is wearing, so only the gear differs.
+  const plain = { plain: true }, first = (a, b, seed) => simulateBout({ ...a, ...plain }, { ...b, ...plain }, seed).rounds.find((r) => r.by === 0 && r.type === 'move' && r.hit && !r.critical && r.dmg > 0)?.dmg || 0;
+  let base = 0, sharp = 0, plated = 0;
+  for (let s = 0; s < 80; s++) {
+    const seed = `gear${s}`, hit = first(A, B, seed), up = first({ ...A, gear: 0.06 }, B, seed), down = first(A, { ...B, defense: 0.06 }, seed);
+    assert.ok(up >= hit && down <= hit, `${seed}: ${down} <= ${hit} <= ${up}`);
+    base += hit; sharp += up; plated += down;
+  }
+  assert.ok(base > 0 && sharp / base > 1.04 && sharp / base < 1.08, `attack gear: ${sharp / base}`);
+  assert.ok(plated / base > 0.92 && plated / base < 0.96, `defense gear: ${plated / base}`);
+  assert.deepEqual(simulateBout(A, { ...B, defense: 0.5 }, 'cap'), simulateBout(A, { ...B, defense: 0.06 }, 'cap'), 'defense is capped');
+  assert.deepEqual(simulateBout(A, { ...B, defense: -1 }, 'cap').rounds, simulateBout(A, B, 'cap').rounds, 'and is never a penalty');
+});
+
+test('a packed lunch is eaten once, below half health, for no more than it holds or the bug is missing', () => {
+  let eaten = 0, ateIn = null;
+  for (let s = 0; s < 60; s++) {
+    const o = simulateBout({ ...A, lunch: { name: 'Bug Banquet', heal: LUNCH_CAP } }, B, `lunch${s}`);
+    const meals = o.rounds.filter((r) => r.type === 'snack');
+    if (meals.length) ateIn = `lunch${s}`;
+    assert.ok(meals.length <= 1 && meals.every((r) => r.by === 0), 'one lunch, and only the bug that packed it');
+    for (const r of meals) {
+      const before = r.hp[0] - r.healed;
+      assert.ok(before > 0 && before < o.maxHp[0] / 2, `${before} of ${o.maxHp[0]}: standing, below half`);
+      assert.ok(r.healed >= 0 && r.healed <= LUNCH_CAP && r.hp[0] <= o.maxHp[0]);
+      assert.ok(r.line.includes('Bug Banquet') && r.line.includes(`${r.healed} HP`));
+      eaten++;
+    }
+  }
+  assert.ok(eaten > 20, `eaten in ${eaten} of 60 fights`);
+  const meal = (lunch) => simulateBout({ ...A, lunch }, B, ateIn).rounds.find((r) => r.type === 'snack');
+  assert.equal(meal({ name: 'x', heal: 500 }).healed, meal({ name: 'x', heal: LUNCH_CAP }).healed, 'a lunch is capped');
+  assert.deepEqual(simulateBout({ ...A, lunch: { name: 'x', heal: 0 } }, B, 'cap'), simulateBout(A, B, 'cap'), 'no lunch, no change');
+  // a bug that walks in already below half eats before the first blow is over
+  const hurt = simulateBout({ ...A, health: 30, lunch: { name: 'Leaf', heal: 3 } }, B, 'hurt');
+  assert.ok(hurt.rounds.slice(0, 2).some((r) => r.type === 'snack' && r.healed === 3));
 });
 
 test('level 3 bouts use only what a level 3 bug has learned, and no species runs away with the field', () => {

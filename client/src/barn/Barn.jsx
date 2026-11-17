@@ -132,7 +132,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
   const others = roster.filter((bug) => bug.ownerId !== meId);
   const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
-  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{Math.round((fighter.gear || 0) * 100)}% damage</p></details>;
+  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{+((fighter.gear || 0) * 100).toFixed(1)}% damage, {+((fighter.defense || 0) * 100).toFixed(1)}% less taken</p></details>;
   const stakeLabel = (amount) => (Number(amount) > 0 ? ` for ${money(Number(amount))}` : ' for free');
   return <div className="barn-ring" data-test="barn-ring">
     <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
@@ -372,7 +372,11 @@ function BarnHome({ me }) {
             <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
               {pen.title && <span className="small barn-title">{pen.title}</span>}
-              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
+              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b></p>
+              {(pen.feederUntil > b.serverNow || pen.lunch) && <p className="small barn-kind barn-supplies">
+                {pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed, Mood and Clean full and adds 12 XP a day while it runs">🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+                {pen.lunch && <span className="barn-feeder" data-test="barn-lunch" title="Eaten in its next fight, the first time it drops below half health">🍱 Packed lunch: {pen.lunch.name}, +{pen.lunch.heal} HP</span>}
+              </p>}
               {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it: free after an hour's rest, or ${pen.healCost} now.</p>}
               {!pen.fainted && pen.hurt && <button className="barn-hurt small" onClick={() => navigate('/barn/center')} data-test="barn-hurt">Your bug is hurt — visit the Bug Center →</button>}
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}

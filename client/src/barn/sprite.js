@@ -310,13 +310,14 @@ function gearOverlay(ctx, grid, shape) {
 }
 /** The bug's 64x64 sprite, cached by species, life stage and look, then scaled with its accessories. */
 export function spriteCanvas(bug, style, level) {
-  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}`;
+  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}`;
   if (cache.has(key)) return cache.get(key);
   const b = style?.bugskin?.pal ? { ...bug, look: { ...(bug.look || {}), pal: style.bugskin.pal } } : bug;
   const grid = spriteGrid(b, level);
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(SPRITE, SPRITE) : Object.assign(document.createElement('canvas'), { width: SPRITE, height: SPRITE });
   const x = c.getContext('2d');
   paintSprite(x, grid, 0, 0, SPRITE);
+  if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape); // defense gear goes on first, the attack item over it
   if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape);
   if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape);
   if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
