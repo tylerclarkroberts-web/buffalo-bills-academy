@@ -6,18 +6,18 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { Barn } from '../server/barn.js';
 
-test('eggs have a 10% roll in an empty barn, half that for each bug already kept, and none with every stall taken', () => {
-  let roll = 9999, calls = 0;
+test('eggs have a 15% roll in an empty barn, half that for each bug already kept, and none with every stall taken', () => {
+  let roll = 14999, calls = 0;
   const barn = new Barn({
     store: { loadDoc: (key, fallback) => fallback }, now: () => 1,
     eggInt: n => { assert.equal(n, 100000); calls++; return roll; },
   });
   assert.equal(barn.rollEgg('miner'), true);
-  roll = 10000;
+  roll = 15000;
   assert.equal(barn.rollEgg('miner'), false);
   barn.doc.pens.miner = { stage: 'creature', eggAt: 1 };
-  roll = 4999; assert.equal(barn.rollEgg('miner'), true, 'one bug kept: 5%');
-  roll = 5000; assert.equal(barn.rollEgg('miner'), false);
+  roll = 7499; assert.equal(barn.rollEgg('miner'), true, 'one bug kept: 7.5%');
+  roll = 7500; assert.equal(barn.rollEgg('miner'), false);
   roll = 0;
   barn.doc.bench.miner = [{ stage: 'egg', eggAt: 2 }, { stage: 'dead', eggAt: 3 }];
   assert.equal(barn.rollEgg('miner'), false, 'an egg, a bug and a grave each take a stall');
@@ -61,14 +61,14 @@ async function fixture(t) {
 
 test('resuming a shift keeps its original egg roll', async t => {
   const { clock, random, login } = await fixture(t);
-  for (const [name, roll, egg] of [['lucky', 9999, true], ['unlucky', 10000, undefined]]) {
+  for (const [name, roll, egg] of [['lucky', 14999, true], ['unlucky', 15000, undefined]]) {
     const user = await login(name);
     random.roll = roll;
     const start = await user.api('POST', '/api/mines/start', { rulesVersion: 2 });
     assert.equal(start.status, 200);
     assert.equal(start.body.egg, egg);
     const calls = random.calls;
-    random.roll = egg ? 99999 : 0;
+    random.roll = egg ? 149999 : 0;
     clock.now += 15000;
     const resume = await user.api('POST', '/api/mines/start', { rulesVersion: 2 });
     assert.equal(resume.status, 200);

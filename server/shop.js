@@ -47,6 +47,7 @@ export class Shop {
     this.doc = store.loadDoc('shop', { inv: {}, tablesOff: {}, smokes: {}, smokeOff: {} });
     this.doc.inv ||= {}; this.doc.unique ||= {}; this.doc.tablesOff ||= {}; this.doc.smokes ||= {}; this.doc.smokeOff ||= {};
     this.migrate();
+    for (const pid of Object.keys(this.doc.inv)) this.settleJar(pid);
     this.gags = new Map(); // table code -> recent gag events (memory only; they're gone in seconds anyway)
     this.gagLog = new Map();
     this.showAt = new Map(); // table code -> when its last spectacle played (memory only, like the gag rate limits)
@@ -69,7 +70,7 @@ export class Shop {
     if (dirty) this.save();
   }
   save() { this.store.saveDoc('shop', this.doc); }
-  inv(pid) { const iv = (this.doc.inv[pid] ||= { own: {}, eq: {}, used: {}, fit: {}, noGags: false }); iv.fit ||= {}; return iv; }
+  inv(pid) { this.settleJar(pid); const iv = (this.doc.inv[pid] ||= { own: {}, eq: {}, used: {}, fit: {}, noGags: false }); iv.fit ||= {}; return iv; }
   hatched(pid) { return this.barn.view(pid).pen?.stage === 'creature'; }
 
   /** What the store page needs. Bug tabs and items only once your egg has hatched. */
@@ -135,11 +136,26 @@ export class Shop {
     return this.view(p);
   }
   /** Specimen jars carried, and spending one on a throw in the mine (server/pvp.js). */
-  jars(pid) { return this.doc.inv[pid]?.own.jar || 0; }
-  takeJar(pid) {
+  jars(pid) { this.settleJar(pid); return this.doc.inv[pid]?.own.jar || 0; }
+  writeJars(pid, count, pending) {
     const iv = this.doc.inv[pid];
-    if (!iv?.own.jar) return false;
-    iv.own.jar -= 1; if (!iv.own.jar) delete iv.own.jar; this.save();
+    const next = { ...iv, own: { ...iv.own } };
+    if (count) next.own.jar = count; else delete next.own.jar;
+    if (pending) next.pendingJar = pending; else delete next.pendingJar;
+    const doc = { ...this.doc, inv: { ...this.doc.inv, [pid]: next } };
+    this.store.saveDoc('shop', doc); this.doc = doc;
+  }
+  /** If a winning throw stopped between shop and barn writes, only the fight that actually caught the bug pays. */
+  settleJar(pid) {
+    const iv = this.doc.inv[pid], pending = iv?.pendingJar;
+    if (!pending) return;
+    const refund = this.barn.wildCaught(pending.wildId, pending.battleId) ? 0 : 1;
+    this.writeJars(pid, (iv.own.jar || 0) + refund);
+  }
+  takeJar(pid, pending) {
+    const count = this.jars(pid);
+    if (!count) return false;
+    this.writeJars(pid, count - 1, pending);
     return true;
   }
   setNoGags(p, on) { this.inv(p.id).noGags = !!on; this.save(); return this.view(p); }

@@ -31,5 +31,5 @@ export function createPvpClient({ send, pose, onView, onError, path = '/mines/pv
 export const pvpMove = (send, battleId, moves, have) => send('/mines/pvp/move', { battleId, moves, have });
 export const pvpAmbush = (send, target) => send('/mines/pvp/ambush', { target });
 export const pvpForfeit = (send) => send('/mines/pvp/forfeit', {});
-export const pvpWild = (send) => send('/mines/pvp/wild', {}); // walked into the shift's wild bug
+export const pvpWild = (send, wildId) => send('/mines/pvp/wild', { wildId });
 export const pvpJar = (send, battleId, have) => send('/mines/pvp/jar', { battleId, have });
