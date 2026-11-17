@@ -12,6 +12,7 @@ import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
+const BUG_GLOW = 1.6; // a bug billboard's own light at rest
 
 // How each shaft looks, in elevator order (7, 8, 12, Earl's Level): the deeper the permit, the worse the place.
 // `rock` multiplies the grey speckle in the wall and floor textures. The acid stays green everywhere. How far you
@@ -395,7 +396,7 @@ export class MineScene {
     trotFaun(m, now, fn.moving, this.reduce);
   }
 
-  /** A bug as a small glowing billboard: its pixel sprite, readable from down the tunnel. */
+  /** A bug as a small glowing billboard: its pixel sprite, readable from down the tunnel. The guide's light pulses (updateBugGuide); a wild bug's holds at BUG_GLOW. */
   bugBillboard(species, style, glowColor) {
     const g = new THREE.Group();
     let mesh;
@@ -408,7 +409,7 @@ export class MineScene {
       mesh.scale.set(1.4, 0.7, 1);
     }
     mesh.position.y = 0.55; g.add(mesh);
-    const glow = new THREE.PointLight(glowColor, 1.6, 3.2); glow.position.set(0, 0.7, 0); g.add(glow);
+    const glow = new THREE.PointLight(glowColor, BUG_GLOW, 3.2); glow.position.set(0, 0.7, 0); g.add(glow);
     g.visible = false; this.scene.add(g);
     return { group: g, mesh, glow };
   }
@@ -618,7 +619,10 @@ export class MineScene {
     if (this.stalker) this.updateVisitor(now, dt);
     if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
-    if (this.wild) { this.wild.group.rotation.y = this.yaw; this.wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05; }
+    if (this.wild) {
+      this.wild.group.rotation.y = this.yaw; this.wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05;
+      this.wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
+    }
     if (this.horror) this.updateHorror(now, dt);
     this.miners?.update(dt, now, this.yaw);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;

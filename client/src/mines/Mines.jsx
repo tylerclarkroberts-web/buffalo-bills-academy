@@ -829,7 +829,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (wildRef.current === 'there' && !battleRef.current) {
         const away = scene.wildTiles();
         if (away < 4 && !wildSeen.current) { wildSeen.current = true; setLine(`A WILD ${(BY_ID[shift.wild.species]?.name || 'BUG').toUpperCase()}, LEVEL ${shift.wild.level}, IS IN THE TUNNEL AHEAD. IT WANTS A FIGHT.`); }
-        if (away <= 1 && Date.now() - wildAsked.current > 1500) { wildAsked.current = Date.now(); meetWild(); }
+        // Horror Night: a jump scare has the screen for a moment, so the fight waits for it (the scare itself never starts during a fight)
+        if (away <= 1 && !scareRef.current && Date.now() - wildAsked.current > 1500) { wildAsked.current = Date.now(); meetWild(); }
       }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
