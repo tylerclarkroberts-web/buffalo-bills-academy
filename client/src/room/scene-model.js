@@ -11,7 +11,16 @@ export const RESIDENT_HEIGHT_SCALE = 1.4;
 // The stylized, un-hatted 1.94-unit resident represents 5 ft 11 in; walls are 8 ft 6 in.
 export const ROOM_WALL_HEIGHT = 1.94 * RESIDENT_HEIGHT_SCALE * 102 / 71;
 export const ROOM_DOOR_HEIGHT = ROOM_WALL_HEIGHT * 80 / 102;
-export const ROOM_BOUNDS = { min: [-4.35 * S, -0.2, -3.35 * S], max: [8.6 * S, ROOM_WALL_HEIGHT + 0.25, 3.35 * S] };
+function lotBounds(left, back, right, front) {
+  return { min: [left * S, -0.2, back * S], max: [right * S, ROOM_WALL_HEIGHT + 0.25, front * S] };
+}
+export const ROOM_BOUNDS = lotBounds(-4.55, -3.65, 8.85, 6.65);
+const AREAS = {
+  parlor: lotBounds(-4.1, -3.1, 4.2, 3.25),
+  bathroom: lotBounds(-4.05, 3.2, -1.25, 6.45),
+  bunk: lotBounds(-1.35, 3.2, 2.55, 6.45),
+  porch: lotBounds(4, 1.1, 8.55, 5.05),
+};
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
 export const roomShelfPosition = spot => spot.wallSide === 'back' ? [spot.position[0] * S, spot.position[1], -3 * S + 0.78] : [-4 * S + 0.78, spot.position[1], spot.position[2] * S];
@@ -84,13 +93,18 @@ export function residentStep(furniture = defaultFurniture(), shelves = [], wallD
 }
 
 /**
- * Places the resident can stroll to from the rug: the couch to sit on, the cash table to raid and furniture to inspect.
+ * Places the resident can stroll to from the rug, including the porch through the open side door.
  * Each has a `path` of floor points ending at the spot where they stand, found on a quarter-unit grid around the furniture.
- * ponytail: low shelves are not obstacles; add their footprints if the resident starts walking through them.
  */
-export function residentErrands(furniture = defaultFurniture()) {
+export function residentErrands(furniture = defaultFurniture(), shelves = []) {
   const home = furniture.rug, live = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off);
   const solid = live.map(id => furnitureRect(id, furniture[id]));
+  for (const shelf of shelves) {
+    const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
+    if (!spot) continue;
+    const [x, , z] = roomShelfPosition(spot), half = shelf.sizeId === 'wide' ? 1.25 : 0.45;
+    solid.push(spot.wallSide === 'left' ? [x - 0.65, z - half, x + 0.65, z + half] : [x - half, z - 0.65, x + half, z + 0.65]);
+  }
   const clear = (x, z) => Math.abs(x) <= 4 * S - 0.5 && Math.abs(z) <= 3 * S - 0.45
     && !solid.some(r => x + 0.35 > r[0] && x - 0.35 < r[2] && z + 0.3 > r[1] && z - 0.3 < r[3]);
   const walk = (from, to) => {
@@ -99,6 +113,7 @@ export function residentErrands(furniture = defaultFurniture()) {
   };
   // Breadth-first over clear floor cells, then keep only the corners a straight walk cannot skip.
   const route = (from, to) => {
+    if (!clear(...from) || !clear(...to)) return null;
     if (walk(from, to)) return [to];
     const key = cell => cell.join(), start = from.map(v => Math.round(v * 4)), goal = to.map(v => Math.round(v * 4));
     const previous = new Map([[key(start), null]]), queue = [start];
@@ -110,7 +125,8 @@ export function residentErrands(furniture = defaultFurniture()) {
     const cells = [], path = [];
     for (let at = goal; at; at = previous.get(key(at))) cells.unshift([at[0] / 4, at[1] / 4]);
     for (let n = 2, anchor = from; n < cells.length; n++) if (!walk(anchor, cells[n])) { anchor = cells[n - 1]; path.push(anchor); }
-    return [...path, to];
+    path.push(to);
+    return path.every((point, i) => walk(i ? path[i - 1] : from, point)) ? path : null;
   };
   const errands = [];
   for (const [id, kind] of [['couch', 'sit'], ['pet', 'inspect'], ['wealth', 'cash'], ['desk', 'inspect'], ['floor', 'inspect'], ['floor-2', 'inspect'], ['floor-3', 'inspect'], ['case', 'inspect'], ['poker', 'inspect'], ['wardrobe', 'inspect']]) {
@@ -127,6 +143,11 @@ export function residentErrands(furniture = defaultFurniture()) {
     if (!spot) continue;
     errands.push(kind === 'sit' ? { kind, path: spot.path, facing: Math.atan2(spot.dx, spot.dz), seat: [place.x + spot.dx * 0.12, place.z + spot.dz * 0.12] }
       : { kind, path: spot.path, facing: Math.atan2(-spot.dx, -spot.dz) });
+  }
+  const gate = route([home.x, home.z], [4 * S - 0.55, 1.75 * S]);
+  if (gate) {
+    const path = [...gate, [4.3 * S, 1.75 * S], [6.55 * S, 1.85 * S], [6.55 * S, 3.5 * S]];
+    errands.splice(1, 0, { kind: 'coffee', path, facing: Math.PI / 2 });
   }
   return errands;
 }
@@ -153,6 +174,7 @@ export const ROOM_VIEW_LIMITS = { minZoom: 0.75, maxZoom: 4, minRotation: -180, 
 
 export function roomView(value = {}) {
   return {
+    ...(Object.hasOwn(AREAS, value?.area) ? { area: value.area } : {}),
     zoom: Number.isFinite(value?.zoom) ? Math.min(ROOM_VIEW_LIMITS.maxZoom, Math.max(ROOM_VIEW_LIMITS.minZoom, value.zoom)) : 1,
     rotation: Number.isFinite(value?.rotation) ? ((value.rotation % 360 + 540) % 360) - 180 : 0,
   };
@@ -172,18 +194,19 @@ const ROOM_LOOK = [0, 1.1, -0.4 * S];
 // it looks at. Judged by the wall's own line instead, a near wall was drawn from behind, leaning across the room.
 export const roomWallVisibility = position => ({ back: position.z >= ROOM_LOOK[2], left: position.x >= ROOM_LOOK[0] });
 
-/** Fit the full room and yard at any angle before applying zoom. */
+/** Fit the selected part of the homestead at any angle before applying zoom. */
 export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
-  const { rotation, zoom } = roomView(view);
+  const { rotation, zoom, area } = roomView(view);
+  const bounds = AREAS[area] || ROOM_BOUNDS;
   const turn = rotation * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 60);
-  camera.position.set((10 * cos + 12.4 * sin) * S, 1.1 + 7.9 * S, (12.4 * cos - 10 * sin - 0.4) * S);
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 140);
+  camera.position.set((7 * cos + 17 * sin) * S, 1.1 + 14 * S, (17 * cos - 7 * sin - 0.4) * S);
   camera.lookAt(...ROOM_LOOK);
   camera.updateMatrixWorld();
   const points = [];
-  for (const x of [ROOM_BOUNDS.min[0], ROOM_BOUNDS.max[0]]) {
-    for (const y of [ROOM_BOUNDS.min[1], ROOM_BOUNDS.max[1]]) {
-      for (const z of [ROOM_BOUNDS.min[2], ROOM_BOUNDS.max[2]]) points.push(new THREE.Vector3(x, y, z).applyMatrix4(camera.matrixWorldInverse));
+  for (const x of [bounds.min[0], bounds.max[0]]) {
+    for (const y of [bounds.min[1], bounds.max[1]]) {
+      for (const z of [bounds.min[2], bounds.max[2]]) points.push(new THREE.Vector3(x, y, z).applyMatrix4(camera.matrixWorldInverse));
     }
   }
   const minX = Math.min(...points.map(p => p.x)), maxX = Math.max(...points.map(p => p.x));

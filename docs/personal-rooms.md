@@ -1,6 +1,6 @@
 # Personal rooms
 
-My Room displays the owner's existing pet, outfit, oddities and in-game wealth in a furnished 3D bunkhouse. Room layout is separate from those systems; it creates no pet, balance, income or gameplay bonus.
+My Room displays the owner's existing pet, outfit, oddities and in-game wealth in a furnished 3D bunkhouse. The bathroom, kitchen, bunk, porch and surrounding desert are fixed scenery around the player's arrangement. Existing furniture and display positions keep their saved coordinates.
 
 ## Visits and privacy
 
@@ -25,7 +25,9 @@ Furniture stays within its approved room/yard bounds and clear of other furnitur
 
 ## A little life in the room
 
-Resident errands (sitting on the couch, inspecting furniture, taking a note from the cash table), chatter and faun visits are local cosmetic events. The resident routes around floor furniture but not low shelves. They change no balances, pet care, inventory or daily-faun gifts. Editing and Pause activity dismiss current bubbles/visits; hidden or offscreen scenes pause the activity clock. Reduced motion stops character animation while permitting static bubbles and visits. Camera angle, zoom, pan and activity choices are local to the current page, not persisted or shared with visitors.
+Resident errands (sitting on the couch, inspecting furniture, taking a note from the cash table), chatter and faun visits are local cosmetic events. The resident routes around floor furniture and shelf footprints. They change no balances, pet care, inventory or daily-faun gifts. Editing and Pause activity dismiss current bubbles/visits; hidden or offscreen scenes pause the activity clock. Reduced motion stops character animation while permitting static bubbles and visits. Camera angle, zoom, pan and activity choices are local to the current page, not persisted or shared with visitors.
+
+The resident can take coffee outside through the side door when the saved layout leaves a clear route. An owner-directed trip lasts until the owner calls the resident back or interrupts the activity. Coffee breaks and the toilet-operated sprinkler change only the local scene.
 
 ## API and persistence
 

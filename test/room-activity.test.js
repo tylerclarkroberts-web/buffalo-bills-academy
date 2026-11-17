@@ -115,6 +115,73 @@ test('pausing stops scheduled animation, clears bubbles and leaves furniture pos
   assert.equal(scene.activity.time, 20000, 'paused wall-clock time does not advance events');
 });
 
+test('requested coffee walks out and back while ambient activity stays paused', t => {
+  const { scene, frames } = sceneFixture(t), states = [];
+  scene.residentHome = new THREE.Vector3(0, 0.05, 0);
+  scene.errands = [{ kind: 'coffee', path: [[3, 0], [3, 4]], facing: 0 }];
+  scene.residentArms = [new THREE.Group(), new THREE.Group()]; scene.residentMug = new THREE.Group();
+  scene.activityPaused = true; scene.onHouseState = state => states.push(state);
+  assert.equal(scene.houseAction('coffee', 0), 'ok'); frames.shift()(0);
+  assert.equal(scene.houseAction('coffee', 0), 'busy');
+  scene.animateActivity(2750);
+  assert.equal(scene.residentGroup.position.x, 3);
+  assert.ok(scene.residentGroup.position.z > 0 && scene.residentGroup.position.z < 4);
+  scene.animateActivity(5500);
+  assert.deepEqual(scene.residentGroup.position.toArray(), [3, 0.05, 4]);
+  assert.equal(scene.residentMug.visible, true);
+  assert.equal(scene.animateActivity(60000), false, 'a paused porch pose needs no animation loop');
+  assert.equal(scene.houseAction('inside', 60000), 'ok'); frames.shift()(60000);
+  scene.animateActivity(65500);
+  assert.ok(scene.residentGroup.position.equals(scene.residentHome));
+  assert.equal(scene.residentMug.visible, false);
+  assert.deepEqual(states, ['walking', 'porch', 'returning', 'home']);
+  assert.equal(scene.activity.time, 0);
+  scene.errands = [];
+  assert.equal(scene.houseAction('coffee', 65500), 'blocked');
+});
+
+test('reduced-motion coffee uses still endpoints and the flush gag keeps visible time', t => {
+  const { scene, frames } = sceneFixture(t, true);
+  scene.activityPaused = true; scene.residentHome = new THREE.Vector3(0, 0.05, 0);
+  scene.errands = [{ kind: 'coffee', path: [[6, 3]], facing: 0 }];
+  let spray = false; scene.homestead = { setSprinkler(on) { spray = on; } };
+  assert.equal(scene.houseAction('coffee', 0), 'ok'); frames.shift()(0);
+  assert.deepEqual(scene.residentGroup.position.toArray(), [6, 0.05, 3]);
+  assert.equal(scene.houseAction('inside', 0), 'ok'); frames.shift()(0);
+  assert.ok(scene.residentGroup.position.equals(scene.residentHome));
+  assert.equal(scene.houseAction('flush', 0), 'ok'); frames.shift()(0);
+  assert.equal(scene.houseAction('flush', 0), 'busy'); assert.equal(spray, false);
+  scene.inViewport = false; scene.visibilityChanged(400); t.mock.timers.tick(10000);
+  assert.equal(frames.length, 0);
+  scene.inViewport = true; scene.visibilityChanged(10400); frames.shift()(10400);
+  t.mock.timers.tick(249); assert.equal(frames.length, 0);
+  t.mock.timers.tick(1); frames.shift()(10650); assert.equal(spray, true);
+  t.mock.timers.tick(2950); frames.shift()(13600); assert.equal(spray, false);
+  assert.equal(scene.activity.time, 0);
+  scene.houseAction('flush', 14000); frames.shift()(14000);
+  scene.animateActivity(15000); assert.equal(spray, true);
+  scene.stopActivity(); scene.editing = true;
+  assert.equal(spray, false); assert.equal(scene.houseAction('flush'), 'unavailable');
+});
+
+test('coffee can interrupt a seat without jumping, or keep an ambient visitor on the porch', t => {
+  const { scene } = sceneFixture(t);
+  scene.residentHome = new THREE.Vector3(0, 0.05, 0);
+  scene.errands = [{ kind: 'sit', path: [[1, 0]], facing: 0, seat: [1.5, 0] }, { kind: 'coffee', path: [[0, 4]], facing: 0 }];
+  scene.activity.time = 15000; scene.animateActivity(0);
+  const seat = scene.residentGroup.position.clone();
+  scene.houseAction('coffee', 0); scene.animateActivity(0);
+  assert.ok(scene.residentGroup.position.equals(seat));
+  scene.animateActivity(2000);
+  assert.ok(scene.residentGroup.position.x < seat.x && scene.residentGroup.position.x > 0);
+  scene.houseAction('inside', 2000); scene.animateActivity(5000);
+  assert.ok(scene.residentGroup.position.equals(scene.residentHome)); assert.equal(scene.houseState, 'home');
+  scene.activity.time = scene.residentRestart + 49000; scene.lastFrame = null; scene.animateActivity(6000);
+  assert.equal(scene.residentGroup.position.z, 4);
+  scene.houseAction('coffee', 6000); scene.animateActivity(6000);
+  assert.equal(scene.houseState, 'porch'); assert.equal(scene.residentGroup.position.z, 4);
+});
+
 test('reduced motion keeps a still resident and renders only at activity boundaries', t => {
   const { scene, frames, bubbles } = sceneFixture(t, true);
   scene.render(); frames.shift()(0);

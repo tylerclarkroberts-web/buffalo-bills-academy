@@ -220,7 +220,7 @@ test('shelves drag immediately after movement, retain click selection and move o
   assert.equal(moves.length, 1);
 });
 
-test('room view has finite limits and resetting keeps the enlarged room at its original viewing angle', () => {
+test('room view has finite limits and resets to a high cutaway of the whole house', () => {
   assert.deepEqual(roomView(), { zoom: 1, rotation: 0 });
   assert.deepEqual(roomView(null), { zoom: 1, rotation: 0 });
   assert.deepEqual(roomView({ zoom: NaN, rotation: Infinity }), { zoom: 1, rotation: 0 });
@@ -231,11 +231,21 @@ test('room view has finite limits and resetting keeps the enlarged room at its o
     assert.equal(roomView({ rotation }).rotation, expected, 'rotation wraps continuously through a full turn');
   }
   const camera = makeRoomCamera(846 / 380);
-  const original = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 60);
-  original.position.set(10 * S, 1.1 + 7.9 * S, 12 * S); original.lookAt(0, 1.1, -0.4 * S); original.updateMatrixWorld();
-  assert.deepEqual(camera.matrixWorld.toArray(), original.matrixWorld.toArray());
+  assert.ok(camera.getWorldDirection(new THREE.Vector3()).y < -0.55);
   assert.equal(camera.zoom, 1);
   assert.deepEqual(camera.projectionMatrix.toArray(), makeRoomCamera(846 / 380, roomView()).projectionMatrix.toArray());
+});
+
+test('room close-ups frame each destination on a phone and reset unknown destinations', () => {
+  const aspect = 360 / 280;
+  const wide = makeRoomCamera(aspect);
+  for (const [area, x, z] of [['bathroom', -2.65, 4.8], ['bunk', 0.6, 4.8], ['porch', 6.25, 3.1], ['parlor', 0, 0]]) {
+    const view = roomView({ area }), focused = makeRoomCamera(aspect, view);
+    const middle = new THREE.Vector3(x * S, 1.8, z * S).project(focused);
+    assert.ok(Math.abs(middle.x) < 0.12 && Math.abs(middle.y) < 0.2, area);
+    assert.ok(focused.right - focused.left < (wide.right - wide.left) * .8, area);
+  }
+  assert.deepEqual(roomView({ area: 'mine' }), roomView());
 });
 
 test('camera zoom and rotation survive resize and room refresh while edit highlights remain usable', t => {
@@ -370,9 +380,8 @@ test('near walls, window trim, wall decorations and their click targets cut away
   const decoration = new THREE.Group(); decoration.userData.wallSide = 'back'; scene.dynamic.add(decoration);
   scene.pick([ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]], [1.2, 1.1, 0.3], { kind: 'anchor', anchorId: 'wall-left' });
   scene.dynamic.updateMatrixWorld();
-  // At -45 and 45 the camera is still inside the wall's line but already looks at its back.
   for (const [rotation, expected] of [[0, { back: true, left: true }], [90, { back: false, left: true }],
-    [180, { back: false, left: false }], [270, { back: true, left: false }], [-45, { back: true, left: false }], [45, { back: true, left: true }], [60, { back: false, left: true }]]) {
+    [180, { back: false, left: false }], [270, { back: true, left: false }], [-45, { back: true, left: false }], [60, { back: true, left: true }], [75, { back: false, left: true }]]) {
     scene.camera = makeRoomCamera(846 / 380, { rotation });
     assert.deepEqual(roomWallVisibility(scene.camera.position), expected);
     scene.setEditing(true, { kind: 'anchor', anchorId: 'wall-left' });
@@ -525,7 +534,7 @@ test('touch drags preserve the grab point after rotating the camera and restore 
 
 test('zoomed furniture drags when its visible top is onscreen but its floor origin is cropped', () => {
   const scene = furnitureScene(), home = defaultFurniture(), moves = [];
-  scene.camera = makeRoomCamera(846 / 380, { rotation: 135, zoom: 2 });
+  scene.camera = makeRoomCamera(846 / 380, { rotation: 150, zoom: 1.75 });
   scene.raycaster = new THREE.Raycaster(); scene.onMoveFurniture = (...move) => moves.push(move);
   scene.update({ placements: [], finishes: roomFinishes() }); scene.dynamic.updateMatrixWorld(true); scene.setEditing(true);
   const at = (x, z, height = 2) => ({ button: 0, pointerId: 16, pointerType: 'mouse', ...screenPoint(scene.camera, [x, height, z]) });
