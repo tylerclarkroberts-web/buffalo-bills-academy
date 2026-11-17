@@ -47,7 +47,7 @@ test('no boards anywhere, in the server, the client or the browser checks', () =
   assert.ok(OPENINGS.every((o) => o.open));
 });
 
-test('the elote man: harmless scenery out front, ignored by the horde, bullets go through, a modest heal once a minute', () => {
+test('the elote man: harmless scenery out front, ignored by the horde, bullets go through, a heal plus a once-per-wave ammo refill', () => {
   const g = groundAt(ELOTE.x, ELOTE.z, 50);
   assert.ok(!insideSolid({ x: ELOTE.x, y: g + 0.6, z: ELOTE.z }) && !buildingAt(ELOTE.x, ELOTE.z), 'standing in the open');
   assert.ok(ELOTE.x > BOUNDS.x0 && ELOTE.x < BOUNDS.x1);
@@ -61,14 +61,19 @@ test('the elote man: harmless scenery out front, ignored by the horde, bullets g
   m.enemies = [];
   const lu = foe(m, 'luchador', ELOTE.x + 1, ELOTE.z + 1); run(m, 1);
   assert.equal(lu.target, t, 'the luchador goes for the player, not the elote man');
-  // the heal: prompt, +30, then a cooldown; not when you're already full
-  m.enemies = []; put(m, 't', ELOTE.x + 1, ELOTE.z); t.P.health = 40; m.tick(0.1);
+  // the heal + a full refill of the gun in hand, once per wave
+  m.enemies = []; put(m, 't', ELOTE.x + 1, ELOTE.z); t.P.health = 40;
+  t.P.weapons.rifle.mag = 3; t.P.weapons.rifle.reserve = 8; m.tick(0.1);
   assert.equal(m.personal('t').pr.k, 'elote');
   m.input('t', { p: [t.x, t.y, t.z], act: true }, 1000); m.tick(0.1);
-  assert.equal(t.P.health, 40 + L.MATCH.elote.heal); assert.ok(m.events.some((x) => x[0] === 'el' && x[1] === 't'));
+  assert.equal(t.P.health, 40 + L.MATCH.elote.heal);
+  assert.equal(t.P.weapons.rifle.mag, L.WEAPONS.rifle.mag);
+  assert.equal(t.P.weapons.rifle.reserve, L.WEAPONS.rifle.reserve);
+  assert.ok(m.events.some((x) => x[0] === 'el' && x[1] === 't' && x[2] === 1));
   m.input('t', { p: [t.x, t.y, t.z], act: false }, 1200); m.tick(0.1); m.input('t', { p: [t.x, t.y, t.z], act: true }, 1400); m.tick(0.1);
-  assert.equal(t.P.health, 40 + L.MATCH.elote.heal, 'once a minute'); assert.match(m.personal('t').pr.label, /OTRO ELOTE EN/);
-  assert.ok(L.MATCH.elote.heal <= 30 && L.MATCH.elote.cool >= 45, 'kept modest');
+  assert.equal(t.P.health, 40 + L.MATCH.elote.heal, 'once per wave');
+  assert.equal(m.personal('t').pr.label, 'Ya comiste este round');
+  assert.ok(L.MATCH.elote.heal <= 30 && L.MATCH.elote.cool >= 45, 'heal itself stayed modest');
   // the calls: a line every few seconds, the same for everyone
   const seen = new Set(); for (let s = 0; s < 60; s += 0.5) { const i = eloteShout(s); if (i >= 0) seen.add(ELOTE_LINES[i]); }
   assert.ok(seen.has('¡ELOTES!') && seen.has('¡ESQUITES!'));

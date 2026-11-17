@@ -40,7 +40,7 @@ export class Match {
     if (this.online().length) this.phase = 'lobby';
   }
   freshStats(p) {
-    Object.assign(p, { kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, ready: false, truckGot: -1, eloteAt: -Infinity });
+    Object.assign(p, { kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, ready: false, truckGot: -1, eloteAt: -Infinity, eloteWave: 0 });
     p.state = 'dead'; // a new match: back to the starting guns
     this.respawn(p);
   }
@@ -56,7 +56,7 @@ export class Match {
       let color = 0; while (used.has(color) && color < COLORS - 1) color++;
       p = { id, name: String(name).slice(0, 18), color, joined: false, online: true, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, state: 'dead', P: L.createPlayer(),
         w: 'rifle', slots: [...L.START_WEAPONS], wv: 0, moving: 0, firing: 0, lastIn: nowMs, tokens: 3, act: false, actWas: false, rev: 0, revOf: null, prompt: null,
-        hist: [], kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, eloteAt: -Infinity, inputs: 0, inWin: 0, until: 0, offT: 0, corr: null, seq: 0,
+        hist: [], kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, eloteAt: -Infinity, eloteWave: 0, inputs: 0, inWin: 0, until: 0, offT: 0, corr: null, seq: 0,
         ready: false, joinedAt: 0, seat: null, lungeMs: 0, airT: 0, groundY: 0, look: L.cleanLook(look ?? this.looks?.(id)), needles: null, truckGot: -1 };
       this.players.set(id, p);
       if (this.online().length > MATCH.maxPlayers) { this.players.delete(id); return { error: 'full' }; }
@@ -276,11 +276,35 @@ export class Match {
     return { hits, wall: wd };
   }
   lift(e, y = e.y) { return y + (e.st.float || 0); }
+  // Where a shot or nade should start. A tight 2m muzzle check was dropping fire after a rejected
+  // move, a stair/roof desync, a Bufadora launch, or a laggy jeep seat — the tracer might still
+  // draw on the client, but the server never applied damage. Accept a plausible client origin;
+  // if it is inside a wall or wildly far, fire from the server eye instead of silently eating it.
+  aimOrigin(p, o, d) {
+    const eye = { x: p.x, y: p.y + EYE, z: p.z };
+    if (!o || !finite(o.x, o.y, o.z)) return eye;
+    const off = Math.hypot(o.x - eye.x, o.y - eye.y, o.z - eye.z);
+    const maxOff = (p.launched || p.seat) ? 32 : 12;
+    let src = off <= maxOff ? { x: o.x, y: o.y, z: o.z } : eye;
+    const clipped = (q) => insideSolid(q) || wallDist(q, d, 0.3, true) <= 0.02;
+    if (clipped(src)) {
+      const dx = eye.x - src.x, dy = eye.y - src.y, dz = eye.z - src.z, len = Math.hypot(dx, dy, dz);
+      if (len > 1e-6) {
+        for (let i = 1; i <= 8; i++) {
+          const k = i / 8, q = { x: src.x + dx * k, y: src.y + dy * k, z: src.z + dz * k };
+          if (!clipped(q)) { src = q; break; }
+        }
+      }
+      if (clipped(src)) src = { ...eye };
+      if (clipped(src)) src = { x: eye.x + d.x * 0.45, y: eye.y + d.y * 0.45, z: eye.z + d.z * 0.45 };
+    }
+    return src;
+  }
   shot(p, o, d) {
-    if (p.tokens < 1) return; p.tokens -= 1;
     const len = Math.hypot(d.x, d.y, d.z); if (len < 0.5 || len > 1.5) return;
     d = { x: d.x / len, y: d.y / len, z: d.z / len };
-    if (Math.hypot(o.x - p.x, o.y - (p.y + EYE), o.z - p.z) > (p.seat ? 2.6 : 2)) return;
+    o = this.aimOrigin(p, o, d);
+    if (p.tokens < 1) return; p.tokens -= 1;
     const id = p.w, w = WEAPONS[id]; p.firing = 2;
     if (!w || w.kind === 'melee') return;
     if (w.kind === 'rocket') { this.launch(p, o, d, 'rocket'); return; }
@@ -322,10 +346,10 @@ export class Match {
     this.shots.push(s); this.ev(kind === 'rocket' ? 'rk' : 'nd', p.id);
   }
   throwNade(p, o, kind = 'frag') {
-    if (Math.hypot(o.x - p.x, o.y - (p.y + EYE), o.z - p.z) > 2) return;
+    const cp = Math.cos(p.pitch), f = { x: -Math.sin(p.yaw) * cp, y: Math.sin(p.pitch), z: -Math.cos(p.yaw) * cp };
+    o = this.aimOrigin(p, o, f);
     if (!L.throwGrenade(p.P, kind)) return;
     const G = kind === 'sticky' ? L.STICKY : L.GRENADES;
-    const cp = Math.cos(p.pitch), f = { x: -Math.sin(p.yaw) * cp, y: Math.sin(p.pitch), z: -Math.cos(p.yaw) * cp };
     const n = { id: this.nextId++, kind, by: p.id, x: o.x + f.x * 0.6, y: o.y - 0.15 + f.y * 0.6, z: o.z + f.z * 0.6,
       vx: f.x * G.speed, vy: f.y * G.speed + G.lift, vz: f.z * G.speed, fuse: G.fuse, on: null, age: 0 };
     if (insideSolid(n)) { n.x = o.x; n.y = o.y - 0.2; n.z = o.z; }
@@ -338,7 +362,7 @@ export class Match {
   }
   cone(p, range, dmg, how) {
     const f = fwdOf(p.yaw);
-    const inCone = (x, z, y, r) => { const dx = x - p.x, dz = z - p.z, dd = Math.hypot(dx, dz); return dd < range + r && Math.abs(y - p.y) < 1.9 && (dx * f.x + dz * f.z) / (dd || 1) > 0.45; };
+    const inCone = (x, z, y, r) => { const dx = x - p.x, dz = z - p.z, dd = Math.hypot(dx, dz); return dd < range + r && Math.abs(y - p.y) < 8 && (dx * f.x + dz * f.z) / (dd || 1) > 0.45; };
     let n = 0;
     for (const e of this.enemies) if (!e.dead && inCone(e.x, e.z, this.lift(e) + (e.st.fly ? -0.6 : 0), e.st.radius)) { this.hurtEnemy(e, dmg, how, p, p); n++; }
     for (const q of this.players.values()) if (q !== p && q.joined && q.online && q.state === 'alive' && !q.seat && inCone(q.x, q.z, q.y, P_RADIUS)) { this.hurtPlayer(q, dmg, { x: p.x, z: p.z }, p, how); n++; }
@@ -414,9 +438,9 @@ export class Match {
     }
     this.idleT = 0;
     if (this.phase === 'lobby') { this.checkLobby(); this.flush(); return; }
-    // history for lag-forgiving hit checks (last two ticks)
-    for (const e of this.enemies) { e.hist.unshift([e.x, e.y, e.z, e.yaw]); e.hist.length = Math.min(e.hist.length, 2); }
-    for (const p of online) { p.hist.unshift([p.x, p.y, p.z]); p.hist.length = Math.min(p.hist.length, 2); if (p.firing > 0) p.firing--; }
+    // history for lag-forgiving hit checks (last five ticks, ~500ms at 10 Hz)
+    for (const e of this.enemies) { e.hist.unshift([e.x, e.y, e.z, e.yaw]); e.hist.length = Math.min(e.hist.length, 5); }
+    for (const p of online) { p.hist.unshift([p.x, p.y, p.z]); p.hist.length = Math.min(p.hist.length, 5); if (p.firing > 0) p.firing--; }
 
     // players: shields, the bleed-out clock, riding in the jeep, the ACTION button
     for (const p of online) {
@@ -636,7 +660,7 @@ export class Match {
     e.yaw = Math.atan2(-(s.to.x - s.from.x), -(s.to.z - s.from.z)); e.state = 'leap';
     if (k < 1) return;
     // landing: the shockwave. Full damage near the middle, fading to a third at the edge; knocked back out of it.
-    e.x = s.to.x; e.z = s.to.z; e.y = s.to.y; e.hist = []; e.leapS = null; e.lcool = Lp.cool; e.recover = Lp.recover; e.state = 'slam';
+    e.x = s.to.x; e.z = s.to.z; e.y = s.to.y; e.leapS = null; e.lcool = Lp.cool; e.recover = Lp.recover; e.state = 'slam';
     collide(e, st.radius, e.y, st.height, true); e.y = groundAt(e.x, e.z, e.y + 0.3);
     this.ev('lx', r2(e.x), r2(e.y), r2(e.z), r2(Lp.radius), e.type === 'gordo' ? 1 : 0, e.id);
     for (const p of ps) {
@@ -675,7 +699,7 @@ export class Match {
     if (e.blinkT <= 0 && d > st.blink.min) { // appear behind the target
       e.blinkT = st.blink.every * (0.8 + this.rnd() * 0.5);
       const f = fwdOf(tg.yaw), nx = tg.x - f.x * st.blink.dist, nz = tg.z - f.z * st.blink.dist;
-      if (nx > BOUNDS.x0 && nx < BOUNDS.x1 && nz > BOUNDS.z0 && nz < BOUNDS.z1) { e.x = nx; e.z = nz; e.y = Math.max(terrain(nx, nz), tg.y - 0.2); e.hist = []; this.ev('bk', e.id); }
+      if (nx > BOUNDS.x0 && nx < BOUNDS.x1 && nz > BOUNDS.z0 && nz < BOUNDS.z1) { e.x = nx; e.z = nz; e.y = Math.max(terrain(nx, nz), tg.y - 0.2); this.ev('bk', e.id); }
     }
     const close = d < st.reach && Math.abs(tg.y - e.y) < 1.8;
     if (close) { e.state = 'hit'; if (e.cool <= 0) { e.cool = st.every; e.act = 0.4; this.hurtPlayer(tg, st.hit * e.dmg, e, null, 'llorona'); } }
@@ -713,7 +737,7 @@ export class Match {
   climbStep(e, dt) {
     const c = e.climb; e.state = 'climb';
     e.y = Math.min(c.top, e.y + 3.2 * dt);
-    if (e.y >= c.top - 0.01) { e.x = c.in.x; e.z = c.in.z; e.y = c.top; e.climb = null; e.hist = []; this.ev('cl', e.id); return; }
+    if (e.y >= c.top - 0.01) { e.x = c.in.x; e.z = c.in.z; e.y = c.top; e.climb = null; this.ev('cl', e.id); return; }
     e.x += (c.at.x - e.x) * Math.min(1, dt * 6); e.z += (c.at.z - e.z) * Math.min(1, dt * 6);
     e.yaw = Math.atan2(-(c.in.x - e.x), -(c.in.z - e.z));
   }
@@ -951,11 +975,17 @@ export class Match {
       p.actWas = p.act; return;
     }
     p.rev = 0; p.revOf = null;
-    // the elote man: walk up and press ACTION for a hot elote (a small heal, once a minute)
+    // the elote man: a heal plus a full refill of the gun in hand, once per wave per player (server-authoritative)
     if (Math.hypot(ELOTE.x - p.x, ELOTE.z - p.z) < ELOTE.range && Math.abs(p.y - terrain(ELOTE.x, ELOTE.z)) < 1.6) {
-      const wait = Math.ceil(p.eloteAt + MATCH.elote.cool - this.t), full = p.P.health >= L.HEALTH.max;
-      if (edge && wait <= 0 && !full) { L.heal(p.P, MATCH.elote.heal); p.eloteAt = this.t; this.ev('el', p.id); }
-      p.prompt = { k: 'elote', label: wait > 0 ? `OTRO ELOTE EN ${wait}s` : full ? 'YA ESTÁS LLENO' : `UN ELOTE +${MATCH.elote.heal}`, ready: wait <= 0 && !full };
+      const used = p.eloteWave === this.wave, full = p.P.health >= L.HEALTH.max;
+      if (edge && !used) {
+        if (!full) L.heal(p.P, MATCH.elote.heal);
+        L.refillWeapon(p.P, p.w);
+        const s = p.P.weapons[p.w];
+        p.eloteWave = this.wave; p.eloteAt = this.t;
+        this.ev('el', p.id, 1, p.w, s ? s.mag : 0, s ? s.reserve : 0);
+      }
+      p.prompt = { k: 'elote', label: used ? 'Ya comiste este round' : 'ELOTE Y BALAS', ready: !used };
       p.actWas = p.act; return;
     }
     const stn = STATIONS.find((s) => Math.hypot(s.x - p.x, s.z - p.z) < MATCH.buyRange && Math.abs(p.y - s.y) < 1.6);
