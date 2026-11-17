@@ -12,7 +12,8 @@ import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { ROSTER, BY_ID, MAX_LEVEL, levelFor, xpFor } from './engine/creatures.js';
 import { Fights } from './fights.js';
-import { movesFor, battleFor, combatStats, traitFor, STANCES } from './engine/bug-combat.js';
+import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, upsetXp } from './engine/bug-combat.js';
+import { line } from './engine/bout.js';
 import { cents } from './accounts.js';
 
 export const EGG_CHANCE = 10000; // out of 100,000 shifts (10%) with an empty barn; halved for each bug already kept
@@ -42,7 +43,7 @@ export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action
 export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
 export const BOUT_LEVEL = 1; // any hatched bug: they could already fight in the mine
 export const BOUT_XP = 20;
-export const BOUT_WIN_XP = 10; // on top, for the winner only
+export const BOUT_WIN_XP = 10; // on top, for the winner of an even fight; an underdog's win pays up to 18, a favourite's as little as 2 (upsetXp)
 export const FIND_XP = 2;      // each acid pool a guide bug leads its miner to. ponytail: uncapped (pool travel time is the brake); cap it if someone farms shifts
 export const BOUT_OPEN_MS = 60 * 60e3;
 export const MAX_BOUT_STAKE = 10000;
@@ -293,21 +294,25 @@ export class Barn {
 
   /** The ring: every living bug, the caller's challenges and the recent fights. The same for a player with no bug. */
   ring(playerId) {
-    const now = this.now(), players = this.store.players || {};
+    const now = this.now(), players = this.store.players || {}, corner = this.corner(playerId);
     const roster = Object.keys(this.doc.pens).flatMap((ownerId) => this.bugs(ownerId).flatMap((pen) => {
       const owner = players[ownerId];
       if (!owner || owner.hidden || pen.stage !== 'creature' || now >= this.deathAt(pen)) return [];
-      const level = levelFor(pen.xp);
+      const level = levelFor(pen.xp), theirs = ownerId !== playerId && !pen.faintedAt && level >= BOUT_LEVEL && corner.length ? this.fighter(ownerId, pen) : null;
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
       return [{ id: idOf(pen), ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId) || null,
-        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt }];
+        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt,
+        ...(theirs ? { line: Object.fromEntries(corner.map(([id, mine]) => [id, line(mine, theirs)])) } : {}) }];
     })).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
     // A challenge names both bugs (one sent before stalls means each owner's partner).
     const named = c => { const mine = this.penOf(c.from, c.fromBug), theirs = this.penOf(c.to, c.toBug);
-      return { ...c, fromName: players[c.from]?.name || 'Someone', toName: players[c.to]?.name || 'Someone', fromBug: mine ? idOf(mine) : null, toBug: theirs ? idOf(theirs) : null, fromBugName: mine?.name || 'A bug', toBugName: theirs?.name || 'a bug' }; };
+      // `line` is the challenger's chance as the two stand now; `risk` what the challenged would put up against the stake
+      const p = mine?.stage === 'creature' && theirs?.stage === 'creature' ? line(this.fighter(c.from, mine), this.fighter(c.to, theirs)) : null;
+      return { ...c, fromName: players[c.from]?.name || 'Someone', toName: players[c.to]?.name || 'Someone', fromBug: mine ? idOf(mine) : null, toBug: theirs ? idOf(theirs) : null, fromBugName: mine?.name || 'A bug', toBugName: theirs?.name || 'a bug',
+        ...(p ? { line: p, risk: riskFor(c.stake, p) } : {}) }; };
     return { roster,
       challenges: { incoming: this.doc.challenges.filter(c => c.to === playerId).map(named), outgoing: this.doc.challenges.filter(c => c.from === playerId).map(named) },
-      fights: this.doc.fights.map(({ id, at, stake, winner, sides }) => ({ id, at, stake, winner, sides: sides.map(({ ownerId, owner, fighter }) => ({ ownerId, owner, name: fighter.name, species: fighter.species, level: fighter.level })) })) };
+      fights: this.doc.fights.map(({ id, at, stake, pot, winner, sides }) => ({ id, at, pot: pot ?? cents(stake * 2), winner, sides: sides.map(({ ownerId, owner, fighter }) => ({ ownerId, owner, name: fighter.name, species: fighter.species, level: fighter.level })) })) };
   }
 
   /** The Barn button's count: challenges to this player, a fight decided while they were away, and (with a bug fit to fight) bouts anyone else has open. */
@@ -323,7 +328,7 @@ export class Barn {
     const found = this.doc.fights.find(fight => fight.id === id);
     if (!found) throw new GameError('That fight has left the record.', 404);
     const [you, them] = found.sides.map(({ owner, fighter }) => ({ owner, name: fighter.name, species: fighter.species, level: fighter.level, style: fighter.style }));
-    return { id: found.id, at: found.at, you, them, rounds: found.rounds, maxHp: found.maxHp, ...(found.startHp ? { startHp: found.startHp } : {}), pot: cents(found.stake * 2),
+    return { id: found.id, at: found.at, you, them, rounds: found.rounds, maxHp: found.maxHp, ...(found.startHp ? { startHp: found.startHp } : {}), pot: found.pot ?? cents(found.stake * 2),
       result: found.winner === null ? 'draw' : found.winner === 0 ? 'won' : 'lost' };
   }
 
@@ -427,13 +432,31 @@ export class Barn {
 
   escrow(player) { return (player?.barnBouts?.open?.stake || 0) + (player?.barnBouts?.live?.stake || 0); }
 
+  /** The caller's bugs that could step into the ring now, as the ring would take them: what each line on the board is worked out against. */
+  corner(playerId) {
+    const now = this.now();
+    return this.bugs(playerId).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp) >= BOUT_LEVEL && now < this.deathAt(pen)).map((pen) => [idOf(pen), this.fighter(playerId, pen)]);
+  }
+  /**
+   * Both stakes for a fight: side 0 named `stake`, side 1's follows the line as the two bugs stand now. When the
+   * page says what its owner `agreed` to put up, it must still be that.
+   */
+  terms(stake, fighters, agreed) {
+    const risk = riskFor(stake, line(...fighters));
+    if (agreed !== undefined && agreed !== risk) throw new GameError(`The line moved: your stake is now $${risk.toFixed(2)}. Look again.`, 409);
+    return [stake, risk];
+  }
+
   board(playerId) {
-    const player = this.store.players?.[playerId];
+    const player = this.store.players?.[playerId], corner = this.corner(playerId);
     const bouts = Object.values(this.store.players || {}).flatMap(p => {
       const open = p.barnBouts?.open;
       if (!open) return [];
       const { petBornAt: _petBornAt, ...shown } = open;
-      return [{ ...shown, hostName: p.name }];
+      // for someone else's bout: each of your bugs' chance against it, and what joining with that bug would cost
+      const posted = p.id !== playerId && corner.length ? this.bugs(p.id).find((kept) => kept.bornAt === open.petBornAt) : null;
+      const host = posted && { ...open.fighter, health: healthOf(posted) };
+      return [{ ...shown, hostName: p.name, ...(host ? { terms: Object.fromEntries(corner.map(([id, mine]) => { const q = line(host, mine); return [id, { win: (100 - Math.round(q * 100)) / 100, risk: riskFor(open.stake, q) }]; })) } : {}) }];
     }).sort((a, b) => a.openedAt - b.openedAt);
     return { bouts, openBout: bouts.find(bout => bout.hostId === playerId) || null,
       bankroll: player?.bankroll ?? null, maxStake: MAX_BOUT_STAKE };
@@ -459,7 +482,7 @@ export class Barn {
     // The ring's public record rides on the first pet reward, so it needs no write of its own and survives the
     // same failures: whichever participant catches up first records the fight, as seen from their corner.
     const logged = !receipt.owners || this.doc.fights.some(fight => fight.id === receipt.id);
-    const fights = logged ? this.doc.fights : [{ id: receipt.id, at: receipt.at, stake: receipt.stake, maxHp: receipt.maxHp, ...(receipt.startHp ? { startHp: receipt.startHp } : {}), rounds: receipt.rounds,
+    const fights = logged ? this.doc.fights : [{ id: receipt.id, at: receipt.at, pot: cents(receipt.stake + (receipt.against ?? receipt.stake)), maxHp: receipt.maxHp, ...(receipt.startHp ? { startHp: receipt.startHp } : {}), rounds: receipt.rounds,
       winner: receipt.result === 'won' ? 0 : receipt.result === 'lost' ? 1 : null,
       sides: [receipt.you, receipt.them].map((fighter, i) => ({ ownerId: receipt.owners[i].id, owner: receipt.owners[i].name, fighter })) }, ...this.doc.fights].slice(0, FIGHT_LOG);
     this.commitDoc({ ...this.slot(playerId, next), fights });
@@ -510,7 +533,8 @@ export class Barn {
     this.commitDoc({ challenges: [...this.doc.challenges, made] });
     // Tell the owner, if they have alerts on. The challenge is already saved, so a failed alert changes nothing.
     try {
-      this.onChallenge?.({ id: made.id, toId: body.to, from: player.name, bug: pen.name, species: BY_ID[pen.species].name, level: levelFor(pen.xp), yours: theirs.name, stake: made.stake });
+      this.onChallenge?.({ id: made.id, toId: body.to, from: player.name, bug: pen.name, species: BY_ID[pen.species].name, level: levelFor(pen.xp), yours: theirs.name, stake: made.stake,
+        risk: riskFor(made.stake, line(this.fighter(playerId, pen), this.fighter(body.to, theirs))) });
     } catch { /* an alert must never undo or fail a challenge */ }
     return this.view(playerId);
   }
@@ -525,7 +549,7 @@ export class Barn {
 
   /** The challenged owner takes it: both stakes are checked now and the fight is decided at once. */
   acceptChallenge(playerId, id, body = {}) {
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) throw new GameError('Accept the stake as shown.', 400);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'risk') || (body.risk !== undefined && typeof body.risk !== 'number')) throw new GameError('Accept the stake as shown.', 400);
     this.expireBouts();
     const player = this.accounts.ensure(this.store.players[playerId]);
     const found = this.doc.challenges.find(c => c.id === id);
@@ -544,21 +568,23 @@ export class Barn {
       throw new GameError(`${rival.name}'s bug is not ready. ${error.message}`, error.status);
     }
     const pen = this.ready(playerId, found.toBug);
-    this.accounts.requireFunds(player, found.stake, 'this bout');
+    const fighters = [this.fighter(found.from, rivalPen), this.fighter(playerId, pen)], stakes = this.terms(found.stake, fighters, body.risk);
+    this.accounts.requireFunds(player, stakes[1], 'this bout');
     if (rival.bankroll + 1e-9 < found.stake) throw new GameError(`${rival.name} can no longer cover that stake.`, 409);
-    this.startFight(id, [{ player: rival, pen: rivalPen, fighter: this.fighter(found.from, rivalPen) }, { player, pen, fighter: this.fighter(playerId, pen) }], found.stake, false, playerId);
+    this.startFight(id, [{ player: rival, pen: rivalPen, fighter: fighters[0] }, { player, pen, fighter: fighters[1] }], stakes, false, playerId);
     return this.view(playerId);
   }
 
   /**
    * Both bugs go to the ring. Every stake is held now, in one players.json write, so nobody can spend theirs while
-   * the fight is on. Side 0 posted the bout or sent the challenge; `held` says its stake is already in escrow.
+   * the fight is on. Side 0 posted the bout or sent the challenge and named `stakes[0]`; `held` says that is already
+   * in escrow. `stakes[1]` is what the line asked of the other corner (terms).
    * `watcher` took the fight and is looking at it; the other owner's bug fights on its own until they turn up.
    */
-  startFight(id, sides, stake, held, watcher) {
+  startFight(id, sides, stakes, held, watcher) {
     const now = this.now(), seed = `${now}:${this.eggInt(1e9)}`;
     const drafts = sides.map(({ player: p }, side) => {
-      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, live: { id, stake, at: now } } };
+      const stake = stakes[side], draft = { ...p, barnBouts: { ...p.barnBouts, open: null, live: { id, stake, at: now } } };
       if (stake && (side === 1 || !held)) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
       return draft;
     });
@@ -566,22 +592,23 @@ export class Barn {
     if (this.doc.challenges.some(c => c.id === id)) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
     const entrants = sides.map(({ player, pen, fighter }) => ({ id: player.id, bornAt: pen.bornAt, fighter }));
     this.fights.start({ id, kind: 'barn', players: entrants.map(e => e.id), fighters: entrants.map(e => e.fighter), seed, watching: [watcher],
-      onFinish: (fight) => this.settle(fight, entrants, stake, seed) });
+      onFinish: (fight) => this.settle(fight, entrants, stakes, seed) });
   }
 
   /**
    * The fight is over: pay the pot and write both reward receipts in one players.json write, then let each pet catch
    * up. An owner who was not watching at the end gets the result flagged until they open the Barn.
    */
-  settle(fight, entrants, stake, seed) {
+  settle(fight, entrants, stakes, seed) {
     const now = this.now(), id = fight.id, winner = fight.over.winner, { rounds, maxHp, startHp, hp: endHp } = fight.S;
     const fighters = entrants.map(e => e.fighter);
     const drafts = entrants.flatMap((e, side) => {
       const p = this.store.players[e.id];
       if (!p) return []; // the account was deleted mid-fight
       const xp = this.bugs(e.id).find((kept) => kept.bornAt === e.bornAt)?.xp || 0;
-      const xpEarned = BOUT_XP + (winner === side ? BOUT_WIN_XP : 0);
-      const payout = winner === null ? stake : winner === side ? cents(stake * 2) : 0;
+      const stake = stakes[side], against = stakes[1 - side], odds = this.fights.lineOf(fight, side); // this bug's chance as it walked in
+      const xpEarned = BOUT_XP + (winner === side ? upsetXp(BOUT_WIN_XP, odds) : 0);
+      const payout = winner === null ? stake : winner === side ? cents(stake + against) : 0;
       const healthAfter = winner !== null && winner !== side ? 0 : pctOf(endHp[side], maxHp[side]);
       const receipt = { version: 5, id, at: now, seed, petBornAt: e.bornAt, healthAfter,
         startHp: side === 0 ? startHp : [...startHp].reverse(),
@@ -589,7 +616,7 @@ export class Barn {
         rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
         maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned,
         levelBefore: levelFor(xp), levelAfter: levelFor(xp + xpEarned),
-        result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', stake, payout, net: cents(payout - stake),
+        result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', line: odds, stake, against, payout, net: cents(payout - stake),
         owners: [side, 1 - side].map(i => ({ id: entrants[i].id, name: this.store.players[entrants[i].id]?.name || 'A former member' })) };
       const draft = { ...this.accounts.ensure(p), barnBouts: { ...p.barnBouts, live: null, lastBout: receipt, ...(fight.over.watched[side] ? {} : { unseen: id }) } };
       if (payout) this.accounts.change(draft, payout, winner === null ? 'barn-refund' : 'barn-win', winner === null ? 'Barn bout: draw, stake returned' : 'Barn bout: won the pot', { save: false });
@@ -656,7 +683,7 @@ export class Barn {
   }
 
   joinBout(playerId, id, body = {}) {
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'bug') || !idOk(body.bug)) throw new GameError('Join the posted stake as shown.', 400);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'bug' && key !== 'risk') || !idOk(body.bug) || (body.risk !== undefined && typeof body.risk !== 'number')) throw new GameError('Join the posted stake as shown.', 400);
     this.expireBouts();
     const player = this.accounts.ensure(this.store.players[playerId]);
     if (player.barnBouts?.lastBout?.id === id || this.fights.fightOf(playerId)?.id === id) return this.view(playerId);
@@ -666,8 +693,9 @@ export class Barn {
     if (player.barnBouts?.open) throw new GameError('Cancel your open bout before joining another.', 409);
     const open = host.barnBouts.open, posted = this.bugs(host.id).find((kept) => kept.bornAt === open.petBornAt);
     const hostPen = this.ready(host.id, posted && idOf(posted)), guestPen = this.ready(playerId, body.bug);
-    this.accounts.requireFunds(player, open.stake, 'this bout');
-    this.startFight(id, [{ player: host, pen: hostPen, fighter: { ...open.fighter, health: healthOf(hostPen) } }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true, playerId);
+    const fighters = [{ ...open.fighter, health: healthOf(hostPen) }, this.fighter(playerId, guestPen)], stakes = this.terms(open.stake, fighters, body.risk);
+    this.accounts.requireFunds(player, stakes[1], 'this bout');
+    this.startFight(id, [{ player: host, pen: hostPen, fighter: fighters[0] }, { player, pen: guestPen, fighter: fighters[1] }], stakes, true, playerId);
     return this.view(playerId);
   }
 
@@ -687,12 +715,12 @@ export class Barn {
    * only for the same bug that fought (`bornAt`): a bug laid to rest and replaced since gets nothing. The winner gains
    * BATTLE_XP + WIN_BONUS_XP; a loser that fought to the end gains BATTLE_XP and faints either way.
    */
-  battleResult(playerId, { battleId, bornAt, won, fought = true, foeName = null, hpPct = null }) {
+  battleResult(playerId, { battleId, bornAt, won, fought = true, foeName = null, hpPct = null, odds = 0.5 }) {
     const pen = this.doc.pens[playerId];
     if (!pen || pen.stage !== 'creature' || pen.bornAt !== bornAt) return { xp: 0, fainted: false, skipped: true };
     if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted: !won, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
     const next = structuredClone(pen);
-    const xp = won ? BATTLE_XP + WIN_BONUS_XP : fought ? BATTLE_XP : 0;
+    const bonus = won ? upsetXp(WIN_BONUS_XP, odds) : 0, xp = won ? BATTLE_XP + bonus : fought ? BATTLE_XP : 0; // `odds`: this bug's chance by the line
     const levelBefore = levelFor(next.xp || 0);
     next.xp = (next.xp || 0) + xp;
     next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
@@ -701,7 +729,7 @@ export class Barn {
     next.mineBattles = [...(next.mineBattles || []), battleId].slice(-20);
     next.lastMineBattle = { id: battleId, won, xp, levelBefore, levelAfter: levelFor(next.xp), at: this.now() };
     this.commitPen(playerId, next);
-    return { xp, bonus: won ? WIN_BONUS_XP : 0, fainted: !won, levelBefore, levelAfter: levelFor(next.xp) };
+    return { xp, bonus, fainted: !won, levelBefore, levelAfter: levelFor(next.xp) };
   }
   /**
    * A mine fight that ran to the bell with nobody down (no contest): no XP, no record, but each bug keeps the HP it

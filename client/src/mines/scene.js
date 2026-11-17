@@ -5,7 +5,7 @@ import { MIN_GAP } from './stalker.js';
 import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { spriteCanvas } from '../barn/sprite.js';
+import { bugTexture } from '../barn/sprite.js';
 import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
@@ -398,10 +398,7 @@ export class MineScene {
     const g = new THREE.Group();
     let mesh;
     if (species) {
-      const c = spriteCanvas(species, style);
-      const tex = new THREE.CanvasTexture(c);
-      tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
-      tex.colorSpace = THREE.SRGBColorSpace;
+      const tex = bugTexture(THREE, species, style);
       mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     } else {
       // fallback low-poly beetle if the species sheet is missing

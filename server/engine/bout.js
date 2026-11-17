@@ -199,3 +199,28 @@ export function simulateBout(a, b, seed) {
   while (!S.over) stepBout(S);
   return { rounds: S.rounds, winner: S.winner, maxHp: S.maxHp, startHp: S.startHp };
 }
+
+export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
+const lines = new Map();
+const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.health ?? 100, !!c.plain]);
+/**
+ * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, gear,
+ * stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is
+ * exactly 1. To the nearest 5%, kept between 10% and 90%: 400 fights say no more than that, and an owner who picks
+ * the moves can beat it. Stakes and win XP follow this number (riskFor, upsetXp).
+ */
+export function line(a, b) {
+  const ka = lineKey(a), kb = lineKey(b);
+  if (ka > kb) return (100 - Math.round(line(b, a) * 100)) / 100;
+  const key = `${ka}|${kb}`;
+  if (!lines.has(key)) {
+    if (lines.size >= 5000) lines.clear(); // ponytail: the whole cache at once; a line costs 3 ms, so evict properly only if that ever shows
+    let won = 0;
+    for (let k = 0; k < LINE.fights; k++) {
+      const x = simulateBout(a, b, `line:${k}`).winner, y = simulateBout(b, a, `line:${k}`).winner;
+      won += (x === 0 ? 1 : x === null ? 0.5 : 0) + (y === 1 ? 1 : y === null ? 0.5 : 0);
+    }
+    lines.set(key, Math.min(LINE.max, Math.max(LINE.min, Math.round((won / (2 * LINE.fights)) * (100 / LINE.step)) * LINE.step)) / 100);
+  }
+  return lines.get(key);
+}

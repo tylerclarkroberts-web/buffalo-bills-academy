@@ -285,7 +285,7 @@ export class Pvp {
   wildOver(battle, winnerSide, reason, fight) {
     this.mines.wildGone?.(battle.a, battle.shiftId);
     const bug = battle.bugs.a, hpPct = pctOf(fight.S.hp[0], fight.S.maxHp[0]);
-    if (reason === 'fainted' || reason === 'jarred') battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: bug.bornAt, won: winnerSide === 'a', foeName: `a wild ${battle.wild.name}`, hpPct });
+    if (reason === 'fainted' || reason === 'jarred') battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: bug.bornAt, won: winnerSide === 'a', foeName: `a wild ${battle.wild.name}`, hpPct, odds: fight.line });
     else if (reason !== 'abandoned') this.barn.keepScrapes(battle.a, { battleId: battle.id, bornAt: bug.bornAt, hpPct });
   }
   /**
@@ -367,7 +367,7 @@ export class Pvp {
     }
     if (reason === 'abandoned') return;
     const loserSide = winnerSide === 'a' ? 'b' : 'a';
-    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(fight.S.hp[w], fight.S.maxHp[w]) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
+    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(fight.S.hp[w], fight.S.maxHp[w]), odds: this.fights.lineOf(fight, w) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
       winnerBug: fight.fighters[w].name, loserBug: fight.fighters[1 - w].name };
     battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
   }
@@ -428,7 +428,7 @@ export class Pvp {
   settleBugs(rec) {
     const b = rec.bugs, out = { winner: null, loser: null };
     if (!this.barn?.battleResult) return out;
-    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, hpPct: b.winner.hpPct ?? null });
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, hpPct: b.winner.hpPct ?? null, odds: b.winner.odds });
     if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, foeName: rec.winnerName });
     return out;
   }

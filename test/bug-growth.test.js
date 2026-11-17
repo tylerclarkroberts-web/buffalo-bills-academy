@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ROSTER } from '../server/engine/creatures.js';
-import { bugScale, drawBug, spriteCanvas, spriteGrid, youngForm } from '../client/src/barn/sprite.js';
+import { bugScale, drawBug, fineFor, spriteCanvas, spriteGrid, youngForm, FINE, SPRITE } from '../client/src/barn/sprite.js';
 import { RoomScene } from '../client/src/room/scene.js';
 
 function context() {
@@ -103,7 +103,7 @@ test('canvas bugs grow every level without moving the floor or rebuilding their 
       assert.ok(drawn.s > previous, `level ${level} grows even in the ${w}px preview`);
       assert.equal(Number.isInteger(drawn.s), true);
       assert.equal(ctx.imageSmoothingEnabled, false);
-      assert.equal(ctx.images[0][0], spriteCanvas(bug, style, level), 'body and accessories use the correctly staged cached image');
+      assert.equal(ctx.images[0][0], spriteCanvas(bug, style, level, fineFor(drawn.s)), 'body and accessories use the correctly staged cached image, on the finer grid once it is big enough');
       floor ??= drawn.oy + drawn.s; shadow ??= ctx.shadows[0][1];
       assert.equal(drawn.oy + drawn.s, floor);
       assert.equal(ctx.shadows[0][1], shadow);
@@ -127,7 +127,10 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
     const bottom = sprite.position.y - sprite.scale.y / 2;
     floor ??= bottom; assert.ok(Math.abs(bottom - floor) < 1e-12);
     assert.equal(sprite.material.map.magFilter, THREE.NearestFilter);
-    assert.equal(sprite.material.map.image, spriteCanvas(ROSTER[0], undefined, level), 'room texture follows the same larval transition');
+    const map = sprite.material.map;
+    assert.equal(map.image, spriteCanvas(ROSTER[0], undefined, level, FINE), 'room texture follows the same larval transition, on the fine grid up close');
+    assert.deepEqual(map.mipmaps, [map.image, spriteCanvas(ROSTER[0], undefined, level)], 'and falls back to the 64 sprite when the bug is drawn small');
+    assert.deepEqual([map.minFilter, map.generateMipmaps], [THREE.NearestMipmapNearestFilter, false]);
   }
   for (const stage of ['egg', 'dead']) {
     RoomScene.prototype.pet.call(scene, { stage, level: 1 });
@@ -136,4 +139,21 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
     assert.deepEqual(sprite.position.toArray(), [2, 0.74 + 0.85 / 2, -1]);
   }
   scene.dynamic.children.forEach(sprite => { sprite.material.map.dispose(); sprite.material.dispose(); });
+});
+
+test('big sprites are drawn on a finer grid: the same bug, twice the pixels, more tones; small ones are left alone', () => {
+  assert.deepEqual([fineFor(SPRITE), fineFor(SPRITE * FINE - 1), fineFor(SPRITE * FINE), fineFor(640)], [1, 1, FINE, FINE]);
+  for (const bug of ROSTER) for (const level of [1, 10]) {
+    const coarse = spriteGrid(bug, level), fine = spriteGrid(bug, level, FINE);
+    assert.deepEqual([coarse.length, coarse[0].length, fine.length, fine[0].length], [SPRITE, SPRITE, SPRITE * FINE, SPRITE * FINE]);
+    // the same silhouette: nearly every 64-grid pixel has ink under it on the fine grid, and nearly nowhere else does
+    let both = 0, either = 0;
+    for (let y = 0; y < SPRITE; y++) for (let x = 0; x < SPRITE; x++) {
+      const a = !!coarse[y][x], b = [0, 1].some((dy) => [0, 1].some((dx) => fine[y * FINE + dy][x * FINE + dx]));
+      if (a && b) both++; if (a || b) either++;
+    }
+    assert.ok(both / either > 0.9, `${bug.id} at level ${level} keeps its shape (${(both / either).toFixed(2)})`);
+    const tones = (grid) => new Set(grid.flat().filter(Boolean)).size;
+    assert.ok(tones(fine) > tones(coarse), `${bug.id} at level ${level} gains half-tones`);
+  }
 });

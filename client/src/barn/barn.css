@@ -215,6 +215,7 @@
 .barn-bar.hp.mid i { background: linear-gradient(90deg, #c8902a, #ffd75a); }
 .bout-hp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-height: 1.5em; }
 .bout-side.s1 .bout-hp { justify-content: flex-end; }
+.bout-fav { white-space: nowrap; color: var(--gold); } /* the line the fight opened at, on the favourite's side */
 .bout-chip { font: 600 9.5px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .08em; padding: 3px 6px; border-radius: 999px; border: 1px solid currentColor; }
 .bout-chip.guard { color: #ffcf5a; } .bout-chip.poison { color: #8cff5a; } .bout-chip.weak { color: #c58bff; }
 .bout-fx { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; display: grid; place-items: center; }

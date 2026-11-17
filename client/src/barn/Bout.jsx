@@ -89,6 +89,8 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const [quit, setQuit] = useState(false);
   const done = pos.phase === 'done', live = !!bout.live;
   const fighters = [bout.you, bout.them];
+  // the line the fight opened at (your chance): named on the favourite's side, on neither when it is even
+  const mine = Math.round((bout.line ?? 0.5) * 100), fav = mine === 50 ? -1 : mine > 50 ? 0 : 1;
   const skip = () => { clock.current.skip = plan.total + 1 - (performance.now() - clock.current.t0); };
   useEffect(() => {
     const el = dialog.current; el.showModal();
@@ -164,7 +166,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
               <div className={`barn-bar hp ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}`} role="progressbar" aria-label={`${c.name} health`} aria-valuemin={0} aria-valuemax={maxHp[i]} aria-valuenow={hp[i]}>
                 <b className="ghost" style={{ width: `${pct}%` }} /><i style={{ width: `${pct}%` }} />
               </div>
-              <span className="small num bout-hp">{hp[i]} / {maxHp[i]} HP{STATUS.filter(([k]) => status?.[i][k]).map(([k, label]) => <em key={k} className={`bout-chip ${k}`}>{label}</em>)}</span>
+              <span className="small num bout-hp">{hp[i]} / {maxHp[i]} HP{fav === i && <span className="bout-fav" data-test="bout-favoured">favoured {i ? 100 - mine : mine}%</span>}{STATUS.filter(([k]) => status?.[i][k]).map(([k, label]) => <em key={k} className={`bout-chip ${k}`}>{label}</em>)}</span>
             </div>
           );
         })}
