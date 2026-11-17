@@ -221,7 +221,7 @@ async function main() {
   await place(T, tr2.x + 1.5, tr2.z, Math.PI / 2);
   await T.keyboard.press('KeyE');
   check(await until(T, (w) => window.__elHalo.state().slots.includes(w), tr.weapon, 5000), `walk up / E: Tyler gets the ${tr.weapon}`);
-  const tr3 = (await st(T)).truck; await place(T, tr3.x + 7, tr3.z + 7, 0); await T.waitForTimeout(400);
+  await place(J, 30, 40, 0); const tr3 = (await st(T)).truck; await place(T, tr3.x - 8, tr3.z + 6, 0); await T.waitForTimeout(400);
   await T.evaluate((t) => window.__elHalo.aimAt(t.x, 1.6, t.z), (await st(T)).truck); await T.waitForTimeout(250); await shot(T, 'supply-truck');
 
   // ================= WAVE 5 / 10 / 15 =================

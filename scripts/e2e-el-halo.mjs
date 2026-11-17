@@ -166,6 +166,7 @@ async function main() {
   await shot(J, '04-multiple-players');
   await T.evaluate(() => window.__elHalo.overview(true)); await T.waitForTimeout(500); await shot(T, '02-map-overview'); await T.evaluate(() => window.__elHalo.overview(false));
   await hook(T, { calm: true, clear: true, spawn: [{ type: 'luchador', x: -3, z: 24 }, { type: 'padre', x: 0, z: 26 }, { type: 'granjero', x: -6, z: 25 }, { type: 'mariachi', x: 3, z: 27 }, { type: 'luchador', x: 1, z: 22 }] });
+  await hook(J, { give: 'rifle' }); await until(J, () => window.__elHalo.state().weapon === 'rifle', null, 3000); // the truck may have handed Joe a semi-auto
   for (let k = 0; k < 18; k++) { await J.evaluate(() => window.__elHalo.aimAtNearest()); await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(330); await J.evaluate(() => window.__elHalo.fire(false)); if (k === 6) await J.keyboard.press('KeyG'); if ((await st(J)).mag < 8) { await J.keyboard.press('KeyR'); await J.waitForTimeout(2000); } }
   a = await st(J);
   check((await board(J)).find((r) => r.name === 'Joe').kills > 0, `Joe: horde kills land (${(await board(J)).find((r) => r.name === 'Joe').kills}; ${a.st} ${a.mode} pts ${a.pts} mag ${a.mag}/${a.reserve} enemies ${a.enemies})`);
