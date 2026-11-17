@@ -83,7 +83,7 @@ try {
     check(!!(await p.$('[data-test=barn-hurt]')), `${n}: a scuffed bug already shows the hurt prompt`);
     await p.click('[data-test=ring-toggle]'); await p.waitForSelector('[data-test=bout-join]');
     await p.click('[data-test=bout-join]');
-    await p.waitForSelector('[data-test=bout][data-done="1"]', { timeout: 15000 });
+    await p.waitForSelector('[data-test=bout][data-done="1"]', { timeout: 90000 }); // #114: bouts play out live, a beat every few seconds
     const result = await p.getAttribute('[data-test=bout]', 'data-result');
     const after = await G.get('/barn');
     console.log(`     ${n}: ${guest} ${result}; HP ${after.pen.hp}/${after.pen.maxHp} (${after.pen.health}%)`);
