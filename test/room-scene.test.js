@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, faceWrap, CHIP_VALUES, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes } from '../client/src/room/scene-model.js';
 import { roomAnchors, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, shelfSlots, defaultShelves, defaultWallDisplays, roomFinishes, defaultFurniture, furnitureFits, wallMountsFit } from '../server/catalog/room.js';
 import { wallDisplayPosition, residentStep } from '../client/src/room/scene-model.js';
+import { makeWallCutaway } from '../client/src/room/cutaway.js';
 import { RoomScene } from '../client/src/room/scene.js';
 const S = ROOM_FLOOR_SCALE;
 // The couch is put away where a test needs the open back-left wall.
@@ -24,7 +25,7 @@ const screenPoint = (camera, position) => {
   return { clientX: (p.x + 1) * 846 / 2, clientY: (1 - p.y) * 380 / 2 };
 };
 
-test('house and yard cover 3.15 times their first floor area while furniture, shelves and wagon keep their size', t => {
+test('the expanded floor preserves the scale and placement of furniture, shelves and the yard display', t => {
   const previousDocument = globalThis.document;
   const context = { fillRect() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
@@ -34,14 +35,10 @@ test('house and yard cover 3.15 times their first floor area while furniture, sh
   scene.buildRoom();
   scene.update({ placements: [{ anchorId: 'window', itemId: 'odd-wagon' }], finishes: roomFinishes() });
   scene.scene.updateMatrixWorld(true);
-  const yard = scene.structure.children.find(object => object.geometry?.parameters.width === 4.2 && object.geometry?.parameters.depth === 6);
-  assert.ok(yard, 'the enlarged yard is part of the room architecture');
-  // The indoor floor is 8.33 wide: it stops at the left wall's outer face instead of running past it.
-  for (const [floor, originalArea] of [[scene.floor, 8.33 * 6.5], [yard, 4.2 * 6]]) {
-    const size = new THREE.Box3().setFromObject(floor).getSize(new THREE.Vector3());
-    assert.ok(Math.abs(size.x * size.z / originalArea - 3.15) < 1e-6);
-    assert.equal(floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
-  }
+  const floorSize = new THREE.Box3().setFromObject(scene.floor).getSize(new THREE.Vector3());
+  assert.ok(Math.abs(floorSize.x * floorSize.z / (8.33 * 6.5) - 3.15) < 1e-6);
+  assert.equal(scene.floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
+  assert.deepEqual(scene.wagon.position.toArray(), ROOM_POSITIONS.window, 'the original yard placement stays over the graded lawn');
   for (const fixture of scene.static.children.filter(object => object !== scene.structure)) {
     assert.deepEqual(fixture.getWorldScale(new THREE.Vector3()).toArray(), [1, 1, 1]);
   }
@@ -82,11 +79,37 @@ test('all wall caps share the 8.5-foot proportion and the yard door stays an ord
       }
     }
   }
-  const doorHeight = new THREE.Box3().setFromObject(door).getSize(new THREE.Vector3()).y;
+  const doorSize = new THREE.Box3().setFromObject(door).getSize(new THREE.Vector3());
+  const doorHeight = doorSize.y, inchesPerUnit = 80 / ROOM_DOOR_HEIGHT;
+  assert.ok(doorSize.x * inchesPerUnit > 36 && doorSize.x * inchesPerUnit < 40, 'an ordinary single leaf faces into the yard');
+  const oldWalk = new THREE.Raycaster(new THREE.Vector3(4.62 * S, 0.5, 1.53 * S), new THREE.Vector3(0, -1, 0));
+  assert.ok(oldWalk.intersectObject(scene.structure, true).every(hit => hit.point.y <= 0.025), 'old yard paving cannot poke through the new deck');
+  const desktop = new THREE.Box3().setFromObject(scene.fixtures.desk.children[0]).max.y;
+  assert.ok(Math.abs(roomPositions().desk[1] - desktop) < 1e-6 && desktop * inchesPerUnit > 29 && desktop * inchesPerUnit < 30,
+    'desk displays sit on the 29.5-inch-high writing surface');
   assert.ok(Math.abs(doorHeight - ROOM_DOOR_HEIGHT) < 1e-6);
   assert.ok(Math.abs(doorHeight / ROOM_WALL_HEIGHT - 80 / 102) < 1e-6, 'the door is 6 ft 8 in against 8 ft 6 in walls');
   const doorway = new THREE.Raycaster(new THREE.Vector3(3.6 * S, ROOM_DOOR_HEIGHT - 0.15, 1.525 * S), new THREE.Vector3(1, 0, 0), 0, S);
   assert.equal(doorway.intersectObject(side, true).length, 0, 'the opening stays clear even above the resident’s head');
+  const toBedroom = (x, y) => new THREE.Raycaster(new THREE.Vector3(x * S, y, -2.6 * S), new THREE.Vector3(0, 0, -1), 0, S);
+  const divider = scene.wallCutaways.find(wall => wall.reverseFor === 'bunk');
+  for (const face of [divider.solid, divider.ghost]) {
+    const panels = [];
+    face.traverse(object => { if (object.isMesh) panels.push(object); });
+    assert.equal(toBedroom(2.85, ROOM_DOOR_HEIGHT - 0.1).intersectObjects(panels, false).length, 0, 'bunk doorway');
+    assert.ok(toBedroom(2.1, 1.6).intersectObjects(panels, false).length > 0, 'wall beside the bunk door');
+  }
+  const basePanels = scene.structure.children.filter(object => object.isMesh);
+  assert.ok(toBedroom(2.14, 0.4).intersectObjects(basePanels, false).length > 0, 'solid capped base');
+  assert.equal(toBedroom(2.85, 0.4).intersectObjects(basePanels, false).length, 0, 'base stops at threshold');
+  for (const rotation of [0, 180]) {
+    scene.camera = makeRoomCamera(1, { rotation });
+    scene.view = { area: 'parlor' }; scene.applyCutaway();
+    const parlorSide = divider.solid.visible;
+    scene.view = { area: 'bunk' }; scene.applyCutaway();
+    assert.equal(divider.solid.visible, !parlorSide, 'shared wall is judged from inside the selected room');
+    assert.equal(divider.ghost.visible, parlorSide);
+  }
   scene.static.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
 });
 
@@ -102,6 +125,19 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
   const partition = scene.static.getObjectByName('yard-partition');
   const doorway = new THREE.Raycaster(new THREE.Vector3(3.6 * S, 1.3, 1.525 * S), new THREE.Vector3(1, 0, 0), 0, S);
   assert.equal(doorway.intersectObject(partition, true).length, 0, 'the walkway through the door is open');
+  const door = scene.static.getObjectByName('open-yard-door');
+  for (const shoulder of [-0.48, 0.48]) {
+    const crossing = new THREE.Raycaster(new THREE.Vector3(3.65 * S, 1.55, 1.78 * S + shoulder), new THREE.Vector3(1, 0, 0), 0, 1.55 * S);
+    assert.equal(crossing.intersectObjects([partition, door], true).length, 0, 'shoulders clear the jamb and swung leaf on the porch route');
+  }
+  const through = (y, z) => new THREE.Raycaster(new THREE.Vector3(3.65 * S, y, z * S), new THREE.Vector3(1, 0, 0), 0, S).intersectObject(partition, true);
+  assert.ok(through(2.5, -2).some(hit => hit.object.material === scene.wallMaterial), 'the upper side wall is solid');
+  assert.ok(through(1.0, 3.25).some(hit => hit.object.material === scene.wallMaterial), 'the porch wall reaches the bathroom corner');
+  const corner = scene.static.getObjectByName('Parlor corner beside bathroom');
+  const turn = new THREE.Raycaster(new THREE.Vector3(3.64 * S, 1, 3 * S), new THREE.Vector3(0, 0, 1), 0, S);
+  assert.ok(turn.intersectObject(corner, true).length, 'the return wall closes the short gap to the bath partition');
+  const windowHits = through(2.3, -1.23);
+  assert.ok(windowHits.length && windowHits.every(hit => hit.object.material.transparent), 'the side window looks through actual glass');
   const glass = [];
   partition.traverse(object => { if (object.material?.transparent) glass.push(object); });
   assert.ok(glass.length > 0);
@@ -115,7 +151,7 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
     scene.setEditing(editing);
     for (const [position, selection] of [
       [[ROOM_FIXTURES.wealth[0], 1.4, ROOM_FIXTURES.wealth[2]], { kind: 'wealth' }],
-      [[ROOM_FIXTURES.wardrobe[0], 2.2, ROOM_FIXTURES.wardrobe[2]], { kind: 'wardrobe' }],
+      [[ROOM_FIXTURES.wardrobe[0], 1.3, ROOM_FIXTURES.wardrobe[2]], { kind: 'wardrobe' }],
       [[yardX, yardY + 1.1, yardZ], { kind: 'anchor', anchorId: 'window' }],
     ]) {
       const point = screenPoint(scene.camera, position);
@@ -239,7 +275,7 @@ test('room view has finite limits and resets to a high cutaway of the whole hous
 test('room close-ups frame each destination on a phone and reset unknown destinations', () => {
   const aspect = 360 / 280;
   const wide = makeRoomCamera(aspect);
-  for (const [area, x, z] of [['bathroom', -2.65, 4.8], ['bunk', 0.6, 4.8], ['porch', 6.25, 3.1], ['parlor', 0, 0]]) {
+  for (const [area, x, z] of [['bathroom', -0.38, 5.2], ['bunk', -0.23, -5.03], ['porch', 6.25, 3.1], ['parlor', 0, 0]]) {
     const view = roomView({ area }), focused = makeRoomCamera(aspect, view);
     const middle = new THREE.Vector3(x * S, 1.8, z * S).project(focused);
     assert.ok(Math.abs(middle.x) < 0.12 && Math.abs(middle.y) < 0.2, area);
@@ -317,7 +353,7 @@ test('edit highlights include empty display spots and survive scene updates, the
 });
 
 test('walls open finish choices only in edit mode without intercepting displayed wall items', () => {
-  const width = 846, height = 380, camera = makeRoomCamera(width / height);
+  const width = 846, height = 380, camera = makeRoomCamera(width / height, { area: 'parlor', rotation: -45 });
   const wall = new THREE.Mesh(new THREE.BoxGeometry(8 * S, 3.4, 0.16 * S));
   wall.position.set(0, 1.7, -3 * S); wall.userData.selection = { kind: 'finish' }; wall.updateMatrixWorld();
   const display = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.1, 0.3));
@@ -373,20 +409,28 @@ test('room camera fits every room bound through a full turn on narrow, wide and 
 test('near walls, window trim, wall decorations and their click targets cut away together through a full turn', () => {
   const scene = furnitureScene();
   scene.raycaster = new THREE.Raycaster();
-  scene.backWall = new THREE.Group(); scene.leftWall = new THREE.Group(); scene.cornerPost = new THREE.Group();
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(8 * S, 3.4, 0.16 * S));
-  wall.position.set(0, 1.7, -3 * S); wall.userData.selection = { kind: 'finish' }; scene.backWall.add(wall);
-  scene.backWall.updateMatrixWorld(); scene.walls.push(wall);
+  const root = new THREE.Group(); scene.cornerPost = new THREE.Group();
+  scene.wallCutaways = ['back', 'left', 'front', 'right'].map(side => {
+    const solid = new THREE.Group(); root.add(solid);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(8 * S, 3.4, 0.16 * S));
+    panel.position.set(0, 1.7, -3 * S); solid.add(panel);
+    if (side === 'back') { panel.userData.selection = { kind: 'finish' }; scene.walls.push(panel); }
+    return makeWallCutaway(side, solid, [panel]);
+  });
   const decoration = new THREE.Group(); decoration.userData.wallSide = 'back'; scene.dynamic.add(decoration);
-  scene.pick([ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]], [1.2, 1.1, 0.3], { kind: 'anchor', anchorId: 'wall-left' });
+  scene.pick([ROOM_POSITIONS['wall-left'][0], 2.95, ROOM_POSITIONS['wall-left'][2]], [1.2, 1.1, 0.3], { kind: 'anchor', anchorId: 'wall-left' }, 0, 'back');
   scene.dynamic.updateMatrixWorld();
-  for (const [rotation, expected] of [[0, { back: true, left: true }], [90, { back: false, left: true }],
-    [180, { back: false, left: false }], [270, { back: true, left: false }], [-45, { back: true, left: false }], [60, { back: true, left: true }], [75, { back: false, left: true }]]) {
+  for (const [rotation, back, left] of [[0, false, true], [90, false, false], [180, true, false], [270, true, true],
+    [-45, true, true], [-15, false, true], [-30, true, true]]) {
+    const expected = { back, front: !back, left, right: !left };
     scene.camera = makeRoomCamera(846 / 380, { rotation });
     assert.deepEqual(roomWallVisibility(scene.camera.position), expected);
     scene.setEditing(true, { kind: 'anchor', anchorId: 'wall-left' });
-    assert.equal(scene.backWall.visible, expected.back);
-    assert.equal(scene.leftWall.visible, expected.left);
+    for (const { side, solid, ghost } of scene.wallCutaways) {
+      assert.equal(solid.visible, expected[side]);
+      assert.equal(ghost.visible, !expected[side]);
+      assert.ok(ghost.material.transparent && ghost.material.opacity > 0 && !ghost.material.depthWrite);
+    }
     assert.equal(scene.cornerPost.visible, expected.back || expected.left);
     assert.equal(decoration.visible, expected.back);
     assert.equal(scene.picks[0].visible, expected.back);
@@ -397,7 +441,7 @@ test('near walls, window trim, wall decorations and their click targets cut away
     }
   }
   scene.setEditing(false); scene.applyCutaway();
-  wall.geometry.dispose(); wall.material.dispose();
+  root.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
   scene.dynamic.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
   scene.wallMaterial.dispose();
 });
@@ -534,7 +578,7 @@ test('touch drags preserve the grab point after rotating the camera and restore 
 
 test('zoomed furniture drags when its visible top is onscreen but its floor origin is cropped', () => {
   const scene = furnitureScene(), home = defaultFurniture(), moves = [];
-  scene.camera = makeRoomCamera(846 / 380, { rotation: 150, zoom: 1.75 });
+  scene.camera = makeRoomCamera(846 / 380, { area: 'parlor', rotation: 78, zoom: 1.75 }, [0, 0.25]);
   scene.raycaster = new THREE.Raycaster(); scene.onMoveFurniture = (...move) => moves.push(move);
   scene.update({ placements: [], finishes: roomFinishes() }); scene.dynamic.updateMatrixWorld(true); scene.setEditing(true);
   const at = (x, z, height = 2) => ({ button: 0, pointerId: 16, pointerType: 'mouse', ...screenPoint(scene.camera, [x, height, z]) });
@@ -553,7 +597,7 @@ test('zoomed furniture drags when its visible top is onscreen but its floor orig
 });
 
 test('move arrows follow the view through a full turn', () => {
-  assert.deepEqual(nudgeAxes(0), { right: [1, 0], away: [0, -1] });
+  assert.deepEqual(nudgeAxes(0), { right: [0, -1], away: [-1, 0] });
   for (let rotation = -180; rotation < 180; rotation += 15) {
     const { right, away } = nudgeAxes(rotation), camera = makeRoomCamera(1, { rotation });
     const shift = ([x, z]) => new THREE.Vector3(x, 0, z).project(camera).sub(new THREE.Vector3(0, 0, 0).project(camera));
@@ -647,6 +691,7 @@ test('a large shelf has three separate item targets and drags all three from an 
 test('all three visible large-shelf items select their own slot in an angled view', () => {
   const scene = furnitureScene(), shelf = { ...defaultShelves()[0], spotId: 'left-high-door', sizeId: 'wide' };
   const slots = shelfSlots(shelf), items = ['odd-lamp', 'odd-rock', 'odd-telegraph'];
+  scene.camera = makeRoomCamera(846 / 380, { area: 'parlor', rotation: -45 });
   scene.raycaster = new THREE.Raycaster();
   for (const spotId of ['left-high-door', 'back-low-left']) {
     const moved = { ...shelf, spotId };
@@ -670,7 +715,7 @@ test('keyboard movement reaches nearby clear mounts and keeps furniture collisio
   assert.ok(wallMountsFit(scene.shelves.map(shelf => shelf.id === moves[0][0] ? { ...shelf, spotId: moves[0][1] } : shelf), scene.wallDisplays, scene.furniture));
   scene.setEditing(true, { kind: 'anchor', anchorId: 'wall-left' }); scene.moveSelected('ArrowDown'); assert.equal(wallMoves.length, 1);
   scene.setEditing(true, { kind: 'anchor', anchorId: 'desk' }); scene.moveSelected('ArrowRight');
-  assert.deepEqual(furnitureMoves, [['desk', { x: scene.furniture.desk.x + 0.25, z: scene.furniture.desk.z }]]);
+  assert.deepEqual(furnitureMoves, [['desk', { x: scene.furniture.desk.x, z: scene.furniture.desk.z - 0.25 }]]);
   scene.setEditing(false); scene.moveSelected('ArrowRight'); assert.equal(furnitureMoves.length, 1);
   scene.dynamic.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
 });

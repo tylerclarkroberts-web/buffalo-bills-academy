@@ -244,7 +244,8 @@ export default function Room({ id }) {
 
   function arrange() {
     if (!room || preview || busy) return;
-    setCameraView(roomView({ area: 'parlor' }));
+    // Face both display walls when arranging shelves and artwork.
+    setCameraView(roomView({ area: 'parlor', rotation: -45 }));
     const next = layoutOf(room); base.current = layoutKey(next); setDraft(next); setConflict(false); setErr('');
     setMsg('Drag things to move them. Click one to change it.');
     if (!['anchor', 'wardrobe', 'finish', 'surface'].includes(selection.kind)) setSelection({ kind: 'none' });

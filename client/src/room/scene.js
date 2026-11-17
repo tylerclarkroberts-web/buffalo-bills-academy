@@ -6,6 +6,7 @@ import { furnitureOf } from './layout.js';
 import { coveredWagon } from './wagon.js';
 import { roomFaun } from './faun.js';
 import { buildHomestead } from './homestead.js';
+import { makeWallCutaway } from './cutaway.js';
 import { homesteadLandscape } from './landscape.js';
 import { RoomActivity, residentPose, faunPose } from './activity.js';
 import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from './lighting.js';
@@ -13,9 +14,9 @@ import { pixGrid } from '../store/pixart.js';
 import { bugTexture, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks, shade as tint } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_DESK_TOP, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
 
-const PAINT = { 'bunkhouse-timber': '#8c6243', 'bunkhouse-sage': '#6d785b', 'bunkhouse-clay': '#9a6650' };
+const PAINT = { 'bunkhouse-timber': '#d3b88c', 'bunkhouse-sage': '#a7b59a', 'bunkhouse-clay': '#c79883' };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 const mesh = (parent, geometry, mat, x = 0, y = 0, z = 0) => {
   const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); parent.add(m); return m;
@@ -488,6 +489,7 @@ export class RoomScene {
     this.buildRoom();
     this.scene.add(homesteadLandscape());
     this.homestead = buildHomestead(this.static, { onReady: () => { this.lighting.invalidate(); this.render(); } });
+    this.wallCutaways.push(...this.homestead.walls);
     this.faun = roomFaun(); this.faun.position.set(6.65 * ROOM_FLOOR_SCALE, 0.02, 2.25 * ROOM_FLOOR_SCALE); this.faun.rotation.y = -0.45;
     this.faun.scale.y = 1.25; this.faunHead = this.faun.getObjectByName('faun-head'); this.faunLegs = this.faun.children.filter(part => part.name === 'faun-goat-leg');
     this.faun.visible = false; this.scene.add(this.faun);
@@ -733,12 +735,13 @@ export class RoomScene {
   applyCutaway() {
     if (!this.camera) return;
     const visible = roomWallVisibility(this.camera.position);
-    if (this.backWall) this.backWall.visible = visible.back;
-    if (this.leftWall) this.leftWall.visible = visible.left;
-    if (this.homestead) this.homestead.leftWall.visible = visible.left;
+    for (const { side, solid, ghost, reverseFor } of this.wallCutaways || []) {
+      solid.visible = reverseFor && this.view?.area === reverseFor ? !visible[side] : visible[side];
+      ghost.visible = !solid.visible;
+    }
     if (this.cornerPost) this.cornerPost.visible = visible.back || visible.left;
     for (const group of [this.dynamic, this.highlights]) for (const object of group?.children || []) {
-      if (object.userData.wallSide) object.visible = visible[object.userData.wallSide];
+      if (object.userData.wallSide) object.visible = visible[object.userData.wallSide] && !(object.userData.wallSide === 'back' && this.view?.area === 'bunk');
     }
     this.lighting?.invalidate();
   }
@@ -768,16 +771,16 @@ export class RoomScene {
     this.structure = new THREE.Group(); this.structure.scale.set(ROOM_FLOOR_SCALE, 1, ROOM_FLOOR_SCALE); this.static.add(this.structure);
     const p = this.structure;
     const floorMap = paintedTexture(128, 128, ctx => {
-      ctx.fillStyle = '#815a38'; ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = '#a9937d'; ctx.fillRect(0, 0, 128, 128);
       for (let i = 0; i < 8; i++) {
-        ctx.fillStyle = i % 2 ? '#936b43' : '#a0794e'; ctx.fillRect(1, i * 16 + 1, 126, 14);
-        ctx.fillStyle = '#8b623c';
+        ctx.fillStyle = i % 2 ? '#d4c2ac' : '#cbb8a1'; ctx.fillRect(0, i * 16 + 1, 128, 15);
+        ctx.fillStyle = '#c5b29d';
         for (let j = 0; j < 3; j++) ctx.fillRect(5 + (i * 13 + j * 19) % 45, i * 16 + 4 + j * 3, 35 + (i + j) % 20, 1);
-        ctx.fillStyle = '#62432b'; ctx.fillRect((i * 34) % 96 + 16, i * 16 + 1, 1, 14);
+        ctx.fillStyle = '#ab947d'; ctx.fillRect((i * 34) % 96 + 16, i * 16 + 1, 1, 15);
       }
     });
     floorMap.magFilter = THREE.LinearFilter; floorMap.minFilter = THREE.LinearMipmapLinearFilter; floorMap.generateMipmaps = true;
-    floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping; floorMap.repeat.set(4 * ROOM_FLOOR_SCALE, 3 * ROOM_FLOOR_SCALE);
+    floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping; floorMap.repeat.set(2.5, 2);
     const stoneMap = paintedTexture(128, 128, ctx => {
       ctx.fillStyle = '#56534a'; ctx.fillRect(0, 0, 128, 128);
       for (let row = 0; row < 4; row++) for (let col = -1; col < 5; col++) {
@@ -792,65 +795,62 @@ export class RoomScene {
     this.floorMaps = { planks: floorMap, stone: stoneMap };
     // The left edge stops at the wall's outer face; the right edge meets the yard.
     this.floor = mesh(p, new THREE.BoxGeometry(8.33, 0.2, 6.5), material('#f0d4a2', { map: floorMap }), 0.085, -0.1, 0);
-    this.wallMaterial = material('#8c6243'); this.walls = [];
+    this.wallMaterial = material(PAINT['bunkhouse-timber']); this.walls = []; this.wallCutaways = [];
     this.backWall = new THREE.Group(); this.leftWall = new THREE.Group(); p.add(this.backWall, this.leftWall);
     const wall = (parent, w, h, d, x, y, z) => {
       const panel = mesh(parent, new THREE.BoxGeometry(w, h, d), this.wallMaterial, x, y, z);
       panel.userData.selection = { kind: 'finish' }; this.walls.push(panel); return panel;
     };
     const opening = { left: -0.3, right: 1.8, bottom: 1.4, top: 2.85 };
-    const openingWidth = opening.right - opening.left, openingHeight = opening.top - opening.bottom;
-    const windowX = (opening.left + opening.right) / 2, windowY = (opening.bottom + opening.top) / 2;
-    wall(this.backWall, opening.left + 4, ROOM_WALL_HEIGHT, 0.16, (opening.left - 4) / 2, ROOM_WALL_HEIGHT / 2, -3);
-    wall(this.backWall, 4 - opening.right, ROOM_WALL_HEIGHT, 0.16, (opening.right + 4) / 2, ROOM_WALL_HEIGHT / 2, -3);
-    wall(this.backWall, openingWidth, opening.bottom, 0.16, windowX, opening.bottom / 2, -3);
-    wall(this.backWall, openingWidth, ROOM_WALL_HEIGHT - opening.top, 0.16, windowX, (opening.top + ROOM_WALL_HEIGHT) / 2, -3);
-    wall(this.leftWall, 0.16, ROOM_WALL_HEIGHT, 6, -4, ROOM_WALL_HEIGHT / 2, 0);
-    this.cornerPost = box(p, 0.11, ROOM_WALL_HEIGHT + 0.1, 0.25, '#49321f', -4, ROOM_WALL_HEIGHT / 2 + 0.02, -2.9);
-    box(this.backWall, 0.11, ROOM_WALL_HEIGHT + 0.1, 0.25, '#49321f', 4, ROOM_WALL_HEIGHT / 2 + 0.02, -2.9);
-    box(this.backWall, 8.25, 0.15, 0.26, '#49321f', 0, ROOM_WALL_HEIGHT + 0.02, -2.91);
-    box(this.leftWall, 0.26, 0.15, 6.2, '#49321f', -3.97, ROOM_WALL_HEIGHT + 0.02);
-    for (let y = 0.4; y < ROOM_WALL_HEIGHT; y += 0.5) {
-      if (y > opening.bottom && y < opening.top) {
-        box(this.backWall, opening.left + 4, 0.025, 0.02, '#735238', (opening.left - 4) / 2, y, -2.9);
-        box(this.backWall, 4 - opening.right, 0.025, 0.02, '#735238', (opening.right + 4) / 2, y, -2.9);
-      } else box(this.backWall, 8, 0.025, 0.02, '#735238', 0, y, -2.9);
+    const openingWidth = opening.right - opening.left;
+    const windowX = (opening.left + opening.right) / 2;
+    const doorLeft = 2.30, doorRight = 3.45, base = 0.78;
+    const backPanel = (from, to, bottom, top) => wall(this.backWall, to - from, top - bottom, 0.16, (to + from) / 2, (top + bottom) / 2, -3);
+    backPanel(-4, opening.left, base, ROOM_WALL_HEIGHT);
+    backPanel(opening.left, opening.right, base, opening.bottom);
+    backPanel(opening.left, opening.right, opening.top, ROOM_WALL_HEIGHT);
+    backPanel(opening.right, doorLeft, base, ROOM_WALL_HEIGHT);
+    backPanel(doorLeft, doorRight, ROOM_DOOR_HEIGHT, ROOM_WALL_HEIGHT);
+    backPanel(doorRight, 4.08, base, ROOM_WALL_HEIGHT);
+    for (const [from, to] of [[-4, doorLeft], [doorRight, 4.08]]) {
+      box(p, to - from, base, 0.16, '#9b7957', (from + to) / 2, base / 2, -3);
+      box(p, to - from, 0.07, 0.20, '#c09b69', (from + to) / 2, base, -3);
     }
-    // A recessed landscape, four glass panes and a projecting sill make this read as an exterior window.
-    const landscape = paintedTexture(256, 192, ctx => {
-      const sky = ctx.createLinearGradient(0, 0, 0, 192); sky.addColorStop(0, '#91b7c0'); sky.addColorStop(1, '#f0d2a0');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, 256, 192);
-      ctx.fillStyle = '#f6dfab'; ctx.beginPath(); ctx.arc(193, 42, 16, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#9b987c'; ctx.beginPath(); ctx.moveTo(0, 122); ctx.lineTo(48, 87); ctx.lineTo(91, 103); ctx.lineTo(151, 76); ctx.lineTo(210, 108); ctx.lineTo(256, 96); ctx.lineTo(256, 192); ctx.lineTo(0, 192); ctx.fill();
-      ctx.fillStyle = '#778363'; ctx.beginPath(); ctx.moveTo(0, 148); ctx.lineTo(83, 119); ctx.lineTo(166, 143); ctx.lineTo(256, 121); ctx.lineTo(256, 192); ctx.lineTo(0, 192); ctx.fill();
-      ctx.fillStyle = '#b4a174'; ctx.fillRect(0, 168, 256, 24);
-      ctx.strokeStyle = '#786447'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 161); ctx.lineTo(256, 170);
-      for (let x = 15; x < 256; x += 38) { ctx.moveTo(x, 151); ctx.lineTo(x, 175); } ctx.stroke();
-    });
-    landscape.magFilter = landscape.minFilter = THREE.LinearFilter;
-    mesh(this.backWall, new THREE.PlaneGeometry(openingWidth, openingHeight), new THREE.MeshBasicMaterial({ map: landscape }), windowX, windowY, -3.14);
-    const pane = new THREE.MeshBasicMaterial({ color: '#d0e6e2', transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
-    mesh(this.backWall, new THREE.PlaneGeometry(openingWidth - 0.12, openingHeight - 0.12), pane, windowX, windowY, -2.91);
-    for (const x of [opening.left, opening.right]) box(this.backWall, 0.13, openingHeight + 0.18, 0.23, '#a47a43', x, windowY, -2.94);
-    for (const y of [opening.bottom, opening.top]) box(this.backWall, openingWidth + 0.2, 0.13, 0.23, '#c39b58', windowX, y, -2.92);
-    box(this.backWall, 0.065, openingHeight - 0.08, 0.08, '#bb995f', windowX, windowY, -2.84);
-    box(this.backWall, openingWidth - 0.08, 0.065, 0.08, '#bb995f', windowX, windowY, -2.84);
-    box(this.backWall, openingWidth + 0.3, 0.11, 0.46, '#cea96e', windowX, opening.bottom - 0.04, -2.77);
-    box(this.backWall, openingWidth + 0.06, 0.16, 0.09, '#987047', windowX, opening.bottom - 0.17, -2.88);
-    box(this.backWall, 0.12, 0.035, 0.055, '#6b5735', windowX + 0.06, windowY - 0.05, -2.77);
-    // A ground-level side yard keeps large outdoor possessions visible beyond the room's edge.
-    const turf = paintedTexture(64, 96, ctx => {
-      const grass = new THREE.Color('#849062'), dust = new THREE.Color('#ae9068'), patch = new THREE.Color();
-      for (let z = 0; z < 96; z++) for (let x = 0; x < 64; x++) {
-        const edge = Math.min(x, 63 - x, z, 95 - z);
-        const tufts = Math.sin(x * 0.26 + z * 0.12) + Math.cos(z * 0.31 - x * 0.09);
-        const wear = Math.max(1 - edge / 8, 1 - Math.abs(z - 74 - 2 * Math.sin(x / 14)) / 10);
-        patch.copy(grass).lerp(dust, THREE.MathUtils.clamp(0.18 + wear * 0.85 + tufts * 0.14, 0, 1));
-        ctx.fillStyle = patch.getStyle(); ctx.fillRect(x, z, 1, 1);
-      }
-    });
-    mesh(p, new THREE.BoxGeometry(4.2, 0.16, 6), material('#ffffff', { map: turf }), 6.35, -0.08, 0);
-    box(p, 0.4, 0.08, 1.05, '#ad8657', 4.45, 0.04, 1.9);
+    const leftPanel = (from, to, bottom, top) => wall(this.leftWall, 0.16, top - bottom, to - from, -4, (top + bottom) / 2, (to + from) / 2);
+    const sashStart = -1.52, sashEnd = 0.50, sashBottom = 1.94, sashTop = 3.36;
+    leftPanel(-3, sashStart, 0, ROOM_WALL_HEIGHT);
+    leftPanel(sashEnd, 3.35, 0, ROOM_WALL_HEIGHT);
+    leftPanel(sashStart, sashEnd, 0, sashBottom);
+    leftPanel(sashStart, sashEnd, sashTop, ROOM_WALL_HEIGHT);
+    const bunkDivider = makeWallCutaway('back', this.backWall, this.backWall.children);
+    bunkDivider.reverseFor = 'bunk';
+    this.wallCutaways.push(bunkDivider, makeWallCutaway('left', this.leftWall, this.leftWall.children));
+
+    this.cornerPost = box(p, 0.11, ROOM_WALL_HEIGHT + 0.1, 0.25, '#664730', -4, ROOM_WALL_HEIGHT / 2 + 0.02, -2.9);
+    box(this.backWall, 8.18, 0.15, 0.22, '#765237', 0.04, ROOM_WALL_HEIGHT + 0.02, -3);
+    box(this.leftWall, 0.22, 0.15, 6.48, '#765237', -4, ROOM_WALL_HEIGHT + 0.02, 0.175);
+    for (const x of [doorLeft, doorRight]) box(this.backWall, 0.08, ROOM_DOOR_HEIGHT, 0.22, '#966d47', x, ROOM_DOOR_HEIGHT / 2, -3);
+    box(this.backWall, doorRight - doorLeft + 0.12, 0.11, 0.22, '#966d47', (doorLeft + doorRight) / 2, ROOM_DOOR_HEIGHT + 0.055, -3);
+    box(p, doorRight - doorLeft, 0.025, 0.24, '#c49d70', (doorLeft + doorRight) / 2, 0.015, -3);
+    box(this.leftWall, 0.18, base, 6.35, '#9b7957', -4, base / 2, 0.175);
+    box(this.leftWall, 0.20, 0.07, 6.35, '#c09b69', -4, base, 0.175);
+
+    // The saved display sill is now a pass-through into the bunk. The rear sash looks into the yard.
+    const windowFrame = (parent, width, bottom, top, x, z, angle) => {
+      const frame = new THREE.Group();
+      frame.position.set(x, bottom, z); frame.rotation.y = angle; parent.add(frame);
+      const h = top - bottom;
+      const glass = new THREE.MeshBasicMaterial({ color: '#b7d3cb', transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+      mesh(frame, new THREE.PlaneGeometry(width, h), glass, 0, h / 2, 0);
+      for (const a of [-width / 2, width / 2]) box(frame, 0.1, h + 0.16, 0.22, '#9c744e', a, h / 2, 0);
+      box(frame, width + 0.19, 0.11, 0.24, '#c39b68', 0, h, 0);
+      box(frame, width + 0.26, 0.12, 0.38, '#c39b68', 0, 0, 0.09);
+      box(frame, 0.045, h, 0.075, '#b89c77', 0, h / 2, 0);
+      box(frame, width, 0.055, 0.075, '#b89c77', 0, h * 0.57, 0);
+    };
+    windowFrame(this.backWall, openingWidth, opening.bottom, opening.top, windowX, -3, 0);
+    windowFrame(this.leftWall, sashEnd - sashStart, sashBottom, sashTop, -4, (sashStart + sashEnd) / 2, Math.PI / 2);
+    // The yard display and Moon still use the original paddock fence.
     for (const x of [4.4, 6.35, 8.35]) box(p, 0.12, 0.78, 0.12, '#80603c', x, 0.39, -2.9);
     for (const y of [0.28, 0.58]) box(p, 3.95, 0.1, 0.09, '#a58656', 6.375, y, -2.9);
     for (const z of [-2.9, -1.45]) box(p, 0.12, 0.78, 0.12, '#80603c', 8.35, 0.39, z);
@@ -858,9 +858,9 @@ export class RoomScene {
     this.buildSideDoor();
     // Furnishings keep their original size while their origins spread across the larger floor.
     const desk = this.fixture();
-    this.table(desk, 0, 0, 1.8, 0.9, 0.9);
-    box(desk, 1.5, 0.3, 0.07, '#65462e', 0, 0.67, 0.41);
-    cylinder(desk, 0.035, 0.035, 0.06, '#c4a05d', 0, 0.67, 0.47).rotation.x = Math.PI / 2;
+    this.table(desk, 0, 0, 1.8, 0.9, ROOM_DESK_TOP - 0.07);
+    box(desk, 1.5, 0.3, 0.07, '#65462e', 0, ROOM_DESK_TOP - 0.30, 0.41);
+    cylinder(desk, 0.035, 0.035, 0.06, '#c4a05d', 0, ROOM_DESK_TOP - 0.30, 0.47).rotation.x = Math.PI / 2;
     // A wide, low glass case on a stand: brass frame, glass lid and a little landscaping for the resident.
     const terrarium = this.fixture();
     this.table(terrarium, 0, 0, 1.8, 1.2, 0.5);
@@ -907,47 +907,79 @@ export class RoomScene {
     box(moneyTable, 2.05, 0.08, 1.13, '#4a3526', 0, 1.04);
     for (const z of [-0.58, 0.58]) box(moneyTable, 2.12, 0.08, 0.04, '#b08b4d', 0, 1.12, z);
     for (const x of [-1.05, 1.05]) box(moneyTable, 0.04, 0.08, 1.2, '#b08b4d', x, 1.12);
-    cylinder(this.leftWall, 0.22, 0.22, 0.14, '#c39b58', -3.62, 2.7, 1.9);
+    box(this.leftWall, 0.10, 0.39, 0.20, '#725c42', -3.89, 2.52, 1.9);
+    box(this.leftWall, 0.27, 0.07, 0.08, '#866d49', -3.74, 2.4, 1.9);
+    cylinder(this.leftWall, 0.13, 0.16, 0.12, '#95764c', -3.62, 2.47, 1.9, 8);
+    cylinder(this.leftWall, 0.13, 0.115, 0.35, '#f3dab2', -3.62, 2.70, 1.9, 8);
+    cylinder(this.leftWall, 0.07, 0.17, 0.11, '#80674a', -3.62, 2.92, 1.9, 8);
   }
   /** Furniture is built around its own origin; update() places it from the saved layout. */
   fixture() {
     const group = new THREE.Group(); this.static.add(group); return group;
   }
   buildSideDoor() {
-    const side = new THREE.Group(); side.name = 'yard-partition'; (this.structure || this.static).add(side);
-    const trim = '#956c42', dark = '#59422e', doorTop = ROOM_DOOR_HEIGHT + 0.06;
-    // Clear glazing keeps the full-height yard wall from obscuring the cutaway room.
-    for (const [from, to] of [[-3, 0.8], [2.25, 3]]) {
+    const root = this.structure || this.static;
+    const side = this.rightWall = new THREE.Group(); side.name = 'yard-partition'; root.add(side);
+    const panels = [], trim = '#956c42', dark = '#59422e';
+    const wallX = 4.08, doorTop = ROOM_DOOR_HEIGHT + 0.06, jambLeft = 1.44, jambRight = 2.28;
+    const windowLeft = -1.4, windowRight = -0.32, sill = 1.31, lintel = 2.7, windowZ = (windowLeft + windowRight) / 2;
+    const casing = new THREE.Group(); side.add(casing);
+    const plankWall = (from, to, bottom = 0, top = ROOM_WALL_HEIGHT) => {
       const length = to - from, z = (from + to) / 2;
-      const panel = mesh(side, new THREE.BoxGeometry(0.14, 0.58, length), this.wallMaterial, 4.08, 0.29, z);
-      panel.userData.selection = { kind: 'finish' }; this.walls.push(panel);
-      box(side, 0.24, 0.09, length, trim, 4.08, 0.63, z);
-      for (let y = 0.18; y < 0.55; y += 0.18) box(side, 0.16, 0.018, length, dark, 4.08, y, z);
-    }
+      const panel = mesh(side, new THREE.BoxGeometry(0.14, top - bottom, length), this.wallMaterial, wallX, (bottom + top) / 2, z);
+      panel.userData.selection = { kind: 'finish' }; this.walls.push(panel); panels.push(panel);
+      for (let y = 0.4; y < top - 0.02; y += 0.5) {
+        if (y > bottom + 0.02) box(casing, 0.15, 0.02, length, '#735238', wallX, y, z);
+      }
+    };
+    plankWall(-3, windowLeft);
+    plankWall(windowLeft, windowRight, 0, sill);
+    plankWall(windowLeft, windowRight, lintel);
+    plankWall(windowRight, jambLeft - 0.06);
+    plankWall(jambLeft - 0.06, jambRight + 0.06, doorTop);
+    plankWall(jambRight + 0.06, 3.35);
+    for (const z of [-3, 3.35]) box(casing, 0.17, ROOM_WALL_HEIGHT + 0.1, 0.09, trim, wallX, ROOM_WALL_HEIGHT / 2 + 0.02, z);
+    box(casing, 0.18, 0.15, 6.55, dark, wallX, ROOM_WALL_HEIGHT + 0.02, 0.175);
     const glass = new THREE.MeshBasicMaterial({ color: '#c1d5cb', transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide });
-    for (const [from, to] of [[-2.98, -1.15], [-1.15, 0.78], [2.27, 2.98]]) {
-      const z = (from + to) / 2, length = to - from;
-      mesh(side, new THREE.BoxGeometry(0.02, doorTop - 0.72, length - 0.12), glass, 4.08, (doorTop + 0.72) / 2, z);
-      for (const y of [0.72, (doorTop + 0.72) / 2, doorTop]) box(side, 0.1, 0.06, length, trim, 4.08, y, z);
-    }
-    for (const z of [-3, -1.15, 0.8, 2.25, 3]) box(side, 0.12, ROOM_WALL_HEIGHT + 0.1, 0.12, trim, 4.08, ROOM_WALL_HEIGHT / 2 + 0.02, z);
-    box(side, 0.18, 0.15, 6.2, dark, 4.08, ROOM_WALL_HEIGHT + 0.02, 0);
-    box(side, 0.14, 0.12, 6, trim, 4.08, doorTop + 0.08, 0);
-    const clerestoryBottom = doorTop + 0.14, clerestoryTop = ROOM_WALL_HEIGHT - 0.08;
-    mesh(side, new THREE.BoxGeometry(0.02, clerestoryTop - clerestoryBottom, 5.88), glass, 4.08, (clerestoryTop + clerestoryBottom) / 2, 0);
-    box(side, 0.48, 0.1, 1.48, '#bda079', 4.18, 0.025, 1.525);
-    // Door leaf swings out into the clear walkway, away from the parked wagon.
-    const door = new THREE.Group(); door.name = 'open-yard-door'; door.position.set(4.08, 0.06, 2.2); door.rotation.y = -Math.PI / 2; side.add(door);
-    door.scale.y = ROOM_DOOR_HEIGHT / 2.45;
-    for (const z of [0, -1.3]) box(door, 0.08, 2.45, 0.1, trim, 0, 1.225, z);
-    for (const y of [0.05, 0.85, 2.4]) box(door, 0.08, 0.1, 1.4, trim, 0, y, -0.65);
-    box(door, 0.055, 0.7, 1.2, '#785332', 0, 0.45, -0.65);
-    mesh(door, new THREE.BoxGeometry(0.018, 1.4, 1.2), glass, 0, 1.62, -0.65);
-    const handle = cylinder(door, 0.035, 0.035, 0.12, '#d2ae65', 0.09, 1.02, -1.17); handle.rotation.z = Math.PI / 2;
-    for (const y of [0.3, 2.15]) box(door, 0.09, 0.13, 0.18, '#4f4b40', 0, y, -0.02);
-    for (let i = 0; i < 6; i++) {
-      const step = box(this.structure || this.static, 0.5, 0.035, 0.65, i % 2 ? '#b2a082' : '#c1ae8b', 4.6 + i * 0.67, 0.035, 1.52 + (i % 2) * 0.12); step.rotation.y = i % 2 ? 0.08 : -0.09;
-    }
+    const windowWidth = windowRight - windowLeft, windowHeight = lintel - sill, windowY = (lintel + sill) / 2;
+    const pane = mesh(side, new THREE.PlaneGeometry(windowWidth, windowHeight), glass, wallX, windowY, windowZ);
+    pane.rotation.y = Math.PI / 2;
+    for (const z of [windowLeft, windowRight]) box(casing, 0.19, windowHeight + 0.1, 0.05, trim, wallX, windowY, z);
+    box(casing, 0.26, 0.08, windowWidth + 0.15, '#c2a071', wallX, sill, windowZ);
+    box(casing, 0.19, 0.075, windowWidth + 0.12, trim, wallX, lintel, windowZ);
+    box(casing, 0.07, windowHeight, 0.028, trim, wallX, windowY, windowZ);
+    box(casing, 0.07, 0.035, windowWidth, trim, wallX, windowY, windowZ);
+    // Keep the timber portal and the open door together when the porch wall fades.
+    const portal = new THREE.Group(); root.add(portal);
+    for (const z of [jambLeft - 0.03, jambRight + 0.03]) box(portal, 0.21, doorTop, 0.06, trim, wallX, doorTop / 2, z);
+    box(portal, 0.21, 0.10, jambRight - jambLeft + 0.16, trim, wallX, doorTop + 0.05, (jambLeft + jambRight) / 2);
+    bake(portal);
+    bake(casing);
+    this.wallCutaways ??= [];
+    this.wallCutaways.push(makeWallCutaway('right', side, panels));
+
+    // The shorter bath wing steps back from the porch; its partition meets this return wall.
+    const corner = new THREE.Group(); corner.name = 'Parlor corner beside bathroom'; root.add(corner);
+    const returnWidth = wallX - 3.20, returnX = wallX - returnWidth / 2;
+    const returnPanel = mesh(corner, new THREE.BoxGeometry(returnWidth, ROOM_WALL_HEIGHT, 0.14), this.wallMaterial, returnX, ROOM_WALL_HEIGHT / 2, 3.35);
+    returnPanel.userData.selection = { kind: 'finish' }; this.walls.push(returnPanel);
+    box(corner, returnWidth + 0.09, 0.15, 0.18, dark, returnX, ROOM_WALL_HEIGHT + 0.02, 3.35);
+    for (let y = 0.4; y < ROOM_WALL_HEIGHT; y += 0.5) box(corner, returnWidth, 0.02, 0.15, '#735238', returnX, y, 3.35);
+    this.wallCutaways.push(makeWallCutaway('front', corner, [returnPanel]));
+    box(root, returnWidth + 0.14, 0.18, 0.20, '#805937', returnX, -0.09, 3.35);
+
+    // The 38-inch leaf stays visible when the wall is cut away and swings clear of the wagon lane.
+    const width = 0.82, stile = 0.05, centre = -width / 2;
+    box(root, 0.31, 0.05, jambRight - jambLeft + 0.12, '#bda079', wallX, 0.018, (jambLeft + jambRight) / 2);
+    const door = new THREE.Group(); door.name = 'open-yard-door'; door.position.set(wallX, 0.06, jambRight - 0.02); door.rotation.y = -Math.PI / 2; root.add(door);
+    for (const z of [-stile / 2, -width + stile / 2]) box(door, 0.055, ROOM_DOOR_HEIGHT, stile, trim, 0, ROOM_DOOR_HEIGHT / 2, z);
+    for (const y of [0.05, 1.22, ROOM_DOOR_HEIGHT - 0.05]) box(door, 0.055, 0.1, width - 2 * stile, trim, 0, y, centre);
+    box(door, 0.04, 1.07, width - 2 * stile, '#785332', 0, 0.635, centre);
+    const doorGlass = mesh(door, new THREE.PlaneGeometry(width - 2 * stile, ROOM_DOOR_HEIGHT - 1.37), glass, 0, (ROOM_DOOR_HEIGHT + 1.17) / 2, centre);
+    doorGlass.rotation.y = Math.PI / 2;
+    const handle = cylinder(door, 0.045, 0.045, 0.09, '#d2ae65', 0.065, 1.34, -width + 0.09); handle.rotation.z = Math.PI / 2;
+    for (const y of [0.35, ROOM_DOOR_HEIGHT - 0.35]) box(door, 0.07, 0.13, 0.10, '#4f4b40', 0, y, -0.05);
+    bake(door);
   }
   table(parent, x, z, w, d, h) {
     box(parent, w, 0.14, d, '#93633c', x, h, z);
@@ -1006,7 +1038,8 @@ export class RoomScene {
   }
   shelf(shelf, position) {
     const group = new THREE.Group(); group.position.set(...position); this.dynamic.add(group);
-    if (ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId)?.wallSide === 'back') group.rotation.y = -Math.PI / 2;
+    group.userData.wallSide = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId)?.wallSide;
+    if (group.userData.wallSide === 'back') group.rotation.y = -Math.PI / 2;
     group.userData.dragId = shelf.id;
     const color = finishColor('shelf', shelf), size = ROOM_SHELF_SIZES[shelf.sizeId || 'standard'];
     box(group, size.width, 0.14, size.depth, shade(color, 0.58), 0, -0.08, 0);
@@ -1018,10 +1051,10 @@ export class RoomScene {
     }
     return group;
   }
-  pick(position, size, selection, turn = 0) {
+  pick(position, size, selection, turn = 0, wallSide) {
     const target = mesh(this.dynamic, new THREE.BoxGeometry(...size), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), ...position);
     target.rotation.y = turn;
-    if (selection.kind === 'anchor' && selection.anchorId.startsWith('wall-')) target.userData.wallSide = ROOM_WALL_SPOTS.find(spot => spot.id === this.wallDisplays?.[selection.anchorId])?.wallSide || 'back';
+    if (wallSide) target.userData.wallSide = wallSide;
     target.userData.selection = selection; this.picks.push(target);
     return target;
   }
@@ -1046,13 +1079,14 @@ export class RoomScene {
       if (shelf && !shelfGroups.has(shelf.id)) shelfGroups.set(shelf.id, this.shelf(shelf, roomShelfPosition(ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId))));
       const holder = shelf ? shelfGroups.get(shelf.id) : null;
       const wallSpot = ROOM_WALL_SPOTS.find(spot => spot.id === this.wallDisplays[anchorId]), host = anchorHost(anchorId);
+      const wallSide = wallSpot?.wallSide || holder?.userData.wallSide || (anchorId === 'sill' ? 'back' : undefined);
       const rotation = wallSpot?.wallSide === 'left' ? Math.PI / 2 : holder ? holder.rotation.y : furniture[host] ? turn(host) : 0;
       const itemId = view.placements?.find(p => p.anchorId === anchorId)?.itemId;
       if (ROOM_ITEM[itemId]) {
         const prop = oddity(itemId); if (!holder) { prop.position.set(...position); prop.rotation.y = rotation; }
         else prop.position.z = shelfSlots(shelf).find(slot => slot.id === anchorId).offset;
         if (!holder && (furniture[host] || wallSpot)) prop.userData.dragId = wallSpot ? anchorId : host;
-        if (wallSpot) prop.userData.wallSide = wallSpot.wallSide;
+        if (!holder && wallSide) prop.userData.wallSide = wallSide;
         if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y -= 0.16; this.wagon = prop; }
         if (holder) prop.traverse(part => { if (part.isMesh) { part.userData.selection = { kind: 'anchor', anchorId }; this.shelfItemPicks.push(part); } });
         (holder || this.dynamic).add(prop);
@@ -1061,7 +1095,7 @@ export class RoomScene {
       const height = anchorId === 'window' ? 1.125 : wall ? 0.4 : shelf ? -0.04 : 0.3;
       // Pick shelf boards and visible items separately so neighboring slots cannot cover each other.
       const size = anchorId === 'window' ? [2.8, 2.25, 2.05] : anchorId === 'desk' ? [1.9, 0.9, 1.1] : wall ? [1.2, 1.1, 0.3] : host === 'case' ? [0.6, 0.9, 0.76] : [1.25, shelf ? 0.22 : 0.9, 0.8];
-      this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId }, rotation);
+      this.pick([position[0], position[1] + height, position[2]], size, { kind: 'anchor', anchorId }, rotation, wallSide);
     }
     if (view.placements?.some(place => place.itemId === 'odd-deed')) this.dynamic.add(moon());
     this.pet(view.pet);
