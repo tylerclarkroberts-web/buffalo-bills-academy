@@ -41,6 +41,18 @@ test('mine gear is in the store catalog and every shaft permit exists', () => {
   assert.equal(buckets.at(-1).cap, SHAFTS.at(-1).max, 'the biggest bucket fills the deepest shaft');
 });
 
+test('mine gear descriptions state the real numbers: what a bucket holds and where, a shaft\'s limit and fare', () => {
+  const label = (s) => (s.id === 'earl' ? 'Earl\'s Level' : `Shaft ${s.id}`), n = (x) => x.toLocaleString('en-US');
+  for (const b of MINE_ITEMS.filter((x) => x.cap)) {
+    const fills = SHAFTS.find((s) => s.max >= b.cap); // the shallowest shaft that lets this bucket come up full
+    assert.ok(b.desc.includes(`Holds ${n(b.cap)}`) && b.desc.includes(label(fills)), `${b.id}: ${b.desc}`);
+  }
+  for (const s of SHAFTS.filter((x) => x.permit)) {
+    const desc = ITEM[s.permit].desc;
+    assert.ok(desc.includes(`haul up ${n(s.max)} a trip`) && desc.includes(`$${s.fare} a ride`), `${s.permit}: ${desc}`);
+  }
+});
+
 test('Shaft 7 stays one plain bucket however much gear you own', (t) => {
   const f = fixture(t, { own: { 'mine-goldbucket': 1 } });
   const s = f.start();
