@@ -12,7 +12,7 @@ import Worms from './Worms.jsx';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 import MineMap from './MineMap.jsx';
-import { readExploration, rememberExploration, revealExploration } from './exploration.js';
+import { markWild, readExploration, rememberExploration, revealExploration } from './exploration.js';
 
 // The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
 const BUG_ORDERS = [
@@ -469,14 +469,15 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker();
   const mapPools = () => bucketShift ? bucketRef.current.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}`, quantity: null, remaining: i === 0 && vein.current.flowing ? 1 : 0 }));
   const explored = useRef(null);
-  if (!explored.current) explored.current = readExploration(me?.id, shift.shiftId, maze.grid, bucketShift ? shift.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}` })));
+  if (!explored.current) explored.current = readExploration(me?.id, shift.shiftId, maze.grid, mapPools(), undefined, shift.wilds);
+  const saveChart = () => rememberExploration(me?.id, shift.shiftId, explored.current);
   const chartPosition = () => {
     const s = sceneRef.current;
     return s ? { x: s.pos.x / TILE, y: s.pos.y / TILE, yaw: s.yaw } : { ...maze.start, yaw: -maze.facing - Math.PI / 2 };
   };
   const chart = () => {
     const pos = chartPosition();
-    if (revealExploration(explored.current, maze.grid, pos.x, pos.y, mapPools(), bucketShift ? bucketRef.current.currentPoolId : 'legacy-0')) rememberExploration(me?.id, shift.shiftId, explored.current);
+    if (revealExploration(explored.current, maze.grid, pos.x, pos.y, mapPools(), bucketShift ? bucketRef.current.currentPoolId : 'legacy-0')) saveChart();
   };
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
@@ -571,6 +572,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const showBattle = (b) => {
     if (!b || dismissed.current.has(b.id)) return;
+    if (b.wildId && markWild(explored.current, sceneRef.current?.wilds.get(b.wildId))) saveChart();
     if (mapRef.current) showMap(false);
     if (!battleRef.current) { freeze(); audio?.dread(false); }
     // The server sends only the blows this page has not seen; the ring wants the whole fight so far, plus what the mine adds at the end.
@@ -753,7 +755,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
     scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
     scene.setWilds(shift.wilds || []);
-    const wildSeen = new Set(), wildRetryAt = new Map();
+    const wildRetryAt = new Map();
     let askingWild = false;
     const meetWild = async (id) => {
       askingWild = true;
@@ -878,13 +880,20 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       const n = !l && dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
       const closest = scene.nearestWild();
-      if (closest && !battleRef.current && !doomRef.current && !mapRef.current && !done.current && !document.hidden) {
+      if (closest && !battleRef.current && !doomRef.current && !mapRef.current && !scareRef.current && !done.current && !document.hidden) {
         const { wild, tiles } = closest;
-        if (tiles < 4 && !wildSeen.has(wild.id)) {
-          wildSeen.add(wild.id); setLine(`A WILD ${(BY_ID[wild.species]?.name || 'BUG').toUpperCase()}, LEVEL ${wild.level}, IS IN THE TUNNEL.`);
+        let sighting;
+        for (const bug of scene.wilds.values()) {
+          if (!explored.current.wilds.has(bug.id) && scene.seesWild(bug)) {
+            markWild(explored.current, bug);
+            sighting ??= bug;
+          }
         }
-        // Horror Night: a jump scare has the screen for a moment, so the fight waits for it (the scare itself never starts during a fight)
-        if (tiles <= 1 && canFightWild.current && !scareRef.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) meetWild(wild.id);
+        if (sighting) {
+          saveChart();
+          setLine(`A WILD ${(BY_ID[sighting.species]?.name || 'BUG').toUpperCase()}, LEVEL ${sighting.level}, IS IN THE TUNNEL.`);
+        }
+        if (tiles <= 1 && canFightWild.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) meetWild(wild.id);
       }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
@@ -1061,7 +1070,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
-      {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
+      {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} wilds={[...explored.current.wilds].map(id => sceneRef.current?.wilds.get(id)).filter(Boolean)}
+        pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onJar={battleJar} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>

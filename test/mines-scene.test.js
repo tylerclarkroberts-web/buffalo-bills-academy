@@ -37,6 +37,26 @@ test('the nearest wild changes as miners walk and the daily population thins', (
   assert.equal(mine.nearestWild(), null);
 });
 
+test('a wild sighting needs a nearby sprite in the camera view, with clear tunnel to it', () => {
+  const mine = fixture(), tile = 2.2;
+  mine.maze.grid = Array.from({ length: 7 }, () => Array(7).fill(0));
+  mine.pos.set(2 * tile, 4 * tile);
+  mine.camera = new THREE.PerspectiveCamera(72, 0.5, .05, 60);
+  mine.camera.position.set(mine.pos.x, 1.35, mine.pos.y);
+  mine.setWilds([{ id: 'ahead', x: 2, y: 2 }, { id: 'also-ahead', x: 2, y: 1 }, { id: 'behind', x: 2, y: 5 },
+    { id: 'off-screen', x: 3, y: 2 }, { id: 'far', x: 2, y: 0 }]);
+  const visible = () => [...mine.wilds.values()].filter(w => mine.seesWild(w)).map(w => w.id);
+  assert.deepEqual(visible(), ['ahead', 'also-ahead']);
+  mine.maze.grid[3][2] = 1;
+  assert.deepEqual(visible(), [], 'a nearby bug behind a wall is never sighted');
+  mine.maze.grid[3][2] = 0;
+  mine.camera.rotation.x = 1.2;
+  assert.deepEqual(visible(), [], 'looking above the bug misses it');
+  mine.camera.rotation.x = 0;
+  mine.scene.fog = new THREE.Fog(0, 1, 3);
+  assert.deepEqual(visible(), [], 'a fully fogged-out bug stays undiscovered');
+});
+
 test('deposit basins grow with quantity and cut real openings in the floor', () => {
   const mine = fixture();
   mine.setDeposits([pool('small', 3, 20), pool('medium', 5, 35), pool('large', 7, 60), pool('reserve', 9, 100)], 'small');

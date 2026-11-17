@@ -439,6 +439,15 @@ export class MineScene {
     }
     return nearest;
   }
+  seesWild(wild) {
+    const x = wild.x * TILE, z = wild.y * TILE;
+    if (Math.hypot(this.pos.x - x, this.pos.y - z) >= 4 * TILE) return false;
+    const camera = this.camera, point = camera.worldToLocal(wild.mesh.getWorldPosition(new THREE.Vector3()));
+    if (this.scene.fog && -point.z >= this.scene.fog.far) return false;
+    point.applyMatrix4(camera.projectionMatrix);
+    return Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1 && Math.abs(point.z) <= 1 &&
+      lineOfSight(this.maze.grid, camera.position.x, camera.position.z, x, z);
+  }
   updateBugGuide(now, dt) {
     const bg = this.bugGuide, m = this.bugMesh; if (!bg || !m) return;
     bg.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart });

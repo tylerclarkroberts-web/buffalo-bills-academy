@@ -77,7 +77,7 @@ Failed stages leave recoverable state. Receipts replay lost responses without an
 
 After displaying a result, the browser stores only its shift ID in the account-scoped localStorage key `acidMine.seenResult:<playerId>`. A later clock-in passes it as `afterShiftId`; no amount, bucket or balance is stored locally. If storage is unavailable or the response was never displayed, the server can replay the saved result. No database, dependency or environment setting is added.
 
-The shift map stores explored tiles and discovered pool IDs in `acidMine.map:<playerId>`, alongside the shift ID. Reloading the same shift restores the chart; starting a different shift replaces it, even on the same day's maze. With browser storage unavailable, exploration lasts until the page is closed. The map does not change the saved shift, pause its clock or remove the miner from PvP.
+The shift map stores explored tiles and discovered pool and wild-bug IDs in `acidMine.map:<playerId>`, alongside the shift ID. A sighted wild bug appears as an orange diamond while it is still available in that shift. Reloading the same shift restores the chart. Starting a different shift replaces it, even on the same day's maze. With browser storage unavailable, exploration lasts until the page is closed. Opening the map keeps the shift clock and PvP running.
 
 ## The daily mine and miner-vs-miner (v71)
 
