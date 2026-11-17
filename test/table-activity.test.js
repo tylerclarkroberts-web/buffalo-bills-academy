@@ -123,7 +123,7 @@ test('spectacles: used up, logged for the whole table, one a minute, and refused
   const outsider = await s.player('Cat');
   for (const id of ['show-balloons', 'show-fireworks']) await s.post(host, '/shop/buy', { id, confirm: true });
   await s.post(outsider, '/shop/buy', { id: 'show-balloons', confirm: true });
-  assert.equal((await s.call(host, 'GET', '/shop')).body.items.find((x) => x.id === 'show-balloons').price, 2500);
+  assert.equal((await s.call(host, 'GET', '/shop')).body.items.find((x) => x.id === 'show-balloons').price, 1000);
   assert.deepEqual((await s.call(host, 'GET', route)).body.myShows.map((x) => x.id).sort(), ['show-balloons', 'show-fireworks']);
   const bank = s.service.getPlayer(host.id).bankroll;
   const notifications = []; const unsub = s.service.subscribe(code, (version, extra) => notifications.push({ version, ...extra }));

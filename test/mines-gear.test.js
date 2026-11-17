@@ -35,7 +35,10 @@ function fixture(t, { own = {}, payout = 20000, pool = 99999, cave = 99, twin = 
 test('mine gear is in the store catalog and every shaft permit exists', () => {
   for (const x of MINE_ITEMS) assert.equal(CATALOG.includes(ITEM[x.id]), true);
   for (const s of SHAFTS) assert.ok(!s.permit || ITEM[s.permit], `${s.id}: no permit item`);
-  assert.deepEqual(SHAFTS.map((s) => s.max), [100, 400, 800, 1000]);
+  assert.deepEqual(SHAFTS.map((s) => s.max), [100, 400, 800, 1600]);
+  const buckets = MINE_ITEMS.filter((x) => x.cap).sort((a, b) => a.cap - b.cap);
+  buckets.forEach((b, i) => assert.ok(!i || b.price > buckets[i - 1].price, `${b.id}: a bigger bucket costs more than a smaller one`));
+  assert.equal(buckets.at(-1).cap, SHAFTS.at(-1).max, 'the biggest bucket fills the deepest shaft');
 });
 
 test('Shaft 7 stays one plain bucket however much gear you own', (t) => {
@@ -55,21 +58,21 @@ test('a deeper shaft needs its permit, charges the fare once and pays by the uni
   assert.equal(f.mines.office(f.player).shafts.find((x) => x.id === '8').open, true);
   assert.equal(f.mines.office(f.player).shafts.find((x) => x.id === '12').open, false);
   let s = f.start({ shaft: '8' });
-  assert.equal(s.capacity, 200); assert.equal(f.player.bankroll, 960);
+  assert.equal(s.capacity, 200); assert.equal(f.player.bankroll, 980);
   assert.equal(f.start({ shaft: '8' }).shiftId, s.shiftId, 'resuming is the same shift');
-  assert.equal(f.player.bankroll, 960, 'resuming never charges again');
+  assert.equal(f.player.bankroll, 980, 'resuming never charges again');
   f.clock.now = s.readyAt; s = f.call('probe', s);
   assert.equal(s.pools[0].quantity, 200, 'a full-fill roll is the whole 200-unit Shaft 8 bucket');
   const done = f.fill(s);
   assert.equal(done.result.collected, 200); assert.equal(done.result.amount, 160);
-  assert.equal(f.player.bankroll, 960 + 160);
+  assert.equal(f.player.bankroll, 980 + 160);
 });
 
 test('the elevator turns away a miner who cannot cover the fare', (t) => {
   const f = fixture(t, { own: { 'mine-permit8': 1 } });
-  f.player.bankroll = 39;
+  f.player.bankroll = 19;
   assert.throws(() => f.start({ shaft: '8' }), (e) => e.status === 402);
-  assert.equal(f.player.bankroll, 39); assert.equal(f.mines.doc.active.miner, undefined);
+  assert.equal(f.player.bankroll, 19); assert.equal(f.mines.doc.active.miner, undefined);
 });
 
 test('the straw and the shop-vac only change how fast the bucket fills', (t) => {
@@ -124,6 +127,6 @@ test('the other faun takes a third of a permit-shaft cheque; Shaft 7 never meets
   assert.doesNotMatch(JSON.stringify(s), /twin/, 'he is never sent to the client ahead of time');
   const done = f.fill(s).result;
   assert.deepEqual(done.twin, { took: 26.66 }); assert.equal(done.amount, 53.34);
-  assert.equal(f.player.bankroll, 1000 - 40 + 53.34, 'only the reduced cheque is paid');
+  assert.equal(f.player.bankroll, 1000 - 20 + 53.34, 'only the reduced cheque is paid');
   assert.equal(f.player.mining.earned, 53.34);
 });
