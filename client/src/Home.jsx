@@ -83,7 +83,8 @@ function useTables(me, path) {
       inFlight = true;
       setState((s) => ({ ...s, pending: true }));
       try {
-        const tables = await api('GET', path);
+        const result = await api('GET', path);
+        const tables = Array.isArray(result) ? result : result.tables;
         if (!stop) setState({ owner, path, tables, loading: false, loaded: true, pending: false, error: '' });
       } catch {
         if (!stop) setState((s) => ({ ...s, loading: false, pending: false, error: 'Could not load tables. Retrying shortly.' }));
@@ -123,17 +124,24 @@ export default function Home({ tab: tabProp }) {
   const { me, loading } = useSession();
   const wide = useWide();
   const personalTables = useTables(me, '/my-tables');
+  const blackjackTables = useTables(me, '/bj');
+  const scumTables = useTables(me, '/scum');
   const { tables } = personalTables;
+  const games = { poker: personalTables, blackjack: blackjackTables, scum: scumTables };
+  const allLoaded = Object.values(games).every((g) => g.loaded);
+  const allTables = Object.values(games).flatMap((g) => g.tables);
   const publicTables = useTables(me, '/public-tables');
   const [visibility, setVisibility] = useState('private');
   const [tableFilter, setTableFilter] = useState('open');
+  const [tableGame, setTableGame] = useState(null);
+  const game = tableGame || Object.keys(games).find((k) => games[k].tables.length) || 'poker';
   const [, setAfkTick] = useState(0); // re-render after dismissing the moved-out banner
   const [err, setErr] = useState(new URLSearchParams(window.location.search).get('signin') === 'failed' ? 'Google sign-in did not finish. Please try again.' : '');
   useEffect(() => { document.title = `${VENUE.name} · Texas Hold'em with friends`; }, []);
   useBrokeNudge(me);
-  const open = tables.filter((t) => t.status !== 'closed');
-  const myTurn = tables.filter((t) => t.myTurn).length;
-  const tab = tabProp || (me && (!personalTables.loaded || tables.length) ? 'tables' : 'new');
+  const open = allTables.filter((t) => !['closed', 'over'].includes(t.status));
+  const myTurn = allTables.filter((t) => t.myTurn).length;
+  const tab = tabProp || (me && (!allLoaded || allTables.length) ? 'tables' : 'new');
   const setTab = (k) => {
     navigate(`/?tab=${k}`, { replace: true });
     if (wide && k === 'new') document.getElementById('nt-name')?.focus();
@@ -156,8 +164,8 @@ export default function Home({ tab: tabProp }) {
   };
   const newTable = <NewTable setErr={setErr} vs={vs} setVs={setOpponent} inHeader={wide} visibility={visibility} setVisibility={setVisibility} form={form} setForm={setForm} suggest={suggest} busy={creating} setBusy={setCreating} pending={createPending} />;
   const startPublic = () => { setVisibility('public'); setOpponent('friends'); setTab('new'); };
-  const lobby = <LobbyPanel personalTables={personalTables} publicTables={publicTables} tab={tab} setTab={setTab} wide={wide} newTable={newTable} startPublic={startPublic} tableFilter={tableFilter} setTableFilter={setTableFilter} />;
-  const sign = <Marquee aside={wide ? <Facts me={me} open={personalTables.loaded ? open.length : null} myTurn={personalTables.loaded ? myTurn : null} /> : null} />;
+  const lobby = <LobbyPanel games={games} game={game} setGame={setTableGame} publicTables={publicTables} tab={tab} setTab={setTab} wide={wide} newTable={newTable} startPublic={startPublic} tableFilter={tableFilter} setTableFilter={setTableFilter} />;
+  const sign = <Marquee aside={wide ? <Facts me={me} open={allLoaded ? open.length : null} myTurn={allLoaded ? myTurn : null} /> : null} />;
   if (!wide) {
     return (
       <div className={`screen lobby5 narrow ${out ? 'out' : `tab-${tab}`} ${hb}`}>
@@ -258,58 +266,64 @@ const TURN_STATES = {
   leaving: 'Leaving after this hand', 'next-hand': 'Joining next hand',
   'not-seated': 'Not seated', 'out-of-chips': 'Out of chips', 'between-hands': 'Between hands',
 };
-function TableList({ tables, loaded, loading, error, pending, retry, setTab, filter, setFilter }) {
+const TABLE_GAMES = { poker: ['Poker', '/t/', '/?tab=new'], blackjack: ['Blackjack', '/bj/', '/bj'], scum: ['Scum', '/scum/', '/scum'] };
+function TableList({ tables, loaded, loading, error, pending, retry, setTab, filter, setFilter, game }) {
+  const poker = game === 'poker';
+  const [label, tablePath, startPath] = TABLE_GAMES[game];
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  const open = tables.filter((t) => t.status !== 'closed');
-  const closed = tables.filter((t) => t.status === 'closed');
+  const finished = (t) => t.status === 'closed' || (!poker && t.status === 'over');
+  const open = tables.filter((t) => !finished(t));
+  const closed = tables.filter(finished);
   const shown = filter === 'open' ? open : filter === 'closed' ? closed : tables;
   const seated = open.filter((t) => t.seated);
-  const multi = seated.length >= 2 ? (
+  const multi = poker && seated.length >= 2 ? (
     <button className="btn small multi-btn" onClick={() => navigate(`/multi?t=${seated.slice(0, 4).map((t) => t.code).join(',')}`)}>
       ▦ Play {Math.min(4, seated.length)} tables at once{seated.filter((t) => t.myTurn).length ? ` · ${seated.filter((t) => t.myTurn).length} waiting` : ''}
     </button>
   ) : null;
   const header = <>
-    <div className="seg table-filters" role="group" aria-label="Filter your tables">
-      {[['open', 'Open', open.length], ['closed', 'Closed', closed.length], ['all', 'All', tables.length]].map(([value, label, count]) => (
+    <div className="seg table-filters" role="group" aria-label={`Filter your ${label.toLowerCase()} tables`}>
+      {[['open', 'Open', open.length], ['closed', poker ? 'Closed' : 'Finished', closed.length], ['all', 'All', tables.length]].map(([value, label, count]) => (
         <button key={value} type="button" className={filter === value ? 'on' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label} ({loaded ? count : '—'})</button>
       ))}
     </div>
     {filter !== 'closed' && multi}
     {error && <div className="table-load-error">
-      <p role="alert">{loaded ? 'Couldn’t refresh. Showing last loaded tables.' : 'Couldn’t load your tables.'}</p>
+      <p role="alert">{loaded ? `Couldn’t refresh ${label.toLowerCase()}. Showing last loaded tables.` : `Couldn’t load your ${label.toLowerCase()} tables.`}</p>
       <button className="btn small" onClick={retry} disabled={pending}>{pending ? 'Retrying…' : 'Retry'}</button>
     </div>}
-    {loaded && shown.some((t) => t.status === 'playing') && <p className="small muted turn-help">Position is for this betting round. Raises, folds, and automatic actions can change it.</p>}
+    {poker && loaded && shown.some((t) => t.status === 'playing') && <p className="small muted turn-help">Position is for this betting round. Raises, folds, and automatic actions can change it.</p>}
   </>;
-  if (!loaded) return <div className="tables-loading">{header}{loading && <p className="small muted" role="status">Loading your tables…</p>}</div>;
+  if (!loaded) return <div className="tables-loading">{header}{loading && <p className="small muted" role="status">Loading your {label.toLowerCase()} tables…</p>}</div>;
   return (
     <Paged items={shown} rowH={88} gap={6} className="tables personal-tables" header={header} resetKey={filter}
       empty={<div className="empty">
-        <p>{filter === 'open' ? 'No open tables.' : filter === 'closed' ? 'No closed tables yet.' : "No tables yet. Start one, or open a friend's invite link."}</p>
+        <p>{filter === 'open' ? `No open ${label.toLowerCase()} tables.` : filter === 'closed' ? `No ${poker ? 'closed' : 'finished'} ${label.toLowerCase()} tables yet.` : `No ${label.toLowerCase()} tables yet. Start one, or open a friend's invite link.`}</p>
         <div className="row wrap">
-          {filter === 'open' && <button className="btn small" onClick={() => setFilter('closed')}>View closed tables</button>}
-          {filter !== 'closed' && setTab && <button className="btn primary small" onClick={() => setTab('new')}>Start a table</button>}
+          {filter === 'open' && closed.length > 0 && <button className="btn small" onClick={() => setFilter('closed')}>View {poker ? 'closed' : 'finished'} tables</button>}
+          {filter !== 'closed' && <button className="btn primary small" onClick={() => poker ? setTab('new') : navigate(startPath)}>Start a {label.toLowerCase()} table</button>}
         </div>
       </div>}
       render={(t) => {
-        const turn = t.turn;
+        const turn = poker ? t.turn : { actorName: t.actorName, deadline: t.deadline };
         const left = (deadline) => `${formatLeft(deadline - now)} left`;
-        const status = t.status === 'closed' ? 'Closed'
+        const status = !poker ? `${t.turnLabel}${t.myTurn && t.deadline ? ` · ${left(t.deadline)}` : ''}`
+          : t.status === 'closed' ? 'Closed'
           : t.myTurn ? `Your turn${t.deadline ? ` · ${left(t.deadline)}` : ''}`
           : t.status === 'lobby' ? t.isHost && readyOf(t) >= 2 ? 'Ready to start' : 'Not started'
           : turn?.state === 'pending' && turn.ahead > 0 ? turn.ahead === 1 ? 'You’re next' : `${turn.ahead} players ahead`
           : TURN_STATES[turn?.state] || 'Waiting on this betting round';
         return (
-        <button className={`trow ${t.myTurn ? 'myturn' : ''}`} onClick={() => { rememberTable(t.code); navigate(`/t/${t.code}`); }}>
+        <button className={`trow ${t.myTurn ? 'myturn' : ''}`} onClick={() => { if (poker) rememberTable(t.code); navigate(`${tablePath}${t.code}`); }}>
           <span className="t-name">{t.name}</span>
-          <span className="t-meta mono">{t.bots ? '🤖 Bots · ' : ''}{t.code} · {t.players}/{t.maxPlayers}{t.isHost ? ' · host' : ''}{t.handNumber ? ` · Hand ${t.handNumber}` : ''}</span>
-          <span className={`badge ${t.status === 'closed' ? 'dim' : t.myTurn ? 'hot' : t.status === 'lobby' && t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{status}</span>
+          <span className="t-meta mono">{t.bots ? '🤖 Bots · ' : ''}{t.code} · {t.players}/{poker ? t.maxPlayers : t.maxSeats}{t.isHost ? ' · host' : ''}{poker ? t.handNumber ? ` · Hand ${t.handNumber}` : '' : t.round ? ` · Round ${t.round}` : ''}</span>
+          <span className={`badge ${finished(t) ? 'dim' : t.myTurn ? 'hot' : poker && t.status === 'lobby' && t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{status}</span>
           {!t.myTurn && turn?.actorName && <span className="t-actor"><span className="ell">{turn.actorName}</span><span>to act{turn.deadline ? ` · ${left(turn.deadline)}` : ''}</span></span>}
+          {!poker && (t.myTurn || !turn?.actorName) && <span className="t-actor ell">{game === 'blackjack' ? `House: ${t.house}${t.isHouse ? ' (you)' : ''}` : t.titleLabel || ''}</span>}
         </button>
       ); }} />
   );
@@ -333,8 +347,8 @@ function PublicTableList({ tables, loading, error, startPublic }) {
   );
 }
 
-function LobbyPanel({ personalTables, publicTables, tab, setTab, wide, newTable, startPublic, tableFilter, setTableFilter }) {
-  const mine = personalTables.loaded ? personalTables.tables.length || null : '—';
+function LobbyPanel({ games, game, setGame, publicTables, tab, setTab, wide, newTable, startPublic, tableFilter, setTableFilter }) {
+  const mine = Object.values(games).every((g) => g.loaded) ? Object.values(games).reduce((n, g) => n + g.tables.length, 0) || null : '—';
   // v51: Join-by-code gone; Games tab holds blackjack, slots, Foff's Bachelor Party and Async Scum.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
   // clipped to a pink sliver with an empty gap (pager 1/N, no tappable rows).
@@ -346,7 +360,10 @@ function LobbyPanel({ personalTables, publicTables, tab, setTab, wide, newTable,
         {tabKey === 'public' ? <PublicTableList {...publicTables} startPublic={startPublic} />
           : tabKey === 'new' ? newTable
           : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /><FoffPromo /><ScumPromo /></div>
-          : <TableList {...personalTables} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />}
+          : <>
+            <Tabs label="Your table games" className="table-games" value={game} onChange={setGame} tabs={Object.entries(TABLE_GAMES).map(([key, [label]]) => [key, label, games[key].loaded ? String(games[key].tables.length) : '—'])} />
+            <TableList key={game} {...games[game]} game={game} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />
+          </>}
       </div>
     </div>
   );

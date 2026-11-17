@@ -81,10 +81,20 @@ test('full round to titles, then the exchange with private begs, then the King l
   const dee = s.view(P.d, v.code);
   const owe = dee.round.exchange.pairs.find((p) => p.from === 3).owe;
   assert.equal(owe.length, 2);
+  assert.equal(s.list(P.d)[0].turnLabel, 'Send tribute');
+  assert.equal(s.list(P.d)[0].myTurn, true);
+  assert.equal(s.list(P.d)[0].deadline, dee.round.exchange.pairs.find((p) => p.from === 3).due);
+  assert.equal(s.list(P.a)[0].turnLabel, 'Waiting for cards');
+  assert.equal(s.list(P.a)[0].myTurn, false);
   assert.throws(() => s.give(P.a, v.code, v2.round.hand.slice(0, 2)), /Wait for their cards/);
   s.tribute(P.d, v.code, 'spare a two, your highness');
   const ann = s.view(P.a, v.code);
   const pair = ann.round.exchange.pairs.find((p) => p.to === 0);
+  const annRow = s.list(P.a)[0];
+  assert.equal(annRow.turnLabel, 'Return cards'); assert.equal(annRow.myTurn, true);
+  assert.equal(annRow.actorName, 'Ann'); assert.equal(annRow.deadline, pair.due);
+  assert.equal(annRow.title, 'king');
+  assert.doesNotMatch(JSON.stringify(annRow), /spare a two|tribute|gift|hands|exchange/);
   assert.equal(pair.beg, 'spare a two, your highness'); assert.deepEqual(pair.tribute, owe);
   assert.ok(owe.every((c) => ann.round.hand.includes(c)));
   const bob = s.view(P.b, v.code);
@@ -193,6 +203,42 @@ test('joining mid-game waits for the next deal; presence dots; list shows whose 
   assert.deepEqual(s.view(P.b, v.code, { away: true }).here, []);
   const row = s.list(P.a)[0];
   assert.equal(row.code, v.code); assert.equal(typeof row.myTurn, 'boolean');
+  assert.equal(s.list(P.b)[0].turnLabel, 'Joining next round');
+  assert.equal(s.list(P.b)[0].myTurn, false);
+});
+
+test('lobby summaries include only memberships and public turn details through game end', () => {
+  const { s, P } = svc();
+  const v = s.create(P.a, { name: 'Porch', settings: { bots: 0 } });
+  let row = s.list(P.a)[0];
+  assert.equal(row.isHost, true); assert.equal(row.seated, true);
+  assert.equal(row.turnLabel, 'Not dealt'); assert.equal(row.deadline, null); assert.equal(row.actorName, null);
+  assert.deepEqual(s.list(P.d), []);
+  s.join(P.b, v.code); s.join(P.c, v.code); s.start(P.a, v.code);
+  const t = s.table(v.code);
+  rig(t, { 0: ['9h', '2c'], 1: ['Tc', '4d'], 2: ['3h', 'Jh'] }, [0, 1, 2]); s.clock(t);
+  row = s.list(P.a)[0];
+  assert.equal(row.turnLabel, 'Your turn'); assert.equal(row.myTurn, true);
+  assert.equal(row.actorName, 'Ann'); assert.equal(row.deadline, t.round.deadline);
+  assert.equal(row.round, 1); assert.equal(row.players, 3); assert.equal(row.maxSeats, 6);
+  const bob = s.list(P.b)[0];
+  assert.equal(bob.isHost, false); assert.equal(bob.seated, true); assert.equal(bob.myTurn, false);
+  assert.equal(bob.actorName, 'Ann'); assert.equal(bob.deadline, t.round.deadline);
+  assert.doesNotMatch(JSON.stringify(bob), /9h|2c|Tc|4d|3h|Jh|hands|deck|log/);
+  t.round.finished.push(1);
+  assert.equal(s.list(P.b)[0].turnLabel, 'Finished this round');
+  t.seats[1].broke = true;
+  assert.equal(s.list(P.b)[0].turnLabel, 'Sitting out');
+  t.hold = { order: [0, 1, 2], titles: null }; t.round = null;
+  assert.equal(s.list(P.a)[0].turnLabel, 'Waiting on the Acid Mines');
+  assert.equal(s.list(P.a)[0].round, 1); assert.equal(s.list(P.a)[0].deadline, null);
+  s.endGame(t, 'Test complete');
+  assert.equal(s.list(P.a)[0].turnLabel, 'Over'); assert.equal(s.list(P.a)[0].myTurn, false);
+  assert.equal(s.list(P.a)[0].actorName, null);
+  t.seats[1].left = true;
+  assert.deepEqual(s.list(P.b), []);
+  s.close(P.a, v.code);
+  assert.deepEqual(s.list(P.a), []);
 });
 
 test('slack: scum turns are public facts with a per-turn key; messages link the table', () => {
@@ -224,6 +270,9 @@ test('HTTP: routes, auth, and an app with old data and no scum.json still boots'
   assert.equal(st.status, 200, JSON.stringify(st.body)); assert.equal(st.body.status, 'playing');
   const lst = await call(bob, 'GET', '/api/scum');
   assert.equal(lst.body.tables[0].code, c.body.code); assert.ok(lst.body.limits.turnSecs.includes(86400));
+  assert.equal(lst.body.tables[0].seated, true); assert.equal(lst.body.tables[0].isHost, false);
+  assert.equal(typeof lst.body.tables[0].actorName, 'string');
+  assert.equal(typeof lst.body.tables[0].deadline, 'number');
   const bad = await call(bob, 'POST', `/api/scum/tables/${c.body.code}/play`, { cards: ['Zz'] });
   assert.equal(bad.status, 409);
   assert.equal((await call(ann, 'GET', '/api/scum/tables/NOPE99')).status, 404);

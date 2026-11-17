@@ -125,10 +125,31 @@ export class Blackjack {
     return { settings: s, royal: royalInfo(s.royal), ruleText: RULE_TEXT(s.rules), edge: edgeReport(s), options: ruleOptions(s.rules, g), caps, problems: g ? guntradProblems(s) : [] };
   }
   list(p) {
-    return Object.values(this.doc.tables).filter((t) => t.status !== 'closed' && (t.hostId === p.id || t.house.id === p.id || t.seats.some((s) => s && !s.left && s.id === p.id)))
-      .map((t) => ({ edge: edgeSummary(t), code: t.code, name: t.name, status: t.status, house: t.house.name, players: t.seats.filter((s) => s && !s.left).length, maxSeats: t.maxSeats,
-        myTurn: C.isContinuous(t) ? Object.entries(t.lanes || {}).some(([i, l]) => t.seats[i]?.id === p.id && !t.seats[i].left && l.status === 'playing' && ['play', 'insurance'].includes(l.round?.phase))
-          : !!(t.round?.phase === 'play' && t.seats[t.round.hands[t.round.turn]?.seat]?.id === p.id) }));
+    return Object.values(this.doc.tables).filter((t) => t.status !== 'closed' && (t.hostId === p.id || t.house.id === p.id || t.seats.some((s) => s && (!s.left || t.status === 'over') && s.id === p.id)))
+      .map((t) => {
+        const seat = t.seats.findIndex((s) => s && (!s.left || t.status === 'over') && s.id === p.id);
+        const me = seat >= 0 && !t.seats[seat].left ? seat : -1;
+        const continuous = C.isContinuous(t), lane = seat >= 0 ? t.lanes?.[seat] : null;
+        const r = continuous ? lane?.round : t.round;
+        const playing = t.status === 'playing' && (!continuous || lane?.status === 'playing');
+        const hand = r?.phase === 'play' ? r.hands[r.turn] : null;
+        const betting = playing && r?.phase === 'betting' && me >= 0 && !r.bets[me] && t.seats[me].chips >= t.limits.min
+          && (continuous ? C.laneMaxBet(t, me) : G.maxBetNow(t)) >= t.limits.min;
+        const insurance = playing && r?.phase === 'insurance' && me >= 0 && r.hands.some((h) => h.seat === me) && !(me in r.insurance);
+        const myTurn = !!(betting || insurance || (playing && me >= 0 && hand?.seat === me && !hand.done));
+        const actor = playing && hand && !hand.done ? t.seats[hand.seat] : null;
+        const turnLabel = t.status === 'over' ? 'Over'
+          : t.status === 'lobby' ? t.hostId === p.id && t.seats.some((s) => s && !s.left) && (t.house.mode === 'guntrad' || t.house.id) ? 'Ready to start' : 'Not started'
+          : lane?.status === 'over' ? 'Cash out'
+          : betting ? 'Place your bet' : insurance ? 'Insurance?' : myTurn ? 'Your turn'
+          : r?.phase === 'betting' ? r.bets[me]?.out ? 'Sitting out' : me >= 0 && t.seats[me].chips < t.limits.min && !r.bets[me] ? 'Out of chips'
+            : continuous && me >= 0 && !r.bets[me] ? 'Waiting for house bank' : 'Waiting for bets'
+          : r?.phase === 'insurance' ? 'Waiting for insurance' : 'Playing';
+        return { edge: edgeSummary(t), code: t.code, name: t.name, status: t.status, house: t.house.name,
+          players: t.seats.filter((s) => s && (!s.left || t.status === 'over')).length, maxSeats: t.maxSeats,
+          isHost: t.hostId === p.id, isHouse: t.house.id === p.id, seated: me >= 0, round: r?.no || 0,
+          myTurn, turnLabel, actorName: actor?.name || null, deadline: playing ? r?.deadline || null : null };
+      });
   }
   create(p, { name, settings }) {
     this.accounts.ensure(p);

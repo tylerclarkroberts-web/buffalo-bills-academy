@@ -62,7 +62,25 @@ export class Scum {
   list(p) {
     return Object.values(this.doc.tables).filter((t) => t.status !== 'closed' && (t.hostId === p.id || t.seats.some((s) => s && !s.left && s.id === p.id)))
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-      .map((t) => { const me = t.seats.findIndex((s) => s && !s.left && s.id === p.id); return { code: t.code, name: t.name, status: t.status, players: t.seats.filter((s) => s && !s.left).length, maxSeats: t.maxSeats, round: t.round?.no || 0, myTurn: me >= 0 && this.waitingOn(t).includes(me), title: me >= 0 ? t.titles?.[me] || null : null }; });
+      .map((t) => {
+        const me = t.seats.findIndex((s) => s && !s.left && s.id === p.id);
+        const r = t.round, waiting = this.waitingOn(t);
+        const myTurn = me >= 0 && waiting.includes(me);
+        const pairs = r?.phase === 'exchange' ? r.exchange.pairs.filter((pr) => !pr.given) : [];
+        const pair = pairs.find((pr) => (pr.paid ? pr.to : pr.from) === me) || pairs.slice().sort((a, b) => a.due - b.due)[0];
+        const actor = pair ? pair.paid ? pair.to : pair.from : waiting[0];
+        const turnLabel = t.status === 'over' ? 'Over' : t.status === 'lobby' ? 'Not dealt'
+          : me < 0 ? 'Not seated' : t.seats[me].broke ? 'Sitting out'
+          : t.hold ? 'Waiting on the Acid Mines' : t.seats[me].waiting ? 'Joining next round'
+          : r?.finished.includes(me) ? 'Finished this round'
+          : myTurn ? pair ? pair.paid ? 'Return cards' : 'Send tribute' : 'Your turn'
+          : r?.phase === 'exchange' ? 'Waiting for cards' : 'Waiting for your turn';
+        return { code: t.code, name: t.name, status: t.status, players: t.seats.filter((s) => s && !s.left).length,
+          maxSeats: t.maxSeats, round: r?.no || t.roundNo || 0, myTurn, title: me >= 0 ? t.titles?.[me] || null : null,
+          isHost: t.hostId === p.id, seated: me >= 0, turnLabel, titleLabel: me >= 0 ? S.TITLES[t.titles?.[me]] || null : null,
+          actorName: waiting.length && actor != null ? this.nm(t, actor) : null,
+          deadline: waiting.length ? pair?.due ?? r?.deadline ?? null : null };
+      });
   }
   create(p, { name, settings } = {}) {
     let code; do { code = Array.from({ length: 6 }, () => ALPHA[crypto.randomInt(ALPHA.length)]).join(''); } while (this.doc.tables[code]);
