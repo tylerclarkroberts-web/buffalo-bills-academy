@@ -149,7 +149,7 @@ function BjLobby({ me }) {
         <button key={t.code} className="bj-row" onClick={() => navigate(`/bj/${t.code}`)}>
           <b>{t.name}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats} · house {t.house || '?'}</span>
           {t.edge && <span className="bj-rowedge" data-test="bj-rowedge"><em className={`t-${t.edge.main.tone}`}>Edge {ept(t.edge.main.edge)}</em>{Object.entries(t.edge.side).map(([k, x]) => <em key={k} className={`t-${x.tone}`}>{k === 'match' ? 'RM' : 'RP'} {ept(x.edge)}</em>)}{(t.edge.needsAck || t.edge.grandfathered) && <em className="t-poor">⚠</em>}</span>}
-          <span className={`badge ${t.myTurn ? 'hot' : ''}`}>{t.myTurn ? 'Your turn' : t.status === 'lobby' ? 'Not started' : 'Playing'}</span>
+          <span className={`badge ${t.myTurn ? 'hot' : ''}`}>{t.turnLabel}</span>
         </button>)) : <p className="small dim">No blackjack tables yet.</p>}
     </div>
   );

@@ -1477,8 +1477,8 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 .personal-tables > .paged-box { min-height: 88px; overflow: visible; }
 .lobby5.narrow .personal-tables .paged-row { min-height: 88px; }
 .personal-tables .trow { height: 88px; grid-template-columns: minmax(0, 1fr) minmax(0, auto); grid-template-rows: auto auto auto; gap: 2px 8px; }
-.personal-tables .trow .badge { max-width: 180px; white-space: normal; text-align: right; font-size: 10px; }
-.personal-tables .t-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.personal-tables .trow .badge { grid-row: 1; max-width: 180px; white-space: normal; text-align: right; font-size: 10px; }
+.personal-tables .t-meta { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-actor { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 12px; }
 .t-actor > :last-child { flex: none; }
 .turn-help { margin: 0 0 6px; flex: none; }
@@ -1493,6 +1493,8 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 .nt-visibility { display: grid; gap: 4px; min-width: 0; }
 .nt-visibility p { margin: 0; }
 .lobby5.narrow .lobby-panel .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lobby-panel .panel-body .tabs.table-games { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 6px; flex: none; }
+.lobby-panel .table-games button { min-height: 44px; padding-inline: 4px; }
 
 /* v51d: on Your tables, shrink the marquee so the pager can fit several full rows */
 @media (max-width: 899px) {

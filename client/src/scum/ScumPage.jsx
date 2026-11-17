@@ -103,7 +103,7 @@ function ScumLobby({ me }) {
       {info.tables.length ? info.tables.map((t) => (
         <button key={t.code} className="bj-row" onClick={() => navigate(`/scum/${t.code}`)}>
           <b>{t.name}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats}{t.round ? ` · round ${t.round}` : ''}{t.title ? ` · ${TITLE[t.title]}` : ''}</span>
-          <span className={`badge ${t.myTurn ? 'hot' : ''}`}>{t.myTurn ? 'Your turn' : t.status === 'lobby' ? 'Not dealt' : t.status === 'over' ? 'Over' : 'Playing'}</span>
+          <span className={`badge ${t.myTurn ? 'hot' : ''}`}>{t.turnLabel}</span>
         </button>)) : <p className="small dim">No scum tables yet.</p>}
     </div>
   );

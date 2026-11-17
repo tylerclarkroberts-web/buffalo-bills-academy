@@ -69,6 +69,68 @@ function step(f, t, id, bet = 10) {
   return false;
 }
 
+test('blackjack list summarizes betting, insurance and the acting player without cards', (t) => {
+  const f = fixture(t), tb = f.open({ house: 'me' }, ['ann', 'bob']);
+  const summary = (id) => f.bj.list(f.P[id])[0];
+  assert.equal(summary('house').isHost, true);
+  assert.equal(summary('house').isHouse, true);
+  assert.equal(summary('house').seated, false);
+  assert.equal(summary('house').myTurn, false);
+  assert.equal(summary('ann').round, 1);
+  assert.equal(summary('ann').turnLabel, 'Place your bet');
+  assert.equal(summary('ann').myTurn, true);
+  tb.deck = ['7d', '8h', '6c', 'As', '9d', 'Th'];
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  assert.equal(summary('ann').myTurn, false);
+  assert.equal(summary('ann').turnLabel, 'Waiting for bets');
+  assert.equal(summary('bob').deadline, f.now + tb.turnSec * 1000);
+  f.bj.bet(f.P.bob, tb.code, { bet: 10 });
+  assert.equal(summary('ann').turnLabel, 'Insurance?');
+  assert.equal(summary('ann').myTurn, true);
+  f.bj.insure(f.P.ann, tb.code, false);
+  assert.equal(summary('ann').myTurn, false);
+  assert.equal(summary('ann').turnLabel, 'Waiting for insurance');
+  assert.equal(summary('bob').myTurn, true);
+  f.bj.insure(f.P.bob, tb.code, false);
+  assert.equal(summary('ann').turnLabel, 'Your turn');
+  assert.equal(summary('ann').myTurn, true);
+  assert.equal(summary('bob').actorName, 'ann');
+  assert.equal(summary('bob').myTurn, false);
+  assert.equal(summary('bob').deadline, tb.round.deadline);
+  const row = summary('ann');
+  assert.deepEqual(Object.keys(row).sort(), ['edge', 'code', 'name', 'status', 'house', 'players', 'maxSeats', 'isHost', 'isHouse', 'seated', 'round', 'myTurn', 'turnLabel', 'actorName', 'deadline'].sort());
+  assert.deepEqual(f.bj.list(f.P.cat), [], 'unrelated players get no private table listing');
+});
+
+test('blackjack list uses only the viewer lane and retains finished membership', (t) => {
+  const f = fixture(t), tb = f.open({ house: 'me', continuous: true }, ['ann', 'bob']);
+  const summary = (id) => f.bj.list(f.P[id])[0];
+  tb.lanes[0].deck = rig('Th', 'Ac', '6d', '8s');
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  assert.equal(summary('ann').turnLabel, 'Insurance?');
+  assert.equal(summary('bob').turnLabel, 'Place your bet');
+  assert.equal(summary('bob').actorName, null);
+  assert.equal(summary('bob').deadline, null, 'another lane deadline must not leak into this seat');
+  assert.equal(summary('house').myTurn, false);
+  assert.equal(summary('house').round, 0, 'the house has no shared round in continuous play');
+  f.bj.insure(f.P.ann, tb.code, false);
+  assert.equal(summary('ann').turnLabel, 'Your turn');
+  f.bj.act(f.P.ann, tb.code, 'stand');
+  assert.equal(summary('ann').round, 2);
+  assert.equal(summary('bob').round, 1);
+  f.bj.leave(f.P.bob, tb.code);
+  assert.deepEqual(f.bj.list(f.P.bob), [], 'a departed player does not keep a live membership');
+  f.bj.mutate(tb, f.P.house.id, () => f.bj.endTable(tb, 'Test finished'));
+  assert.equal(summary('ann').status, 'over');
+  assert.equal(summary('ann').turnLabel, 'Over');
+  assert.equal(summary('ann').round, 2);
+  assert.equal(summary('ann').myTurn, false);
+  assert.equal(summary('ann').seated, false);
+  assert.equal(summary('ann').deadline, null);
+  f.bj.close(f.P.house, tb.code);
+  assert.deepEqual(f.bj.list(f.P.ann), [], 'closed tables stay excluded from the existing lobby list');
+});
+
 test('continuous: each seat runs its own single-deck rounds without waiting on anyone', (t) => {
   const f = fixture(t);
   const tb = f.open({ house: 'me', continuous: true });
