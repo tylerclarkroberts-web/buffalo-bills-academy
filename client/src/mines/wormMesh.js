@@ -4,7 +4,7 @@
 // small jointed legs that skitter and twitch as it clings to your goggles. The shell glistens, slimy and pitted, in
 // acid green and bile yellow; it oozes drips, and a pale wet fleshy underside shows at the edges. Antennae twitch.
 // The uncanny part: two wet human eyes, set too close on the head, follow your finger, and a small human mouth with
-// teeth opens and closes on a fleshy lip under the front rim. It moves slightly wrong: two rhythms that never line
+// teeth opens and closes on a fleshy lip below the eyes. It moves slightly wrong: two rhythms that never line
 // up, a stutter now and then as if the film skipped, and a twitch. Gross but not gory: no blood. Cut it and it
 // cracks into shell pieces and loose twitching legs. No DOM here (node --test builds it); WormLayer.js draws it.
 //
@@ -219,7 +219,7 @@ function faceGeometries() {
     iris.push(part(new THREE.CircleGeometry(E * 0.3, 6), '#050505', x, 0, 0.033));
     iris.push(part(new THREE.CircleGeometry(E * 0.13, 4), '#ffffff', x + E * 0.22, E * 0.22, 0.034)); // the wet glint
   }
-  // the mouth sits on a pale fleshy lip that bulges out under the front rim; it's upside down to you, which is worse
+  // the mouth sits on a pale fleshy lip below the eyes
   const mouth = [part(new THREE.CircleGeometry(0.036, 8), '#e2c6ae', 0, 0, 0.0, 1, 0.62, 1),
     part(new THREE.RingGeometry(0.017, 0.026, 8, 1), '#b8807a', 0, 0, 0.004, 1, 0.5, 1),
     part(new THREE.CircleGeometry(0.019, 8), '#2a0808', 0, 0, 0.003, 1, 0.42, 1)];
@@ -246,7 +246,9 @@ export function buildWorm(mats, { rand = Math.random, reduce = false } = {}) {
   const drips = Array.from({ length: DRIPS }, () => ({ row: 3 + Math.floor(rand() * THORAX) * 2 + 1, side: rand() < 0.5 ? -1 : 1, phase: rand() * 4, period: 2.2 + rand() * 1.8 }));
   const f = faceGeometries(), face = new THREE.Group();
   const eyes = new THREE.Mesh(f.eyes, mats.eye), iris = new THREE.Mesh(f.iris, mats.iris), mouth = new THREE.Mesh(f.mouth, mats.mouth);
-  const lids = new THREE.Group(); lids.add(eyes, iris); mouth.position.y = 0.075; face.add(lids, mouth); group.add(face);
+  const lids = new THREE.Group(); lids.add(eyes, iris);
+  // These offsets share the enlarged face's scale: keep the eyes and opening mouth inside the head shield.
+  lids.position.y = 0.025; mouth.position.y = -0.009; face.add(lids, mouth); group.add(face);
   let pts = [];
   const api = {
     group, writhe, body, limbs, face, smear,
@@ -259,7 +261,7 @@ export function buildWorm(mats, { rand = Math.random, reduce = false } = {}) {
       const h = pts[HEAD_ROW + 1], ang = h.dir - Math.PI / 2;
       face.position.set(h.x, h.y, ZMAX * h.h + 0.012); face.rotation.z = ang; face.scale.setScalar(2.2);
       const g = gaze(h, target, ang); iris.position.set(g.x, g.y, 0);
-      lids.scale.y = 1 - 0.9 * writhe.blink(); mouth.scale.y = 0.7 + writhe.mouth() * 1.2;
+      lids.scale.y = 1 - 0.9 * writhe.blink(); mouth.scale.y = 0.25 + writhe.mouth() * 0.3;
       return api;
     },
     /** Head position (box-local) for the eyes. */

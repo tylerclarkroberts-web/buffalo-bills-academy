@@ -1,7 +1,7 @@
 // three.js renderer for one Acid Mines shift: low-res first-person tunnels, headlamp, glowing pool, drips.
 import * as THREE from 'three';
 import { rng, distFrom, pathSteps, geigerFacing, RUBBLE } from '../../../server/engine/maze.js';
-import { MIN_GAP } from './stalker.js';
+import { MIN_GAP, lineOfSight } from './stalker.js';
 import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -10,8 +10,11 @@ import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
+import { buildMineHands, resizeMineHands, stepMineHands } from './hands.js';
+import { buildMineEntrance } from './entrance.js';
+import { WALK_SPEED, RUN_SPEED } from './controls.js';
 
-export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
+export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, TURN = 2.3;
 const BUG_GLOW = 1.6; // a bug billboard's own light at rest
 
 // How each shaft looks, in elevator order (7, 8, 12, Earl's Level): the deeper the permit, the worse the place.
@@ -79,16 +82,24 @@ function caveSignTexture() {
     g.fillStyle = '#ff5a2a'; g.font = 'bold 22px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('CAVE-IN', w / 2, h / 2 + 1);
   });
 }
-// The door behind where you clock in: a plain riveted steel bulkhead, dark and easy to miss. Original art.
+// The red door beside the lift. Whatever is behind it is still at work.
 function doorTexture() {
   return canvasTex(64, 128, (g, w, h) => {
-    g.fillStyle = '#23211d'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 500; i++) { const v = 28 + Math.floor(Math.random() * 18); g.fillStyle = `rgb(${v},${v - 2},${v - 6})`; g.fillRect(Math.floor(Math.random() * w), Math.floor(Math.random() * h), 2, 1); }
+    g.fillStyle = '#b74d3b'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 500; i++) { const v = Math.floor(Math.random() * 24); g.fillStyle = `rgb(${120 + v},${42 + v},${29 + v})`; g.fillRect(Math.floor(Math.random() * w), Math.floor(Math.random() * h), 2, 1); }
     g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(4, 40, w - 8, 2); g.fillRect(4, 86, w - 8, 2); // panel seams
     g.fillStyle = '#4a463d'; for (const y of [8, 36, 46, 82, 92, 120]) for (const x of [8, 22, 42, 56]) g.fillRect(x, y, 2, 2); // rivets
     g.fillStyle = '#3b3830'; g.fillRect(48, 60, 9, 4); // handle
-    g.fillStyle = 'rgba(160,120,60,.45)'; g.font = 'bold 9px monospace'; g.fillText('B-7', 24, 66); // faded stencil
+    g.fillStyle = '#e4cba1'; g.font = 'bold 11px monospace'; g.fillText('HALL', 18, 62);
     g.fillStyle = 'rgba(80,40,10,.35)'; for (let i = 0; i < 6; i++) g.fillRect(Math.floor(Math.random() * w), 100 + Math.floor(Math.random() * 20), 1, 8); // rust runs
+  });
+}
+function liftSignTexture() {
+  return canvasTex(128, 40, (g, w, h) => {
+    g.fillStyle = '#302b1d'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#9d8051'; g.lineWidth = 3; g.strokeRect(2, 2, w - 4, h - 4);
+    g.fillStyle = '#f5e3b1'; g.font = 'bold 24px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SURFACE', w / 2, h / 2 + 1);
+    g.fillStyle = '#14160f'; g.fillRect(5, 5, 4, 4); g.fillRect(w - 9, h - 9, 4, 4);
   });
 }
 function poolTexture(acid = plainAcid) {
@@ -104,7 +115,7 @@ function poolTexture(acid = plainAcid) {
 function disposeMeshes(root, textures = true) {
   const resources = new Set();
   root.traverse((o) => {
-    if (o.geometry) resources.add(o.geometry);
+    if (o.geometry && !o.isSprite) resources.add(o.geometry);
     for (const material of [].concat(o.material || [])) {
       resources.add(material);
       if (textures && material.map) resources.add(material.map);
@@ -232,23 +243,12 @@ export class MineScene {
       const a = r() * Math.PI * 2; c.position.set(this.poolPos.x + Math.cos(a) * (0.95 + r() * 0.15), 0.1, this.poolPos.z + Math.sin(a) * (0.95 + r() * 0.15)); c.scale.y = 2.2; this.scene.add(c); this.crystals.push(c);
     }
 
-    // The door (v27): on the wall behind the start, so you only see it if you turn all the way around.
-    // Purely decorative as far as the shift goes: it opens a side room in the page and never talks to the server.
+    // The lift and the Hall of Doors share the rear wall without changing the walkable maze.
     {
-      const behindX = maze.facing === 0; // facing +x down the first corridor: the door is on the -x wall, else the -z wall
-      const face = TILE / 2 - 0.02;
-      const door = new THREE.Group();
-      const slab = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 2.05), new THREE.MeshLambertMaterial({ map: doorTexture(), emissive: '#0b0805' }));
-      slab.position.y = 1.025; slab.name = 'mine-door'; door.add(slab);
-      const seamMat = new THREE.MeshBasicMaterial({ color: '#ff6a2a', transparent: true, opacity: 0.7 });
-      for (const [w, h, x, y] of [[1.1, 0.025, 0, 2.06], [0.025, 2.06, -0.54, 1.03], [0.025, 2.06, 0.54, 1.03], [1.1, 0.02, 0, 0.01]]) {
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), seamMat); m.position.set(x, y, 0.004); door.add(m);
-      }
-      if (behindX) { door.position.set(maze.start.x * TILE - face, 0, maze.start.y * TILE); door.rotation.y = Math.PI / 2; }
-      else { door.position.set(maze.start.x * TILE, 0, maze.start.y * TILE - face); }
-      this.scene.add(door);
-      this.door = { group: door, slab, seamMat, normal: behindX ? new THREE.Vector2(1, 0) : new THREE.Vector2(0, 1) };
-      this.doorLight = new THREE.PointLight('#ff5a1f', 1.6, 2.2, 2); this.doorLight.position.set(door.position.x + this.door.normal.x * 0.3, 0.3, door.position.z + this.door.normal.y * 0.3); this.scene.add(this.doorLight);
+      const entrance = buildMineEntrance(maze, doorTexture(), liftSignTexture()); this.scene.add(entrance.group);
+      this.door = entrance.door; this.lift = entrance.lift;
+      const p = this.door.group.position;
+      this.doorLight = new THREE.PointLight('#ff5a1f', 1.6, 2.2, 2); this.doorLight.position.set(p.x + this.door.normal.x * .3, .3, p.z + this.door.normal.y * .3); this.scene.add(this.doorLight);
       this.raycaster = new THREE.Raycaster();
     }
 
@@ -274,7 +274,7 @@ export class MineScene {
     if (this.bugGuide?.armed) this.addBugGuide(this.bugGuide.bug);
     this.pos = new THREE.Vector2(maze.start.x * TILE, maze.start.y * TILE);
     this.yaw = -maze.facing - Math.PI / 2; this.pitch = 0;
-    this.input = { f: 0, s: 0, t: 0 };
+    this.input = { f: 0, s: 0, t: 0, run: false };
     this.bob = 0; this.mining = false; this.t0 = performance.now(); this.last = this.t0;
     this.resize();
     this.loop = this.loop.bind(this);
@@ -313,11 +313,12 @@ export class MineScene {
     this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
     if (this.self.tag) this.self.tag.visible = false;
     this.self.group.visible = false; this.scene.add(this.self.group);
+    this.hands = buildMineHands(who.avatar?.seed || who.id); resizeMineHands(this.hands, this.camera.aspect);
   }
   startDance(id) {
     const d = danceId(id); if (!d) return false;
     if (d !== this.dance) { this.dance = d; this.danceT = 0; }
-    this.danceOrbit = 0; this.input.f = this.input.s = this.input.t = 0;
+    this.danceOrbit = 0; this.input.f = this.input.s = this.input.t = 0; this.input.run = false;
     return true;
   }
   stopDance() { this.dance = null; }
@@ -340,6 +341,7 @@ export class MineScene {
     const minH = (76 * Math.PI) / 180;
     this.baseFov = this.camera.fov = Math.min(105, Math.max(72, (2 * Math.atan(Math.tan(minH / 2) / this.camera.aspect) * 180) / Math.PI));
     this.camera.updateProjectionMatrix();
+    if (this.hands) resizeMineHands(this.hands, w / h);
   }
   blocked(x, z) {
     const g = this.maze.grid;
@@ -383,7 +385,8 @@ export class MineScene {
 
   updateFaun(now, dt) {
     const fn = this.faun, m = this.faunMesh; if (!fn || !m) return;
-    fn.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart, pushing: this.pushing });
+    fn.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart, pushing: this.pushing,
+      busy: this.mining || !!this.dance || this.distanceToPool() < 1.8 });
     while (fn.events.length) {
       const ev = fn.events.shift();
       this.onEvent?.(ev === 'appear' ? 'faun-appear' : ev === 'bleat' ? 'faun-bleat' : ev === 'yield' ? 'faun-yield' : ev);
@@ -392,8 +395,8 @@ export class MineScene {
     if (!fn.present) { g.visible = false; return; }
     g.visible = true;
     g.position.set(fn.x, 0, fn.z);
-    g.rotation.y = fn.facing;
-    trotFaun(m, now, fn.moving, this.reduce);
+    g.rotation.y = fn.facing + Math.PI * (this.reduce ? Number(fn.moon > 0) : fn.moon);
+    trotFaun(m, now, fn.moving, this.reduce, fn.moon);
   }
 
   /** A bug as a small glowing billboard: its pixel sprite, readable from down the tunnel. The guide's light pulses (updateBugGuide); a wild bug's holds at BUG_GLOW. */
@@ -566,22 +569,28 @@ export class MineScene {
     if (e.gone === 1) { e.group.position.y = a * 1.1; e.group.scale.setScalar(1 - a * 0.7); } else { e.group.position.y = -a * 0.45; e.light.intensity = 2.2 * (1 - a); }
     if (a >= 1) e.group.visible = false;
   }
-  /** How far the door is and whether you're looking at it (1 = straight at it). */
-  doorView() {
-    if (!this.door) return { dist: 99, facing: -1 };
-    const p = this.door.group.position, dx = p.x - this.pos.x, dz = p.z - this.pos.y, d = Math.hypot(dx, dz) || 1;
+  /** Nearby entrance controls must be on this side of the wall, with clear tunnel between you and them. */
+  entranceView(target) {
+    const unavailable = { dist: 99, facing: -1 };
+    if (!target) return unavailable;
+    const p = target.group.position, dx = p.x - this.pos.x, dz = p.z - this.pos.y, d = Math.hypot(dx, dz) || 1;
+    if (d >= 2.1 || dx * target.normal.x + dz * target.normal.y >= 0) return unavailable;
+    if (this.maze.grid[Math.round(this.pos.y / TILE)]?.[Math.round(this.pos.x / TILE)] !== 0 || !lineOfSight(this.maze.grid, this.pos.x, this.pos.y, p.x, p.z)) return unavailable;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     return { dist: d, facing: (fx * dx + fz * dz) / d };
   }
-  /** Did a tap at this screen point land on the door (and close enough to reach)? */
-  hitsDoor(clientX, clientY) {
-    if (!this.door) return false;
+  doorView() { return this.entranceView(this.door); }
+  liftView() { return this.entranceView(this.lift); }
+  hitsEntrance(target, clientX, clientY) {
+    const view = this.entranceView(target);
+    if (view.dist >= 2.1 || view.facing <= 0) return false;
     const r = this.renderer.domElement.getBoundingClientRect();
     const v = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(v, this.camera);
-    const hit = this.raycaster.intersectObject(this.door.slab, false)[0];
-    return !!hit && hit.distance < 4.5;
+    return this.raycaster.intersectObject(target.slab, false).length > 0;
   }
+  hitsDoor(clientX, clientY) { return this.hitsEntrance(this.door, clientX, clientY); }
+  hitsLift(clientX, clientY) { return this.hitsEntrance(this.lift, clientX, clientY); }
   /** Behind the door: stop drawing (and stop the visitor) until you come back. The shift clock is the server's and keeps going. */
   setPaused(p) {
     if (p === !!this.paused) return;
@@ -603,10 +612,11 @@ export class MineScene {
   loop(now) {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
+    const startX = this.pos.x, startY = this.pos.y;
     const { f, s, t } = this.input;
     if (!this.dance) this.yaw -= t * TURN * dt;
     if (!this.mining && !this.dance && (f || s)) {
-      const sp = SPEED * dt * (f && s ? 0.75 : 1);
+      const sp = (this.input.run ? RUN_SPEED : WALK_SPEED) * dt * (f && s ? 0.75 : 1);
       const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw); // forward
       const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw); // right
       const dx = (fx * f + rx * s) * sp, dz = (fz * f + rz * s) * sp;
@@ -674,6 +684,13 @@ export class MineScene {
     this.stepEgg(now);
     this.onNear?.(this.distanceToPool(), this.pathToPool(), this.facingToPool());
     this.renderer.render(this.scene, this.camera);
+    if (this.hands) {
+      stepMineHands(this.hands, dt, { distance: Math.hypot(this.pos.x - startX, this.pos.y - startY), mining: this.mining, hidden: !!this.dance || this.danceBlend > .001, reduce: this.reduce });
+      if (this.hands.group.visible) {
+        this.renderer.autoClear = false; this.renderer.clearDepth();
+        this.renderer.render(this.hands.scene, this.hands.camera); this.renderer.autoClear = true;
+      }
+    }
     this.raf = requestAnimationFrame(this.loop);
   }
   /**
@@ -718,6 +735,7 @@ export class MineScene {
     cancelAnimationFrame(this.raf);
     this.miners?.dispose();
     if (this.self) { this.scene.remove(this.self.group); disposeMeshes(this.self.group); this.self = null; }
+    if (this.hands) { disposeMeshes(this.hands.scene); this.hands = null; }
     if (this.horror) for (const m of this.horror.meshes.values()) { this.scene.remove(m.group); disposeCrewMember(m); }
     disposeMeshes(this.scene);
     this.renderer.dispose();

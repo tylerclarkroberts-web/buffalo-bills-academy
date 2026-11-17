@@ -136,5 +136,11 @@ export function danceStep(m, id, t, { reduce = false } = {}) {
   const d = danceId(id); if (!d) return false;
   const b = t * (BPM / 60) * (reduce ? 0.6 : 1);
   MOVES[d](m, b, reduce ? 0.45 : 1, { reduce });
+  if (d === 'spin' && !reduce) {
+    // Keep the horizontal body over the miner instead of swinging its head into the tunnel wall.
+    const lean = .95 * Math.sin(m.body.rotation.z);
+    m.body.position.x = lean * Math.cos(m.body.rotation.y);
+    m.body.position.z = -lean * Math.sin(m.body.rotation.y);
+  }
   return true;
 }

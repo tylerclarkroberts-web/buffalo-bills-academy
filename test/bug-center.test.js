@@ -160,7 +160,7 @@ test('a fainted bug stays home from the mines and shows swirly eyes at the table
 
 test('a guide bug earns a little XP for each acid pool it finds, once; a fainted one earns nothing', (t) => {
   const f = fixture(t);
-  const find = (p) => { const s = f.mines.start(p, V); f.clock.now = s.readyAt; f.mines.probe(p, s.shiftId, { ...V, poolId: s.currentPoolId }); f.mines.probe(p, s.shiftId, { ...V, poolId: s.currentPoolId }); };
+  const find = (p) => { const s = f.mines.start(p, V); f.mines.probe(p, s.shiftId, { ...V, poolId: s.currentPoolId }); f.mines.probe(p, s.shiftId, { ...V, poolId: s.currentPoolId }); };
   find(f.ann);
   assert.equal(f.barn.doc.pens.ann.xp, 640 + FIND_XP, 'probing the same pool twice pays once');
   f.barn.doc.pens.bob.faintedAt = f.clock.now;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
 import { BugGuide, pathBetween, stepToward } from '../client/src/mines/bugGuide.js';
+import { WALK_SPEED } from '../client/src/mines/controls.js';
 import { bfs, tileOf, TILE } from '../client/src/mines/stalker.js';
 import { createApp } from '../server/app.js';
 
@@ -109,6 +110,30 @@ test('BugGuide stays dormant without a living bug', () => {
   g.update(0.05, { t: 0, x: TILE, z: TILE, yaw: 0, elapsedMs: 99999 });
   assert.equal(g.state, 'dormant');
   assert.equal(g.present, false);
+});
+
+test('the guide matches walking speed when leading nearby, farther ahead, or catching up', () => {
+  const maze = { grid: G, pool: { x: 7, y: 1 }, start: { x: 1, y: 1 } };
+  for (const [bugX, playerX] of [[2, 1], [3, 1], [4, 1], [1, 4]]) {
+    const g = new BugGuide(maze, { armed: true, afterMs: 0, bug: { species: 'candela' } });
+    const player = { x: playerX * TILE, z: TILE, elapsedMs: 1 };
+    g.appear(player); g.x = bugX * TILE; g.z = TILE;
+    g.update(.05, player);
+    assert.ok(Math.abs(g.x - bugX * TILE - WALK_SPEED * .05) < 1e-9, `bug at ${bugX}, player at ${playerX}`);
+    assert.equal(g.z, TILE);
+  }
+});
+
+test('a walking miner keeps a constant gap to the guide down a straight tunnel', () => {
+  const grid = [Array(23).fill(1), [1, ...Array(21).fill(0), 1], Array(23).fill(1)];
+  const g = new BugGuide({ grid, pool: { x: 21, y: 1 }, start: { x: 1, y: 1 } }, { armed: true, afterMs: 0, bug: { species: 'candela' } });
+  const player = { x: TILE, z: TILE, elapsedMs: 1 };
+  g.appear(player); const gap = g.x - player.x;
+  for (let i = 0; i < 60; i++) {
+    player.x += WALK_SPEED * .05;
+    g.update(.05, player);
+    assert.ok(Math.abs(g.x - player.x - gap) < 1e-9, `constant lead after frame ${i}`);
+  }
 });
 
 const V2 = { rulesVersion: 2 }; // bucket shifts: every mine request names the rules it speaks

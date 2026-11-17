@@ -3,8 +3,9 @@
 // knife, and the flat fallback when there is no WebGL.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWorm, wormMaterials, wormTriangles, Writhe, gaze, shellHalfWidth, SHELL_ROWS, THORAX, LEG_PAIRS, MAX_TRIS, MAX_MESHES } from '../client/src/mines/wormMesh.js';
-import { createWormLayer, wormBox } from '../client/src/mines/WormLayer.js';
+import * as THREE from 'three';
+import { buildWorm, wormMaterials, wormTriangles, Writhe, gaze, pose, shellHalfWidth, SHELL_ROWS, HEAD_ROW, THORAX, LEG_PAIRS, MAX_TRIS, MAX_MESHES } from '../client/src/mines/wormMesh.js';
+import { createWormLayer, WormLayer, wormBox } from '../client/src/mines/WormLayer.js';
 
 const seeded = (s = 7) => () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 const meshes = (w) => { let n = 0; w.group.traverse((o) => { if (o.isMesh) n++; }); return n; };
@@ -25,6 +26,40 @@ test('a trilobite: a tail shield, segmented thorax, and a wide head shield', () 
   assert.ok(SHELL_ROWS.some((r) => r.part === 'pyg') && SHELL_ROWS.some((r) => r.genal));
   assert.ok(shellHalfWidth(0.87) > shellHalfWidth(0.5) && shellHalfWidth(0.5) > shellHalfWidth(0.05), 'head shield widest, tail narrowest');
   assert.ok(LEG_PAIRS >= 8, 'too many legs');
+});
+
+test('the opening mouth stays below the eyes and on the head through writhing, turns and mirroring', () => {
+  const mats = wormMaterials(), v = new THREE.Vector3();
+  for (const reduce of [false, true]) {
+    const w = buildWorm(mats, { rand: seeded(3), reduce });
+    const mouth = w.face.children.find(c => c.material === mats.mouth), eyes = w.face.children[0].children.find(c => c.material === mats.eye);
+    let widest = 0;
+    for (let frame = 0; frame < 180; frame++) {
+      w.writhe.t = frame / 20; w.writhe.twitch = reduce ? 0 : (frame % 3) - 1; w.update(0);
+      widest = Math.max(widest, w.writhe.mouth());
+      WormLayer.prototype.place.call({ W: 400, H: 800 }, { mesh: w, spec: { x: .5, y: .5, size: .3, rot: (frame % 3 - 1) * 35, flip: !!(frame % 2) } });
+      w.group.scale.x *= 1.14; w.group.scale.y *= .888; // the landing squash
+      w.group.updateMatrixWorld(true);
+      const pts = pose(w.writhe), h = w.head();
+      const direction = new THREE.Vector3(Math.cos(h.dir), Math.sin(h.dir), 0).applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(w.group.matrixWorld));
+      const along = p => v.set(p.x, p.y, 0).applyMatrix4(w.group.matrixWorld).dot(direction);
+      const rear = along(pts[HEAD_ROW]), front = along(pts.at(-1));
+      const bounds = mesh => {
+        const positions = mesh.geometry.attributes.position; let min = Infinity, max = -Infinity;
+        for (let i = 0; i < positions.count; i++) {
+          const d = v.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld).dot(direction);
+          min = Math.min(min, d); max = Math.max(max, d);
+        }
+        return { min, max };
+      };
+      const m = bounds(mouth), e = bounds(eyes);
+      assert.ok(m.min > rear && e.max < front, 'the whole face stays inside the head shield');
+      assert.ok(m.max < e.min, 'the mouth stays below the eyes without overlapping them');
+    }
+    assert.ok(widest > .99, 'checked a fully open mouth');
+    w.dispose();
+  }
+  for (const material of Object.values(mats)) material.dispose();
 });
 
 test('legs skitter on their own (and barely with reduced motion)', () => {

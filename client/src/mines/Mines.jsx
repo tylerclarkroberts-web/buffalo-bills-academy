@@ -11,6 +11,8 @@ import { WormSwarm } from './worms.js';
 import Worms from './Worms.jsx';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
+import MineMap from './MineMap.jsx';
+import { readExploration, rememberExploration, revealExploration } from './exploration.js';
 
 // The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
 const BUG_ORDERS = [
@@ -221,7 +223,11 @@ export default function Mines() {
   useEffect(() => { if (me) api('GET', '/mines/office').then(setOffice).catch(() => {}); }, [!!me]);
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
   useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
-  function complete(v) {
+  function complete(v, toSurface = false) {
+    if (toSurface && (v.result || Object.hasOwn(v, 'pending'))) {
+      rememberMineReceipt(me?.id, v.result?.shiftId);
+      refreshSession(); navigate('/'); return;
+    }
     if (v.result) {
       setResult(v.result); setPhase('result'); refreshSession();
       if (v.result.foreman) setLecture(v.result.foreman);
@@ -229,10 +235,10 @@ export default function Mines() {
       setPhase('intro'); if (v.pending) setLecture(v.pending);
     }
   }
-  async function quit() {
+  async function quit(toSurface = false) {
     if (leaving) return;
     setLeaving(true);
-    try { complete(await api('POST', '/mines/quit', { shiftId: shift?.shiftId })); }
+    try { complete(await api('POST', '/mines/quit', { shiftId: shift?.shiftId }), toSurface); }
     catch (e) { setErr(e.message); }
     finally { setLeaving(false); }
   }
@@ -345,7 +351,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
         <section className="m-box">
           <h2>&gt; SHIFT ORIENTATION</h2>
           <ol>
-            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
+            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · hold Shift to run · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
             <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
             <li>Follow the clicks. Closer is faster; facing the right tunnel gives them a little boost.</li>
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
@@ -353,7 +359,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow. A bug that loses a battle faints and stays home until the <b>Bug Center</b> in the Barn heals it.</li>
             <li><b>One mine a day, shared.</b> Everyone on shift walks the same tunnels. Sneak up behind someone to <b>assassinate</b> them for their acid and $20–$100. Meet face to face and your <b>bugs battle</b> — the winner also takes the loser's smokes.</li>
           </ol>
-          <p className="m-dim">Acid seeps in over time. Later finds tend to be fuller. Payroll weighs the bucket when you finish.</p>
+          <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
             {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}</span></button>)}
           </div>}
@@ -405,6 +411,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const progress = bucketShift ? bucket.collected / bucket.capacity : legacyProgress;
   const [holding, setHolding] = useState(false);
   const holdingRef = useRef(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapRef = useRef(false), mapButton = useRef(null);
   const hold = value => { if (value) stopDance(); holdingRef.current = value; setHolding(value); };
   // v89: dances. Cosmetic only: the server passes the id on to the other miners and nothing else reads it.
   const [dance, setDance] = useState(null);
@@ -429,7 +437,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   }
   function startDance(id) {
     const d = DANCE_BY_ID[id]; showPicker(false);
-    if (!d || !sceneRef.current || battleRef.current || doomRef.current || done.current) return;
+    if (!d || !sceneRef.current || battleRef.current || doomRef.current || mapRef.current || done.current) return;
     if (holdingRef.current) { holdingRef.current = false; setHolding(false); client.current?.stop().catch(() => {}); }
     keys.clear();
     sceneRef.current.startDance(id);
@@ -459,11 +467,24 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const eggLocation = useRef(eggSpot(maze, shift.seed)).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
-  const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker(chain);
+  const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker();
+  const mapPools = () => bucketShift ? bucketRef.current.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}`, quantity: null, remaining: i === 0 && vein.current.flowing ? 1 : 0 }));
+  const explored = useRef(null);
+  if (!explored.current) explored.current = readExploration(me?.id, shift.shiftId, maze.grid, bucketShift ? shift.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}` })));
+  const chartPosition = () => {
+    const s = sceneRef.current;
+    return s ? { x: s.pos.x / TILE, y: s.pos.y / TILE, yaw: s.yaw } : { ...maze.start, yaw: -maze.facing - Math.PI / 2 };
+  };
+  const chart = () => {
+    const pos = chartPosition();
+    if (revealExploration(explored.current, maze.grid, pos.x, pos.y, mapPools(), bucketShift ? bucketRef.current.currentPoolId : 'legacy-0')) rememberExploration(me?.id, shift.shiftId, explored.current);
+  };
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
   const [doorNear, setDoorNear] = useState(false);
+  const [liftNear, setLiftNear] = useState(false);
+  const surfaceExit = useRef(false);
   const [doom, setDoom] = useState(false);
   const doomRef = useRef(false);
   const soundWas = useRef(false);
@@ -499,7 +520,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const pvpSend = (path, body) => api('POST', path, { rulesVersion: 2, shiftId: shift.shiftId, ...body });
   const accept = state => {
     if (state.result || Object.hasOwn(state, 'pending')) {
-      done.current = true; hold(false); onComplete(state); return;
+      done.current = true; hold(false); onComplete(state, surfaceExit.current); return;
     }
     const previous = bucketRef.current;
     bucketRef.current = state; setBucket(state); errorRef.current = null; setMineError(null);
@@ -510,6 +531,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     sceneRef.current?.setDeposits(state.pools, state.currentPoolId);
     const pool = state.pools.find(p => p.id === state.currentPoolId);
     vein.current.flowing = !!pool?.remaining;
+    vein.current.inspected = pool?.quantity != null;
     if (state.currentPoolId !== previous.currentPoolId) {
       hold(false); setNear(false);
       const dry = state.pools.find(p => p.id === previous.currentPoolId)?.quantity === 0;
@@ -518,10 +540,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     } else if (pool?.remaining) {
       setStatus('FIND THE ACID POOL');
       if (previous.pools.find(p => p.id === pool.id)?.quantity == null) setLine(pool.quantity >= state.capacity ? 'A GUSHER. ONE HOLE, ONE WHOLE BUCKET. TELL NOBODY.'
-        : pool.quantity <= 10 * (SHAFTS.find(s => s.id === state.shaft)?.scale || 1) ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : 'THE ACID IS IN. TAKE WHAT YOU CAN CARRY.');
+        : pool.quantity <= 10 * (SHAFTS.find(s => s.id === state.shaft)?.scale || 1) ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : 'TAKE WHAT YOU CAN CARRY.');
     } else {
-      setStatus('IT\'S SEEPING IN. WAIT FOR IT.');
-      vein.current.waitUntil = Date.now() + Math.max(250, Math.min(2500, state.readyAt - state.serverNow));
+      setStatus(pool?.quantity != null ? 'POOLS DRAINED. CLOCK OUT WITH YOUR HAUL.' : 'FIND THE ACID POOL');
     }
     if (state.spill && state.spill.poolId !== previous.spill?.poolId) {
       setStatus('CAVE-IN.'); setLine('THE ROOF CAME DOWN. A QUARTER OF YOUR BUCKET IS NOW FLOOR. THE REST IS STILL YOURS.');
@@ -531,20 +552,26 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     errorRef.current = error; setMineError(error); hold(false);
     if (sceneRef.current) sceneRef.current.mining = false;
   };
-  async function clockOut() {
-    if (!bucketShift) return onQuit();
+  async function clockOut(toSurface = false) {
+    if (!bucketShift) return onQuit(toSurface);
     if (closing.current || done.current) return;
+    surfaceExit.current = toSurface;
     closing.current = true; hold(false); setClockingOut(true); onLeaving(true);
     try { await client.current.clockOut(); } catch { /* the request lane keeps the error and confirmed bucket */ }
-    finally { closing.current = false; setClockingOut(false); onLeaving(false); }
+    finally { surfaceExit.current = false; closing.current = false; setClockingOut(false); onLeaving(false); }
   }
   const retry = async () => {
     if (closing.current || done.current) return;
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
-  const freeze = () => { stopDance(); showPicker(false); showBugMenu(false); release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
+  const freeze = (stopMining = true) => { stopDance(); showPicker(false); showBugMenu(false); if (stopMining) release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.input.run = false; s.mining = false; } };
+  const showMap = (open) => {
+    if (open) { freeze(); chart(); }
+    mapRef.current = open; setMapOpen(open);
+  };
   const showBattle = (b) => {
     if (!b || dismissed.current.has(b.id)) return;
+    if (mapRef.current) showMap(false);
     if (!battleRef.current) { freeze(); audio?.dread(false); }
     // The server sends only the blows this page has not seen; the ring wants the whole fight so far, plus what the mine adds at the end.
     const m = mergeFight(battleRef.current, b), raid = m.over?.raid, sign = m.over?.won ? '+' : '−';
@@ -612,9 +639,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const move = (f, t) => {
     const s = sceneRef.current;
-    if (!s || doomRef.current || battleRef.current) return;
+    if (!s || doomRef.current || battleRef.current || mapRef.current) return;
     if (danceRef.current) { if (!f && !t) return; stopDance(); } // moving ends the dance
-    s.input.f = f; s.input.t = t; s.input.s = 0;
+    s.input.f = f; s.input.t = t; s.input.s = 0; s.input.run = false;
   };
   const setTiltMode = (active) => {
     tiltActiveRef.current = active; setTiltActive(active); keys.clear();
@@ -622,14 +649,20 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
 
   const doorRef = useRef(false);
-  // The door behind the start (v27; opens into the Hall of Doors since v89). Opening it only changes this page: the music pauses, the mine stops drawing,
+  const liftRef = useRef(false);
+  const takeLift = useRef(null);
+  takeLift.current = () => {
+    if (doomRef.current || mapRef.current || battleRef.current || closing.current || done.current) return;
+    freeze(false); clockOut(true);
+  };
+  // The door beside the lift opens into the Hall of Doors. Opening it only changes this page: the music pauses, the mine stops drawing,
   // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
   const openDoor = useRef(null);
   openDoor.current = () => {
-    if (doomRef.current) return;
-    stopDance(); showPicker(false);
-    doomRef.current = true; setDoom(true); release();
-    const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
+    if (doomRef.current || mapRef.current || battleRef.current || closing.current || done.current) return;
+    freeze();
+    doomRef.current = true; setDoom(true);
+    sceneRef.current?.setPaused(true);
     soundWas.current = !!audio?.on; if (audio?.on) audio.stop();
   };
   const closeDoor = () => {
@@ -650,6 +683,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       const pool = shift.pools.find(p => p.id === shift.currentPoolId);
       if (pool) maze.pool = pool;
       vein.current.flowing = !!pool?.remaining;
+      vein.current.inspected = pool?.quantity != null;
+      if (vein.current.inspected && !vein.current.flowing) setStatus('POOLS DRAINED. CLOCK OUT WITH YOUR HAUL.');
     }
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
@@ -663,32 +698,23 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
     guideRef.current = bugGuide;
-    // v67: the vein tracker owns "is the acid in?". Pools are drawn damp until the server says it's in, then glow;
-    // a glowing pool in reach always shows MINE. At a pool: ask (dry: the vein moves on and this one stays a crater;
-    // seeping or no pools left: wait and ask again). Walking: ask now and then so the pool lights up when it comes in.
-    const askVein = async (kind) => {
+    // Inspect on arrival: the server confirms the pool's fixed amount before collection.
+    const askVein = async () => {
       const v = vein.current;
       if (closing.current || done.current || errorRef.current || doomRef.current) return;
-      v.begin(kind);
+      v.asking = true;
       try {
         if (bucketShift) { await client.current.probe(bucketRef.current.currentPoolId); return; } // accept() reads the answer
         const r = await api('POST', '/mines/probe', { shiftId: shift.shiftId });
-        const out = v.settle(r, Date.now());
-        if (out.flowing) { sceneRef.current?.setAcid(true); setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
-        if (out.seeping) { setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
-        if (out.moved) {
-          const p = out.moved;
-          maze.pool = p; stalker.pool = p; faun?.setPool(p); bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
-          setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
-          setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
-        }
+        v.flowing = !!r.flowing; v.inspected = true; sceneRef.current?.setAcid(v.flowing);
+        if (v.flowing) { setStatus('FIND THE ACID POOL'); setLine('FILL THE BUCKET.'); }
       } catch { v.fail(Date.now()); } finally { v.asking = false; }
     };
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d, path, facing) => {
         const v = vein.current; v.reach(d);
         // Bucket shifts only ask at the pool: there a probe is the look that reveals the deposit.
-        const kind = v.wantProbe(Date.now()); if (kind === 'pool' || (kind && !bucketShift)) askVein(kind);
+        if (v.wantProbe(Date.now())) askVein();
         const n = v.canMine() && !done.current;
         if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
         if (n !== lastNear) { lastNear = n; nearRef.current = n; setNear(n); if (!n) release(); }
@@ -719,6 +745,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       },
     });
     sceneRef.current = scene;
+    chart();
     if (me) scene.setSelf(me);
     if (!bucketShift) scene.setAcid(vein.current.flowing);
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
@@ -766,17 +793,23 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
     const sync = () => {
-      if (tiltActiveRef.current) return;
+      if (tiltActiveRef.current || mapRef.current) return;
       scene.input.f = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
       scene.input.s = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
       scene.input.t = (keys.has('arrowright') || keys.has('e') ? 1 : 0) - (keys.has('arrowleft') || keys.has('q') ? 1 : 0);
+      scene.input.run = keys.has('ShiftLeft') || keys.has('ShiftRight');
     };
     const down = (e) => {
       if (battleRef.current) return;
       if (doomRef.current || closing.current || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       const k = e.key.toLowerCase();
+      if (k === 'm' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); if (!e.repeat) showMap(!mapRef.current); return; }
+      if (mapRef.current) return;
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
-      if (k === 'f' && doorRef.current) { openDoor.current(); return; }
+      if (k === 'f' && !e.repeat) {
+        if (liftRef.current) { takeLift.current(); return; }
+        if (doorRef.current) { openDoor.current(); return; }
+      }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
@@ -789,10 +822,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (danceRef.current && ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) stopDance();
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
-      keys.add(k); sync();
+      keys.add(k === 'shift' ? e.code : k); sync();
     };
-    const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { release(); return; } keys.delete(k); sync(); };
-    const stopInput = () => { release(); keys.clear(); scene.input.f = scene.input.s = scene.input.t = 0; };
+    const up = (e) => { if (doomRef.current) return; const k = e.key.toLowerCase(); if (k === ' ' || k === 'enter') { release(); return; } keys.delete(k === 'shift' ? e.code : k); sync(); };
+    const stopInput = () => { release(); keys.clear(); scene.input.f = scene.input.s = scene.input.t = 0; scene.input.run = false; };
     const hidden = () => { if (document.hidden) stopInput(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up);
     window.addEventListener('blur', stopInput); document.addEventListener('visibilitychange', hidden);
@@ -800,13 +833,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     let drag = null;
     const c = canvas.current;
     let tap = null;
-    const pd = (e) => { drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
-    const pm = (e) => { if (!drag) return; if (scene.dance) { scene.danceOrbit = (scene.danceOrbit || 0) - (e.clientX - drag.x) * 0.006; drag = { x: e.clientX, y: e.clientY }; return; } scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
-    const pu = (e) => { drag = null; if (tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
+    const pd = (e) => { if (mapRef.current) return; drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
+    const pm = (e) => { if (mapRef.current) { drag = tap = null; return; } if (!drag) return; if (scene.dance) { scene.danceOrbit = (scene.danceOrbit || 0) - (e.clientX - drag.x) * 0.006; drag = { x: e.clientX, y: e.clientY }; return; } scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
+    const pu = (e) => { drag = null; if (!mapRef.current && tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsLift(e.clientX, e.clientY)) takeLift.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
     const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
     const tick = setInterval(() => {
+      if (!doomRef.current && !done.current && !document.hidden) chart();
       setElapsed(Date.now() - shift.localStart);
       const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
       const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden });
@@ -824,7 +858,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
         setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
       }
-      const dv = scene.doorView(); const n = dv.dist < 2.1 && dv.facing > 0.75;
+      const dv = scene.doorView(), lv = scene.liftView();
+      const l = lv.dist < 2.1 && lv.facing > 0.75 && (dv.dist >= 2.1 || lv.facing >= dv.facing);
+      if (l !== liftRef.current) { liftRef.current = l; setLiftNear(l); }
+      const n = !l && dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
       if (wildRef.current === 'there' && !battleRef.current) {
         const away = scene.wildTiles();
@@ -924,21 +961,20 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   }, [holding, near, mineError, clockingOut]);
   useEffect(() => {
     if (bucketShift || progress < 1 || done.current) return;
-    const left = shift.minMs + 400 - (Date.now() - shift.localStart);
-    if (left > 0) { setStatus('BUCKET FULL. FOREMAN SAYS THE SHIFT ISN\'T OVER. KEEP SCRAPING.'); }
+    let cancelled = false, timer;
     const go = async () => {
-      if (done.current) return;
+      if (done.current || cancelled) return;
       setStatus('WEIGHING YOUR BUCKET…');
       const ok = await onFinish();
-      if (ok) done.current = true; else setTimeout(go, 800);
+      if (ok) done.current = true; else if (!cancelled) timer = setTimeout(go, 800);
     };
-    const id = setTimeout(go, Math.max(0, left));
-    return () => clearTimeout(id);
+    go();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [progress >= 1]);
 
   const secs = Math.floor(elapsed / 1000);
   return (
-    <div className={`m-play${dark ? ' horror' : ''}${scare && !lowFlash ? ' m-shake' : ''}`}>
+    <><div className={`m-play${dark ? ' horror' : ''}${scare && !lowFlash ? ' m-shake' : ''}`}>
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       {tier && <div className="m-dark" style={{ '--dark': [0, 0.15, 0.35, 0.65, 1][tier.tier - 1] }} aria-hidden="true" />}
       <Worms worms={worms} cutting={cutting} onCut={(id, a) => cutWorm.current(id, a)} />
@@ -950,15 +986,17 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}</span>
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
         </div>}
-        <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
+        <button className="m-link" disabled={clockingOut} onClick={() => clockOut()}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
         {dark && <button className="m-link m-flash-btn" data-test="flash-toggle" aria-pressed={lowFlash} onClick={toggleFlash}>{lowFlash ? 'FLASHING: LOW' : 'FLASHING: ON'}</button>}
-        {!doom && !battle && <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
-          onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>}
-        {shift.bug && !doom && !battle && <button className={`m-link m-dance-btn${bugMenu ? ' on' : ''}`} data-test="bug-btn" aria-expanded={bugMenu} aria-label="Tell your bug what to do"
-          onClick={() => showBugMenu(!bugMenu)}>🐞 BUG<span className="m-key"> V</span></button>}
+        {!doom && !battle && <div className="m-tools">
+          <button ref={mapButton} className="m-link" data-test="map-button" aria-haspopup="dialog" aria-expanded={mapOpen} disabled={clockingOut} onClick={() => showMap(true)}>MAP<span className="m-key"> M</span></button>
+          <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
+            onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>
+          {shift.bug && <button className={`m-link m-dance-btn${bugMenu ? ' on' : ''}`} data-test="bug-btn" aria-expanded={bugMenu} aria-label="Tell your bug what to do"
+            onClick={() => showBugMenu(!bugMenu)}>🐞 BUG<span className="m-key"> V</span></button>}
+        </div>}
       </div>
       {picker && !doom && !battle && <DancePicker current={dance} onPick={startDance} onClose={() => showPicker(false)} />}
-      {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}
       {mineError && <div className="m-recovery" role="alert">
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
@@ -989,7 +1027,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <span className="m-dim small">or press G</span>
         </div>
       )}
-      {doorNear && !doom && !near && !eggNear && !prey && !dance && (
+      {liftNear && !doom && !battle && !near && !eggNear && !prey && !dance && (
+        <div className="m-door-prompt" data-test="lift-prompt">
+          <span className="m-dim">IT PASSED AN INSPECTION. ONCE.</span>
+          <button className="m-btn" disabled={clockingOut} onClick={() => takeLift.current()} data-test="lift-up">{clockingOut ? 'WEIGHING…' : '[ LIFT TO SURFACE ]'}</button>
+          <span className="m-dim small">Clock out · game room · F</span>
+        </div>
+      )}
+      {doorNear && !doom && !battle && !near && !eggNear && !prey && !dance && (
         <div className="m-door-prompt" data-test="door-prompt">
           <span className="m-dim">A DOOR. VOICES BEHIND IT.</span>
           <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
@@ -1000,13 +1045,15 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
+      {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onJar={battleJar} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
-        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle} />
+        <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle || mapOpen} />
         {!tiltActive && <MovePad apply={move} />}
       </div>
     </div>
+    {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}</>
   );
 }
 
@@ -1032,7 +1079,7 @@ function BugOrders({ current, onPick, onClose }) {
   return (
     <div className="m-dances m-orders" role="dialog" aria-label="Tell your bug" data-test="bug-orders" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
       {BUG_ORDERS.map((o, i) => (
-        <button key={o.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === o.id ? ' on' : ''}`} data-test={`bug-order-${o.id}`} onClick={() => onPick(o.id)}>
+        <button key={o.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === o.id ? ' on' : ''}`} aria-pressed={current === o.id} data-test={`bug-order-${o.id}`} onClick={() => onPick(o.id)}>
           <span className="m-dance-icon" aria-hidden="true">{o.icon}</span><span className="m-dance-name">{o.name}</span><span className="m-key">{i + 1}</span>
         </button>
       ))}

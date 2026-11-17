@@ -6,14 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Mines, MIN_SHIFT_MS } from '../server/mines.js';
+import { Mines } from '../server/mines.js';
 import { mineDay, daySeed, dailyLayout, dailyMine, MIN_DAY_POOLS } from '../server/engine/daily-maze.js';
 import { TIERS } from '../server/engine/mine-tiers.js';
 import { distFrom } from '../server/engine/maze.js';
 
-// Walking the first leg at full speed (2.2 m tiles at 3.6 m/s) plus a couple of seconds of turning, never before
-// the server's 20 s floor: about when a good miner can first see acid.
-const walkMs = (steps) => Math.max(MIN_SHIFT_MS, steps * (2.2 / 3.6) * 1000 + 2000);
+// Walking the first leg at full speed (2.2 m tiles at 3.6 m/s), plus a couple of seconds of turning.
+const walkMs = (steps) => steps * (2.2 / 3.6) * 1000 + 2000;
 
 const DAY = 86400e3;
 const NOON_UTC = Date.parse('2026-01-01T19:00:00Z'); // noon in Denver

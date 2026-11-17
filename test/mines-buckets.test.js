@@ -6,11 +6,11 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Foreman } from '../server/foreman.js';
-import { Mines, MAX_SHIFT_MS, poolQuantity, poolTravelMs, acidFillAmount } from '../server/mines.js';
+import { Mines, MAX_SHIFT_MS, acidFillAmount } from '../server/mines.js';
 import { createApp } from '../server/app.js';
 
 const version = { rulesVersion: 2 };
-function fixture(t, { payout = 20000, pool = 30000, veinMs = 60000 } = {}) {
+function fixture(t, { payout = 20000, pool = 30000 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-buckets-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const clock = { now: 1_800_000_000_000 };
@@ -21,7 +21,7 @@ function fixture(t, { payout = 20000, pool = 30000, veinMs = 60000 } = {}) {
     f.foreman = new Foreman({ store: f.store, accounts: f.accounts, now: () => clock.now, randInt: () => 0 });
     f.mines = new Mines({ store: f.store, accounts: f.accounts, foreman: f.foreman, now: () => clock.now,
       randInt: n => { f.rolls++; return n === 100000 ? payout : 0; },
-      scareInt: n => n - 1, poolInt: () => pool, vein: () => ({ veinMs, cells: 7 }) });
+      scareInt: n => n - 1, poolInt: () => pool, vein: () => ({ cells: 7 }) });
     f.player = f.store.players.miner;
   };
   f.reload();
@@ -33,13 +33,7 @@ function fixture(t, { payout = 20000, pool = 30000, veinMs = 60000 } = {}) {
     clock.now += elapsed;
     return f.mines.extract(f.player, s.shiftId, { ...version, poolId: s.currentPoolId, action });
   };
-  f.wet = () => {
-    let s = f.start();
-    while (s.pools.find(p => p.id === s.currentPoolId).quantity === null) {
-      clock.now = Math.max(clock.now, s.readyAt); s = f.probe(s);
-    }
-    return s;
-  };
+  f.wet = () => f.probe(f.start());
   f.collect = (s, units) => {
     const target = s;
     f.pulse(s, 'start');
@@ -48,18 +42,6 @@ function fixture(t, { payout = 20000, pool = 30000, veinMs = 60000 } = {}) {
   };
   return f;
 }
-
-test('deposit maturation uses the fixed early/mature weights and bounded travel floors', () => {
-  for (const [elapsed, expected] of [[0, [7000, 66000, 19000, 4000, 2000, 1000, 1000]], [50000, [4000, 36000, 20500, 16000, 13500, 4500, 5500]], [100000, [1000, 6000, 22000, 28000, 25000, 8000, 10000]]]) {
-    const counts = [0, 0, 0, 0, 0, 0, 0];
-    for (let roll = 0; roll < 100000; roll++) counts[[0, 10, 20, 35, 60, 80, 100].indexOf(poolQuantity(elapsed, 100000, roll))]++;
-    assert.deepEqual(counts, expected);
-  }
-  assert.equal(poolQuantity(1e9, 20000, 99999), 60);
-  assert.equal(poolTravelMs(0), 0);
-  assert.ok(poolTravelMs(26, true) > poolTravelMs(26));
-  assert.ok(poolTravelMs(26) < 26 * 2.2 / 3.6 * 1000);
-});
 
 test('acid fill rolls follow 5/25/50/20 and clamp to the remaining bucket', () => {
   const cap = 100;
@@ -105,7 +87,6 @@ test('acid fill rolls follow 5/25/50/20 and clamp to the remaining bucket', () =
 test('a probed acid deposit uses the stored fill roll, not a client amount or a reroll', t => {
   const f = fixture(t, { pool: 5000 }); // 25% band: fills the bucket entirely
   let s = f.start();
-  f.clock.now = s.readyAt;
   s = f.probe(s);
   assert.equal(s.pools[0].quantity, 100);
   assert.equal(s.currentPoolId, 'p0');
@@ -117,16 +98,16 @@ test('a probed acid deposit uses the stored fill roll, not a client amount or a 
   assert.equal(f.rolls, rolls, 'resume does not roll a new fill');
 });
 
-test('new clients handshake; probes respect travel and never reveal hidden rolls or reroll pools', t => {
+test('deposits resolve immediately in order, without travel waits or exposing hidden rolls', t => {
   const f = fixture(t, { pool: 0 }); // 5% band: the deposit fills 1% of the bucket
   assert.throws(() => f.mines.start(f.player), e => e.code === 'mine_reload');
   let s = f.start();
-  assert.ok(s.readyAt >= s.startedAt + 20000);
+  assert.equal(s.minMs, 0); assert.equal(s.readyAt, s.startedAt);
+  assert.ok(!Object.hasOwn(f.mines.doc.active.miner, 'veinMs') && !Object.hasOwn(f.mines.doc.active.miner, 'readyAt'));
   assert.equal(s.capacity, 100); assert.equal(s.extractionRate, 5);
   assert.doesNotMatch(JSON.stringify(s), /veinMs|outcome|"roll"|"steps"/);
-  assert.equal(f.probe(s).pools[0].quantity, null);
+  assert.throws(() => f.pulse(s, 'start'), e => e.status === 425, 'inspection is still required');
   assert.throws(() => f.mines.probe(f.player, s.shiftId, { ...version, poolId: 'p1' }), e => e.status === 409);
-  f.clock.now = s.readyAt;
   const original = s;
   s = f.probe(s);
   assert.equal(s.pools[0].quantity, 1); assert.equal(s.currentPoolId, 'p0');
@@ -136,10 +117,39 @@ test('new clients handshake; probes respect travel and never reveal hidden rolls
   assert.equal(s.pools[0].remaining, 0);
   assert.equal(s.collected, 1);
   assert.equal(s.currentPoolId, 'p1');
-  assert.equal(f.probe(s).pools[1].quantity, null, 'arrival at the next pool is still required');
+  const arrivedAt = f.clock.now;
+  s = f.probe(s);
+  assert.equal(s.pools[1].quantity, 1, 'the next deposit resolves without waiting after the last one drains');
+  assert.equal(f.clock.now, arrivedAt);
   const rolls = f.rolls;
   f.reload();
   assert.deepEqual(f.start(), s); assert.equal(f.rolls, rolls);
+});
+
+test('resumed saves ignore future availability timestamps without losing or rerolling deposits', t => {
+  const f = fixture(t);
+  let s = f.start();
+  const old = f.mines.doc.active.miner;
+  f.mines.commit('miner', { ...old, readyAt: f.clock.now + 600000, veinMs: 600000 });
+  f.reload(); s = f.start();
+  assert.equal(s.readyAt, s.startedAt);
+  assert.equal(s.pools[0].quantity, null);
+  s = f.probe(s);
+  assert.equal(s.pools[0].quantity, 50, 'an old uninspected pool resolves immediately from its stored roll');
+  s = f.collect(s, 20);
+  const savedPools = structuredClone(f.mines.doc.active.miner.pools), rolls = f.rolls;
+  f.reload(); s = f.start();
+  assert.equal(s.collected, 20);
+  assert.deepEqual(f.mines.doc.active.miner.pools, savedPools);
+  f.pulse(s, 'start');
+  s = f.pulse(s, 'stop', 500);
+  assert.equal(s.collected, 22.5, 'already resolved acid is collectable despite the saved future timestamp');
+  assert.equal(s.pools[0].quantity, 50); assert.equal(s.pools[0].remaining, 27.5);
+  s = f.collect(s, 27.5);
+  const arrivedAt = f.clock.now;
+  s = f.probe(s);
+  assert.equal(s.currentPoolId, 'p1'); assert.equal(s.pools[1].quantity, 50);
+  assert.equal(f.clock.now, arrivedAt); assert.equal(f.rolls, rolls);
 });
 
 test('server pulses preserve partial work, reject skipped pools, and never credit idle time', t => {
@@ -208,7 +218,7 @@ test('a drained target advances once, and a late stop cannot mine or skip the ne
   const late = f.mines.extract(f.player, s.shiftId, { ...version, poolId: first.currentPoolId, action: 'stop' });
   assert.deepEqual(late, s);
   assert.equal(f.probe(first).pools[0].remaining, 0, 'a drained pool never refills');
-  f.clock.now = s.readyAt; s = f.probe(s);
+  s = f.probe(s);
   assert.equal(s.pools[1].quantity, 50);
   f.pulse(s, 'start');
   for (let i = 0; i < 19; i++) s = f.pulse(s, 'continue', 500);
@@ -291,14 +301,17 @@ test('expiry pays saved partial work; empty expiry keeps the lecture and permits
   assert.ok(f.start().shiftId);
 });
 
-test('existing legacy shifts keep their original probe and finish contract; v2 cannot use that path', t => {
+test('legacy saves retain their API contract with immediately available acid; v2 cannot use that path', t => {
   const f = fixture(t);
-  const legacy = { id: 'legacy', seed: 123, startedAt: f.clock.now, veinMs: 21000, cells: 7, egg: true };
+  const legacy = { id: 'legacy', seed: 123, startedAt: f.clock.now, veinMs: 600000, readyAt: f.clock.now + 600000, cells: 7, egg: true };
   f.mines.commit('miner', legacy);
+  f.reload();
   assert.equal(f.mines.start(f.player).shiftId, legacy.id);
-  assert.equal(f.mines.probe(f.player, legacy.id).flowing, false);
-  f.clock.now += 21000;
+  assert.equal(f.mines.start(f.player).minMs, 0);
+  assert.deepEqual(f.mines.probe(f.player, legacy.id), { flowing: true, seeping: false });
+  f.clock.now += 4000; // Preserve the old client's four-second hold; no additional availability wait.
   assert.equal(f.mines.finish(f.player, legacy.id).amount, 80);
+  assert.throws(() => f.mines.finish(f.player, legacy.id), e => e.status === 409, 'legacy completion cannot pay twice');
   const s = f.start();
   assert.throws(() => f.mines.finish(f.player, s.shiftId), e => e.code === 'mine_reload');
   assert.equal(f.player.bankroll, 1080);
@@ -327,7 +340,6 @@ test('real HTTP boundary authenticates, rejects stale/skipped requests, and dedu
   assert.equal((await post('/api/mines/probe', { ...body, shiftId: 'someone-else' })).status, 409);
   assert.equal((await post('/api/mines/probe', { ...body, poolId: 'p1' })).status, 409);
   assert.equal((await post('/api/mines/finish', { shiftId: s.shiftId })).body.code, 'mine_reload');
-  clock.now = s.readyAt;
   await post('/api/mines/probe', body);
   assert.equal((await post('/api/mines/extract', { ...body, action: 'fake' })).status, 400);
   await post('/api/mines/extract', { ...body, action: 'start' });

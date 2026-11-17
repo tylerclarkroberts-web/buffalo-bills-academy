@@ -35,7 +35,7 @@ const NORMAL_LINES = [
 ];
 const TOTAL = OUTCOMES.reduce((a, o) => a + o.odds, 0); // 100000
 
-/** Expected value per shift, in dollars (documented in DECISIONS.md). */
+/** Expected value per full plain bucket, in dollars. */
 export function expectedPayout() {
   return OUTCOMES.reduce((a, o) => a + (o.odds / TOTAL) * (o.amount ?? (o.min + o.max) / 2), 0);
 }
@@ -54,7 +54,6 @@ export function rollOutcome(randInt = (n) => crypto.randomInt(n)) {
   throw new Error('unreachable');
 }
 
-export const MIN_SHIFT_MS = 20000;
 
 // Encounters (internal, not shown to players), decided by the server when the shift starts, from its own random
 // source, never the payout one. About 28% of shifts get the visitor; about 20% get the faun; they never share a
@@ -71,34 +70,6 @@ export function rollScare(randInt = (n) => crypto.randomInt(n)) {
   const r = randInt(100000);
   if (r < SCARE_CHANCE) return { scare: true, faun: false };
   return { scare: false, faun: (r - SCARE_CHANCE) < FAUN_CHANCE };
-}
-// The vein (internal, not shown to players): how long this shift's acid takes to show up. The server rolls it at
-// clock-in from its own random source (never the payout one). Legacy shifts wait for it; v2 deposits mature toward it.
-// Heavy-tailed on purpose: about a quarter of shifts hit acid under 30 s (small maze), most still under 2 minutes,
-// a real chunk take 3-5. Documented in DECISIONS.md.
-//   25%  lucky vein   uniform 20-30 s (the floor: MIN_SHIFT_MS still applies; cells=7 so the walk fits)
-//   42%  quick vein   log-normal, median 55 s, sigma 0.42, clamped to 40-120 s
-//   13%  slow vein    uniform 120-180 s
-//   20%  deep vein    uniform 180-300 s
-// The maze grows with the vein (7, 9 or 11 cells a side) so the walk matches the wait; dry pools on the way are decoys.
-export const VEIN_MIX = [
-  { id: 'lucky', w: 25, min: 20000, max: 30000 },
-  { id: 'quick', w: 42, median: 55000, sigma: 0.42, min: 40000, max: 120000 },
-  { id: 'slow', w: 13, min: 120000, max: 180000 },
-  { id: 'deep', w: 20, min: 180000, max: 300000 },
-];
-export const SEEP_MS = 30000; // standing at a dry pool this close to the vein time: "it's seeping in, wait here"
-export function rollVein(randInt = (n) => crypto.randomInt(n)) {
-  const u = () => (randInt(1_000_000) + 1) / 1_000_001;
-  let r = randInt(100), b = VEIN_MIX[VEIN_MIX.length - 1];
-  for (const m of VEIN_MIX) { if (r < m.w) { b = m; break; } r -= m.w; }
-  let ms;
-  if (b.median) {
-    const z = Math.sqrt(-2 * Math.log(u())) * Math.cos(2 * Math.PI * u());
-    ms = Math.min(b.max, Math.max(b.min, Math.round(b.median * Math.exp(b.sigma * z))));
-  } else ms = b.min + Math.floor(u() * (b.max - b.min));
-  const cells = b.id === 'lucky' ? 7 : ms < 75000 ? (randInt(5) === 0 ? 9 : 7) : ms < 150000 ? 9 : 11;
-  return { veinMs: ms, cells };
 }
 export const MAX_SHIFT_MS = 30 * 60 * 1000;
 /** A cave-in in a permit shaft knocks this share of what is in the bucket onto the floor. */
@@ -143,49 +114,25 @@ export function acidFillAmount(capacity, roll, remaining = capacity) {
   return Math.max(0, Math.min(amount, remaining));
 }
 
-export function poolQuantity(elapsed, veinMs, roll) {
-  const p = Math.max(0, Math.min(1, elapsed / Math.max(MIN_SHIFT_MS, veinMs)));
-  // How long the shift has run shifts the odds from dry holes and puddles toward full pools; it never decides the
-  // payout. Big finds (80, and the 100-unit gusher: a whole plain bucket from one pool) are possible from the first
-  // pool and common late, and puddles are unlikely by then. The weights run about a tenth quicker than the first
-  // bucket rules (`npm run sim:mines`): there is more in the store to save up for. The bands are ordered so the lowest
-  // roll is always dry and the highest always a 60.
-  const early = [7, 66, 19, 4, 1, 1, 2], mature = [1, 6, 22, 28, 8, 10, 25], amounts = [0, 10, 20, 35, 80, 100, 60];
-  let remaining = roll / 1000;
-  for (let i = 0; i < amounts.length; i++) {
-    remaining -= early[i] + (mature[i] - early[i]) * p;
-    if (remaining < 0) return amounts[i];
-  }
-  return 60;
-}
-
-export function poolTravelMs(steps, first = false) {
-  // Allow diagonal/corner cutting and mining reach; this is a travel floor, not position verification.
-  return Math.max(0, Math.floor((steps * 2.2 - (first ? 1.9 : 3.8)) / (3.6 * Math.SQRT2) * 1000));
-}
-
 function reloadRequired() {
   const error = new GameError('The mine has changed. Reload before starting or continuing this shift.', 409);
   error.code = 'mine_reload'; return error;
 }
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, veinInt, poolInt, caveInt, twinInt, vein, barn, foreman, owned, layout }) {
+  constructor({ store, accounts, now, randInt, scareInt, poolInt, caveInt, twinInt, vein, barn, foreman, owned, layout }) {
     this.owned = owned || (() => ({})); // player id -> General Store items they own (wired to the shop in app.js)
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
     this.barn = barn || null; // v30: eggs (its own random source; see barn.js)
     // Separate random source for scares, so a scare can never influence what a shift pays.
     this.scareInt = scareInt || ((n) => crypto.randomInt(n));
-    // ...and another for the vein, so how long a shift takes can never influence what it pays either.
-    this.veinInt = veinInt || ((n) => crypto.randomInt(n));
-    this.vein = vein || (() => rollVein(this.veinInt)); // tests can pin it
+    this.vein = vein; // Existing test fixtures can pin the maze size and tier.
     this.poolInt = poolInt || ((n) => crypto.randomInt(n));
     this.caveInt = caveInt || ((n) => crypto.randomInt(n)); // cave-ins have their own source too: they never see the payout roll
     this.twinInt = twinInt || ((n) => crypto.randomInt(n)); // ...and so does the other faun
     // The day's tunnels (engine/daily-maze.js): every miner who clocks in on the same Mountain-time day gets the same
     // maze and the same acid spots. A test that pins `vein` keeps the maze size it asked for; the seed is still the day's.
-    this.pinnedCells = !!vein;
     this.layout = layout || ((now) => dailyLayout(mineDay(now)));
     this.busy = () => false; // set by the PvP module: no mining while your bug is mid-battle
     this.doc = store.loadDoc('mines', { active: {} });
@@ -279,22 +226,19 @@ export class Mines {
     if (!shaft) throw new GameError('The elevator operator wants to see a permit for that shaft.', 403);
     if (shaft.fare) this.accounts.requireFunds(player, shaft.fare, `the elevator to ${shaft.name}`);
     const day = this.layout(now);
-    const shift = { id: crypto.randomBytes(12).toString('base64url'), startedAt: now, ...rollScare(this.scareInt), ...this.vein(), seed: day.seed, day: day.day };
-    const pinned = this.pinnedCells && shift.cells; // a test that pins the size gets plain tunnels unless it pins a tier too
-    if (!pinned) shift.cells = day.cells; // the day decides how big the mine is
-    const tier = tierInfo(pinned ? shift.tier : day.tier); // v79: ...and how rough. The shift keeps it (and its hazard pay) past midnight.
-    delete shift.tier;
+    const pinned = this.vein?.(); // a test that pins the size gets plain tunnels unless it pins a tier too
+    const shift = { id: crypto.randomBytes(12).toString('base64url'), startedAt: now, ...rollScare(this.scareInt), seed: day.seed, day: day.day, cells: pinned?.cells || day.cells };
+    const tier = tierInfo(pinned?.cells ? pinned.tier : day.tier); // The shift keeps its tier (and hazard pay) past midnight.
     if (tier) Object.assign(shift, { tier: tier.tier, ...(tier.pay !== 1 ? { hazard: tier.pay } : {}) });
     const maze = shiftMaze(shift);
     const chain = bucketChain(maze, shift.seed);
     Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, scale: shaft.scale, capacity: Math.min(gear.cap, shaft.max) * 1000, rate: EXTRACTION_RATE * gear.rate,
       ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}),
       ...(shaft.twin && this.twinInt(100) < shaft.twin ? { twin: true } : {}), collected: 0, index: 0, outcome: rollOutcome(this.randInt),
-      readyAt: now + Math.max(MIN_SHIFT_MS, poolTravelMs(chain.legs[0], true)),
-      pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null,
+      pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, roll: this.poolInt(100000), quantity: null, remaining: null,
         ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn ? { cave: true } : {}) })) }); // decided now, sprung on arrival
     if (this.horrorOn(now)) shift.horror = { lightsOutMs: lightsOutMs(shift.id) }; // stamped at clock-in: the whole shift is one kind of night
-    if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay, vein and visitor never see it
+    if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay and visitor never see it
     // A wild bug, from the same source: more grown on a rougher day and down a deeper shaft. It waits well away from the lift.
     const wild = this.barn?.rollWild?.(player.id, (tier?.tier || 1) - 1 + Math.max(0, SHAFTS.findIndex((s) => s.id === shaft.id)));
     const spots = wild ? wildSpots(maze, chain) : [];
@@ -329,8 +273,8 @@ export class Mines {
   publicShift(s, resumed, playerId) {
     const guide = playerId != null ? this.guideBug(playerId) : null;
     const bug = guide?.fainted ? null : guide;
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(s.wild && !s.wild.gone ? { wild: { species: s.wild.species, level: s.wild.level, x: s.wild.x, y: s.wild.y } } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
-      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(s.wild && !s.wild.gone ? { wild: { species: s.wild.species, level: s.wild.level, x: s.wild.x, y: s.wild.y } } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
 
@@ -339,13 +283,13 @@ export class Mines {
     if (i < 0 || i > s.index) throw new GameError('Follow the current pool. This one is not ready to mine.', 409);
     return i;
   }
-  advance(s, now) {
+  advance(s) {
     if (s.pools[s.index].remaining === 0 && s.index < s.pools.length - 1) {
-      s.index++; s.readyAt = now + poolTravelMs(s.pools[s.index].steps);
+      s.index++;
     }
   }
 
-  /** Resolve a v2 deposit once; legacy probes retain their original availability response. */
+  /** Resolve a v2 deposit once; legacy probes retain their response shape with acid always available. */
   probe(player, shiftId, request = {}) {
     const completed = this.completed(player, shiftId, request); if (completed) return completed;
     const cur = this.current(player, shiftId);
@@ -353,7 +297,7 @@ export class Mines {
       this.requireVersion(request);
       if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
       const i = this.target(cur, request.poolId);
-      if (i < cur.index || cur.pools[i].quantity !== null || this.now() < cur.readyAt) return this.publicShift(cur, true);
+      if (i < cur.index || cur.pools[i].quantity !== null) return this.publicShift(cur, true);
       const next = structuredClone(cur), pool = next.pools[i];
       if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the fill roll is then clamped to what's left
         const lost = Math.floor(next.collected * CAVE_IN_SPILL);
@@ -361,13 +305,12 @@ export class Mines {
       }
       // Acid fill is a share of this shift's bucket, not the old time-based sizes or shaft scale.
       pool.quantity = pool.remaining = acidFillAmount(cap(next), pool.roll, cap(next) - next.collected);
-      this.advance(next, this.now()); this.commit(player.id, next);
+      this.advance(next); this.commit(player.id, next);
       // the shift is already saved, so a barn hiccup costs the bug 2 XP, not the miner a pool
       if (pool.quantity > 0) try { this.barn?.foundAcid?.(player.id); } catch { /* XP only */ }
       return this.publicShift(next, true);
     }
-    const left = Math.max(MIN_SHIFT_MS, cur.veinMs || 0) - (this.now() - cur.startedAt);
-    return { flowing: left <= 0, seeping: left > 0 && left <= SEEP_MS };
+    return { flowing: true, seeping: false };
   }
 
   extract(player, shiftId, request = {}) {
@@ -380,7 +323,7 @@ export class Mines {
     if (cur.settlement || cur.collected >= cap(cur) || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
     const i = this.target(cur, request.poolId);
     if (i < cur.index) return this.publicShift(cur, true);
-    if (now < cur.readyAt || cur.pools[i].remaining === null) throw new GameError('Reach and inspect the pool before mining.', 425);
+    if (cur.pools[i].remaining === null) throw new GameError('Inspect the pool before mining.', 425);
     if (this.busy(player.id)) { this.holds.delete(player.id); throw new GameError('Your bug is mid-battle. Mining can wait.', 409); }
     const hold = this.holds.get(player.id);
     const live = hold?.shiftId === shiftId && hold.poolId === request.poolId && now >= hold.at && now - hold.at <= PULSE_GAP_MS;
@@ -398,7 +341,7 @@ export class Mines {
       next = structuredClone(cur);
       const amount = Math.min((now - hold.at) * rate(next), next.pools[i].remaining, cap(next) - next.collected);
       next.collected += amount; next.pools[i].remaining -= amount;
-      this.advance(next, now); this.commit(player.id, next);
+      this.advance(next); this.commit(player.id, next);
     }
     if (request.action === 'stop' || next.index !== i || next.collected >= cap(next)) this.holds.delete(player.id);
     else this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
@@ -442,8 +385,6 @@ export class Mines {
     }
     const elapsed = now - cur.startedAt;
     if (elapsed > MAX_SHIFT_MS) { delete this.doc.active[player.id]; this.save(); throw new GameError('Your shift timed out. Start a new one.', 410); }
-    if (elapsed < MIN_SHIFT_MS) throw new GameError(`Keep digging: a shift lasts at least ${Math.ceil(MIN_SHIFT_MS / 1000)} seconds.`, 425);
-    if (elapsed < (cur.veinMs || 0)) throw new GameError('No acid here yet. Keep digging.', 425);
     // Close the shift on disk *before* paying, so a crash can never let the same shift pay twice.
     delete this.doc.active[player.id];
     this.save();

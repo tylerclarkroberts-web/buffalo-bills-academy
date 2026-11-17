@@ -27,7 +27,7 @@ test('every dance moves, stays finite, keeps feet near the floor; reduced motion
       assert.equal(danceStep(m, id, t), true);
       danceStep(r, id, t, { reduce: true });
       for (const j of Object.values(m)) for (const v of [...Object.values(j.position), ...Object.values(j.rotation)]) { assert.ok(Number.isFinite(v)); moved += Math.abs(v); }
-      assert.ok(Math.abs(m.body.position.y) < 0.3 && Math.abs(m.body.position.x) < 0.3, `${id} stays put`);
+      assert.ok(Math.abs(m.body.position.y) < 0.3 && Math.hypot(m.body.position.x, m.body.position.z) < (id === 'spin' ? 1 : .3), `${id} stays put`);
       big += Math.abs(m.armL.rotation.x) + Math.abs(m.armR.rotation.z) + Math.abs(m.legL.rotation.x);
       small += Math.abs(r.armL.rotation.x) + Math.abs(r.armR.rotation.z) + Math.abs(r.legL.rotation.x);
       assert.equal(r.body.rotation.y, 0, `${id}: no spinning with reduced motion`);
