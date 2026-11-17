@@ -1,11 +1,12 @@
 // The Acid Mines: the only faucet in the closed economy. The server decides every payout.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { bucketChain, distFrom } from './engine/maze.js';
+import { bucketChain, rng } from './engine/maze.js';
 import { shiftMaze, tierInfo } from './engine/mine-tiers.js';
+import { ROSTER, MAX_LEVEL } from './engine/creatures.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
-import { mineDay, dailyLayout } from './engine/daily-maze.js';
+import { mineDay, daySeed, dailyLayout } from './engine/daily-maze.js';
 import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
@@ -134,6 +135,7 @@ export class Mines {
     // The day's tunnels (engine/daily-maze.js): every miner who clocks in on the same Mountain-time day gets the same
     // maze and the same acid spots. A test that pins `vein` keeps the maze size it asked for; the seed is still the day's.
     this.layout = layout || ((now) => dailyLayout(mineDay(now)));
+    this.wildRosters = new Map();
     this.busy = () => false; // set by the PvP module: no mining while your bug is mid-battle
     this.doc = store.loadDoc('mines', { active: {} });
     this.holds = new Map(); // Never resume a held button after a disconnect or restart.
@@ -217,7 +219,7 @@ export class Mines {
       this.requireVersion(request); return this.completionView(player, last);
     }
     if (this.foreman?.pending(player.id)) { const e = new GameError('The foreman is waiting on an answer before you clock in again.', 409); e.code = 'foreman'; throw e; }
-    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true, player.id); }
+    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true, player.id, this.guideBug(player.id)); }
     this.requireVersion(request);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
@@ -239,17 +241,13 @@ export class Mines {
         ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn ? { cave: true } : {}) })) }); // decided now, sprung on arrival
     if (this.horrorOn(now)) shift.horror = { lightsOutMs: lightsOutMs(shift.id) }; // stamped at clock-in: the whole shift is one kind of night
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay and visitor never see it
-    // A wild bug, from the same source: more grown on a rougher day and down a deeper shaft. It waits well away from the lift.
-    const wild = this.barn?.rollWild?.(player.id, (tier?.tier || 1) - 1 + Math.max(0, SHAFTS.findIndex((s) => s.id === shaft.id)));
-    const spots = wild ? wildSpots(maze, chain) : [];
-    if (spots.length) shift.wild = { ...wild, ...spots[this.barn.eggInt(spots.length)] };
     // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
     this.store.commitPlayerDrafts([draft]);
     this.commit(player.id, shift); this.holds.delete(player.id);
     try { this.onShiftStart?.(player.id, shift, shaft.fare || 0); } catch { /* admin stats only */ }
-    return this.publicShift(shift, false, player.id);
+    return this.publicShift(shift, false, player.id, this.guideBug(player.id));
   }
   /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
   guideBug(playerId) {
@@ -270,10 +268,13 @@ export class Mines {
       return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
     } catch { return null; }
   }
-  publicShift(s, resumed, playerId) {
-    const guide = playerId != null ? this.guideBug(playerId) : null;
+  eggAvailable(s, playerId) { return !!(s?.egg && !s.eggTaken && this.barn && !this.barn.has(playerId)); }
+
+  publicShift(s, resumed, playerId, guide = null) {
     const bug = guide?.fainted ? null : guide;
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(s.wild && !s.wild.gone ? { wild: { species: s.wild.species, level: s.wild.level, x: s.wild.x, y: s.wild.y } } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    const wilds = this.wildsFor(s);
+    const egg = this.eggAvailable(s, playerId);
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
@@ -297,7 +298,7 @@ export class Mines {
       this.requireVersion(request);
       if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
       const i = this.target(cur, request.poolId);
-      if (i < cur.index || cur.pools[i].quantity !== null) return this.publicShift(cur, true);
+      if (i < cur.index || cur.pools[i].quantity !== null) return this.publicShift(cur, true, player.id);
       const next = structuredClone(cur), pool = next.pools[i];
       if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the fill roll is then clamped to what's left
         const lost = Math.floor(next.collected * CAVE_IN_SPILL);
@@ -308,7 +309,7 @@ export class Mines {
       this.advance(next); this.commit(player.id, next);
       // the shift is already saved, so a barn hiccup costs the bug 2 XP, not the miner a pool
       if (pool.quantity > 0) try { this.barn?.foundAcid?.(player.id); } catch { /* XP only */ }
-      return this.publicShift(next, true);
+      return this.publicShift(next, true, player.id);
     }
     return { flowing: true, seeping: false };
   }
@@ -322,19 +323,19 @@ export class Mines {
     const now = this.now();
     if (cur.settlement || cur.collected >= cap(cur) || now - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
     const i = this.target(cur, request.poolId);
-    if (i < cur.index) return this.publicShift(cur, true);
+    if (i < cur.index) return this.publicShift(cur, true, player.id);
     if (cur.pools[i].remaining === null) throw new GameError('Inspect the pool before mining.', 425);
     if (this.busy(player.id)) { this.holds.delete(player.id); throw new GameError('Your bug is mid-battle. Mining can wait.', 409); }
     const hold = this.holds.get(player.id);
     const live = hold?.shiftId === shiftId && hold.poolId === request.poolId && now >= hold.at && now - hold.at <= PULSE_GAP_MS;
     if (request.action === 'start') {
       if (!live) this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
-      return this.publicShift(cur, true);
+      return this.publicShift(cur, true, player.id);
     }
     if (!live) {
       this.holds.delete(player.id);
       if (request.action === 'continue') throw new GameError('Mining stopped. Hold Mine again.', 409);
-      return this.publicShift(cur, true);
+      return this.publicShift(cur, true, player.id);
     }
     let next = cur;
     if (now > hold.at) {
@@ -346,13 +347,25 @@ export class Mines {
     if (request.action === 'stop' || next.index !== i || next.collected >= cap(next)) this.holds.delete(player.id);
     else this.holds.set(player.id, { shiftId, poolId: request.poolId, at: now });
     if (next.collected >= cap(next)) return this.settle(player, next);
-    return this.publicShift(next, true);
+    return this.publicShift(next, true, player.id);
   }
 
-  /** The shift's wild bug has been fought, jarred or run from: it is not there any more. */
-  wildGone(playerId, shiftId) {
+  /** All shafts share the day's roster. Catches retire a bug for everyone; other encounters end for this shift. */
+  wildsFor(shift) {
+    if (shift?.rulesVersion !== 2) return [];
+    const day = shift.day || mineDay(shift.startedAt);
+    const key = `${day}:${shift.seed}:${shift.cells}:${shift.tier || 0}`;
+    if (!this.wildRosters.has(key)) {
+      this.wildRosters.set(key, dailyWilds(day, shift));
+      if (this.wildRosters.size > 2) this.wildRosters.delete(this.wildRosters.keys().next().value);
+    }
+    return this.wildRosters.get(key).filter(({ id }) => !shift.wildsGone?.includes(id) && !this.barn?.wildCaught?.(id));
+  }
+  wildGone(playerId, shiftId, wildId) {
     const cur = this.doc.active[playerId];
-    if (cur?.id === shiftId && cur.wild && !cur.wild.gone) this.commit(playerId, { ...cur, wild: { ...cur.wild, gone: true } });
+    if (cur?.id === shiftId && this.wildsFor(cur).some(({ id }) => id === wildId)) {
+      this.commit(playerId, { ...cur, wildsGone: [...(cur.wildsGone || []), wildId] });
+    }
   }
   /** v30: pick up the egg lying in this shift's tunnels. Touches nothing about the shift itself (clock, vein, pay). */
   takeEgg(player, shiftId) {
@@ -427,7 +440,7 @@ export class Mines {
     const cur = this.doc.active[player.id];
     if (!cur || cur.rulesVersion !== 2) return null;
     if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
-    return this.publicShift(cur, true, player.id);
+    return this.publicShift(cur, true, player.id, this.guideBug(player.id));
   }
 
   /**
@@ -471,9 +484,15 @@ export class Mines {
   }
 }
 
-/** Where a wild bug may wait: open tunnel at least six steps' walk from the lift, and never on the acid. */
-function wildSpots(maze, pools) {
-  const far = distFrom(maze.grid, maze.start.x, maze.start.y), out = [];
-  for (let y = 0; y < maze.grid.length; y++) for (let x = 0; x < maze.grid[y].length; x++) if (maze.grid[y][x] === 0 && far[y][x] >= 6 && !pools.some((p) => p.x === x && p.y === y)) out.push({ x, y });
-  return out;
+function dailyWilds(day, shift) {
+  const maze = shiftMaze(shift), spots = [];
+  for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
+    if (maze.dist[y][x] >= 6 && !shift.pools.some((p) => p.x === x && p.y === y)) spots.push({ x, y });
+  }
+  const random = rng(daySeed(`wild:${day}`)), pick = (n) => Math.floor(random() * n);
+  const count = Math.min(1 + pick(3), spots.length), species = [...ROSTER], tier = shift.tier || 1;
+  return Array.from({ length: count }, (_, i) => ({
+    id: `${day}:${i + 1}`, species: species.splice(pick(species.length), 1)[0].id,
+    level: Math.min(MAX_LEVEL, tier + pick(tier + 1)), ...spots.splice(pick(spots.length), 1)[0],
+  }));
 }

@@ -15,7 +15,7 @@ import { connect, join, leave, inputSender, post } from './net.js';
 
 const EYE = 1.62, RADIUS = 0.38, GRAV = 16, JUMP = 6.2, SPEED = 5.4;
 const TYPES = L.ENEMY_TYPES, WIDS = L.WEAPON_IDS;
-const NAME = { luchador: 'LUCHADOR', mariachi: 'MARIACHI', granjero: 'GRANJERO', padre: 'PADRE', chupacabra: 'CHUPACABRAS', llorona: 'LA LLORONA', cucuy: 'EL CUCUY', nahual: 'NAHUAL', lechuza: 'LECHUZA', volador: 'VOLADOR', gordo: 'EL GORDO' };
+const NAME = { luchador: 'LUCHADOR', mariachi: 'MARIACHI', granjero: 'GRANJERO', padre: 'PADRE', chupacabra: 'CHUPACABRAS', llorona: 'LA LLORONA', cucuy: 'EL CUCUY', nahual: 'NAHUAL', lechuza: 'LECHUZA', volador: 'VOLADOR', gordo: 'LA DOÑA' };
 const ST = ['walk', 'hit', 'grab', 'tackle', 'shoot', 'bless', 'idle', 'climb', 'swoop', 'wail', 'windup', 'leap', 'slam'];
 const MARIGOLD = [[1, 0.6, 0.05], [1, 0.75, 0.1], [0.95, 0.45, 0.05]];
 const GOLD = [[1, 0.9, 0.4], [1, 1, 0.8], [1, 0.8, 0.2]];
@@ -280,21 +280,27 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     else if (k === 'rv') feed(`${nameOf(e[2])} LEVANTÓ A ${e[1] === myId ? 'TI' : nameOf(e[1])}`, e[1] === myId || e[2] === myId);
     else if (k === 'j') feed(`${e[2]} ENTRÓ`);
     else if (k === 'l') feed(`${nameOf(e[1])} SALIÓ`);
-    else if (k === 'ag') { // the tell: a volador crouches and shouts, a gordo winds up a belly flop
+    else if (k === 'ag') { // the tell: a volador crouches and shouts, La Doña winds up a belly flop
       const en = ents.en.get(e[1]); if (en) { const gordo = en.type === 'gordo', b = makeBubble(gordo ? '¡AHÍ VOY!' : '¡ÁGUILA!', { color: gordo ? '#5a1010' : '#8a0c47', bg: gordo ? '#ffe36a' : '#fff8f0', w: gordo ? 2.4 : 2.2 }); b.position.set(0, gordo ? 3.2 : 2.7, 0); en.m.root.add(b); shouts.push({ b, en, life: 1.5 });
         if (near(en.to.x, en.to.z, 45)) sfx(gordo ? 'huff' : 'aguila'); if (!gordo && near(en.to.x, en.to.z, 22)) feed('¡UN VOLADOR! ¡MUÉVETE!'); }
     }
     else if (k === 'lp') { const en = ents.en.get(e[1]); if (en) en.arc = { from: { x: e[8], y: e[9] + (L.ENEMIES[en.type]?.float || 0), z: e[10] }, to: { x: e[2], y: e[3], z: e[4] }, t0: performance.now(), dur: e[5] * 1000, apex: e[7] || 0 };
       const m = makeLandRing(ents.en.get(e[1])?.type === 'gordo' ? 0xffa020 : 0xff3040); m.position.set(e[2], e[3] + 0.06, e[4]); m.scale.setScalar(e[6] || 2.5); scene.add(m); rings.push({ m, life: e[5] + 0.25, dur: e[5] + 0.25 }); }
-    else if (k === 'lx') { // the landing: dust ring, a thud and the ground shakes (harder for the gordo)
+    else if (k === 'lx') { // the landing: dust ring, a thud and the ground shakes (harder for La Doña, who also shouts ¡TORTA!)
       const big = !!e[5], dd = Math.hypot(e[1] - pos.x, e[3] - pos.z);
       emit(e[1], e[2] + 0.2, e[3], touch ? 60 : 110, DUST, { speed: big ? 8 : 6, up: 2, life: 1.2, g: 6, drag: 1.4 });
       const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: big ? 0xd8b080 : 0xffe0b0, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
       ring.position.set(e[1], e[2] + 0.15, e[3]); ring.rotation.x = -Math.PI / 2; scene.add(ring); blasts.push({ m: ring, life: 0.3, big: (e[4] || 2.5) * 3 });
       shake = Math.max(shake, Math.max(0, (big ? 1.0 : 0.6) - dd / (big ? 18 : 14)));
       if (near(e[1], e[3], 50)) sfx('thud', big);
+      if (big) { // La Doña's slam: a huge floating ¡TORTA! and a synthesized shout
+        const b = makeBubble('¡TORTA!', { color: '#4a1208', bg: '#ffe36a', w: 4.2 });
+        b.position.set(e[1], e[2] + 3.15, e[3]); scene.add(b);
+        shouts.push({ b, en: null, life: 2.0, world: true });
+        if (near(e[1], e[3], 50)) { sfx('torta'); if (dd < 22) banner = { text: '¡TORTA!', until: t + 1.5 }; }
+      }
     }
-    else if (k === 'kb') { if (e[1] === myId) { banner = { text: '¡TE APLASTARON!', until: t + 1.4 }; shake = Math.max(shake, 0.6); } }
+    else if (k === 'kb') { if (e[1] === myId) { if (banner?.text !== '¡TORTA!') banner = { text: '¡TE APLASTARON!', until: t + 1.4 }; shake = Math.max(shake, 0.6); } }
     else if (k === 'gb') { const en = ents.en.get(e[1]); if (en && near(en.to.x, en.to.z, 25)) sfx('huff'); }
     else if (k === 'gs') { const en = ents.en.get(e[1]); if (en && e[2] && near(en.to.x, en.to.z, 25)) sfx('smack'); }
     else if (k === 'el') {
@@ -714,7 +720,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
         const q = Math.min(1, (e.wind = (e.wind || 0) + dt) / 0.4); m.root.position.y -= 0.25 * q; m.arms[0].rotation.z = 1.4 * q; m.arms[1].rotation.z = -1.4 * q; m.arms[0].rotation.x = m.arms[1].rotation.x = -0.3;
         m.legs[0].rotation.x = 0.5 * q; m.legs[1].rotation.x = 0.5 * q; if (ty === 'gordo') m.body.rotation.x = -0.25 * q;
       }
-      else if (st === 'leap') { // the diving eagle: wings out, body tipped forward / the gordo's belly first
+      else if (st === 'leap') { // the diving eagle: wings out, body tipped forward / La Doña comes down skirt-and-all, first
         e.wind = 0; m.arms[0].rotation.z = 1.5; m.arms[1].rotation.z = -1.5; m.arms[0].rotation.x = m.arms[1].rotation.x = -0.5;
         m.root.rotation.x = ty === 'gordo' ? -0.9 : -0.75; m.legs[0].rotation.x = 0.4; m.legs[1].rotation.x = 0.2;
       }
@@ -736,7 +742,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       if (e.flash > 0) { e.flash = Math.max(0, e.flash - dt * 6); for (const mt of m.mats) mt.emissive.setScalar(e.flash * 0.6); }
       if (m.eyes && nightK > 0.3 && R() < dt * 0.3) m.eyes.visible = false; else if (m.eyes && !m.eyes.visible && R() < dt * 8) m.eyes.visible = true; // they blink
     }
-    for (let i = shouts.length - 1; i >= 0; i--) { const sh = shouts[i]; sh.life -= dt; sh.b.material.opacity = Math.min(1, sh.life * 3); if (sh.life <= 0 || !ents.en.has(sh.en.id)) { sh.en.m.root.remove(sh.b); sh.b.material.map.dispose(); sh.b.material.dispose(); shouts.splice(i, 1); } }
+    for (let i = shouts.length - 1; i >= 0; i--) { const sh = shouts[i]; sh.life -= dt; sh.b.material.opacity = Math.min(1, sh.life * 3); if (sh.life <= 0 || (sh.en && !ents.en.has(sh.en.id))) { if (sh.en?.m) sh.en.m.root.remove(sh.b); else scene.remove(sh.b); sh.b.material.map.dispose(); sh.b.material.dispose(); shouts.splice(i, 1); } }
     for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.life -= dt; const k = 1 - r.life / r.dur; r.m.userData.fill.material.opacity = 0.15 + 0.35 * k; r.m.userData.ring.material.opacity = 0.6 + 0.4 * Math.abs(Math.sin(tt * 14)); if (r.life <= 0) { scene.remove(r.m); disposeTree(r.m); rings.splice(i, 1); } }
     critters(dt, now, tt);
     for (let i = dying.length - 1; i >= 0; i--) { const d = dying[i]; d.life -= dt; d.m.root.scale.multiplyScalar(0.88); d.m.root.rotation.y += dt * 12; d.m.root.position.y += dt * 2; if (d.life <= 0) { scene.remove(d.m.root); disposeTree(d.m.root); dying.splice(i, 1); } }

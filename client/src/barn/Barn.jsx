@@ -322,7 +322,7 @@ function BarnHome({ me }) {
       else { sfx[action](); setTimeout(() => voice(BY_ID[cared.species]?.voice, cared.needs.mood / 100), 700); setMsg({ feed: `${cared.name} tucks in.`, play: `${cared.name} explores the twig you offered, end to end.`, clean: `A fine mist. ${cared.name} grooms its antennae.` }[action]); }
   });
   const bury = () => act(async () => {
-    take(await api('POST', '/barn/bury', { bug: pen.id })); setSel(null); setBattleDraft(null); setMsg('Laid to rest under the old cottonwood. The mines may turn up another egg one day.');
+    take(await api('POST', '/barn/bury', { bug: pen.id })); setSel(null); setBattleDraft(null); setMsg('Laid to rest under the old cottonwood.');
   });
   const wager = (method, url, body) => {
     if (battleDraft) return;
@@ -395,7 +395,7 @@ function BarnHome({ me }) {
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
               <p className="small barn-kind">{pen.speciesName} · Level {pen.level} · {pen.record.w}W {pen.record.l}L</p>
               <p className="small">It went without food for three weeks and quietly passed on {new Date(pen.diedAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.</p>
-              <p className="small muted">Bugs live fast. When you are ready, lay it to rest; another egg may turn up in the mines.</p>
+              <p className="small muted">Bugs live fast. Lay it to rest when you're ready.</p>
               <div className="barn-acts"><button className="btn" onClick={bury} disabled={busy} data-test="bury">Lay to rest</button></div>
             </div>
           </div>

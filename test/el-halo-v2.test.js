@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../server/elhalo/rules.js';
 import { Match, EYE } from '../server/elhalo/match.js';
-import { OPENINGS, TRUCK, TRUCK_PATH, truckAt, fortRects, FORT_DECK, AMMO_SPOTS, NADE_SPOTS, groundAt, terrain, wallDist, insideSolid, collide } from '../server/elhalo/map.js';
+import { OPENINGS, TRUCK, TRUCK_PATH, truckAt, fortRects, FORT_DECK, AMMO_SPOTS, NADE_SPOTS, groundAt, terrain, wallDist, insideSolid, collide, inCanyon } from '../server/elhalo/map.js';
 
 const seeded = (seed = 7) => { let s = seed; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 const run = (m, secs, dt = 0.1) => { for (let t = 0; t < secs - 1e-9; t += dt) m.tick(dt); };
@@ -122,7 +122,7 @@ test('sword lunges and slices; the hammer lunges and slams everything around it'
 
 test('the supply truck: comes through for ~20s between waves, nothing spawns, walk up (or press ACTION) for the next gun', () => {
   assert.ok(TRUCK.secs > 18 && TRUCK.secs < 24, `truck takes ${TRUCK.secs.toFixed(1)}s`);
-  for (let t = 0; t < TRUCK.secs; t += 0.25) { const k = truckAt(t); assert.ok(!insideSolid({ x: k.x, y: terrain(k.x, k.z) + 1, z: k.z }), `truck path clear at ${t}`); }
+  for (let t = 0; t < TRUCK.secs; t += 0.25) { const k = truckAt(t); if (!inCanyon(k.x, k.z, 0.5)) continue; /* the truck enters and leaves through the canyon mouths */ assert.ok(!insideSolid({ x: k.x, y: terrain(k.x, k.z) + 1, z: k.z }), `truck path clear at ${t}`); }
   const m = at(1, ['t', 'j'], { quiet: false }); m.calm = true;
   m.queue = []; for (const e of m.enemies) e.dead = true; m.tick(0.1); m.tick(0.1);
   assert.equal(m.phase, 'truck'); assert.equal(m.truck.weapon, L.truckWeapon(1));

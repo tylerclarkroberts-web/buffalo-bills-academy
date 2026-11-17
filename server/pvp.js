@@ -10,6 +10,7 @@ import { GameError } from './engine/game.js';
 import { FIRST_POOL_STEPS } from './engine/maze.js';
 import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
+import { MAX_SHIFT_MS } from './mines.js';
 import { RUN_SPEED } from './engine/mine-movement.js';
 import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
 import { BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
@@ -36,7 +37,7 @@ export const PVP = {
   danceGapMs: 400,          // v89: starting or switching a dance at most every 0.4 s (stopping is always allowed)
 };
 
-// Wild bugs: one may be loose in a shift (server/mines.js). Walk into it with a partner fit to fight and it does.
+// Wild bugs share the day's tunnels. A miner's own standing partner can fight one.
 export const WILD = {
   reach: 1.6,   // tiles, by the server's copy of where the miner is: this close and it goes for your bug (the page asks at about one)
   jarAt: 0.25,  // a jar only works on a wild bug at or under a quarter of its health
@@ -80,6 +81,9 @@ export class Pvp {
   shiftOf(playerId) {
     const s = this.mines.doc.active[playerId];
     return s && s.rulesVersion === 2 && !s.settlement ? s : null;
+  }
+  wildsFor(shift) {
+    return shift && this.now() - shift.startedAt < MAX_SHIFT_MS ? this.mines.wildsFor(shift) : [];
   }
   /** Greenhorns can't be robbed and can't rob: guests, accounts under a day old, fewer than three finished shifts. */
   greenhorn(p) {
@@ -187,7 +191,10 @@ export class Pvp {
     const notice = pr?.notice || null; if (pr) pr.notice = null;
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
     const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id, have) : null;
-    return { serverNow: this.now(), others, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
+    const shift = this.shiftOf(player.id), wilds = this.wildsFor(shift);
+    const canFightWild = wilds.length > 0 && !this.fights.fightOf(player.id) && !!this.bugOf(player.id, false);
+    return { serverNow: this.now(), others, wilds, canFightWild, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
+      ...(shift?.egg ? { egg: this.mines.eggAvailable(shift, player.id) } : {}),
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
       ...(notice ? { notice, shift: this.mines.stateFor(player) } : {}) };
   }
@@ -221,7 +228,8 @@ export class Pvp {
    * the Foreman's beetle like anyone without a bug: being fainted is never a shield. `benched` names the fainted one.
    */
   bugOf(id, full = true) {
-    const pen = this.barn?.doc?.pens?.[id];
+    let pen = this.barn?.doc?.pens?.[id];
+    if (pen?.stage === 'egg' && this.now() >= pen.hatchAt) pen = this.barn.refresh(id);
     const alive = pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen));
     const fit = alive && !pen.faintedAt;
     const p = this.store.players[id];
@@ -258,18 +266,24 @@ export class Pvp {
    */
   meetWild(player, body = {}) {
     this.touch(player.id); this.sweep();
-    const shift = this.shiftOf(player.id), pr = this.fresh(player.id), wild = shift?.wild;
+    const shift = this.shiftOf(player.id), pr = this.fresh(player.id);
     if (this.inBattle.has(player.id)) return this.view(player);
-    if (!shift || shift.id !== String(body.shiftId || '') || !wild || wild.gone) throw new GameError('There is nothing wild here.', 409);
-    if (!pr || Math.hypot(pr.x - wild.x, pr.y - wild.y) > WILD.reach) throw new GameError('It is further off than that.', 409);
-    if (!this.startWild(player.id, shift)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
+    const wilds = shift?.id === body.shiftId ? this.wildsFor(shift) : [];
+    const distance = (bug) => pr ? Math.hypot(pr.x - bug.x, pr.y - bug.y) : Infinity;
+    const wild = body.wildId == null ? wilds.toSorted((a, b) => distance(a) - distance(b))[0] : wilds.find(bug => bug.id === body.wildId);
+    if (!wild) throw new GameError('There is nothing wild here.', 409);
+    if (distance(wild) > WILD.reach) throw new GameError('It is further off than that.', 409);
+    for (const battle of this.battles.values()) {
+      if (!battle.over && battle.wild?.id === wild.id) throw new GameError('Another miner is fighting this bug.', 409);
+    }
+    if (!this.startWild(player.id, shift, wild)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
     return this.view(player);
   }
-  startWild(a, shift) {
+  startWild(a, shift, wild) {
     const mine = this.bugOf(a);
     if (mine.loaner || this.fights.fightOf(a)) return null;
-    const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = shift.wild;
-    const battle = { id, a, b: null, wild: { species, level, name: BY_ID[species].name }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
+    const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
+    const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: BY_ID[species].name }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
       bugs: { a: { bornAt: mine.bornAt, xp: mine.xp }, b: null }, benched: { a: null, b: null } };
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
       fighters: [{ ...this.barn.fighter(a, this.barn.doc.pens[a]), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true }],
@@ -280,7 +294,7 @@ export class Pvp {
   }
   /** A wild bug leaves the shift however the fight ends. A verdict or a catch pays battle XP. */
   wildOver(battle, winnerSide, reason, fight) {
-    this.mines.wildGone?.(battle.a, battle.shiftId);
+    if (reason !== 'jarred') this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
     if (reason === 'fainted' || reason === 'decision' || reason === 'jarred') {
       battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: battle.bugs.a.bornAt,
         won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeName: `a wild ${battle.wild.name}`, odds: fight.line });
@@ -298,13 +312,13 @@ export class Pvp {
     if (share > WILD.jarAt) throw new GameError('It is far too lively for a jar. Get it under a quarter of its health.', 409);
     if (!this.barn.room(player.id)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
     if (battle.jarTurn === S.turn) throw new GameError('It is still shaking off the last one.', 429);
-    if (!this.shop.takeJar(player.id)) throw new GameError('You are out of jars. The General Store sells them.', 409);
-    battle.jarTurn = S.turn;
     const held = this.randInt(1000) < Math.round(jarChance(share) * 1000);
+    const wildId = battle.wild.id, battleId = battle.id;
+    if (!this.shop.takeJar(player.id, held ? { wildId, battleId } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {
-      const caught = this.barn.adopt(player.id, battle.wild);
-      this.finish(battle, 'a', 'jarred'); battle.over.caught = caught.name;
-    }
+      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: battle.wild.level });
+      this.finish(battle, 'a', 'jarred', caught.name);
+    } else battle.jarTurn = S.turn;
     return { held, battle: this.battleView(battle, player.id, body.have) };
   }
   /** The fight ran its course. A draw at the bell is no contest: nobody is robbed. */
@@ -328,7 +342,7 @@ export class Pvp {
     const xpBefore = battle.bugs?.[side]?.xp;
     return { ...this.fights.view(battle.fight, pid, have), benched: battle.benched?.[side] || null,
       // against a wild bug: how many jars you carry, whether a stall is free, and the chance one holds right now (0 until it is weak enough)
-      ...(battle.wild ? { wild: true, ...(battle.over ? {} : { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), at: WILD.jarAt, chance: jarChance(share) } }) } : {}),
+      ...(battle.wild ? { wild: true, wildId: battle.wild.id, ...(battle.over ? {} : { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), at: WILD.jarAt, chance: jarChance(share) } }) } : {}),
       over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
         bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
@@ -350,10 +364,10 @@ export class Pvp {
     this.finish(battle, side === 'a' ? 'b' : 'a', reason);
     return battle;
   }
-  finish(battle, winnerSide, reason) {
+  finish(battle, winnerSide, reason, caught) {
     const winner = winnerSide === 'a' ? battle.a : battle.b, loser = winnerSide === 'a' ? battle.b : battle.a;
     this.inBattle.delete(battle.a); this.inBattle.delete(battle.b);
-    battle.over = { winner: winnerSide, reason, at: this.now(), raid: null };
+    battle.over = { winner: winnerSide, reason, at: this.now(), raid: null, ...(caught ? { caught } : {}) };
     const fight = battle.fight, w = winnerSide === 'a' ? 0 : 1;
     this.fights.finish(fight, reason === 'draw' ? null : w, reason); // stops a fight that was walked out on; a no-op when it ran its course
     for (const [k, i] of [['a', 0], ['b', 1]]) if (battle.bugs?.[k] && fight.S.side[i].ate) this.barn?.lunchEaten?.(battle[k], battle.bugs[k].bornAt); // a packed lunch eaten in the fight is gone, however it ended
@@ -368,6 +382,12 @@ export class Pvp {
   /** Turn timers and disconnects, checked on every PvP request (and by the app's one-second sweep). */
   sweep() {
     const now = this.now();
+    for (const battle of this.battles.values()) {
+      if (!battle.wild || battle.over) continue;
+      const shift = this.shiftOf(battle.a);
+      if (shift?.id !== battle.shiftId || !this.wildsFor(shift).some(bug => bug.id === battle.wild.id)) this.finish(battle, 'b', 'forfeit');
+      else if (now - battle.lastSeen[battle.a] > PVP.disconnectMs) this.finish(battle, 'b', 'disconnect');
+    }
     this.fights.sweep();
     for (const [id, battle] of this.battles) {
       if (battle.over) { if (now - battle.over.at > PVP.keepOverMs) this.battles.delete(id); continue; }

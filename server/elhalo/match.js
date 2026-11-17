@@ -3,8 +3,9 @@
 // and points; clients own their own movement (checked here: speed, bounds, walls, falls) and send what they did
 // (shots as rays, grenade throws, swings, holding ACTION). Free play: nothing in here knows about money.
 import * as L from './rules.js';
-import { BOUNDS, OPENINGS, BUILDINGS, ELOTE, BUFADORA, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, OBSTACLES, FORT_ROUTES, FORT_DECK, fortRects,
-  buildingAt, fortAt, terrain, groundAt, collide, wallDist, insideSolid, segHitsRect, truckAt, TRUCK, AMMO_SPOTS, NADE_SPOTS, JEEP_SPAWN } from './map.js';
+import { OPENINGS, BUILDINGS, ELOTE, BUFADORA, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, OBSTACLES, FORT_ROUTES, FORT_DECK, fortRects,
+  buildingAt, fortAt, terrain, groundAt, collide, wallDist, insideSolid, segHitsRect, truckAt, TRUCK, AMMO_SPOTS, NADE_SPOTS, JEEP_SPAWN,
+  inCanyon, clampInCanyon, canyonCollide } from './map.js';
 import { dogsAt, eloteShout } from './critters.js';
 
 const { MATCH, WEAPONS, ENEMIES, BUFADORA_RULES: BF } = L;
@@ -167,14 +168,20 @@ export class Match {
 
   move(p, x, y, z, dt, nowMs = 0) {
     const reject = () => { p.corr = [r2(p.x), r2(p.y), r2(p.z)]; };
-    if (x < BOUNDS.x0 - 0.2 || x > BOUNDS.x1 + 0.2 || z < BOUNDS.z0 - 0.2 || z > BOUNDS.z1 + 0.2) return reject();
+    // A launched player may request a pose a few metres past the face (the geyser throws them);
+    // we clamp them onto the rock rather than snapping them back mid-air. Anyone else that far
+    // out is a teleport and gets rejected. The body never sits in the rock: see canyonCollide.
+    if (!inCanyon(x, z, p.launched ? -8 : -0.2)) return reject();
     const dist = Math.hypot(x - p.x, z - p.z);
     const top = nowMs < p.lungeMs ? LUNGE_SPEED : MAX_SPEED; // a sword or hammer lunge covers ground fast
     if (dist > top * Math.max(0.1, dt) + MOVE_SLACK) return reject();
     const g = groundAt(x, z, y);
     if (y < terrain(x, z) - 0.6) return reject();
     // La Bufadora: a launched player is allowed to go very high and come down. No fall damage, and no 3s hover snap.
+    // The canyon walls still stop them: you cannot be thrown through the rock.
     if (p.launched) {
+      const q = { x, z }; canyonCollide(q, P_RADIUS);
+      if (Math.hypot(q.x - x, q.z - z) > 1e-4) { x = q.x; z = q.z; p.corr = [r2(x), r2(y), r2(z)]; }
       p.moving = dist > 0.03 ? 1 : 0; p.x = x; p.y = y; p.z = z;
       const air = y - g;
       if (air < 0.3) { p.launched = false; p.groundY = y; p.airT = 0; }
@@ -191,10 +198,16 @@ export class Match {
       for (const h of [0.6, 1.3]) { const o = { x: p.x, y: Math.max(p.y, y) + h, z: p.z }; if (wallDist(o, d, dist + 0.1, true) < dist - 0.05) return reject(); }
     }
     const q = { x, z }; collide(q, P_RADIUS * 0.6, y, 1.8);
-    if (Math.hypot(q.x - x, q.z - z) > 0.2) {
-      const was = { x: p.x, z: p.z }; collide(was, P_RADIUS * 0.6, p.y, 1.8); // already wedged somewhere? let them wriggle out
-      if (Math.hypot(was.x - p.x, was.z - p.z) <= 0.2 || dist > 1.5) return reject();
-    }
+    canyonCollide(q, P_RADIUS); // full body radius against the rock face, even if building collide was looser
+    const pushed = Math.hypot(q.x - x, q.z - z);
+    if (pushed > 0.2) {
+      const was = { x: p.x, z: p.z }; collide(was, P_RADIUS * 0.6, p.y, 1.8); canyonCollide(was, P_RADIUS); // already wedged somewhere? let them wriggle out
+      if (Math.hypot(was.x - p.x, was.z - p.z) <= 0.2 || dist > 1.5) {
+        // modest shove into the canyon face: take the clamped pose so you slide along the wall instead of melting in
+        if (pushed < 1.2) { x = q.x; z = q.z; p.corr = [r2(x), r2(y), r2(z)]; }
+        else return reject();
+      }
+    } else if (pushed > 1e-4) { x = q.x; z = q.z; p.corr = [r2(x), r2(y), r2(z)]; }
     p.moving = dist > 0.03 ? 1 : 0; p.x = x; p.y = y; p.z = z;
     const air = y - g;
     if (air < 0.25) { p.groundY = y; p.airT = 0; } else p.airT += dt;
@@ -234,13 +247,20 @@ export class Match {
   drive(p, [x, y, z, yaw], dt) {
     const j = this.jeep; if (!j || j.driver !== p.id) return;
     const reject = () => { j.corr = [r2(j.x), r2(j.y), r2(j.z), r2(j.yaw)]; };
-    if (x < BOUNDS.x0 - 0.5 || x > BOUNDS.x1 + 0.5 || z < BOUNDS.z0 - 0.5 || z > BOUNDS.z1 + 0.5) return reject();
+    if (!inCanyon(x, z, -0.5)) return reject();
     const dist = Math.hypot(x - j.x, z - j.z);
     if (dist > MATCH.jeep.maxSpeed * Math.max(0.1, dt) + 1.5) return reject();
     const g = groundAt(x, z, j.y + 0.6);
     if (Math.abs(y - g) > 1.2) return reject();
     const q = { x, z }; collide(q, 1.0, g, 1.6);
-    if (Math.hypot(q.x - x, q.z - z) > 0.35) return reject();
+    canyonCollide(q, 1.0);
+    const shoved = Math.hypot(q.x - x, q.z - z);
+    if (shoved > 0.35) {
+      // ramming the canyon face: park on the clamped pose rather than sinking into the rock
+      if (shoved < 2 && inCanyon(q.x, q.z, 0.9)) { j.x = q.x; j.z = q.z; j.y = groundAt(q.x, q.z, j.y + 0.6); j.yaw = yaw; j.spd *= 0.4; j.corr = [r2(j.x), r2(j.y), r2(j.z), r2(j.yaw)]; return; }
+      return reject();
+    }
+    if (shoved > 1e-4) { x = q.x; z = q.z; j.corr = [r2(x), r2(g), r2(z), r2(yaw)]; }
     j.spd = j.spd * 0.5 + (dist / Math.max(0.05, dt)) * 0.5;
     j.x = x; j.y = g; j.z = z; j.yaw = yaw;
   }
@@ -647,7 +667,7 @@ export class Match {
       if (!tg || tg.state !== 'alive' || !this.leapOk(e, tg)) { e.leapS = null; e.lcool = 1.5; return; }
       // take off: the landing spot is wherever the target is right now (capped at the leap's range)
       let dx = tg.x - e.x, dz = tg.z - e.z; const d = Math.hypot(dx, dz) || 1, far = Math.min(d, Lp.range + 1.5);
-      const to = { x: e.x + dx / d * far, z: e.z + dz / d * far }; to.y = groundAt(to.x, to.z, tg.y + 0.5);
+      const to = { x: e.x + dx / d * far, z: e.z + dz / d * far }; canyonCollide(to, st.radius); to.y = groundAt(to.x, to.z, tg.y + 0.5);
       const inside = buildingAt(e.x, e.z), apex = inside ? Math.min(Lp.apex, Math.max(0.6, inside.h - st.height - 0.5)) : Lp.apex;
       e.leapS = { ph: 'air', t: 0, dur: Lp.air, from: { x: e.x, y: e.y, z: e.z }, to, apex };
       e.state = 'leap'; this.ev('lp', e.id, r2(to.x), r2(to.y), r2(to.z), Lp.air, r2(Lp.radius), r2(apex), r2(e.x), r2(e.y), r2(e.z));
@@ -699,12 +719,12 @@ export class Match {
     if (e.blinkT <= 0 && d > st.blink.min) { // appear behind the target
       e.blinkT = st.blink.every * (0.8 + this.rnd() * 0.5);
       const f = fwdOf(tg.yaw), nx = tg.x - f.x * st.blink.dist, nz = tg.z - f.z * st.blink.dist;
-      if (nx > BOUNDS.x0 && nx < BOUNDS.x1 && nz > BOUNDS.z0 && nz < BOUNDS.z1) { e.x = nx; e.z = nz; e.y = Math.max(terrain(nx, nz), tg.y - 0.2); this.ev('bk', e.id); }
+      if (inCanyon(nx, nz, e.st.radius)) { e.x = nx; e.z = nz; e.y = Math.max(terrain(nx, nz), tg.y - 0.2); this.ev('bk', e.id); }
     }
     const close = d < st.reach && Math.abs(tg.y - e.y) < 1.8;
     if (close) { e.state = 'hit'; if (e.cool <= 0) { e.cool = st.every; e.act = 0.4; this.hurtPlayer(tg, st.hit * e.dmg, e, null, 'llorona'); } }
     else { e.x += dx / d * spd * dt; e.z += dz / d * spd * dt; if (e.act <= 0) e.state = 'walk'; }
-    e.x = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, e.x)); e.z = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, e.z));
+    canyonCollide(e, e.st.radius);
     const floor = terrain(e.x, e.z), want = Math.max(floor, tg.y - 0.1);
     e.y += Math.max(-2 * dt, Math.min(1.6 * dt, want - e.y)); if (e.y < floor) e.y = floor;
     e.yaw = Math.atan2(-dx, -dz);
@@ -729,7 +749,7 @@ export class Match {
       e.x += vx * spd * dt; e.z += vz * spd * dt;
       e.y += Math.max(-4 * dt, Math.min(5 * dt, cruise - e.y));
     }
-    e.x = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, e.x)); e.z = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, e.z));
+    canyonCollide(e, e.st.radius);
     if (e.y < ground + 0.4) e.y = ground + 0.4;
     e.yaw = Math.atan2(-vx, -vz);
   }
@@ -915,7 +935,7 @@ export class Match {
         if (g.kind === 'sticky' && (g.y < floor || solid)) { if (solid) { g.x = was.x; g.y = was.y; g.z = was.z; } else g.y = floor; g.on = { wall: true }; g.vx = g.vy = g.vz = 0; g.fuse = Math.min(g.fuse, L.STICKY.stuckFuse); this.ev('st', g.id, 0); break; }
         if (g.y < floor) { g.y = floor; g.vy = Math.abs(g.vy) * 0.35; g.vx *= 0.6; g.vz *= 0.6; }
         if (solid) { g.x = was.x; g.y = was.y; g.z = was.z; g.vx *= -0.4; g.vz *= -0.4; }
-        g.x = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, g.x)); g.z = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, g.z));
+        clampInCanyon(g, 0.12);
       }
       if (g.fuse <= 0) { this.explode(g); this.nades.splice(i, 1); }
     }
