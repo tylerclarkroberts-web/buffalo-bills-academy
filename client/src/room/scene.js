@@ -1142,7 +1142,7 @@ export class RoomScene {
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
     this.errands = residentErrands(this.furniture, this.shelves); this.residentYaw = 0.35;
     if (this.coffee && !this.errands.some(errand => errand.kind === 'coffee')) this.coffee = null;
-    const avatar = owner?.avatar, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed);
+    const avatar = owner?.avatar, skinTone = avatar?.skinTone, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed, skinTone);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
     this.residentLegs = [-0.14, 0.14].map(x => {
       const leg = new THREE.Group(); leg.position.set(x, 0.73, 0); group.add(leg);
@@ -1189,13 +1189,13 @@ export class RoomScene {
       face.material.map?.dispose(); face.material.map = map; face.material.color.set('#ffffff'); face.material.needsUpdate = true;
       const rgb = colour => `rgb(${colour.join(',')})`;
       head.material.color.set(rgb(wrap.hair));
-      for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
+      if (!skinTone) for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
     };
     const drawn = document.createElement('canvas'); drawn.width = 272; drawn.height = 336;
     const pen = drawn.getContext('2d', { willReadFrequently: true });
     if (pen?.getImageData) {
       // The same face as the bust at the table: brows, eyes, a nose and a mouth over the low-poly head.
-      const h = headParts(seed), { L, cx, cy } = h;
+      const h = headParts(seed, skinTone), { L, cx, cy } = h;
       pen.scale(4, 4); pen.translate(4, 12);
       for (const piece of [...h.ears, ...h.skin, ...h.beard, ...h.hair]) { pen.fillStyle = pen.strokeStyle = piece.fill; pen.lineWidth = 0.4; const path = new Path2D(piece.d); pen.fill(path); pen.stroke(path); }
       pen.lineCap = 'round';
@@ -1215,7 +1215,7 @@ export class RoomScene {
         const wrap = faceWrap(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
         if (!wrap) return;
         const rgb = colour => `rgb(${colour.join(',')})`;
-        for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
+        if (!skinTone) for (const part of skinParts) part.material.color.set(rgb(wrap.skin));
         const behind = document.createElement('canvas'); behind.width = canvas.width; behind.height = canvas.height;
         const ink = behind.getContext('2d'); ink.drawImage(image, 0, 0); ink.globalCompositeOperation = 'source-in'; ink.fillStyle = rgb(wrap.hair); ink.fillRect(0, 0, behind.width, behind.height);
         // Sized and placed by the box the head fills, so a cutout with spare room round it is no smaller.

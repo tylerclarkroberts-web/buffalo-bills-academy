@@ -9,8 +9,8 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const lp2 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
 
 /** A generated head as an image (same art as the seat busts). */
-export function genHeadImage(seed) {
-  const h = headParts(seed); const { L, cx, cy } = h;
+export function genHeadImage(seed, skinTone) {
+  const h = headParts(seed, skinTone); const { L, cx, cy } = h;
   const paths = [...h.ears, ...h.skin, ...h.beard, ...h.hair].map((p) => `<path d="${p.d}" fill="${p.fill}" stroke="${p.fill}" stroke-width=".3"/>`).join('');
   const brows = L.brows ? `<g stroke="${shade(L.hair, -0.3)}" stroke-width="1.6" stroke-linecap="round"><path d="M${cx - 11} ${cy - 5} L${cx - 4} ${cy - 6}"/><path d="M${cx + 11} ${cy - 5} L${cx + 4} ${cy - 6}"/></g>` : '';
   const face = `<ellipse cx="${cx - 7}" cy="${cy}" rx="2" ry="2.3" fill="#1b1512"/><ellipse cx="${cx + 7}" cy="${cy}" rx="2" ry="2.3" fill="#1b1512"/><path d="M${cx} ${cy + 1} L${cx - 2.5} ${cy + 8} L${cx + 2} ${cy + 8} Z" fill="${shade(L.skin, -0.18)}"/><path d="M${cx - 5} ${cy + 13} Q${cx} ${cy + 15.5} ${cx + 5} ${cy + 13}" stroke="${shade(L.skin, -0.45)}" stroke-width="1.3" fill="none" stroke-linecap="round"/>`;
@@ -134,9 +134,9 @@ function joint(ctx, c, r, col) { const pts = []; for (let i = 0; i < 6; i++) { c
 const G_BEAST = { skin: '#c4c7d2', dark: '#8c90a3', deep: '#555a6e', line: '#2b2d3a', vein: '#7a5f9e', pants: '#1d1519', shoe: '#0e0a0b', claw: '#f4efe4', belt: '#2a1b14', buckle: '#f2c65a' };
 const G_LOOK = { skin: '#d9a77f', sleeve: '#cfd0d6', vest: '#7a1530', trim: '#f2c65a', pants: '#1d1519', shoe: '#0e0a0b', tie: '#ff3d8b' };
 
-export function makeRenderer(canvas, { gImg, pImg, pSeed, gore = true, reduced = false, low = false, lens = null }) {
+export function makeRenderer(canvas, { gImg, pImg, pSeed, skinTone, gore = true, reduced = false, low = false, lens = null }) {
   const ctx = canvas.getContext('2d');
-  const L = looks(pSeed || 'x');
+  const L = looks(pSeed || 'x', skinTone);
   const P_LOOK = { skin: L.skin, sleeve: L.shirt, vest: L.shirt, pants: '#2b2436', shoe: '#140f12' };
   const fx = []; // sparks + floating text: {x, y, t0, kind, text, col}
   let shake = 0; let flash = 0; let camX = null;

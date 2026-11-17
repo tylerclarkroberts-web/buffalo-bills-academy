@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, refreshSession, useSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { Bust } from './Bust.jsx';
+import { SKIN_TONES } from '../../../server/engine/avatar-appearance.js';
 import { stylize, detectFace, OUT_W, OUT_H } from './facepoly.js';
 import { headMask, headPath } from './head-mask.js';
 import { frameCrop } from './frame-crop.js';
@@ -14,8 +15,12 @@ const PRIVACY = 'Your original photo stays on this device while you edit. Backgr
 const MAX_SRC = 1280;
 
 export default function AvatarMaker({ next = '/', retake = false }) {
-  const { me } = useSession();
-  const [stage, setStage] = useState('choose');
+  const { me, loading } = useSession();
+  const [step, setStage] = useState(null);
+  const stage = step ?? (retake && me?.hasAvatar ? 'current' : 'choose');
+  const [draftTone, setTone] = useState(undefined);
+  const savedTone = me?.avatar?.skinTone ?? null;
+  const skinTone = draftTone === undefined ? savedTone : draftTone;
   const [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null), [cutout, setCutout] = useState(null), [framing, setFraming] = useState(null);
   const [seed, setSeed] = useState(() => Math.random().toString(36).slice(2, 10));
@@ -27,10 +32,12 @@ export default function AvatarMaker({ next = '/', retake = false }) {
     src.current = cutCanvas.current = null;
   }
   useEffect(() => {
-    alive.current = true; document.title = "Add your face · Buffalo Bill's Academy";
-    heading.current?.focus();
+    alive.current = true; document.title = (retake ? 'Change avatar' : 'Add your face') + " · Buffalo Bill's Academy";
     return () => { alive.current = false; wipe(); };
   }, []);
+  useEffect(() => {
+    if (!loading && (stage === 'current' || stage === 'choose')) heading.current?.focus();
+  }, [loading, stage]);
   function discard() { wipe(); setResult(null); setCutout(null); setFraming(null); setBusy(false); setStage('choose'); }
 
   async function fromFile(file) {
@@ -93,16 +100,35 @@ export default function AvatarMaker({ next = '/', retake = false }) {
     } catch { setErr('Something went wrong making your avatar. Try adjusting the cutout.'); }
     if (alive.current && pending.current === controller) { pending.current = null; setBusy(false); }
   }
-  async function save(body) {
+  async function save(body, url = '/me/avatar') {
     setBusy(true); setErr('');
     try {
-      await api('POST', '/me/avatar', body);
+      await api('POST', url, body);
       if (!alive.current) return;
       wipe(); setResult(null); setCutout(null); await refreshSession();
       if (alive.current) navigate(next, { replace: true });
     } catch (error) { if (alive.current) { setErr(error.message); setBusy(false); } }
   }
   const skip = () => save({ kind: 'gen', seed: me?.id || seed });
+  const picker = (photo = false) => <SkinTonePicker value={skinTone} onChange={setTone} disabled={!!busy} photo={photo} />;
+  if (retake && loading) return <div className="screen" role="status">Loading avatar…</div>;
+  if (stage === 'current') return (
+    <div className="screen wl-current">
+      <div className="wl-current-layout">
+        <Bust id={me.id} avatar={{ ...me.avatar, skinTone }} size={150} still title="Current avatar preview" />
+        <div className="wl-copy">
+          <h1 ref={heading} tabIndex={-1} className="display">Change avatar</h1>
+          {picker(me.avatar.kind === 'photo')}
+          {err && <div className="error" role="alert">{err}</div>}
+          <div className="row wrap">
+            <button className="btn primary" disabled={!!busy || skinTone === savedTone} onClick={() => save({ skinTone }, '/me/avatar/skin-tone')}>{busy ? 'Saving…' : 'Save skin tone'}</button>
+            <button className="btn" disabled={busy} onClick={() => { setErr(''); setStage('choose'); }}>Replace avatar</button>
+          </div>
+          <button className="btn ghost small" disabled={busy} onClick={() => navigate('/profile')}>← Back to profile</button>
+        </div>
+      </div>
+    </div>
+  );
   return (
     <div className={'welcome screen st-' + stage}>
       <div className="wl-copy">
@@ -118,7 +144,7 @@ export default function AvatarMaker({ next = '/', retake = false }) {
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => fromFile(e.target.files?.[0])} />
         <p className="privacy"><b>Private by design.</b> {PRIVACY}</p>
         {!retake && stage === 'choose' && <button className="btn ghost small" onClick={skip} disabled={busy}>Skip for now</button>}
-        {retake && stage === 'choose' && <button className="btn ghost small" disabled={busy} onClick={() => navigate('/profile')}>← Back to profile</button>}
+        {retake && stage === 'choose' && <button className="btn ghost small" disabled={busy} onClick={() => me?.hasAvatar ? setStage(null) : navigate('/profile')}>{me?.hasAvatar ? '← Current avatar' : '← Back to profile'}</button>}
       </div>
       <div className="wl-stage">
         {stage === 'choose' && <ChoosePreview me={me} />}
@@ -136,19 +162,21 @@ export default function AvatarMaker({ next = '/', retake = false }) {
           </div>
         </div>}
         {stage === 'preview' && result && <div className="wl-preview">
-          <div className="wl-pair"><Relief result={result} /><div className="wl-seat"><Bust id={me?.id} avatar={{ kind: 'photo' }} src={result.png} size={110} /><span className="kicker">At the table</span></div></div>
+          <div className="wl-pair"><Relief result={result} /><div className="wl-seat"><Bust id={me?.id} avatar={{ wear: me?.avatar?.wear, kind: 'photo', skinTone }} src={result.png} size={110} /><span className="kicker">At the table</span></div></div>
+          {picker(true)}
           <p className="small muted">Anything kept in this drawing will be visible in your avatar.</p>
           <div className="row wrap">
-            <button className="btn primary" disabled={busy} onClick={() => save({ kind: 'photo', png: result.png })}>Looks good, save it</button>
+            <button className="btn primary" disabled={busy} onClick={() => save({ kind: 'photo', png: result.png, skinTone: draftTone })}>Looks good, save it</button>
             <button className="btn" disabled={busy} onClick={() => setStage('cutout')}>Edit cutout</button>
             <button className="btn" disabled={busy} onClick={adjustFraming}>Adjust framing</button>
             <button className="btn ghost" disabled={busy} onClick={discard}>Retake</button>
           </div>
         </div>}
         {stage === 'gen' && <div className="wl-preview">
-          <div className="wl-gen"><Bust id={seed} avatar={{ kind: 'gen', seed }} size={150} /></div>
+          <div className="wl-gen"><Bust id={me?.id || seed} avatar={{ wear: me?.avatar?.wear, kind: 'gen', seed, skinTone }} size={150} /></div>
+          {picker()}
           <div className="row wrap">
-            <button className="btn primary" disabled={busy} onClick={() => save({ kind: 'gen', seed })}>Use this one</button>
+            <button className="btn primary" disabled={busy} onClick={() => save({ kind: 'gen', seed, skinTone: draftTone })}>Use this one</button>
             <button className="btn" disabled={busy} onClick={() => setSeed(Math.random().toString(36).slice(2, 10))}>Shuffle</button>
             <button className="btn ghost" disabled={busy} onClick={() => setStage('choose')}>← Back</button>
           </div>
@@ -156,6 +184,23 @@ export default function AvatarMaker({ next = '/', retake = false }) {
       </div>
     </div>
   );
+}
+
+const tones = [...SKIN_TONES].sort().reverse();
+const toneNames = ['Very light', 'Light', 'Light medium', 'Medium', 'Medium tan', 'Medium deep', 'Deep', 'Very deep'];
+
+function SkinTonePicker({ value, onChange, disabled, photo }) {
+  return <fieldset className="wl-tones" disabled={disabled}>
+    <legend>Skin tone <span>· {toneNames[tones.indexOf(value)] || 'Avatar default'}</span></legend>
+    {photo && <p className="small muted">Sets the color of your neck, body, and hands.</p>}
+    <div className="wl-swatches">
+      {tones.map((color, i) => <label key={color} title={toneNames[i]}>
+        <input type="radio" name="skin-tone" aria-label={toneNames[i]} value={color} checked={value === color} onChange={() => onChange(color)} />
+        <span style={{ backgroundColor: color }} aria-hidden="true">{value === color ? '✓' : ''}</span>
+      </label>)}
+      <button type="button" className="btn ghost small" disabled={!value} onClick={() => onChange(null)}>Use default</button>
+    </div>
+  </fieldset>;
 }
 
 function HeadGuide() {

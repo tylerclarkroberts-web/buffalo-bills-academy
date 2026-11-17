@@ -35,7 +35,7 @@ export function Profile({ id }) {
     if (loading) return;
     if (self && !me) return;
     api('GET', self ? '/profile' : `/players/${id}/profile`).then(setP).catch((e) => setErr(e.message));
-  }, [id, me?.id, me?.bankroll, me?.avatar?.v, loading]);
+  }, [id, me?.id, me?.bankroll, me?.avatar?.v, me?.avatar?.skinTone, loading]);
   useEffect(() => { document.title = `${p?.name || 'Profile'} · Buffalo Bill's Academy`; }, [p?.name]);
   useLayoutEffect(() => {
     if (editing && !renaming) renameInput.current?.focus();

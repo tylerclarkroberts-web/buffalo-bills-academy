@@ -23,7 +23,7 @@ function faceTexture(id, avatar) {
   tex.addEventListener('dispose', () => { disposed = true; if (img) img.onload = img.onerror = null; });
   const drawParts = () => {
     if (disposed) return;
-    const P = headParts(avatar?.seed || id); ctx.clearRect(0, 0, c.width, c.height); ctx.save(); ctx.scale(2, 2);
+    const P = headParts(avatar?.seed || id, avatar?.skinTone); ctx.clearRect(0, 0, c.width, c.height); ctx.save(); ctx.scale(2, 2);
     for (const list of [P.ears, P.skin, P.beard, P.hair]) for (const f of list) { ctx.fillStyle = f.fill; ctx.fill(new Path2D(f.d)); }
     if (P.L.brows) { ctx.fillStyle = P.L.hair; ctx.fillRect(19, 31, 8, 1.5); ctx.fillRect(33, 31, 8, 1.5); }
     ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.arc(23, 36, 2.2, 0, 7); ctx.arc(37, 36, 2.2, 0, 7); ctx.fill();
@@ -62,7 +62,7 @@ function nameTag(text) {
  * drop to the floor never drags the label along. Front is +z.
  */
 export function buildMiner({ id, name, avatar, bug }) {
-  const L = looks(avatar?.seed || id);
+  const L = looks(avatar?.seed || id, avatar?.skinTone);
   const g = new THREE.Group(); g.name = 'mine-miner';
   const pivot = (parent, name, x, y, z) => { const p = new THREE.Group(); p.name = name; p.position.set(x, y, z); parent.add(p); return p; };
   const body = pivot(g, 'miner-body', 0, 0, 0);
@@ -172,7 +172,7 @@ export class OtherMiners {
     for (const o of list) {
       seen.add(o.id);
       let m = this.map.get(o.id);
-      const key = `${o.avatar?.kind || ''}:${o.avatar?.seed || o.id}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${o.name}`;
+      const key = `${o.avatar?.kind || ''}:${o.avatar?.seed || o.id}:${o.avatar?.skinTone || ''}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${o.name}`;
       if (m && m.key !== key) { this.remove(o.id); m = null; }
       if (!m) {
         m = { ...buildMiner(o), key, x: o.x * TILE, z: o.y * TILE, yaw: o.yaw, walk: 0 };

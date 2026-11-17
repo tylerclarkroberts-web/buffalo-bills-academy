@@ -7,13 +7,15 @@ import { looks } from '../client/src/avatar/genbust.js';
 
 const pose = h => [h.left, h.right].flatMap(arm => [...arm.position.toArray(), arm.rotation.x, arm.rotation.y, arm.rotation.z]);
 
-test('first-person hands use the saved avatar colors rather than rerolling from the account id', () => {
-  const mine = Object.assign(Object.create(MineScene.prototype), { scene: new THREE.Scene(), camera: { aspect: 1.6 } });
-  mine.setSelf({ id: 'player-account', avatar: { kind: 'gen', seed: 'saved-avatar-79' } });
-  const expected = looks('saved-avatar-79'), colors = new Set();
-  mine.hands.group.traverse(part => { if (part.material?.color) colors.add(`#${part.material.color.getHexString()}`); });
-  assert.ok(colors.has(expected.skin)); assert.ok(colors.has(expected.shirt));
-  assert.equal(mine.self.group.visible, false, 'full body stays hidden in first person');
+test('first-person hands use the saved avatar colors, including a chosen tone on a photo avatar', () => {
+  for (const avatar of [{ kind: 'gen', seed: 'saved-avatar-79' }, { kind: 'photo', skinTone: '#f6dccb' }]) {
+    const mine = Object.assign(Object.create(MineScene.prototype), { scene: new THREE.Scene(), camera: { aspect: 1.6 } });
+    mine.setSelf({ id: 'player-account', avatar });
+    const seeded = looks(avatar.seed || 'player-account'), colors = new Set();
+    mine.hands.group.traverse(part => { if (part.material?.color) colors.add(`#${part.material.color.getHexString()}`); });
+    assert.ok(colors.has(avatar.skinTone || seeded.skin)); assert.ok(colors.has(seeded.shirt));
+    assert.equal(mine.self.group.visible, false, 'full body stays hidden in first person');
+  }
 });
 
 test('walking follows travelled distance, settles at rest, and mining moves the right-hand pickaxe', () => {

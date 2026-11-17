@@ -314,7 +314,7 @@ export class MineScene {
     this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
     if (this.self.tag) this.self.tag.visible = false;
     this.self.group.visible = false; this.scene.add(this.self.group);
-    this.hands = buildMineHands(who.avatar?.seed || who.id); resizeMineHands(this.hands, this.camera.aspect);
+    this.hands = buildMineHands(who.avatar?.seed || who.id, who.avatar?.skinTone); resizeMineHands(this.hands, this.camera.aspect);
   }
   startDance(id) {
     const d = danceId(id); if (!d) return false;

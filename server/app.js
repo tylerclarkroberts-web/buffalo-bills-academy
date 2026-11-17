@@ -491,12 +491,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/tables/:code/gags', needPlayer, hostGags); api.post('/tables/:code/pranks', needPlayer, hostGags);
 
   // ----- avatars -----
-  api.post('/me/avatar', needPlayer, wrap((req) => {
-    const b = req.body || {};
-    if (b.kind === 'photo') return { avatar: avatars.setPhoto(req.player, b.png) };
-    if (b.kind === 'gen') return { avatar: avatars.setGenerated(req.player, b.seed) };
-    throw new GameError('Choose a photo avatar or a generated one.');
-  }));
+  api.post('/me/avatar', needPlayer, wrap((req) => ({ avatar: avatars.setAvatar(req.player, req.body || {}) })));
+  api.post('/me/avatar/skin-tone', needPlayer, wrap((req) => ({ avatar: avatars.setSkinTone(req.player, req.body?.skinTone) })));
   api.delete('/me/avatar', needPlayer, wrap((req) => { avatars.remove(req.player); return { avatar: avatars.info(req.player) }; }));
   api.get('/avatars/:id.png', (req, res) => {
     const buf = avatars.read(req.params.id);

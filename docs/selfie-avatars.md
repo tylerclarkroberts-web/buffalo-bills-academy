@@ -1,6 +1,6 @@
 # Selfie avatars
 
-Take a selfie or upload a photo to make a low-poly head for the card table. You can also choose **No photo, make me one** for a generated avatar. To replace an existing avatar, choose **Change avatar** on your profile picture or in the account menu. The editor supports both photos and generated avatars; your current avatar stays unchanged until you save.
+Take a selfie or upload a photo to make a low-poly head for the card table. You can also choose **No photo, make me one** for a generated avatar. Open **Change avatar** on your profile picture or in the account menu to choose a skin tone or replace your face. The skin tone colors your generated face and exposed skin, including your hands in the mine. Your selfie keeps its own colors.
 
 ## Make and review your head
 
@@ -24,7 +24,7 @@ If the camera is unavailable or denied, upload a photo instead. A generated avat
 
 The original photo stays in local editing canvases while you frame, correct and preview the head. It is retained through conversion so you can adjust it without choosing the file again. These canvases are cleared after a successful save, when you cancel or retake, and when you leave the page. A failed save leaves the editor available for retry. This clears the app's editing copies, not the original file in your photo library.
 
-The existing `POST /api/me/avatar` contract is unchanged: a photo avatar sends `{ "kind": "photo", "png": "data:image/png;base64,..." }` containing the finished 240×300 PNG. It does not send the original photo, editing mask or worker input. Generated avatars continue to send a seed. The server stores the finished avatar and metadata through the existing avatar service; no migration or automatic replacement of old avatars is needed.
+`POST /api/me/avatar` accepts the finished 240×300 PNG for a photo or a seed for a generated head. Either can include a `skinTone` from the avatar palette. Omitting it keeps the player's current preference. The editor can also save just the choice with `POST /api/me/avatar/skin-tone`. Sending `{ "skinTone": null }` restores the automatic appearance. A tone-only edit keeps the existing PNG or seed and its version.
 
 The segmentation model and runtime are served from this application. There is no external image-processing service. The one outbound request is MediaPipe's own: each cutout posts performance and usage metrics about the library (not the photo, mask or result) to `https://odml.pa.googleapis.com/v1/log`. The privacy page says so. Browser network checks must still verify actual requests when changing this implementation or dependency version; worker requests do not show in the page's network list, so wrap `fetch` in the worker to see them.
 

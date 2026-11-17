@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { buildMiner, walkPose, OtherMiners } from '../client/src/mines/miners.js';
 import { MineScene } from '../client/src/mines/scene.js';
 import { danceStep } from '../client/src/mines/dance.js';
-import { looks } from '../client/src/avatar/genbust.js';
+import { headParts, looks } from '../client/src/avatar/genbust.js';
 import { DANCE_IDS } from '../server/engine/dances.js';
 import { ROSTER } from '../server/engine/creatures.js';
 
@@ -49,8 +49,9 @@ const watch = m => {
 };
 
 test('miners use the chosen avatar seed for exposed skin, hair and shirt colors', () => {
-  for (const avatar of [{ kind: 'gen', seed: 'redraw-7' }, { kind: 'gen', seed: 'different-face' }, undefined]) {
+  for (const avatar of [{ kind: 'gen', seed: 'redraw-7' }, { kind: 'gen', seed: 'different-face', skinTone: '#f6dccb' }, undefined]) {
     const m = buildMiner({ id: 'account-id', avatar }), expected = looks(avatar?.seed || 'account-id');
+    if (avatar?.skinTone) expected.skin = avatar.skinTone;
     for (const part of ['skin', 'hair', 'shirt']) {
       const material = [...resources(m)].find(r => r.isMaterial && r.name === `miner-${part}`);
       assert.ok(material, `${part} is visible on the model`);
@@ -58,6 +59,15 @@ test('miners use the chosen avatar seed for exposed skin, hair and shirt colors'
     }
     dispose(m);
   }
+});
+
+test('a skin tone recolors generated face facets and preserves the saved face and outfit', () => {
+  const seeded = headParts('redraw-7'), chosen = headParts('redraw-7', '#6e4429');
+  assert.equal(seeded.L.skin, '#e8b48f'); assert.equal(chosen.L.skin, '#6e4429');
+  assert.deepEqual(chosen.skin.map(p => p.d), seeded.skin.map(p => p.d));
+  assert.notEqual(chosen.skin[0].fill, seeded.skin[0].fill);
+  assert.deepEqual(chosen.hair, seeded.hair); assert.deepEqual(chosen.beard, seeded.beard);
+  assert.equal(chosen.L.shirt, seeded.L.shirt);
 });
 
 test('photo faces show a fallback while loading and ignore late callbacks after disposal', t => {
@@ -155,6 +165,8 @@ test('remote miners update in place, replace changed avatar seeds, and release o
   checkA(1); checkB(0); checkReplacement(0);
   miners.set([{ ...alice, avatar: { ...alice.avatar, seed: 'new-face' } }]);
   checkA(1); checkB(1); checkReplacement(0);
+  miners.set([{ ...alice, avatar: { ...alice.avatar, seed: 'new-face', skinTone: '#f6dccb' } }]);
+  assert.notEqual(miners.map.get('alice'), replacement, 'changing just the skin tone refreshes a present miner');
   miners.dispose(); miners.dispose(); miners.remove('alice');
   checkA(1); checkB(1); checkReplacement(1);
   assert.equal(miners.map.size, 0); assert.equal(scene.children.length, 0);

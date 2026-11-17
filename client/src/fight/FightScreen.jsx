@@ -82,10 +82,11 @@ export function FightScreen({ mode, code, view, offer, onClose, onView, myId }) 
     if (phase !== 'run' || !run || !canvasRef.current) return undefined;
     const gImg = new Image(); gImg.src = '/api/dealer.png?v=guntrad';
     const src = avatarSrc(fighterId, fighterAvatar);
-    let pImg; if (src) { pImg = new Image(); pImg.src = src; } else pImg = genHeadImage(fighterAvatar?.seed || fighterId);
+    const pSeed = fighterAvatar?.seed || fighterId, skinTone = fighterAvatar?.skinTone;
+    let pImg; if (src) { pImg = new Image(); pImg.src = src; } else pImg = genHeadImage(pSeed, skinTone);
     const gore = goreEnabled();
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const R = makeRenderer(canvasRef.current, { gImg, pImg, pSeed: fighterAvatar?.seed || fighterId, gore, reduced, low: lowPower(), lens: lensRef.current });
+    const R = makeRenderer(canvasRef.current, { gImg, pImg, pSeed, skinTone, gore, reduced, low: lowPower(), lens: lensRef.current });
     R.setSound(sfx.gore);
     // The KO ending runs after the result is already decided; it never touches the simulation. The verdict waits for it.
     const F2 = { on: false, t0: 0, act: 0, kind: null, stage: '', done: false, pending: null };
