@@ -331,7 +331,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   const enemyHead = (e, now) => { const c = cur(e, now); return L.headOf(e.type, c.x, c.y, c.z, c.yaw); };
   // what the crosshair is on: { d, head } (local guess; the server decides the real hits)
   function aimRay(o, d, maxD = 140) {
-    let hitD = wallDist(o, d, maxD, bars), hit = null, head = false; const now = performance.now();
+    let hitD = wallDist(o, d, maxD), hit = null, head = false; const now = performance.now();
     for (const e of ents.en.values()) {
       const tb = L.raySphere(o, d, enemyCenter(e, now), L.ENEMIES[e.type].radius * 1.4), hd = enemyHead(e, now), th = L.raySphere(o, d, hd, hd.r);
       const hh = th < Infinity && th <= tb + 0.45 + L.ENEMIES[e.type].head.f * 1.4, tt = hh ? th : Math.min(tb, th); if (tt < hitD) { hitD = tt; hit = e; head = hh; }
@@ -539,7 +539,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
           if (d > 0.01) { pos.x += dx / d * step; pos.z += dz / d * step; }
           if (d - step <= lunge.stop + 0.05 || t >= lunge.until) land();
         } else { pos.x += (fx * mz + rx * mx) * SPEED * dt; pos.z += (fz * mz + rz * mx) * SPEED * dt; }
-        collide(pos, RADIUS, pos.y, 1.8, bars);
+        collide(pos, RADIUS, pos.y, 1.8);
         const now = performance.now();
         for (const e of ents.en.values()) { const c = cur(e, now), dx = pos.x - c.x, dz = pos.z - c.z, d = Math.hypot(dx, dz), m = RADIUS + L.ENEMIES[e.type].radius * 0.9; if (d < m && d > 1e-4 && Math.abs(c.y - pos.y) < 1.5) { pos.x = c.x + dx / d * m; pos.z = c.z + dz / d * m; } }
         if (jeepObj && !veh) { const j = cur(jeepObj, now), dx = pos.x - j.x, dz = pos.z - j.z, d = Math.hypot(dx, dz); if (d < 2 && d > 1e-4 && Math.abs(j.y - pos.y) < 1.6) { pos.x = j.x + dx / d * 2; pos.z = j.z + dz / d * 2; } }
@@ -547,7 +547,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       }
       // gravity. Stepping or jumping off a roof is just a drop: no fall damage, and the server lets you come down.
       vy -= GRAV * dt; pos.y += vy * dt;
-      const gy = groundAt(pos.x, pos.z, pos.y, bars);
+      const gy = groundAt(pos.x, pos.z, pos.y);
       if (pos.y <= gy) { pos.y = gy; vy = 0; onGround = true; } else if (pos.y - gy > 0.05) onGround = false;
     }
     if (alive && onGround && ml > 0.1 && !seat && !reduceMotion) bob += dt * 9; else bob *= 0.9;
@@ -599,8 +599,8 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     v.yaw -= steer * JEEP.steer * grip * dt;
     const nx = v.x - Math.sin(v.yaw) * v.spd * dt, nz = v.z - Math.cos(v.yaw) * v.spd * dt;
     const q = { x: Math.max(BOUNDS.x0 + 1, Math.min(BOUNDS.x1 - 1, nx)), z: Math.max(BOUNDS.z0 + 1, Math.min(BOUNDS.z1 - 1, nz)) };
-    const gy = groundAt(q.x, q.z, v.y + 0.6, bars);
-    collide(q, 1.0, gy, 1.6, bars);
+    const gy = groundAt(q.x, q.z, v.y + 0.6);
+    collide(q, 1.0, gy, 1.6);
     if (Math.hypot(q.x - nx, q.z - nz) > 0.05) v.spd *= 0.5; // scraped a wall
     if (Math.abs(gy - v.y) > 1.1) { v.spd = 0; } else { v.x = q.x; v.z = q.z; v.y = gy; }
     const s = seatAt(v, 'd'); pos.x = s.x; pos.y = s.y; pos.z = s.z;
@@ -724,7 +724,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const sh = reduceMotion ? 0 : shake; shake = Math.max(0, shake - dt * 2);
     if (me?.seat === 'd' && veh) { // chase camera behind EL TORO
       const back = 7.5, cx = veh.x + Math.sin(veh.yaw) * back, cz = veh.z + Math.cos(veh.yaw) * back;
-      const cy = Math.max(veh.y + 3.4, groundAt(cx, cz, veh.y + 6, bars) + 1.2);
+      const cy = Math.max(veh.y + 3.4, groundAt(cx, cz, veh.y + 6) + 1.2);
       camera.position.set(cx + (R() - 0.5) * sh * 0.2, cy, cz);
       camera.lookAt(veh.x - Math.sin(veh.yaw) * 4, veh.y + 1.2, veh.z - Math.cos(veh.yaw) * 4);
       return;
@@ -770,7 +770,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
     t += dt;
     fpsT += dt; fpsN++; if (fpsT >= 1) { fps = fpsN / fpsT; fpsT = 0; fpsN = 0; }
-    if (joined && (mode === 'playing' || mode === 'paused')) { if (mode === 'playing') update(dt); else if (!me?.seat) { vy -= GRAV * dt; pos.y += vy * dt; const gy = groundAt(pos.x, pos.z, pos.y, bars); if (pos.y <= gy) { pos.y = gy; vy = 0; } } sendInput(now); }
+    if (joined && (mode === 'playing' || mode === 'paused')) { if (mode === 'playing') update(dt); else if (!me?.seat) { vy -= GRAV * dt; pos.y += vy * dt; const gy = groundAt(pos.x, pos.z, pos.y); if (pos.y <= gy) { pos.y = gy; vy = 0; } } sendInput(now); }
     else if (joined && mode === 'lobby') sendInput(now);
     animate(dt, now);
     effects(dt);

@@ -23,7 +23,7 @@ function setup(names = ['t', 'j'], seed = 7, { lobby = false } = {}) {
   if (!lobby) { assert.equal(m.phase, 'lobby'); assert.ok(m.begin(names[0]).ok); }
   return m;
 }
-const put = (m, id, x, z) => { const p = m.players.get(id); p.x = x; p.z = z; p.y = groundAt(x, z, 50, m.bars); p.hist = []; return p; };
+const put = (m, id, x, z) => { const p = m.players.get(id); p.x = x; p.z = z; p.y = groundAt(x, z, 50); p.hist = []; return p; };
 const run = (m, secs, dt = 0.1) => { for (let t = 0; t < secs - 1e-9; t += dt) m.tick(dt); };
 const toWave = (m, n) => { m.wave = n - 1; m.phase = 'break'; m.phaseUntil = m.t; m.tick(0.1); assert.equal(m.wave, n); };
 // a shot from a's eye at b's chest
@@ -196,7 +196,7 @@ test('match: the horde breaks boards, holding ACTION rebuilds one plank at a tim
   // and enemies tear boards to get in
   const m2 = setup(['t']); toWave(m2, 1); m2.queue = []; m2.enemies = []; m2.calm = true;
   const in2 = put(m2, 't', 15.5, 3); // inside the hacienda
-  const lu = m2.spawn('granjero'); lu.x = op.out.x; lu.z = op.out.z - 0.5; lu.y = groundAt(lu.x, lu.z, 50, m2.bars);
+  const lu = m2.spawn('granjero'); lu.x = op.out.x; lu.z = op.out.z - 0.5; lu.y = groundAt(lu.x, lu.z, 50);
   run(m2, 6);
   assert.ok(m2.bars.some((b) => b < BOARDS_MAX), 'a farmer pulled planks off');
   assert.ok(in2);
@@ -222,7 +222,7 @@ test('match: shots hurt enemies and friends alike; a PVP down is credited; reviv
   run(m, L.MATCH.reviveSecs + 0.2);
   assert.equal(t.state, 'alive'); assert.ok(t.P.health > 0);
   // an enemy takes hits and dies for points
-  const e = m.spawn('luchador'); e.x = 3; e.z = -12; e.y = groundAt(3, -12, 50, m.bars); e.spd = 0; e.hist = [];
+  const e = m.spawn('luchador'); e.x = 3; e.z = -12; e.y = groundAt(3, -12, 50); e.spd = 0; e.hist = [];
   put(m, 'j', 3, -3); const pts = j.pts;
   for (let k = 0; k < 40 && !e.dead; k++) { const o = { x: j.x, y: j.y + EYE, z: j.z }, c = { x: e.x - o.x, y: e.y + 1 - o.y, z: e.z - o.z }, l = Math.hypot(c.x, c.y, c.z); m.input('j', { p: [j.x, j.y, j.z], ev: [['s', o.x, o.y, o.z, c.x / l, c.y / l, c.z / l]] }, now += 150); }
   assert.ok(e.dead, 'the luchador went down'); assert.equal(j.kills, 1); assert.ok(j.pts > pts + L.ENEMIES.luchador.points);

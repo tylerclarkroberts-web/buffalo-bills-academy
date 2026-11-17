@@ -8,7 +8,8 @@
 // The sim only runs while someone has the stream open. Free play: no stakes; the only thing saved is your look.
 import { Match } from './match.js';
 import { MATCH, cleanLook, DEFAULT_LOOK } from './rules.js';
-import { groundAt, OPENINGS } from './map.js';
+import { groundAt } from './map.js';
+import { dogsAt } from './critters.js';
 
 export class ElHalo {
   constructor({ tickMs = 1000 / MATCH.tickHz, now = () => Date.now(), rnd, testHooks = false, store = null } = {}) {
@@ -91,24 +92,23 @@ export class ElHalo {
     const m = this.match;
     api.post('/elhalo/test', needPlayer, (req, res) => {
       const b = req.body || {}, p = m.players.get(req.player.id);
-      if (b.place && p) { if (p.seat) m.exitJeep(p, true); p.x = +b.place.x; p.z = +b.place.z; p.y = b.place.y !== undefined ? +b.place.y : groundAt(p.x, p.z, 50, m.bars); p.groundY = p.y; p.airT = 0; if (b.place.yaw !== undefined) p.yaw = +b.place.yaw; p.corr = [p.x, p.y, p.z, p.yaw]; p.hist = []; }
-      if (b.boards && !OPENINGS[b.boards.i]?.open) m.bars[b.boards.i] = Math.max(0, Math.min(5, b.boards.n | 0));
+      if (b.place && p) { if (p.seat) m.exitJeep(p, true); p.x = +b.place.x; p.z = +b.place.z; p.y = b.place.y !== undefined ? +b.place.y : groundAt(p.x, p.z, 50); p.groundY = p.y; p.airT = 0; if (b.place.yaw !== undefined) p.yaw = +b.place.yaw; p.corr = [p.x, p.y, p.z, p.yaw]; p.hist = []; }
       if (b.wave) { if (m.phase === 'lobby' || m.phase === 'idle') m.countdown(); m.truck = null; m.wave = (b.wave | 0) - 1; m.phase = 'break'; m.phaseUntil = m.t; m.queue = []; for (const e of m.enemies) e.dead = true; if (b.keepQueue === false) m.queue = []; }
       if (b.empty !== undefined) m.emptyWave = !!b.empty; // (with wave) the wave's queue is dropped on the next tick, for quiet checks
       if (b.clear) { m.queue = []; for (const e of m.enemies) e.dead = true; }
       if (b.truck) { if (m.phase === 'lobby') m.countdown(); if (!m.wave) m.wave = Math.max(1, b.truck | 0); else if (typeof b.truck === 'number') m.wave = b.truck; m.startTruck(); }
       if (b.truckT !== undefined && m.truck) { m.truck.t = +b.truckT; m.truck.at = m.t; }
-      if (b.spawn) for (const s of [].concat(b.spawn)) { const e = m.spawn(s.type || 'luchador'); e.x = +s.x; e.z = +s.z; e.y = groundAt(e.x, e.z, 50, m.bars) + (e.st.fly ? (s.fly ?? e.st.fly.cruise) : 0); if (s.y !== undefined) e.y = +s.y; if (s.still) e.spd = 0; if (s.yaw !== undefined) e.yaw = +s.yaw; e.hist = []; }
+      if (b.spawn) for (const s of [].concat(b.spawn)) { const e = m.spawn(s.type || 'luchador'); e.x = +s.x; e.z = +s.z; e.y = groundAt(e.x, e.z, 50) + (e.st.fly ? (s.fly ?? e.st.fly.cruise) : 0); if (s.y !== undefined) e.y = +s.y; if (s.still) e.spd = 0; if (s.lcool !== undefined) e.lcool = +s.lcool; if (s.hp) { e.hp = +s.hp; e.maxHp = Math.max(e.maxHp, e.hp); } if (s.yaw !== undefined) e.yaw = +s.yaw; e.hist = []; }
       if (b.calm !== undefined) m.calm = !!b.calm;
       if (b.night !== undefined) { m.forceNight = b.night === null ? null : !!b.night; m.night = m.forceNight ?? m.wave >= MATCH.nightWave; }
       if (b.give && p) { p.truckGot = -1; m.truck = m.truck || null; const save = m.truck; m.truck = { weapon: b.give, n: -99 }; m.gift(p); m.truck = save; }
       if (b.nades && p) { p.P.nades.frag = b.nades[0] | 0; p.P.nades.sticky = b.nades[1] | 0; }
-      if (b.jeep) { if (!m.jeep) m.spawnJeep(); if (b.jeep.x !== undefined) { m.jeep.x = +b.jeep.x; m.jeep.z = +b.jeep.z; m.jeep.y = groundAt(m.jeep.x, m.jeep.z, 50, m.bars); m.jeep.yaw = +(b.jeep.yaw || 0); } }
+      if (b.jeep) { if (!m.jeep) m.spawnJeep(); if (b.jeep.x !== undefined) { m.jeep.x = +b.jeep.x; m.jeep.z = +b.jeep.z; m.jeep.y = groundAt(m.jeep.x, m.jeep.z, 50); m.jeep.yaw = +(b.jeep.yaw || 0); } }
       if (b.enter && p) m.enterJeep(p);
       if (b.down && p) { p.P.shield = 0; m.hurtPlayer(p, 999, null, { id: 'test' }, 'test'); }
-      if (b.pickup) m.pickups.push({ id: m.nextId++, kind: b.pickup.kind, x: +b.pickup.x, z: +b.pickup.z, y: groundAt(+b.pickup.x, +b.pickup.z, 50, m.bars), life: 60 });
+      if (b.pickup) m.pickups.push({ id: m.nextId++, kind: b.pickup.kind, x: +b.pickup.x, z: +b.pickup.z, y: groundAt(+b.pickup.x, +b.pickup.z, 50), life: 60 });
       if (b.hp && p) { p.P.health = +b.hp; p.P.shield = 0; }
-      res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, bars: m.bars, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, me: p ? { x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield } : null });
+      res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), maxHp: e.maxHp, state: e.state, leap: e.leapS ? e.leapS.ph : null, x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, t: m.t, dogs: b.dogs ? dogsAt(m.t) : undefined, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, me: p ? { x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield } : null });
     });
   }
 }

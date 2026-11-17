@@ -18,8 +18,8 @@ function at(n = 1, names = ['t'], { quiet = true, seed = 7 } = {}) {
   assert.equal(m.wave, n); assert.equal(m.phase, 'wave');
   return m;
 }
-const put = (m, id, x, z, y) => { const p = m.players.get(id); p.x = x; p.z = z; p.y = y ?? groundAt(x, z, 50, m.bars); p.groundY = p.y; p.airT = 0; p.hist = []; p.corr = null; return p; };
-const foe = (m, type, x, z, extra = {}) => { const e = m.spawn(type); e.x = x; e.z = z; e.y = groundAt(x, z, 50, m.bars) + (e.st.fly ? (extra.fly ?? 0) : 0); e.spd = extra.spd ?? 0; e.yaw = extra.yaw ?? 0; e.hist = []; if (extra.hp) { e.hp = extra.hp; e.maxHp = extra.hp; } return e; };
+const put = (m, id, x, z, y) => { const p = m.players.get(id); p.x = x; p.z = z; p.y = y ?? groundAt(x, z, 50); p.groundY = p.y; p.airT = 0; p.hist = []; p.corr = null; return p; };
+const foe = (m, type, x, z, extra = {}) => { const e = m.spawn(type); e.x = x; e.z = z; e.y = groundAt(x, z, 50) + (e.st.fly ? (extra.fly ?? 0) : 0); e.spd = extra.spd ?? 0; e.yaw = extra.yaw ?? 0; e.hist = []; if (extra.hp) { e.hp = extra.hp; e.maxHp = extra.hp; } return e; };
 const aimAt = (p, x, y, z) => { const o = { x: p.x, y: p.y + EYE, z: p.z }, c = { x: x - o.x, y: y - o.y, z: z - o.z }, l = Math.hypot(c.x, c.y, c.z); return ['s', o.x, o.y, o.z, c.x / l, c.y / l, c.z / l]; };
 let clock = 1000;
 const send = (m, id, msg) => m.input(id, msg, (clock += 400));
@@ -177,7 +177,7 @@ test('la misión is wide open: no boards, nothing to nail; the hacienda and mans
   const op = mision.find((o) => !o.door), p = put(m, 't', op.in.x, op.in.z); m.tick(0.1);
   assert.notEqual(m.personal('t').pr?.k, 'build', 'no boarding prompt at the mission');
   const d = { x: op.out.x - op.in.x, y: 0, z: op.out.z - op.in.z }, l = Math.hypot(d.x, d.z);
-  assert.ok(wallDist({ x: op.in.x, y: op.y0 + 0.6, z: op.in.z }, { x: d.x / l, y: 0, z: d.z / l }, l, m.bars) >= l - 0.01, 'you can shoot (and climb) through');
+  assert.ok(wallDist({ x: op.in.x, y: op.y0 + 0.6, z: op.in.z }, { x: d.x / l, y: 0, z: d.z / l }, l) >= l - 0.01, 'you can shoot (and climb) through');
   assert.ok(p);
   const h = others.find((o) => !o.door); put(m, 't', h.in.x, h.in.z); m.bars[h.i] = 2; m.tick(0.1);
   assert.equal(m.personal('t').pr?.k, 'build', 'hacienda windows still board');
@@ -190,8 +190,8 @@ test('jumping off a roof deck is smooth: no fall damage, no snapping back', () =
   // walk to the edge and off it, falling like the client does
   let x = p.x, y = deck, vy = 0;
   for (let k = 0; k < 22; k++) {
-    x += 0.5; vy -= 16 * 0.1; y = Math.max(groundAt(x, p.z, y, m.bars), y + vy * 0.1);
-    if (y <= groundAt(x, p.z, y, m.bars) + 1e-6) vy = 0;
+    x += 0.5; vy -= 16 * 0.1; y = Math.max(groundAt(x, p.z, y), y + vy * 0.1);
+    if (y <= groundAt(x, p.z, y) + 1e-6) vy = 0;
     m.input('t', { p: [x, y, p.z] }, (clock += 100)); m.tick(0.1);
     assert.ok(!m.personal('t').corr, `step ${k} accepted at y ${y.toFixed(2)}`);
   }
@@ -262,7 +262,7 @@ test('EL TORO: a driver seat and a turret seat, ACTION in and out, the server ch
   // ACTION again gets you out, next to the jeep
   m.input('a', { act: true }, (clock += 100)); m.tick(0.1); m.input('a', { act: false }, (clock += 100));
   const a = m.players.get('a'); assert.equal(a.seat, null); assert.equal(j.driver, null); assert.ok(Math.hypot(a.x - j.x, a.z - j.z) < 3.5);
-  assert.ok(!insideSolid({ x: a.x, y: a.y + 0.5, z: a.z }, m.bars));
+  assert.ok(!insideSolid({ x: a.x, y: a.y + 0.5, z: a.z }));
 });
 
 test('grenades: the piñata bounces and pops on a fuse; the pegajosa sticks and rides along; both turn up around the map', () => {
