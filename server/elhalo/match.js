@@ -1,17 +1,18 @@
 // EL HALO horde match: one shared world, simulated here and streamed to every client (server/elhalo/index.js).
-// The server owns the lobby, enemies, boards, waves, the supply truck, the jeep, grenades, rockets, needles, damage
+// The server owns the lobby, enemies (and their leaps), waves, the street dogs and the elote man, the supply truck, the jeep, grenades, rockets, needles, damage
 // and points; clients own their own movement (checked here: speed, bounds, walls, falls) and send what they did
 // (shots as rays, grenade throws, swings, holding ACTION). Free play: nothing in here knows about money.
 import * as L from './rules.js';
-import { BOUNDS, OPENINGS, BOARDS_MAX, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, OBSTACLES, FORT_ROUTES, FORT_DECK, fortRects,
+import { BOUNDS, OPENINGS, BUILDINGS, ELOTE, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, OBSTACLES, FORT_ROUTES, FORT_DECK, fortRects,
   buildingAt, fortAt, terrain, groundAt, collide, wallDist, insideSolid, segHitsRect, truckAt, TRUCK, AMMO_SPOTS, NADE_SPOTS, JEEP_SPAWN } from './map.js';
+import { dogsAt, eloteShout } from './critters.js';
 
 const { MATCH, WEAPONS, ENEMIES } = L;
 export const EYE = 1.62;
 const P_RADIUS = 0.38, MAX_SPEED = 7.6, MOVE_SLACK = 1.3, LUNGE_SPEED = 24;
 const TYPE_IDX = Object.fromEntries(L.ENEMY_TYPES.map((t, i) => [t, i]));
 const W_IDX = Object.fromEntries(L.WEAPON_IDS.map((t, i) => [t, i]));
-const STATE_IDX = { walk: 0, hit: 1, tear: 2, tackle: 3, shoot: 4, bless: 5, idle: 6, climb: 7, swoop: 8, wail: 9 };
+const STATE_IDX = { walk: 0, hit: 1, grab: 2, tackle: 3, shoot: 4, bless: 5, idle: 6, climb: 7, swoop: 8, wail: 9, windup: 10, leap: 11, slam: 12 };
 const NADE_IDX = { frag: 0, sticky: 1 };
 const r2 = (v) => Math.round(v * 100) / 100;
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -31,14 +32,14 @@ export class Match {
   reset(hard = false) {
     this.t = 0; this.phase = 'idle'; this.wave = 0; this.phaseUntil = 0; this.queue = []; this.spawnT = 0;
     this.enemies = []; this.notes = []; this.nades = []; this.shots = []; this.pickups = []; this.events = []; this.nextId = 1;
-    this.bars = OPENINGS.map((o) => (o.open ? 0 : BOARDS_MAX)); this.idleT = 0; this.last = this.last || null;
+    this.idleT = 0; this.last = this.last || null;
     this.truck = null; this.jeep = null; this.night = false; this.ammoT = 6; this.nadeT = 12; this.host = null; this.forceNight = null;
     if (hard) { this.players.clear(); return; }
     for (const [id, p] of this.players) { if (!p.joined) this.players.delete(id); else this.freshStats(p); }
     if (this.online().length) this.phase = 'lobby';
   }
   freshStats(p) {
-    Object.assign(p, { kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, boards: 0, ready: false, truckGot: -1 });
+    Object.assign(p, { kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, ready: false, truckGot: -1, eloteAt: -Infinity });
     p.state = 'dead'; // a new match: back to the starting guns
     this.respawn(p);
   }
@@ -53,8 +54,8 @@ export class Match {
       const used = new Set([...this.players.values()].map((q) => q.color));
       let color = 0; while (used.has(color) && color < COLORS - 1) color++;
       p = { id, name: String(name).slice(0, 18), color, joined: false, online: true, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, state: 'dead', P: L.createPlayer(),
-        w: 'rifle', slots: [...L.START_WEAPONS], wv: 0, moving: 0, firing: 0, lastIn: nowMs, tokens: 3, act: false, actWas: false, build: 0, buildAt: -1, rev: 0, revOf: null, prompt: null,
-        hist: [], kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, boards: 0, inputs: 0, inWin: 0, until: 0, offT: 0, corr: null, seq: 0,
+        w: 'rifle', slots: [...L.START_WEAPONS], wv: 0, moving: 0, firing: 0, lastIn: nowMs, tokens: 3, act: false, actWas: false, rev: 0, revOf: null, prompt: null,
+        hist: [], kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, eloteAt: -Infinity, inputs: 0, inWin: 0, until: 0, offT: 0, corr: null, seq: 0,
         ready: false, joinedAt: 0, seat: null, lungeMs: 0, airT: 0, groundY: 0, look: L.cleanLook(look ?? this.looks?.(id)), needles: null, truckGot: -1 };
       this.players.set(id, p);
       if (this.online().length > MATCH.maxPlayers) { this.players.delete(id); return { error: 'full' }; }
@@ -115,11 +116,11 @@ export class Match {
     const far = PLAYER_SPAWNS.map(([x, z]) => ({ x, z, d: Math.min(99, ...this.enemies.map((e) => Math.hypot(e.x - x, e.z - z))) })).sort((a, b) => b.d - a.d);
     const s = far[Math.floor(this.rnd() * Math.min(3, far.length))];
     this.exitJeep(p, true);
-    p.x = s.x + (this.rnd() - 0.5) * 1.5; p.z = s.z + (this.rnd() - 0.5) * 1.5; p.y = groundAt(p.x, p.z, 50, this.bars); p.groundY = p.y; p.airT = 0;
+    p.x = s.x + (this.rnd() - 0.5) * 1.5; p.z = s.z + (this.rnd() - 0.5) * 1.5; p.y = groundAt(p.x, p.z, 50); p.groundY = p.y; p.airT = 0;
     p.yaw = Math.atan2(p.x, p.z); p.pitch = 0; // face down the canyon toward the middle
     if (!p.slots || p.state === 'dead' || !p.wv) { p.slots = [...L.START_WEAPONS]; p.w = p.slots[0]; p.wv = (p.wv || 0) + 1; }
     const nades = p.P?.nades; p.P = L.createPlayer(p.slots); if (nades && p.state === 'downed') p.P.nades = nades;
-    p.state = 'alive'; p.until = 0; p.hist = []; p.build = 0; p.rev = 0;
+    p.state = 'alive'; p.until = 0; p.hist = []; p.rev = 0;
     p.corr = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw)];
   }
 
@@ -168,20 +169,20 @@ export class Match {
     const dist = Math.hypot(x - p.x, z - p.z);
     const top = nowMs < p.lungeMs ? LUNGE_SPEED : MAX_SPEED; // a sword or hammer lunge covers ground fast
     if (dist > top * Math.max(0.1, dt) + MOVE_SLACK) return reject();
-    const g = groundAt(x, z, y, this.bars);
+    const g = groundAt(x, z, y);
     if (y < terrain(x, z) - 0.6) return reject();
     // high above the ground is fine on the way DOWN (stepping or jumping off a roof deck: no fall damage, no snapping
     // back); going up is capped by a jump from the last place you stood
     if (y > Math.max(g + 2.6, p.groundY + 1.7)) return reject();
     if (y - p.y > 1.5 + 2 * Math.min(dt, 0.5)) return reject(); // a jump tops out near 1.2 m: no hopping onto roofs
-    // no walking through walls or boards: check the path at knee and chest height, and the end spot
+    // no walking through walls: check the path at knee and chest height, and the end spot
     if (dist > 0.05) {
       const d = { x: (x - p.x) / dist, y: 0, z: (z - p.z) / dist };
-      for (const h of [0.6, 1.3]) { const o = { x: p.x, y: Math.max(p.y, y) + h, z: p.z }; if (wallDist(o, d, dist + 0.1, this.bars, true) < dist - 0.05) return reject(); }
+      for (const h of [0.6, 1.3]) { const o = { x: p.x, y: Math.max(p.y, y) + h, z: p.z }; if (wallDist(o, d, dist + 0.1, true) < dist - 0.05) return reject(); }
     }
-    const q = { x, z }; collide(q, P_RADIUS * 0.6, y, 1.8, this.bars);
+    const q = { x, z }; collide(q, P_RADIUS * 0.6, y, 1.8);
     if (Math.hypot(q.x - x, q.z - z) > 0.2) {
-      const was = { x: p.x, z: p.z }; collide(was, P_RADIUS * 0.6, p.y, 1.8, this.bars); // already wedged somewhere? let them wriggle out
+      const was = { x: p.x, z: p.z }; collide(was, P_RADIUS * 0.6, p.y, 1.8); // already wedged somewhere? let them wriggle out
       if (Math.hypot(was.x - p.x, was.z - p.z) <= 0.2 || dist > 1.5) return reject();
     }
     p.moving = dist > 0.03 ? 1 : 0; p.x = x; p.y = y; p.z = z;
@@ -192,7 +193,7 @@ export class Match {
 
   // ---- the jeep (wave 15+): the driver's client drives it like its own feet, the server checks the moves
   spawnJeep() {
-    const y = groundAt(JEEP_SPAWN.x, JEEP_SPAWN.z, 50, this.bars);
+    const y = groundAt(JEEP_SPAWN.x, JEEP_SPAWN.z, 50);
     this.jeep = { x: JEEP_SPAWN.x, y, z: JEEP_SPAWN.z, yaw: JEEP_SPAWN.yaw, spd: 0, driver: null, gunner: null, ty: 0, tp: 0, corr: null };
     this.ev('jp');
   }
@@ -204,7 +205,7 @@ export class Match {
     const j = this.jeep; if (!j || p.seat) return false;
     const seat = !j.driver ? 'd' : !j.gunner ? 'g' : null; if (!seat) return false;
     if (seat === 'd') j.driver = p.id; else { j.gunner = p.id; p.w = 'torreta'; p.P.weapons.torreta = L.loadout('torreta'); }
-    p.seat = seat; Object.assign(p, this.seatPos(seat)); p.hist = []; p.build = 0;
+    p.seat = seat; Object.assign(p, this.seatPos(seat)); p.hist = [];
     this.ev('je', p.id, seat); return true;
   }
   exitJeep(p, quiet = false) {
@@ -214,9 +215,9 @@ export class Match {
     delete p.P.weapons.torreta; if (p.w === 'torreta') p.w = p.slots[0];
     const r = rightOf(j.yaw), side = p.seat === 'd' ? -1 : 1;
     let spot = { x: j.x + r.x * 2.2 * side, z: j.z + r.z * 2.2 * side };
-    collide(spot, P_RADIUS, groundAt(spot.x, spot.z, 50, this.bars), 1.8, this.bars);
-    if (insideSolid({ ...spot, y: groundAt(spot.x, spot.z, 50, this.bars) + 0.5 }, this.bars)) spot = { x: j.x, z: j.z };
-    p.seat = null; p.x = spot.x; p.z = spot.z; p.y = groundAt(p.x, p.z, j.y + 1, this.bars); p.groundY = p.y; p.airT = 0; p.hist = [];
+    collide(spot, P_RADIUS, groundAt(spot.x, spot.z, 50), 1.8);
+    if (insideSolid({ ...spot, y: groundAt(spot.x, spot.z, 50) + 0.5 })) spot = { x: j.x, z: j.z };
+    p.seat = null; p.x = spot.x; p.z = spot.z; p.y = groundAt(p.x, p.z, j.y + 1); p.groundY = p.y; p.airT = 0; p.hist = [];
     p.corr = [r2(p.x), r2(p.y), r2(p.z)];
     if (!quiet) this.ev('jx', p.id);
   }
@@ -226,9 +227,9 @@ export class Match {
     if (x < BOUNDS.x0 - 0.5 || x > BOUNDS.x1 + 0.5 || z < BOUNDS.z0 - 0.5 || z > BOUNDS.z1 + 0.5) return reject();
     const dist = Math.hypot(x - j.x, z - j.z);
     if (dist > MATCH.jeep.maxSpeed * Math.max(0.1, dt) + 1.5) return reject();
-    const g = groundAt(x, z, j.y + 0.6, this.bars);
+    const g = groundAt(x, z, j.y + 0.6);
     if (Math.abs(y - g) > 1.2) return reject();
-    const q = { x, z }; collide(q, 1.0, g, 1.6, this.bars);
+    const q = { x, z }; collide(q, 1.0, g, 1.6);
     if (Math.hypot(q.x - x, q.z - z) > 0.35) return reject();
     j.spd = j.spd * 0.5 + (dist / Math.max(0.05, dt)) * 0.5;
     j.x = x; j.y = g; j.z = z; j.yaw = yaw;
@@ -237,7 +238,7 @@ export class Match {
   // ---- combat
   // every enemy and player the ray crosses before a wall, nearest first; head = the head sphere took the hit
   castRay(p, o, d, maxD = 140) {
-    const wd = wallDist(o, d, maxD, this.bars), hits = [];
+    const wd = wallDist(o, d, maxD), hits = [];
     for (const e of this.enemies) {
       if (e.dead) continue;
       let best = Infinity, head = false;
@@ -303,7 +304,7 @@ export class Match {
     const s = { id: this.nextId++, kind, by: p.id, x: o.x + d.x * 0.5, y: o.y + d.y * 0.5 - 0.1, z: o.z + d.z * 0.5, vx: d.x * w.speed, vy: d.y * w.speed, vz: d.z * w.speed, life: kind === 'rocket' ? 4 : 1.7, age: 0, w: p.w, tgt: null };
     if (kind === 'needle') {
       let best = null, bs = 0.32;
-      const consider = (k, c) => { const v = { x: c.x - o.x, y: c.y - o.y, z: c.z - o.z }, l = Math.hypot(v.x, v.y, v.z); if (l > w.range) return; const a = Math.acos(Math.max(-1, Math.min(1, (v.x * d.x + v.y * d.y + v.z * d.z) / l))); if (a < bs && wallDist(o, { x: v.x / l, y: v.y / l, z: v.z / l }, l, this.bars) >= l - 0.5) { bs = a; best = k; } };
+      const consider = (k, c) => { const v = { x: c.x - o.x, y: c.y - o.y, z: c.z - o.z }, l = Math.hypot(v.x, v.y, v.z); if (l > w.range) return; const a = Math.acos(Math.max(-1, Math.min(1, (v.x * d.x + v.y * d.y + v.z * d.z) / l))); if (a < bs && wallDist(o, { x: v.x / l, y: v.y / l, z: v.z / l }, l) >= l - 0.5) { bs = a; best = k; } };
       for (const e of this.enemies) if (!e.dead) consider({ e }, { x: e.x, y: this.lift(e) + e.st.height * 0.5, z: e.z });
       for (const q of this.players.values()) if (q !== p && q.joined && q.online && q.state === 'alive') consider({ q }, { x: q.x, y: q.y + 1, z: q.z });
       s.tgt = best;
@@ -317,7 +318,7 @@ export class Match {
     const cp = Math.cos(p.pitch), f = { x: -Math.sin(p.yaw) * cp, y: Math.sin(p.pitch), z: -Math.cos(p.yaw) * cp };
     const n = { id: this.nextId++, kind, by: p.id, x: o.x + f.x * 0.6, y: o.y - 0.15 + f.y * 0.6, z: o.z + f.z * 0.6,
       vx: f.x * G.speed, vy: f.y * G.speed + G.lift, vz: f.z * G.speed, fuse: G.fuse, on: null, age: 0 };
-    if (insideSolid(n, this.bars)) { n.x = o.x; n.y = o.y - 0.2; n.z = o.z; }
+    if (insideSolid(n)) { n.x = o.x; n.y = o.y - 0.2; n.z = o.z; }
     this.nades.push(n); this.ev('g', p.id, NADE_IDX[kind]);
   }
   melee(p) {
@@ -362,7 +363,7 @@ export class Match {
     if (e.dead) return;
     e.hp -= dmg; e.flash = 1;
     if (stun) e.stunUntil = this.t + stun;
-    if (from && !e.st.etereo) { const k = push ?? (how === 'melee' ? 1.2 : how === 'grenade' ? 0.8 : 0.04); const dx = e.x - from.x, dz = e.z - from.z, dd = Math.hypot(dx, dz) || 1; e.x += dx / dd * k; e.z += dz / dd * k; if (!e.st.fly && !e.climb) collide(e, e.st.radius, e.y, e.st.height, this.bars, true); }
+    if (from && !e.st.etereo) { const k = (push ?? (how === 'melee' ? 1.2 : how === 'grenade' ? 0.8 : 0.04)) * (e.st.heavy ? 0.2 : 1) * (e.leapS?.ph === 'air' ? 0 : 1); const dx = e.x - from.x, dz = e.z - from.z, dd = Math.hypot(dx, dz) || 1; e.x += dx / dd * k; e.z += dz / dd * k; if (!e.st.fly && !e.climb) collide(e, e.st.radius, e.y, e.st.height, true); }
     if (by) { by.pts += MATCH.points.hit + (head ? MATCH.points.head : 0); by.score += MATCH.points.hit + (head ? MATCH.points.head : 0); this.ev('hm', by.id, head ? 1 : 0); }
     if (e.hp > 0) return;
     e.dead = true;
@@ -371,7 +372,7 @@ export class Match {
     this.ev('k', e.id, TYPE_IDX[e.type], r2(e.x), r2(this.lift(e)), r2(e.z), by ? by.id : null, how);
     const roll = this.rnd();
     const kind = roll < 0.18 ? 'ammo' : roll < 0.26 ? 'health' : roll < 0.3 ? 'frag' : roll < 0.33 ? 'sticky' : null;
-    if (kind && this.pickups.length < 14) this.pickups.push({ id: this.nextId++, kind, x: e.x, z: e.z, y: groundAt(e.x, e.z, e.y + 1, this.bars), life: MATCH.pickupLife });
+    if (kind && this.pickups.length < 14) this.pickups.push({ id: this.nextId++, kind, x: e.x, z: e.z, y: groundAt(e.x, e.z, e.y + 1), life: MATCH.pickupLife });
   }
 
   hurtPlayer(q, amount, from, by, how, head = false) {
@@ -382,7 +383,7 @@ export class Match {
     if (by && by.id && by !== q) this.ev('hm', by.id, head ? 1 : 0);
     if (!r.dead) return;
     this.exitJeep(q, true);
-    q.state = 'downed'; q.until = this.t + MATCH.downedSecs; q.deaths++; q.act = false; q.build = 0;
+    q.state = 'downed'; q.until = this.t + MATCH.downedSecs; q.deaths++; q.act = false;
     if (by && by !== q && typeof by === 'object' && by.id) { by.pvp++; by.pts += MATCH.points.pvpKill; by.score += MATCH.points.pvpKill; if (head) by.heads++; this.ev('pvp', by.id, q.id, how || 'gun'); }
     this.ev('dn', q.id);
   }
@@ -464,7 +465,6 @@ export class Match {
         else if (p.state === 'dead') this.respawn(p);
       }
       if (this.wave >= MATCH.jeepWave && !this.jeep) this.spawnJeep();
-      this.boardPts = new Map();
       this.ev('wave', this.wave); return;
     }
     if (this.phase === 'wave') {
@@ -513,11 +513,11 @@ export class Match {
       cool: 0.8 + this.rnd(), tcool: 1 + this.rnd() * 2, tackle: 0, tdir: null, ncool: 1 + this.rnd(), bcool: 2, haste: 0, state: 'walk', act: 0,
       target: null, retarget: 0, route: null, hist: [], chk: { x: 0, z: 0, t: 0 }, detour: null, los: false, losT: 0, flash: 0, strafe: this.rnd() < 0.5 ? 1 : -1, strafeT: 0, dead: false,
       stunUntil: 0, jit: 0, jx: 0, jz: 0, wolf: false, shiftT: st.shift ? st.shift.every * this.rnd() : 0, wailT: st.wail ? 3 + this.rnd() * 3 : 0, blinkT: st.blink ? st.blink.every : 0,
-      climb: null, swoop: 0, rise: 0, fortRoute: null };
-    e.y = groundAt(e.x, e.z, 50, this.bars);
+      climb: null, swoop: 0, rise: 0, fortRoute: null, leapS: null, lcool: st.leap ? 1.5 + this.rnd() * 2 : 0, grabT: 0, recover: 0 };
+    e.y = groundAt(e.x, e.z, 50);
     if (st.fly) e.y += st.fly.cruise;
     this.enemies.push(e); this.ev('sp', e.id);
-    if (type === 'chupacabra' || type === 'lechuza' || type === 'llorona') this.ev('sh', e.id);
+    if (type === 'chupacabra' || type === 'lechuza' || type === 'llorona' || type === 'gordo') this.ev('sh', e.id);
     return e;
   }
 
@@ -527,7 +527,7 @@ export class Match {
     for (const e of this.enemies) {
       if (e.dead) continue;
       const st = e.st;
-      e.cool -= dt; e.tcool -= dt; e.ncool -= dt; e.bcool -= dt; e.strafeT -= dt; if (e.act > 0) e.act -= dt;
+      e.cool -= dt; e.tcool -= dt; e.ncool -= dt; e.bcool -= dt; e.strafeT -= dt; e.lcool -= dt; if (e.act > 0) e.act -= dt;
       e.retarget -= dt;
       if (e.retarget <= 0 || !e.target || e.target.state !== 'alive' || !e.target.online || !e.target.joined) {
         e.retarget = 1; e.target = null; let bd = Infinity;
@@ -539,21 +539,28 @@ export class Match {
       e.state = 'walk';
       if (!tg) { e.state = 'idle'; this.stepEnemy(e, 0, 0, 0, dt); continue; }
       if (e.climb) { this.climbStep(e, dt); continue; }
+      if (e.leapS) { this.leapStep(e, dt, ps); continue; }
+      if (e.recover > 0) { e.recover -= dt; e.state = 'slam'; this.stepEnemy(e, 0, 0, 0, dt, tg); continue; } // picking itself up: the moment to punish it
+      if (e.grabT > 0) { this.grabStep(e, tg, dt); continue; }
       if (st.fly) { this.flyer(e, tg, spd, dt); continue; }
       if (st.etereo) { this.etereo(e, tg, spd, dt, ps); continue; }
       const goal = this.goalFor(e, tg, dt);
-      if (goal === 'tear') { e.state = 'tear'; this.stepEnemy(e, 0, 0, 0, dt); continue; }
       if (goal === 'climb') { this.climbStep(e, dt); continue; }
       let dx = goal.x - e.x, dz = goal.z - e.z; const gd = Math.hypot(dx, dz) || 1; dx /= gd; dz /= gd;
       const tdx = tg.x - e.x, tdz = tg.z - e.z, d = Math.hypot(tdx, tdz) || 1;
       const direct = goal.direct;
-      if (e.losT <= 0) { e.losT = 0.4; const o = { x: e.x, y: e.y + st.height * 0.85, z: e.z }, to = { x: tg.x - o.x, y: tg.y + 1.2 - o.y, z: tg.z - o.z }; const l = Math.hypot(to.x, to.y, to.z) || 1; e.los = wallDist(o, { x: to.x / l, y: to.y / l, z: to.z / l }, l, this.bars) >= l - 0.4; } else e.losT -= dt;
+      if (e.losT <= 0) { e.losT = 0.4; const o = { x: e.x, y: e.y + st.height * 0.85, z: e.z }, to = { x: tg.x - o.x, y: tg.y + 1.2 - o.y, z: tg.z - o.z }; const l = Math.hypot(to.x, to.y, to.z) || 1; e.los = wallDist(o, { x: to.x / l, y: to.y / l, z: to.z / l }, l) >= l - 0.4; } else e.losT -= dt;
       const close = d < st.reach && Math.abs(tg.y - e.y) < 1.6;
       let vx = 0, vz = 0;
+      if (st.leap && e.lcool <= 0 && direct && e.los && d >= st.leap.min && d <= st.leap.range && Math.abs(tg.y - e.y) < (st.leap.dy || 3.5) && this.leapOk(e, tg)) {
+        e.leapS = { ph: 'wind', t: st.leap.windup }; e.state = 'windup'; e.yaw = Math.atan2(-tdx, -tdz); this.ev('ag', e.id); this.stepEnemy(e, 0, 0, 0, dt, tg); continue;
+      }
+      if (st.grab && close && e.cool <= 0) { e.grabT = st.grab.windup; e.state = 'grab'; this.ev('gb', e.id); this.stepEnemy(e, 0, 0, 0, dt, tg); continue; }
       if (e.tackle > 0) { // the tackle / pounce
         e.tackle -= dt; e.state = 'tackle';
         vx = e.tdir.x; vz = e.tdir.z; spd = e.spd * st.tackle.speed;
         for (const p of ps) if (Math.hypot(p.x - e.x, p.z - e.z) < st.reach + 0.3 && Math.abs(p.y - e.y) < 1.6) { this.hurtPlayer(p, st.tackle.damage * e.dmg, e, null, 'tackle'); e.tackle = 0; e.cool = st.every; break; }
+      } else if (close && st.grab) { e.state = 'idle';
       } else if (close) {
         e.state = 'hit';
         if (e.cool <= 0) { e.cool = st.every; e.act = 0.3; this.hurtPlayer(tg, st.hit * e.dmg, e, null, e.type); }
@@ -579,7 +586,66 @@ export class Match {
       this.stepEnemy(e, vx, vz, spd, dt, tg);
     }
   }
-  // La Llorona drifts straight at you through walls and boards, rises up to wherever you're standing, wails, and
+  // ---- the big jumps: the luchador volador's eagle dive (long and high) and the gordo's belly flop (short and heavy).
+  // Telegraphed: a crouch and a shout first ('ag'), then the landing spot is fixed where the target stood at take-off and
+  // sent to everyone ('lp') so it can be marked on the ground. Step out of the ring before it lands and it whiffs.
+  leapOk(e, tg) { // same side of every wall: both outdoors with no building between, or inside the same one
+    const eb = buildingAt(e.x, e.z), tb = buildingAt(tg.x, tg.z);
+    if (eb !== tb) return false;
+    if (!eb && BUILDINGS.some((b) => segHitsRect(e, tg, b, 0.4))) return false;
+    if (insideSolid({ x: tg.x, y: tg.y + 0.6, z: tg.z })) return false;
+    return true;
+  }
+  leapStep(e, dt, ps) {
+    const st = e.st, Lp = st.leap, s = e.leapS, tg = e.target;
+    if (s.ph === 'wind') {
+      e.state = 'windup'; s.t -= dt;
+      if (tg && tg.state === 'alive') e.yaw = Math.atan2(-(tg.x - e.x), -(tg.z - e.z));
+      if (s.t > 0) return;
+      if (!tg || tg.state !== 'alive' || !this.leapOk(e, tg)) { e.leapS = null; e.lcool = 1.5; return; }
+      // take off: the landing spot is wherever the target is right now (capped at the leap's range)
+      let dx = tg.x - e.x, dz = tg.z - e.z; const d = Math.hypot(dx, dz) || 1, far = Math.min(d, Lp.range + 1.5);
+      const to = { x: e.x + dx / d * far, z: e.z + dz / d * far }; to.y = groundAt(to.x, to.z, tg.y + 0.5);
+      const inside = buildingAt(e.x, e.z), apex = inside ? Math.min(Lp.apex, Math.max(0.6, inside.h - st.height - 0.5)) : Lp.apex;
+      e.leapS = { ph: 'air', t: 0, dur: Lp.air, from: { x: e.x, y: e.y, z: e.z }, to, apex };
+      e.state = 'leap'; this.ev('lp', e.id, r2(to.x), r2(to.y), r2(to.z), Lp.air, r2(Lp.radius), r2(apex), r2(e.x), r2(e.y), r2(e.z));
+      return;
+    }
+    // in the air: a server-side arc, everyone sees the same flight
+    s.t += dt; const k = Math.min(1, s.t / s.dur);
+    e.x = s.from.x + (s.to.x - s.from.x) * k; e.z = s.from.z + (s.to.z - s.from.z) * k;
+    e.y = s.from.y + (s.to.y - s.from.y) * k + s.apex * 4 * k * (1 - k);
+    e.yaw = Math.atan2(-(s.to.x - s.from.x), -(s.to.z - s.from.z)); e.state = 'leap';
+    if (k < 1) return;
+    // landing: the shockwave. Full damage near the middle, fading to a third at the edge; knocked back out of it.
+    e.x = s.to.x; e.z = s.to.z; e.y = s.to.y; e.hist = []; e.leapS = null; e.lcool = Lp.cool; e.recover = Lp.recover; e.state = 'slam';
+    collide(e, st.radius, e.y, st.height, true); e.y = groundAt(e.x, e.z, e.y + 0.3);
+    this.ev('lx', r2(e.x), r2(e.y), r2(e.z), r2(Lp.radius), e.type === 'gordo' ? 1 : 0, e.id);
+    for (const p of ps) {
+      if (p.seat || p.state !== 'alive') continue;
+      const dd = Math.hypot(p.x - e.x, p.z - e.z); if (dd > Lp.radius || Math.abs(p.y - e.y) > 1.8) continue;
+      const f = dd <= Lp.radius * 0.4 ? 1 : 1 - 0.67 * (dd - Lp.radius * 0.4) / (Lp.radius * 0.6);
+      this.hurtPlayer(p, Lp.damage * f * e.dmg, e, null, e.type === 'gordo' ? 'flop' : 'aguila');
+      if (p.state === 'alive') { // thrown back
+        const ux = dd > 0.05 ? (p.x - e.x) / dd : -Math.sin(e.yaw), uz = dd > 0.05 ? (p.z - e.z) / dd : -Math.cos(e.yaw);
+        const q = { x: p.x + ux * Lp.push, z: p.z + uz * Lp.push }; collide(q, P_RADIUS, p.y, 1.8);
+        if (!insideSolid({ x: q.x, y: p.y + 0.6, z: q.z })) { p.x = q.x; p.z = q.z; p.y = groundAt(q.x, q.z, p.y + 0.5); p.groundY = p.y; p.airT = 0; p.hist = []; p.corr = [r2(p.x), r2(p.y), r2(p.z)]; }
+        this.ev('kb', p.id);
+      }
+    }
+  }
+  // the gordo's bear hug: arms out, a beat to get away, then it squeezes whoever is still in reach
+  grabStep(e, tg, dt) {
+    const g = e.st.grab; e.state = 'grab'; e.grabT -= dt;
+    if (tg) e.yaw = Math.atan2(-(tg.x - e.x), -(tg.z - e.z));
+    this.stepEnemy(e, 0, 0, 0, dt, tg);
+    if (e.grabT > 0) return;
+    e.grabT = 0; e.cool = g.cool; e.act = 0.5;
+    const hit = tg && tg.state === 'alive' && !tg.seat && Math.hypot(tg.x - e.x, tg.z - e.z) < g.reach && Math.abs(tg.y - e.y) < 1.6;
+    if (hit) this.hurtPlayer(tg, g.damage * e.dmg, e, null, 'abrazo');
+    this.ev('gs', e.id, hit ? 1 : 0);
+  }
+  // La Llorona drifts straight at you through walls, rises up to wherever you're standing, wails, and
   // every so often simply isn't where she was any more.
   etereo(e, tg, spd, dt, ps) {
     const st = e.st, dx = tg.x - e.x, dz = tg.z - e.z, d = Math.hypot(dx, dz) || 1;
@@ -613,7 +679,7 @@ export class Match {
       vx = to.x / l; vz = to.z / l; vy = to.y / l; spd = st.fly.swoop;
       if (l < st.reach) { if (e.cool <= 0) { e.cool = st.every; this.hurtPlayer(tg, st.hit * e.dmg, e, null, 'lechuza'); } e.swoop = 0; e.rise = 1.4; }
       const nx = e.x + vx * spd * dt, ny = e.y + vy * spd * dt, nz = e.z + vz * spd * dt;
-      if (insideSolid({ x: nx, y: ny, z: nz }, this.bars)) { e.swoop = 0; e.rise = 1; } else { e.x = nx; e.y = ny; e.z = nz; }
+      if (insideSolid({ x: nx, y: ny, z: nz })) { e.swoop = 0; e.rise = 1; } else { e.x = nx; e.y = ny; e.z = nz; }
     } else {
       if (e.rise > 0) e.rise -= dt;
       if (d < st.fly.near && !indoors && e.rise <= 0 && e.cool <= 0) { e.swoop = 1.6; this.ev('sh', e.id); }
@@ -640,11 +706,10 @@ export class Match {
     e.x += vx * spd * dt; e.z += vz * spd * dt;
     for (const o of this.enemies) { if (o === e || o.dead || o.st.fly || o.st.etereo) continue; const ox = e.x - o.x, oz = e.z - o.z, od = Math.hypot(ox, oz), mm = (st.radius + o.st.radius) * 0.9; if (od < mm && od > 1e-4 && Math.abs(o.y - e.y) < 1.5) { e.x += ox / od * (mm - od) * 0.5; e.z += oz / od * (mm - od) * 0.5; } }
     for (const p of this.players.values()) { if (!p.joined || !p.online || p.state === 'dead' || p.seat) continue; const ox = e.x - p.x, oz = e.z - p.z, od = Math.hypot(ox, oz), mm = st.radius + P_RADIUS * 0.9; if (od < mm && od > 1e-4 && Math.abs(p.y - e.y) < 1.5) { e.x = p.x + ox / od * mm; e.z = p.z + oz / od * mm; } }
-    collide(e, st.radius, e.y, st.height, this.bars, true);
-    e.y = groundAt(e.x, e.z, e.y, this.bars);
+    collide(e, st.radius, e.y, st.height, true);
+    e.y = groundAt(e.x, e.z, e.y);
     const face = tg && (e.state !== 'walk' || Math.hypot(tg.x - e.x, tg.z - e.z) < 12) ? { x: tg.x - e.x, z: tg.z - e.z } : vl > 0.1 ? { x: vx, z: vz } : null;
-    if (e.state === 'tear' && e.route) { const op = OPENINGS[e.route.op]; e.yaw = Math.atan2(-(op.x - e.x), -(op.z - e.z)); }
-    else if (face) e.yaw = Math.atan2(-face.x, -face.z);
+    if (face && !['windup', 'grab', 'slam'].includes(e.state)) e.yaw = Math.atan2(-face.x, -face.z);
     e.chk.t += dt;
     if (e.chk.t > 0.8) {
       const moved = Math.hypot(e.x - e.chk.x, e.z - e.chk.z);
@@ -653,13 +718,13 @@ export class Match {
     }
   }
 
-  // Where should e head for to reach tg? Returns a point ({x,z,direct}), 'tear' while it is pulling boards, or
-  // 'climb' when it starts up a fort wall.
+  // Where should e head for to reach tg? Returns a point ({x,z,direct}) or 'climb' when it starts up a fort wall.
+  // Every building is open, so getting in is just a matter of walking to a door or window and through it.
   goalFor(e, tg, dt) {
     const eb = buildingAt(e.x, e.z), tb = buildingAt(tg.x, tg.z);
     const near = (pt, r) => Math.hypot(pt.x - e.x, pt.z - e.z) < r;
     const pickOp = (bid) => {
-      const ops = OPENINGS.filter((o) => o.b === bid).map((o) => ({ o, d: Math.hypot(o.out.x - e.x, o.out.z - e.z) + (this.bars[o.i] ? 2 : 0) })).sort((a, b) => a.d - b.d);
+      const ops = OPENINGS.filter((o) => o.b === bid && (o.door || !e.st.doors)).map((o) => ({ o, d: Math.hypot(o.out.x - e.x, o.out.z - e.z) })).sort((a, b) => a.d - b.d); // the big ones only fit through doors
       return ops[Math.min(ops.length - 1, this.rnd() < 0.7 ? 0 : 1)].o;
     };
     // already inside the target's building, or both outside: no route through an opening needed
@@ -673,13 +738,7 @@ export class Match {
       const op = OPENINGS[e.route.op], from = e.route.dir === 'in' ? op.out : op.in, to = e.route.dir === 'in' ? op.in : op.out;
       if (e.route.stage === 0) {
         if (!near(from, 0.9)) return this.around(e, from, e.route.dir === 'in' ? null : eb.id);
-        e.route.stage = 1; e.tearT = e.st.tear;
-      }
-      if (this.bars[op.i] > 0) {
-        if (!near(from, 1.6)) { e.route.stage = 0; return from; }
-        e.tearT = (e.tearT ?? e.st.tear) - dt;
-        if (e.tearT <= 0) { this.bars[op.i]--; e.tearT = e.st.tear; e.act = 0.4; this.ev('bb', op.i, e.id); }
-        return 'tear';
+        e.route.stage = 1;
       }
       return to;
     }
@@ -760,7 +819,7 @@ export class Match {
         n.x += n.vx * dt / 3; n.y += n.vy * dt / 3; n.z += n.vz * dt / 3;
         const hit = ps.find((p) => Math.hypot(n.x - p.x, (n.y - p.y - 1.0) * 0.8, n.z - p.z) < 0.65);
         if (hit) { this.hurtPlayer(hit, n.dmg, { x: n.fx, z: n.fz }, null, 'note'); gone = true; }
-        else if (n.y < terrain(n.x, n.z) || insideSolid(n, this.bars)) gone = true;
+        else if (n.y < terrain(n.x, n.z) || insideSolid(n)) gone = true;
       }
       if (gone) this.notes.splice(i, 1);
     }
@@ -781,7 +840,7 @@ export class Match {
           if (Math.hypot(nx - e.x, (ny - cy) * (e.st.height > 1.5 ? 0.6 : 1), nz - e.z) < e.st.radius + 0.3) { hitE = e; const hd = L.headOf(e.type, e.x, this.lift(e), e.z, e.yaw); head = Math.hypot(nx - hd.x, ny - hd.y, nz - hd.z) < hd.r + 0.15; break; }
         }
         if (!hitE) for (const q of ps) { if (q.id === s.by && s.age < 0.4) continue; if (q.id === s.by && s.kind === 'needle') continue; if (Math.hypot(nx - q.x, (ny - q.y - 1) * 0.7, nz - q.z) < 0.6) { hitQ = q; head = ny > q.y + 1.4; break; } }
-        const wall = insideSolid({ x: nx, y: ny, z: nz }, this.bars) || ny < terrain(nx, nz);
+        const wall = insideSolid({ x: nx, y: ny, z: nz }) || ny < terrain(nx, nz);
         s.x = nx; s.y = ny; s.z = nz;
         if (s.kind === 'rocket' && (hitE || hitQ || wall)) { this.blast(s, w.radius, w.damage, by, 'rocket'); gone = true; }
         else if (s.kind === 'needle' && (hitE || hitQ)) {
@@ -809,8 +868,8 @@ export class Match {
           const pl = !e && [...this.players.values()].find((q) => q.joined && q.online && q.state === 'alive' && (q.id !== g.by || g.age > 0.5) && Math.hypot(g.x - q.x, (g.y - q.y - 1) * 0.7, g.z - q.z) < 0.7);
           if (e || pl) { const o = e || pl, oy = e ? this.lift(e) : pl.y; g.on = { e, q: pl, dx: (g.x - o.x) * 0.5, dy: Math.max(0.4, g.y - oy), dz: (g.z - o.z) * 0.5 }; g.fuse = Math.min(g.fuse, L.STICKY.stuckFuse); this.ev('st', g.id, e ? 1 : pl ? 2 : 0); break; }
         }
-        const floor = Math.max(terrain(g.x, g.z), groundAt(g.x, g.z, was.y, this.bars)) + 0.12;
-        const solid = insideSolid(g, this.bars);
+        const floor = Math.max(terrain(g.x, g.z), groundAt(g.x, g.z, was.y)) + 0.12;
+        const solid = insideSolid(g);
         if (g.kind === 'sticky' && (g.y < floor || solid)) { if (solid) { g.x = was.x; g.y = was.y; g.z = was.z; } else g.y = floor; g.on = { wall: true }; g.vx = g.vy = g.vz = 0; g.fuse = Math.min(g.fuse, L.STICKY.stuckFuse); this.ev('st', g.id, 0); break; }
         if (g.y < floor) { g.y = floor; g.vy = Math.abs(g.vy) * 0.35; g.vx *= 0.6; g.vz *= 0.6; }
         if (solid) { g.x = was.x; g.y = was.y; g.z = was.z; g.vx *= -0.4; g.vz *= -0.4; }
@@ -836,16 +895,16 @@ export class Match {
     if (this.ammoT <= 0) {
       this.ammoT = MATCH.spots.ammoEvery;
       const open = free(AMMO_SPOTS, ['ammo']);
-      if (open.length && this.pickups.filter((k) => k.spot && k.kind === 'ammo').length < MATCH.spots.maxAmmo) { const [x, z] = open[Math.floor(this.rnd() * open.length)]; this.pickups.push({ id: this.nextId++, kind: 'ammo', spot: true, x, z, y: groundAt(x, z, 50, this.bars), life: 90 }); }
+      if (open.length && this.pickups.filter((k) => k.spot && k.kind === 'ammo').length < MATCH.spots.maxAmmo) { const [x, z] = open[Math.floor(this.rnd() * open.length)]; this.pickups.push({ id: this.nextId++, kind: 'ammo', spot: true, x, z, y: groundAt(x, z, 50), life: 90 }); }
     }
     if (this.nadeT <= 0) {
       this.nadeT = MATCH.spots.nadeEvery;
       const open = free(NADE_SPOTS, ['frag', 'sticky']);
-      if (open.length && this.pickups.filter((k) => k.spot && k.kind !== 'ammo').length < MATCH.spots.maxNades) { const [x, z] = open[Math.floor(this.rnd() * open.length)]; this.pickups.push({ id: this.nextId++, kind: this.rnd() < 0.55 ? 'frag' : 'sticky', spot: true, x, z, y: groundAt(x, z, 50, this.bars), life: 90 }); }
+      if (open.length && this.pickups.filter((k) => k.spot && k.kind !== 'ammo').length < MATCH.spots.maxNades) { const [x, z] = open[Math.floor(this.rnd() * open.length)]; this.pickups.push({ id: this.nextId++, kind: this.rnd() < 0.55 ? 'frag' : 'sticky', spot: true, x, z, y: groundAt(x, z, 50), life: 90 }); }
     }
   }
 
-  // ---- ACTION: leave the jeep > get in the jeep > grab from the truck > revive a downed friend > rebuild a board > buy
+  // ---- ACTION: leave the jeep > get in the jeep > grab from the truck > revive a downed friend > an elote > buy
   action(p, dt) {
     p.prompt = null;
     const edge = p.act && !p.actWas;
@@ -874,25 +933,13 @@ export class Match {
       p.actWas = p.act; return;
     }
     p.rev = 0; p.revOf = null;
-    let op = null, od = Infinity;
-    for (const o of OPENINGS) { if (o.open || this.bars[o.i] >= BOARDS_MAX) continue; const d = Math.hypot(o.x - p.x, o.z - p.z); if (d < MATCH.buildRange && d < od && Math.abs(p.y - o.y) < 1.6) { od = d; op = o; } }
-    if (op) {
-      const b = op.box, m = 0.5;
-      const blocked = [...this.enemies, ...this.online()].some((q) => !q.dead && q.state !== 'dead' && q.x > b.x0 - m && q.x < b.x1 + m && q.z > b.z0 - m && q.z < b.z1 + m);
-      if (p.act && !blocked) {
-        if (p.buildAt !== op.i) { p.buildAt = op.i; p.build = 0; }
-        p.build += dt;
-        if (p.build >= MATCH.buildSecs) {
-          p.build = 0; this.bars[op.i]++;
-          const got = this.boardPts?.get(p.id) || 0;
-          if (got < MATCH.points.boardsPerRound) { p.pts += MATCH.points.board; p.score += MATCH.points.board; this.boardPts?.set(p.id, got + 1); }
-          p.boards++; this.ev('br', op.i, p.id);
-        }
-      } else p.build = 0;
-      p.prompt = { k: 'build', label: `${this.bars[op.i]}/${BOARDS_MAX}`, p: p.build / MATCH.buildSecs, op: op.i };
+    // the elote man: walk up and press ACTION for a hot elote (a small heal, once a minute)
+    if (Math.hypot(ELOTE.x - p.x, ELOTE.z - p.z) < ELOTE.range && Math.abs(p.y - terrain(ELOTE.x, ELOTE.z)) < 1.6) {
+      const wait = Math.ceil(p.eloteAt + MATCH.elote.cool - this.t), full = p.P.health >= L.HEALTH.max;
+      if (edge && wait <= 0 && !full) { L.heal(p.P, MATCH.elote.heal); p.eloteAt = this.t; this.ev('el', p.id); }
+      p.prompt = { k: 'elote', label: wait > 0 ? `OTRO ELOTE EN ${wait}s` : full ? 'YA ESTÁS LLENO' : `UN ELOTE +${MATCH.elote.heal}`, ready: wait <= 0 && !full };
       p.actWas = p.act; return;
     }
-    p.build = 0; p.buildAt = -1;
     const stn = STATIONS.find((s) => Math.hypot(s.x - p.x, s.z - p.z) < MATCH.buyRange && Math.abs(p.y - s.y) < 1.6);
     if (stn) {
       if (edge) {
@@ -922,7 +969,8 @@ export class Match {
     const tk = this.truck ? truckAt(this.truck.t) : null, j = this.jeep;
     const s = {
       t: r2(this.t), ph: this.phase, wv: this.wave, cd: ['break', 'over', 'truck'].includes(this.phase) ? Math.max(0, Math.ceil(this.phaseUntil - this.t)) : 0,
-      left: this.queue.length + this.enemies.filter((e) => !e.dead).length, pl, en, bd: this.bars.slice(), host: this.host, nt: this.night ? 1 : 0,
+      left: this.queue.length + this.enemies.filter((e) => !e.dead).length, pl, en, host: this.host, nt: this.night ? 1 : 0,
+      dg: dogsAt(this.t).map((d) => [r2(d.x), r2(d.z), r2(d.yaw), d.gait]), el: eloteShout(this.t),
       pj: this.notes.map((n) => [n.id, r2(n.x), r2(n.y), r2(n.z)]), gr: this.nades.map((g) => [g.id, r2(g.x), r2(g.y), r2(g.z), NADE_IDX[g.kind], g.on ? 1 : 0]),
       pr: this.shots.map((q) => [q.id, q.kind === 'rocket' ? 0 : 1, r2(q.x), r2(q.y), r2(q.z)]),
       pk: this.pickups.map((k) => [k.id, k.kind, r2(k.x), r2(k.y), r2(k.z)]),

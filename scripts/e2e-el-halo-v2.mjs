@@ -159,11 +159,11 @@ async function main() {
   // ================= OPEN CHURCH =================
   const church = OPENINGS.filter((o) => o.b === 'mision');
   const sb = await st(T);
-  check(church.every((o) => o.open && sb.bars[o.i] === 0), 'la misión: every opening is open, no boards');
+  check(church.every((o) => o.open) && !('bars' in sb), 'la misión: every opening is open, no boards');
   const cd = church.find((o) => o.door), cw = church.find((o) => !o.door);
   await place(T, cw.out.x - cw.nx * 0.2, cw.out.z - cw.nz * 0.2, Math.atan2(-(cw.in.x - cw.out.x), -(cw.in.z - cw.out.z)));
   await T.waitForTimeout(400);
-  check((await st(T)).prompt?.k !== 'build', 'no board prompt at a church window');
+  check(!(await st(T)).prompt || (await st(T)).prompt.k === 'buy', `no board prompt at a church window (${JSON.stringify((await st(T)).prompt)})`);
   await place(T, cd.out.x + cd.nx * 2, cd.out.z + cd.nz * 2, Math.atan2(cd.nx, cd.nz));
   await T.waitForTimeout(300);
   await T.evaluate(([x, z]) => window.__elHalo.walkTo(x, z), [cd.in.x - cd.nx * 3, cd.in.z - cd.nz * 3]);
@@ -253,8 +253,10 @@ async function main() {
   await hook(T, { spawn: [{ type: 'luchador', x: j1.x, z: j1.z - 12, still: true }, { type: 'mariachi', x: j1.x + 2, z: j1.z - 14, still: true }] });
   await J.waitForTimeout(400); await J.evaluate(() => window.__elHalo.aimAtNearest());
   const e0 = (await st(J)).enemies;
+  // watch while firing: the hit marker only lasts a moment, and a big wave keeps the enemy count climbing
+  const mowed = until(J, (n) => window.__elHalo.state().enemies < n || window.__elHalo.state().hitMark || window.__elHalo.state().headMark, e0, 4500);
   await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(1500); await J.evaluate(() => window.__elHalo.fire(false));
-  check(await until(J, (n) => window.__elHalo.state().enemies < n || window.__elHalo.state().hitMark, e0, 3000), 'Joe mows them down from the turret');
+  check(await mowed, 'Joe mows them down from the turret');
   await shot(J, 'jeep-turret'); await shot(T, 'jeep-driver');
   await T.keyboard.press('KeyE'); await J.keyboard.press('KeyE');
   check(await until(T, () => !window.__elHalo.state().seat, null, 3000) && await until(J, () => !window.__elHalo.state().seat, null, 3000), 'E gets both out');

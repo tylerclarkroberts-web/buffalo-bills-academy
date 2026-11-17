@@ -61,7 +61,8 @@ test('El Halo horde over HTTP', { timeout: 30000 }, async (t) => {
   const sJ = await stream(base, joe.token); streams.push(sJ);
   assert.equal((await joe.api.post('/elhalo/join')).status, 200);
   const f2 = await sJ.until((f) => f.me.in && f.s.pl.some((r) => r[1] === 'Tyler') && f.s.pl.some((r) => r[1] === 'Joe'));
-  assert.ok(f2, 'Joe sees both of them'); assert.equal(f2.s.bd.length, 17);
+  assert.ok(f2, 'Joe sees both of them'); assert.equal(f2.s.bd, undefined, 'no boards anywhere');
+  assert.equal(f2.s.dg.length, 6, 'the street dogs (and the stuck pair) come with every frame'); assert.ok(typeof f2.s.el === 'number');
   assert.equal(f2.s.ph, 'lobby');
   // only the host can hit start; everyone ready starts the countdown too
   assert.equal((await joe.api.post('/elhalo/begin')).status, 403);
