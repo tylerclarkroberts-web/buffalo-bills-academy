@@ -215,7 +215,11 @@ export default function Mines() {
   useEffect(() => { if (me) api('GET', '/mines/office').then(setOffice).catch(() => {}); }, [!!me]);
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
   useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
-  function complete(v) {
+  function complete(v, toSurface = false) {
+    if (toSurface && (v.result || Object.hasOwn(v, 'pending'))) {
+      rememberMineReceipt(me?.id, v.result?.shiftId);
+      refreshSession(); navigate('/'); return;
+    }
     if (v.result) {
       setResult(v.result); setPhase('result'); refreshSession();
       if (v.result.foreman) setLecture(v.result.foreman);
@@ -223,10 +227,10 @@ export default function Mines() {
       setPhase('intro'); if (v.pending) setLecture(v.pending);
     }
   }
-  async function quit() {
+  async function quit(toSurface = false) {
     if (leaving) return;
     setLeaving(true);
-    try { complete(await api('POST', '/mines/quit', { shiftId: shift?.shiftId })); }
+    try { complete(await api('POST', '/mines/quit', { shiftId: shift?.shiftId }), toSurface); }
     catch (e) { setErr(e.message); }
     finally { setLeaving(false); }
   }
@@ -460,6 +464,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const visitorHere = useRef(false);
   const [visitor, setVisitor] = useState(false);
   const [doorNear, setDoorNear] = useState(false);
+  const [liftNear, setLiftNear] = useState(false);
+  const surfaceExit = useRef(false);
   const [doom, setDoom] = useState(false);
   const doomRef = useRef(false);
   const soundWas = useRef(false);
@@ -495,7 +501,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const pvpSend = (path, body) => api('POST', path, { rulesVersion: 2, shiftId: shift.shiftId, ...body });
   const accept = state => {
     if (state.result || Object.hasOwn(state, 'pending')) {
-      done.current = true; hold(false); onComplete(state); return;
+      done.current = true; hold(false); onComplete(state, surfaceExit.current); return;
     }
     const previous = bucketRef.current;
     bucketRef.current = state; setBucket(state); errorRef.current = null; setMineError(null);
@@ -527,18 +533,19 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     errorRef.current = error; setMineError(error); hold(false);
     if (sceneRef.current) sceneRef.current.mining = false;
   };
-  async function clockOut() {
-    if (!bucketShift) return onQuit();
+  async function clockOut(toSurface = false) {
+    if (!bucketShift) return onQuit(toSurface);
     if (closing.current || done.current) return;
+    surfaceExit.current = toSurface;
     closing.current = true; hold(false); setClockingOut(true); onLeaving(true);
     try { await client.current.clockOut(); } catch { /* the request lane keeps the error and confirmed bucket */ }
-    finally { closing.current = false; setClockingOut(false); onLeaving(false); }
+    finally { surfaceExit.current = false; closing.current = false; setClockingOut(false); onLeaving(false); }
   }
   const retry = async () => {
     if (closing.current || done.current) return;
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
-  const freeze = () => { stopDance(); showPicker(false); release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
+  const freeze = (stopMining = true) => { stopDance(); showPicker(false); if (stopMining) release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; } };
   const showMap = (open) => {
     if (open) { freeze(); chart(); }
     mapRef.current = open; setMapOpen(open);
@@ -606,11 +613,17 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
 
   const doorRef = useRef(false);
-  // The door behind the start (v27; opens into the Hall of Doors since v89). Opening it only changes this page: the music pauses, the mine stops drawing,
+  const liftRef = useRef(false);
+  const takeLift = useRef(null);
+  takeLift.current = () => {
+    if (doomRef.current || mapRef.current || battleRef.current || closing.current || done.current) return;
+    freeze(false); clockOut(true);
+  };
+  // The door beside the lift opens into the Hall of Doors. Opening it only changes this page: the music pauses, the mine stops drawing,
   // the controls go to the game. The shift clock is the server's; it keeps running and nothing here can stop it.
   const openDoor = useRef(null);
   openDoor.current = () => {
-    if (doomRef.current || mapRef.current) return;
+    if (doomRef.current || mapRef.current || battleRef.current || closing.current || done.current) return;
     stopDance(); showPicker(false);
     doomRef.current = true; setDoom(true); release();
     const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.mining = false; s.setPaused(true); }
@@ -753,7 +766,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (k === 'm' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); if (!e.repeat) showMap(!mapRef.current); return; }
       if (mapRef.current) return;
       if ((k === ' ' || k === 'enter') && e.target.closest?.('button, a')) return;
-      if (k === 'f' && doorRef.current) { openDoor.current(); return; }
+      if (k === 'f' && !e.repeat) {
+        if (liftRef.current) { takeLift.current(); return; }
+        if (doorRef.current) { openDoor.current(); return; }
+      }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
@@ -776,7 +792,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     let tap = null;
     const pd = (e) => { if (mapRef.current) return; drag = { x: e.clientX, y: e.clientY }; tap = { x: e.clientX, y: e.clientY }; c.setPointerCapture?.(e.pointerId); };
     const pm = (e) => { if (mapRef.current) { drag = tap = null; return; } if (!drag) return; if (scene.dance) { scene.danceOrbit = (scene.danceOrbit || 0) - (e.clientX - drag.x) * 0.006; drag = { x: e.clientX, y: e.clientY }; return; } scene.yaw -= (e.clientX - drag.x) * 0.006; scene.pitch = Math.max(-0.6, Math.min(0.6, scene.pitch - (e.clientY - drag.y) * 0.004)); drag = { x: e.clientX, y: e.clientY }; };
-    const pu = (e) => { drag = null; if (!mapRef.current && tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
+    const pu = (e) => { drag = null; if (!mapRef.current && tap && e.type === 'pointerup' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) { if (scene.hitsEgg(e.clientX, e.clientY)) grabEgg.current(); else if (scene.hitsLift(e.clientX, e.clientY)) takeLift.current(); else if (scene.hitsDoor(e.clientX, e.clientY)) openDoor.current(); } tap = null; };
     c.addEventListener('pointerdown', pd); c.addEventListener('pointermove', pm); c.addEventListener('pointerup', pu); c.addEventListener('pointercancel', pu);
     let lastTick = Date.now();
     const caveSeen = new Set(); let caveHold = 0; // the cave-in line stays up a few seconds before the chatter returns
@@ -799,7 +815,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
         setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
       }
-      const dv = scene.doorView(); const n = dv.dist < 2.1 && dv.facing > 0.75;
+      const dv = scene.doorView(), lv = scene.liftView();
+      const l = lv.dist < 2.1 && lv.facing > 0.75 && (dv.dist >= 2.1 || lv.facing >= dv.facing);
+      if (l !== liftRef.current) { liftRef.current = l; setLiftNear(l); }
+      const n = !l && dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
@@ -918,7 +937,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}</span>
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
         </div>}
-        <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
+        <button className="m-link" disabled={clockingOut} onClick={() => clockOut()}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
         {dark && <button className="m-link m-flash-btn" data-test="flash-toggle" aria-pressed={lowFlash} onClick={toggleFlash}>{lowFlash ? 'FLASHING: LOW' : 'FLASHING: ON'}</button>}
         {!doom && !battle && <div className="m-tools">
           <button ref={mapButton} className="m-link" data-test="map-button" aria-haspopup="dialog" aria-expanded={mapOpen} disabled={clockingOut} onClick={() => showMap(true)}>MAP<span className="m-key"> M</span></button>
@@ -957,7 +976,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <span className="m-dim small">or press G</span>
         </div>
       )}
-      {doorNear && !doom && !near && !eggNear && !prey && !dance && (
+      {liftNear && !doom && !battle && !near && !eggNear && !prey && !dance && (
+        <div className="m-door-prompt" data-test="lift-prompt">
+          <span className="m-dim">IT PASSED AN INSPECTION. ONCE.</span>
+          <button className="m-btn" disabled={clockingOut} onClick={() => takeLift.current()} data-test="lift-up">{clockingOut ? 'WEIGHING…' : '[ LIFT TO SURFACE ]'}</button>
+          <span className="m-dim small">Clock out · game room · F</span>
+        </div>
+      )}
+      {doorNear && !doom && !battle && !near && !eggNear && !prey && !dance && (
         <div className="m-door-prompt" data-test="door-prompt">
           <span className="m-dim">A DOOR. VOICES BEHIND IT.</span>
           <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>

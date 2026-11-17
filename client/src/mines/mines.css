@@ -89,11 +89,13 @@ body.in-mines { background: #020402; }
 .m-map-pool { fill: #152111; stroke: #d7e4c9; stroke-width: .12; }
 .m-map-pool.wet { fill: #7dff3a; stroke: #16260d; }
 .m-map-door { fill: #ff6256; stroke: #240706; stroke-width: .08; }
+.m-map-lift { fill: #ffe2a3; stroke: #33220c; stroke-width: .06; }
+.m-map-lift-bars { fill: none; stroke: #493819; stroke-width: .04; }
 .m-map-you { fill: #fff; stroke: #101a0b; stroke-width: .08; }
 .m-map-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; font-size: 18px; color: #c3d0b8; }
 .m-map-legend span { white-space: nowrap; }
 .m-map-legend i { font-style: normal; }
-.m-map-key-you { color: #fff; } .m-map-key-acid { color: #7dff3a; } .m-map-key-door { color: #ff6256; }
+.m-map-key-you { color: #fff; } .m-map-key-acid { color: #7dff3a; } .m-map-key-lift { color: #ffe2a3; } .m-map-key-door { color: #ff6256; }
 @media (max-width: 560px), (max-height: 450px) {
   .m-map { width: calc(100vw - 12px); height: calc(100dvh - 12px); padding: 6px 10px; }
   .m-map[open] { gap: 4px; }

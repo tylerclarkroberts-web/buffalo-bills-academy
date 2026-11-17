@@ -58,6 +58,8 @@ Public version-2 state retains the shift's identity, seed, clock, maze size, sca
 
 Clock-in, probe, extraction and quit can return `{result: ...}` or `{pending: ...}` during completion/recovery instead of active state. Results include the existing payout fields plus `shiftId`, `collected` and `capacity`; mud can include `foreman`. Empty departures return the pending lecture. Do not assume every successful clock-in response contains a playable shift.
 
+The entrance lift uses the same clock-out request lane, then returns to the game room only after settlement succeeds. It remembers a paid receipt before leaving; any server-held Foreman lecture remains due on the next mine visit. Failed departures keep the miner and confirmed bucket in the mine.
+
 The browser serializes pulses about every 500ms. `start` arms collection without credit; `continue` and `stop` credit elapsed time within a live hold. A gap over one second disarms collection with no gap credit; continuing an inactive hold returns 409 and requires a new `start`. Target order, remaining material and bucket capacity are checked server-side; physical arrival and held buttons are not verified. Future/unknown pool IDs return 409; stale requests for an earlier pool return current state without advancement. A current-pool probe resolves it immediately; extraction before inspection returns 425. Incompatible clients receive HTTP 409 with `code: "mine_reload"` without losing the shift.
 
 ## Persistence and recovery
