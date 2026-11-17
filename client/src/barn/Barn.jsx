@@ -261,8 +261,8 @@ function BarnHome({ me }) {
   const pen = b?.pen;
   // Your bug is in the ring right now: follow it blow by blow. When it ends, the next look at the Barn (take) swaps
   // in the finished bout, with its payout and XP, on the same ring. Walking away leaves the bug to its own picks.
-  const [left, setLeft] = useState(null);
-  const liveId = b?.live && b.live !== left ? b.live : null, held = useRef(null);
+  const [walkedOut, setWalkedOut] = useState(null); // the live fight you closed (not `left`: that's the clock formatter)
+  const liveId = b?.live && b.live !== walkedOut ? b.live : null, held = useRef(null);
   useEffect(() => {
     if (!liveId) return undefined;
     let off = false; held.current = null;
@@ -434,7 +434,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setLeft(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
+        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>
