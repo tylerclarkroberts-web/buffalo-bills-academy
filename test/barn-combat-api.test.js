@@ -467,7 +467,7 @@ test('the ring lists every living bug of a visible owner, even to a player with 
   const view = (await watcher.api('GET', '/api/barn')).body;
   assert.equal(view.pen, null);
   assert.deepEqual(view.roster.map(bug => bug.ownerId), [owner.id, other.id, young.id], 'highest level first; eggs, the dead and hidden owners are left out');
-  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'level', 'name', 'owner', 'ownerId', 'record', 'species', 'style']);
+  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'id', 'level', 'name', 'owner', 'ownerId', 'record', 'species', 'style']);
   assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, true]]);
   assert.deepEqual(view.challenges, { incoming: [], outgoing: [] }); assert.deepEqual(view.fights, []);
   assert.equal((await watcher.api('POST', '/api/barn/challenges', { to: owner.id, stake: 0 })).status, 404, 'no bug, no challenge');

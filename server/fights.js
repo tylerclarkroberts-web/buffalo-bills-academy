@@ -2,7 +2,7 @@
 // each bug using the move its owner lined up (up to three ahead) or its own pick. Nobody is waited on: an owner who
 // is not looking just gets their bug's picks, and a fight nobody is watching runs straight to the end.
 // Memory only. What a fight costs or pays is its starter's business (`onFinish`); a restart ends it unpaid.
-import { startBout, stepBout, nextMove, cooldowns } from './engine/bout.js';
+import { startBout, stepBout, nextMove, cooldowns, odds } from './engine/bout.js';
 import { traitFor } from './engine/bug-combat.js';
 
 export const FIGHT = {
@@ -75,12 +75,12 @@ export class Fights {
     if (mine) fight.seen[i] = now;
     const turn = (pair) => (i ? [pair[1], pair[0]] : [...pair]);
     const from = Math.max(0, Math.min(S.rounds.length, Math.floor(Number(have)) || 0));
-    const ready = cooldowns(S, i), winner = fight.over ? fight.over.winner : null;
+    const ready = cooldowns(S, i), chance = mine && !fight.over ? odds(S, i) : {}, winner = fight.over ? fight.over.winner : null;
     return { id: fight.id, kind: fight.kind, live: !fight.over, you: fight.fighters[i], them: fight.fighters[1 - i], maxHp: turn(S.maxHp), startHp: turn(S.startHp),
       from, rounds: S.rounds.slice(from).map(r => (i ? { ...r, by: 1 - r.by, hp: turn(r.hp) } : r)),
       result: !fight.over ? null : winner === null ? 'draw' : winner === i ? 'won' : 'lost',
       ...(mine && !fight.over ? { queue: fight.queue[i], next: nextMove(S, i, fight.queue[i][0]).id, yourTurn: S.by === i, msLeft: Math.max(0, fight.nextAt - now),
         trait: traitFor(fight.fighters[i].species),
-        moves: S.side[i].moves.filter(m => m.unlocked).map(m => ({ id: m.id, name: m.name, effect: m.effect, description: m.description, readyIn: ready[m.id] })) } : {}) };
+        moves: S.side[i].moves.filter(m => m.unlocked).map(m => ({ id: m.id, name: m.name, effect: m.effect, description: m.description, cooldown: m.cooldown, readyIn: ready[m.id], ...chance[m.id] })) } : {}) };
   }
 }

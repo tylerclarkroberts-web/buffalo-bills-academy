@@ -119,6 +119,7 @@ export class Shop {
     const x = ITEM[id]; const iv = this.inv(p.id);
     if (!x || !CONSUMABLE(x)) throw new GameError('That can\'t be used.', 400);
     if (!iv.own[id]) throw new GameError('You don\'t have any of those.', 404);
+    if (x.use === 'jar') throw new GameError('A jar is for a wild bug. Take it down the mine.', 409);
     if (!this.hatched(p.id)) throw new GameError('You need a hatched bug for that.', 409);
     const now = this.now(); const cd = USE_COOLDOWN_MS[x.use] || 0;
     if (cd && now - (iv.used[x.use] || 0) < cd) throw new GameError('Your bug needs a little while before the next one.', 429);
@@ -129,6 +130,14 @@ export class Shop {
     iv.own[id] -= 1; if (!iv.own[id]) delete iv.own[id];
     iv.used[x.use] = now; this.save();
     return this.view(p);
+  }
+  /** Specimen jars carried, and spending one on a throw in the mine (server/pvp.js). */
+  jars(pid) { return this.doc.inv[pid]?.own.jar || 0; }
+  takeJar(pid) {
+    const iv = this.doc.inv[pid];
+    if (!iv?.own.jar) return false;
+    iv.own.jar -= 1; if (!iv.own.jar) delete iv.own.jar; this.save();
+    return true;
   }
   setNoGags(p, on) { this.inv(p.id).noGags = !!on; this.save(); return this.view(p); }
   /** v37: don't show me tobacco moments at tables (default: shown). */

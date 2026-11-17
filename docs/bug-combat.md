@@ -1,6 +1,6 @@
 # Barn care and combat
 
-One Barn slot holds an egg, living bug or unburied memorial. My Room shows that same pet; it does not create another one or provide passive care. The server owns needs, clocks, progression and fight results.
+A Barn starts with three stalls. Each holds an egg, a living bug or an unburied memorial. One bug is the partner: the one in My Room's terrarium and beside its owner in the mine. My Room shows that same bug; it does not create another one or provide passive care. The server owns needs, clocks, progression and fight results.
 
 ## XP and care
 
@@ -9,6 +9,21 @@ One Barn slot holds an egg, living bug or unburied memorial. My Room shows that 
 - Food resets the starvation clock. An automatic feeder keeps Fed full and pauses starvation while active; Mood and Clean still decay. A feeder use adds 14 days, up to 60 days ahead; Golden Ambrosia supplies seven days. Misters, heat lamps and toys do not protect against starvation.
 - By default, death occurs after 21 days without feeding, or 21 days after feeder expiry, with the server's minimum-life grace period. An empty Fed meter alone does not kill a bug. Visiting or reopening the room does not reset these clocks. A memorial occupies the Barn until buried.
 - Buying a consumable does not apply it; **Use** spends it. Toys and gear are permanent equipment. Toys improve active Play rather than supplying passive Mood; equipped battle gear adds at most 6% attack damage and is drawn on the bug. Item-specific amounts and cooldowns are shown in the shop and owned by `server/catalog/bug.js` and `server/shop.js`.
+
+## Stalls and the partner
+
+- **Stalls.** Three to start. The fourth, fifth and sixth cost $1,500, $4,000 and $10,000 (`STALL_COSTS` in `server/barn.js`), bought from the last slot in the Barn's stall row. An egg, a bug and a memorial not yet laid to rest each take one.
+- **Wild bugs.** A bug jarred in the mine takes a free stall at the level and health it was caught at; the rules are in [Acid Mines](acid-mines.md).
+- **Eggs.** A mine shift can only hold an egg while a stall is free. The chance is 10% a shift with an empty Barn and halves for each egg or bug already kept.
+- **The partner.** The first bug is the partner; **Make partner** on any other hatched, living bug swaps them, except while one of your bugs is in a fight. The mine guide, mine battles, My Room and store items (food, feeders, misters, toys) all act on the partner.
+- **A stalled bug lives five times slower** (`BENCH_SLOW`). Its needs decay at a fifth of the rate, it starves after 105 days instead of 21, and its 24-hour XP checkpoint comes every five days. It still needs looking after: care works on any bug, on the usual cooldowns, and gives the usual 12 XP. Swapping partners carries each bug's needs over as they are. A feeder's dates stay on the wall clock, so one bought for a bug that is later stalled covers fewer of its slow days.
+- **No empty partner's place.** When the partner is laid to rest, the first living stalled bug becomes the partner.
+- **Fights.** Any standing bug can post, join or be called out; the ring's roster lists every living bug, and a challenge names both. An owner has one fight at a time.
+- **The Bug Center** treats whichever of your bugs needs it most: fainted first, then hurt.
+
+### Parked for later: one-of-a-kind bugs
+
+Left out on purpose, as a possible expansion once a rare tier exists (wild bugs and the jar are in: see [Acid Mines](acid-mines.md)): a legendary species of which only one lives in the whole Academy at a time. Whoever jars it owns the only one, and it is up for grabs again when that owner releases or loses it.
 
 ## Leveling and moves
 
@@ -23,7 +38,7 @@ Any hatched bug may bout, from **level 1**, with no rest between them: the loser
 
 The XP curve is `40 * (level - 1)^2`. Level and combat growth cap at 10; XP can still accumulate. Each level after 3 adds 3 HP and 2% base attack damage. Fight XP affects subsequent bouts, not the bout awarding it.
 
-Every fight, in the Barn or the mine, is the same turn-based fight in the ring. The bugs act in turn, one action every few seconds. Under the ring, a panel shows what your bug will do next; tap its moves to line up as many as three, and tap a lined-up move to take it back. A bug with nothing lined up, or whose lined-up move is still recovering, picks for itself, so a fight never waits on an owner: one who is away simply gets their bug's own picks, and a fight nobody is watching runs straight to its end. The saved `balanced`, `aggressive` or `defensive` stance steers those picks (a balanced bug mends when hurt and otherwise takes its specials in turn) and still shifts damage dealt and taken. Specials have cooldowns in the user's own turns. Each species also has one trait, drawn from a fact on its sheet (the Combat tab and the panel name it; `TRAIT` in `server/engine/bug-combat.js` holds the numbers). The Combat tab describes effects; move names do not grant hidden elemental or flying bonuses, and the fighting styles in replays (fliers, hoppers, chargers and so on) are animation only. Condition uses the lowest care need, and gear bonuses do not stack. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
+Every fight, in the Barn or the mine, is the same turn-based fight in the ring. The bugs act in turn, one action every few seconds. Under the ring, a panel shows what your bug will do next; tap its moves to line up as many as three, and tap a lined-up move to take it back. Each move shows its chance to hit and the damage it would do right now (or the HP it would heal); the line under the buttons spells out the move you last touched, with its poison, guard or weakening and how long it rests after. A bug with nothing lined up, or whose lined-up move is still recovering, picks for itself, so a fight never waits on an owner: one who is away simply gets their bug's own picks, and a fight nobody is watching runs straight to its end. The saved `balanced`, `aggressive` or `defensive` stance steers those picks (a balanced bug mends when hurt and otherwise takes its specials in turn) and still shifts damage dealt and taken. Specials have cooldowns in the user's own turns. Each species also has one trait, drawn from a fact on its sheet (the Combat tab and the panel name it; `TRAIT` in `server/engine/bug-combat.js` holds the numbers). The Combat tab describes effects; move names do not grant hidden elemental or flying bonuses, and the fighting styles in replays (fliers, hoppers, chargers and so on) are animation only. Condition uses the lowest care need, and gear bonuses do not stack. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
 
 Bugs grow slightly through level 10, with shared size and equipped-art scaling across the Barn, room, shop and bouts. Young forms become adults at level 3 where appropriate; some species retain a similar form. These are stylized life stages, not exact biology. Replays use the historical level/form rather than today's pet.
 
@@ -52,18 +67,22 @@ A fight's effects and music follow the Barn's one sound switch, which is off unt
 
 ## API and persistence
 
-Barn routes require the existing session or supported legacy bearer token and operate on that player's pet; requests cannot nominate another owner.
+Barn routes require the existing session or supported legacy bearer token and operate on that player's own bugs; requests cannot nominate another owner. Where a body takes `bug`, it is one of the caller's bugs by its `id` from `stable.bugs`; left out, it means the partner. An id that is not theirs: 404.
 
 | Route | Contract |
 | --- | --- |
-| `GET /api/barn` | Current pen, board, own open bout, bankroll and server time, plus the ring: `roster`, `challenges` (`incoming`, `outgoing`) and `fights`. Reads settle passive bonuses, expired refunds and any already-committed fight receipt; they never start fights. |
-| `PATCH /api/barn/battle` | Save the `stance`; reject anything else, including the retired `specials` (400), and missing/unhatched/dead pets (409). |
-| `POST /api/barn/bouts` | `{ "stake": 25 }` posts an open bout. Invalid amount/extra fields: 400; insufficient funds: 402; empty Barn: 404; egg/dead/below-level-3 a fainted bug or another open stake: 409. Reposting the same open stake returns the existing listing. |
-| `POST /api/barn/bouts/:id/join` | Empty body. Accept the posted stake and start the fight; the response's `live` is its id. Unavailable/self/own open bout, or a bug already in a fight: 409; insufficient funds: 402. A participant retry returns the Barn as it stands, without another stake, payout or XP award. |
-| `GET /api/barn/fight?id=&have=` | The fight your bug is in or has just finished, from your corner, in the replay's shape: `rounds` holds only the blows after the first `have`, starting at `from`. While `live`, it also carries your `moves` (with `readyIn` own turns), your `queue`, the `next` move as things stand and your bug's `trait`. `{ "fight": null }` when there is none. Asking counts as watching. |
+| `GET /api/barn` | The partner as `pen`, every stall as `stable` (`stalls`, `nextStall` cost or null, `bugs` partner first, each with `id` and `partner`), `lastBout` (the newest fight of any of them), board, own open bout, bankroll and server time, plus the ring: `roster`, `challenges` (`incoming`, `outgoing`) and `fights`. Reads settle passive bonuses, expired refunds and any already-committed fight receipt; they never start fights. |
+| `POST /api/barn/care` | `{ "action": "feed" \| "play" \| "clean", "bug"? }`. On its cooldown: 429. |
+| `POST /api/barn/partner` | `{ "bug": id }` makes that bug the partner. An egg or a memorial, or while one of your bugs is fighting: 409. Naming the partner is harmless. |
+| `POST /api/barn/stalls` | Buys the next stall. Not enough money: 402; all six built: 409. |
+| `POST /api/barn/heal`, `POST /api/barn/bury` | Take an optional `bug`. |
+| `PATCH /api/barn/battle` | Save the `stance` (optional `bug`); reject anything else, including the retired `specials` (400), and missing/unhatched/dead pets (409). |
+| `POST /api/barn/bouts` | `{ "stake": 25, "bug"? }` posts an open bout. Invalid amount/extra fields: 400; insufficient funds: 402; empty Barn: 404; egg/dead/below-level-3 a fainted bug or another open stake: 409. Reposting the same open stake returns the existing listing. |
+| `POST /api/barn/bouts/:id/join` | Empty body, or `{ "bug": id }` to send a bug other than the partner. Accept the posted stake and start the fight; the response's `live` is its id. Unavailable/self/own open bout, or a bug already in a fight: 409; insufficient funds: 402. A participant retry returns the Barn as it stands, without another stake, payout or XP award. |
+| `GET /api/barn/fight?id=&have=` | The fight your bug is in or has just finished, from your corner, in the replay's shape: `rounds` holds only the blows after the first `have`, starting at `from`. While `live`, it also carries your `moves` (with `readyIn` own turns and the odds as things stand: `hit`, `dmg` as least and most, and where they apply `heal`, `venom`, `guard`, `weaken` and `crit`), your `queue`, the `next` move as things stand and your bug's `trait`. `{ "fight": null }` when there is none. Asking counts as watching. |
 | `POST /api/barn/fight/:id/moves` | `{ "moves": ["technique", "basic"] }` replaces your lined-up moves: up to three, each one the bug has learned. Anything else: 400; a fight that is over or not yours: 409. |
 | `DELETE /api/barn/bouts/:id` | Cancel your own open bout and refund. Another player's listing: 404. Retrying the most recent cancellation is harmless. |
-| `POST /api/barn/challenges` | `{ "to": "<player id>", "stake": 25 }` challenges that player's bug. Invalid body: 400; insufficient funds now: 402; no living bug there, or a hidden owner: 404; yourself, or a different stake to the same bug: 409. Repeating the same challenge returns the existing one. |
+| `POST /api/barn/challenges` | `{ "to": "<player id>", "stake": 25, "their"?, "bug"? }` challenges that player's bug (`their`, from the roster; left out, their partner) with yours (`bug`). Accepting fights those two. Invalid body: 400; insufficient funds now: 402; no living bug there, or a hidden owner: 404; yourself, or a different stake to the same bug: 409. Repeating the same challenge returns the existing one. |
 | `POST /api/barn/challenges/:id/accept` | Empty body. The challenged owner accepts and the fight starts (`live`, as when joining). Gone, not yours, a bout posted by either player, or a challenger who can no longer cover it: 409; your own funds: 402; either bug fainted: 409. A retry after the fight returns the saved result without another payout or XP award. |
 | `DELETE /api/barn/challenges/:id` | Withdraw a challenge you sent or decline one you were sent. Someone else's: 404. Repeating is harmless. |
 | `GET /api/barn/waiting` | `{ "challenges": n }`: the Barn button's count for the caller (challenges, others' open bouts, an unseen result). The same number is `barnChallenges` in `/api/me`. `GET /api/barn?seen=1`, which only the Barn page sends, clears the unseen result and returns `unseenBout: true` that once. |
@@ -79,6 +98,8 @@ Example setup, once those moves are learned:
 Move IDs are `basic`, `technique`, `signature`, `tactic` and `capstone`. The response is the updated Barn view. Older saves that chose two specials keep their stance; the choice of specials is ignored.
 
 `barn.json` retains the pet's optional `battle`, `combatVersion` and `legacyAbilities` fields and `lastBout`. Version-2 bouts include `maxHp`, `xpEarned`, `levelBefore` and `levelAfter`. Version-3 bouts add the bout ID, stake, payout and net result, with rounds oriented to each participant; newer ones also name both owners. Version-5 bouts were fought live; their rounds may include a lost turn (`skipped`) or a bombardier's pop (`pop`). Old replays still work.
+
+`barn.json` keeps the partner in `pens`, stalled bugs in `bench` and bought stalls in `stalls`, all by owner; a stalled bug carries `benchedAt`, the moment its slow clock started. Saves from before stalls need no change: their one bug is the partner.
 
 `barn.json` also holds `challenges`, which carry no money, and `fights`, the ring's record of the latest 20 bouts. A fight is recorded in the same save as the first pet reward for it, so it needs no write of its own and is recovered with that reward after a failed write or restart. Bouts fought before this record existed are not in it.
 

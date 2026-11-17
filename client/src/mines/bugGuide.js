@@ -1,6 +1,7 @@
-// Your Barn bug as a mine guide: flies/crawls ahead along the tunnels toward the current acid pool.
+// Your Barn bug down the mine: by default it flies/crawls ahead along the tunnels toward the current acid pool.
 // Pure logic (no three.js) so node --test can drive it. Only active when the player brought a living
 // hatched barn bug. It waits if you fall behind, settles when you reach the current acid, and leads on again when the vein moves to the next pool.
+// It also takes orders (the BUG menu): come to heel, lead to the acid, lead to the nearest other miner, lead back to the lift.
 import { bfs, tileOf, TILE } from './stalker.js';
 
 export const APPEAR_AFTER_MS = 4000; // brief delay so it doesn't hand you the route at clock-in
@@ -9,6 +10,8 @@ export const WAIT_TILES = 3;         // if you're this many tiles behind it, it 
 export const GUIDE_SPEED = 2.9;      // m/s — a bit slower than the player (3.6) so you can follow
 export const CATCH_SPEED = 3.4;      // when it fell behind you on the path
 export const ARRIVE_TILES = 0;       // stops on the pool tile
+/** What the bug can be told: lead to the acid (what it does unasked), come to heel, lead to the nearest other miner, lead back to the lift. */
+export const ORDERS = ['acid', 'come', 'someone', 'lift'];
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const open = (g, x, y) => g[y]?.[x] === 0;
@@ -54,6 +57,9 @@ export class BugGuide {
     this.afterMs = afterMs;
     this.bug = bug;
     this.state = 'dormant'; // dormant | guiding | done
+    this.mode = 'acid';     // one of ORDERS
+    this.found = false;     // the miner has reached the current pool
+    this.others = [];       // other miners in these tunnels, in tiles
     this.x = this.start.x * TILE;
     this.z = this.start.y * TILE;
     this.facing = 0;
@@ -73,6 +79,7 @@ export class BugGuide {
     this.pool = p;
     this.next = null;
     this.repath = 0;
+    if (changed) this.found = false;
     // After a deposit is collected, the vein names the next acid: leave "done" and lead there.
     if (changed && this.armed && this.state === 'done') {
       this.state = 'guiding';
@@ -81,7 +88,34 @@ export class BugGuide {
   }
 
   acidFound() {
-    if (this.state === 'guiding') { this.state = 'done'; this.events.push('done'); }
+    this.found = true;
+    if (this.mode === 'acid' && this.state === 'guiding') { this.state = 'done'; this.events.push('done'); }
+  }
+
+  /** Who else is down here (tiles). The 'someone' order leads to the nearest. */
+  setOthers(list) { this.others = (list || []).filter((o) => Number.isFinite(o?.x) && Number.isFinite(o?.y)); }
+
+  /** An order from its miner. False (with a 'nobody' event) when told to find someone and nobody is there. */
+  order(mode) {
+    if (!this.armed || !ORDERS.includes(mode)) return false;
+    if (mode === 'someone' && !this.others.length) { this.events.push('nobody'); return false; }
+    this.mode = mode; this.next = null; this.repath = 0; this.waiting = false;
+    // Out it comes whatever it was doing; told to find acid it has already found, it settles again.
+    if (this.state !== 'dormant') this.state = mode === 'acid' && this.found ? 'done' : 'guiding';
+    return true;
+  }
+
+  /** The tile it is leading to (null at heel, or when the miner it was after has gone). */
+  goal(ptx, pty) {
+    if (this.mode === 'acid') return this.pool;
+    if (this.mode === 'lift') return this.start;
+    if (this.mode !== 'someone') return null;
+    const from = bfs(this.grid, ptx, pty); let best = null, bestSteps = Infinity;
+    for (const o of this.others) {
+      const x = Math.round(o.x), y = Math.round(o.y), steps = from[y]?.[x] ?? -1;
+      if (steps >= 0 && steps < bestSteps) { best = { x, y }; bestSteps = steps; }
+    }
+    return best;
   }
 
   /**
@@ -89,42 +123,45 @@ export class BugGuide {
    * @param {{ t:number, x:number, z:number, yaw:number, elapsedMs:number }} p
    */
   update(dt, p) {
-    if (!this.armed || this.state === 'done') return;
+    if (!this.armed) return;
     if (this.state === 'dormant') {
-      if (p.elapsedMs >= this.afterMs) this.appear(p);
+      if (p.elapsedMs >= this.afterMs || this.mode !== 'acid') this.appear(p);
       return;
     }
+    if (this.state === 'done') return;
     const [ptx, pty] = tileOf(p.x, p.z);
     const [btx, bty] = tileOf(this.x, this.z);
-    const toPool = bfs(this.grid, this.pool.x, this.pool.y);
-    const bugToPool = toPool[bty]?.[btx] ?? -1;
-    const playerToPool = toPool[pty]?.[ptx] ?? -1;
+    const heel = this.mode === 'come', goal = heel ? null : this.goal(ptx, pty);
+    if (!heel && !goal) { this.events.push('nobody'); this.mode = 'come'; return; } // they clocked out: back to heel
+    const toGoal = heel ? null : bfs(this.grid, goal.x, goal.y);
     const playerToBug = bfs(this.grid, btx, bty)[pty]?.[ptx] ?? -1;
+    const bugToGoal = heel ? playerToBug : toGoal[bty]?.[btx] ?? -1;
+    const playerToGoal = heel ? 0 : toGoal[pty]?.[ptx] ?? -1;
+    const playerNear = playerToBug >= 0 && playerToBug <= 1;
 
-    // At the pool: hover and wait for the miner.
-    if (bugToPool <= ARRIVE_TILES) {
+    // There: hover at the goal and wait for the miner (at heel: beside them).
+    if (heel ? playerNear : bugToGoal <= ARRIVE_TILES) {
       this.waiting = true; this.moving = false;
-      this.facing = Math.atan2(this.pool.x * TILE - this.x, this.pool.y * TILE - this.z);
+      this.facing = heel ? Math.atan2(p.x - this.x, p.z - this.z) : Math.atan2(goal.x * TILE - this.x, goal.y * TILE - this.z);
       this.bob += dt;
       return;
     }
 
     // Too far ahead of the player → pause so they can catch up.
     // lead = how many more tiles the player still has vs the bug (positive ⇒ bug is ahead).
-    const lead = (playerToPool >= 0 && bugToPool >= 0) ? (playerToPool - bugToPool) : 0;
-    const playerNear = playerToBug >= 0 && playerToBug <= 1;
-    if (!playerNear && lead > WAIT_TILES) {
+    const lead = (playerToGoal >= 0 && bugToGoal >= 0) ? (playerToGoal - bugToGoal) : 0;
+    if (!heel && !playerNear && lead > WAIT_TILES) {
       this.waiting = true; this.moving = false; this.bob += dt;
       this.facing = Math.atan2(p.x - this.x, p.z - this.z);
       return;
     }
     this.waiting = false;
 
-    // Pick next tile toward the pool (or catch up toward the player if they got ahead).
+    // Pick next tile toward the goal (or catch up toward the player if they got ahead, or it was called to heel).
     this.repath -= dt;
-    const catchUp = playerToPool >= 0 && bugToPool > playerToPool + 1;
-    const goalDist = catchUp ? bfs(this.grid, ptx, pty) : toPool;
-    const here = catchUp ? (goalDist[bty]?.[btx] ?? -1) : bugToPool;
+    const catchUp = heel || (playerToGoal >= 0 && bugToGoal > playerToGoal + 1);
+    const goalDist = catchUp ? bfs(this.grid, ptx, pty) : toGoal;
+    const here = catchUp ? (goalDist[bty]?.[btx] ?? -1) : bugToGoal;
     if (!this.next || this.repath <= 0 || (Math.abs(this.x - this.next[0] * TILE) < 0.08 && Math.abs(this.z - this.next[1] * TILE) < 0.08)) {
       this.repath = 0.25;
       this.next = stepToward(goalDist, btx, bty) || [btx, bty];
@@ -156,6 +193,6 @@ export class BugGuide {
     if (!open(this.grid, sx, sy)) { sx = this.start.x; sy = this.start.y; }
     this.x = sx * TILE; this.z = sy * TILE;
     this.facing = Math.atan2(this.pool.x * TILE - this.x, this.pool.y * TILE - this.z);
-    this.state = 'guiding'; this.next = null; this.events.push('appear');
+    this.state = this.mode === 'acid' && this.found ? 'done' : 'guiding'; this.next = null; this.events.push('appear');
   }
 }

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
-import { startBout, stepBout, simulateBout, nextMove, MAX_ROUNDS } from '../server/engine/bout.js';
+import { startBout, stepBout, simulateBout, nextMove, odds, MAX_ROUNDS } from '../server/engine/bout.js';
 import { traitFor } from '../server/engine/bug-combat.js';
 import { Fights, FIGHT } from '../server/fights.js';
 
@@ -31,6 +31,27 @@ test('a lined-up move is used when it is ready; one still recovering falls back 
   assert.equal(nextMove(S, me, 'not-a-move').id, nextMove(S, me).id);
   const young = startBout(bug('lamprima', { level: 1 }), bug('sagra', { level: 1 }), 'young');
   assert.notEqual(stepBout(young, 'capstone').find(r => r.type === 'move').moveId, 'capstone', 'not learned yet');
+});
+
+test('the odds shown for a move are what the fight then does with it', () => {
+  let checked = 0;
+  ROSTER.forEach((b, n) => {
+    const S = startBout(bug(b.id, { health: 60 }), bug(ROSTER[(n * 7 + 3) % ROSTER.length].id), `odds:${n}`);
+    while (!S.over) {
+      const by = S.by, shown = odds(S, by);
+      for (const o of Object.values(shown)) {
+        if ('heal' in o) { assert.ok(o.heal >= 0 && o.heal <= S.maxHp[by] - S.hp[by]); continue; }
+        assert.ok(o.hit >= 0 && o.hit <= 1 && o.dmg[0] >= 1 && o.dmg[0] <= o.dmg[1], JSON.stringify(o));
+      }
+      const events = stepBout(S), act = events[0];
+      // Venom, a sip of fog or a mantis lying still change the sum after it was shown; every other action must match it.
+      if (act.type !== 'move' || act.skipped || act.critical || S.side.some(s => s.t === 'onymacris' || s.t === 'deroplatys')) continue;
+      const o = shown[act.moveId]; checked++;
+      if (act.effect === 'heal') assert.equal(act.healed, o.heal, `${b.id} heal`);
+      else if (act.hit) assert.ok(act.dmg >= o.dmg[0] && act.dmg <= o.dmg[1], `${b.id} ${act.moveId}: ${act.dmg} outside ${o.dmg}`);
+    }
+  });
+  assert.ok(checked > 300, `only ${checked} actions checked`);
 });
 
 test('a watched fight takes one action a beat and uses the lined-up moves; an unwatched one runs straight through', () => {

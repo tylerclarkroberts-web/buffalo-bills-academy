@@ -393,13 +393,12 @@ export class MineScene {
     trotFaun(m, now, fn.moving, this.reduce);
   }
 
-  /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
-  addBugGuide(bug) {
+  /** A bug as a small glowing billboard: its pixel sprite, readable from down the tunnel. */
+  bugBillboard(species, style, glowColor) {
     const g = new THREE.Group();
-    const species = BY_ID[bug?.species];
     let mesh;
     if (species) {
-      const c = spriteCanvas(species, bug.style || null);
+      const c = spriteCanvas(species, style);
       const tex = new THREE.CanvasTexture(c);
       tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -410,16 +409,27 @@ export class MineScene {
       mesh.scale.set(1.4, 0.7, 1);
     }
     mesh.position.y = 0.55; g.add(mesh);
-    const glow = new THREE.PointLight('#b6ff7a', 1.6, 3.2); glow.position.set(0, 0.7, 0); g.add(glow);
+    const glow = new THREE.PointLight(glowColor, 1.6, 3.2); glow.position.set(0, 0.7, 0); g.add(glow);
     g.visible = false; this.scene.add(g);
-    this.bugMesh = { group: g, mesh, glow };
+    return { group: g, mesh, glow };
   }
+  /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
+  addBugGuide(bug) { this.bugMesh = this.bugBillboard(BY_ID[bug?.species], bug.style || null, '#b6ff7a'); }
+  /** The shift's wild bug, waiting in the tunnel under a red glow. */
+  addWild({ species, x, y }) {
+    this.removeWild();
+    this.wild = { ...this.bugBillboard(BY_ID[species], null, '#ff5a3a'), x: x * TILE, z: y * TILE };
+    this.wild.group.position.set(this.wild.x, 0, this.wild.z); this.wild.group.visible = true;
+  }
+  removeWild() { if (this.wild) { this.scene.remove(this.wild.group); this.wild = null; } }
+  /** How far the miner is from the wild bug, in tiles (Infinity when there is none). */
+  wildTiles() { return this.wild ? Math.hypot(this.pos.x - this.wild.x, this.pos.y - this.wild.z) / TILE : Infinity; }
   updateBugGuide(now, dt) {
     const bg = this.bugGuide, m = this.bugMesh; if (!bg || !m) return;
     bg.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart });
     while (bg.events.length) {
       const ev = bg.events.shift();
-      this.onEvent?.(ev === 'appear' ? 'bug-appear' : ev === 'retarget' ? 'bug-retarget' : 'bug-done');
+      this.onEvent?.(`bug-${ev}`); // appear, retarget, done, nobody
     }
     const g = m.group;
     if (!bg.present) { g.visible = false; return; }
@@ -608,6 +618,7 @@ export class MineScene {
     if (this.stalker) this.updateVisitor(now, dt);
     if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
+    if (this.wild) { this.wild.group.rotation.y = this.yaw; this.wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05; }
     this.miners?.update(dt, now, this.yaw);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;
     // v89: dancing pulls the camera out in front of you; stopping brings it straight back behind your eyes

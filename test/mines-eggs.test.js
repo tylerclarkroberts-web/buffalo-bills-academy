@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { Barn } from '../server/barn.js';
 
-test('eggs have a 10% roll and require an empty barn', () => {
+test('eggs have a 10% roll in an empty barn, half that for each bug already kept, and none with every stall taken', () => {
   let roll = 9999, calls = 0;
   const barn = new Barn({
     store: { loadDoc: (key, fallback) => fallback }, now: () => 1,
@@ -15,12 +15,15 @@ test('eggs have a 10% roll and require an empty barn', () => {
   assert.equal(barn.rollEgg('miner'), true);
   roll = 10000;
   assert.equal(barn.rollEgg('miner'), false);
+  barn.doc.pens.miner = { stage: 'creature', eggAt: 1 };
+  roll = 4999; assert.equal(barn.rollEgg('miner'), true, 'one bug kept: 5%');
+  roll = 5000; assert.equal(barn.rollEgg('miner'), false);
   roll = 0;
-  for (const stage of ['egg', 'creature', 'dead']) {
-    barn.doc.pens.miner = { stage };
-    assert.equal(barn.rollEgg('miner'), false, stage);
-  }
-  assert.equal(calls, 2, 'occupied barns do not roll');
+  barn.doc.bench.miner = [{ stage: 'egg', eggAt: 2 }, { stage: 'dead', eggAt: 3 }];
+  assert.equal(barn.rollEgg('miner'), false, 'an egg, a bug and a grave each take a stall');
+  assert.equal(calls, 4, 'a full barn does not roll');
+  barn.doc.stalls.miner = 1;
+  assert.equal(barn.rollEgg('miner'), true, 'a fourth stall makes room');
 });
 
 async function fixture(t) {

@@ -19,10 +19,32 @@ function landSound({ kind, r }) {
 }
 const STATUS = [['guard', 'Guarded'], ['poison', 'Poisoned'], ['weak', 'Weakened']];
 const DOES = { strike: 'Strike', guard: 'Hit + guard', venom: 'Hit + poison', pierce: 'Pierce', heal: 'Heal', weaken: 'Hit + weaken' };
+const TAG = { guard: 'guard', venom: 'poison', pierce: 'pierce', weaken: 'weaken' };
 export const QUEUE_MAX = 3;
+const pct = (n) => `${Math.round(n * 100)}%`;
+const span = ([lo, hi]) => (lo === hi ? `${lo}` : `${lo}–${hi}`);
+/** A move's odds as the server last worked them out, short for its button and in full under the buttons. */
+const brief = (m) => (m.heal !== undefined ? `Heal ${m.heal}` : m.dmg ? `${pct(m.hit)} · ${span(m.dmg)}${TAG[m.effect] ? ` + ${TAG[m.effect]}` : ''}` : DOES[m.effect]);
+function explain(m, them) {
+  if (m.heal !== undefined) return `Heals ${m.heal} HP instead of attacking.${m.cooldown ? ` Rests ${m.cooldown} turns after.` : ''}`;
+  if (!m.dmg) return m.description;
+  return `${pct(m.hit)} to hit for ${span(m.dmg)} damage${
+    m.venom ? `, then ${m.venom[0]} poison a turn for ${m.venom[1]} turns` : m.weaken ? `, and takes ${pct(m.weaken)} off ${them}'s next attack` : m.guard ? `, and blocks ${pct(m.guard)} of the next hit on you, even on a miss` : m.effect === 'pierce' ? ', through armour and half a guard' : ''
+  }.${m.crit ? ` ${pct(m.crit)} chance to leave ${them} at 1 HP.` : ''}${m.cooldown ? ` Rests ${m.cooldown} turns after.` : ''}`;
+}
 
 /** Merge a page of a live fight (the server sends only the blows after `from`) into what the page already holds. */
 export const mergeFight = (held, page) => ({ ...page, rounds: [...(held?.id === page.id ? held.rounds : []).slice(0, page.from || 0), ...page.rounds] });
+
+/** Against a wild bug: throw a jar once it is weak enough. The button says why it cannot be thrown, and what the last throw did. */
+function Jar({ jar, onJar }) {
+  const [said, setSaid] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { if (!said) return undefined; const id = setTimeout(() => setSaid(''), 2500); return () => clearTimeout(id); }, [said]);
+  const why = !jar.have ? 'No jars' : !jar.room ? 'No free stall' : !jar.chance ? `Jar under ${pct(jar.at)} HP` : '';
+  // onJar answers true (caught), false (it got out) or the server's reason for refusing
+  const throwIt = async () => { setBusy(true); const out = await onJar(); setBusy(false); if (out !== true) setSaid(out === false ? 'It squeezed out!' : String(out)); };
+  return <button className="btn small bout-jar" onClick={throwIt} disabled={busy || !!why} data-test="bout-jar">{said || why || `Jar it · ${pct(jar.chance)}`}{jar.have > 0 && <small> · {jar.have} left</small>}</button>;
+}
 
 /** Under the ring while a fight is live: what your bug does next, and the buttons to decide that for it. */
 function Moves({ bout, onLine }) {
@@ -32,6 +54,9 @@ function Moves({ bout, onLine }) {
   const queue = mine || bout.queue || [], name = (id) => bout.moves.find((m) => m.id === id)?.name || id;
   const latest = useRef(queue); latest.current = queue; // two quick taps both count, even before the first one redraws
   const line = (change) => { const next = change(latest.current); if (!next) return; latest.current = next; setMine(next); onLine(next); };
+  // The move spelled out under the buttons: the one you last touched, otherwise the one coming next.
+  const [look, setLook] = useState(null);
+  const shown = bout.moves.find((m) => m.id === look) || bout.moves.find((m) => m.id === (queue[0] || bout.next));
   return (
     <div className="bout-panel" data-test="bout-panel">
       <div className="bout-queue" aria-live="polite">
@@ -43,17 +68,19 @@ function Moves({ bout, onLine }) {
       </div>
       <div className="bout-moves" role="group" aria-label={`${bout.you.name}'s moves`}>
         {bout.moves.map((m) => (
-          <button key={m.id} className="bout-move" style={{ '--fx': EFFECT_COLOR[m.effect] }} disabled={queue.length >= QUEUE_MAX} onClick={() => line((q) => (q.length < QUEUE_MAX ? [...q, m.id] : null))} title={m.description} data-test={`bout-move-${m.id}`}>
-            <b>{m.name}</b><small>{DOES[m.effect]}{m.readyIn > 0 ? ` · ready in ${m.readyIn}` : ''}</small>
+          <button key={m.id} className="bout-move" style={{ '--fx': EFFECT_COLOR[m.effect] }} aria-disabled={queue.length >= QUEUE_MAX} aria-label={`${m.name}. ${explain(m, bout.them.name)}`}
+            onClick={() => { setLook(m.id); line((q) => (q.length < QUEUE_MAX ? [...q, m.id] : null)); }} onMouseEnter={() => setLook(m.id)} onFocus={() => setLook(m.id)} data-test={`bout-move-${m.id}`}>
+            <b>{m.name}</b><small>{m.readyIn > 0 ? `ready in ${m.readyIn}` : brief(m)}</small>
           </button>
         ))}
       </div>
+      {shown && <p className="small bout-detail" data-test="bout-detail"><b>{shown.name}.</b> {explain(shown, bout.them.name)}{shown.readyIn > 0 ? ` Ready in ${shown.readyIn}.` : ''}</p>}
       {bout.trait && <p className="small muted bout-trait"><b>{bout.trait.name}.</b> {bout.trait.description}</p>}
     </div>
   );
 }
 
-export default function Bout({ bout, replay = false, reduced, sound, onSound, onClose, onLine, onForfeit, closeLabel = 'Back to the stall' }) {
+export default function Bout({ bout, replay = false, reduced, sound, onSound, onClose, onLine, onForfeit, onJar, closeLabel = 'Back to the stall' }) {
   const plan = useMemo(() => planBout(bout), [bout]);
   const ref = useRef(null), dialog = useRef(null), closeButton = useRef(null);
   const clock = useRef({ t0: 0, skip: 0 });
@@ -133,7 +160,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           const pct = Math.max(0, Math.min(100, (hp[i] / maxHp[i]) * 100));
           return (
             <div key={i} className={`bout-side s${i}`}>
-              <b>{c.name}</b><span className="small muted">{c.stray ? 'stray · ' : ''}{c.owner ? `${c.owner} · ` : ''}Lv {c.level}</span>
+              <b>{c.name}</b><span className="small muted">{c.wild ? 'wild · ' : c.stray ? 'stray · ' : ''}{c.owner ? `${c.owner} · ` : ''}Lv {c.level}</span>
               <div className={`barn-bar hp ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}`} role="progressbar" aria-label={`${c.name} health`} aria-valuemin={0} aria-valuemax={maxHp[i]} aria-valuenow={hp[i]}>
                 <b className="ghost" style={{ width: `${pct}%` }} /><i style={{ width: `${pct}%` }} />
               </div>
@@ -164,12 +191,13 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
         {bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}
         {bout.pot > 0 && <p className="bout-payment">{money(bout.pot)} pot</p>}
         {replay && <p className="small muted">{bout.you.owner ? 'Seen from the rafters. No XP, no money.' : 'Replay only. No extra XP or money.'}</p>}
-      </> : quit ? 'There is no running from a bug fight. Giving up counts as a loss.' : line}</div>
+      </> : quit ? (bout.wild ? 'Run, and it keeps the tunnel. Your bug keeps its scrapes.' : 'There is no running from a bug fight. Giving up counts as a loss.') : line}</div>
       {live && bout.moves && !quit && <Moves bout={bout} onLine={onLine} />}
       <div className="bout-acts">
         {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Fight sounds" title="Fight sounds">{sound ? '🔊' : '🔈'}</button>}
         {!done && !live && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
         {live && !onForfeit && <button className="btn ghost small" onClick={onClose} data-test="bout-leave">Leave it to {bout.you.name}</button>}
+        {live && bout.jar && onJar && !quit && <Jar jar={bout.jar} onJar={onJar} />}
         {live && onForfeit && !quit && <button className="btn ghost small" onClick={() => setQuit(true)} data-test="bout-run">Run</button>}
         {live && quit && <><button className="btn small" onClick={() => setQuit(false)}>Fight on</button><button className="btn ghost small" onClick={() => { setQuit(false); onForfeit(); }} data-test="bout-forfeit">Give up</button></>}
         {done && hurt && <button className="btn small bout-center" onClick={() => { onClose(); navigate('/barn/center'); }} data-test="bout-hurt">{bout.healthAfter <= 0 ? `${bout.you.name} fainted` : 'Your bug is hurt'} — visit the Bug Center →</button>}

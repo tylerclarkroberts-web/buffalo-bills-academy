@@ -153,7 +153,7 @@ export default function Store() {
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
                   {owned && FITTABLE(cur) ? <button className={`btn ${fitOpen ? '' : 'ghost'}`} onClick={() => setFitOpen(!fitOpen)} aria-pressed={fitOpen} data-test="store-fit">{fitOpen ? 'Done' : 'Adjust fit'}</button> : null}
-                  {owned && cur.use ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/use', { id: cur.id }), cur.use === 'feeder' ? 'Feeder stocked. Your bug won\'t go hungry for a while.' : 'Your bug appreciates that.')} data-test="store-use">Use</button> : null}
+                  {owned && cur.use && cur.use !== 'jar' ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/use', { id: cur.id }), cur.use === 'feeder' ? 'Feeder stocked. Your bug won\'t go hungry for a while.' : 'Your bug appreciates that.')} data-test="store-use">Use</button> : null}
                 </div>
                 {cur.kind === 'tobacco' && <p className="small sd-warn" data-test="store-tobacco-item-notice"><b>18+</b> {v.tobaccoNotice}</p>}
                 {cur.kind === 'tobacco' && <p className="small muted tob" data-test="store-once">{owned ? 'In your pocket. ' : ''}One-time use: at a table, tap Light up and Guntrad brings the lighter. Everyone watching sees it once. It never changes a hand.</p>}
