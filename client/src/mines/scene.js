@@ -11,8 +11,9 @@ import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
 import { buildMineHands, resizeMineHands, stepMineHands } from './hands.js';
+import { WALK_SPEED } from './controls.js';
 
-export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
+export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, TURN = 2.3;
 
 // How each shaft looks, in elevator order (7, 8, 12, Earl's Level): the deeper the permit, the worse the place.
 // `rock` multiplies the grey speckle in the wall and floor textures. The acid stays green everywhere. How far you
@@ -602,7 +603,7 @@ export class MineScene {
     const { f, s, t } = this.input;
     if (!this.dance) this.yaw -= t * TURN * dt;
     if (!this.mining && !this.dance && (f || s)) {
-      const sp = SPEED * dt * (f && s ? 0.75 : 1);
+      const sp = WALK_SPEED * dt * (f && s ? 0.75 : 1);
       const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw); // forward
       const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw); // right
       const dx = (fx * f + rx * s) * sp, dz = (fz * f + rz * s) * sp;

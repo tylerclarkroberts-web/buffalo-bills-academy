@@ -2,12 +2,11 @@
 // Pure logic (no three.js) so node --test can drive it. Only active when the player brought a living
 // hatched barn bug. It waits if you fall behind, settles when you reach the current acid, and leads on again when the vein moves to the next pool.
 import { bfs, tileOf, TILE } from './stalker.js';
+import { WALK_SPEED } from './controls.js';
 
 export const APPEAR_AFTER_MS = 4000; // brief delay so it doesn't hand you the route at clock-in
 export const LEAD_TILES = 2;         // tries to stay about this many tiles ahead of you toward the pool
 export const WAIT_TILES = 3;         // if you're this many tiles behind it, it pauses
-export const GUIDE_SPEED = 2.9;      // m/s — a bit slower than the player (3.6) so you can follow
-export const CATCH_SPEED = 3.4;      // when it fell behind you on the path
 export const ARRIVE_TILES = 0;       // stops on the pool tile
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -133,10 +132,7 @@ export class BugGuide {
     const tx = this.next[0] * TILE, tz = this.next[1] * TILE;
     const vx = tx - this.x, vz = tz - this.z, len = Math.hypot(vx, vz);
     if (len < 1e-4) { this.moving = false; return; }
-    // Stay roughly LEAD_TILES ahead: ease off when already leading enough.
-    let sp = (catchUp ? CATCH_SPEED : GUIDE_SPEED) * dt;
-    if (!catchUp && lead >= LEAD_TILES) sp *= 0.35;
-    const step = Math.min(sp, len);
+    const step = Math.min(WALK_SPEED * dt, len);
     this.x += (vx / len) * step; this.z += (vz / len) * step;
     this.moving = step > 0;
     this.facing = Math.atan2(vx, vz);
