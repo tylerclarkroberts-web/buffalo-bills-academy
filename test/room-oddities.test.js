@@ -64,7 +64,9 @@ test('living room pets retain nearest-neighbor pixel art', t => {
   const map = scene.dynamic.children.find(object => object.isSprite)?.material.map;
   assert.ok(map);
   assert.equal(map.magFilter, THREE.NearestFilter);
-  assert.equal(map.minFilter, THREE.NearestFilter);
+  // drawn small it steps down to the 64 sprite (the one hand-made smaller level): still nearest pixels, never blended
+  assert.equal(map.minFilter, THREE.NearestMipmapNearestFilter);
+  assert.deepEqual([map.mipmaps.length, map.mipmaps[0].width, map.mipmaps[1].width], [2, 128, 64]);
   assert.equal(map.generateMipmaps, false);
   scene.update({ shelves: [], placements: [] }); scene.wallMaterial.dispose();
 });

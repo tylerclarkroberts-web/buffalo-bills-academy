@@ -328,6 +328,8 @@ body.in-mines { background: #020402; }
 .m-dance-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (pointer: coarse) { .m-key { display: none; } .m-dance { grid-template-columns: auto 1fr; } }
 @media (max-width: 480px) { .m-dance { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 2px; padding: 4px; font-size: 14px; min-height: 52px; } .m-dance-name { white-space: normal; } .m-dance-icon { font-size: 16px; } }
+.m-orders { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 480px) { .m-orders { grid-template-columns: repeat(2, 1fr); } }
 @media (orientation: landscape) and (max-height: 520px) { .m-dances { bottom: calc(46px + env(safe-area-inset-bottom)); gap: 4px; padding: 6px; } .m-dance { min-height: 40px; } }
 /* v89 Hall of Doors: behind the mine door. A stone hall, one row of doors (two rows on upright screens), no scroll.
    It sits under the CRT scanlines (z 50) so it still feels like the mine; the game rooms behind its doors sit above. */

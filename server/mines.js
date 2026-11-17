@@ -1,7 +1,7 @@
 // The Acid Mines: the only faucet in the closed economy. The server decides every payout.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { bucketChain } from './engine/maze.js';
+import { bucketChain, distFrom } from './engine/maze.js';
 import { shiftMaze, tierInfo } from './engine/mine-tiers.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
@@ -239,6 +239,10 @@ export class Mines {
         ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn ? { cave: true } : {}) })) }); // decided now, sprung on arrival
     if (this.horrorOn(now)) shift.horror = { lightsOutMs: lightsOutMs(shift.id) }; // stamped at clock-in: the whole shift is one kind of night
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay and visitor never see it
+    // A wild bug, from the same source: more grown on a rougher day and down a deeper shaft. It waits well away from the lift.
+    const wild = this.barn?.rollWild?.(player.id, (tier?.tier || 1) - 1 + Math.max(0, SHAFTS.findIndex((s) => s.id === shaft.id)));
+    const spots = wild ? wildSpots(maze, chain) : [];
+    if (spots.length) shift.wild = { ...wild, ...spots[this.barn.eggInt(spots.length)] };
     // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
@@ -269,7 +273,7 @@ export class Mines {
   publicShift(s, resumed, playerId) {
     const guide = playerId != null ? this.guideBug(playerId) : null;
     const bug = guide?.fainted ? null : guide;
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(s.wild && !s.wild.gone ? { wild: { species: s.wild.species, level: s.wild.level, x: s.wild.x, y: s.wild.y } } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }
@@ -345,6 +349,11 @@ export class Mines {
     return this.publicShift(next, true);
   }
 
+  /** The shift's wild bug has been fought, jarred or run from: it is not there any more. */
+  wildGone(playerId, shiftId) {
+    const cur = this.doc.active[playerId];
+    if (cur?.id === shiftId && cur.wild && !cur.wild.gone) this.commit(playerId, { ...cur, wild: { ...cur.wild, gone: true } });
+  }
   /** v30: pick up the egg lying in this shift's tunnels. Touches nothing about the shift itself (clock, vein, pay). */
   takeEgg(player, shiftId) {
     const cur = this.current(player, shiftId);
@@ -460,4 +469,11 @@ export class Mines {
     delete next.active[playerId]; delete next.completed[playerId]; delete next.nephew[playerId];
     this.store.saveDoc('mines', next); this.doc = next; this.holds.delete(playerId);
   }
+}
+
+/** Where a wild bug may wait: open tunnel at least six steps' walk from the lift, and never on the acid. */
+function wildSpots(maze, pools) {
+  const far = distFrom(maze.grid, maze.start.x, maze.start.y), out = [];
+  for (let y = 0; y < maze.grid.length; y++) for (let x = 0; x < maze.grid[y].length; x++) if (maze.grid[y][x] === 0 && far[y][x] >= 6 && !pools.some((p) => p.x === x && p.y === y)) out.push({ x, y });
+  return out;
 }

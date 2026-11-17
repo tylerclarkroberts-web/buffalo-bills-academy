@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { headParts, looks, shade } from '../avatar/genbust.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { spriteCanvas } from '../barn/sprite.js';
+import { bugTexture } from '../barn/sprite.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { resetPose, danceStep } from './dance.js';
 
@@ -149,8 +149,7 @@ export function buildMiner({ id, name, avatar, bug }) {
   let pet = null;
   const species = bug && BY_ID[bug.species];
   if (species && typeof document !== 'undefined') {
-    const t = new THREE.CanvasTexture(spriteCanvas(species, null));
-    t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace;
+    const t = bugTexture(THREE, species, null);
     pet = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     pet.position.set(0.45, 0.32, 0.2); g.add(pet);
   }

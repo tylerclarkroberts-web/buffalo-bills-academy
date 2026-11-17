@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Bout, { mergeFight } from '../barn/Bout.jsx';
-import { createPvpClient, pvpAmbush, pvpForfeit, pvpMove } from './pvpClient.js';
+import { createPvpClient, pvpAmbush, pvpForfeit, pvpMove, pvpWild, pvpJar } from './pvpClient.js';
+import { BY_ID } from '../../../server/engine/creatures.js';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
@@ -13,6 +14,13 @@ import { createMiningClient, readMineReceipt, rememberMineReceipt } from './mini
 import MineMap from './MineMap.jsx';
 import { readExploration, rememberExploration, revealExploration } from './exploration.js';
 
+// The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
+const BUG_ORDERS = [
+  { id: 'come', icon: '🫳', name: 'COME HERE', line: (n) => `${n} TURNS ROUND AND COMES TO HEEL.` },
+  { id: 'acid', icon: '🧪', name: 'FIND ACID', line: (n) => `${n} IS AFTER THE ACID AGAIN. FOLLOW IT.` },
+  { id: 'someone', icon: '👤', name: 'FIND SOMEONE', line: (n) => `${n} HAS SOMEBODY'S SCENT. FOLLOW IT. QUIETLY.` },
+  { id: 'lift', icon: '🛗', name: 'TO THE LIFT', line: (n) => `${n} KNOWS THE WAY OUT. FOLLOW IT TO THE LIFT.` },
+];
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
 import { MineScene, TILE } from './scene.js';
 import { MineAudio } from './audio.js';
@@ -411,7 +419,18 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const danceRef = useRef(null);
   const [picker, setPicker] = useState(false);
   const pickerRef = useRef(false);
-  const showPicker = (v) => { pickerRef.current = v; setPicker(v); };
+  const showPicker = (v) => { pickerRef.current = v; setPicker(v); if (v) showBugMenu(false); };
+  // The BUG menu and the guide it talks to (made with the scene, below).
+  const [bugMenu, setBugMenu] = useState(false), [bugOrder, setBugOrder] = useState('acid');
+  const bugMenuRef = useRef(false), guideRef = useRef(null);
+  const showBugMenu = (v) => { bugMenuRef.current = v; setBugMenu(v); if (v) { pickerRef.current = false; setPicker(false); } };
+  const giveOrder = (id) => {
+    showBugMenu(false);
+    const order = BUG_ORDERS.find((o) => o.id === id), guide = guideRef.current;
+    if (order && guide?.order(id)) { setBugOrder(id); setLine(order.line((shift.bug?.name || 'Your bug').toUpperCase())); }
+  };
+  // The shift's wild bug: 'there' until it has been fought, null when there is none, 'shy' when it will not fight you.
+  const wildRef = useRef(shift.wild ? 'there' : null), wildSeen = useRef(false), wildAsked = useRef(0);
   function stopDance() {
     if (!danceRef.current) return;
     danceRef.current = null; setDance(null); sceneRef.current?.stopDance(); audio?.danceBeat(false);
@@ -545,7 +564,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (closing.current || done.current) return;
     try { await client.current.probe(bucketRef.current.currentPoolId); } catch { /* keep the recovery control visible */ }
   };
-  const freeze = (stopMining = true) => { stopDance(); showPicker(false); if (stopMining) release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.input.run = false; s.mining = false; } };
+  const freeze = (stopMining = true) => { stopDance(); showPicker(false); showBugMenu(false); if (stopMining) release(); keys.clear(); const s = sceneRef.current; if (s) { s.input.f = s.input.s = s.input.t = 0; s.input.run = false; s.mining = false; } };
   const showMap = (open) => {
     if (open) { freeze(); chart(); }
     mapRef.current = open; setMapOpen(open);
@@ -556,8 +575,12 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (!battleRef.current) { freeze(); audio?.dread(false); }
     // The server sends only the blows this page has not seen; the ring wants the whole fight so far, plus what the mine adds at the end.
     const m = mergeFight(battleRef.current, b), raid = m.over?.raid, sign = m.over?.won ? '+' : '−';
+    if (m.over && m.wild) { wildRef.current = null; sceneRef.current?.removeWild(); } // fought, jarred or run from: it is not there any more
     if (m.over) Object.assign(m, { xpEarned: m.over.bug?.xp, levelBefore: m.over.bug?.levelBefore, levelAfter: m.over.bug?.levelAfter,
-      ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: 'No contest. Nobody gets robbed.' } : {}),
+      ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: m.wild ? 'Time. It wanders off unbeaten.' : 'No contest. Nobody gets robbed.' } : {}),
+      ...(m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
+        : m.wild && m.over.reason === 'fainted' && m.over.won ? { verdict: `The wild ${m.them.name} slinks off into the dark.` }
+        : m.wild && m.over.reason !== 'fainted' && m.over.reason !== 'draw' && m.over.reason !== 'abandoned' ? { verdict: 'You ran. It keeps the tunnel.' } : {}),
       spoils: raid ? [`${sign}$${raid.cash}${raid.cashCapped ? ' (daily loss cap)' : ''}`, `${sign}${Math.floor(m.over.won ? raid.gained || raid.acid : raid.acid)} acid`,
         ...(raid.tobacco?.length ? [`${sign}${raid.tobacco.join(', ')}`] : [])] : [] });
     battleRef.current = m; setBattle(m);
@@ -570,7 +593,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (v.result || Object.hasOwn(v, 'pending')) accept(v);
       return;
     }
-    sceneRef.current?.setOthers(v.others || []); setOthers(v.others?.length || 0);
+    sceneRef.current?.setOthers(v.others || []); setOthers(v.others?.length || 0); guideRef.current?.setOthers(v.others || []);
     const p = v.battle ? null : v.ambush; if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
     if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);
     if (v.battle) showBattle(v.battle);
@@ -593,6 +616,19 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     } catch (e) { setLine(String(e.message || 'TOO LATE.').toUpperCase()); }
   };
   const battleMove = async (moves) => { const b = battleRef.current; if (!b) return; try { showBattle((await pvpMove(pvpSend, b.id, moves, b.rounds.length)).battle); } catch (e) { setLine(String(e.message).toUpperCase()); } };
+  // Throw a jar at the wild bug: true if it held, false if it got out, or the server's reason for refusing.
+  const battleJar = async () => {
+    const b = battleRef.current; if (!b) return 'That fight is over.';
+    try { const r = await pvpJar(pvpSend, b.id, b.rounds.length); showBattle(r.battle); return r.held; } catch (e) { return e.message; }
+  };
+  const meetWild = async () => {
+    try { onPvp(await pvpWild(pvpSend)); }
+    catch (e) {
+      setLine(String(e.message).toUpperCase());
+      if (/wants a bug/.test(e.message)) wildRef.current = 'shy';
+      else if (/nothing wild/.test(e.message)) { wildRef.current = null; sceneRef.current?.removeWild(); }
+    }
+  };
   const battleForfeit = async () => { try { await pvpForfeit(pvpSend); } catch { /* the next heartbeat tells */ } pvp.current?.beat(); };
   const battleDone = () => {
     const b = battleRef.current; if (b) dismissed.current.add(b.id);
@@ -661,6 +697,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
+    guideRef.current = bugGuide;
     // Inspect on arrival: the server confirms the pool's fixed amount before collection.
     const askVein = async () => {
       const v = vein.current;
@@ -697,6 +734,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           setStatus('YOUR BUG IS LEADING. FOLLOW IT.');
         }
         if (e === 'bug-done') setLine('YOUR BUG SETTLES BY THE GLOW. THE ACID IS HERE.');
+        if (e === 'bug-nobody') { setBugOrder(bugGuide.mode); setLine('NOBODY ELSE IS DOWN HERE. YOUR BUG LOOKS RELIEVED.'); }
         if (e === 'bug-retarget') {
           const nm = shift.bug?.name || 'Your bug';
           setLine(`${nm.toUpperCase()} FOUND THE NEXT GLOW. FOLLOW IT.`);
@@ -713,6 +751,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
     scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
+    if (wildRef.current) scene.addWild(shift.wild);
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
       eggRef.current = 'taking'; setEggNear(false);
@@ -775,6 +814,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (k === 'x' && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
       if (k === 'b' && !e.repeat) { showPicker(!pickerRef.current); return; }
+      if (k === 'v' && !e.repeat && guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
+      if (k === 'escape' && bugMenuRef.current) { showBugMenu(false); return; }
+      if (bugMenuRef.current && /^[1-4]$/.test(k)) { giveOrder(BUG_ORDERS[Number(k) - 1].id); return; }
       if (k === 'escape' && pickerRef.current) { showPicker(false); return; }
       if (/^[1-9]$/.test(k) && !e.metaKey && !e.ctrlKey && !e.altKey) { startDance(DANCES[Number(k) - 1].id); return; }
       if (danceRef.current && ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) stopDance();
@@ -821,6 +863,12 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (l !== liftRef.current) { liftRef.current = l; setLiftNear(l); }
       const n = !l && dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
+      if (wildRef.current === 'there' && !battleRef.current) {
+        const away = scene.wildTiles();
+        if (away < 4 && !wildSeen.current) { wildSeen.current = true; setLine(`A WILD ${(BY_ID[shift.wild.species]?.name || 'BUG').toUpperCase()}, LEVEL ${shift.wild.level}, IS IN THE TUNNEL AHEAD. IT WANTS A FIGHT.`); }
+        // Horror Night: a jump scare has the screen for a moment, so the fight waits for it (the scare itself never starts during a fight)
+        if (away <= 1 && !scareRef.current && Date.now() - wildAsked.current > 1500) { wildAsked.current = Date.now(); meetWild(); }
+      }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
         else { const ev = scene.eggView(); setEggNear(ev.dist < 1.9 && ev.facing > 0.4); }
@@ -944,9 +992,12 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <button ref={mapButton} className="m-link" data-test="map-button" aria-haspopup="dialog" aria-expanded={mapOpen} disabled={clockingOut} onClick={() => showMap(true)}>MAP<span className="m-key"> M</span></button>
           <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
             onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>
+          {shift.bug && <button className={`m-link m-dance-btn${bugMenu ? ' on' : ''}`} data-test="bug-btn" aria-expanded={bugMenu} aria-label="Tell your bug what to do"
+            onClick={() => showBugMenu(!bugMenu)}>🐞 BUG<span className="m-key"> V</span></button>}
         </div>}
       </div>
       {picker && !doom && !battle && <DancePicker current={dance} onPick={startDance} onClose={() => showPicker(false)} />}
+      {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}
       {mineError && <div className="m-recovery" role="alert">
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
@@ -997,7 +1048,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
       {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
-      {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
+      {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onJar={battleJar} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle || mapOpen} />
         {!tiltActive && <MovePad apply={move} />}
@@ -1015,6 +1066,21 @@ function DancePicker({ current, onPick, onClose }) {
       {DANCES.map((d, i) => (
         <button key={d.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === d.id ? ' on' : ''}`} data-test={`dance-${d.id}`} onClick={() => onPick(d.id)}>
           <span className="m-dance-icon" aria-hidden="true">{d.icon}</span><span className="m-dance-name">{d.name}</span><span className="m-key">{i + 1}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The BUG menu: four orders for your guide. Opens like the dance picker; 1 to 4 pick while it is open. */
+function BugOrders({ current, onPick, onClose }) {
+  const first = useRef(null);
+  useEffect(() => { first.current?.focus({ preventScroll: true }); }, []);
+  return (
+    <div className="m-dances m-orders" role="dialog" aria-label="Tell your bug" data-test="bug-orders" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+      {BUG_ORDERS.map((o, i) => (
+        <button key={o.id} ref={i === 0 ? first : null} type="button" className={`m-dance${current === o.id ? ' on' : ''}`} data-test={`bug-order-${o.id}`} onClick={() => onPick(o.id)}>
+          <span className="m-dance-icon" aria-hidden="true">{o.icon}</span><span className="m-dance-name">{o.name}</span><span className="m-key">{i + 1}</span>
         </button>
       ))}
     </div>

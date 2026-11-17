@@ -12,6 +12,7 @@ import { Shop } from '../server/shop.js';
 import { Mines } from '../server/mines.js';
 import { Pvp, PVP } from '../server/pvp.js';
 import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
+import { upsetXp } from '../server/engine/bug-combat.js';
 import { tableBugOf } from '../server/tableBug.js';
 import { createApp } from '../server/app.js';
 import { greeting, done, NO, REST, SIGNS, NURSE } from '../client/src/bugcenter/script.js';
@@ -85,10 +86,11 @@ test('the winning bug gets battle XP plus a win bonus; the loser gets battle XP 
   assert.deepEqual(end.battle.over.bug, { xp: BATTLE_XP, bonus: 0, fainted: true, levelBefore: 4, levelAfter: 4, xpBar: { xp: 360 + BATTLE_XP, level: 4, from: 360, to: 640 } });
   const annView = f.pvp.battleView(m.battle, 'ann');
   assert.equal(annView.over.won, true);
-  assert.equal(annView.over.bug.xp, BATTLE_XP + WIN_BONUS_XP); assert.equal(annView.over.bug.bonus, WIN_BONUS_XP);
+  const bonus = upsetXp(WIN_BONUS_XP, annView.line); // by the line: ann's level 5 was favoured over a level 4, so less than an even fight's
+  assert.ok(annView.line > 0.5 && bonus > 0 && bonus < WIN_BONUS_XP);
+  assert.equal(annView.over.bug.xp, BATTLE_XP + bonus); assert.equal(annView.over.bug.bonus, bonus);
   assert.equal(annView.over.bug.fainted, false); assert.equal(annView.over.foeFainted, true);
-  assert.equal(BATTLE_XP + WIN_BONUS_XP > BATTLE_XP, true, 'winning pays extra');
-  assert.equal(f.barn.doc.pens.ann.xp, 640 + BATTLE_XP + WIN_BONUS_XP);
+  assert.equal(f.barn.doc.pens.ann.xp, 640 + BATTLE_XP + bonus);
   assert.equal(f.barn.doc.pens.bob.xp, 360 + BATTLE_XP);
   assert.deepEqual(f.barn.doc.pens.ann.mineRecord, { w: 1, l: 0 }); assert.deepEqual(f.barn.doc.pens.bob.mineRecord, { w: 0, l: 1 });
   assert.equal(f.mines.doc.completed.bob.result.pvp.fainted, 'Onymacris I', 'the loser\'s receipt says its bug fainted');

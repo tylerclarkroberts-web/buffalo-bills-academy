@@ -427,7 +427,9 @@ test('a Barn challenge messages the challenged player once, with the stake and a
   assert.equal(sent.status, 200); await s.idle();
   assert.equal(s.slack.dms.length, 1); assert.equal(s.slack.dms[0].to, 'UBOB');
   assert.equal(s.slack.dms[0].text, `Ann's bug ${bug('ann')} has called out your ${bug('bob')} for $25.50. Accept or decline within a day: https://buffalobillsacademy.com/barn`);
-  assert.match(s.slack.dms[0].blocks[0].text.text, /\$25\.50 each, winner takes \$51/);
+  // the stakes follow the line: Bob is told what he would put up against Ann's $25.50
+  const risk = (await s.call(cookies.bob, 'GET', '/api/barn')).body.challenges.incoming[0].risk;
+  assert.ok(risk > 0 && s.slack.dms[0].blocks[0].text.text.includes(`Their $25.50 against your $${risk.toFixed(2).replace(/\.00$/, '')}, winner takes $`), s.slack.dms[0].blocks[0].text.text);
   assert.equal(s.slack.dms[0].blocks[1].elements[0].url, 'https://buffalobillsacademy.com/barn');
   assert.equal((await s.call(cookies.bob, 'GET', '/api/barn/waiting')).body.challenges, 1);
   assert.equal((await s.call(null, 'GET', '/api/barn/waiting')).status, 401);
