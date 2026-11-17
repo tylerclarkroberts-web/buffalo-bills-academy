@@ -111,6 +111,11 @@ const TRAITS = {
   lethocerus: ['Has Taken Turtles', () => `+${pct(TRAIT.turtles)} damage to an opponent with more of its HP left.`],
   sphaerocoris: ['Nasty Smell', () => `Land a special on it and your next attack is ${pct(TRAIT.smell)} weaker.`],
 };
+// The line and what follows it. `p` is a bug's chance by the line (engine/bout.js).
+/** What the other corner puts up against `stake` from a bug the line gives `p`: fair odds, so the favourite risks more. */
+export const riskFor = (stake, p) => Math.round(((stake * (1 - p)) / p) * 100) / 100;
+/** A winner's bonus XP: `bonus` in an even fight, nearly double for the longest shot, a sliver for a sure thing. */
+export const upsetXp = (bonus, p = 0.5) => Math.round(bonus * 2 * (1 - p));
 export const traitFor = (species) => { const [name, text] = TRAITS[species] || []; return name ? { name, description: text() } : null; };
 
 export function combatStats(level) {

@@ -11,7 +11,7 @@ import { FIRST_POOL_STEPS } from './engine/maze.js';
 import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
 import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
-import { levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
+import { BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
@@ -34,6 +34,15 @@ export const PVP = {
   maxVisible: 12,
   danceGapMs: 400,          // v89: starting or switching a dance at most every 0.4 s (stopping is always allowed)
 };
+
+// Wild bugs: one may be loose in a shift (server/mines.js). Walk into it with a partner fit to fight and it does.
+export const WILD = {
+  reach: 1.6,   // tiles, by the server's copy of where the miner is: this close and it goes for your bug (the page asks at about one)
+  jarAt: 0.25,  // a jar only works on a wild bug at or under a quarter of its health
+  jarBase: 0.35, jarBest: 0.85, // the chance at exactly a quarter, and the most it can be; it climbs as the bug weakens
+};
+/** The chance a jar holds, from the wild bug's health as a share of its full health. */
+export const jarChance = (share) => (share > WILD.jarAt ? 0 : Math.min(WILD.jarBest, WILD.jarBase + (WILD.jarAt - share) * 2));
 
 const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const LOANER = { species: 'onymacris', name: 'Gerald', level: 1 }; // the Foreman's lunchbox beetle
@@ -242,6 +251,64 @@ export class Pvp {
     for (const pid of [a, b]) { this.mines.holds.delete(pid); const pr = this.presence.get(pid); if (pr) pr.lastBattle = id; }
     return battle;
   }
+  /**
+   * The miner has walked into the shift's wild bug and it goes for their partner: the same ring fight, with nobody in
+   * the other corner. It only fights a bug that is the miner's own and standing; the Foreman's loaner it ignores.
+   */
+  meetWild(player, body = {}) {
+    this.touch(player.id); this.sweep();
+    const shift = this.shiftOf(player.id), pr = this.fresh(player.id), wild = shift?.wild;
+    if (this.inBattle.has(player.id)) return this.view(player);
+    if (!shift || shift.id !== String(body.shiftId || '') || !wild || wild.gone) throw new GameError('There is nothing wild here.', 409);
+    if (!pr || Math.hypot(pr.x - wild.x, pr.y - wild.y) > WILD.reach) throw new GameError('It is further off than that.', 409);
+    if (!this.startWild(player.id, shift)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
+    return this.view(player);
+  }
+  startWild(a, shift) {
+    const mine = this.bugOf(a);
+    if (mine.loaner || this.fights.fightOf(a)) return null;
+    const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = shift.wild;
+    const battle = { id, a, b: null, wild: { species, level, name: BY_ID[species].name }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
+      bugs: { a: { bornAt: mine.bornAt, xp: mine.xp }, b: null }, benched: { a: null, b: null } };
+    battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
+      fighters: [{ ...this.barn.fighter(a, this.barn.doc.pens[a]), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true }],
+      onFinish: (fight) => this.fought(battle, fight) });
+    this.battles.set(id, battle); this.inBattle.set(a, id);
+    this.mines.holds.delete(a); const pr = this.presence.get(a); if (pr) pr.lastBattle = id;
+    return battle;
+  }
+  /**
+   * A wild fight is over. Nobody is robbed either way. Beating or jarring it pays the partner its battle XP; losing
+   * faints it; running, the bell or a dropped connection just keeps the damage. Whatever happened, the wild bug is
+   * gone from this shift.
+   */
+  wildOver(battle, winnerSide, reason, fight) {
+    this.mines.wildGone?.(battle.a, battle.shiftId);
+    const bug = battle.bugs.a, hpPct = pctOf(fight.S.hp[0], fight.S.maxHp[0]);
+    if (reason === 'fainted' || reason === 'jarred') battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: bug.bornAt, won: winnerSide === 'a', foeName: `a wild ${battle.wild.name}`, hpPct, odds: fight.line });
+    else if (reason !== 'abandoned') this.barn.keepScrapes(battle.a, { battleId: battle.id, bornAt: bug.bornAt, hpPct });
+  }
+  /**
+   * Throw a jar at the wild bug you are fighting. It has to be at or under a quarter of its health, you need a jar
+   * (General Store) and a free stall, and it shakes off one throw per action of the fight. A miss still spends the jar.
+   */
+  jar(player, body = {}) {
+    this.touch(player.id); this.sweep();
+    const id = this.inBattle.get(player.id), battle = id && this.battles.get(id);
+    if (!battle?.wild || battle.over || battle.id !== String(body.battleId || '')) throw new GameError('That fight is over.', 409);
+    const S = battle.fight.S, share = S.hp[1] / S.maxHp[1];
+    if (share > WILD.jarAt) throw new GameError('It is far too lively for a jar. Get it under a quarter of its health.', 409);
+    if (!this.barn.room(player.id)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
+    if (battle.jarTurn === S.turn) throw new GameError('It is still shaking off the last one.', 429);
+    if (!this.shop.takeJar(player.id)) throw new GameError('You are out of jars. The General Store sells them.', 409);
+    battle.jarTurn = S.turn;
+    const held = this.randInt(1000) < Math.round(jarChance(share) * 1000);
+    if (held) {
+      const caught = this.barn.adopt(player.id, { species: battle.wild.species, level: battle.wild.level, health: pctOf(S.hp[1], S.maxHp[1]) });
+      this.finish(battle, 'a', 'jarred'); battle.over.caught = caught.name;
+    }
+    return { held, battle: this.battleView(battle, player.id, body.have) };
+  }
   /** The fight ran its course. A draw at the bell is no contest: nobody is robbed. */
   fought(battle, fight) {
     if (battle.over) return; // a forfeit or a disconnect already ended it
@@ -257,10 +324,13 @@ export class Pvp {
     if (!side) return null;
     battle.lastSeen[pid] = this.now();
     const rec = battle.over?.raid ? this.doc.raids[battle.over.raid] : null;
-    const mine = rec?.barn?.[side === battle.over?.winner ? 'winner' : 'loser'] || null;
+    const mine = battle.wild ? battle.over?.bug || null : rec?.barn?.[side === battle.over?.winner ? 'winner' : 'loser'] || null;
+    const S = battle.fight.S, share = S.hp[1] / S.maxHp[1];
     const xpBefore = battle.bugs?.[side]?.xp;
     return { ...this.fights.view(battle.fight, pid, have), benched: battle.benched?.[side] || null,
-      over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, raid: rec ? this.publicRaid(rec, pid) : null,
+      // against a wild bug: how many jars you carry, whether a stall is free, and the chance one holds right now (0 until it is weak enough)
+      ...(battle.wild ? { wild: true, ...(battle.over ? {} : { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), at: WILD.jarAt, chance: jarChance(share) } }) } : {}),
+      over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
         bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
         foeFainted: battle.over.winner === side && !!battle.bugs?.[foe] } : null };
@@ -287,6 +357,7 @@ export class Pvp {
     battle.over = { winner: winnerSide, reason, at: this.now(), raid: null };
     const fight = battle.fight, w = winnerSide === 'a' ? 0 : 1;
     this.fights.finish(fight, reason === 'draw' ? null : w, reason); // stops a fight that was walked out on; a no-op when it ran its course
+    if (battle.wild) return this.wildOver(battle, winnerSide, reason, fight);
     if (reason === 'draw') { // no contest: nobody is robbed, but the damage stays (HP never comes back on its own)
       for (const [k, i] of [['a', 0], ['b', 1]]) {
         const bug = battle.bugs?.[k];
@@ -296,7 +367,7 @@ export class Pvp {
     }
     if (reason === 'abandoned') return;
     const loserSide = winnerSide === 'a' ? 'b' : 'a';
-    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(fight.S.hp[w], fight.S.maxHp[w]) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
+    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(fight.S.hp[w], fight.S.maxHp[w]), odds: this.fights.lineOf(fight, w) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
       winnerBug: fight.fighters[w].name, loserBug: fight.fighters[1 - w].name };
     battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
   }
@@ -357,7 +428,7 @@ export class Pvp {
   settleBugs(rec) {
     const b = rec.bugs, out = { winner: null, loser: null };
     if (!this.barn?.battleResult) return out;
-    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, hpPct: b.winner.hpPct ?? null });
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, hpPct: b.winner.hpPct ?? null, odds: b.winner.odds });
     if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, foeName: rec.winnerName });
     return out;
   }

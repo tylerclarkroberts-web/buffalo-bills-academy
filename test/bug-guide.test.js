@@ -16,6 +16,35 @@ const G = [
   '#########',
 ].map((r) => [...r].map((c) => (c === '#' ? 1 : 0)));
 
+test('orders: come to heel, lead to the lift, lead to the nearest other miner, and back to the acid', () => {
+  const guide = new BugGuide({ grid: G, pool: { x: 7, y: 5 }, start: { x: 1, y: 1 } }, { armed: true, afterMs: 0, bug: { species: 'lamprima' } });
+  const at = (x, y) => ({ t: 0, x: x * TILE, z: y * TILE, yaw: 0, elapsedMs: 1 });
+  const run = (p, secs = 12) => { for (let i = 0; i < secs * 20; i++) guide.update(0.05, p); return tileOf(guide.x, guide.z); };
+  assert.equal(guide.order('dance'), false, 'only the four it knows');
+  assert.equal(guide.order('someone'), false, 'nobody else down here');
+  assert.deepEqual(guide.events.splice(0), ['nobody']);
+  // The miner waits in the top corridor; left to itself the bug heads for the acid and stops a few tiles ahead.
+  run(at(2, 1), 4);
+  const [ax, ay] = tileOf(guide.x, guide.z);
+  assert.ok(bfs(G, 2, 1)[ay][ax] >= 2, 'it went on ahead');
+  assert.equal(guide.order('come'), true);
+  const [cx, cy] = run(at(2, 1));
+  assert.ok(bfs(G, 2, 1)[cy][cx] <= 1 && guide.waiting, 'beside its miner, and staying');
+  // Someone is at the far end of the bottom corridor: it leads there, waiting for its miner on the way.
+  guide.setOthers([{ x: 1.2, y: 5.1 }]);
+  assert.equal(guide.order('someone'), true);
+  assert.deepEqual(guide.goal(2, 1), { x: 1, y: 5 });
+  assert.deepEqual(run(at(1, 5), 30), [1, 5]); // the miner goes too; it is there when they arrive
+  guide.setOthers([]); guide.update(0.05, at(1, 5));
+  assert.deepEqual([guide.events.includes('nobody'), guide.mode], [true, 'come'], 'they clocked out: back to heel');
+  assert.equal(guide.order('lift'), true);
+  assert.deepEqual(run(at(1, 1), 30), [1, 1]);
+  // Told to find acid it has already found, it settles until the vein moves.
+  guide.acidFound(); assert.equal(guide.present, true, 'still on its errand');
+  guide.order('acid'); assert.equal(guide.present, false);
+  guide.setPool({ x: 1, y: 5 }); assert.equal(guide.present, true);
+});
+
 async function boot(env = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-bugguide-'));
   const clock = { t: 1_700_000_000_000 };
