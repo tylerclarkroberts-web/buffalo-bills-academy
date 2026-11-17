@@ -3,32 +3,44 @@
 const items = [];
 const add = (o) => items.push({ kind: 'bug', ...o });
 
-// food: consumable; using one is a feed (resets the hunger clock), +hunger, small XP
-const FOOD = [
-  ['leaf', 'Fresh Leaf Litter', 25, '🍂', 20, 'Damp, crunchy, delicious if you are a bug.'],
-  ['fruit', 'Overripe Fruit', 60, '🍌', 35, 'Bruised to perfection.'],
-  ['nectar', 'Flower Nectar', 90, '🌸', 40, 'Straight from the petal.'],
-  ['sap', 'Tree Sap Drip', 120, '🍯', 45, 'Sticky, sweet, sold by the drop.'],
-  ['crickets', 'Cricket Snacks', 150, '🦗', 50, 'For the meat-eaters in the barn.'],
-  ['mealworms', 'Mealworm Bucket', 300, '🪱', 60, 'Wriggly. Nutritious. Don\'t ask.'],
-  ['dung', 'Premium Dung Ball', 450, '🟤', 70, 'Hand-rolled. For connoisseurs only.'],
-  ['moss', 'Artisan Moss', 600, '🌿', 75, 'Grown in a terrarium by a man named Gil.'],
-  ['banquet', 'Bug Banquet', 2500, '🍱', 100, 'A full spread. Your bug will be insufferable about it.'],
-  ['ambrosia', 'Golden Ambrosia', 20000, '✨', 100, 'A lavish, golden meal. Your bug stays full for 7 days afterwards, like an automatic feeder.', 7],
-];
-for (const [id, name, price, emoji, food, desc, days] of FOOD) add({ id: `food-${id}`, name, price, emoji, ...(days ? { days } : {}),
-  desc: `Single use: press Use for +${food} Fed now (max 100), a fresh starvation clock and 12 XP. Wait 15 minutes between store foods. Fed normally falls 0.6/hour. ${desc}`,
-  cat: 'food', slot: null, use: 'food', food });
+// A paid bug item does something the free Feed, Play and Mist cannot, and its description says what in one plain line.
+// `retired` items are off the shelf for good: only someone still holding one sees it, and it still works (server/shop.js).
 
-// toys: owned and equipped in the bug's toy slot; Play then lifts mood a little more (capped)
-const TOYS = [
-  ['twig', 'Climbing Twig', 25, '🪵', 4], ['pebble', 'Shiny Pebble', 60, '🪨', 5], ['ball', 'Tiny Dung Ball', 90, '⚽', 6],
-  ['maze', 'Leaf Maze', 300, '🌀', 8], ['mirror', 'Little Mirror', 450, '🪞', 10], ['wheel', 'Bug Wheel', 900, '🎡', 12],
-  ['castle', 'Bark Castle', 2500, '🏰', 15], ['disco', 'Disco Ball (tiny)', 6000, '🪩', 20],
+// food: consumable. Using one is a feed, the same as the free one (+Fed, a fresh starvation clock, 12 XP), and packs
+// a lunch: in its next fight the bug eats it the first time it drops below half health, for `heal` HP (at most
+// LUNCH_CAP, server/engine/bout.js). It carries one lunch and keeps the bigger.
+const FOOD = [
+  ['leaf', 'Fresh Leaf Litter', 25, '🍂', 20, 2, 'Damp, crunchy, delicious if you are a bug.'],
+  ['fruit', 'Overripe Fruit', 60, '🍌', 35, 3, 'Bruised to perfection.'],
+  ['nectar', 'Flower Nectar', 90, '🌸', 40, 4, 'Straight from the petal.'],
+  ['sap', 'Tree Sap Drip', 120, '🍯', 45, 5, 'Sticky, sweet, sold by the drop.'],
+  ['crickets', 'Cricket Snacks', 150, '🦗', 50, 6, 'For the meat-eaters in the barn.'],
+  ['mealworms', 'Mealworm Bucket', 300, '🪱', 60, 7, 'Wriggly. Nutritious. Don\'t ask.'],
+  ['dung', 'Premium Dung Ball', 450, '🟤', 70, 8, 'Hand-rolled. For connoisseurs only.'],
+  ['moss', 'Artisan Moss', 600, '🌿', 75, 9, 'Grown in a terrarium by a man named Gil.'],
+  ['banquet', 'Bug Banquet', 900, '🍱', 100, 10, 'A full spread. Your bug will be insufferable about it.'],
 ];
-for (const [id, name, price, emoji, mood] of TOYS) add({ id: `toy-${id}`, name, price, emoji,
-  desc: `Reusable: equip one toy at a time. Each free Play action adds +${mood} extra Mood to the usual +30 (max 100). Play has a 20-minute cooldown; Mood then falls 1.6/hour. Keep the toy and swap it whenever you like.`,
-  cat: 'toys', slot: 'toy', mood });
+for (const [id, name, price, emoji, food, heal, joke] of FOOD) add({ id: `food-${id}`, name, price, emoji,
+  desc: `${joke} Feeds your bug now (+${food} Fed, 12 XP) and packs it a lunch: the first time it drops below half health in its next fight, it eats and gets ${heal} HP back. It carries one lunch and keeps the bigger.`,
+  cat: 'food', slot: null, use: 'food', food, heal });
+add({ id: 'food-ambrosia', name: 'Golden Ambrosia', price: 3000, emoji: '✨', cat: 'food', slot: null, use: 'food', food: 100, heal: 10, days: 7, retired: true,
+  desc: 'The shopkeeper stopped stocking it; nobody could say what it was. Yours still works: a full meal (+100 Fed, 12 XP), a packed lunch worth 10 HP, and 7 days of the Automatic Feeder.' });
+
+// toys: owned and equipped in the bug's toy slot. Left with one, the bug earns `xp` a day on its own (capped at 20);
+// Play also lifts Mood a little more (`mood`, capped at 20).
+const TOYS = [
+  ['twig', 'Climbing Twig', 25, '🪵', 4, 2, 'It climbs it. It comes down. That is the whole show.'],
+  ['pebble', 'Shiny Pebble', 60, '🪨', 5, 3, 'It cannot tell you why it loves the pebble.'],
+  ['ball', 'Tiny Dung Ball', 90, '⚽', 6, 4, 'Regulation size. Do not ask which regulations.'],
+  ['maze', 'Leaf Maze', 300, '🌀', 8, 6, 'It solved it on day one. It pretends it has not.'],
+  ['mirror', 'Little Mirror', 450, '🪞', 10, 8, 'It has met a handsome stranger and they are not speaking.'],
+  ['wheel', 'Bug Wheel', 900, '🎡', 12, 10, 'Goes nowhere, quickly.'],
+  ['castle', 'Bark Castle', 2500, '🏰', 15, 14, 'Comes with a moat. The moat is a jar lid.'],
+  ['disco', 'Disco Ball (tiny)', 6000, '🪩', 20, 20, 'The barn has complained about the noise. There is no noise.'],
+];
+for (const [id, name, price, emoji, mood, xp, joke] of TOYS) add({ id: `toy-${id}`, name, price, emoji,
+  desc: `${joke} Left alone with it, your bug earns ${xp} XP a day. Play also gives +${mood} extra Mood. One toy out at a time.`,
+  cat: 'toys', slot: 'toy', mood, xp });
 
 // skins: recolour the sprite (cosmetic)
 const SKINS = [
@@ -51,18 +63,29 @@ for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, pri
   desc: `Permanent cosmetic: equip one ${slot === 'bughat' ? 'hat' : 'accessory'} at a time, alongside a shell colour and ${slot === 'bughat' ? 'accessory' : 'hat'}. Stays on until swapped or taken off. No change to needs, XP or battle strength.`,
   cat: 'bugstyle', slot, shape: id });
 
-// the automatic feeder: consumable, each one keeps the bowl full and pauses the starvation clock for 14 days
+// the automatic feeder: consumable. Each one fills Fed, Mood and Clean, keeps all three full and pauses the starvation
+// clock for 14 days, and adds 12 XP at each daily checkpoint it covers.
 add({ id: 'feeder', name: 'Automatic Feeder (14 days)', price: 2500, emoji: '🥣', cat: 'bugcare', slot: null, use: 'feeder', days: 14,
-  desc: 'Single use: press Use to fill Fed to 100 and keep it full for 14 days, with the starvation clock paused. Adds 12 XP at each daily checkpoint while active (every 24 hours since hatching); no immediate XP on use. Use another to add 14 days to the remaining time, up to 60 days ahead. Mood and Clean still fall normally. Check the Barn for the end date.' });
-add({ id: 'mister', name: 'Auto-Mister', price: 150, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', desc: 'Single use: press Use for +40 Clean now (max 100) and 6 XP. Clean then falls 1.4/hour; a full 40-point boost takes about 28 hours 34 minutes to decay. One instant mist, with a 30-minute cooldown between misters.' });
-add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 90, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', desc: 'Single use: press Use for +40 Mood now (max 100) and 6 XP. Mood then falls 1.6/hour; a full 40-point boost takes 25 hours to decay. One instant boost, with a 30-minute cooldown between lamps.' });
+  desc: 'A bowl, a sprinkler and a recording of you saying "good bug". Keeps Fed, Mood and Clean full for 14 days, so your bug stays in top fighting condition while you are away, and adds 12 XP a day. Use another to add 14 days, up to 60 days ahead.' });
+add({ id: 'jar', name: 'Specimen Jar', price: 150, emoji: '🫙', cat: 'bugcare', slot: null, use: 'jar',
+  desc: 'Single use, down the mine. When a wild bug is at a quarter of its health or less, throw this instead of finishing it: it holds 35% of the time at a quarter, more the weaker the bug, never better than 85%. Held or not, the jar is spent. Needs a free stall. Air holes are your problem.' });
+// retired: each did less than the free button beside it
+add({ id: 'mister', name: 'Auto-Mister', price: 150, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', retired: true, desc: 'The shopkeeper pulled these after someone noticed the hose is free. Yours still works: +40 Clean and 6 XP.' });
+add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 90, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', retired: true, desc: 'The shopkeeper pulled these after someone noticed Play is free and better. Yours still works: +40 Mood and 6 XP.' });
 
-// battle gear: one gear slot; bouts get +1% to +6% damage (GEAR_CAP). Bouts never wager anything.
+// battle gear: two slots, one attack item ('gear') and one defense item ('defense'), each worth 1% to 6% (GEAR_CAP).
+// Attack gear raises the damage of the bug's hits; defense gear lowers the damage of the hits it takes. The bonus is
+// stored under the slot's own name. Gear is never wagered; a bout's stake is money (server/barn.js).
 const GEAR = [
-  ['shell', 'Polished Shell Wax', 300, 0.01], ['claws', 'Claw Sharpener', 600, 0.02], ['boots', 'Six Tiny Boots', 900, 0.025],
-  ['helmet', 'Acorn Helmet', 1500, 0.03], ['shield', 'Leaf Shield', 2500, 0.04], ['mandibles', 'Gilded Mandibles', 6000, 0.05],
-  ['armor', 'Beetle Plate Armour', 20000, 0.06], ['bandage', 'Lucky Bandage', 60, 0.01],
+  ['claws', 'Claw Sharpener', 600, 'gear', 0.02], ['boots', 'Six Tiny Boots', 900, 'gear', 0.025], ['mandibles', 'Gilded Mandibles', 6000, 'gear', 0.05],
+  ['bandage', 'Lucky Bandage', 60, 'defense', 0.01], ['shell', 'Polished Shell Wax', 300, 'defense', 0.015], ['helmet', 'Acorn Helmet', 1500, 'defense', 0.03],
+  ['shield', 'Leaf Shield', 2500, 'defense', 0.04], ['armor', 'Beetle Plate Armour', 20000, 'defense', 0.06],
 ];
-for (const [id, name, price, gear] of GEAR) add({ id: `gear-${id}`, name, price, emoji: '🛡️', desc: `Reusable: equip one battle item at a time for +${+(gear * 100).toFixed(1)}% attack damage in Barn bouts (max +6%). Stays equipped until swapped or taken off. Bouts unlock at level 3 and award 30 XP for a win and 20 for a loss or draw. No money at stake and no effect on poker.`, cat: 'gear', slot: 'gear', gear });
+const BOUT_COPY = 'Equip one attack item and one defense item at a time; each stays on until swapped or taken off. Any hatched bug can fight. A bout awards 30 XP for a win and 20 for a loss or draw, and is fought for free or for a matched stake of up to $10,000. No effect on poker.';
+for (const [id, name, price, slot, bonus] of GEAR) {
+  const pct = +(bonus * 100).toFixed(1);
+  add({ id: `gear-${id}`, name, price, emoji: slot === 'gear' ? '⚔️' : '🛡️', cat: 'gear', slot, [slot]: bonus,
+    desc: `${slot === 'gear' ? `Reusable attack gear: +${pct}% attack damage in bug fights.` : `Reusable defense gear: your bug takes ${pct}% less damage from each hit in bug fights.`} ${BOUT_COPY}` });
+}
 
 export const BUG_ITEMS = items;

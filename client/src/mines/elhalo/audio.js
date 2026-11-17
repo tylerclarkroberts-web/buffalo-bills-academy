@@ -78,8 +78,12 @@ export function createAudio() {
     pickup() { const t = ctx.currentTime; tone(sfx, t, 0.08, 1320, { type: 'triangle', v: 0.2 }); tone(sfx, t + 0.07, 0.12, 1760, { type: 'triangle', v: 0.2 }); },
     wave() { const t = ctx.currentTime; [74, 78, 81, 86].forEach((n, k) => horn(t + k * 0.12, n, 0.14 + (k === 3 ? 0.4 : 0), 0.22)); },
     death() { const t = ctx.currentTime; [74, 73, 72, 71].forEach((n, k) => horn(t + k * 0.28, n - 12, 0.3 + (k === 3 ? 0.6 : 0), 0.22)); },
-    hammer() { const t = ctx.currentTime; nz(sfx, t, 0.05, { f: 1800, q: 3, v: 0.5 }); tone(sfx, t, 0.06, 420, { f2: 200, type: 'square', v: 0.12 }); },
-    crack() { const t = ctx.currentTime; nz(sfx, t, 0.16, { f: 700, q: 1.5, v: 0.6 }); nz(sfx, t + 0.05, 0.12, { f: 2400, q: 2, v: 0.25 }); },
+    // v3: the volador's shout, the big landings, the gordo's huff, a street dog, the elote man's little horn
+    aguila() { const t = ctx.currentTime; horn(t, 79, 0.14, 0.2); horn(t + 0.14, 86, 0.5, 0.24); nz(sfx, t, 0.5, { f: 400, f2: 2200, q: 1.2, v: 0.25 }); },
+    thud(big) { const t = ctx.currentTime; tone(sfx, t, big ? 0.9 : 0.6, big ? 48 : 70, { f2: 20, v: 1 }); nz(sfx, t, big ? 0.8 : 0.5, { type: 'lowpass', f: big ? 700 : 1100, f2: 80, v: 1 }); },
+    huff() { const t = ctx.currentTime; tone(sfx, t, 0.5, 130, { f2: 85, type: 'sawtooth', v: 0.22, a: 0.05 }); nz(sfx, t, 0.4, { type: 'lowpass', f: 400, v: 0.4 }); },
+    bark() { const t = ctx.currentTime; for (const k of [0, 0.16]) { tone(sfx, t + k, 0.09, 520, { f2: 300, type: 'square', v: 0.08 }); nz(sfx, t + k, 0.08, { f: 900, q: 2, v: 0.2 }); } },
+    elote() { const t = ctx.currentTime; tone(sfx, t, 0.25, 1568, { type: 'triangle', v: 0.12 }); tone(sfx, t + 0.12, 0.35, 2093, { type: 'triangle', v: 0.1 }); },
     bless() { const t = ctx.currentTime; [76, 81, 85].forEach((n, k) => tone(sfx, t + k * 0.06, 0.5, midi(n), { type: 'sine', v: 0.08, a: 0.05 })); },
     hitmark() { tone(sfx, ctx.currentTime, 0.04, 2600, { type: 'triangle', v: 0.06 }); },
     // the new guns
@@ -117,6 +121,9 @@ export function createAudio() {
     engine() { tone(sfx, ctx.currentTime, 0.5, 55, { f2: 80, type: 'sawtooth', v: 0.08 }); },
     beep(hi) { tone(sfx, ctx.currentTime, 0.12, hi ? 1320 : 880, { type: 'square', v: 0.08 }); },
     night() { const t = ctx.currentTime; [62, 61, 57, 56].forEach((n, k) => tone(sfx, t + k * 0.35, 0.8, midi(n - 12), { type: 'triangle', v: 0.18, a: 0.1 })); },
+    rumble() { const t = ctx.currentTime; nz(sfx, t, 1.1, { type: 'lowpass', f: 180, f2: 70, v: 0.7 }); tone(sfx, t, 1.0, 48, { f2: 32, type: 'sine', v: 0.28, a: 0.15 }); },
+    gurgle() { const t = ctx.currentTime; for (let k = 0; k < 5; k++) { nz(sfx, t + k * 0.14, 0.16, { f: 400 + k * 80, q: 4, v: 0.22 }); tone(sfx, t + k * 0.14, 0.12, 180 + k * 40, { f2: 90, type: 'sine', v: 0.08 }); } },
+    blow() { const t = ctx.currentTime; nz(sfx, t, 1.6, { type: 'lowpass', f: 1400, f2: 280, v: 0.95 }); tone(sfx, t, 0.9, 70, { f2: 28, v: 0.7 }); nz(sfx, t, 0.7, { f: 900, f2: 2200, q: 1.2, v: 0.45 }); api.whoosh(); },
     close() { if (el) { el.pause(); el.src = ''; } ctx.close().catch(() => {}); },
   };
   return api;

@@ -8,6 +8,7 @@ import { formatLeft, money } from './util.js';
 import { Marquee, TABLE_NAMES, VENUE } from './theme.jsx';
 import { FoffCard, FoffPromo } from './foff/FoffCard.jsx';
 import { ScumCard, ScumPromo } from './scum/ScumCard.jsx';
+import { ElHaloCard, ElHaloPromo } from './mines/elhalo/ElHaloCard.jsx';
 
 const TURN_OPTIONS = [
   [30, '30 sec (quick)'], [60, '1 minute'], [300, '5 minutes'], [3600, '1 hour'],
@@ -189,7 +190,7 @@ export default function Home({ tab: tabProp }) {
         {me ? <Card title="Start a table" className="create-card" sub={<VsSwitch vs={vs} setVs={setOpponent} />}>{newTable}</Card> : <Card title="How it plays" sub="House rules"><HouseRules /></Card>}
         {me ? (
           <div className="lb-col lb-games-col">
-            <div className="lb-games"><BlackjackCard /><SlotsCard /><FoffCard /><ScumCard /></div>
+            <div className="lb-games"><BlackjackCard /><SlotsCard /><FoffCard /><ScumCard /><ElHaloCard /></div>
           </div>
         ) : <Card title="How to join" sub="Invite link"><p className="small muted">Got an invite link? Just open it. Buy-ins come out of your bankroll; when you leave, your chips go back in.</p></Card>}
       </div>
@@ -349,7 +350,7 @@ function PublicTableList({ tables, loading, error, startPublic }) {
 
 function LobbyPanel({ games, game, setGame, publicTables, tab, setTab, wide, newTable, startPublic, tableFilter, setTableFilter }) {
   const mine = Object.values(games).every((g) => g.loaded) ? Object.values(games).reduce((n, g) => n + g.tables.length, 0) || null : '—';
-  // v51: Join-by-code gone; Games tab holds blackjack, slots, Foff's Bachelor Party and Async Scum.
+  // v51: Join-by-code gone; Games tab holds blackjack, slots, Foff's Bachelor Party, Async Scum and El Halo.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
   // clipped to a pink sliver with an empty gap (pager 1/N, no tappable rows).
   const tabKey = wide ? (tab === 'public' ? 'public' : 'tables') : tab === 'join' ? 'tables' : tab;
@@ -359,7 +360,7 @@ function LobbyPanel({ games, game, setGame, publicTables, tab, setTab, wide, new
       <div className={`panel-body ${['tables', 'public'].includes(tabKey) ? 'tables-tab' : tabKey === 'games' ? 'games-tab' : ''}`}>
         {tabKey === 'public' ? <PublicTableList {...publicTables} startPublic={startPublic} />
           : tabKey === 'new' ? newTable
-          : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /><FoffPromo /><ScumPromo /></div>
+          : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /><FoffPromo /><ScumPromo /><ElHaloPromo /></div>
           : <>
             <Tabs label="Your table games" className="table-games" value={game} onChange={setGame} tabs={Object.entries(TABLE_GAMES).map(([key, [label]]) => [key, label, games[key].loaded ? String(games[key].tables.length) : '—'])} />
             <TableList key={game} {...games[game]} game={game} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />

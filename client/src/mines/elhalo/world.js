@@ -1,10 +1,13 @@
 // EL HALO: the canyon. Drawn from the shared map (server/elhalo/map.js) so what you see is what the server collides
 // with: a long box canyon at sunset, cliff walls, a shallow creek winding down the middle over rolling grass, an adobe
-// fort at each end, and three places to hole up: la misión (bell tower), la hacienda (ranch house) and la mansión.
-// A few hundred low-poly boxes merged into a handful of vertex-coloured meshes, plus the boards on every opening.
+// fort at each end, and three open buildings: la misión (bell tower), La Michoacana (a pink-and-white paletería with
+// its hand-painted sign and freezer cases) and la mansión. A few hundred low-poly boxes merged into a handful of
+// vertex-coloured meshes. No boards anywhere: every door and window is open.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BOUNDS, BUILDINGS, MAP, OPENINGS, STATIONS, BOARDS_MAX, ENEMY_SPAWNS, creekX, terrain, fortRects, rng } from '../../../../server/elhalo/map.js';
+import { BOUNDS, BUILDINGS, MAP, OPENINGS, STATIONS, ENEMY_SPAWNS, CASES, BUFADORA, creekX, terrain, fortRects, rng } from '../../../../server/elhalo/map.js';
+import { BUFADORA_RULES as BF } from '../../../../server/elhalo/rules.js';
+import { logoCanvas, signCanvas } from './michoacana.js';
 
 export { BOUNDS, terrain };
 export const PICADO = [[0.95, 0.2, 0.55], [1, 0.62, 0.1], [0.2, 0.75, 0.85], [0.55, 0.85, 0.2], [0.98, 0.9, 0.2], [0.6, 0.35, 0.9]];
@@ -13,7 +16,8 @@ const C = {
   rock: [0.62, 0.38, 0.3], rock2: [0.72, 0.46, 0.34], rock3: [0.52, 0.3, 0.26], tile: [0.78, 0.42, 0.28], tile2: [0.7, 0.36, 0.24],
   wood: [0.42, 0.26, 0.15], dark: [0.16, 0.09, 0.07], roof: [0.72, 0.3, 0.2], cactus: [0.32, 0.55, 0.3], agave: [0.45, 0.62, 0.55],
 };
-const WALL = { mision: [0.96, 0.91, 0.82], hacienda: [0.88, 0.56, 0.4], mansion: [0.98, 0.7, 0.68], norte: [0.84, 0.64, 0.44], sur: [0.84, 0.64, 0.44] };
+const MPINK = [0.98, 0.52, 0.72], MWHITE = [0.99, 0.97, 0.95];
+const WALL = { mision: [0.96, 0.91, 0.82], michoacana: MPINK, mansion: [0.98, 0.7, 0.68], norte: [0.84, 0.64, 0.44], sur: [0.84, 0.64, 0.44] };
 
 function paint(g, c) {
   g = g.index ? g.toNonIndexed() : g;
@@ -44,11 +48,20 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   // ---- walls, sills, lintels, roofs, the tower, fort decks and stairs, straight from the map
   for (const b of MAP.boxes) {
     const base = WALL[b.b] || C.sand;
+    if (b.b === 'michoacana') { // pink above, white below, a white cornice; the freezer cases are drawn by hand further down
+      if (b.k === 'case') continue;
+      if (b.k === 'roof') { box(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1, MWHITE); continue; }
+      const split = b.y0 + 1.6;
+      if (b.y0 < split) box(b.x0, b.x1, b.y0, Math.min(split, b.y1), b.z0, b.z1, MWHITE);
+      if (b.y1 > split) box(b.x0, b.x1, Math.max(split, b.y0), b.y1, b.z0, b.z1, MPINK);
+      if (b.k === 'wall' || b.k === 'lintel') box(b.x0 - 0.06, b.x1 + 0.06, b.y1 - 0.28, b.y1, b.z0 - 0.06, b.z1 + 0.06, MWHITE);
+      continue;
+    }
     const col = b.k === 'roof' ? C.roof : b.k === 'step' ? tint(base, 0.85) : b.k === 'deck' ? tint(base, 0.92) : b.k === 'sill' ? tint(base, 0.9) : b.k === 'lintel' ? tint(base, 0.95) : base;
     box(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1, col);
   }
   // window and door frames in a trim colour, so the openings read from far away
-  const TRIM = { mision: [0.35, 0.22, 0.14], hacienda: [0.1, 0.55, 0.55], mansion: [1, 1, 1] };
+  const TRIM = { mision: [0.35, 0.22, 0.14], michoacana: [0.85, 0.12, 0.45], mansion: [1, 1, 1] };
   for (const o of OPENINGS) {
     const t = TRIM[o.b], horiz = o.nz !== 0, hw = o.w / 2 + 0.12, d = 0.08;
     const along = (u0, u1, y0, y1) => (horiz ? box(o.x + u0, o.x + u1, y0, y1, o.z + o.nz * 0.25 - d, o.z + o.nz * 0.25 + d, t) : box(o.x + o.nx * 0.25 - d, o.x + o.nx * 0.25 + d, y0, y1, o.z + u0, o.z + u1, t));
@@ -59,7 +72,7 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   for (const b of BUILDINGS) {
     const y = OPENINGS.find((o) => o.b === b.id).y;
     // tiled floor inside
-    box(b.x0 + 0.4, b.x1 - 0.4, y - 0.02, y + 0.03, b.z0 + 0.4, b.z1 - 0.4, b.id === 'mansion' ? [0.92, 0.9, 0.86] : C.tile);
+    box(b.x0 + 0.4, b.x1 - 0.4, y - 0.02, y + 0.03, b.z0 + 0.4, b.z1 - 0.4, b.id === 'mansion' ? [0.92, 0.9, 0.86] : b.id === 'michoacana' ? MWHITE : C.tile);
     if (b.id === 'mision') {
       box(-12.6, -9.4, y + 8.6, y + 8.9, -33.6, -30.4, [0.9, 0.85, 0.76]);                       // tower cap
       for (const [dx, dz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) box(-11 + dx - 0.3, -11 + dx + 0.3, y + 8.9, y + 11, -32 + dz - 0.3, -32 + dz + 0.3, WALL.mision); // belfry posts
@@ -73,16 +86,36 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
       box(-19.3, -18.3, y, y + 1.0, -25.5, -22.5, [0.95, 0.9, 0.8]); box(-19.3, -18.3, y + 1.0, y + 1.05, -25.5, -22.5, [0.85, 0.2, 0.3]);
       for (let i = 0; i < 5; i++) cyl(-18.8, -25.2 + i * 0.6, 0.04, 0.04, y + 1.05, y + 1.3, [1, 0.95, 0.85], 4);
     }
-    if (b.id === 'hacienda') {
-      for (let x = b.x0; x < b.x1; x += 1.1) box(x, x + 0.2, y + b.h - 0.4, y + b.h - 0.2, b.z0 - 0.7, b.z1 + 0.7, C.wood); // vigas through the walls
-      // porch on the creek side: posts and a little roof
-      for (let z = b.z0 + 0.5; z <= b.z1; z += 3.2) box(b.x0 - 2.3, b.x0 - 2.05, y, y + 2.8, z, z + 0.25, C.wood);
-      box(b.x0 - 2.6, b.x0, y + 2.8, y + 2.95, b.z0, b.z1, [0.65, 0.35, 0.2]);
-      box(10, 11.4, y, y + 0.8, 5.8, 7.4, C.wood); box(18.5, 21, y, y + 0.75, 5.6, 7.4, [0.9, 0.8, 0.45]); // table, hay
-      // corral fence to the north (decoration you can hop) and an agave patch to the south
-      for (let x = 9; x <= 22; x += 1.6) box(x, x + 0.15, 0, terrain(x, -6.5) + 1.1, -6.6, -6.45, C.wood);
-      for (const yy of [0.5, 0.95]) for (let x = 9; x < 22; x += 3.2) box(x, x + 3.25, terrain(x, -6.5) + yy, terrain(x, -6.5) + yy + 0.1, -6.62, -6.5, C.wood);
-      for (let i = 0; i < 18; i++) { const x = 10 + (i % 6) * 2.1 + R() * 0.4, z = 11.5 + Math.floor(i / 6) * 2.2, yy = terrain(x, z); for (let k = 0; k < 7; k++) { const g = new THREE.ConeGeometry(0.09, 0.9, 3); g.translate(0, 0.45, 0); g.rotateZ(0.5 + R() * 0.3); g.rotateY((k / 7) * Math.PI * 2); g.translate(x, yy, z); parts.push(paint(g, C.agave)); } }
+    if (b.id === 'michoacana') {
+      // pink-and-white checker floor
+      for (let x = b.x0 + 0.5, i = 0; x < b.x1 - 0.5; x += 1, i++) for (let z = b.z0 + 0.5, j = 0; z < b.z1 - 0.5; z += 1, j++) if ((i + j) % 2) box(x, x + 1, y + 0.03, y + 0.04, z, z + 1, [1, 0.72, 0.84]);
+      // striped awning over the storefront, sloping out toward the creek
+      for (let z = b.z0 + 0.2, k = 0; z < b.z1 - 0.2; z += 0.62, k++) { const g = new THREE.BoxGeometry(1.25, 0.06, 0.62); g.rotateZ(-0.32); g.translate(b.x0 - 0.55, y + 2.3, z + 0.31); parts.push(paint(g, k % 2 ? MWHITE : [0.93, 0.22, 0.52])); }
+      for (let z = b.z0 + 0.2, k = 0; z < b.z1 - 0.2; z += 0.62, k++) cyl(b.x0 - 1.12, z + 0.31, 0.16, 0.16, y + 1.94, y + 2.06, k % 2 ? MWHITE : [0.93, 0.22, 0.52], 6); // scallops
+      // a counter with a register by the door, and café tables out front with little umbrellas
+      box(b.x0 + 2.2, b.x0 + 4.4, y, y + 1.0, b.z0 + 0.5, b.z0 + 1.0, MWHITE); box(b.x0 + 2.2, b.x0 + 4.4, y + 1.0, y + 1.06, b.z0 + 0.45, b.z0 + 1.05, [0.93, 0.22, 0.52]);
+      box(b.x0 + 3.0, b.x0 + 3.5, y + 1.06, y + 1.36, b.z0 + 0.55, b.z0 + 0.9, [0.3, 0.3, 0.32]);
+      for (const [tx, tz] of [[6.4, -0.6], [6.2, 6.6]]) {
+        const ty = terrain(tx, tz); cyl(tx, tz, 0.45, 0.45, ty + 0.72, ty + 0.78, MWHITE, 10); cyl(tx, tz, 0.05, 0.05, ty, ty + 2.2, [0.85, 0.85, 0.85], 5);
+        const um = new THREE.ConeGeometry(1.2, 0.5, 8); um.translate(tx, ty + 2.35, tz); parts.push(paint(um, [1, 0.55, 0.75]));
+        for (const s of [-1, 1]) { box(tx + s * 0.7 - 0.2, tx + s * 0.7 + 0.2, ty + 0.42, ty + 0.47, tz - 0.2, tz + 0.2, [0.93, 0.22, 0.52]); box(tx + s * 0.88 - 0.03, tx + s * 0.88 + 0.03, ty + 0.47, ty + 0.95, tz - 0.2, tz + 0.2, [0.93, 0.22, 0.52]); }
+      }
+      // freezer cases: white bodies with a recessed tray of nieves (tubs) or shelves of paletas behind glass
+      const FLAV = [[1, 0.45, 0.6], [0.55, 0.85, 0.3], [1, 0.62, 0.15], [0.98, 0.95, 0.88], [0.45, 0.28, 0.18], [0.7, 0.4, 0.85], [1, 0.85, 0.3], [0.95, 0.2, 0.25]];
+      for (const c of CASES) {
+        if (c.glass === 'top') {
+          box(c.x0, c.x1, y, y + c.h - 0.22, c.z0, c.z1, MWHITE);
+          box(c.x0, c.x1, y + c.h - 0.22, y + c.h, c.z0, c.z0 + 0.06, MWHITE); box(c.x0, c.x1, y + c.h - 0.22, y + c.h, c.z1 - 0.06, c.z1, MWHITE);
+          box(c.x0, c.x0 + 0.06, y + c.h - 0.22, y + c.h, c.z0, c.z1, MWHITE); box(c.x1 - 0.06, c.x1, y + c.h - 0.22, y + c.h, c.z0, c.z1, MWHITE);
+          let k = 0; for (let z = c.z0 + 0.3; z < c.z1 - 0.2; z += 0.45) for (const x of [c.x0 + 0.3, c.x1 - 0.3]) { cyl(x, z, 0.19, 0.19, y + c.h - 0.24, y + c.h - 0.1, [0.75, 0.78, 0.8], 8); cyl(x, z, 0.17, 0.17, y + c.h - 0.1, y + c.h - 0.06, FLAV[k++ % FLAV.length], 8); }
+        } else {
+          box(c.x0, c.x1, y, y + 0.55, c.z0, c.z1, MWHITE); box(c.x0, c.x1, y + c.h - 0.06, y + c.h, c.z0, c.z1, MWHITE);
+          box(c.x0, c.x1, y + c.h - 0.06, y + c.h + 0.35, c.z1 - 0.04, c.z1, [0.93, 0.22, 0.52]); // a pink header strip on the wall side
+          let k = 0; for (const sy of [y + 0.56, y + 0.86]) { box(c.x0 + 0.05, c.x1 - 0.05, sy - 0.02, sy, c.z0 + 0.1, c.z1 - 0.05, [0.85, 0.88, 0.9]); for (let x = c.x0 + 0.18; x < c.x1 - 0.1; x += 0.2) { const f = FLAV[k++ % FLAV.length]; box(x - 0.05, x + 0.05, sy, sy + 0.17, c.z0 + 0.28, c.z0 + 0.32, f); box(x - 0.012, x + 0.012, sy + 0.17, sy + 0.25, c.z0 + 0.29, c.z0 + 0.31, [0.9, 0.78, 0.55]); } }
+        }
+      }
+      // one corner keeps a bit of the old ranch: an agave patch out back
+      for (let i = 0; i < 12; i++) { const x = 11 + (i % 6) * 2.0 + R() * 0.4, z = 11.5 + Math.floor(i / 6) * 2.2, yy = terrain(x, z); for (let k = 0; k < 7; k++) { const g = new THREE.ConeGeometry(0.09, 0.9, 3); g.translate(0, 0.45, 0); g.rotateZ(0.5 + R() * 0.3); g.rotateY((k / 7) * Math.PI * 2); g.translate(x, yy, z); parts.push(paint(g, C.agave)); } }
     }
     if (b.id === 'mansion') {
       for (const z of [23, 25.6, 30.4, 33]) cyl(-7.4, z, 0.22, 0.2, y, y + 4.6, [1, 1, 1], 8);       // porch columns
@@ -168,22 +201,12 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   const water = new THREE.Mesh(wg, new THREE.MeshLambertMaterial({ color: 0x3ec7d6, emissive: 0x0a3a44, transparent: true, opacity: 0.82 }));
   scene.add(water);
 
-  // ---- the boards on every opening: BOARDS_MAX planks each, shown according to the live count
+  // ---- La Bufadora: a rocky blowhole near the south mouth of the creek
+  const bufadora = buildBufadora(scene);
+
+  // ---- La Michoacana's paint: the sign over the storefront, the round logo on the side wall and inside, glass on the cases
   const plankMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const boards = OPENINGS.map((o) => {
-    if (o.open) return { o, g: null, planks: [], shown: 0 }; // la misión stays wide open: nothing to nail up
-    const g = new THREE.Group(); g.position.set(o.x, 0, o.z); if (o.nx !== 0) g.rotation.y = Math.PI / 2;
-    const planks = [];
-    for (let k = 0; k < BOARDS_MAX; k++) {
-      const yy = o.y0 + 0.2 + (k / (BOARDS_MAX - 1)) * (o.y1 - o.y0 - 0.4);
-      const geo = paint(new THREE.BoxGeometry(o.w + 0.35, 0.2, 0.07), k % 2 ? [0.62, 0.42, 0.24] : [0.55, 0.36, 0.2]);
-      const m = new THREE.Mesh(geo, plankMat); m.rotation.z = (k % 2 ? 1 : -1) * (0.12 + 0.05 * k);
-      m.position.set(0, yy, -(o.nx || o.nz) * 0.32); // nailed across the inside face, where the defenders work
-      g.add(m); planks.push(m);
-    }
-    scene.add(g);
-    return { o, g, planks, shown: BOARDS_MAX };
-  });
+  const shop = buildShop(scene);
 
   // ---- wall crates: buy ammo or piñatas with points
   const stations = STATIONS.map((s) => {
@@ -236,7 +259,79 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
 
   scene.fog.near = 45; scene.fog.far = 160;
   const night = buildNight(scene, { skyMesh, mtsMesh, sun, hemi, sunLight, lowEnd });
-  return { water, picado, boards, stations, night };
+  return { water, picado, stations, night, shop, bufadora };
+}
+
+
+// a ring of low-poly stones around a dark hole in the creek, plus the geyser jet (hidden until it blows)
+function buildBufadora(scene) {
+  const { x, z, r } = BUFADORA;
+  const y = terrain(x, z);
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  const R = rng(0xB0FA);
+  const parts = [];
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + (R() - 0.5) * 0.18;
+    const rr = r * 0.72 + R() * 0.55;
+    const g = new THREE.DodecahedronGeometry(0.42 + R() * 0.38, 0);
+    g.scale(1, 0.5 + R() * 0.4, 0.9 + R() * 0.2);
+    g.translate(Math.cos(a) * rr, 0.55 + R() * 0.28, Math.sin(a) * rr);
+    const t = 0.75 + R() * 0.35;
+    parts.push(paint(g, [C.rock2[0] * t, C.rock2[1] * t, C.rock2[2] * t]));
+  }
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.2;
+    const g = new THREE.DodecahedronGeometry(0.28 + R() * 0.15, 0);
+    g.scale(1, 0.4, 1);
+    g.translate(Math.cos(a) * r * 0.45, 0.42, Math.sin(a) * r * 0.45);
+    parts.push(paint(g, C.rock3));
+  }
+  for (const g of parts) { if (g.attributes.uv) g.deleteAttribute('uv'); }
+  const rocks = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  group.add(rocks);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(r * 0.5, 12), new THREE.MeshLambertMaterial({ color: 0x071520, emissive: 0x031018 }));
+  hole.rotation.x = -Math.PI / 2;
+  hole.position.y = 0.48;
+  group.add(hole);
+  const jetMat = new THREE.MeshLambertMaterial({ color: 0x8eecff, emissive: 0x1a7088, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 1.05, 1, 8, 1, true), jetMat);
+  jet.visible = false;
+  group.add(jet);
+  const capMat = new THREE.MeshLambertMaterial({ color: 0xc8f6ff, emissive: 0x3a90a8, transparent: true, opacity: 0, depthWrite: false });
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1.6, 8), capMat);
+  cap.visible = false;
+  group.add(cap);
+  scene.add(group);
+  return {
+    group, x, z, y, r, jet,
+    tick(ph, remain) {
+      if (ph === 'blow') {
+        const age = Math.max(0, BF.blast - remain);
+        let k = 1;
+        if (age < 0.25) k = age / 0.25;
+        else if (remain < 0.6) k = Math.max(0, remain / 0.6);
+        const h = 14 + 8 * k;
+        jet.visible = true; cap.visible = true;
+        jet.scale.set(0.85 + 0.3 * k, h, 0.85 + 0.3 * k);
+        jet.position.y = h / 2;
+        jetMat.opacity = 0.42 + 0.28 * k;
+        cap.position.y = h + 0.4;
+        cap.scale.setScalar(0.8 + 0.6 * k);
+        capMat.opacity = 0.35 * k;
+        hole.material.emissive.setHex(0x145060);
+      } else if (ph === 'warn') {
+        jet.visible = false; cap.visible = false;
+        jetMat.opacity = 0; capMat.opacity = 0;
+        const pulse = 0.5 + 0.5 * Math.sin(remain * 10);
+        hole.material.emissive.setRGB(0.12 * pulse, 0.18 * pulse, 0.22 * pulse);
+      } else {
+        jet.visible = false; cap.visible = false;
+        jetMat.opacity = 0; capMat.opacity = 0;
+        hole.material.emissive.setHex(0x031018);
+      }
+    },
+  };
 }
 
 // ---- la noche (wave 10+): the sky bruises over, fog rolls down the canyon, a moon comes up, the lanterns gutter.
@@ -282,6 +377,29 @@ function buildNight(scene, { skyMesh, mtsMesh, sun, hemi, sunLight, lowEnd }) {
   }
   set(0);
   return { set, tick, get k() { return k; } };
+}
+
+function buildShop(scene) {
+  const b = BUILDINGS.find((q) => q.id === 'michoacana'), y = OPENINGS.find((o) => o.b === 'michoacana').y;
+  const tex = (cv) => { const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+  const signTex = tex(signCanvas()), logoTex = tex(logoCanvas(512));
+  const g = new THREE.Group(); g.name = 'michoacana';
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 1.8), new THREE.MeshLambertMaterial({ map: signTex, emissive: 0x331122 }));
+  sign.position.set(b.x0 - 0.04, y + 3.3, (b.z0 + b.z1) / 2); sign.rotation.y = -Math.PI / 2; sign.name = 'sign'; g.add(sign);
+  const logoMat = new THREE.MeshLambertMaterial({ map: logoTex, transparent: true, alphaTest: 0.05, emissive: 0x221111 });
+  const side = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), logoMat); side.position.set(b.x0 + 3.4, y + 2.35, b.z1 + 0.04); g.add(side);
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.7), logoMat); back.position.set(b.x1 - b.wall - 0.03, y + 2.45, 3); back.rotation.y = -Math.PI / 2; g.add(back);
+  const north = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), logoMat); north.position.set(b.x0 + 3.2, y + 2.3, b.z0 - 0.04); north.rotation.y = Math.PI; g.add(north);
+  // glass over the freezer cases, all in one see-through mesh
+  const gl = [];
+  for (const c of CASES) {
+    const geo = c.glass === 'top' ? new THREE.BoxGeometry(c.x1 - c.x0 - 0.1, 0.03, c.z1 - c.z0 - 0.1) : new THREE.BoxGeometry(c.x1 - c.x0 - 0.04, c.h - 0.6, 0.03);
+    if (c.glass === 'top') geo.translate((c.x0 + c.x1) / 2, y + c.h - 0.02, (c.z0 + c.z1) / 2); else geo.translate((c.x0 + c.x1) / 2, y + 0.55 + (c.h - 0.6) / 2, c.z0 + 0.03);
+    gl.push(geo);
+  }
+  const glass = new THREE.Mesh(mergeGeometries(gl), new THREE.MeshLambertMaterial({ color: 0xcff2ff, transparent: true, opacity: 0.3, depthWrite: false })); g.add(glass);
+  scene.add(g);
+  return g;
 }
 
 // Each flag is a quad with a cut-paper texture (holes via alphaTest), coloured per vertex; one draw call for all of them.

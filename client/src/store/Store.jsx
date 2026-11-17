@@ -20,6 +20,7 @@ const CONSUMABLE = (x) => !!x.use;
 const ONCE = (x) => !!x.once; // gags (and tobacco): one at a time, used up when used
 const FITTABLE = (x) => x?.kind === 'avatar' && x.slot !== 'skin';
 const BUG_LOOK = ['bugskin', 'bughat', 'bugacc'];
+const BATTLE_GEAR = ['gear', 'defense']; // one attack item and one defense item, both drawn on the bug
 const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 'long' });
 
 function BugThumb({ species, style, size, level }) {
@@ -36,7 +37,7 @@ function BugThumb({ species, style, size, level }) {
 function Thumb({ x, me, eqWear, pen, size, fit }) {
   if (x.kind === 'avatar') return <Bust id={me.id} avatar={{ ...me.avatar, wear: { ...eqWear, [x.slot]: { ...lookOf(x), fit: fit?.[x.id] } } }} size={size * 0.86} still />;
   if (BUG_LOOK.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: lookOf(x) }} size={size} level={pen.level} />;
-  if (x.slot === 'gear' && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), gear: { id: x.id, shape: x.id.slice(5) } }} size={size} level={pen.level} />;
+  if (BATTLE_GEAR.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: { id: x.id, shape: x.id.slice(5) } }} size={size} level={pen.level} />;
   if (x.pal) return <span className="st-pal">{x.pal.map((c) => <i key={c} style={{ background: c }} />)}</span>;
   if (x.art) return <LowPoly art={x.art} size={size} fallback={x.emoji} className="st-pix" />;
   if (x.pix) return <PixIcon pix={x.pix} size={size} fallback={x.emoji} className="st-pix" />;
@@ -85,7 +86,7 @@ export default function Store() {
   const eqWear = Object.fromEntries(Object.entries(v.eq).map(([slot, id]) => [slot, { ...lookOf(v.items.find((i) => i.id === id) || { id }), fit: fits[id] }]).filter(([s]) => !BUG_LOOK.includes(s)));
   const cur = sel && v.items.find((x) => x.id === sel);
   const shown = items.slice(pg * per, pg * per + per);
-  const run = async (fn, ok) => { setErr(''); setMsg(''); try { const r = await fn(); setV(r); if (ok) setMsg(ok); refreshSession(); if (BUG_LOOK.includes(cur?.slot) || cur?.use || cur?.slot === 'toy' || cur?.slot === 'gear') { const b = await api('GET', '/barn').catch(() => null); setPen(b?.pen?.stage === 'creature' ? b.pen : null); } } catch (e) { setErr(e.message); } };
+  const run = async (fn, ok) => { setErr(''); setMsg(''); try { const r = await fn(); setV(r); if (ok) setMsg(ok); refreshSession(); if (BUG_LOOK.includes(cur?.slot) || cur?.use || cur?.slot === 'toy' || BATTLE_GEAR.includes(cur?.slot)) { const b = await api('GET', '/barn').catch(() => null); setPen(b?.pen?.stage === 'creature' ? b.pen : null); } } catch (e) { setErr(e.message); } };
   const buy = (x, confirm = false) => {
     if (x.price > v.confirmOver && !confirm) { setAsk(x); return; }
     setAsk(null); run(() => api('POST', '/shop/buy', { id: x.id, confirm }), `Bought: ${x.name}.${x.slot && !v.eq[x.slot] ? ' Wearing it now.' : ''}`);
@@ -125,7 +126,7 @@ export default function Store() {
                 <span className="sc-pic"><Thumb x={x} me={me} eqWear={eqWear} pen={pen} size={64} fit={fits} /></span>
                 <span className="sc-name">{x.name}</span>
                 {x.adult && <span className="sc-adult" title={v.tobaccoNotice}>18+</span>}
-                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : money(x.price)}</span>
+                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : x.retired ? 'Not sold' : money(x.price)}</span>
               </button>
             ))}
           </div>
@@ -142,18 +143,18 @@ export default function Store() {
               <div className="sd-pic"><Thumb x={cur} me={me} eqWear={eqWear} pen={pen} size={120} fit={fits} /></div>
               <div className="sd-text">
                 <h2>{cur.name}</h2>
-                <p className="sd-price"><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span>{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
+                <p className="sd-price">{cur.retired ? <b>No longer sold</b> : <><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span></>}{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
                 {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}Room decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
                   {owned > 0 && cur.kind === 'furniture' && <button className="btn ghost" onClick={() => navigate('/room')}>Put it in My Room</button>}
                   {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
-                  {!takenBy && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
+                  {!takenBy && !cur.retired && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
                   {owned && FITTABLE(cur) ? <button className={`btn ${fitOpen ? '' : 'ghost'}`} onClick={() => setFitOpen(!fitOpen)} aria-pressed={fitOpen} data-test="store-fit">{fitOpen ? 'Done' : 'Adjust fit'}</button> : null}
-                  {owned && cur.use ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/use', { id: cur.id }), cur.use === 'feeder' ? 'Feeder stocked. Your bug won\'t go hungry for a while.' : 'Your bug appreciates that.')} data-test="store-use">Use</button> : null}
+                  {owned && cur.use && cur.use !== 'jar' ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/use', { id: cur.id }), cur.use === 'feeder' ? 'Feeder stocked. Fed, Mood and Clean stay full for a while.' : cur.use === 'food' ? 'Fed. A lunch is packed for its next fight.' : 'Your bug appreciates that.')} data-test="store-use">Use</button> : null}
                 </div>
                 {cur.kind === 'tobacco' && <p className="small sd-warn" data-test="store-tobacco-item-notice"><b>18+</b> {v.tobaccoNotice}</p>}
                 {cur.kind === 'tobacco' && <p className="small muted tob" data-test="store-once">{owned ? 'In your pocket. ' : ''}One-time use: at a table, tap Light up and Guntrad brings the lighter. Everyone watching sees it once. It never changes a hand.</p>}

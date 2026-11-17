@@ -7,7 +7,12 @@ import { createApp } from '../server/app.js';
 import { Barn, BOUT_WIN_XP, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG } from '../server/barn.js';
 import { Store } from '../server/store.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
-const earned = (pen) => BOUT_XP + (pen.lastBout.result === 'won' ? BOUT_WIN_XP : 0); // winners get the bonus, losers and draws do not
+import { riskFor, upsetXp } from '../server/engine/bug-combat.js';
+// every fighter gets BOUT_XP; a winner gets a bonus on top, bigger the less the line gave it
+const earned = (pen) => BOUT_XP + (pen.lastBout.result === 'won' ? upsetXp(BOUT_WIN_XP, pen.lastBout.line) : 0);
+/** What the line asks `player` to put up to join the only open bout. */
+const cents = (x) => Math.round(x * 100) / 100;
+const asked = async (player) => Object.values((await player.api('GET', '/api/barn')).body.bouts[0].terms)[0].risk;
 
 let current; // the running fixture: tests in a file run one at a time
 async function fixture(t) {
@@ -143,14 +148,18 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   });
   assert.equal(host.pen.xp, xpFor(4) + 10); assert.equal(host.pen.level, 4);
   assert.equal(hostResult.you.level, 3); assert.equal(hostResult.levelBefore, 3); assert.equal(hostResult.levelAfter, 4);
-  assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + BOUT_XP + BOUT_WIN_XP);
+  assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + earned(joined.body.pen));
+  // a level 10 against a level 3 is as lopsided as the line goes: the favourite puts up nine times the stake for a sliver of bonus XP
+  assert.deepEqual([hostResult.line, guestResult.line], [0.1, 0.9]);
+  assert.deepEqual([hostResult.stake, guestResult.stake, guestResult.against], [100.25, riskFor(100.25, 0.1), 100.25]);
+  assert.equal(guestResult.xpEarned, BOUT_XP + 2);
   assert.equal(joined.body.pen.xpNext, null);
   for (const [player, result] of [[owner, host], [other, joined.body]]) {
     assert.equal(result.pen.lastBout.xpEarned, earned(result.pen));
     assert.equal(recordCount(result.pen), 1);
-    const expectedNet = result.pen.lastBout.result === 'won' ? 100.25 : result.pen.lastBout.result === 'lost' ? -100.25 : 0;
-    assert.equal(result.pen.lastBout.net, expectedNet);
-    assert.equal(result.pen.lastBout.payout, expectedNet + 100.25);
+    const bout = result.pen.lastBout, expectedNet = bout.result === 'won' ? bout.against : bout.result === 'lost' ? -bout.stake : 0;
+    assert.equal(bout.net, expectedNet);
+    assert.equal(bout.payout, expectedNet + bout.stake);
     assert.equal(balance(f, player), 1000 + expectedNet);
     // the loser fainted: Bug Center first
     if (result.pen.lastBout.result === 'lost') assert.equal((await post(player)).status, 409);
@@ -196,7 +205,7 @@ test('open bouts require authentication, valid stakes, a hatched living bug and 
   for (const body of [{ stake: 0 }, { playerId: owner.id }, { winner: other.id }, []]) {
     assert.equal((await join(other, opened.body.openBout.id, body)).status, 400);
   }
-  f.service.accounts.change(f.service.getPlayer(other.id), -1, 'test', 'Fixture funds');
+  f.service.getPlayer(other.id).bankroll = (await asked(other)) - 0.01; // a cent short of what the line asks
   assert.equal((await join(other, opened.body.openBout.id)).status, 402);
   assert.equal((await other.api('GET', '/api/barn')).body.bouts.length, 1);
   assert.equal((await owner.api('POST', '/api/barn/bout', {})).status, 409, 'old clients cannot trigger automatic opponents');
@@ -467,7 +476,7 @@ test('the ring lists every living bug of a visible owner, even to a player with 
   const view = (await watcher.api('GET', '/api/barn')).body;
   assert.equal(view.pen, null);
   assert.deepEqual(view.roster.map(bug => bug.ownerId), [owner.id, other.id, young.id], 'highest level first; eggs, the dead and hidden owners are left out');
-  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'level', 'name', 'owner', 'ownerId', 'record', 'species', 'style']);
+  for (const bug of view.roster) assert.deepEqual(Object.keys(bug).sort(), ['fainted', 'fights', 'health', 'id', 'level', 'name', 'owner', 'ownerId', 'record', 'species', 'style']);
   assert.deepEqual(view.roster.map(bug => [bug.owner, bug.level, bug.fights]), [['BugOwner', 6, true], ['OtherRancher', 4, true], ['YoungRancher', 1, true]]);
   assert.deepEqual(view.challenges, { incoming: [], outgoing: [] }); assert.deepEqual(view.fights, []);
   assert.equal((await watcher.api('POST', '/api/barn/challenges', { to: owner.id, stake: 0 })).status, 404, 'no bug, no challenge');
@@ -556,7 +565,10 @@ test('accepting a challenge takes both stakes then, settles once and puts the fi
   const done = await accept(other, id);
   assert.equal(done.status, 200, JSON.stringify(done.body));
   const result = done.body.pen.lastBout.result;
-  assert.equal(balance(f, other), { won: 1100, lost: 900, draw: 1000 }[result]); assert.equal(balance(f, owner) + balance(f, other), 2000);
+  // the challenger named $100; the challenged put up what the line asked
+  const { stake: risk, against, line } = done.body.pen.lastBout;
+  assert.deepEqual([against, risk], [100, riskFor(100, (100 - Math.round(line * 100)) / 100)]);
+  assert.equal(balance(f, other), { won: 1100, lost: cents(1000 - risk), draw: 1000 }[result]); assert.equal(balance(f, owner) + balance(f, other), 2000);
   assert.equal(done.body.challenges.incoming.length, 0);
   for (const player of [owner, other]) {
     const pen = (await player.api('GET', '/api/barn')).body.pen;
@@ -572,9 +584,9 @@ test('accepting a challenge takes both stakes then, settles once and puts the fi
   const seen = (await watcher.api('GET', '/api/barn')).body.fights;
   assert.equal(seen.length, 1);
   assert.deepEqual(seen[0].sides.map(side => [side.ownerId, side.owner, side.level]), [[owner.id, 'BugOwner', 6], [other.id, 'OtherRancher', 6]]);
-  assert.equal(seen[0].stake, 100); assert.equal(seen[0].winner, { won: 1, lost: 0, draw: null }[result]);
+  assert.equal(seen[0].pot, cents(100 + risk)); assert.equal(seen[0].winner, { won: 1, lost: 0, draw: null }[result]);
   const replay = await watcher.api('GET', `/api/barn/fights/${id}`);
-  assert.equal(replay.status, 200); assert.equal(replay.body.pot, 200); assert.ok(replay.body.rounds.length > 0);
+  assert.equal(replay.status, 200); assert.equal(replay.body.pot, cents(100 + risk)); assert.ok(replay.body.rounds.length > 0);
   assert.equal(replay.body.you.owner, 'BugOwner'); assert.equal(replay.body.result, { won: 'lost', lost: 'won', draw: 'draw' }[result]);
   for (const fighter of [replay.body.you, replay.body.them]) for (const key of Object.keys(fighter)) assert.ok(['level', 'name', 'owner', 'species', 'style'].includes(key), key);
   for (const secret of ['payout', 'stance', 'specials', 'mood', 'bankroll']) assert.ok(!JSON.stringify(replay.body).includes(`"${secret}"`), secret);

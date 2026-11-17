@@ -1,12 +1,11 @@
 // EL HALO horde map, shared by the server (collision, enemy routes, hit checks) and the client (world.js draws it).
 // Pure data and maths: no three.js, no DOM. An original layout of the long-box-canyon kind: cliff walls on both
 // sides, a shallow creek winding down the middle, rolling hills, an adobe fort at each end, and three buildings you
-// can hole up in (a mission, a hacienda farmhouse and a mansion) whose doors and windows can be boarded up.
+// can run through (a mission, La Michoacana ice-cream parlour and a mansion). Every door and window is open: no boards.
 // Units are metres; x runs across the canyon, z runs along it (north is -z).
 
 export const BOUNDS = { x0: -24, x1: 24, z0: -64, z1: 64 };
 export const STEP = 0.45;      // what you can walk up without jumping
-export const BOARDS_MAX = 5;   // planks per opening
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 export const creekX = (z) => 2.6 * Math.sin(z * 0.055 + 0.6) + 1.2 * Math.sin(z * 0.13);
@@ -25,16 +24,21 @@ function creekCut(x, z, h) {
 
 // ---- buildings. Openings: side n|s|e|w, u = metres from the low corner along that side, w = width.
 export const BUILDINGS = [
-  { id: 'mision', name: 'LA MISIÓN', x0: -20, x1: -10, z0: -31, z1: -17, h: 4.6, wall: 0.45, open: true, // no boards: the church is always open
+  { id: 'mision', name: 'LA MISIÓN', x0: -20, x1: -10, z0: -31, z1: -17, h: 4.6, wall: 0.45, open: true,
     openings: [{ side: 'e', u: 7, w: 1.8, door: true }, { side: 'e', u: 11.5, w: 1.3 }, { side: 'n', u: 5, w: 1.3 }, { side: 'w', u: 4, w: 1.3 }, { side: 'w', u: 10, w: 1.3 }, { side: 's', u: 5, w: 1.3 }],
     buy: { kind: 'ammo', x: -19.2, z: -24, label: 'PARQUE', cost: 500 } },
-  { id: 'hacienda', name: 'LA HACIENDA', x0: 9, x1: 22, z0: -2, z1: 8, h: 3.4, wall: 0.45,
-    openings: [{ side: 'w', u: 5, w: 1.8, door: true }, { side: 'w', u: 8.4, w: 1.3 }, { side: 'n', u: 6.5, w: 1.3 }, { side: 'e', u: 5, w: 1.3 }, { side: 's', u: 6.5, w: 1.3 }],
+  // La Michoacana: a pink-and-white paletería. The storefront (two wide windows either side of the door) faces the creek.
+  { id: 'michoacana', name: 'LA MICHOACANA', x0: 9, x1: 22, z0: -2, z1: 8, h: 4.2, wall: 0.45, open: true,
+    openings: [{ side: 'w', u: 2.3, w: 2.6 }, { side: 'w', u: 5, w: 1.8, door: true }, { side: 'w', u: 7.7, w: 2.6 }, { side: 'n', u: 6.5, w: 1.3 }, { side: 's', u: 10.5, w: 1.3 }],
     buy: { kind: 'ammo', x: 12, z: -1.2, label: 'PARQUE', cost: 500 } },
-  { id: 'mansion', name: 'LA MANSIÓN', x0: -21, x1: -8, z0: 22, z1: 34, h: 5.2, wall: 0.45,
+  { id: 'mansion', name: 'LA MANSIÓN', x0: -21, x1: -8, z0: 22, z1: 34, h: 5.2, wall: 0.45, open: true,
     openings: [{ side: 'e', u: 6, w: 2, door: true }, { side: 'e', u: 2.4, w: 1.3 }, { side: 'e', u: 9.6, w: 1.3 }, { side: 'n', u: 6.5, w: 1.3 }, { side: 's', u: 6.5, w: 1.3 }, { side: 'w', u: 6, w: 1.3 }],
     buy: { kind: 'grenade', x: -17.5, z: 33.2, label: 'PIÑATAS', cost: 750 } },
 ];
+// La Michoacana's freezer cases: a long one on the back wall, a glass-front one along the south wall (solid, waist high)
+export const CASES = [{ x0: 20.45, x1: 21.5, z0: 0.2, z1: 5.8, h: 1.05, glass: 'top' }, { x0: 11.5, x1: 16.5, z0: 6.65, z1: 7.5, h: 1.15, glass: 'front' }];
+// the elote man and his cart, out front of La Michoacana on the creek side. Harmless scenery: no collider, nobody aims at him.
+export const ELOTE = { x: 7.5, z: 11, yaw: Math.PI * 0.75, range: 2.4 };
 // forts at each end (cover, a roof deck you reach by an outside stair; no boards). s=+1 north, s=-1 south (turned round).
 export const FORTS = [
   { id: 'norte', name: 'FORTÍN NORTE', s: 1 },
@@ -63,6 +67,12 @@ export function terrain(x, z) {
 }
 
 // ---- spawns
+// La Bufadora: a rocky blowhole in the creek just before Fortín Sur, near the south mouth of the canyon.
+export const BUFADORA = ((z = 45.5) => {
+  const x = creekX(z);
+  return { x, z, r: 2.2, rockR: 3.15 };
+})();
+
 export const ENEMY_SPAWNS = [[-22.5, -40], [22.5, -28], [-22.5, -4], [22.5, 20], [-22.5, 46], [22.5, 44], [0, -62.5], [-12, -62], [12, -62], [0, 62.5], [12, 62], [-12, 62]];
 export const PLAYER_SPAWNS = [[0, -44], [3.5, -44], [-3.5, 44], [0, 44], [2, -8], [-4, 12], [6, 18], [-2, -20]];
 
@@ -98,7 +108,7 @@ function buildStatic() {
         const bar = sideBox(bd, side, o.u - o.w / 2, o.u + o.w / 2, y + sill, y + top, t);
         const cx = (bar.x0 + bar.x1) / 2, cz = (bar.z0 + bar.z1) / 2;
         const nx = side === 'e' ? 1 : side === 'w' ? -1 : 0, nz = side === 's' ? 1 : side === 'n' ? -1 : 0; // outward normal
-        openings.push({ i: openings.length, b: bd.id, side, door: !!o.door, open: !!bd.open, w: o.w, y0: y + sill, y1: y + top, x: cx, z: cz, y,
+        openings.push({ i: openings.length, b: bd.id, side, door: !!o.door, open: true, w: o.w, y0: y + sill, y1: y + top, x: cx, z: cz, y,
           nx, nz, out: { x: cx + nx * 1.3, z: cz + nz * 1.3 }, in: { x: cx - nx * 1.3, z: cz - nz * 1.3 }, box: { ...bar, y0: y - 0.6, y1: y + top } });
       }
     }
@@ -106,6 +116,7 @@ function buildStatic() {
     if (bd.id === 'mision') { // bell tower at the front corner, solid
       add({ x0: -12.6, x1: -9.4, z0: -33.6, z1: -30.4, y0: y - 0.6, y1: y + 8.6 }, 'tower', bd.id);
     }
+    if (bd.id === 'michoacana') for (const c of CASES) add({ ...c, y0: y - 0.6, y1: y + c.h }, 'case', bd.id, true, { glass: c.glass });
   }
   for (const f of FORTS) {
     const r = fortRect(f), pad = padOf(r), y = pad.y, t = FORT.wall, s = f.s;
@@ -192,14 +203,13 @@ export const AMMO_SPOTS = [[0, -30], [-6, -6], [16, -14], [6, 14], [-4, 32], [14
 export const NADE_SPOTS = [[-8, -40], [18, 16], [-18, 14], [8, -10], [0, 52], [0, -52], [12, 44]];
 export const JEEP_SPAWN = { x: 0, z: -2, yaw: 0 };
 
-// ---- queries. `bars` is the live board count per opening: an opening with boards is solid.
-export function groundAt(x, z, feet, bars) {
+// ---- queries
+export function groundAt(x, z, feet) {
   let h = terrain(x, z);
   for (const c of SOLIDS) {
     if (c.r) { if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r && c.y1 <= feet + STEP && c.y1 > h) h = c.y1; }
     else if (x >= c.x0 && x <= c.x1 && z >= c.z0 && z <= c.z1 && c.y1 <= feet + STEP && c.y1 > h) h = c.y1;
   }
-  if (bars) for (const o of OPENINGS) { const c = o.box; if (bars[o.i] > 0 && x >= c.x0 && x <= c.x1 && z >= c.z0 && z <= c.z1 && c.y1 <= feet + STEP && c.y1 > h) h = c.y1; }
   return h;
 }
 
@@ -215,17 +225,12 @@ export function pushOut(x, z, r, b) {
 }
 
 // Move o {x,z} out of everything solid for a body of radius r standing at `feet`, `height` tall. skipSills: enemies climb through windows.
-export function collide(o, r, feet, height, bars, skipSills = false) {
+export function collide(o, r, feet, height, skipSills = false) {
   for (const c of SOLIDS) {
     if (c.y1 <= feet + STEP || c.y0 >= feet + height) continue;
     if (skipSills && c.sill) continue;
     if (c.r) { const dx = o.x - c.x, dz = o.z - c.z, d = Math.hypot(dx, dz), m = c.r + r; if (d < m && d > 1e-6) { o.x = c.x + dx / d * m; o.z = c.z + dz / d * m; } }
     else { const q = pushOut(o.x, o.z, r, c); if (q) { o.x = q.x; o.z = q.z; } }
-  }
-  if (bars) for (const op of OPENINGS) {
-    if (!(bars[op.i] > 0)) continue; const c = op.box;
-    if (c.y1 <= feet + STEP || c.y0 >= feet + height) continue;
-    const q = pushOut(o.x, o.z, r, c); if (q) { o.x = q.x; o.z = q.z; }
   }
   o.x = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, o.x)); o.z = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, o.z));
 }
@@ -245,19 +250,17 @@ export function rayBox(o, d, b) {
   return tmin;
 }
 
-// Distance along a ray to the first wall, rock, board or bit of ground (capped at max).
-export function wallDist(o, d, max, bars, noGround = false) {
+// Distance along a ray to the first wall, rock or bit of ground (capped at max).
+export function wallDist(o, d, max, noGround = false) {
   let best = max;
   for (const c of SOLIDS) {
     const b = c.r ? { x0: c.x - c.r * 0.8, x1: c.x + c.r * 0.8, z0: c.z - c.r * 0.8, z1: c.z + c.r * 0.8, y0: c.y0, y1: c.y1 } : c;
     const h = rayBox(o, d, b); if (h < best) best = h;
   }
-  if (bars) for (const op of OPENINGS) if (bars[op.i] > 0) { const h = rayBox(o, d, op.box); if (h < best) best = h; }
   if (!noGround && d.y < 0.5) for (let s = 0.5; s < best; s += 0.5) { if (o.y + d.y * s < terrain(o.x + d.x * s, o.z + d.z * s)) { best = s; break; } }
   return best;
 }
-export const insideSolid = (p, bars) => SOLIDS.some((c) => (c.r ? (p.x - c.x) ** 2 + (p.z - c.z) ** 2 < c.r * c.r : p.x > c.x0 && p.x < c.x1 && p.z > c.z0 && p.z < c.z1) && p.y > c.y0 && p.y < c.y1)
-  || (bars ? OPENINGS.some((o) => bars[o.i] > 0 && p.x > o.box.x0 && p.x < o.box.x1 && p.z > o.box.z0 && p.z < o.box.z1 && p.y > o.box.y0 && p.y < o.box.y1) : false);
+export const insideSolid = (p) => SOLIDS.some((c) => (c.r ? (p.x - c.x) ** 2 + (p.z - c.z) ** 2 < c.r * c.r : p.x > c.x0 && p.x < c.x1 && p.z > c.z0 && p.z < c.z1) && p.y > c.y0 && p.y < c.y1);
 
 // Does the segment a→b (xz) cross rect r (padded by m)? Liang-Barsky.
 export function segHitsRect(a, b, r, m = 0) {

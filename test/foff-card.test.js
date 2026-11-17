@@ -11,8 +11,8 @@ const css = fs.readFileSync(path.join(root, 'client/src/foff/foff-card.css'), 'u
 const home = fs.readFileSync(path.join(root, 'client/src/Home.jsx'), 'utf8');
 
 test('unlocked Foff lobby tile uses the same card chrome and CTA as blackjack and slots', () => {
-  assert.match(home, /<div className="lb-games"><BlackjackCard \/><SlotsCard \/><FoffCard \/><ScumCard \/><\/div>/);
-  assert.match(home, /<div className="promo-pair" data-test="lobby-games"><BlackjackPromo \/><SlotsPromo \/><FoffPromo \/><ScumPromo \/><\/div>/);
+  assert.match(home, /<div className="lb-games"><BlackjackCard \/><SlotsCard \/><FoffCard \/><ScumCard \/><ElHaloCard \/><\/div>/);
+  assert.match(home, /<div className="promo-pair" data-test="lobby-games"><BlackjackPromo \/><SlotsPromo \/><FoffPromo \/><ScumPromo \/><ElHaloPromo \/><\/div>/);
   assert.match(jsx, /className="panel lb-card lb-slots lb-foff"/);
   assert.match(jsx, /className=\{`slots-promo foff-promo /);
   assert.match(jsx, /Go on the trip/);

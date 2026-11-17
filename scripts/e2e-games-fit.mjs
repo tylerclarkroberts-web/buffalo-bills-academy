@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = process.env.OUT || '/workspace/bba-games-fit-shots';
+const OUT = process.env.OUT || '/workspace/bba-home-elhalo-shots';
 const DEMO = path.join(ROOT, 'docs/demo/games-tab-fit');
 const PORT = Number(process.env.PORT || 3993);
 const B = `http://127.0.0.1:${PORT}`;
@@ -31,18 +31,21 @@ const until = async (fn, ms = 20000, step = 200) => {
 
 const SIZES = {
   phone: { width: 390, height: 664, mobile: true, label: 'phone 390x664' },
+  phoneTall: { width: 390, height: 844, mobile: true, label: 'phone 390x844' },
   small: { width: 375, height: 667, mobile: true, label: 'small phone 375x667' },
   landscape: { width: 844, height: 390, mobile: true, label: 'landscape 844x390' },
+  desktop1280: { width: 1280, height: 800, mobile: false, label: 'desktop 1280x800' },
   desktop: { width: 1440, height: 900, mobile: false, label: 'desktop 1440x900' },
 };
 
 const HIDE = `
   .dealer-fig, .dl-plate, .dl-img, .dl-face, .dl-head, .dl-body, .dl-glow,
   img[src*="dealer"], img[alt*="Guntrad" i],
+  .mq-bill, .neonbill,
   [data-test="fawn"], .fn { display: none !important; visibility: hidden !important; }
 `;
 
-const GO = ['bj-go', 'slots-go', 'foff-go', 'scum-go'];
+const GO = ['bj-go', 'slots-go', 'foff-go', 'scum-go', 'elhalo-go'];
 
 async function startServer(dataDir) {
   const srv = spawn(process.execPath, ['server/index.js'], {
@@ -105,7 +108,7 @@ async function openGames(browser, u, size) {
   await p.goto(url, { waitUntil: 'domcontentloaded' });
   await p.addStyleTag({ content: HIDE });
   if (size.mobile) await p.waitForSelector('[data-test=lobby-games]', { timeout: 15000 });
-  else await p.waitForSelector('.lb-games-col [data-test=scum-card], .lb-games-col [data-test=slots-card]', { timeout: 15000 });
+  else await p.waitForSelector('.lb-games-col [data-test=elhalo-card], .lb-games-col [data-test=scum-card]', { timeout: 15000 });
   await wait(400);
   return { ctx, p };
 }
@@ -211,17 +214,15 @@ async function main() {
       if (size.mobile) {
         check(!info.marqueeOn, `${size.label}: marquee hidden on Games tab`);
         check(!info.bannerOn, `${size.label}: host banner hidden on Games tab`);
-        for (const b of info.buttons) {
-          check(!b.missing, `${size.label}: ${b.key} is in the DOM`);
-          check(!!b.inView, `${size.label}: ${b.key} is fully in the viewport (not under header/footer) ${JSON.stringify(b)}`);
-        }
-        check(info.buttons.every((b) => b.inView && !b.missing), `${size.label}: all game card buttons are within the viewport`);
-      } else {
-        for (const b of info.buttons) {
-          check(!b.missing, `${size.label}: ${b.key} is in the DOM`);
-        }
       }
+      for (const b of info.buttons) {
+        check(!b.missing, `${size.label}: ${b.key} is in the DOM`);
+        check(!!b.inView, `${size.label}: ${b.key} is fully in the viewport (not under header/footer) ${JSON.stringify(b)}`);
+      }
+      check(info.buttons.every((b) => b.inView && !b.missing), `${size.label}: all game card buttons are within the viewport`);
+      check(!info.scrollable, `${size.label}: game cards do not require scrolling`);
       check(info.skipped.includes("You're skipped!"), `${size.label}: SCUM line is You're skipped!`);
+      check(info.skipped.includes('Donde esta la freaking buffadora'), `${size.label}: El Halo blurb is Donde esta la freaking buffadora`);
       check(!info.slotsNote, `${size.label}: no Play money only note on the slots card`);
       await snap(p, `${name}-games.png`);
       await ctx.close();

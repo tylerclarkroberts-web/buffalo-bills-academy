@@ -9,8 +9,9 @@ import { LOOK_SWATCH } from './models.js';
 
 // The EL HALO door in the Hall of Doors: a shared horde match in a sunset box canyon. You wait in the lobby first (pick
 // your poncho, sombrero, bigote, bandana and boots; get ready), then everyone drops into the same world: waves of
-// luchadores, mariachis, granjeros, padres, chupacabras and worse after dark, a supply truck between waves, boards to
-// nail over the hacienda and mansion windows (the mission stays wide open) and friendly fire very much on. The server
+// luchadores (one in five a high-flying volador), el gordo from wave 3, mariachis, granjeros, padres, chupacabras and worse
+// after dark, a supply truck between waves, every building wide open (La Michoacana, the mission, the mansion), street dogs,
+// an elote man, and friendly fire very much on. The server
 // runs the match (server/elhalo); this folder is its own chunk, loaded when the door opens. Free play: no money.
 const isTouch = () => window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
 const ph = (i) => (!i ? '' : i.phase === 'wave' ? `OLEADA ${i.wave}` : i.phase === 'truck' ? `LA TROCA · OLEADA ${i.wave}` : i.phase === 'break' ? (i.wave ? `OLEADA ${i.wave + 1} EN ${i.cd}` : `EMPIEZA EN ${i.cd}`) : i.phase === 'over' ? 'SE ACABÓ' : i.phase === 'lobby' ? 'EN EL LOBBY' : 'VACÍO');
@@ -90,8 +91,8 @@ function Board({ rows, onClose, touch }) {
   );
 }
 
-export default function ElHaloRoom({ onExit, elapsedMs }) {
-  const canvas = useRef(null), stage = useRef(null), game = useRef(null);
+export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO THE HALL', showShift = true }) {
+  const canvas = useRef(null), stage = useRef(null), game = useRef(null), hostRef = useRef(null);
   const [touch] = useState(isTouch);
   const [muted, setMuted] = useState(() => localStorage.getItem('bba.elhalo.muted') === '1');
   const [mode, setMode] = useState({ mode: 'loading' });
@@ -137,15 +138,19 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
   }, [!!board]);
 
   const secs = Math.floor(elapsedMs / 1000);
-  const host = document.querySelector('.mines') || document.body;
+  // Pin the portal host on first render. On /elhalo the .mines wrapper is not in the document yet
+  // (its child is still rendering), so the first lookup falls through to document.body; a later
+  // lookup would find .mines and remount the canvas, leaving the WebGL context on a detached node.
+  if (!hostRef.current) hostRef.current = document.querySelector('.mines') || document.body;
+  const host = hostRef.current;
   const m = mode.mode;
   const over = info?.phase === 'over' && info?.joined && info?.last;
   return createPortal(
     <div className={`m-doom m-elh${touch ? ' touch' : ''}`} role="dialog" aria-label="El Halo" data-test="elhalo-room" data-mode={m}>
       <div className="m-doom-bar m-elh-bar">
-        <button className="m-btn m-doom-exit" onClick={onExit} data-test="elhalo-exit">◄ BACK TO THE HALL</button>
+        <button className="m-btn m-doom-exit" onClick={onExit} data-test="elhalo-exit">{exitLabel}</button>
         <span className="m-elh-name" aria-hidden="true">EL HALO</span>
-        <span className="m-dim m-doom-clock" title="Your shift is still on the clock while you're in here">SHIFT {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</span>
+        {showShift && <span className="m-dim m-doom-clock" title="Your shift is still on the clock while you're in here">SHIFT {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</span>}
         {touch && m === 'playing' && <button className="m-link" onClick={() => setBoard((b) => (b ? null : game.current.board()))} data-test="elhalo-board-btn">MARCADOR</button>}
         <button className="m-link" onClick={cycleMusic} data-test="elhalo-music" title="Music volume">MÚSICA {MUSIC_LEVELS[music][0]}</button>
         <button className="m-link" onClick={() => setMuted((v) => !v)} aria-pressed={!muted} data-test="elhalo-mute">{muted ? '♪ OFF' : '♪ ON'}<span className="sr-only"> game sound</span></button>

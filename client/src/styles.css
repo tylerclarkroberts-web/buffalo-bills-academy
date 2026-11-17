@@ -1286,7 +1286,7 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 @media (pointer: coarse) { .seg.mini button { min-height: 34px; } }
 
 /* v39: the slots card under Join a table (wide), and the promo under the room code form (narrow Join tab) */
-.lb-col { display: flex; flex-direction: column; gap: clamp(10px, 1.2vw, 16px); min-height: 0; min-width: 0; }
+.lb-col { display: flex; flex-direction: column; gap: clamp(8px, 1vw, 12px); min-height: 0; min-width: 0; }
 .lb-col > .lb-card:first-child { flex: 1 1 auto; }
 .lb-col > .lb-slots { flex: 0 0 auto; }
 .lb-slots .panel-body { padding: 4px 12px 10px; }
@@ -1420,12 +1420,27 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
   .promo-pair .bj-promo-art { width: 46px; height: 40px; transform: scale(.75); transform-origin: left center; }
 }
 /* v44: two game cards under Join a table; on short desktops they go compact so the Join form keeps its room */
-@media (min-width: 900px) and (max-height: 800px) {
-  .lb-col .lb-slots .sp-art, .lb-col .lb-slots .bj-promo-art { width: 40px; height: 40px; }
-  .lb-col .lb-slots .bj-promo-art { transform: scale(.72); transform-origin: left center; }
-  .lb-col .lb-slots .sp-desc, .lb-col .lb-slots .sp-note { display: none; }
+@media (min-width: 900px) and (max-height: 920px) {
+  /* Five game cards (through El Halo) still fit on 1440×900, blurbs included. */
+  .lb-col { gap: 8px; }
+  .lb-col .lb-slots .sp-art, .lb-col .lb-slots .bj-promo-art, .lb-col .lb-slots .elh-promo-art { width: 48px; height: 48px; }
+  .lb-col .lb-slots .bj-promo-art { transform: scale(.85); transform-origin: left center; }
   .lb-col .lb-slots .panel-head { padding-top: 4px; padding-bottom: 0; }
-  .lb-col .lb-slots .panel-body { padding: 0 10px 6px; }
+  .lb-col .lb-slots .panel-body { padding: 2px 10px 6px; }
+  .lb-col .lb-slots .sp-txt { gap: 2px; }
+  .lb-col .lb-slots .sp-desc { font-size: 12px; line-height: 1.2; }
+}
+@media (min-width: 900px) and (max-height: 800px) {
+  /* 1280×800: tighter still, but keep the one-line blurb (El Halo's line is long). */
+  .lb-col { gap: 6px; }
+  .lb-col .lb-slots .sp-art, .lb-col .lb-slots .bj-promo-art, .lb-col .lb-slots .elh-promo-art { width: 40px; height: 40px; }
+  .lb-col .lb-slots .bj-promo-art { transform: scale(.72); transform-origin: left center; }
+  .lb-col .lb-slots .sp-note { display: none; }
+  .lb-col .lb-slots .panel-head { padding-top: 2px; padding-bottom: 0; }
+  .lb-col .lb-slots .panel-body { padding: 0 8px 4px; }
+  .lb-col .lb-slots .sp-txt { gap: 1px; }
+  .lb-col .lb-slots .sp-desc { font-size: 11px; line-height: 1.2; }
+  .lb-col .lb-slots .sp-go { padding: 3px 8px; font-size: 12px; }
 }
 @media (min-width: 900px) and (max-height: 620px) {
   .lb-col .lb-slots .panel-head { display: none; }
@@ -1433,13 +1448,13 @@ img.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: blo
 }
 .lb-games { display: contents; }
 @media (min-width: 900px) and (max-height: 620px) {
-  .lb-games { display: flex; gap: 8px; flex: none; min-width: 0; }
-  .lb-games > .lb-slots { flex: 1 1 0; min-width: 0; }
-  .lb-games .sp-art, .lb-games .bj-promo-art, .lb-games .sp-note { display: none; }
+  .lb-games { display: flex; flex-direction: column; gap: 6px; flex: none; min-width: 0; }
+  .lb-games > .lb-slots { flex: 0 0 auto; min-width: 0; }
+  .lb-games .sp-art, .lb-games .bj-promo-art, .lb-games .elh-promo-art, .lb-games .sp-note, .lb-games .sp-desc { display: none; }
   .lb-games .sp-go { width: 100%; justify-content: center; padding-inline: 6px; font-size: 12px; white-space: nowrap; }
   .lb-games .sp-txt { align-items: stretch; width: 100%; }
   .lb-games .slots-promo { width: 100%; }
-  .lb-games .lb-slots .panel-body { padding: 6px; }
+  .lb-games .lb-slots .panel-body { padding: 4px 6px; }
 }
 /* v50: crowded tables: tighter name/stack pills (two short lines) so 7-9 seats never touch each other */
 .felt-box.crowd .seat-plate { padding: 1px 7px 2px; min-width: calc(var(--bust) * 1.3); }
@@ -1661,6 +1676,15 @@ button, .btn, [role=button], label { touch-action: manipulation; }
 .lb-col > .lb-scum { flex: 0 0 auto; }
 .sc-promo-art { display: grid; place-items: center; }
 .sc-promo-art svg { width: 100%; height: auto; }
+/* El Halo lobby card (directly below SCUM). The thumb is a photo, not pixel art. */
+.lb-col > .lb-elhalo { flex: 0 0 auto; }
+.elh-promo-art {
+  image-rendering: auto;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #1d0f24;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,.45));
+}
 
 /* v86: Games tab on phones — every game card must be visible and tappable without scrolling.
    Compact rows, drop the marquee and host strip, shrink the footer, and keep overflow-y as a
@@ -1686,13 +1710,14 @@ button, .btn, [role=button], label { touch-action: manipulation; }
     overflow-y: auto; overscroll-behavior: contain;
   }
   .lobby5.narrow .promo-pair > .slots-promo:not(.bare) {
-    margin-top: 0; padding: 6px 8px; gap: 8px;
+    margin-top: 0; padding: 5px 8px; gap: 8px;
   }
-  .lobby5.narrow .promo-pair .sp-art { width: 40px; height: 40px; }
+  .lobby5.narrow .promo-pair .sp-art, .lobby5.narrow .promo-pair .elh-promo-art { width: 40px; height: 40px; }
   .lobby5.narrow .promo-pair .bj-promo-art {
     width: 46px; height: 40px; transform: scale(.75); transform-origin: left center;
   }
   .lobby5.narrow .promo-pair .sc-promo-art svg { width: 40px; height: 40px; }
+  .lobby5.narrow .promo-pair .elh-promo-art { border-radius: 6px; image-rendering: auto; }
   /* Icon + title/line + button on one compact row; keep the short descriptor. */
   .lobby5.narrow .promo-pair .sp-txt {
     flex: 1; min-width: 0;
@@ -1703,10 +1728,10 @@ button, .btn, [role=button], label { touch-action: manipulation; }
   .lobby5.narrow .promo-pair .sp-go { margin-left: auto; }
 }
 
-/* Landscape phones: two-by-two so four compact cards share the short height. */
+/* Landscape phones: three-and-two so five compact cards share the short height. */
 @media (max-width: 899px) and (orientation: landscape) and (max-height: 520px) {
   .lobby5.narrow .promo-pair {
-    display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 6px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; align-content: start; gap: 6px;
   }
   .lobby5.narrow .promo-pair > .slots-promo:not(.bare) { margin-top: 0; padding: 4px 8px; }
   .lobby5.narrow .promo-pair .sp-txt b { display: inline; }

@@ -137,7 +137,9 @@ export default function BugCenter() {
     };
     on(); const ro = new ResizeObserver(on); ro.observe(el); return () => ro.disconnect();
   }, [b !== null]);
-  const pen = b?.pen || null;
+  // The patient: whichever of your bugs most needs the nurse (fainted first, then hurt), otherwise your partner.
+  const bugs = b?.stable?.bugs || [];
+  const pen = bugs.find((bug) => bug.fainted) || bugs.find((bug) => bug.hurt) || b?.pen || null;
   const line = talk ? talk.lines[talk.i] : null;
   const [typed, full, finish] = useTyped(line?.ja || '');
   const start = () => { if (!talk) setTalk({ lines: greeting(pen), i: 0, mode: 'talk' }); };
@@ -153,7 +155,7 @@ export default function BugCenter() {
     setPod(true); if (sound) podBlip();
     const t0 = Date.now();
     let r = null, failed = null;
-    const call = api('POST', '/barn/heal', pay ? { pay: true } : undefined).then((x) => { r = x; }).catch((e) => { failed = e; });
+    const call = api('POST', '/barn/heal', { ...(pay ? { pay: true } : {}), bug: pen?.id }).then((x) => { r = x; }).catch((e) => { failed = e; });
     later(() => { setLit(true); if (sound) healChime(); }, 700);
     await call;
     const wait = Math.max(0, 3300 - (Date.now() - t0));
@@ -161,7 +163,7 @@ export default function BugCenter() {
       setLit(false); setPod(false);
       if (failed) { setTalk({ lines: [OOPS(failed.message)], i: 0, mode: 'talk' }); return; }
       const { healed, cost, ...view } = r; setB(view);
-      setTalk({ lines: done(view.pen, healed, cost), i: 0, mode: 'talk' });
+      setTalk({ lines: done(view.stable?.bugs.find((bug) => bug.id === pen?.id) || view.pen, healed, cost), i: 0, mode: 'talk' });
     }, wait);
   };
   if (!b) return <div className="screen bc"><div className="bc-loading muted">{err ? <p role="alert">{err}</p> : 'いらっしゃいませ…'}</div></div>;

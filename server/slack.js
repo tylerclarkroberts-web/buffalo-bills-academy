@@ -111,7 +111,8 @@ export function turnMessage(f, { publicUrl, reminder = false }) {
 /** Someone has called out a player's bug. What the ring already shows everyone: both bugs, the challenger and the stake. */
 export function challengeMessage(f, { publicUrl }) {
   const url = `${publicUrl}/barn`;
-  const terms = f.stake > 0 ? `$${fmt(f.stake)} each, winner takes $${fmt(cents(f.stake * 2))}` : 'No money, just the grudge';
+  // the stakes follow the line: theirs is what they named, yours (`risk`) what the odds ask of you
+  const risk = f.risk ?? f.stake, terms = f.stake > 0 ? `Their $${fmt(f.stake)} against your $${fmt(risk)}, winner takes $${fmt(cents(f.stake + risk))}` : 'No money, just the grudge';
   return {
     text: `${f.from}'s bug ${f.bug} has called out your ${f.yours}${f.stake > 0 ? ` for $${fmt(f.stake)}` : ''}. Accept or decline within a day: ${url}`,
     blocks: [
