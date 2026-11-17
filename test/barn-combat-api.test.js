@@ -121,11 +121,11 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   const pen = f.hatch(owner.id);
   pen.xp = xpFor(4) - 10;
   f.hatch(other.id, 10); barn.save();
-  const opened = await post(owner, 100.25);
+  const opened = await post(owner, 100);
   assert.equal(opened.status, 200, JSON.stringify(opened.body));
   const listing = opened.body.openBout;
-  assert.equal(listing.stake, 100.25); assert.equal(listing.fighter.level, 3);
-  assert.equal(balance(f, owner), 899.75); assert.equal(balance(f, other), 1000);
+  assert.equal(listing.stake, 100); assert.equal(listing.fighter.level, 3);
+  assert.equal(balance(f, owner), 900); assert.equal(balance(f, other), 1000);
   assert.equal(opened.body.pen.xp, xpFor(4) - 10); assert.equal(recordCount(opened.body.pen), 0);
   const available = (await other.api('GET', '/api/barn')).body;
   assert.equal(available.bouts.length, 1); assert.equal(available.bouts[0].id, listing.id);
@@ -151,7 +151,7 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + earned(joined.body.pen));
   // a level 10 against a level 3 is as lopsided as the line goes: the favourite puts up nine times the stake for a sliver of bonus XP
   assert.deepEqual([hostResult.line, guestResult.line], [0.1, 0.9]);
-  assert.deepEqual([hostResult.stake, guestResult.stake, guestResult.against], [100.25, riskFor(100.25, 0.1), 100.25]);
+  assert.deepEqual([hostResult.stake, guestResult.stake, guestResult.against], [100, riskFor(100, 0.1), 100]);
   assert.equal(guestResult.xpEarned, BOUT_XP + 2);
   assert.equal(joined.body.pen.xpNext, null);
   for (const [player, result] of [[owner, host], [other, joined.body]]) {
@@ -188,13 +188,13 @@ test('open bouts require authentication, valid stakes, a hatched living bug and 
   barn.doc.pens[owner.id].xp = xpFor(3); barn.save();
   f.hatch(other.id, 3);
   const playersBefore = structuredClone(f.service.store.players), pensBefore = structuredClone(barn.doc.pens);
-  for (const body of [{}, [], { stake: null }, { stake: true }, { stake: '10' }, { stake: -1 }, { stake: 0.001 },
+  for (const body of [{}, [], { stake: null }, { stake: true }, { stake: '10' }, { stake: -1 }, { stake: 0.001 }, { stake: 5 }, { stake: 25 }, { stake: 10.5 },
     { stake: 10000.01 }, { stake: 1e100 }, { stake: 1, playerId: other.id }, { stake: 1, winner: owner.id }]) {
     const result = await owner.api('POST', '/api/barn/bouts', body);
     assert.equal(result.status, 400, JSON.stringify(body));
     assert.deepEqual(f.service.store.players, playersBefore); assert.deepEqual(barn.doc.pens, pensBefore);
   }
-  assert.equal((await post(owner, 1001)).status, 402);
+  assert.equal((await post(owner, 1010)).status, 402);
   const opened = await post(owner, 1000);
   assert.equal(opened.status, 200); assert.equal(balance(f, owner), 0);
   const retry = await post(owner, 1000);
@@ -217,11 +217,11 @@ test('open bouts require authentication, valid stakes, a hatched living bug and 
 test('posting freezes the advertised setup; cancellation and expiry refund without XP or cooldown', async t => {
   const f = await fixture(t); const { owner, other, barn, clock } = f;
   f.hatch(owner.id, 6); f.hatch(other.id, 6);
-  const opened = await post(owner, 10.01); const id = opened.body.openBout.id;
+  const opened = await post(owner, 10); const id = opened.body.openBout.id;
   const beforeXp = opened.body.pen.xp;
   assert.equal((await owner.api('PATCH', '/api/barn/battle', { stance: 'aggressive' })).status, 409);
   assert.ok([403, 404].includes((await cancel(other, id)).status));
-  const ownSecond = await post(other, 5); assert.equal(ownSecond.status, 200);
+  const ownSecond = await post(other, 10); assert.equal(ownSecond.status, 200);
   assert.equal((await join(other, id)).status, 409, 'a player cannot keep a listing and join another bout');
   await cancel(other, ownSecond.body.openBout.id);
   barn.doc.pens[owner.id].xp = xpFor(10); barn.save();
@@ -231,7 +231,7 @@ test('posting freezes the advertised setup; cancellation and expiry refund witho
   assert.equal(cancelled.status, 200); assert.equal(balance(f, owner), 1000);
   assert.equal(cancelled.body.openBout, null);
   assert.equal(recordCount(cancelled.body.pen), 0); assert.equal(cancelled.body.pen.xp, xpFor(10));
-  const reposted = await post(owner, 25); assert.equal(reposted.status, 200);
+  const reposted = await post(owner, 30); assert.equal(reposted.status, 200);
   const expiry = reposted.body.openBout.expiresAt;
   assert.equal(expiry - clock.now, 60 * 60e3);
   await f.restart();
@@ -266,8 +266,8 @@ test('a dead or replaced host invalidates its listing and refunds the stake once
   const living = structuredClone(f.hatch(owner.id, 6)); f.hatch(other.id, 6);
   for (const invalidation of ['dead', 'replaced']) {
     barn.doc.pens[owner.id] = structuredClone(living); barn.save();
-    const opened = await post(owner, 123.45);
-    assert.equal(opened.status, 200); assert.equal(balance(f, owner), 876.55);
+    const opened = await post(owner, 120);
+    assert.equal(opened.status, 200); assert.equal(balance(f, owner), 880);
     if (invalidation === 'dead') barn.doc.pens[owner.id].stage = 'dead';
     else barn.doc.pens[owner.id].bornAt++;
     barn.save();
@@ -317,7 +317,7 @@ test('wins, losses and draws award both players; a draw returns both stakes', as
       pen.stats = Object.fromEntries(['hunger', 'mood', 'clean'].map(stat => [stat, { v: 0, at: clock.now }]));
     }
     barn.save(); const balances = [balance(f, owner), balance(f, other)];
-    const opened = await post(owner, 1); assert.equal(opened.status, 200, JSON.stringify(opened.body));
+    const opened = await post(owner, 10); assert.equal(opened.status, 200, JSON.stringify(opened.body));
     const accepted = await join(other, opened.body.openBout.id);
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
     const result = accepted.body.pen.lastBout.result; outcomes.add(result);
@@ -486,7 +486,7 @@ test('a challenge holds no money, needs a living bug on both sides and can be wi
   const f = await fixture(t); const { anon, owner, other, barn, hatch, login, clock } = f;
   assert.equal((await anon('POST', '/api/barn/challenges', { to: other.id, stake: 0 })).status, 401);
   hatch(owner.id, 6); hatch(other.id, 2);
-  for (const body of [[], {}, { to: other.id }, { to: 5, stake: 0 }, { to: other.id, stake: -1 }, { to: other.id, stake: 0.001 }, { to: other.id, stake: 10001 }, { to: other.id, stake: 0, extra: 1 }]) {
+  for (const body of [[], {}, { to: other.id }, { to: 5, stake: 0 }, { to: other.id, stake: -1 }, { to: other.id, stake: 0.001 }, { to: other.id, stake: 25 }, { to: other.id, stake: 10001 }, { to: other.id, stake: 0, extra: 1 }]) {
     assert.equal((await owner.api('POST', '/api/barn/challenges', body)).status, 400, JSON.stringify(body));
   }
   assert.equal((await challenge(owner, owner.id)).status, 409);
