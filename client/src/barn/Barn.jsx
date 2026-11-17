@@ -144,7 +144,9 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   // Any of your hatched bugs can fight: the partner unless you choose another, or the first one standing.
   const fighters = (b.stable?.bugs || []).filter((bug) => bug.stage === 'creature'), [withId, setWithId] = useState(null);
   const mine = fighters.find((bug) => bug.id === withId) || fighters.find((bug) => !bug.fainted) || fighters[0] || null;
-  const [calling, setCalling] = useState(null), [callStake, setCallStake] = useState('0');
+  // A stake box opens on $100 (or the most this owner can cover) and moves in tens. Until its owner types, it shows that.
+  const step = b.stakeStep || 10, opening = String(Math.max(0, Math.min(100, Math.floor(Math.min(b.maxStake, b.bankroll ?? 0) / step) * step)));
+  const [calling, setCalling] = useState(null), [typedCall, setCallStake] = useState(null), callStake = typedCall ?? opening, posting = stake ?? opening;
   const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
   const others = roster.filter((bug) => bug.ownerId !== meId);
   const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
@@ -180,7 +182,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         </div>
         {out ? <div className="barn-row"><span className="small">Called out{out.stake ? stakeLabel(out.stake) : ''} · {left(out.expiresAt - now)} left</span><button className="btn ghost" onClick={() => drop(out.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
           : calling === key ? <form className="barn-post" onSubmit={(event) => { event.preventDefault(); call(bug.ownerId, bug.id, Number(callStake), mine?.id); setCalling(null); }}>
-            <label htmlFor="call-stake">Your stake<input id="call-stake" data-test="challenge-stake" type="number" inputMode="decimal" min="0" max={Math.min(b.maxStake, b.bankroll)} step="0.01" required autoFocus value={callStake} onChange={(event) => setCallStake(event.target.value)} /></label>
+            <label htmlFor="call-stake">Your stake<input id="call-stake" data-test="challenge-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required autoFocus value={callStake} onChange={(event) => setCallStake(event.target.value)} /></label>
             <button className="btn" type="submit" disabled={busy || callStake === ''} data-test="challenge-send">Send{stakeLabel(callStake)}</button>
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
             {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">By the line, {bug.owner} puts up {money(riskFor(Number(callStake), bug.line[mine.id]))} against it.</p>}
@@ -195,9 +197,9 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         {setup(openBout.fighter)}
         <p className="small muted">Your setup is saved for this bout. Cancel to change it.</p>
         <button className="btn ghost" onClick={() => cancel(openBout.id)} disabled={busy} data-test="bout-cancel">Cancel{openBout.stake > 0 ? ` & reclaim ${money(openBout.stake)}` : ' bout'}</button>
-      </div> : grown && <form className="barn-post" onSubmit={(event) => { event.preventDefault(); if (!locked) post(mine?.id); }}>
-        <label htmlFor="bout-stake">Your stake<input id="bout-stake" data-test="bout-stake" type="number" inputMode="decimal" min="0" max={Math.min(b.maxStake, b.bankroll)} step="0.01" required value={stake} onChange={(event) => setStake(event.target.value)} disabled={locked} /></label>
-        <button className="btn" type="submit" disabled={locked || stake === ''} data-test="bout-post">Post bout{stakeLabel(stake)}</button>
+      </div> : grown && <form className="barn-post" onSubmit={(event) => { event.preventDefault(); if (!locked) post(mine?.id, Number(posting)); }}>
+        <label htmlFor="bout-stake">Your stake<input id="bout-stake" data-test="bout-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required value={posting} onChange={(event) => setStake(event.target.value)} disabled={locked} /></label>
+        <button className="btn" type="submit" disabled={locked || posting === ''} data-test="bout-post">Post bout{stakeLabel(posting)}</button>
         <p className="small muted">Your stake is held for whoever joins first. Theirs follows the line, so a favourite puts up more. Refunded if you cancel, or after an hour.</p>
       </form>}
       {listings.length ? <ul className="barn-open-bouts">{listings.map((entry) => { const t = mine && entry.terms?.[mine.id], risk = t ? t.risk : entry.stake; return <li key={entry.id} data-test="bout-listing">
@@ -238,7 +240,7 @@ function BarnHome({ me }) {
   const seenBout = useRef(undefined);
   const wallet = useRef(undefined);
   const loading = useRef(false);
-  const [stake, setStake] = useState('0');
+  const [stake, setStake] = useState(null); // null until its owner types: the ring shows its opening stake
   const [battleDraft, setBattleDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
@@ -349,7 +351,7 @@ function BarnHome({ me }) {
           </div>
         </header>
         {ring && <Ring b={b} meId={me.id} now={now} busy={busy} unsaved={!!battleDraft} stake={stake} setStake={setStake}
-          post={(bug) => wager('POST', '/barn/bouts', { stake: Number(stake), bug })}
+          post={(bug, amount) => wager('POST', '/barn/bouts', { stake: amount, bug })}
           join={(id, bug, risk) => wager('POST', `/barn/bouts/${id}/join`, { bug, risk })}
           cancel={(id) => act(async () => { take(await api('DELETE', `/barn/bouts/${id}`)); await refreshSession(); setMsg('Bout cancelled. Your stake is back.'); })}
           call={(to, their, amount, bug) => act(async () => { take(await api('POST', '/barn/challenges', { to, their, stake: amount, bug })); setMsg('Challenge sent. It stands for a day.'); })}

@@ -115,6 +115,7 @@ test('the line: a mirror match is even, the two corners sum to one, level and he
   assert.equal(line(bug(3, 10), bug(3, 1)), 0.9, 'never a certainty');
   // fair odds: at 80% the favourite's $40 meets $10, and the other way round
   assert.deepEqual([riskFor(40, 0.8), riskFor(10, 0.2), riskFor(25, 0.5), riskFor(0, 0.8)], [10, 40, 25, 0]);
+  assert.deepEqual([riskFor(100, 0.9), riskFor(20, 0.9), riskFor(10, 0.9), riskFor(100, 0.55)], [11, 2, 1, 82], 'to the whole dollar, and never nothing against a real stake');
   assert.deepEqual([upsetXp(10, 0.5), upsetXp(10, 0.9), upsetXp(10, 0.1), upsetXp(10)], [10, 2, 18, 10]);
 });
 

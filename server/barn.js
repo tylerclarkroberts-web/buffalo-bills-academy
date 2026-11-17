@@ -47,6 +47,7 @@ export const BOUT_WIN_XP = 10; // on top, for the winner of an even fight; an un
 export const FIND_XP = 2;      // each acid pool a guide bug leads its miner to. ponytail: uncapped (pool travel time is the brake); cap it if someone farms shifts
 export const BOUT_OPEN_MS = 60 * 60e3;
 export const MAX_BOUT_STAKE = 10000;
+export const BOUT_STAKE_STEP = 10; // a named stake is $0, $10, $20…: never cents
 // v75 mine battles: both bugs that fight to the end earn BATTLE_XP; the winner gets WIN_BONUS_XP on top. The two-hour
 // pair cooldown in pvp.js is the brake. A loser (mine battle or, since v76, barn bout) faints: pen.faintedAt is set and it can't
 // battle, guide or take a barn bout until the nurse at the Bug Center heals it.
@@ -459,7 +460,7 @@ export class Barn {
       return [{ ...shown, hostName: p.name, ...(host ? { terms: Object.fromEntries(corner.map(([id, mine]) => { const q = line(host, mine); return [id, { win: (100 - Math.round(q * 100)) / 100, risk: riskFor(open.stake, q) }]; })) } : {}) }];
     }).sort((a, b) => a.openedAt - b.openedAt);
     return { bouts, openBout: bouts.find(bout => bout.hostId === playerId) || null,
-      bankroll: player?.bankroll ?? null, maxStake: MAX_BOUT_STAKE };
+      bankroll: player?.bankroll ?? null, maxStake: MAX_BOUT_STAKE, stakeStep: BOUT_STAKE_STEP };
   }
 
   /** The wallet receipt commits with the payout; the pet catches up once even after a restart. */
@@ -513,8 +514,8 @@ export class Barn {
   /** Call out another player's bug. Nothing is held: both stakes are checked and taken only if the owner accepts. */
   challenge(playerId, body) {
     if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['to', 'stake', 'bug', 'their'].includes(key)) || typeof body.to !== 'string' || !idOk(body.bug) || !idOk(body.their)
-      || typeof body.stake !== 'number' || !Number.isFinite(body.stake) || body.stake < 0 || body.stake > MAX_BOUT_STAKE || cents(body.stake) !== body.stake) {
-      throw new GameError(`Name a bug's owner and a stake from $0 to $${MAX_BOUT_STAKE}, in whole cents.`, 400);
+      || typeof body.stake !== 'number' || !Number.isFinite(body.stake) || body.stake < 0 || body.stake > MAX_BOUT_STAKE || body.stake % BOUT_STAKE_STEP !== 0) {
+      throw new GameError(`Name a bug's owner and a stake from $0 to $${MAX_BOUT_STAKE}, in steps of $${BOUT_STAKE_STEP}.`, 400);
     }
     this.expireBouts();
     const player = this.accounts.ensure(this.store.players[playerId]), target = this.store.players[body.to];
@@ -653,8 +654,8 @@ export class Barn {
 
   openBout(playerId, body) {
     if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'stake' && key !== 'bug') || !idOk(body.bug)
-      || typeof body.stake !== 'number' || !Number.isFinite(body.stake) || body.stake < 0 || body.stake > MAX_BOUT_STAKE || cents(body.stake) !== body.stake) {
-      throw new GameError(`Choose a stake from $0 to $${MAX_BOUT_STAKE}, in whole cents.`, 400);
+      || typeof body.stake !== 'number' || !Number.isFinite(body.stake) || body.stake < 0 || body.stake > MAX_BOUT_STAKE || body.stake % BOUT_STAKE_STEP !== 0) {
+      throw new GameError(`Choose a stake from $0 to $${MAX_BOUT_STAKE}, in steps of $${BOUT_STAKE_STEP}.`, 400);
     }
     this.expireBouts();
     const player = this.accounts.ensure(this.store.players[playerId]);
