@@ -15,6 +15,7 @@ import { NextTablePill } from '../turns/TurnsPill.jsx';
 import '../bj/bj.css';
 import './scum.css';
 import { canDealNow, canStartDeal } from './setup.js';
+import { RoyalPicker, RoyalPlay, RoyalRewatch, seatRoyalClass } from './Royal.jsx';
 
 const RK = '23456789TJQKA';
 const rk = (c) => RK.indexOf(c[0]) + 2;
@@ -51,6 +52,7 @@ const RULES = [
   'First out is King, then Queen. Second to last is Baby Scum, last is Scum. (3 players: King, Commoner, Scum.)',
   'Next round Scum gives the King their 2 best cards, Baby Scum gives the Queen their best. Both may beg. The King gives back any 2, the Queen any 1.',
   'The King leads; Scum goes last. Round 1: whoever has the 2♣ leads.',
+  'Each round the King may issue one Royal command: the Scum’s avatar acts it out at the table. Purely cosmetic. Anyone who missed it gets a replay the next time they open the table, once, and can skip or rewatch it.',
   'Miss your turn and your bug plays for you. It always plays your highest card (or passes if nothing beats the pile).',
 ];
 /** Title pay is on your real bankroll; listed only while the payouts flag is on. */
@@ -227,12 +229,21 @@ function ScumTable({ code, me }) {
   const [bugNote, setBugNote] = useState(null);
   const [muted, setMute] = useState(isMuted());
   const [copied, setCopied] = useState(false);
+  const [royalPlay, setRoyalPlay] = useState(null); // { ev, ack: bool } ack=false means rewatch, do not mark seen
+  const [royalStep, setRoyalStep] = useState('pick');
+  const royalSeen = useRef(new Set());
   const [, tick] = useState(0);
   const reduced = useMedia('(prefers-reduced-motion: reduce)');
   const [arena, { w, h }] = useBox();
   const [handBox, hs] = useBox();
   const tiny = useMedia('(max-width: 520px)');
   const pb = usePlayback(v, code);
+  useEffect(() => {
+    const pend = v?.royal?.pending;
+    if (!pend || royalPlay || pb.pending) return;
+    if (royalSeen.current.has(pend.id)) return;
+    setRoyalPlay({ ev: pend, ack: true });
+  }, [v?.royal?.pending?.id, royalPlay, pb.pending]);
   const seatEls = useRef({});
   const pileRef = useRef(null);
   const handEls = useRef({});
@@ -313,13 +324,28 @@ function ScumTable({ code, me }) {
   const turnAdvance = useTurnAdvance({
     currentPath: `/scum/${String(code).toUpperCase()}`,
     hasAction,
-    blocked: !!pb.pending || !!blast || !!crown || !!fly,
+    blocked: !!pb.pending || !!blast || !!crown || !!fly || !!royalPlay,
     enabled: true,
   });
   if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/scum')}>Back to scum</button>}</div></div>;
   const post = async (path, body) => {
     setBusy(true); setActErr('');
     try { const nv = await api('POST', `/scum/tables/${code}/${path}`, body); if (nv?.closed) { navigate('/scum'); return null; } setV(nv); refreshTurns(); return nv; } catch (e) { setActErr(e.message || 'Something went wrong. Try again.'); return null; } finally { setBusy(false); }
+  };
+  const issueRoyal = async (cmd, targetSeat) => {
+    const nv = await post('royal', { cmd, ...(targetSeat != null ? { targetSeat } : {}) });
+    if (!nv) return;
+    setRoyalStep('pick');
+    const ev = nv.royal?.history?.at?.(-1) || (nv.royal?.history || []).slice(-1)[0];
+    if (ev) { royalSeen.current.add(ev.id); setRoyalPlay({ ev, ack: false }); }
+  };
+  const endRoyal = async () => {
+    const cur = royalPlay;
+    setRoyalPlay(null);
+    if (cur?.ack && cur.ev?.id) {
+      royalSeen.current.add(cur.ev.id);
+      try { const nv = await api('POST', `/scum/tables/${code}/royal/seen`, { id: cur.ev.id }); if (nv && !nv.closed) setV(nv); } catch { /* will retry next visit */ }
+    }
   };
   const mine = v.mySeat >= 0 ? v.seats[v.mySeat] : null;
   const tall = w && h ? w / h < 1.2 : false;
@@ -382,6 +408,7 @@ function ScumTable({ code, me }) {
           <div className="bj-head-r">
             <button className="btn ghost small" onClick={invite} data-test="scum-invite" title="Copy the invite link" aria-label="Copy the invite link">{copied ? 'Copied!' : tiny ? '🔗' : 'Invite'}</button>
             <button className="btn ghost small" onClick={() => setShow(show === 'log' ? null : 'log')} data-test="scum-log-btn" aria-label="Table log">{tiny ? '☰' : 'Log'}</button>
+            <RoyalRewatch history={v.royal?.history} onRewatch={(ev) => setRoyalPlay({ ev, ack: false })} />
             <button className="btn ghost small" onClick={() => setShow(show === 'rules' ? null : 'rules')} data-test="scum-rules" aria-label="Rules">{tiny ? '?' : 'Rules'}</button>
             <button className="btn ghost small" aria-pressed={muted} onClick={() => { setMuted(!muted); setMute(!muted); }} title="Sound">{muted ? '🔇' : '♪'}</button>
             {v.isHost ? <button className="btn ghost small" onClick={() => post('close')} data-test="scum-close">Close</button>
@@ -409,7 +436,7 @@ function ScumTable({ code, me }) {
             {disp.map((i) => {
               const s = v.seats[i]; const p = pos[i]; const isTurn = i === turnSeat;
               return (
-                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
                   {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${s.name}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
@@ -429,6 +456,8 @@ function ScumTable({ code, me }) {
               );
             })}
             {fly && <FlyBatch key={fly.seq} cards={fly.cards} seat={fly.seat} seatEl={seatEls.current[fly.seat]} pileEl={pileRef.current} handRects={handRect.current} mine={fly.seat === v.mySeat} reduced={reduced} onDone={endFly} />}
+            {!royalPlay && !pb.pending && <RoyalPicker royal={v.royal} onCommand={issueRoyal} busy={busy} step={royalStep} setStep={setRoyalStep} />}
+            {royalPlay && <RoyalPlay key={royalPlay.ev.id} ev={royalPlay.ev} pos={pos} onSkip={endRoyal} onDone={endRoyal} reduced={reduced} />}
           </>}
         </div>
 

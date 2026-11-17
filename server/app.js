@@ -437,6 +437,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     play: (p, c, b) => scum.play(p, c, b.cards), pass: (p, c) => scum.pass(p, c), tribute: (p, c, b) => scum.tribute(p, c, b.beg), give: (p, c, b) => scum.give(p, c, b.cards) })) {
     api.post(`/scum/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
+  api.post('/scum/tables/:code/royal', needPlayer, wrap((req) => scum.command(req.player, req.params.code, req.body || {})));
+  api.post('/scum/tables/:code/royal/seen', needPlayer, wrap((req) => scum.seenRoyal(req.player, req.params.code, req.body || {})));
   api.get('/slots', needPlayer, wrap((req) => slots.view(req.player)));
   api.post('/slots/spin', needPlayer, wrap((req) => slots.spin(req.player, req.body?.bet)));
   api.post('/slots/end', needPlayer, wrap((req) => slots.end(req.player)));
