@@ -31,7 +31,7 @@ export function startBout(a, b, seed) {
       attacks: 0, streak: 0, kick: false, blind: false, skip: false, damaged: false, mask: true, still: true, popped: false, regen: 0 };
   });
   for (const s of side) if (s.t === 'bocydium') { const k = ['atk', 'def', 'spd'][Math.floor(R() * 3)]; s.st = { ...s.st, [k]: s.st[k] + 1 }; s.globes = k; }
-  // v76: a hurt bug starts where the last fight left it (c.health, percent of max; absent = full). Never below 1.
+  // Fighter snapshots can specify a starting health percentage; otherwise they enter at full HP.
   const maxHp = side.map(s => Math.round(s.stats.maxHp * (s.t === 'heteropteryx' ? 1 + TRAIT.heavy : 1)));
   const hp = side.map((s, i) => { const h = Number(s.c.health); return Number.isFinite(h) && h < 100 ? Math.max(1, Math.ceil((maxHp[i] * Math.max(0, h)) / 100)) : maxHp[i]; });
   let by = R() < 0.5 + (side[0].st.spd - side[1].st.spd) * 0.03 ? 0 : 1;

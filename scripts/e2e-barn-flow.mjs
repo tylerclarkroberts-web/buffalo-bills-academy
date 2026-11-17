@@ -1,6 +1,6 @@
 // The whole Barn as people use it, with motion on: an egg's countdown, feeding/playing/misting a bug (the
 // cooldown shows on the button), a challenge sent on desktop and accepted on a phone, the live turn-based fight
-// with a lined-up move, the payout, the loser at the nurse, and the announcer clips. Fails on any page error.
+// with a lined-up move, the payout, any knockout at the nurse, and the announcer clips. Fails on any page error.
 //   npm run build && PLAYWRIGHT_DIR=... OUT=dir node scripts/e2e-barn-flow.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -95,9 +95,9 @@ try {
   await shot(hp, '08-fight-done-desktop');
   check(gp.clips.length > 0 && gp.clips.every((s) => s === 200 || s === 206), `announcer clips load (${gp.clips.join(',')})`);
   check(!gp.errs.length && !hp.errs.length, `no page errors in the fight (${[...gp.errs, ...hp.errs].join(' | ') || 'none'})`);
-  // 4. The loser goes to the nurse.
+  // 4. Only a knockout needs the nurse.
   const [loser, lp] = result === 'won' ? [A, hp] : [Bb, gp];
-  if (result !== 'draw') {
+  if ((await loser.get('/barn')).pen.fainted) {
     await lp.click('[data-test=bout-close]').catch(() => null); await wait(500);
     await lp.goto(B + '/barn/center'); await lp.waitForSelector('[data-test=bc-talk]');
     await lp.click('[data-test=bc-talk]'); await lp.waitForSelector('[data-test=bc-portrait]');

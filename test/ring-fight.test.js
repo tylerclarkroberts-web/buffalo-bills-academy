@@ -160,12 +160,13 @@ test('a packed lunch goes into the ring with the bug, is eaten there, and is gon
   const f = await fixture(t), { host, guest, hatch, clock } = f;
   hatch(host.id, 3); hatch(guest.id, 3);
   const id = (await host.api('POST', '/api/barn/bouts', { stake: 20 })).body.openBout.id;
-  // packed after the bout was posted, by a bug already below half: it eats as soon as the fight starts
-  Object.assign(f.barn.doc.pens[host.id], { lunch: { name: 'Bug Banquet', heal: 10 }, health: 45 }); f.barn.save();
+  f.barn.doc.pens[host.id].lunch = { name: 'Bug Banquet', heal: 10 }; f.barn.save();
   assert.deepEqual((await host.api('GET', '/api/barn')).body.pen.lunch, { name: 'Bug Banquet', heal: 10 });
   // the board's line already counts the lunch, so the stake it shows is the stake the join asks for
   const { risk } = Object.values((await guest.api('GET', '/api/barn')).body.bouts[0].terms)[0];
   assert.equal((await guest.api('POST', `/api/barn/bouts/${id}/join`, { risk })).status, 200);
+  const { S } = f.barn.fights.get(id);
+  S.hp[0] = Math.floor(S.maxHp[0] * 0.45);
   clock.now += 10_000; f.barn.fights.sweep();
   const mine = (await host.api('GET', '/api/barn')).body.pen, meals = mine.lastBout.rounds.filter(r => r.type === 'snack');
   assert.equal(meals.length, 1); assert.equal(meals[0].by, 0); assert.equal(meals[0].healed, 10);

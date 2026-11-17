@@ -1,7 +1,7 @@
 // v75: the Bug Center, an option inside the Barn (/barn/center). A clinic in the spirit of the handheld classics:
 // a reception counter with the nurse behind it, the healing machine, a tiled floor, waiting benches and a PC in the
 // corner. Original pixel art (SVG rects), every sign and line in Japanese (訳 shows the English). Talking to Nurse
-// Hikari heals a fainted bug to full, free, while its pod lights up the machine to a little WebAudio jingle.
+// Hikari heals a fainted bug to full while its pod lights up the machine to a little WebAudio jingle.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { navigate } from '../App.jsx';
@@ -137,9 +137,8 @@ export default function BugCenter() {
     };
     on(); const ro = new ResizeObserver(on); ro.observe(el); return () => ro.disconnect();
   }, [b !== null]);
-  // The patient: whichever of your bugs most needs the nurse (fainted first, then hurt), otherwise your partner.
   const bugs = b?.stable?.bugs || [];
-  const pen = bugs.find((bug) => bug.fainted) || bugs.find((bug) => bug.hurt) || b?.pen || null;
+  const pen = bugs.find((bug) => bug.fainted) || b?.pen || null;
   const line = talk ? talk.lines[talk.i] : null;
   const [typed, full, finish] = useTyped(line?.ja || '');
   const start = () => { if (!talk) setTalk({ lines: greeting(pen), i: 0, mode: 'talk' }); };
@@ -174,7 +173,6 @@ export default function BugCenter() {
         <div className="bc-scene" style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
           {pen?.stage === 'creature' && pen.fainted && !talk && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} fainted`} /> <span>{pen.name}：<b>ひんし</b></span>{en && <small lang="en">fainted</small>}</div>}
-          {pen?.stage === 'creature' && !pen.fainted && pen.hurt && !talk && <div className="bc-status" data-test="bc-status"><span>{pen.name}：<b className="num">HP {pen.hp}/{pen.maxHp}</b></span>{en && <small lang="en">hurt</small>}</div>}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
             <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>

@@ -89,7 +89,7 @@ export function TableBugSprite({ bug, massaging = false, reduced = false, size =
       className={`tb-bug ${bug.fainted ? 'is-fainted' : massaging ? 'is-massage' : 'is-idle'} ${reduced ? 'still' : ''}`}
       data-test={bug.fainted ? 'table-bug-fainted' : massaging ? 'table-bug-massage' : 'table-bug'}
       style={{ '--tb-size': `${size}px` }}
-      title={bug.fainted ? `${label} fainted in the mines. The Bug Center in the Barn heals it.` : `${label} is hanging out`}
+      title={bug.fainted ? `${label} fainted. The Bug Center in the Barn heals it.` : `${label} is hanging out`}
       aria-hidden="true"
     >
       {url ? <img src={url} alt="" draggable="false" className="tb-sprite" /> : <span className="tb-sprite tb-ph" />}

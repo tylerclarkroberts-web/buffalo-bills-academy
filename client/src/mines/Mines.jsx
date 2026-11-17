@@ -356,7 +356,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>Follow the clicks. Closer is faster; facing the right tunnel gives them a little boost.</li>
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
             <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
-            <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow. A bug that loses a battle faints and stays home until the <b>Bug Center</b> in the Barn heals it.</li>
+            <li>A hatched barn bug knows the tunnels and leads you to the glow. If it gets knocked out, take it to the <b>Bug Center</b> in the Barn. Otherwise it recovers all HP after the fight.</li>
             <li><b>One mine a day, shared.</b> Everyone on shift walks the same tunnels. Sneak up behind someone to <b>assassinate</b> them for their acid and $20–$100. Meet face to face and your <b>bugs battle</b> — the winner also takes the loser's smokes.</li>
           </ol>
           <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
@@ -447,7 +447,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   }
   const release = () => { hold(false); client.current?.stop().catch(() => {}); };
   const [elapsed, setElapsed] = useState(0);
-  // v75: a bug that lost a mine battle stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone)
+  // A fainted bug stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone).
   const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
   const [status, setStatus] = useState('FIND THE ACID POOL');
   const done = useRef(false);
@@ -578,7 +578,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (m.over && m.wild) { wildRef.current = null; sceneRef.current?.removeWild(); } // fought, jarred or run from: it is not there any more
     if (m.over) Object.assign(m, { xpEarned: m.over.bug?.xp, levelBefore: m.over.bug?.levelBefore, levelAfter: m.over.bug?.levelAfter,
       ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: m.wild ? 'Time. It wanders off unbeaten.' : 'No contest. Nobody gets robbed.' } : {}),
-      ...(m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
+      ...(m.over.reason === 'decision' ? { verdict: `${m.over.won ? m.you.name : m.them.name} wins on points.` }
+        : m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
         : m.wild && m.over.reason === 'fainted' && m.over.won ? { verdict: `The wild ${m.them.name} slinks off into the dark.` }
         : m.wild && m.over.reason !== 'fainted' && m.over.reason !== 'draw' && m.over.reason !== 'abandoned' ? { verdict: 'You ran. It keeps the tunnel.' } : {}),
       spoils: raid ? [`${sign}$${raid.cash}${raid.cashCapped ? ' (daily loss cap)' : ''}`, `${sign}${Math.floor(m.over.won ? raid.gained || raid.acid : raid.acid)} acid`,
@@ -600,7 +601,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     else if (battleRef.current && !battleRef.current.over) { battleRef.current = null; setBattle(null); } // restart: the battle is gone
     if (v.notice) {
       const n = v.notice;
-      setLine(n.kind === 'ambush' ? `YOU GOT ${n.loser.toUpperCase()} FROM BEHIND. +$${n.cash}, +${Math.floor(n.gained)} ACID.` : `${n.loser.toUpperCase()}'S BUG IS DOWN. +$${n.cash}, +${Math.floor(n.gained)} ACID${n.tobacco?.length ? `, ${n.tobacco.length} SMOKE${n.tobacco.length > 1 ? 'S' : ''}` : ''}.`);
+      setLine(n.kind === 'ambush' ? `YOU GOT ${n.loser.toUpperCase()} FROM BEHIND. +$${n.cash}, +${Math.floor(n.gained)} ACID.` : `YOU BEAT ${n.loser.toUpperCase()}. +$${n.cash}, +${Math.floor(n.gained)} ACID${n.tobacco?.length ? `, ${n.tobacco.length} SMOKE${n.tobacco.length > 1 ? 'S' : ''}` : ''}.`);
       if (v.shift) { if (battleRef.current && (v.shift.result || Object.hasOwn(v.shift, 'pending'))) afterBattle.current = v.shift; else accept(v.shift); }
     }
   };
@@ -1134,7 +1135,7 @@ function Result({ r, onAgain, onLeave, starting, fare }) {
       <p className="m-story">{r.text}</p>
       {r.pvp ? <div className="m-pay lost" data-test="pvp-loss">−${r.pvp.cash.toLocaleString('en-US')}</div> : <div className="m-pay">+${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>}
       {r.pvp && <p className="m-twin" data-test="pvp-receipt">{r.pvp.by.toUpperCase()} TOOK {r.pvp.cash ? `$${r.pvp.cash}` : 'NO CASH (YOU HIT TODAY\'S LOSS CAP)'}{r.pvp.acid ? `, ${Math.floor(r.pvp.acid)} ACID` : ''}{r.pvp.tobacco?.length ? ` AND YOUR ${r.pvp.tobacco.map((t) => t.toUpperCase()).join(', ')}` : ''}. NO PAY FOR THIS SHIFT.</p>}
-      {r.pvp?.fainted && <p className="m-twin" data-test="pvp-fainted">{typeof r.pvp.fainted === 'string' ? r.pvp.fainted.toUpperCase() : 'YOUR BUG'} FAINTED. <button className="m-link" onClick={() => navigate('/barn/center')}>BUG CENTER (FREE) ►</button></p>}
+      {r.pvp?.fainted && <p className="m-twin" data-test="pvp-fainted">{typeof r.pvp.fainted === 'string' ? r.pvp.fainted.toUpperCase() : 'YOUR BUG'} FAINTED. <button className="m-link" onClick={() => navigate('/barn/center')}>BUG CENTER ►</button></p>}
       {r.twin && <p className="m-twin" data-test="twin">THE OTHER FAUN WAS WAITING AT THE ELEVATOR. HE TOOK ${r.twin.took.toLocaleString('en-US', { maximumFractionDigits: 2 })} AND SAID THANK YOU.</p>}
       {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>

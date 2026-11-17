@@ -150,8 +150,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const landed = beat ? pos.phase === 'land' : pos.i >= plan.beats.length;
   const shown = beat ? (landed ? beat.r : bout.rounds[pos.i - 1]) : landed ? bout.rounds[bout.rounds.length - 1] : null;
   const hp = shown ? shown.hp : bout.startHp || maxHp;
-  // v76: your bug keeps its damage; only the Bug Center heals it. Barn bouts only, not replays or the rafters.
-  const hurt = !replay && Number.isFinite(bout.healthAfter) && bout.healthAfter < 100;
+  const fainted = !replay && (bout.healthAfter === 0 || bout.over?.bug?.fainted);
   const status = beat ? (landed ? beat.after : beat.before) : pos.phase === 'wait' && plan.beats.length ? plan.beats[plan.beats.length - 1].after : null;
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
@@ -191,9 +190,10 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
         {bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}
         {bout.spoils?.length > 0 && <p className="bout-payment" data-test="bout-spoils">{bout.spoils.join(' · ')}</p>}
         {bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}
+        {!replay && !fainted && hp[0] > 0 && hp[0] < maxHp[0] && <p className="small muted">{bout.you.name} is back to full HP.</p>}
         {bout.pot > 0 && <p className="bout-payment">{money(bout.pot)} pot</p>}
         {replay && <p className="small muted">{bout.you.owner ? 'Seen from the rafters. No XP, no money.' : 'Replay only. No extra XP or money.'}</p>}
-      </> : quit ? (bout.wild ? 'Run, and it keeps the tunnel. Your bug keeps its scrapes.' : 'There is no running from a bug fight. Giving up counts as a loss.') : line}</div>
+      </> : quit ? (bout.wild ? 'Run, and it keeps the tunnel.' : 'There is no running from a bug fight. Giving up counts as a loss.') : line}</div>
       {live && bout.moves && !quit && <Moves bout={bout} onLine={onLine} />}
       <div className="bout-acts">
         {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Fight sounds" title="Fight sounds">{sound ? '🔊' : '🔈'}</button>}
@@ -202,8 +202,8 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
         {live && bout.jar && onJar && !quit && <Jar jar={bout.jar} onJar={onJar} />}
         {live && onForfeit && !quit && <button className="btn ghost small" onClick={() => setQuit(true)} data-test="bout-run">Run</button>}
         {live && quit && <><button className="btn small" onClick={() => setQuit(false)}>Fight on</button><button className="btn ghost small" onClick={() => { setQuit(false); onForfeit(); }} data-test="bout-forfeit">Give up</button></>}
-        {done && hurt && <button className="btn small bout-center" onClick={() => { onClose(); navigate('/barn/center'); }} data-test="bout-hurt">{bout.healthAfter <= 0 ? `${bout.you.name} fainted` : 'Your bug is hurt'} — visit the Bug Center →</button>}
-        {done && <button ref={closeButton} className={`btn small${hurt ? ' ghost' : ''}`} onClick={onClose} data-test="bout-close">{hurt ? 'Later' : closeLabel}</button>}
+        {done && fainted && <button className="btn small bout-center" onClick={() => { onClose(); navigate('/barn/center'); }} data-test="bout-fainted">{bout.you.name} fainted — visit the Bug Center →</button>}
+        {done && <button ref={closeButton} className={`btn small${fainted ? ' ghost' : ''}`} onClick={onClose} data-test="bout-close">{fainted ? 'Later' : closeLabel}</button>}
       </div>
     </dialog>
   );
