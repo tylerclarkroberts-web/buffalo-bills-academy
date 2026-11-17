@@ -6,6 +6,7 @@ import { shiftMaze, tierInfo } from './engine/mine-tiers.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
+import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -189,7 +190,12 @@ export class Mines {
     this.busy = () => false; // set by the PvP module: no mining while your bug is mid-battle
     this.doc = store.loadDoc('mines', { active: {} });
     this.holds = new Map(); // Never resume a held button after a disconnect or restart.
+    // Horror Night (engine/horror.js): the clock decides. horrorForce (true/false) overrides it; only the dev-login
+    // test route in app.js ever sets it, and that route is never mounted in production.
+    this.horrorForce = null;
   }
+  /** Is it Horror Night right now? Cosmetic only: nothing that pays, times or rolls a shift reads it. */
+  horrorOn(now = this.now()) { return this.horrorForce ?? inHorrorWindow(now); }
   save() { this.store.saveDoc('mines', this.doc); }
   commit(playerId, shift, completed) {
     const next = { ...this.doc, active: { ...this.doc.active } };
@@ -287,6 +293,7 @@ export class Mines {
       readyAt: now + Math.max(MIN_SHIFT_MS, poolTravelMs(chain.legs[0], true)),
       pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, steps: chain.legs[i], roll: this.poolInt(100000), quantity: null, remaining: null,
         ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn ? { cave: true } : {}) })) }); // decided now, sprung on arrival
+    if (this.horrorOn(now)) shift.horror = { lightsOutMs: lightsOutMs(shift.id) }; // stamped at clock-in: the whole shift is one kind of night
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay, vein and visitor never see it
     // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
@@ -318,7 +325,7 @@ export class Mines {
   publicShift(s, resumed, playerId) {
     const guide = playerId != null ? this.guideBug(playerId) : null;
     const bug = guide?.fainted ? null : guide;
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: MIN_SHIFT_MS, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(s.egg && !s.eggTaken ? { egg: true } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, currentPoolId: s.pools[s.index].id, readyAt: s.readyAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000 })) } : {}) };
   }

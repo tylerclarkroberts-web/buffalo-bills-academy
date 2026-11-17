@@ -24,6 +24,8 @@ import TiltControls from './TiltControls.jsx';
 import { paidFarewell } from './paidFarewell.js';
 import { SHAFTS } from '../../../server/catalog/mine.js';
 import { DANCES, DANCE_BY_ID } from '../../../server/engine/dances.js';
+import { Crew, CREW, Flicker, ScareGate } from './horror.js';
+import JumpScare from './JumpScare.jsx';
 import './mines.css';
 
 const LINES = [
@@ -106,6 +108,24 @@ const VISITOR_LINES = [
 const WORM_LINES = ['AN ACID WORM IS ON YOUR GOGGLES. IT IS LOOKING AT YOU.', 'WORM. FACE. KNIFE. IN THAT ORDER.', 'IT IS WARM AND IT IS WIGGLING. CUT IT OFF.', 'THE WORM WOULD LIKE TO BE FRIENDS. CUT IT OFF.'];
 const CUT_LINES = ['SHLICK. TWO WORMS NOW, BOTH LEAVING.', 'CLEAN CUT. THE FOREMAN WOULD BE PROUD. HE WOULD NOT SAY SO.', 'YOU BOWIE\'D IT.', 'WORM REMOVED. GOGGLES STILL STICKY.'];
 const CAVE_LINE = 'THE ROOF CAME DOWN HERE. GO AROUND.';
+// Horror Night (server/engine/horror.js decides when): once the lights go, the ticker changes its tune.
+const HORROR_LINES = [
+  'FOREMAN: "THE LIGHTS ARE A SURFACE THING."',
+  'SOMEONE IS CRYING IN SHAFT 12. NOBODY IS ON SHIFT IN SHAFT 12.',
+  'THE LAST CREW IS STILL ON THE CLOCK. THEY ARE SMILING ABOUT IT.',
+  'THEY ONLY WALK WHEN YOU LOOK AWAY. SO DON\'T.',
+  'POINT THE LAMP AT IT. IT HATES THE LAMP.',
+  'PAYROLL REMINDER: SCREAMING IS UNPAID.',
+  'YOUR HEADLAMP IS DOING ITS BEST. ITS BEST IS NOT GOOD.',
+  'SAFETY NOTICE: IF IT SMILES, DO NOT SMILE BACK. IT WILL TAKE THAT AS A YES.',
+  'THE ACID STILL GLOWS. FOLLOW THE GLOW. ONLY THE GLOW.',
+  'HEADCOUNT: YOU. HEADCOUNT AGAIN: YOU AND FOUR.',
+];
+const LOW_FLASH_KEY = 'bba.mines.lowFlash';
+function readLowFlash() {
+  try { const v = localStorage.getItem(LOW_FLASH_KEY); if (v === '1' || v === '0') return v === '1'; } catch { /* private mode */ }
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
 
 /** The day's tier: picks lit for how rough it is (out of five) and its name. */
 export function TierBadge({ tier }) {
@@ -434,6 +454,20 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const [tiltActive, setTiltActive] = useState(false);
   const tiltActiveRef = useRef(false);
   const keys = useRef(new Set()).current;
+  // Horror Night: the shift was stamped at clock-in (shift.horror). Starts normal; the lights go at lightsOutMs.
+  const horror = shift.horror || null;
+  const [dark, setDark] = useState(false);
+  const darkRef = useRef(false);
+  const [banner, setBanner] = useState(false);
+  const [scare, setScare] = useState(0);
+  const scareRef = useRef(0);
+  const [lowFlash, setLowFlash] = useState(readLowFlash);
+  const lowFlashRef = useRef(lowFlash);
+  const crewRef = useRef(null);
+  const gate = useRef(null); if (!gate.current) gate.current = new ScareGate();
+  const lightsOut = useRef(null);
+  const jump = useRef(null);
+  const horrorEl = useRef(null);
   // v71: the shared mine. Other miners, a back you could stab, and a bug battle in progress.
   const [others, setOthers] = useState(0);
   const [prey, setPrey] = useState(null);
@@ -450,7 +484,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     }
     const previous = bucketRef.current;
     bucketRef.current = state; setBucket(state); errorRef.current = null; setMineError(null);
-    if (state.collected > previous.collected) audio?.chunk();
+    if (state.collected > previous.collected) {
+      audio?.chunk();
+      if (darkRef.current && gate.current.roll(Date.now())) jump.current?.(); // a chunk of rock comes away, and something with it
+    }
     sceneRef.current?.setDeposits(state.pools, state.currentPoolId);
     const pool = state.pools.find(p => p.id === state.currentPoolId);
     vein.current.flowing = !!pool?.remaining;
@@ -532,6 +569,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const battleForfeit = async () => { try { await pvpForfeit(pvpSend); } catch { /* the next heartbeat tells */ } pvp.current?.beat(); };
   const battleDone = () => {
     const b = battleRef.current; if (b) dismissed.current.add(b.id);
+    if (darkRef.current) audio?.dread(true);
     battleRef.current = null; setBattle(null);
     const end = afterBattle.current; afterBattle.current = null;
     if (end && (end.result || Object.hasOwn(end, 'pending'))) accept(end);
@@ -626,7 +664,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
-        if (e === 'vanish') { visitorHere.current = false; setVisitor(false); audio?.dread(false); setLine('THE ACID GLOWS. HE\'S GONE.'); dreadEl.current?.style.setProperty('--dread', '0'); }
+        if (e === 'vanish') { visitorHere.current = false; setVisitor(false); audio?.dread(darkRef.current); setLine('THE ACID GLOWS. HE\'S GONE.'); dreadEl.current?.style.setProperty('--dread', '0'); }
         if (e === 'bug-appear') {
           const nm = shift.bug?.name || 'Your bug';
           setLine(`${nm.toUpperCase()} KNOWS THE WAY. FOLLOW IT TO THE ACID.`);
@@ -664,6 +702,26 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         onError: (e) => { if (e.code === 'mine_reload') fail(e); },
       });
     }
+    if (horror) {
+      const phone = !!window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth < 720;
+      const crew = new Crew(maze.grid, { max: phone ? CREW.maxPhone : CREW.maxDesktop, pool: () => maze.pool });
+      scene.setHorror({ crew, flicker: new Flicker({ calm: lowFlashRef.current }) }); crewRef.current = crew;
+    }
+    lightsOut.current = () => {
+      if (!horror || darkRef.current || done.current) return;
+      darkRef.current = true; setDark(true); scene.lightsOut(); audio?.lightsOut(); gate.current.arm(Date.now());
+      setLine('SOMETHING TRIPPED THE BREAKER. THE ACID IS STILL GLOWING.');
+      const seenKey = `bba.horror.seen.${shift.day || new Date().toDateString()}`;
+      let seen = false; try { seen = !!localStorage.getItem(seenKey); localStorage.setItem(seenKey, '1'); } catch { /* private mode */ }
+      if (!seen) { setBanner(true); setTimeout(() => setBanner(false), 6500); }
+    };
+    jump.current = () => {
+      if (!darkRef.current || scareRef.current || doomRef.current || battleRef.current || done.current) return;
+      scareRef.current = Date.now(); setScare(scareRef.current); audio?.sting();
+      setTimeout(() => { scareRef.current = 0; setScare(0); }, 900);
+    };
+    const lightsTimer = horror ? setTimeout(() => lightsOut.current(), Math.max(0, shift.localStart + horror.lightsOutMs - Date.now())) : null;
+    if (horror) window.__acidHorror = { lightsOut: () => lightsOut.current(), scare: () => jump.current(), gate: gate.current, get dark() { return darkRef.current; }, get crew() { return crewRef.current; } };
     window.__acidMine = scene; // handy for debugging and automated screenshots; the server still decides everything
     window.__acidWorms = { spawn: () => { const w = swarm.current.spawn(); setWorms([...swarm.current.worms]); return w; }, cut: (id) => cutWorm.current(id ?? null), get count() { return swarm.current.worms.length; } };
     const onResize = () => scene.resize();
@@ -731,13 +789,13 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         else { const ev = scene.eggView(); setEggNear(ev.dist < 1.9 && ev.facing > 0.4); }
       }
     }, 250);
-    const flavor = setInterval(() => { if (Date.now() < caveHold) return; const pool = visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
+    const flavor = setInterval(() => { if (Date.now() < caveHold) return; const pool = darkRef.current ? HORROR_LINES : visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidWorms; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
-      clearInterval(tick); clearInterval(flavor); audio?.danceBeat(false);
+      clearInterval(tick); clearInterval(flavor); clearTimeout(lightsTimer); delete window.__acidHorror; audio?.danceBeat(false);
       audio?.dread(false); audio?.leave(); // clocking out: the normal music comes back
     };
   }, []);
@@ -755,6 +813,34 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     id = setTimeout(beat, 1200);
     return () => clearTimeout(id);
   }, [visitor, audio]);
+
+  // Horror Night, once the lights are out: screams far off, crying, whispers when one of them is close, and a
+  // heartbeat that hammers harder the closer the nearest one is. All synthesized (audio.js), all placed around you.
+  useEffect(() => {
+    if (!dark || !audio) return;
+    const quiet = () => doomRef.current || !!battleRef.current || document.hidden || done.current;
+    const around = (r0, r1) => { const a = Math.random() * Math.PI * 2, r = r0 + Math.random() * (r1 - r0); return [Math.cos(a) * r, Math.sin(a) * r]; };
+    const rel = (m) => { const s = sceneRef.current; if (!s) return [0, -3]; const dx = m.x - s.pos.x, dz = m.z - s.pos.y; return [dx * Math.cos(s.yaw) - dz * Math.sin(s.yaw), -dx * Math.sin(s.yaw) - dz * Math.cos(s.yaw)]; };
+    const timers = [];
+    const every = (fn, lo, hi, first = lo) => { let id; const go = (ms) => { id = setTimeout(() => { if (!quiet()) fn(); go(lo + Math.random() * (hi - lo)); }, ms); timers.push(() => clearTimeout(id)); }; go(first + Math.random() * (hi - lo) * 0.3); };
+    every(() => audio.scream(...around(16, 30)), 16000, 38000, 5000);
+    every(() => audio.sob(...around(7, 15)), 20000, 42000, 11000);
+    every(() => { const m = crewRef.current?.nearest(); if (m && m.dist < 7) audio.whisper(...rel(m)); }, 5000, 11000, 3000);
+    let hb;
+    const beat = () => {
+      const c = crewRef.current?.closeness || 0;
+      horrorEl.current?.style.setProperty('--near', c.toFixed(2));
+      if (c > 0.05 && !quiet()) audio.thump(c);
+      hb = setTimeout(beat, c > 0.05 ? 60000 / (62 + 78 * c) : 700);
+    };
+    hb = setTimeout(beat, 1500);
+    return () => { for (const t of timers) t(); clearTimeout(hb); };
+  }, [dark, audio]);
+  const toggleFlash = () => {
+    const v = !lowFlashRef.current; lowFlashRef.current = v; setLowFlash(v);
+    try { localStorage.setItem(LOW_FLASH_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+    if (sceneRef.current?.horror) sceneRef.current.horror.flicker.calm = v;
+  };
 
   // geiger clicks: they land at random like the real thing, on average every 1400 ms at one bar down to every 60 ms
   // at ten, with a small directional boost. Read live values so turning never restarts the timer.
@@ -804,7 +890,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
 
   const secs = Math.floor(elapsed / 1000);
   return (
-    <div className="m-play">
+    <div className={`m-play${dark ? ' horror' : ''}${scare && !lowFlash ? ' m-shake' : ''}`}>
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       {tier && <div className="m-dark" style={{ '--dark': [0, 0.15, 0.35, 0.65, 1][tier.tier - 1] }} aria-hidden="true" />}
       <Worms worms={worms} cutting={cutting} onCut={(id, a) => cutWorm.current(id, a)} />
@@ -817,6 +903,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
         </div>}
         <button className="m-link" disabled={clockingOut} onClick={clockOut}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
+        {dark && <button className="m-link m-flash-btn" data-test="flash-toggle" aria-pressed={lowFlash} onClick={toggleFlash}>{lowFlash ? 'FLASHING: LOW' : 'FLASHING: ON'}</button>}
         {!doom && !battle && <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
           onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>}
       </div>
@@ -859,6 +946,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         </div>
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
+      {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
+      {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
+      {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
