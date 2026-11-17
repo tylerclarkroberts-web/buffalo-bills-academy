@@ -6,7 +6,7 @@
 .elh-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
 .elh-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
 .elh-hud { position: absolute; inset: 0; pointer-events: none; font-family: 'VT323', monospace; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
-[data-mode=title] .elh-hud, [data-mode=loading] .elh-hud { display: none; }
+[data-mode=title] .elh-hud, [data-mode=loading] .elh-hud, [data-mode=lobby] .elh-hud { display: none; }
 
 .elh-top { position: absolute; top: 8px; left: 10px; right: 10px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 10px; }
 .elh-score { display: grid; line-height: 1; } .elh-score b { font-size: 30px; color: var(--sun); font-weight: 400; } .elh-score small { font-size: 16px; letter-spacing: .12em; color: #ffd9e8; }
@@ -107,3 +107,72 @@
 }
 @media (max-width: 480px) { .elh-feed { top: 66px; font-size: 14px; } .elh-prompt { font-size: 16px; } .elh-top { grid-template-columns: auto 1fr auto; } .elh-bars { width: auto; } .elh-score b { font-size: 24px; } .elh-ammo b { font-size: 28px; } }
 @media (prefers-reduced-motion: reduce) { .elh-bars.down .elh-shield, .elh-vig.down, .elh-ammo.reloading b { animation: none; } }
+
+/* ---- v2 HUD bits: second gun, grenade type, sniper scope, headshot pop, bleed-out ring, extra pad buttons */
+.elh-ammo .elh-slots { grid-column: 1 / -1; font-size: 13px; letter-spacing: .08em; opacity: .65; }
+.elh-reticle.head { border-color: #ff2a4a; box-shadow: 0 0 0 3px #fff, 0 0 14px #ff2a4a; transform: scale(1.35) rotate(45deg); }
+.elh-reticle.head span, .elh-reticle.head::before, .elh-reticle.head::after { background: #ff2a4a; }
+.elh-reticle.wide { width: 54px; height: 54px; margin: -27px 0 0 -27px; border-style: dashed; }
+.elh-reticle.melee { width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 4px; transform: rotate(45deg); }
+.elh-reticle.off { opacity: 0; }
+.elh-reticle { background: conic-gradient(rgba(255,61,90,.7) calc(var(--charge, 0) * 360deg), transparent 0); }
+.elh-hs { position: absolute; left: 50%; top: calc(50% - 46px); transform: translateX(-50%) scale(.6); font-family: 'Rye', serif; font-size: 18px; color: #ff4a5a; text-shadow: 0 2px 0 #3a0a14; opacity: 0; transition: opacity .1s, transform .1s; }
+.elh-hs.on { opacity: 1; transform: translateX(-50%) scale(1); }
+.elh-scope { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .12s;
+  background: radial-gradient(circle at center, transparent 0 min(34vh, 34vw), rgba(8,4,10,.92) calc(min(34vh, 34vw) + 2px)),
+    linear-gradient(transparent calc(50% - 1px), rgba(0,0,0,.8) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(0,0,0,.8) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)); }
+.elh-scope.on { opacity: 1; }
+.elh-bleed { position: absolute; left: 50%; top: calc(36% + 48px); width: 64px; height: 64px; margin-left: -32px; border-radius: 50%; opacity: 0;
+  background: conic-gradient(#ff3d5a calc(var(--k, 0) * 360deg), rgba(40,8,16,.6) 0); -webkit-mask: radial-gradient(circle, transparent 22px, #000 23px); mask: radial-gradient(circle, transparent 22px, #000 23px); }
+.elh-bleed.on { opacity: 1; }
+.elh-acts .nkind { grid-area: 2 / 1; font-size: 12px; line-height: 1.05; }
+.elh-acts .zoom { position: absolute; right: 0; bottom: calc(100% + 8px); width: 76px; height: 40px; display: none; font-size: 14px; }
+.elh-acts .zoom.show { display: block; }
+
+/* ---- the lobby: preview turntable + looks + roster, no scrolling at any size */
+.elh-lobby { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 420px); grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: 'head panel' 'pv panel'; gap: 6px 16px; padding: 12px 16px; color: #ffe9d0; font-family: 'VT323', monospace; overflow: hidden;
+  background: linear-gradient(90deg, rgba(29,15,36,0) 30%, rgba(29,15,36,.82) 62%); }
+.elh-lb-head { grid-area: head; text-align: center; }
+.elh-lb-logo { font-size: clamp(40px, 7vw, 76px) !important; }
+.elh-lb-head .elh-sub { margin: 2px 0 0; font-family: 'Rye', serif; }
+.elh-lb-preview { grid-area: pv; min-height: 0; border-radius: 12px; background: radial-gradient(ellipse at 50% 70%, rgba(255,194,58,.18), rgba(29,15,36,.0) 65%); }
+.elh-lb-panel { grid-area: panel; min-height: 0; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.elh-lb-looks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+.elh-sel { display: grid; grid-template-columns: 28px 1fr 28px; grid-template-rows: auto 28px; align-items: center; background: rgba(20,8,24,.55); border: 1px solid rgba(255,194,58,.25); border-radius: 8px; padding: 2px 4px 4px; }
+.elh-sel small { grid-column: 1 / -1; font-size: 12px; letter-spacing: .14em; color: var(--tq); text-align: center; line-height: 1.1; }
+.elh-sel span { text-align: center; font-size: 17px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.elh-sel span i { width: 10px; height: 10px; border-radius: 2px; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.5); }
+.elh-sel button { height: 28px; font: inherit; font-size: 22px; line-height: 1; color: var(--sun); background: rgba(255,194,58,.1); border: 1px solid rgba(255,194,58,.4); border-radius: 6px; cursor: pointer; padding: 0; touch-action: manipulation; }
+.elh-sel button:hover, .elh-sel button:focus-visible { background: var(--sun); color: #2a1420; }
+.elh-roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-size: 17px; }
+.elh-roster li { display: flex; align-items: center; gap: 5px; min-width: 0; background: rgba(20,8,24,.45); padding: 1px 6px; border-radius: 6px; }
+.elh-roster li i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.elh-roster li b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.elh-roster li em { font-style: normal; color: var(--sun); }
+.elh-roster li span { font-size: 14px; opacity: .7; white-space: nowrap; }
+.elh-roster li.ready span { color: #7dff9a; opacity: 1; } .elh-roster li.me b { color: var(--sun); } .elh-roster li.empty { opacity: .6; justify-content: center; grid-column: 1 / -1; }
+.elh-lb-panel .elh-live, .elh-lb-panel .elh-keys, .elh-lb-panel .elh-note { margin: 0; text-align: center; font-size: 17px; }
+.elh-lb-panel .elh-keys { font-size: 14px; opacity: .7; }
+.elh-lb-btns { display: flex; gap: 8px; justify-content: center; }
+.elh-lb-btns .m-btn { background: var(--sun); color: #2a1420; box-shadow: 0 0 18px rgba(255,194,58,.4), inset 0 -4px 0 rgba(0,0,0,.25); min-width: 130px; }
+.elh-lb-btns .m-btn.on { background: #57e08a; } .elh-lb-btns .m-btn.alt { background: var(--rosa); color: #fff; }
+/* phones, portrait: preview on top, looks + roster below, all in one screen */
+@media (max-aspect-ratio: 1/1) {
+  .elh-lobby { grid-template-columns: 1fr; grid-template-rows: auto minmax(110px, 1fr) auto; grid-template-areas: 'head' 'pv' 'panel'; padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); gap: 4px;
+    background: linear-gradient(180deg, rgba(29,15,36,0) 25%, rgba(29,15,36,.85) 52%); }
+  .elh-lb-logo { font-size: 40px !important; } .elh-lb-head .elh-sub { font-size: 14px !important; }
+  .elh-lb-panel { gap: 5px; }
+  .elh-sel { grid-template-rows: auto 26px; } .elh-sel button { height: 26px; } .elh-sel span { font-size: 15px; }
+  .elh-roster { font-size: 15px; }
+}
+/* phones, landscape: very little height */
+@media (max-height: 460px) {
+  .elh-lobby { padding: 4px 10px; gap: 2px 10px; grid-template-columns: minmax(0, 1fr) minmax(280px, 400px); }
+  .elh-lb-logo { font-size: 30px !important; } .elh-lb-head .elh-sub { display: none; }
+  .elh-lb-panel { gap: 4px; }
+  .elh-lb-looks { gap: 2px 6px; } .elh-sel { grid-template-rows: auto 22px; padding: 1px 3px 2px; } .elh-sel button { height: 22px; font-size: 18px; } .elh-sel span { font-size: 14px; } .elh-sel small { font-size: 10px; }
+  .elh-roster { font-size: 14px; } .elh-lb-panel .elh-live { font-size: 14px; } .elh-lb-panel .elh-keys { display: none; }
+  .elh-lb-btns .m-btn { padding-top: 4px; padding-bottom: 4px; }
+}

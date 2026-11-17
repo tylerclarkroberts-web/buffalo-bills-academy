@@ -21,13 +21,15 @@ export function connect({ onSnap, onStatus = () => {} }) {
   return { close, reopen: () => { if (closed) { closed = false; retry = 0; open(); } } };
 }
 
-async function post(path, body) {
+export async function post(path, body) {
   const r = await fetch(BASE + path, { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body || {}), keepalive: path === '/leave' });
   let data = null; try { data = await r.json(); } catch { /* empty */ }
   return { ok: r.ok, status: r.status, data };
 }
 export const join = () => post('/join');
 export const leave = () => post('/leave');
+export async function getLook() { try { const r = await fetch(`${BASE}/look`, { credentials: 'same-origin' }); return r.ok ? (await r.json()).look : null; } catch { return null; } }
+export const saveLook = (look) => post('/look', { look });
 
 // Inputs go up at ~10 Hz; at most two in flight, so a slow phone never builds a queue. Events wait for the next send.
 export function inputSender() {

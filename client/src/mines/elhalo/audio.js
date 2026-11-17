@@ -1,24 +1,10 @@
-// EL HALO sound: everything is synthesised here with WebAudio, no recordings. An original loop: a two-trumpet
-// melody in thirds (sawtooth "horns" with vibrato), a guitarrón-style bass doing oom-pah, vihuela-ish offbeat stabs,
-// and a heavy kick/clap beat. Plus little sfx for guns, piñatas, the shield and the critters.
+// EL HALO sound. The background music is Tyler's own track (client/public/elhalo/musica.mp3, re-encoded to 96 kbps),
+// looped through WebAudio so its volume works on phones too and it only starts after a tap. Everything else is
+// synthesised here: guns, piñatas, the shield, the truck horn and the night things.
 
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
-// D major, eight bars of eighths. null = rest, '-' = hold. Lead voice; the second horn plays a diatonic third below.
-const LEAD = [
-  69, '-', 66, 69, 74, '-', '-', '-',   74, 73, 71, '-', 67, '-', 71, '-',
-  69, '-', 73, 76, 73, '-', 69, '-',    74, '-', '-', '-', null, null, 69, 71,
-  78, '-', 76, 74, 76, '-', 78, '-',    79, '-', '-', 78, 76, '-', 74, '-',
-  73, '-', 76, '-', 79, '-', 76, 73,    74, '-', '-', '-', null, null, null, null,
-];
-const SCALE = [62, 64, 66, 67, 69, 71, 73]; // D E F# G A B C#
-function thirdBelow(n) {
-  const pc = ((n - 62) % 12 + 12) % 12, oct = Math.floor((n - 62) / 12);
-  const i = SCALE.findIndex((s) => (s - 62) === pc); if (i < 0) return n - 4;
-  const j = i - 2; return j >= 0 ? SCALE[j] + oct * 12 : SCALE[j + 7] + (oct - 1) * 12;
-}
-const CHORDS = ['D', 'G', 'A', 'D', 'D', 'G', 'A7', 'D'];
-const ROOT = { D: 50, G: 43, A: 45, A7: 45 };
-const TRIAD = { D: [62, 66, 69], G: [62, 67, 71], A: [61, 64, 69], A7: [61, 64, 67] };
+export const MUSIC_URL = '/elhalo/musica.mp3';
+export const MUSIC_LEVELS = [['ALTA', 0.5], ['BAJA', 0.18], ['OFF', 0]];
 
 export function createAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -51,36 +37,26 @@ export function createAudio() {
     vib.start(t); vib.stop(t + dur + 0.1); lp.connect(out).connect(music);
   };
 
-  let muted = false, playing = false, timer = 0, step = 0, nextT = 0;
-  const BPM = 116, E = 60 / BPM / 2; // an eighth
-  function schedule(t, s) {
-    const bar = Math.floor(s / 8) % 8, e = s % 8, ch = CHORDS[bar];
-    // beat: kick on 1 and 3 and the "and" of 4, clap on 2 and 4, shaker on every eighth
-    if (e === 0 || e === 4 || e === 7) tone(music, t, 0.22, 130, { f2: 42, v: 0.9 });
-    if (e === 2 || e === 6) { nz(music, t, 0.16, { f: 1800, q: 0.8, v: 0.5 }); nz(music, t + 0.012, 0.1, { f: 2400, q: 1, v: 0.3 }); }
-    nz(music, t, 0.04, { type: 'highpass', f: 7000, v: e % 2 ? 0.12 : 0.2 });
-    // guitarrón oom (root, fifth) and vihuela pah on the offbeats
-    if (e === 0 || e === 4) { const r = ROOT[ch] + (e === 4 ? 7 : 0); tone(music, t, 0.35, midi(r - 12), { type: 'triangle', v: 0.55, a: 0.006 }); tone(music, t, 0.2, midi(r), { type: 'sawtooth', v: 0.06 }); }
-    if (e % 2 === 1) for (const n of TRIAD[ch]) tone(music, t + (n % 3) * 0.006, 0.09, midi(n), { type: 'square', v: 0.035 });
-    // horns
-    const i = (bar * 8 + e) % LEAD.length, n = LEAD[i];
-    if (typeof n === 'number') {
-      let len = 1; while (LEAD[(i + len) % LEAD.length] === '-' && len < 8) len++;
-      const dur = len * E * 0.92;
-      horn(t, n, dur, 0.16); horn(t + 0.004, thirdBelow(n), dur, 0.12);
-    }
+  let muted = false, playing = false, level = 0, el = null;
+  function ensureEl() {
+    if (el || typeof Audio === 'undefined') return el;
+    el = new Audio(MUSIC_URL); el.loop = true; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+    try { ctx.createMediaElementSource(el).connect(music); } catch { el.volume = 0.5; }
+    return el;
   }
-  function pump() {
-    while (nextT < ctx.currentTime + 0.15) { schedule(nextT, step); step = (step + 1) % 64; nextT += E; }
+  function applyMusic() {
+    music.gain.value = MUSIC_LEVELS[level][1];
+    const want = playing && !muted && MUSIC_LEVELS[level][1] > 0;
+    if (want) { ensureEl(); el.play().catch(() => {}); } else if (el) el.pause();
   }
   const api = {
     ctx,
     resume() { if (ctx.state === 'suspended' && !muted) ctx.resume().catch(() => {}); },
-    setMuted(m) { muted = m; if (m) ctx.suspend().catch(() => {}); else ctx.resume().catch(() => {}); },
-    music(on) {
-      if (on === playing) return; playing = on;
-      if (on) { step = 0; nextT = ctx.currentTime + 0.08; pump(); timer = setInterval(pump, 30); } else clearInterval(timer);
-    },
+    setMuted(m) { muted = m; if (m) ctx.suspend().catch(() => {}); else ctx.resume().catch(() => {}); applyMusic(); },
+    music(on) { if (on === playing) return; playing = on; applyMusic(); },  // call from a tap: browsers block autoplay
+    setMusicLevel(i) { level = ((i % MUSIC_LEVELS.length) + MUSIC_LEVELS.length) % MUSIC_LEVELS.length; applyMusic(); return level; },
+    get musicLevel() { return level; },
+    get musicPlaying() { return !!el && !el.paused; },
     rifle() { const t = ctx.currentTime; nz(sfx, t, 0.09, { f: 1500, q: 0.7, v: 0.55 }); tone(sfx, t, 0.08, 160, { f2: 60, v: 0.5, type: 'square' }); },
     pistol() { const t = ctx.currentTime; nz(sfx, t, 0.18, { f: 900, q: 0.6, v: 0.8 }); tone(sfx, t, 0.16, 120, { f2: 40, v: 0.7 }); nz(sfx, t + 0.02, 0.25, { type: 'highpass', f: 3000, v: 0.12 }); },
     empty() { tone(sfx, ctx.currentTime, 0.04, 1800, { type: 'square', v: 0.12 }); },
@@ -106,7 +82,42 @@ export function createAudio() {
     crack() { const t = ctx.currentTime; nz(sfx, t, 0.16, { f: 700, q: 1.5, v: 0.6 }); nz(sfx, t + 0.05, 0.12, { f: 2400, q: 2, v: 0.25 }); },
     bless() { const t = ctx.currentTime; [76, 81, 85].forEach((n, k) => tone(sfx, t + k * 0.06, 0.5, midi(n), { type: 'sine', v: 0.08, a: 0.05 })); },
     hitmark() { tone(sfx, ctx.currentTime, 0.04, 2600, { type: 'triangle', v: 0.06 }); },
-    close() { clearInterval(timer); ctx.close().catch(() => {}); },
+    // the new guns
+    gun(id) {
+      const t = ctx.currentTime;
+      switch (id) {
+        case 'rifle': return api.rifle();
+        case 'pistol': case 'torreta': return id === 'pistol' ? api.pistol() : (nz(sfx, t, 0.07, { f: 1100, q: 0.6, v: 0.6 }), tone(sfx, t, 0.07, 110, { f2: 45, v: 0.6, type: 'square' }));
+        case 'rafaga': nz(sfx, t, 0.07, { f: 1700, q: 0.9, v: 0.5 }); return tone(sfx, t, 0.06, 240, { f2: 90, v: 0.35, type: 'square' });
+        case 'escopeta': case 'escopetita': nz(sfx, t, 0.35, { type: 'lowpass', f: 2200, f2: 300, v: 1 }); tone(sfx, t, 0.25, 90, { f2: 35, v: 0.9 }); if (id === 'escopeta') nz(sfx, t + 0.42, 0.06, { f: 2400, q: 4, v: 0.3 }); return;
+        case 'francotirador': nz(sfx, t, 0.4, { f: 700, q: 0.5, v: 1 }); tone(sfx, t, 0.3, 140, { f2: 35, v: 0.9 }); return nz(sfx, t + 0.05, 0.8, { type: 'highpass', f: 2500, v: 0.18 });
+        case 'chispas': return tone(sfx, t, 0.16, 900, { f2: 260, type: 'sawtooth', v: 0.14 });
+        case 'agujas': tone(sfx, t, 0.06, 2600, { f2: 1700, type: 'triangle', v: 0.1 }); return tone(sfx, t, 0.05, 3400, { type: 'sine', v: 0.06 });
+        case 'cohetes': nz(sfx, t, 0.5, { f: 400, f2: 1400, q: 0.7, v: 0.7 }); return tone(sfx, t, 0.2, 70, { v: 0.6 });
+        case 'laser': tone(sfx, t, 0.5, 220, { f2: 1800, type: 'sawtooth', v: 0.2 }); return nz(sfx, t, 0.5, { f: 3000, q: 2, v: 0.3 });
+        case 'machete': case 'martillo': return api.whoosh();
+        default: return api.rifle();
+      }
+    },
+    charge() { tone(sfx, ctx.currentTime, 0.8, 200, { f2: 1600, type: 'square', v: 0.05, a: 0.05 }); },
+    lunge() { nz(sfx, ctx.currentTime, 0.25, { f: 400, f2: 2600, q: 1.5, v: 0.4 }); },
+    slash() { const t = ctx.currentTime; tone(sfx, t, 0.2, 1400, { f2: 300, type: 'sawtooth', v: 0.15 }); nz(sfx, t, 0.15, { f: 2600, q: 2, v: 0.4 }); },
+    slam() { const t = ctx.currentTime; tone(sfx, t, 0.7, 70, { f2: 25, v: 1 }); nz(sfx, t, 0.6, { type: 'lowpass', f: 900, f2: 100, v: 1 }); tone(sfx, t, 0.5, 500, { f2: 120, type: 'triangle', v: 0.2 }); },
+    stick() { const t = ctx.currentTime; tone(sfx, t, 0.08, 500, { type: 'square', v: 0.1 }); tone(sfx, t + 0.09, 0.08, 500, { type: 'square', v: 0.1 }); },
+    bounce() { tone(sfx, ctx.currentTime, 0.05, 300, { f2: 200, type: 'triangle', v: 0.15 }); },
+    combine() { const t = ctx.currentTime; for (let k = 0; k < 5; k++) tone(sfx, t + k * 0.03, 0.1, 3000 - k * 300, { type: 'triangle', v: 0.1 }); api.boom(); },
+    headshot() { const t = ctx.currentTime; tone(sfx, t, 0.07, 2900, { type: 'square', v: 0.09 }); tone(sfx, t + 0.05, 0.16, 4200, { type: 'sine', v: 0.14 }); },
+    // the night things
+    shriek() { const t = ctx.currentTime; tone(sfx, t, 0.45, 1900, { f2: 3400, type: 'sawtooth', v: 0.09 }); tone(sfx, t, 0.45, 2300, { f2: 1500, type: 'square', v: 0.05 }); nz(sfx, t, 0.4, { f: 3500, q: 3, v: 0.25 }); },
+    wail() { const t = ctx.currentTime; tone(sfx, t, 2.2, 520, { f2: 360, type: 'sine', v: 0.16, a: 0.4 }); tone(sfx, t + 0.05, 2.2, 780, { f2: 540, type: 'triangle', v: 0.06, a: 0.5 }); nz(sfx, t, 2.0, { f: 900, q: 6, v: 0.08 }); },
+    screech() { const t = ctx.currentTime; tone(sfx, t, 0.6, 2400, { f2: 1200, type: 'sawtooth', v: 0.08 }); nz(sfx, t, 0.6, { f: 2800, q: 4, v: 0.3 }); },
+    growl() { const t = ctx.currentTime; tone(sfx, t, 0.9, 70, { f2: 55, type: 'sawtooth', v: 0.25 }); nz(sfx, t, 0.8, { type: 'lowpass', f: 300, v: 0.6 }); },
+    howl() { tone(sfx, ctx.currentTime, 1.4, 420, { f2: 760, type: 'triangle', v: 0.15, a: 0.3 }); },
+    honk() { const t = ctx.currentTime; for (const k of [0, 0.25]) { tone(sfx, t + k, 0.2, 392, { type: 'square', v: 0.1 }); tone(sfx, t + k, 0.2, 494, { type: 'square', v: 0.08 }); } },
+    engine() { tone(sfx, ctx.currentTime, 0.5, 55, { f2: 80, type: 'sawtooth', v: 0.08 }); },
+    beep(hi) { tone(sfx, ctx.currentTime, 0.12, hi ? 1320 : 880, { type: 'square', v: 0.08 }); },
+    night() { const t = ctx.currentTime; [62, 61, 57, 56].forEach((n, k) => tone(sfx, t + k * 0.35, 0.8, midi(n - 12), { type: 'triangle', v: 0.18, a: 0.1 })); },
+    close() { if (el) { el.pause(); el.src = ''; } ctx.close().catch(() => {}); },
   };
   return api;
 }

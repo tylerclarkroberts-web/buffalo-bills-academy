@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as L from '../client/src/mines/elhalo/logic.js';
 import { Match, EYE } from '../server/elhalo/match.js';
-import { BUILDINGS, OPENINGS, BOARDS_MAX, BOUNDS, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, groundAt, terrain, creekX, insideSolid } from '../server/elhalo/map.js';
+import { BUILDINGS, OPENINGS, BOARDS_MAX, BOUNDS, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, TRUCK, groundAt, terrain, creekX, insideSolid } from '../server/elhalo/map.js';
 import { HALL_DOORS } from '../client/src/mines/doorHall.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -16,10 +16,11 @@ const SDIR = path.join(ROOT, 'server/elhalo');
 const src = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const seeded = (seed = 7) => { let s = seed; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 
-// a match with players already standing where we want them
-function setup(names = ['t', 'j'], seed = 7) {
+// a match with players already standing where we want them (and past the lobby: the host hit start)
+function setup(names = ['t', 'j'], seed = 7, { lobby = false } = {}) {
   const m = new Match({ rnd: seeded(seed) });
   for (const n of names) assert.ok(m.join(n, { name: n.toUpperCase(), nowMs: 0 }).ok);
+  if (!lobby) { assert.equal(m.phase, 'lobby'); assert.ok(m.begin(names[0]).ok); }
   return m;
 }
 const put = (m, id, x, z) => { const p = m.players.get(id); p.x = x; p.z = z; p.y = groundAt(x, z, 50, m.bars); p.hist = []; return p; };
@@ -85,16 +86,18 @@ test('guns: fire rate, magazine, auto-reload from the reserve, swap cancels a re
 
 test('piñata grenades, splash falloff, smack cooldown', () => {
   const p = L.createPlayer();
-  assert.equal(p.grenades, L.GRENADES.start);
+  assert.equal(p.nades.frag, L.GRENADES.start); assert.equal(p.nades.sticky, L.STICKY.start);
   assert.ok(L.throwGrenade(p) && L.throwGrenade(p)); assert.equal(L.throwGrenade(p), false);
+  assert.equal(L.throwGrenade(p, 'sticky'), false, 'no stickies until you find some');
   assert.equal(L.addGrenade(p, 10), L.GRENADES.max); assert.equal(L.addGrenade(p), 0);
+  assert.equal(L.addGrenade(p, 5, 'sticky'), L.STICKY.max, 'a small carry cap'); assert.ok(L.throwGrenade(p, 'sticky'));
   assert.equal(L.splash(0), L.GRENADES.damage); assert.equal(L.splash(L.GRENADES.radius), 0);
   assert.ok(L.splash(1) > L.splash(3) && L.splash(3) > 0);
   assert.equal(L.tryMelee(p, 5), true); assert.equal(L.tryMelee(p, 5 + L.MELEE.cooldown / 2), false); assert.equal(L.tryMelee(p, 5 + L.MELEE.cooldown), true);
 });
 
 test('the horde: luchadors rush, mariachis shoot, farmers soak, priests bless; waves get bigger, tougher and more mixed', () => {
-  assert.deepEqual(L.ENEMY_TYPES.sort(), ['granjero', 'luchador', 'mariachi', 'padre']);
+  assert.deepEqual([...L.ENEMY_TYPES].sort(), ['chupacabra', 'cucuy', 'granjero', 'lechuza', 'llorona', 'luchador', 'mariachi', 'nahual', 'padre']);
   assert.ok(L.ENEMIES.luchador.speed > L.ENEMIES.mariachi.speed && L.ENEMIES.luchador.tackle, 'luchadors are the fast tacklers');
   assert.ok(L.ENEMIES.mariachi.note, 'mariachis shoot notes');
   assert.ok(L.ENEMIES.granjero.hp > 2 * L.ENEMIES.luchador.hp && L.ENEMIES.granjero.tear < L.ENEMIES.luchador.tear, 'farmers are tanky and rip boards fast');
@@ -102,6 +105,7 @@ test('the horde: luchadors rush, mariachis shoot, farmers soak, priests bless; w
   assert.deepEqual([...new Set(L.waveRoster(1, 1, seeded()))].sort(), ['granjero', 'luchador']);
   assert.ok(L.waveRoster(2, 1, seeded()).includes('mariachi') && !L.waveRoster(3, 1, seeded()).includes('padre'));
   assert.ok(L.waveRoster(4, 1, seeded()).includes('padre'));
+  assert.ok(!L.waveRoster(4, 1, seeded()).includes('chupacabra') && L.waveRoster(5, 1, seeded()).includes('chupacabra'), 'chupacabras from wave 5');
   for (let n = 1; n < 20; n++) {
     assert.ok(L.waveSize(n + 1) > L.waveSize(n) || L.waveSize(n) === 90, `wave ${n + 1} is bigger (until the cap)`);
     assert.ok(L.waveScale(n + 1).hp > L.waveScale(n).hp, `wave ${n + 1} is tougher`);
@@ -146,7 +150,7 @@ test('match: first player starts a countdown, waves spawn, clear pays a bonus, a
   const m = setup(['t']);
   assert.equal(m.phase, 'break');
   m.calm = true;
-  run(m, L.MATCH.firstBreakSecs + 0.2);
+  run(m, L.MATCH.lobbyCountdown + 0.2);
   assert.equal(m.phase, 'wave'); assert.equal(m.wave, 1);
   const size1 = m.queue.length + m.enemies.length;
   assert.equal(size1, L.waveSize(1, 1));
@@ -154,8 +158,8 @@ test('match: first player starts a countdown, waves spawn, clear pays a bonus, a
   assert.ok(m.enemies.length > 0 && m.enemies.length <= L.MATCH.maxAlive, 'enemies come out, capped');
   const t = m.players.get('t'), before = t.pts;
   m.queue = []; for (const e of m.enemies) e.dead = true; m.tick(0.1); m.tick(0.1);
-  assert.equal(m.phase, 'break'); assert.equal(t.pts, before + L.waveBonus(1));
-  run(m, L.MATCH.breakSecs + 0.2);
+  assert.equal(m.phase, 'truck', 'the supply truck comes through between waves'); assert.equal(t.pts, before + L.waveBonus(1));
+  run(m, TRUCK.secs + L.MATCH.breakSecs + 0.4);
   assert.equal(m.wave, 2); assert.equal(m.queue.length + m.enemies.length, L.waveSize(2, 1));
   toWave(m, 9);
   const big = m.queue.length;
@@ -168,7 +172,7 @@ test('match: first player starts a countdown, waves spawn, clear pays a bonus, a
 test('match: the horde breaks boards, holding ACTION rebuilds one plank at a time for points (capped per round)', () => {
   const m = setup(['t']); toWave(m, 1); m.queue = []; m.enemies = []; m.calm = true;
   const far = m.spawn('granjero'); far.x = 0; far.z = 60; far.spd = 0; // keeps the wave open
-  const op = OPENINGS.find((o) => o.b === 'mision' && !o.door);
+  const op = OPENINGS.find((o) => o.b === 'hacienda' && !o.door);
   m.bars[op.i] = 0;
   const t = put(m, 't', op.in.x, op.in.z);
   m.tick(0.1);
@@ -191,7 +195,7 @@ test('match: the horde breaks boards, holding ACTION rebuilds one plank at a tim
   assert.equal(m.bars[op.i], 0, 'no boarding up through an enemy');
   // and enemies tear boards to get in
   const m2 = setup(['t']); toWave(m2, 1); m2.queue = []; m2.enemies = []; m2.calm = true;
-  const in2 = put(m2, 't', -15, -24); // inside the mission
+  const in2 = put(m2, 't', 15.5, 3); // inside the hacienda
   const lu = m2.spawn('granjero'); lu.x = op.out.x; lu.z = op.out.z - 0.5; lu.y = groundAt(lu.x, lu.z, 50, m2.bars);
   run(m2, 6);
   assert.ok(m2.bars.some((b) => b < BOARDS_MAX), 'a farmer pulled planks off');
@@ -227,23 +231,23 @@ test('match: shots hurt enemies and friends alike; a PVP down is credited; reviv
   m.tick(0.1);
   assert.equal(m.phase, 'over'); assert.ok(m.last.board.length === 2 && m.last.wave === 1);
   run(m, L.MATCH.overSecs + 0.2);
-  assert.equal(m.phase, 'break'); assert.equal(m.wave, 0); assert.equal(j.kills, 0); assert.equal(t.state, 'alive');
+  assert.equal(m.phase, 'lobby', 'back to the lobby for the next one'); assert.equal(m.wave, 0); assert.equal(j.kills, 0); assert.equal(t.state, 'alive');
 });
 
 test('match: a late joiner gets the live wave, enemies, boards and players in the very next snapshot', () => {
   const m = setup(['t']); m.calm = true; toWave(m, 3);
   run(m, 8);
-  m.bars[2] = 1; m.bars[7] = 3;
+  m.bars[7] = 1; m.bars[12] = 3;
   const k = m.join('k', { name: 'Kash', nowMs: 0 });
   assert.ok(k.ok); assert.equal(m.players.get('k').state, 'alive');
   const s = m.snapshot(), me = m.personal('k');
   assert.equal(s.wv, 3); assert.equal(s.ph, 'wave');
   assert.ok(s.en.length > 0 && s.en.length === m.enemies.length);
-  assert.equal(s.bd[2], 1); assert.equal(s.bd[7], 3);
+  assert.equal(s.bd[7], 1); assert.equal(s.bd[12], 3);
   assert.deepEqual(s.pl.map((r) => r[1]).sort(), ['Kash', 'T']);
   assert.ok(me.in && me.corr, 'the newcomer is told where they spawned');
   assert.ok(s.ev.some((e) => e[0] === 'j' && e[1] === 'k'));
-  assert.ok(JSON.stringify(s).length < 6000, 'snapshot stays small');
+  assert.ok(JSON.stringify(s).length < 7000, 'snapshot stays small');
   // nine is a crowd
   const full = setup(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
   assert.equal(full.join('i', { name: 'I' }).error, 'full');
@@ -253,7 +257,7 @@ test('match: a late joiner gets the live wave, enemies, boards and players in th
   assert.ok(!m.players.get('t')?.joined, 'gone quiet: dropped from the match');
   run(m, L.MATCH.emptyResetSecs + 0.2);
   assert.equal(m.phase, 'idle'); assert.equal(m.wave, 0); assert.equal(m.enemies.length, 0);
-  assert.ok(m.bars.every((b) => b === BOARDS_MAX));
+  assert.ok(m.bars.every((b, i) => b === (OPENINGS[i].open ? 0 : BOARDS_MAX)));
 });
 
 test('match: inputs are checked: speed, bounds, walls, junk, fire rate and message rate', () => {
@@ -303,7 +307,8 @@ test('the door: El Halo opens its own lazily loaded room; free play, no money, o
     const s = fs.readFileSync(path.join(dir, f), 'utf8');
     for (const u of s.match(/\/api\/[a-z/]*/g) || []) assert.match(u, /^\/api\/elhalo/, `${f} only talks to /api/elhalo (${u})`);
     assert.doesNotMatch(s, /bankroll|canBet|wager|\bbet\b|ledger|balance/i, `${f} has no money in it`);
-    assert.doesNotMatch(s, /\.(mp3|ogg|wav|m4a|glb|gltf|fbx)\b/i, `${f} loads no outside media; it is all generated`);
+    // the one recording is Tyler's own background track, served from client/public; everything else is generated
+    assert.doesNotMatch(s.replaceAll('/elhalo/musica.mp3', ''), /\.(mp3|ogg|wav|m4a|glb|gltf|fbx)\b/i, `${f} loads no outside media; it is all generated`);
   }
   assert.doesNotMatch(src('server/mines.js'), /elhalo|el halo/i);
   assert.match(src('server/app.js'), /elhalo\.mount\(api, needPlayer\)/, 'signed-in players only');
