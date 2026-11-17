@@ -130,8 +130,17 @@ const KINDS = {
 };
 
 /** Builds the sprite grid for one bug: rows of hex colours (or null for transparent), 64 a side, or 64 x `fine`. */
+const lookOf = (bug, level) => ({ ...(bug.look || {}), kind: youngForm(bug, level) || (bug.id === 'helicopsyche' ? 'caddisfly' : bug.look?.kind) });
+/** Where the bug's eyes are on the 64 grid: the row through them, their middle, and the right-hand eye's column. Null if it shows none. */
+function eyeSpot(bug, level) {
+  const c = canvas(); draw(c, lookOf(bug, level));
+  const at = []; c.g.forEach((row, y) => row.forEach((m, x) => { if (m === 'E' || m === 'G') at.push([x, y]); }));
+  if (!at.length) return null;
+  const mid = (list, k) => (Math.min(...list.map((p) => p[k])) + Math.max(...list.map((p) => p[k]))) / 2, x = mid(at, 0);
+  return { x: Math.round(x), y: Math.round(mid(at, 1)), right: Math.round(mid(at.filter((p) => p[0] >= x), 0)) };
+}
 export function spriteGrid(bug, level, fine = 1) {
-  const L = { ...(bug.look || {}), kind: youngForm(bug, level) || (bug.id === 'helicopsyche' ? 'caddisfly' : bug.look?.kind) };
+  const L = lookOf(bug, level);
   const R = ramps(L.pal || ['#111111', '#333333', '#666666', '#999999', '#cc3333']);
   const c = canvas(fine);
   draw(c, L);
@@ -302,7 +311,7 @@ const WEARPIX = {
   bandana: { at: 'mid', p: ['rrrrrrrrrrrr', '.rrwrrrrwrr.', '..rrrrrrrr..', '....rrrr....'], k: { r: '#c02a2a', w: '#ffffff' } },
   cape: { at: 'back', p: ['rr', 'rrr', 'rrrr', 'rrrr', 'rrrrr', 'rrrrr', 'rrrrrr', 'rrrrrr'], k: { r: '#c02030' } },
   scarf: { at: 'mid', p: ['tttttttttttt', 'tttttttttttt', '........tt..', '........tt..', '........tt..'], k: { t: '#21a7a0' } },
-  dapper: { at: 'eye', p: ['.......yyy..', '......yccy..', '......yccy..', '.......yyy..', '........y...', 'kk..kkkk..kk', '.kkkk..kkkk.'], k: { y: '#e0b040', c: '#cfefff', k: '#f0e6d0' } }, // pale: a dark moustache vanishes into the outline
+  dapper: { at: 'lip', with: 'monocle', p: ['kk..kkkk..kk', '.kkkk..kkkk.'], k: { k: '#f0e6d0' } }, // the monocle, and a moustache under the eyes (pale: a dark one vanishes into the outline)
 };
 function bounds(grid) {
   let top = SPRITE, bot = 0, l = SPRITE, r = 0;
@@ -310,13 +319,18 @@ function bounds(grid) {
   let tl = SPRITE, tr = 0; for (let y = top; y < top + 4 && y < SPRITE; y++) for (let x = 0; x < SPRITE; x++) if (grid[y][x]) { tl = Math.min(tl, x); tr = Math.max(tr, x); }
   return { top, bot, l, r, cx: Math.round((tl + tr) / 2) };
 }
-function overlay(ctx, grid, shape) {
+function overlay(ctx, grid, shape, eye) {
   const w = WEARPIX[shape]; if (!w) return;
+  if (w.with) overlay(ctx, grid, w.with, eye);
   const b = bounds(grid); const pw = Math.max(...w.p.map((r) => r.length)), ph = w.p.length;
   const hgt = b.bot - b.top;
   let x = b.cx - Math.floor(pw / 2), y = b.top - ph + 1;
   if (w.at === 'topside') { x = b.cx + 2; y = b.top - 2; }
-  if (w.at === 'eye') { y = b.top + Math.round(hgt * 0.22); x = w.p[0].length > 6 ? b.cx - Math.floor(pw / 2) : b.cx + 3; }
+  // by the eyes (a bug that shows none: about where a face would be). A wide piece (shades) goes across both, a narrow
+  // one (a monocle) on the right-hand eye, each with its lens on its second row; 'lip' is centred a little below them.
+  const E = eye || { x: b.cx, y: b.top + Math.round(hgt * 0.22) + 1, right: b.cx + 4 };
+  if (w.at === 'eye') { y = E.y - 1; x = pw > 6 ? E.x - Math.floor(pw / 2) : E.right - 1; }
+  if (w.at === 'lip') { x = E.x - Math.floor(pw / 2); y = E.y + 4; }
   if (w.at === 'mid') y = b.top + Math.round(hgt * 0.42);
   if (w.at === 'back') { x = b.l - 2; y = b.top + Math.round(hgt * 0.3); }
   x = Math.max(0, Math.min(SPRITE - pw, x)); y = Math.max(0, Math.min(SPRITE - ph, y));
@@ -397,7 +411,7 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
   const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
   if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape);
-  if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape);
+  if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eyeSpot(b, level));
   if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
   if (fine !== 1 && (style?.gear?.shape || style?.bugacc?.shape || style?.bughat?.shape)) paintWear(ctx, wear, body, b.look?.pal?.[0] || '#111111');
   cache.set(key, c);
