@@ -1,5 +1,5 @@
 // EL HALO (Hall of Doors): the horde match. The rules (shields, guns, waves), the canyon map, the server-side match
-// (waves scale, boards, damage and friendly fire, late joiners, input checks), the door, and guard rails on the source
+// (waves scale, open buildings, damage and friendly fire, late joiners, input checks), the door, and guard rails on the source
 // (original names only, its own lazy chunk, free play with no money, only /api/elhalo).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as L from '../client/src/mines/elhalo/logic.js';
 import { Match, EYE } from '../server/elhalo/match.js';
-import { BUILDINGS, OPENINGS, BOARDS_MAX, BOUNDS, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, TRUCK, groundAt, terrain, creekX, insideSolid } from '../server/elhalo/map.js';
+import { BUILDINGS, OPENINGS, BOUNDS, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, TRUCK, groundAt, terrain, creekX, insideSolid } from '../server/elhalo/map.js';
 import { HALL_DOORS } from '../client/src/mines/doorHall.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -97,12 +97,12 @@ test('piñata grenades, splash falloff, smack cooldown', () => {
 });
 
 test('the horde: luchadors rush, mariachis shoot, farmers soak, priests bless; waves get bigger, tougher and more mixed', () => {
-  assert.deepEqual([...L.ENEMY_TYPES].sort(), ['chupacabra', 'cucuy', 'granjero', 'lechuza', 'llorona', 'luchador', 'mariachi', 'nahual', 'padre']);
+  assert.deepEqual([...L.ENEMY_TYPES].sort(), ['chupacabra', 'cucuy', 'gordo', 'granjero', 'lechuza', 'llorona', 'luchador', 'mariachi', 'nahual', 'padre', 'volador']);
   assert.ok(L.ENEMIES.luchador.speed > L.ENEMIES.mariachi.speed && L.ENEMIES.luchador.tackle, 'luchadors are the fast tacklers');
   assert.ok(L.ENEMIES.mariachi.note, 'mariachis shoot notes');
-  assert.ok(L.ENEMIES.granjero.hp > 2 * L.ENEMIES.luchador.hp && L.ENEMIES.granjero.tear < L.ENEMIES.luchador.tear, 'farmers are tanky and rip boards fast');
+  assert.ok(L.ENEMIES.granjero.hp > 2 * L.ENEMIES.luchador.hp, 'farmers are tanky');
   assert.ok(L.ENEMIES.padre.bless, 'priests heal and hurry the others');
-  assert.deepEqual([...new Set(L.waveRoster(1, 1, seeded()))].sort(), ['granjero', 'luchador']);
+  assert.deepEqual([...new Set(L.waveRoster(1, 1, seeded()))].sort(), ['granjero', 'luchador', 'volador']);
   assert.ok(L.waveRoster(2, 1, seeded()).includes('mariachi') && !L.waveRoster(3, 1, seeded()).includes('padre'));
   assert.ok(L.waveRoster(4, 1, seeded()).includes('padre'));
   assert.ok(!L.waveRoster(4, 1, seeded()).includes('chupacabra') && L.waveRoster(5, 1, seeded()).includes('chupacabra'), 'chupacabras from wave 5');
@@ -130,8 +130,9 @@ test('geometry helpers: rays hit spheres and boxes, circles get pushed out of bo
   const inside = L.pushOut(0.9, -5, 0.3, b); assert.ok(Math.abs(inside.x - 1.3) < 1e-9);
 });
 
-test('the canyon: two forts at the ends, a creek, three buildings with boardable windows, spawns in bounds', () => {
-  assert.deepEqual(BUILDINGS.map((b) => b.id), ['mision', 'hacienda', 'mansion']);
+test('the canyon: two forts at the ends, a creek, three wide-open buildings, spawns in bounds', () => {
+  assert.deepEqual(BUILDINGS.map((b) => b.id), ['mision', 'michoacana', 'mansion']);
+  assert.ok(OPENINGS.every((o) => o.open), 'every door and window is open');
   for (const b of BUILDINGS) {
     const ops = OPENINGS.filter((o) => o.b === b.id);
     assert.ok(ops.length >= 4, `${b.id} has ${ops.length} openings`);
@@ -169,37 +170,19 @@ test('match: first player starts a countdown, waves spawn, clear pays a bonus, a
   assert.ok(m.enemies.every((e) => e.maxHp >= Math.round(L.ENEMIES[e.type].hp * L.waveScale(9).hp)), 'and tougher');
 });
 
-test('match: the horde breaks boards, holding ACTION rebuilds one plank at a time for points (capped per round)', () => {
-  const m = setup(['t']); toWave(m, 1); m.queue = []; m.enemies = []; m.calm = true;
+test('match: no boards anywhere: no nailing prompt, no board points, and the horde walks straight in to get you', () => {
+  const m = setup(['t']); toWave(m, 1); m.queue = []; m.enemies = [];
+  assert.equal(m.bars, undefined); assert.equal(m.snapshot().bd, undefined, 'nothing about boards goes over the wire');
+  assert.equal(L.MATCH.buildSecs, undefined); assert.equal(L.MATCH.points.board, undefined);
   const far = m.spawn('granjero'); far.x = 0; far.z = 60; far.spd = 0; // keeps the wave open
-  const op = OPENINGS.find((o) => o.b === 'hacienda' && !o.door);
-  m.bars[op.i] = 0;
-  const t = put(m, 't', op.in.x, op.in.z);
-  m.tick(0.1);
-  assert.equal(m.personal('t').pr.k, 'build');
-  const pts = t.pts;
-  m.input('t', { p: [t.x, t.y, t.z], act: true }, 100);
-  run(m, L.MATCH.buildSecs + 0.05);
-  assert.equal(m.bars[op.i], 1, 'one plank after one build time');
-  run(m, L.MATCH.buildSecs * 6);
-  assert.equal(m.bars[op.i], BOARDS_MAX, 'stops at full');
-  assert.equal(t.pts, pts + BOARDS_MAX * L.MATCH.points.board);
-  // let go and nothing more happens; points per round are capped
-  m.input('t', { p: [t.x, t.y, t.z], act: false }, 300);
-  let total = BOARDS_MAX; m.bars[op.i] = 0; m.input('t', { p: [t.x, t.y, t.z], act: true }, 400);
-  for (let k = 0; k < 12; k++) { run(m, L.MATCH.buildSecs * 5.2); total += m.bars[op.i]; m.bars[op.i] = 0; }
-  assert.equal(t.pts, pts + L.MATCH.points.boardsPerRound * L.MATCH.points.board, 'board points cap per round');
-  // a body in the window blocks the rebuild
-  m.bars[op.i] = 0; const e = m.spawn('luchador'); e.x = op.x; e.z = op.z; e.spd = 0;
-  run(m, 2);
-  assert.equal(m.bars[op.i], 0, 'no boarding up through an enemy');
-  // and enemies tear boards to get in
+  for (const op of OPENINGS) { put(m, 't', op.in.x, op.in.z); m.tick(0.1); assert.notEqual(m.personal('t').pr?.k, 'build', `no nailing at ${op.b} ${op.side}`); }
+  // a farmer outside La Michoacana reaches a player in the middle of the shop through a door or window
   const m2 = setup(['t']); toWave(m2, 1); m2.queue = []; m2.enemies = []; m2.calm = true;
-  const in2 = put(m2, 't', 15.5, 3); // inside the hacienda
-  const lu = m2.spawn('granjero'); lu.x = op.out.x; lu.z = op.out.z - 0.5; lu.y = groundAt(lu.x, lu.z, 50);
-  run(m2, 6);
-  assert.ok(m2.bars.some((b) => b < BOARDS_MAX), 'a farmer pulled planks off');
-  assert.ok(in2);
+  put(m2, 't', 15.5, 3);
+  const op = OPENINGS.find((o) => o.b === 'michoacana' && o.side === 'n');
+  const g = m2.spawn('granjero'); g.x = op.out.x; g.z = op.out.z - 3; g.y = groundAt(g.x, g.z, 50);
+  run(m2, 12);
+  assert.ok(Math.hypot(g.x - 15.5, g.z - 3) < 2.6, `the farmer came inside (${g.x.toFixed(1)}, ${g.z.toFixed(1)})`);
 });
 
 test('match: shots hurt enemies and friends alike; a PVP down is credited; revive with ACTION; game over when everyone is down', () => {
@@ -234,16 +217,15 @@ test('match: shots hurt enemies and friends alike; a PVP down is credited; reviv
   assert.equal(m.phase, 'lobby', 'back to the lobby for the next one'); assert.equal(m.wave, 0); assert.equal(j.kills, 0); assert.equal(t.state, 'alive');
 });
 
-test('match: a late joiner gets the live wave, enemies, boards and players in the very next snapshot', () => {
+test('match: a late joiner gets the live wave, enemies, dogs, the elote man and players in the very next snapshot', () => {
   const m = setup(['t']); m.calm = true; toWave(m, 3);
   run(m, 8);
-  m.bars[7] = 1; m.bars[12] = 3;
   const k = m.join('k', { name: 'Kash', nowMs: 0 });
   assert.ok(k.ok); assert.equal(m.players.get('k').state, 'alive');
   const s = m.snapshot(), me = m.personal('k');
   assert.equal(s.wv, 3); assert.equal(s.ph, 'wave');
   assert.ok(s.en.length > 0 && s.en.length === m.enemies.length);
-  assert.equal(s.bd[7], 1); assert.equal(s.bd[12], 3);
+  assert.equal(s.dg.length, 6, 'all six dogs'); assert.ok(s.el >= -1);
   assert.deepEqual(s.pl.map((r) => r[1]).sort(), ['Kash', 'T']);
   assert.ok(me.in && me.corr, 'the newcomer is told where they spawned');
   assert.ok(s.ev.some((e) => e[0] === 'j' && e[1] === 'k'));
@@ -257,7 +239,6 @@ test('match: a late joiner gets the live wave, enemies, boards and players in th
   assert.ok(!m.players.get('t')?.joined, 'gone quiet: dropped from the match');
   run(m, L.MATCH.emptyResetSecs + 0.2);
   assert.equal(m.phase, 'idle'); assert.equal(m.wave, 0); assert.equal(m.enemies.length, 0);
-  assert.ok(m.bars.every((b, i) => b === (OPENINGS[i].open ? 0 : BOARDS_MAX)));
 });
 
 test('match: inputs are checked: speed, bounds, walls, junk, fire rate and message rate', () => {
@@ -275,9 +256,9 @@ test('match: inputs are checked: speed, bounds, walls, junk, fire rate and messa
   const wallZ = -24, xOut = -20.8; put(m, 't', xOut, wallZ);
   send({ p: [xOut + 1.2, t.y + 0.1, wallZ] }); assert.equal(t.x, xOut, 'no walking through walls');
   send({ p: [xOut + 1.2, groundAt(xOut + 1.2, wallZ, 50), wallZ] }); assert.equal(t.x, xOut, 'no hopping up onto the roof');
-  // through a full set of boards
-  const op = OPENINGS.find((o) => o.b === 'hacienda' && !o.door); put(m, 't', op.out.x, op.out.z);
-  send({ p: [op.in.x, groundAt(op.in.x, op.in.z, 50), op.in.z] }); assert.equal(t.x, op.out.x); assert.equal(t.z, op.out.z);
+  // straight through an open doorway is fine (nothing nailed over it)
+  const op = OPENINGS.find((o) => o.b === 'michoacana' && o.door); put(m, 't', op.out.x, op.out.z); now += 400;
+  send({ p: [op.out.x - op.nx * 0.6, groundAt(op.out.x - op.nx * 0.6, op.out.z, 50), op.out.z] }); assert.ok(Math.abs(t.x - (op.out.x - op.nx * 0.6)) < 1e-9, 'walked in the door');
   // junk does no harm
   for (const junk of [null, 5, 'x', { p: ['a', 1, 2] }, { p: [NaN, 0, 0], yaw: Infinity }, { ev: [['s', 'x']] }, { ev: 'nope' }, { w: 'rocket' }]) assert.ok(m.input('t', junk, (now += 100)));
   assert.ok(Number.isFinite(t.x) && Number.isFinite(t.yaw) && t.w === 'rifle');

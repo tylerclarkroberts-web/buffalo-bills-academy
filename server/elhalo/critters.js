@@ -44,10 +44,10 @@ function along(plan, time) {
   return { x: l.a.x + (l.b.x - l.a.x) * k, z: l.a.z + (l.b.z - l.a.z) * k, yaw: l.yaw, gait: l.gait, leg: plan.legs.indexOf(l), stop: !!l.stop };
 }
 
-// where they roam: the free dogs get the whole middle of the canyon, the stuck pair keeps to the plaza by the creek
+// where they roam: the free dogs get the whole middle of the canyon, the stuck pair keeps to the open ground west of the creek (dry feet)
 const ROAM = [{ x0: -14, x1: 8, z0: -44, z1: -8 }, { x0: -6, x1: 20, z0: 10, z1: 44 }, { x0: -20, x1: 8, z0: -14, z1: 20 }, { x0: -4, x1: 22, z0: -44, z1: -6 }];
 export const DOG_PLANS = ROAM.map((box, i) => loop(1201 + i * 97, box, 6));
-export const PAIR_PLAN = loop(7001, { x0: -6, x1: 7, z0: -16, z1: 18 }, 5, { gaits: ['walk'], stop: [1.5, 3], stopOdds: 0.8 });
+export const PAIR_PLAN = loop(7001, { x0: -17, x1: -6.5, z0: -14, z1: 18 }, 5, { gaits: ['walk'], stop: [1.5, 3], stopOdds: 0.8 });
 export const PAIR_GAP = 0.42; // half the distance between the two dogs' middles: tail to tail
 
 // every dog at match time t: [free dogs..., pair dog A, pair dog B]. gait: 0 sniff, 1 walk, 2 trot, 3 run, 4 tug (pair)

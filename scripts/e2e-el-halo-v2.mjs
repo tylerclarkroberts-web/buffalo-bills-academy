@@ -159,11 +159,11 @@ async function main() {
   // ================= OPEN CHURCH =================
   const church = OPENINGS.filter((o) => o.b === 'mision');
   const sb = await st(T);
-  check(church.every((o) => o.open && sb.bars[o.i] === 0), 'la misión: every opening is open, no boards');
+  check(church.every((o) => o.open) && !('bars' in sb), 'la misión: every opening is open, no boards');
   const cd = church.find((o) => o.door), cw = church.find((o) => !o.door);
   await place(T, cw.out.x - cw.nx * 0.2, cw.out.z - cw.nz * 0.2, Math.atan2(-(cw.in.x - cw.out.x), -(cw.in.z - cw.out.z)));
   await T.waitForTimeout(400);
-  check((await st(T)).prompt?.k !== 'build', 'no board prompt at a church window');
+  check(!(await st(T)).prompt || (await st(T)).prompt.k === 'buy', `no board prompt at a church window (${JSON.stringify((await st(T)).prompt)})`);
   await place(T, cd.out.x + cd.nx * 2, cd.out.z + cd.nz * 2, Math.atan2(cd.nx, cd.nz));
   await T.waitForTimeout(300);
   await T.evaluate(([x, z]) => window.__elHalo.walkTo(x, z), [cd.in.x - cd.nx * 3, cd.in.z - cd.nz * 3]);

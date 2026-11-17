@@ -1,8 +1,8 @@
 // Browser check + screenshots for EL HALO (Hall of Doors), the shared horde match. Boots its own throwaway server,
 // clocks three miners in (two desktops and a phone), walks each through the mine door and the hall into El Halo (the
-// lobby first; the host starts it), and checks: they share one world and see each other and the horde; nailing boards
-// back over a hacienda window works
-// (desktop E and the phone's ACCIÓN button) and pays points; friendly fire lands and scores a PVP down; a friend can
+// lobby first; the host starts it), and checks: they share one world and see each other and the horde; every building is
+// open (no boards: you walk straight into La Michoacana); the elote man's heal works (the phone's ACCIÓN
+// button); the street dogs (and the stuck pair) are the same on every screen, fewer on the phone; friendly fire lands and scores a PVP down; a friend can
 // pick you back up; a late joiner gets the current wave as it stands; leaving takes you off everyone's screen; and
 // nothing but /api/elhalo is called from inside the room. No page errors.
 //   npm run build && PLAYWRIGHT_DIR=/path/with/playwright-core node scripts/e2e-el-halo.mjs   (OUT=dir for screenshots + video)
@@ -89,24 +89,19 @@ async function main() {
   check(await start(J), 'Joe: joins the same match');
   check(await until(T, () => window.__elHalo.state().others.includes('Joe')) && await until(J, () => window.__elHalo.state().others.includes('Tyler')), 'Tyler and Joe see each other');
 
-  // ---- boarding inside the hacienda (la misión is wide open now): a window, boards pulled down, enemies outside
-  const win = OPENINGS.find((o) => o.b === 'hacienda' && o.side === 'w' && !o.door);
-  const nx = win.nx, nz = win.nz, ix = win.in.x - nx * 0.4, iz = win.in.z - nz * 0.4;
-  await hook(T, { boards: { i: win.i, n: 1 } });
-  await place(T, ix, iz, yawTo(win.in, win)); // inside, facing the window
-  const outAt = (d, s) => ({ x: win.out.x + nx * d - nz * s, z: win.out.z + nz * d + nx * s });
-  await hook(T, { spawn: [{ type: 'luchador', ...outAt(2.5, -1), still: true }, { type: 'granjero', ...outAt(4, 1.5), still: true }, { type: 'mariachi', ...outAt(6, -2.5), still: true }] });
-  await until(T, (i) => window.__elHalo.state().bars[i] === 1 && window.__elHalo.state().prompt?.k === 'build', win.i);
+  // ---- no boards anywhere: walk in the front door of La Michoacana; no build prompt at any window
+  const door = OPENINGS.find((o) => o.b === 'michoacana' && o.door);
+  await place(T, door.out.x + door.nx * 2, door.out.z + door.nz * 2, yawTo(door.out, door.in));
+  await T.waitForTimeout(300);
+  await T.evaluate(([x, z]) => window.__elHalo.walkTo(x, z), [15, 3]);
+  check(await until(T, () => { const p = window.__elHalo.state().pos; return p.x > 10 && p.x < 21 && p.z > -1.5 && p.z < 7.5; }, null, 8000), `Tyler: walks straight into La Michoacana, nothing boarded (${JSON.stringify((await st(T)).pos)})`);
   a = await st(T);
-  check(a.prompt?.k === 'build' && Math.hypot(a.pos.x - ix, a.pos.z - iz) < 0.5, `Tyler: inside the hacienda at a broken window, prompt to nail boards (${JSON.stringify(a.prompt)})`);
-  const pts0 = a.pts;
-  await T.keyboard.down('KeyE'); await T.waitForTimeout(1300);
-  await shot(T, '03-hacienda-boarding');
-  await T.waitForTimeout(1900); await T.keyboard.up('KeyE');
-  await until(T, (i) => window.__elHalo.state().bars[i] >= 4, win.i, 3000);
-  a = await st(T);
-  check(a.bars[win.i] >= 4 && a.pts > pts0, `Tyler: holding E nails boards back up (1 → ${a.bars[win.i]}) and pays points (${pts0} → ${a.pts})`);
-  check(await until(J, (i) => window.__elHalo.state().bars[i] >= 4, win.i, 3000), 'Joe sees the same boards');
+  check(a.shop >= 4 && !('bars' in a), `Tyler: the shop's sign, logos and case glass are up (${a.shop}), no boards in the state`);
+  let prompts = 0;
+  for (const o of OPENINGS.filter((q) => !q.door)) { await place(T, o.in.x - o.nx * 0.4, o.in.z - o.nz * 0.4, yawTo(o.in, o)); await T.waitForTimeout(160); if ((await st(T)).prompt?.k === 'b' + 'uild') prompts++; }
+  check(prompts === 0, `no window anywhere asks you to board it up (${prompts})`);
+  await place(T, 15, 3, Math.PI / 2); await T.waitForTimeout(500); await T.evaluate(() => window.__elHalo.face(-Math.PI / 2, -0.12)); await T.waitForTimeout(300);
+  await shot(T, '03-michoacana-inside');
 
   // ---- friendly fire: Joe shoots Tyler in the open, then finishes him (a PVP down), then picks him back up
   await hook(T, { clear: true }); // nobody else in the line of fire
@@ -141,18 +136,21 @@ async function main() {
   check(await start(K), 'Kash: late joiner gets in');
   a = await st(K);
   check(a.wave === 3 && a.phase === 'wave' && a.enemies > 0 && a.others.includes('Tyler') && a.others.includes('Joe'), `Kash: lands mid wave 3 with enemies and both friends there (wave ${a.wave}, ${a.enemies} enemies, ${a.others.join(',')})`);
-  check(a.bars[win.i] === (await st(T)).bars[win.i], 'Kash: gets the boards as they stand');
+  const kd = a.dogs, td = (await st(T)).dogs;
+  check(kd.length === 4 && td.length === 6 && kd.filter((d) => d.pair).length === 2, `dogs: 6 on the desktop, 4 on the phone, the stuck pair on both (${td.length}/${kd.length})`);
+  const pk = kd.filter((d) => d.pair), ptd = td.filter((d) => d.pair);
+  check(Math.hypot(pk[0].x - ptd[0].x, pk[0].z - ptd[0].z) < 2.5 && Math.abs(Math.hypot(pk[0].x - pk[1].x, pk[0].z - pk[1].z) - 0.84) < 0.05, `Kash: the pair is where Tyler sees it, stuck together (${JSON.stringify(pk)} vs ${JSON.stringify(ptd)})`);
   check(await inView(K, '[data-test^=pad-]') && await noScroll(K), 'Kash: phone pad on screen (incl. ACCIÓN), no scroll');
-  // the phone's ACCIÓN button nails boards too (hacienda window)
-  const hw = OPENINGS.find((o) => o.b === 'hacienda' && o.side === 'n');
-  await hook(K, { boards: { i: hw.i, n: 0 } });
-  await place(K, hw.in.x, hw.in.z, yawTo(hw.in, hw));
-  await until(K, () => window.__elHalo.state().prompt?.k === 'build', null, 4000);
+  // the phone's ACCIÓN button buys you an elote (a small heal, once a minute)
+  await hook(K, { calm: true, hp: 45 });
+  const el = (await st(K)).elote;
+  await place(K, el.x + 1.2, el.z - 0.6, yawTo({ x: el.x + 1.2, z: el.z - 0.6 }, el));
+  await until(K, () => window.__elHalo.state().prompt?.k === 'elote', null, 4000);
   const ready = await until(K, () => document.querySelector('[data-test=pad-act]').classList.contains('ready'), null, 3000);
-  check(ready, `Kash: ACCIÓN lights up at a broken window (${JSON.stringify((await st(K)).prompt)} / ${await K.getAttribute('[data-test=pad-act]', 'class')})`);
-  await holdPad(K, 'act', 2600);
-  a = await st(K);
-  check(a.bars[hw.i] >= 2, `Kash: holding ACCIÓN nails boards (0 → ${a.bars[hw.i]})`);
+  check(ready, `Kash: ACCIÓN lights up at the elote cart (${JSON.stringify((await st(K)).prompt)} / ${await K.getAttribute('[data-test=pad-act]', 'class')})`);
+  await holdPad(K, 'act', 400);
+  check(await until(K, () => window.__elHalo.state().health >= 70, null, 3000), `Kash: ACCIÓN buys an elote, +30 health (45 → ${(await st(K)).health})`);
+  check(await until(K, () => /OTRO ELOTE/.test(window.__elHalo.state().prompt?.label || ''), null, 2000), `Kash: then the elote man needs a minute (${JSON.stringify((await st(K)).prompt)})`);
   await K.evaluate(() => window.__elHalo.face(Math.PI * 0.75, -0.05));
   await K.waitForTimeout(400); await shot(K, '07-mobile-playing');
   await K.tap('[data-test=elhalo-board-btn]'); await K.waitForTimeout(300);

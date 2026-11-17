@@ -6,19 +6,20 @@
 import * as THREE from 'three';
 import { buildWorld, terrain, PICADO } from './world.js';
 import { ENEMY_MAKERS, makeViewModels, makePinata, makePickup, makePlayerModel, makeNote, makeTruck, makeJeep, makeSticky, makeRocket, makeNeedle,
-  makeBleedRing, setBleed, makeWeaponDisplay, PLAYER_COLORS } from './models.js';
+  makeBleedRing, setBleed, makeWeaponDisplay, PLAYER_COLORS, makeDog, makeEloteCart, makeBubble, makeLandRing } from './models.js';
 import * as L from './logic.js';
-import { BOUNDS, OPENINGS, BOARDS_MAX, groundAt, collide, wallDist } from '../../../../server/elhalo/map.js';
+import { BOUNDS, ELOTE, groundAt, collide, wallDist } from '../../../../server/elhalo/map.js';
+import { dogsAt, DOG_COUNT, DOG_PLANS, ELOTE_LINES } from '../../../../server/elhalo/critters.js';
 import { createAudio } from './audio.js';
 import { connect, join, leave, inputSender, post } from './net.js';
 
 const EYE = 1.62, RADIUS = 0.38, GRAV = 16, JUMP = 6.2, SPEED = 5.4;
 const TYPES = L.ENEMY_TYPES, WIDS = L.WEAPON_IDS;
-const NAME = { luchador: 'LUCHADOR', mariachi: 'MARIACHI', granjero: 'GRANJERO', padre: 'PADRE', chupacabra: 'CHUPACABRAS', llorona: 'LA LLORONA', cucuy: 'EL CUCUY', nahual: 'NAHUAL', lechuza: 'LECHUZA' };
-const ST = ['walk', 'hit', 'tear', 'tackle', 'shoot', 'bless', 'idle', 'climb', 'swoop', 'wail'];
+const NAME = { luchador: 'LUCHADOR', mariachi: 'MARIACHI', granjero: 'GRANJERO', padre: 'PADRE', chupacabra: 'CHUPACABRAS', llorona: 'LA LLORONA', cucuy: 'EL CUCUY', nahual: 'NAHUAL', lechuza: 'LECHUZA', volador: 'VOLADOR', gordo: 'EL GORDO' };
+const ST = ['walk', 'hit', 'grab', 'tackle', 'shoot', 'bless', 'idle', 'climb', 'swoop', 'wail', 'windup', 'leap', 'slam'];
 const MARIGOLD = [[1, 0.6, 0.05], [1, 0.75, 0.1], [0.95, 0.45, 0.05]];
 const GOLD = [[1, 0.9, 0.4], [1, 1, 0.8], [1, 0.8, 0.2]];
-const WOOD = [[0.62, 0.42, 0.24], [0.5, 0.33, 0.18], [0.75, 0.55, 0.35]];
+const STEAM = [[0.95, 0.95, 0.95], [0.85, 0.85, 0.88], [1, 1, 1]];
 const SMOKE = [[0.25, 0.22, 0.25], [0.4, 0.36, 0.38], [0.15, 0.13, 0.16]];
 const WISP = [[0.85, 0.92, 1], [0.6, 0.75, 1], [1, 1, 1]];
 const BLUE = [[0.25, 0.85, 1], [0.6, 0.95, 1], [1, 1, 1]];
@@ -102,7 +103,17 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   // ---- the shared world as the server last told us
   let snap = null, me = null, myId = null, joined = false, joining = false, lastAg = null, lastSnapAt = 0, prevSt = null;
   let pending = [], sendT = 0, status = 'connecting', infoKey = '';
-  const bars = OPENINGS.map((o) => (o.open ? 0 : BOARDS_MAX));
+  // the town's locals: street dogs (fewer on phones; the stuck pair always) and the elote man with his cart
+  const nFree = Math.min(DOG_PLANS.length, touch ? DOG_COUNT.phone : DOG_COUNT.free);
+  const dogs = [...Array.from({ length: nFree }, (_, i) => ({ i, m: makeDog(i) })), { i: DOG_PLANS.length, m: makeDog(4), pair: 'a' }, { i: DOG_PLANS.length + 1, m: makeDog(5), pair: 'b' }];
+  for (const d of dogs) scene.add(d.m.root);
+  let dogT = 0, barkT = 3;
+  const cart = makeEloteCart(); cart.root.position.set(ELOTE.x, terrain(ELOTE.x, ELOTE.z), ELOTE.z); cart.root.rotation.y = ELOTE.yaw; scene.add(cart.root);
+  const eloteBubbles = ELOTE_LINES.map((l) => { const b = makeBubble(l, { w: 2.3 }); b.position.set(0, 2.75, 0.75); b.visible = false; cart.root.add(b); return b; });
+  let eloteSay = -1, steamT = 0;
+  const shouts = []; // ¡ÁGUILA! bubbles riding on the enemy that shouted
+  const rings = []; // landing marks on the ground
+  let serverT = 0, serverAt = 0;
   const ents = { en: new Map(), pl: new Map(), pj: new Map(), gr: new Map(), pk: new Map(), pr: new Map() };
   const dying = [];
   const sender = inputSender();
@@ -155,13 +166,9 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const seenK = new Set();
     for (const [id, kind, x, y, z] of s.pk) { seenK.add(id); if (!ents.pk.has(id)) { const m = makePickup(kind); m.position.set(x, y + 0.1, z); scene.add(m); ents.pk.set(id, { m, y }); } }
     for (const [id, k] of ents.pk) if (!seenK.has(id)) { scene.remove(k.m); disposeTree(k.m); ents.pk.delete(id); }
-    // boards (la misión has none)
-    s.bd.forEach((n, i) => {
-      const o = OPENINGS[i]; if (o.open) { bars[i] = 0; return; }
-      if (n < bars[i]) for (let k = n; k < bars[i]; k++) emit(o.x, o.y0 + 0.4 + k * 0.3, o.z, 8, WOOD, { speed: 3, up: 2, life: 0.9 });
-      bars[i] = n; const b = world.boards[i];
-      if (b.shown !== n) { b.planks.forEach((pl, k) => { pl.visible = k < n; }); b.shown = n; }
-    });
+    // the match clock (dogs and the elote man run off it, so everyone sees the same thing)
+    serverT = s.t; serverAt = now;
+    if (s.el !== undefined && s.el !== eloteSay) { eloteSay = s.el; eloteBubbles.forEach((b, i) => { b.visible = i === s.el; }); if (s.el >= 0 && near(ELOTE.x, ELOTE.z, 22)) sfx('elote'); }
     // the supply truck
     if (s.tk) {
       const [x, z, yw, wi] = s.tk;
@@ -264,8 +271,24 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     else if (k === 'rv') feed(`${nameOf(e[2])} LEVANTÓ A ${e[1] === myId ? 'TI' : nameOf(e[1])}`, e[1] === myId || e[2] === myId);
     else if (k === 'j') feed(`${e[2]} ENTRÓ`);
     else if (k === 'l') feed(`${nameOf(e[1])} SALIÓ`);
-    else if (k === 'bb') { const o = OPENINGS[e[1]]; if (near(o.x, o.z, 24)) sfx('crack'); }
-    else if (k === 'br') { const o = OPENINGS[e[1]]; if (near(o.x, o.z, 24)) sfx('hammer'); emit(o.x, o.y0 + 1, o.z, 6, WOOD, { speed: 1.5, up: 1, life: 0.5 }); }
+    else if (k === 'ag') { // the tell: a volador crouches and shouts, a gordo winds up a belly flop
+      const en = ents.en.get(e[1]); if (en) { const gordo = en.type === 'gordo', b = makeBubble(gordo ? '¡AHÍ VOY!' : '¡ÁGUILA!', { color: gordo ? '#5a1010' : '#8a0c47', bg: gordo ? '#ffe36a' : '#fff8f0', w: gordo ? 2.4 : 2.2 }); b.position.set(0, gordo ? 3.2 : 2.7, 0); en.m.root.add(b); shouts.push({ b, en, life: 1.5 });
+        if (near(en.to.x, en.to.z, 45)) sfx(gordo ? 'huff' : 'aguila'); if (!gordo && near(en.to.x, en.to.z, 22)) feed('¡UN VOLADOR! ¡MUÉVETE!'); }
+    }
+    else if (k === 'lp') { const en = ents.en.get(e[1]); if (en) en.arc = { from: { x: e[8], y: e[9] + (L.ENEMIES[en.type]?.float || 0), z: e[10] }, to: { x: e[2], y: e[3], z: e[4] }, t0: performance.now(), dur: e[5] * 1000, apex: e[7] || 0 };
+      const m = makeLandRing(ents.en.get(e[1])?.type === 'gordo' ? 0xffa020 : 0xff3040); m.position.set(e[2], e[3] + 0.06, e[4]); m.scale.setScalar(e[6] || 2.5); scene.add(m); rings.push({ m, life: e[5] + 0.25, dur: e[5] + 0.25 }); }
+    else if (k === 'lx') { // the landing: dust ring, a thud and the ground shakes (harder for the gordo)
+      const big = !!e[5], dd = Math.hypot(e[1] - pos.x, e[3] - pos.z);
+      emit(e[1], e[2] + 0.2, e[3], touch ? 60 : 110, DUST, { speed: big ? 8 : 6, up: 2, life: 1.2, g: 6, drag: 1.4 });
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: big ? 0xd8b080 : 0xffe0b0, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+      ring.position.set(e[1], e[2] + 0.15, e[3]); ring.rotation.x = -Math.PI / 2; scene.add(ring); blasts.push({ m: ring, life: 0.3, big: (e[4] || 2.5) * 3 });
+      shake = Math.max(shake, Math.max(0, (big ? 1.0 : 0.6) - dd / (big ? 18 : 14)));
+      if (near(e[1], e[3], 50)) sfx('thud', big);
+    }
+    else if (k === 'kb') { if (e[1] === myId) { banner = { text: '¡TE APLASTARON!', until: t + 1.4 }; shake = Math.max(shake, 0.6); } }
+    else if (k === 'gb') { const en = ents.en.get(e[1]); if (en && near(en.to.x, en.to.z, 25)) sfx('huff'); }
+    else if (k === 'gs') { const en = ents.en.get(e[1]); if (en && e[2] && near(en.to.x, en.to.z, 25)) sfx('smack'); }
+    else if (k === 'el') { if (e[1] === myId) { banner = { text: '¡QUÉ RICO ELOTE! +30', until: t + 1.6 }; sfx('pickup'); } else feed(`${nameOf(e[1])} SE COMPRÓ UN ELOTE`); }
     else if (k === 'pk') { if (e[2] === myId) { sfx('pickup'); if (e[3] === 'sticky' || e[3] === 'frag') banner = { text: e[3] === 'sticky' ? '+1 PEGAJOSA' : '+1 PIÑATA', until: t + 1 }; } }
     else if (k === 'wave') { banner = { text: `OLEADA ${e[1]}`, until: t + 2.4 }; sfx('wave'); }
     else if (k === 'clear') { banner = { text: `¡OLEADA ${e[1]} LIMPIA!`, until: t + 3 }; sfx('pickup'); }
@@ -505,7 +528,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     set('scope', '.on', zoom); set('zoombtn', '.show', !!w.zoom && !me?.seat);
     set('hs', '.on', headMark > 0);
     const pr = me?.pr, E = PAD ? 'ACCIÓN' : 'E', HOLD = PAD ? 'MANTÉN ACCIÓN' : 'MANTÉN E';
-    const ptxt = !pr ? '' : pr.k === 'revive' ? `${HOLD} · LEVANTA A ${pr.label}` : pr.k === 'build' ? `${HOLD} · CLAVA TABLAS ${pr.label}` : pr.k === 'truck' ? `${E} · AGARRA ${pr.label}` : pr.k === 'jeep' ? `${E} · ${pr.label}` : pr.k === 'exit' ? `${E} · BAJAR` : `${E} · ${pr.label} ${pr.cost} PTS`;
+    const ptxt = !pr ? '' : pr.k === 'revive' ? `${HOLD} · LEVANTA A ${pr.label}` : pr.k === 'elote' ? `${pr.ready ? E + ' · ' : ''}${pr.label}` : pr.k === 'truck' ? `${E} · AGARRA ${pr.label}` : pr.k === 'jeep' ? `${E} · ${pr.label}` : pr.k === 'exit' ? `${E} · BAJAR` : `${E} · ${pr.label} ${pr.cost} PTS`;
     set('prompt', 'text', ptxt); set('prompt', '.on', !!pr && st === 'alive'); set('promptbar', 'w', pr && pr.p ? Math.min(1, pr.p).toFixed(2) : '0');
     set('actbtn', '.ready', !!pr && st === 'alive');
     set('down', '.on', st !== 'alive' && joined);
@@ -621,6 +644,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const tt = now / 1000;
     for (const e of ents.en.values()) {
       const c = cur(e, now), m = e.m, ty = e.type;
+      if (e.arc) { const k = (now - e.arc.t0) / e.arc.dur; if (k >= 0 && k < 1) { const A = e.arc; c.x = A.from.x + (A.to.x - A.from.x) * k; c.z = A.from.z + (A.to.z - A.from.z) * k; c.y = A.from.y + (A.to.y - A.from.y) * k + A.apex * 4 * k * (1 - k); } else if (k >= 1.3) e.arc = null; }
       const moved = Math.hypot(e.to.x - e.from.x, e.to.z - e.from.z) / (e.dur / 1000);
       m.root.position.set(c.x, c.y, c.z); m.root.rotation.y = c.yaw;
       e.phase += dt * Math.min(ty === 'chupacabra' ? 18 : 9, moved * 2.2 + 0.3);
@@ -630,11 +654,23 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       const quad = m.kind === 'quad' || m.quadNow;
       m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw;
       m.root.rotation.x = st === 'tackle' ? -0.45 : st === 'swoop' ? 0.5 : 0; m.root.rotation.z = 0;
+      if (st !== 'windup' && st !== 'leap' && st !== 'slam' && st !== 'grab') { e.wind = 0; if (m.arms[0].rotation.z && m.kind !== 'fly') { m.arms[0].rotation.z = 0; m.arms[1].rotation.z = 0; } if (m.body) m.body.rotation.x = 0; }
+      if (m.bar) { m.bar.quaternion.copy(m.root.quaternion).invert().multiply(camera.quaternion); m.barFg.scale.x = Math.max(0.01, (e.hp || 100) / 100); }
       if (quad) { m.arms[0].rotation.x = -sw; m.arms[1].rotation.x = sw; }
       else if (m.kind === 'fly') { const f = Math.sin(tt * (st === 'swoop' ? 6 : 13) + e.seed); m.arms[0].rotation.z = f * 0.7; m.arms[1].rotation.z = -f * 0.7; m.root.position.y += Math.sin(tt * 3 + e.seed) * 0.15; }
       else if (m.kind === 'float') { m.root.position.y += Math.sin(tt * 1.6 + e.seed) * 0.12; const up = st === 'wail' ? -2.6 : -1.35 + Math.sin(tt * 2 + e.seed) * 0.1; m.arms[0].rotation.x = up; m.arms[1].rotation.x = up; m.mats[0].opacity = 0.6 + 0.3 * Math.abs(Math.sin(tt * 7.3 + e.seed)) * (Math.sin(tt * 1.3) > 0.7 ? 0.3 : 1); }
       else if (st === 'climb') { const a = Math.sin(tt * 10 + e.seed); m.arms[0].rotation.x = -2.6 + a * 0.4; m.arms[1].rotation.x = -2.6 - a * 0.4; m.legs[0].rotation.x = a * 0.5; m.legs[1].rotation.x = -a * 0.5; }
-      else if (st === 'hit' || st === 'tear') { const a = Math.sin(tt * 14 + e.seed); m.arms[0].rotation.x = -1.3 + a * 0.6; m.arms[1].rotation.x = -1.3 - a * 0.6; }
+      else if (st === 'windup') { // crouched, arms flung wide: about to go
+        const q = Math.min(1, (e.wind = (e.wind || 0) + dt) / 0.4); m.root.position.y -= 0.25 * q; m.arms[0].rotation.z = 1.4 * q; m.arms[1].rotation.z = -1.4 * q; m.arms[0].rotation.x = m.arms[1].rotation.x = -0.3;
+        m.legs[0].rotation.x = 0.5 * q; m.legs[1].rotation.x = 0.5 * q; if (ty === 'gordo') m.body.rotation.x = -0.25 * q;
+      }
+      else if (st === 'leap') { // the diving eagle: wings out, body tipped forward / the gordo's belly first
+        e.wind = 0; m.arms[0].rotation.z = 1.5; m.arms[1].rotation.z = -1.5; m.arms[0].rotation.x = m.arms[1].rotation.x = -0.5;
+        m.root.rotation.x = ty === 'gordo' ? -0.9 : -0.75; m.legs[0].rotation.x = 0.4; m.legs[1].rotation.x = 0.2;
+      }
+      else if (st === 'slam') { e.wind = 0; m.root.rotation.x = ty === 'gordo' ? -0.35 : -0.2; m.arms[0].rotation.z = 0.6; m.arms[1].rotation.z = -0.6; m.arms[0].rotation.x = m.arms[1].rotation.x = -1.0; }
+      else if (st === 'grab') { const q = Math.sin(tt * 18) * 0.08; m.arms[0].rotation.z = 0.9 + q; m.arms[1].rotation.z = -0.9 - q; m.arms[0].rotation.x = m.arms[1].rotation.x = -1.3; m.body.rotation.x = 0.15; }
+      else if (st === 'hit') { const a = Math.sin(tt * 14 + e.seed); m.arms[0].rotation.x = -1.3 + a * 0.6; m.arms[1].rotation.x = -1.3 - a * 0.6; }
       else if (st === 'shoot') { m.arms[1].rotation.x = -1.5; m.arms[0].rotation.x = -0.9; }
       else if (st === 'bless') { m.arms[0].rotation.x = -2.7; m.arms[1].rotation.x = -2.7; }
       else if (st === 'tackle') { m.arms[0].rotation.x = -1.6; m.arms[1].rotation.x = -1.6; }
@@ -650,6 +686,9 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       if (e.flash > 0) { e.flash = Math.max(0, e.flash - dt * 6); for (const mt of m.mats) mt.emissive.setScalar(e.flash * 0.6); }
       if (m.eyes && nightK > 0.3 && R() < dt * 0.3) m.eyes.visible = false; else if (m.eyes && !m.eyes.visible && R() < dt * 8) m.eyes.visible = true; // they blink
     }
+    for (let i = shouts.length - 1; i >= 0; i--) { const sh = shouts[i]; sh.life -= dt; sh.b.material.opacity = Math.min(1, sh.life * 3); if (sh.life <= 0 || !ents.en.has(sh.en.id)) { sh.en.m.root.remove(sh.b); sh.b.material.map.dispose(); sh.b.material.dispose(); shouts.splice(i, 1); } }
+    for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.life -= dt; const k = 1 - r.life / r.dur; r.m.userData.fill.material.opacity = 0.15 + 0.35 * k; r.m.userData.ring.material.opacity = 0.6 + 0.4 * Math.abs(Math.sin(tt * 14)); if (r.life <= 0) { scene.remove(r.m); disposeTree(r.m); rings.splice(i, 1); } }
+    critters(dt, now, tt);
     for (let i = dying.length - 1; i >= 0; i--) { const d = dying[i]; d.life -= dt; d.m.root.scale.multiplyScalar(0.88); d.m.root.rotation.y += dt * 12; d.m.root.position.y += dt * 2; if (d.life <= 0) { scene.remove(d.m.root); disposeTree(d.m.root); dying.splice(i, 1); } }
     for (const p of ents.pl.values()) {
       const c = cur(p, now), m = p.m, f = p.flags || 0;
@@ -690,6 +729,31 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       jeep.turret.visible = me?.seat !== 'g';
     }
     world.night?.tick(tt);
+  }
+
+  // the dogs and the elote man, off the match clock (smooth: no waiting for the next update)
+  function critters(dt, now, tt) {
+    const st = snap ? serverT + Math.min(0.5, (now - serverAt) / 1000) : tt;
+    dogT = st;
+    const all = dogsAt(st);
+    for (const d of dogs) {
+      const s = all[d.i], m = d.m; if (!s) continue;
+      m.root.position.set(s.x, terrain(s.x, s.z), s.z); m.root.rotation.y = s.yaw;
+      const sp = s.gait === 3 ? 22 : s.gait === 2 ? 14 : s.gait === 1 ? 8 : s.gait === 4 ? 11 : 0;
+      m.phase += dt * sp; const a = s.gait === 0 ? 0 : Math.sin(m.phase) * (s.gait === 3 ? 0.9 : s.gait === 4 ? 0.7 : 0.5);
+      m.legs[0].rotation.x = a; m.legs[1].rotation.x = a; m.legs[2].rotation.x = -a; m.legs[3].rotation.x = -a;
+      m.root.position.y += s.gait === 3 ? Math.abs(Math.sin(m.phase)) * 0.08 : 0;
+      m.head.rotation.x = s.gait === 0 ? 0.55 + Math.sin(tt * 7 + d.i) * 0.12 : s.gait === 4 ? -0.15 + Math.sin(tt * 3 + d.i) * 0.1 : 0; // sniffing / looking back at the other one
+      m.head.rotation.y = s.gait === 0 ? Math.sin(tt * 1.3 + d.i) * 0.5 : s.gait === 4 ? Math.sin(tt * 2.1 + d.i * 2) * 0.6 : 0;
+      m.tail.rotation.y = s.gait === 4 ? 0 : Math.sin(tt * 12 + d.i) * 0.6; m.tail.rotation.x = s.gait === 4 ? 0.9 : 0; // the pair: tails tucked, stuck
+    }
+    if (near(dogs[0].m.root.position.x, dogs[0].m.root.position.z, 18) && (barkT -= dt) <= 0) { barkT = 5 + R() * 9; sfx('bark'); }
+    // the elote man fans the grill, now and then holds up an elote; steam off the pot
+    const v = cart.vendor, sayIt = eloteSay >= 0;
+    v.arms[1].rotation.x = -1.2 + Math.sin(tt * 9) * 0.25; v.arms[1].rotation.z = Math.sin(tt * 9) * 0.2;
+    v.arms[0].rotation.x = sayIt ? -2.6 + Math.sin(tt * 6) * 0.15 : -0.3 + Math.sin(tt * 1.4) * 0.1;
+    v.root.position.y = Math.abs(Math.sin(tt * 2.2)) * 0.03; v.root.rotation.y = Math.PI + Math.sin(tt * 0.5) * 0.25;
+    if ((steamT -= dt) <= 0 && near(ELOTE.x, ELOTE.z, 35)) { steamT = touch ? 0.25 : 0.12; const c = cart.root; emit(c.position.x + Math.sin(ELOTE.yaw) * 0.3, c.position.y + 1.75, c.position.z + Math.cos(ELOTE.yaw) * 0.3, 1, STEAM, { speed: 0.3, up: 1.2, life: 1.4, g: -0.6, drag: 1 }); }
   }
 
   function effects(dt) {
@@ -742,11 +806,10 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const rl = L.reloading(P, t) && ws ? Math.sin(Math.min(1, (ws.reloadUntil - t) / L.WEAPONS[c].reload) * Math.PI) : 0;
     let sw = 0; if (swing >= 0) { swing += dt; sw = Math.sin(Math.min(1, swing / 0.3) * Math.PI); if (swing > 0.3) swing = -1; }
     const melee = L.WEAPONS[c].kind === 'melee', lg = lunge ? 1 : 0;
-    const building = me?.pr?.k === 'build' && (input.act || input.keys.has('KeyE')) ? Math.abs(Math.sin(performance.now() / 90)) : 0; // hammering
     const chg = charging !== null ? Math.min(1, (t - charging) / (L.WEAPONS[c].charge || 1)) : 0;
     const g = vm.guns[c];
-    g.position.set(home.x + bx * 0.5 - sw * (melee ? 0.25 : 0.12) + (R() - 0.5) * chg * 0.01, home.y + by * 0.5 - rl * 0.18 - swapAnim * 0.3 - building * 0.1 + lg * 0.08, home.z + vmKick * 0.05 - sw * 0.25 - lg * 0.1);
-    g.rotation.set(rl * 0.5 + vmKick * (KICK[c] || 0.005) * 10 - sw * (melee ? 1.2 : 0.4) + building * 0.5 + lg * 0.5, 0.06 + sw * (melee ? 1.0 : 0.6), rl * 0.3 + (melee ? sw * 0.6 : 0));
+    g.position.set(home.x + bx * 0.5 - sw * (melee ? 0.25 : 0.12) + (R() - 0.5) * chg * 0.01, home.y + by * 0.5 - rl * 0.18 - swapAnim * 0.3 + lg * 0.08, home.z + vmKick * 0.05 - sw * 0.25 - lg * 0.1);
+    g.rotation.set(rl * 0.5 + vmKick * (KICK[c] || 0.005) * 10 - sw * (melee ? 1.2 : 0.4) + lg * 0.5, 0.06 + sw * (melee ? 1.0 : 0.6), rl * 0.3 + (melee ? sw * 0.6 : 0));
     vm.flash.visible = vmKick > 0.6 && !melee; if (vm.flash.visible) { g.updateMatrix(); vm.flash.position.copy(vm.muzzle[c]).applyMatrix4(g.matrix); vm.flash.rotation.set(0, g.rotation.y, R() * 3); vm.flash.material.color.setHex(c === 'chispas' ? 0x7dff5a : c === 'agujas' ? 0xff4fc0 : c === 'laser' ? 0xff3040 : 0xffd060); }
   }
 
@@ -837,10 +900,13 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       grenades: (P.nades.frag || 0) - spent.frag, sticky: (P.nades.sticky || 0) - spent.sticky, nadeKind,
       weapon: P.current, slots: me?.ws || [], mag: P.weapons[P.current]?.mag ?? 0, reserve: P.weapons[P.current]?.reserve ?? 0, pos: { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2) }, yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), onGround,
       enemies: ents.en.size, enemyTypes: [...ents.en.values()].map((e) => e.type), others: [...ents.pl.values()].map((p) => p.name), othersAt: [...ents.pl.values()].map((p) => ({ name: p.name, ...cur(p, performance.now()), flags: p.flags, look: p.look })),
-      bars: bars.slice(), prompt: me?.pr || null, fps: Math.round(fps), frames, status, audio: audio ? audio.ctx.state : 'none', music: !!audio?.musicPlaying,
+      prompt: me?.pr || null, fps: Math.round(fps), frames, status, audio: audio ? audio.ctx.state : 'none', music: !!audio?.musicPlaying,
       truck: truckObj ? { ...cur(truckObj, performance.now()), weapon: WIDS[truckGunIdx] } : null, jeep: jeepObj ? { ...jeepNow(performance.now()), driver: jeepObj.driver, gunner: jeepObj.gunner } : null, seat: me?.seat || null,
       night: nightK, nightOn: !!snap?.nt, ready: !!me?.ready, host: !!me?.host, look: me?.look || null, roster: roster(), zoom, headMark: headMark > 0, hitMark: hitMark > 0, lunging: !!lunge,
-      pickups: [...ents.pk.values()].length, projectiles: ents.pr.size, nadesLive: ents.gr.size }),
+      pickups: [...ents.pk.values()].length, projectiles: ents.pr.size, nadesLive: ents.gr.size,
+      foes: [...ents.en.values()].map((e) => { const c = cur(e, performance.now()); return { id: e.id, type: e.type, st: e.st, hp: e.hp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.z.toFixed(2) }; }), rings: rings.length,
+      dogs: dogs.map((d) => ({ i: d.i, x: +d.m.root.position.x.toFixed(2), z: +d.m.root.position.z.toFixed(2), yaw: +d.m.root.rotation.y.toFixed(2), pair: d.pair || null })), dogT: +dogT.toFixed(3), shop: world.shop?.children.length || 0,
+      elote: { x: ELOTE.x, z: ELOTE.z, say: eloteSay, line: eloteSay >= 0 ? ELOTE_LINES[eloteSay] : null } }),
     aimAt(x, y, z) { const o = eye(); yaw = Math.atan2(-(x - o.x), -(z - o.z)); pitch = Math.atan2(y - o.y, Math.hypot(x - o.x, z - o.z)); },
     aimAtNearest(head = false) { const now = performance.now(); const e = [...ents.en.values()].sort((a, b) => Math.hypot(a.to.x - pos.x, a.to.z - pos.z) - Math.hypot(b.to.x - pos.x, b.to.z - pos.z))[0]; if (!e) return false; const c = head ? enemyHead(e, now) : enemyCenter(e, now); api.aimAt(c.x, c.y, c.z); return true; },
     aimAtPlayer(name, head = false) { const p = [...ents.pl.values()].find((q) => q.name === name); if (!p) return false; const c = cur(p, performance.now()); api.aimAt(c.x, c.y + (head ? 1.62 : 1), c.z); return true; },

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../server/elhalo/rules.js';
 import { Match, EYE } from '../server/elhalo/match.js';
-import { OPENINGS, BOARDS_MAX, TRUCK, TRUCK_PATH, truckAt, fortRects, FORT_DECK, AMMO_SPOTS, NADE_SPOTS, groundAt, terrain, wallDist, insideSolid, collide } from '../server/elhalo/map.js';
+import { OPENINGS, TRUCK, TRUCK_PATH, truckAt, fortRects, FORT_DECK, AMMO_SPOTS, NADE_SPOTS, groundAt, terrain, wallDist, insideSolid, collide } from '../server/elhalo/map.js';
 
 const seeded = (seed = 7) => { let s = seed; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 const run = (m, secs, dt = 0.1) => { for (let t = 0; t < secs - 1e-9; t += dt) m.tick(dt); };
@@ -170,17 +170,15 @@ test('bleed-out: downed players have a visible clock; run out and you are out un
   assert.equal(a.state, 'alive');
 });
 
-test('la misión is wide open: no boards, nothing to nail; the hacienda and mansion still board up', () => {
-  const mision = OPENINGS.filter((o) => o.b === 'mision'), others = OPENINGS.filter((o) => o.b !== 'mision');
-  assert.ok(mision.length >= 4 && mision.every((o) => o.open)); assert.ok(others.every((o) => !o.open));
-  const m = at(1); assert.ok(mision.every((o) => m.bars[o.i] === 0)); assert.ok(others.every((o) => m.bars[o.i] === BOARDS_MAX));
-  const op = mision.find((o) => !o.door), p = put(m, 't', op.in.x, op.in.z); m.tick(0.1);
-  assert.notEqual(m.personal('t').pr?.k, 'build', 'no boarding prompt at the mission');
-  const d = { x: op.out.x - op.in.x, y: 0, z: op.out.z - op.in.z }, l = Math.hypot(d.x, d.z);
-  assert.ok(wallDist({ x: op.in.x, y: op.y0 + 0.6, z: op.in.z }, { x: d.x / l, y: 0, z: d.z / l }, l) >= l - 0.01, 'you can shoot (and climb) through');
-  assert.ok(p);
-  const h = others.find((o) => !o.door); put(m, 't', h.in.x, h.in.z); m.bars[h.i] = 2; m.tick(0.1);
-  assert.equal(m.personal('t').pr?.k, 'build', 'hacienda windows still board');
+test('every building is wide open: no boards, nothing to nail, shoot and climb through any window', () => {
+  assert.ok(OPENINGS.length >= 15 && OPENINGS.every((o) => o.open));
+  const m = at(1);
+  for (const op of OPENINGS.filter((o) => !o.door)) {
+    put(m, 't', op.in.x, op.in.z); m.tick(0.1);
+    assert.notEqual(m.personal('t').pr?.k, 'build', `no boarding prompt at ${op.b}`);
+    const d = { x: op.out.x - op.in.x, y: 0, z: op.out.z - op.in.z }, l = Math.hypot(d.x, d.z);
+    assert.ok(wallDist({ x: op.in.x, y: op.y0 + 0.6, z: op.in.z }, { x: d.x / l, y: 0, z: d.z / l }, l) >= l - 0.01, `you can shoot through ${op.b} ${op.side}`);
+  }
 });
 
 test('jumping off a roof deck is smooth: no fall damage, no snapping back', () => {
@@ -230,7 +228,7 @@ test('wave 5 brings chupacabras, wave 10 the night and the folklore, wave 15 EL 
   m15.calm = true; run(m15, 40);
   for (const t of L.ENEMY_TYPES) if (L.ENEMIES[t].cap) assert.ok(m15.enemies.filter((e) => e.type === t).length <= L.ENEMIES[t].cap, `${t} capped`);
   assert.ok(m15.enemies.length <= L.MATCH.maxAlive);
-  // they behave: lechuzas fly, the llorona floats through boards, the nahual shifts
+  // they behave: lechuzas fly, the llorona floats through walls, the nahual shifts
   const m = at(10); const p = put(m, 't', 15.5, 3);
   const le = foe(m, 'lechuza', 0, -20, { fly: 7 }); le.spd = le.st.speed; run(m, 0.5); assert.ok(le.y > terrain(le.x, le.z) + 3, 'the lechuza is up in the air');
   const na = foe(m, 'nahual', -10, 0); na.spd = na.st.speed; let shifted = false; for (let k = 0; k < 100 && !shifted; k++) { m.tick(0.1); shifted = na.wolf; } assert.ok(shifted, 'the nahual turns wolf');

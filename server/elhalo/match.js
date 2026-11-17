@@ -608,7 +608,7 @@ export class Match {
       const to = { x: e.x + dx / d * far, z: e.z + dz / d * far }; to.y = groundAt(to.x, to.z, tg.y + 0.5);
       const inside = buildingAt(e.x, e.z), apex = inside ? Math.min(Lp.apex, Math.max(0.6, inside.h - st.height - 0.5)) : Lp.apex;
       e.leapS = { ph: 'air', t: 0, dur: Lp.air, from: { x: e.x, y: e.y, z: e.z }, to, apex };
-      e.state = 'leap'; this.ev('lp', e.id, r2(to.x), r2(to.y), r2(to.z), Lp.air, r2(Lp.radius));
+      e.state = 'leap'; this.ev('lp', e.id, r2(to.x), r2(to.y), r2(to.z), Lp.air, r2(Lp.radius), r2(apex), r2(e.x), r2(e.y), r2(e.z));
       return;
     }
     // in the air: a server-side arc, everyone sees the same flight

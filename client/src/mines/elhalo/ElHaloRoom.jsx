@@ -9,8 +9,9 @@ import { LOOK_SWATCH } from './models.js';
 
 // The EL HALO door in the Hall of Doors: a shared horde match in a sunset box canyon. You wait in the lobby first (pick
 // your poncho, sombrero, bigote, bandana and boots; get ready), then everyone drops into the same world: waves of
-// luchadores, mariachis, granjeros, padres, chupacabras and worse after dark, a supply truck between waves, boards to
-// nail over the hacienda and mansion windows (the mission stays wide open) and friendly fire very much on. The server
+// luchadores (one in five a high-flying volador), el gordo from wave 3, mariachis, granjeros, padres, chupacabras and worse
+// after dark, a supply truck between waves, every building wide open (La Michoacana, the mission, the mansion), street dogs,
+// an elote man, and friendly fire very much on. The server
 // runs the match (server/elhalo); this folder is its own chunk, loaded when the door opens. Free play: no money.
 const isTouch = () => window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
 const ph = (i) => (!i ? '' : i.phase === 'wave' ? `OLEADA ${i.wave}` : i.phase === 'truck' ? `LA TROCA · OLEADA ${i.wave}` : i.phase === 'break' ? (i.wave ? `OLEADA ${i.wave + 1} EN ${i.cd}` : `EMPIEZA EN ${i.cd}`) : i.phase === 'over' ? 'SE ACABÓ' : i.phase === 'lobby' ? 'EN EL LOBBY' : 'VACÍO');

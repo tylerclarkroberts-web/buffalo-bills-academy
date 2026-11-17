@@ -418,6 +418,116 @@ export function makeLechuza() { // an owl the size of a person with a pale woman
   const ey = eyes(root, 0xffffff, [[-0.08, 0.9, -0.37], [0.08, 0.9, -0.37]], 0.03);
   return { root, legs: [new THREE.Group(), new THREE.Group()], arms, mats: [m], eyes: ey, kind: 'fly' };
 }
+// ---- v3: the luchador volador and el gordo
+export function makeVolador(R) { // a white eagle mask with a gold beak and feathered brows, a long red cape notched like wing tips
+  const gold = [1, 0.8, 0.2], white = [0.97, 0.96, 0.94], red = [0.85, 0.1, 0.18], tights = pickR(R, [[0.1, 0.25, 0.75], [0.12, 0.12, 0.14], [0.85, 0.1, 0.18]]), skin = pickR(R, SKIN);
+  const extra = [
+    B(0.39, 0.41, 0.39, 0, 1.8, 0, white),                                   // the mask
+    painted(new THREE.ConeGeometry(0.07, 0.2, 4).rotateX(-Math.PI / 2).translate(0, 1.76, -0.28), gold), // beak
+    B(0.56, 0.14, 0.34, 0, 1.02, 0, gold), B(0.22, 0.18, 0.06, 0, 1.02, -0.18, [1, 0.92, 0.45]),
+    B(0.1, 0.12, 0.42, 0, 1.31, 0, skin.map((v) => v * 0.92)),
+  ];
+  for (let i = 0; i < 4; i++) extra.push(painted(new THREE.BoxGeometry(0.2, 0.95 - i * 0.1, 0.04).translate(0, -0.45, 0).rotateZ((i - 1.5) * 0.18).rotateX(-0.2).translate((i - 1.5) * 0.14, 1.6, 0.22), i % 2 ? red : [0.65, 0.05, 0.12])); // cape feathers
+  const faceExtra = [];
+  for (const s of [-1, 1]) {
+    faceExtra.push(painted(new THREE.BoxGeometry(0.16, 0.06, 0.03).rotateZ(s * 0.5).translate(s * 0.09, 1.88, -0.2), gold));         // feathered brows
+    faceExtra.push(painted(new THREE.BoxGeometry(0.03, 0.26, 0.2).rotateZ(s * 0.6).translate(s * 0.24, 1.98, 0.02), white));           // little wing crests
+    faceExtra.push(painted(new THREE.BoxGeometry(0.03, 0.18, 0.16).rotateZ(s * 0.6).translate(s * 0.26, 1.98, 0.02), gold));
+  }
+  const b = person(R, { shirt: skin, pants: tights, boots: [1, 0.8, 0.2], skin, bulk: 1.2, extra, faceExtra, sleeve: skin, hand: white });
+  return { ...b, kind: 'volador' };
+}
+export function makeGordo(R) { // the heavyweight: a huge round belly, a tight mask, a championship belt, little legs
+  const mask = pickR(R, [[0.1, 0.1, 0.12], [0.6, 0.1, 0.6], [0.95, 0.45, 0.1]]), trim = [1, 0.85, 0.25], skin = pickR(R, SKIN), tights = [0.15, 0.15, 0.2];
+  const m = mat(), root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const g = [
+    painted(new THREE.SphereGeometry(0.78, 10, 8).scale(1.05, 0.95, 0.95).translate(0, 1.05, -0.05), skin),           // the belly
+    painted(new THREE.SphereGeometry(0.6, 9, 7).scale(1.15, 0.8, 0.9).translate(0, 1.62, 0.05), skin),               // chest and shoulders
+    painted(new THREE.SphereGeometry(0.06, 5, 4).translate(0, 1.05, -0.8), skin.map((v) => v * 0.8)),               // belly button
+    painted(new THREE.CylinderGeometry(0.8, 0.82, 0.24, 12).translate(0, 0.62, 0), tights),                          // trunks
+    painted(new THREE.CylinderGeometry(0.84, 0.84, 0.18, 12).translate(0, 0.8, 0), trim),                            // the belt
+    B(0.46, 0.3, 0.08, 0, 0.8, -0.84, [1, 0.95, 0.55]), B(0.26, 0.18, 0.04, 0, 0.8, -0.89, [0.85, 0.15, 0.2]),       // buckle
+    B(0.44, 0.44, 0.42, 0, 2.02, -0.02, mask),                                                                         // a tight mask
+    B(0.44, 0.06, 0.43, 0, 2.15, -0.02, trim), B(0.06, 0.4, 0.44, 0, 2.05, -0.02, trim),
+    B(0.08, 0.06, 0.03, -0.1, 2.06, -0.24, [1, 1, 1]), B(0.08, 0.06, 0.03, 0.1, 2.06, -0.24, [1, 1, 1]),
+    B(0.04, 0.04, 0.02, -0.1, 2.06, -0.255, [0.05, 0.05, 0.05]), B(0.04, 0.04, 0.02, 0.1, 2.06, -0.255, [0.05, 0.05, 0.05]),
+    B(0.14, 0.06, 0.03, 0, 1.92, -0.24, [0.6, 0.15, 0.15]),                                                           // mouth hole
+  ];
+  body.add(new THREE.Mesh(mergeGeometries(g), m));
+  const legs = [], arms = [];
+  for (const sd of [-1, 1]) {
+    const l = limb([B(0.3, 0.5, 0.32, 0, -0.25, 0, tights), B(0.32, 0.14, 0.42, 0, -0.52, -0.06, [1, 1, 1])], sd * 0.34, 0.55, 0, m); root.add(l); legs.push(l);
+    const a = limb([painted(new THREE.CylinderGeometry(0.17, 0.14, 0.7, 7).translate(0, -0.32, 0), skin), B(0.2, 0.2, 0.2, 0, -0.72, 0, trim)], sd * 0.88, 1.75, 0, m); body.add(a); arms.push(a);
+  }
+  // a health bar over its head (unlit, always faces the camera)
+  const bar = new THREE.Group(); bar.position.y = 2.75;
+  const bg = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.16), new THREE.MeshBasicMaterial({ color: 0x220810, transparent: true, opacity: 0.75, depthTest: false }));
+  const fg = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.1).translate(0.62, 0, 0), new THREE.MeshBasicMaterial({ color: 0xff3d5a, transparent: true, depthTest: false })); fg.position.x = -0.62; // (transparent too, so it draws after the backing)
+  bg.renderOrder = 6; fg.renderOrder = 7; bar.add(bg, fg); root.add(bar);
+  return { root, body, legs, arms, mats: [m], kind: 'gordo', bar, barFg: fg };
+}
+ENEMY_MAKERS.volador = makeVolador; ENEMY_MAKERS.gordo = makeGordo;
+
+// ---- the town's harmless locals: street dogs and the elote man
+const DOG_COATS = [[[0.72, 0.52, 0.3], [0.95, 0.88, 0.75]], [[0.2, 0.17, 0.15], [0.75, 0.6, 0.42]], [[0.9, 0.82, 0.62], [0.98, 0.95, 0.9]], [[0.55, 0.35, 0.2], [0.3, 0.2, 0.12]], [[0.6, 0.58, 0.55], [0.9, 0.9, 0.88]], [[0.82, 0.6, 0.3], [0.45, 0.3, 0.18]]];
+export function makeDog(i = 0) { // a skinny low-poly mutt: faces -Z, legs swing, tail wags, the head dips to sniff
+  const [coat, patch] = DOG_COATS[i % DOG_COATS.length], m = mat(), root = new THREE.Group();
+  const body = [B(0.24, 0.24, 0.62, 0, 0.5, 0, coat), B(0.2, 0.06, 0.3, 0, 0.62, -0.05, patch), B(0.2, 0.2, 0.22, 0, 0.6, -0.32, coat)];
+  root.add(new THREE.Mesh(mergeGeometries(body), m));
+  const head = new THREE.Group(); head.position.set(0, 0.66, -0.4);
+  head.add(new THREE.Mesh(mergeGeometries([B(0.2, 0.18, 0.2, 0, 0.04, -0.06, coat), B(0.12, 0.1, 0.16, 0, 0.0, -0.22, patch), B(0.05, 0.04, 0.03, 0, 0.03, -0.31, [0.08, 0.06, 0.06]),
+    painted(new THREE.ConeGeometry(0.05, 0.12, 3).translate(-0.07, 0.17, -0.03), coat), painted(new THREE.ConeGeometry(0.05, 0.12, 3).translate(0.07, 0.17, -0.03), coat),
+    B(0.03, 0.03, 0.02, -0.05, 0.08, -0.165, [0.05, 0.05, 0.05]), B(0.03, 0.03, 0.02, 0.05, 0.08, -0.165, [0.05, 0.05, 0.05])]), m));
+  root.add(head);
+  const tail = new THREE.Group(); tail.position.set(0, 0.58, 0.3); tail.add(new THREE.Mesh(painted(new THREE.BoxGeometry(0.04, 0.04, 0.26).translate(0, 0.04, 0.12).rotateX(-0.6), coat), m)); root.add(tail);
+  const legs = [];
+  for (const [sx, sz] of [[-1, -1], [1, 1], [1, -1], [-1, 1]]) { const l = limb([B(0.06, 0.4, 0.07, 0, -0.2, 0, coat), B(0.07, 0.04, 0.09, 0, -0.4, -0.02, patch)], sx * 0.08, 0.42, sz * 0.24, m); root.add(l); legs.push(l); }
+  return { root, legs, head, tail, phase: i * 1.7 };
+}
+export function makeEloteCart() { // a little steel cart with a striped umbrella, a pot of steaming corn, chili, lime and mayo; the vendor beside it
+  const m = mat(), root = new THREE.Group();
+  const steel = [0.78, 0.8, 0.82], dark = [0.2, 0.2, 0.22], corn = [1, 0.85, 0.25], husk = [0.62, 0.78, 0.35];
+  const g = [B(1.3, 0.7, 0.7, 0, 0.75, 0, steel), B(1.36, 0.06, 0.76, 0, 1.12, 0, [0.6, 0.62, 0.65]), B(1.3, 0.25, 0.04, 0, 0.6, -0.36, [0.95, 0.3, 0.5]),
+    painted(new THREE.CylinderGeometry(0.06, 0.06, 2.1, 5).translate(0.55, 1.6, 0.25), [0.85, 0.85, 0.85]),
+    painted(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 10).rotateZ(Math.PI / 2).translate(-0.6, 0.22, 0.32), dark), painted(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 10).rotateZ(Math.PI / 2).translate(0.6, 0.22, 0.32), dark),
+    B(0.06, 0.06, 0.7, -0.75, 0.95, 0.55, [0.85, 0.85, 0.85]),                                            // handle
+    painted(new THREE.CylinderGeometry(0.26, 0.24, 0.32, 10).translate(-0.3, 1.3, 0), steel),           // the pot
+    B(0.12, 0.18, 0.12, 0.25, 1.24, -0.12, [0.85, 0.12, 0.1]), B(0.12, 0.14, 0.12, 0.42, 1.22, -0.12, [0.96, 0.95, 0.9]), // chili, mayo
+    painted(new THREE.SphereGeometry(0.06, 5, 4).translate(0.3, 1.2, 0.15), [0.45, 0.8, 0.25]), painted(new THREE.SphereGeometry(0.06, 5, 4).translate(0.42, 1.2, 0.18), [0.45, 0.8, 0.25])];
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; g.push(painted(new THREE.CylinderGeometry(0.045, 0.05, 0.34, 6).rotateZ(0.3 * Math.cos(a)).rotateX(0.3 * Math.sin(a)).translate(-0.3 + Math.cos(a) * 0.1, 1.55, Math.sin(a) * 0.1), corn)); }
+  for (let i = 0; i < 4; i++) g.push(painted(new THREE.CylinderGeometry(0.04, 0.045, 0.3, 6).rotateZ(Math.PI / 2).translate(0.05, 1.19, 0.12 - i * 0.09), i % 2 ? corn : husk)); // a few on the grill
+  root.add(new THREE.Mesh(mergeGeometries(g), m));
+  const umb = new THREE.Group(); umb.position.set(0.55, 2.65, 0.25);
+  for (let i = 0; i < 8; i++) { const c = new THREE.ConeGeometry(1.15, 0.45, 2, 1, true, (i / 8) * Math.PI * 2, Math.PI / 4); umb.add(new THREE.Mesh(painted(c, i % 2 ? [1, 1, 1] : [0.95, 0.2, 0.25]), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }))); }
+  root.add(umb);
+  // the vendor: white apron, straw hat, a big mustache. Arms move (fanning the grill, holding up an elote).
+  const v = person(() => 0.3, { shirt: [0.92, 0.3, 0.3], pants: [0.25, 0.3, 0.45], boots: [0.25, 0.18, 0.12], skin: SKIN[2],
+    extra: [B(0.46, 0.6, 0.04, 0, 1.05, -0.17, [0.98, 0.98, 0.98]), painted(new THREE.CylinderGeometry(0.42, 0.44, 0.05, 12).translate(0, 2.0, 0), [0.95, 0.82, 0.45]),
+      painted(new THREE.CylinderGeometry(0.18, 0.2, 0.2, 10).translate(0, 2.1, 0), [0.95, 0.82, 0.45]), B(0.22, 0.06, 0.04, 0, 1.72, -0.2, [0.12, 0.08, 0.06])],
+    armExtra: [[painted(new THREE.CylinderGeometry(0.04, 0.045, 0.28, 6).translate(0, -0.62, -0.05), corn)], [B(0.22, 0.02, 0.16, 0, -0.6, -0.08, [0.6, 0.45, 0.25])]] });
+  v.root.position.set(-0.2, 0, 0.75); v.root.rotation.y = Math.PI; root.add(v.root);
+  return { root, vendor: v, umb };
+}
+// a little speech bubble (sprite) for shouts: the elote man's calls, the volador's ¡ÁGUILA!
+export function makeBubble(text, { color = '#2a1420', bg = '#fff8f0', w = 2.4 } = {}) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; const x = cv.getContext('2d');
+  x.fillStyle = bg; x.strokeStyle = color; x.lineWidth = 8;
+  x.beginPath(); x.roundRect ? x.roundRect(8, 8, 496, 112, 40) : x.rect(8, 8, 496, 112); x.fill(); x.stroke();
+  x.beginPath(); x.moveTo(230, 116); x.lineTo(256, 152); x.lineTo(282, 116); x.closePath(); x.fill(); x.beginPath(); x.moveTo(230, 120); x.lineTo(256, 152); x.lineTo(282, 120); x.stroke();
+  x.fillStyle = color; x.textAlign = 'center'; x.textBaseline = 'middle'; let fs = 64; x.font = `bold ${fs}px VT323, "Arial Black", sans-serif`;
+  while (x.measureText(text).width > 460 && fs > 30) { fs -= 4; x.font = `bold ${fs}px VT323, "Arial Black", sans-serif`; }
+  x.fillText(text, 256, 66);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); sp.scale.set(w, w * 160 / 512, 1); sp.renderOrder = 8;
+  return sp;
+}
+// where a leap will land: a pulsing ring on the ground
+export function makeLandRing(color = 0xff3040) {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
+  g.add(ring, fill); g.userData = { ring, fill }; return g;
+}
 ENEMY_MAKERS.chupacabra = makeChupacabra; ENEMY_MAKERS.llorona = makeLlorona; ENEMY_MAKERS.cucuy = makeCucuy; ENEMY_MAKERS.nahual = makeNahual; ENEMY_MAKERS.lechuza = makeLechuza;
 
 // ---- the supply truck: a white pickup cab with a maroon bed, a black roof rack, a mattress up top, a washer
