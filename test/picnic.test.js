@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { GROUND, ROCKS, SPAWNS, INTERN_RING, GUNS, PICKUPS, PICKUP_REACH, heightAt, solid, walk, shoot } from '../server/engine/picnic-map.js';
 import { Picnic, PICNIC, INTERN, damage } from '../server/picnic.js';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { HALL_DOORS } from '../client/src/mines/doorHall.js';
+import { createApp } from '../server/app.js';
 
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z)); // facing is (-sin yaw, -cos yaw)
 const RIVET = GUNS.rivet.everyMs; // waiting this long between reports always clears the server's fire-rate check
@@ -191,4 +193,20 @@ test('the picnic is a door in the hall, and the room behind it talks to the picn
   assert.doesNotMatch(room, /\/mines\//, 'nothing out here touches the shift');
   assert.doesNotMatch(src('server/mines.js'), /picnic/i, 'and the mine server knows nothing about the picnic');
   assert.doesNotMatch(src('server/picnic.js'), /accounts|bankroll|saveDoc|loadDoc/, 'no money and nothing saved');
+});
+
+test('the picnic over real HTTP: sign in first, a tick puts you in the quarry with Gary, leaving takes you out', async (t) => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-picnic-'));
+  const { app, shutdown } = createApp({ dataDir, env: { ...process.env } });
+  const server = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
+  t.after(async () => { shutdown(); server.closeAllConnections?.(); await new Promise((r) => server.close(r)); fs.rmSync(dataDir, { recursive: true, force: true }); });
+  const post = async (url, body, token) => {
+    const r = await fetch(`http://127.0.0.1:${server.address().port}/api${url}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body || {}) });
+    return { status: r.status, body: await r.json().catch(() => null) };
+  };
+  assert.equal((await post('/picnic/tick')).status, 401);
+  const { token } = (await post('/players', { name: 'Earl' })).body;
+  const v = (await post('/picnic/tick', { fresh: true }, token)).body;
+  assert.equal(v.you.hp, PICNIC.hp); assert.ok(v.snap); assert.deepEqual(v.others.map((o) => o.id), [INTERN]);
+  assert.deepEqual((await post('/picnic/leave', {}, token)).body, { ok: true });
 });
