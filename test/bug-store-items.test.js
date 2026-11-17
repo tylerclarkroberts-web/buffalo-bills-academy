@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Barn, CARE, BOUT_LEVEL, BOUT_XP, BOUT_WIN_XP, MAX_BOUT_STAKE } from '../server/barn.js';
+import { Barn, CARE, BOUT_LEVEL, BOUT_XP, BOUT_WIN_XP, MAX_BOUT_STAKE, BENCH_SLOW } from '../server/barn.js';
 import { Shop, USE_COOLDOWN_MS } from '../server/shop.js';
 import { BUG_ITEMS } from '../server/catalog/bug.js';
 import { LUNCH_CAP } from '../server/engine/bout.js';
@@ -31,7 +31,7 @@ test('the mister, heat lamp and ambrosia are off the shelf; one already held sti
     assert.throws(() => shop.buy(player, id, { confirm: true }), (e) => e.status === 409);
     assert.equal(player.bankroll, 10000, 'and nothing is charged');
   }
-  assert.ok(BUG_ITEMS.filter((x) => x.use && !x.retired).every((x) => x.use === 'food' || x.use === 'feeder'), 'what is sold does something the free buttons cannot');
+  assert.ok(BUG_ITEMS.filter((x) => x.use && !x.retired).every((x) => ['food', 'feeder', 'jar'].includes(x.use)), 'what is sold does something the free buttons cannot');
   setNeeds(20); const fedAt = pen.fedAt, xp = pen.xp;
   for (const [id, stat, use] of [['mister', 'clean', 'clean'], ['heatlamp', 'mood', 'mood']]) {
     assert.match(item(id).desc, /still works: \+40 (Clean|Mood) and 6 XP/);
@@ -161,6 +161,24 @@ test('a toy earns the bug XP every day on its own, and only the one that is out'
   const before = barn.view(player.id).pen.xp; setNeeds(0); clock.now += 3 * DAY;
   assert.equal(barn.view(player.id).pen.xp - before, 3 * 2, 'three days away and neglected: the toy still pays, the day bonus does not');
   shop.equip(player, { id: null, slot: 'toy' }); assert.equal(day(), 10);
+});
+
+test('with several bugs: food packs a lunch for the partner, the toy pays only the partner, and a lunch eaten by a stalled bug is gone', () => {
+  const { clock, barn, shop, player, pen, setNeeds, own } = setup();
+  barn.layEgg(player.id); clock.now += 1; barn.view(player.id);
+  const stalled = barn.doc.bench[player.id][0];
+  own('food-banquet'); shop.use(player, 'food-banquet');
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((b) => b.lunch), [{ name: 'Bug Banquet', heal: LUNCH_CAP }, null]);
+  // neglected, so there is no day bonus: over five days the partner has five checkpoints and the stalled bug one
+  own('toy-disco'); shop.equip(player, { id: 'toy-disco' });
+  setNeeds(0); for (const stat of ['hunger', 'mood', 'clean']) stalled.stats[stat] = { v: 0, at: barn.own(stalled, clock.now) };
+  const before = barn.view(player.id).stable.bugs.map((b) => b.xp); clock.now += BENCH_SLOW * DAY;
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((b, i) => b.xp - before[i]), [BENCH_SLOW * 20, 0]);
+  // the fed bug goes to a stall with its lunch, fights from there and eats it
+  barn.setPartner(player.id, barn.view(player.id).stable.bugs[1].id);
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((b) => !!b.lunch), [false, true]);
+  barn.lunchEaten(player.id, pen.bornAt);
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((b) => [b.partner, b.lunch]), [[true, null], [false, null]], 'gone, and each bug is still where it was');
 });
 
 test('toys are reusable Play bonuses; equipment slots replace rather than stack', () => {

@@ -67,6 +67,8 @@ for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, pri
 // clock for 14 days, and adds 12 XP at each daily checkpoint it covers.
 add({ id: 'feeder', name: 'Automatic Feeder (14 days)', price: 2500, emoji: '🥣', cat: 'bugcare', slot: null, use: 'feeder', days: 14,
   desc: 'A bowl, a sprinkler and a recording of you saying "good bug". Keeps Fed, Mood and Clean full for 14 days, so your bug stays in top fighting condition while you are away, and adds 12 XP a day. Use another to add 14 days, up to 60 days ahead.' });
+add({ id: 'jar', name: 'Specimen Jar', price: 150, emoji: '🫙', cat: 'bugcare', slot: null, use: 'jar',
+  desc: 'Single use, down the mine. When a wild bug is at a quarter of its health or less, throw this instead of finishing it: it holds 35% of the time at a quarter, more the weaker the bug, never better than 85%. Held or not, the jar is spent. Needs a free stall. Air holes are your problem.' });
 // retired: each did less than the free button beside it
 add({ id: 'mister', name: 'Auto-Mister', price: 150, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', retired: true, desc: 'The shopkeeper pulled these after someone noticed the hose is free. Yours still works: +40 Clean and 6 XP.' });
 add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 90, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', retired: true, desc: 'The shopkeeper pulled these after someone noticed Play is free and better. Yours still works: +40 Mood and 6 XP.' });

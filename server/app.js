@@ -63,7 +63,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const barnTest = !!config.devLogin;
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
-  const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
+  const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', forceWild: barnTest && env.BARN_TEST_WILD === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
@@ -325,7 +325,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/egg', needPlayer, wrap((req) => mines.takeEgg(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
   // ----- the Barn (v30) -----
   api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id, { seen: req.query.seen === '1' })));
-  api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''))));
+  api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''), req.body?.bug)));
+  api.post('/barn/partner', needPlayer, wrap((req) => barn.setPartner(req.player.id, req.body?.bug))); // which bug comes with you
+  api.post('/barn/stalls', needPlayer, wrap((req) => barn.buildStall(req.player.id)));
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
   api.post('/barn/bouts', needPlayer, wrap((req) => barn.openBout(req.player.id, req.body)));
@@ -338,13 +340,15 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/fight/:id/moves', needPlayer, wrap((req) => barn.lineUp(req.player.id, req.params.id, req.body)));
   api.get('/barn/fights/:id', needPlayer, wrap((req) => barn.fight(req.params.id)));
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
-  api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id)));
-  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true }))); // the Bug Center nurse: free after an hour's rest, or paid now
+  api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
+  api.post('/mines/pvp/wild', needPlayer, wrap((req) => pvp.meetWild(accounts.ensure(req.player), req.body || {}))); // walked into the shift's wild bug
+  api.post('/mines/pvp/jar', needPlayer, wrap((req) => pvp.jar(accounts.ensure(req.player), req.body || {}))); // a jar thrown at the wild bug you are fighting
   api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
   // EL HALO (Hall of Doors): the shared horde match. Free play; it never touches accounts.
   const elhalo = new ElHalo({ tickMs: env.ELHALO_TICK_MS !== undefined ? Number(env.ELHALO_TICK_MS) : undefined, testHooks: barnTest });

@@ -1,7 +1,7 @@
 // Barn combat is deterministic; player-joined wager flows are covered in barn-combat-api.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { simulateBout, MAX_ROUNDS, LUNCH_CAP } from '../server/engine/bout.js';
+import { simulateBout, line, MAX_ROUNDS, LUNCH_CAP } from '../server/engine/bout.js';
 import { ROSTER } from '../server/engine/creatures.js';
 
 const A = { species: ROSTER[0].id, name: 'A', level: 5, mood: 60 };
@@ -74,4 +74,12 @@ test('BARN_TEST_XP only works with dev login', async () => {
     const r = createApp({ dataDir, now: () => 1, devLogin, env: { BARN_TEST_XP: '640', BARN_INCUBATE_MS: '1' } });
     assert.equal(r.service.barn.startXp, devLogin ? 640 : 0); r.shutdown();
   }
+});
+
+test('the line counts defense gear and a packed lunch, not only attack gear', () => {
+  assert.equal(line(A, { ...A }), 0.5, 'a mirror match is even');
+  assert.ok(line({ ...A, gear: 0.05 }, A) > 0.5);
+  assert.ok(line({ ...A, defense: 0.06 }, A) > 0.5, 'armour moves the line');
+  assert.ok(line({ ...A, lunch: { name: 'Bug Banquet', heal: LUNCH_CAP } }, A) > 0.5, 'so does a lunch');
+  assert.equal(line(A, { ...A, lunch: { name: 'Bug Banquet', heal: LUNCH_CAP } }), (100 - Math.round(line({ ...A, lunch: { name: 'Bug Banquet', heal: LUNCH_CAP } }, A) * 100)) / 100, 'and the other corner sees the rest');
 });

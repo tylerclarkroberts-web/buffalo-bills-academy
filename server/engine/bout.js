@@ -63,6 +63,57 @@ export function cooldowns(S, i) {
   return Object.fromEntries(s.moves.map(move => [move.id, move.id === 'basic' ? 0 : Math.max(0, (s.readyAt[move.id] || 0) - (s.turn + 1))]));
 }
 
+// The three sums below only read the fight. stepBout rolls against them; odds() shows them to the owner first.
+/** The chance side `by`'s attack lands, as things stand. */
+function aim(S, by, move) {
+  const foe = 1 - by, s = S.side[by], target = S.side[foe];
+  let spd = (target.st.spd - 3) * 0.03; if (s.t === 'polyphylla') spd = Math.min(0, spd) - TRAIT.fan;
+  let acc = move.accuracy - spd;
+  if (target.t === 'nemoptera' && !target.damaged) acc -= TRAIT.calm;
+  if (s.blind) acc -= TRAIT.blind;
+  if (target.t === 'ceroplophana' && S.hp[foe] < S.maxHp[foe] / 4) acc *= 1 - TRAIT.vanish;
+  return acc;
+}
+/** What side `by`'s attack does at a given roll (0.8 up to 1.25), on its `attacks`-th attack and `turnNo`-th turn. */
+function blow(S, by, move, roll, attacks, turnNo) {
+  const { side, hp, maxHp } = S, foe = 1 - by, s = side[by], target = side[foe];
+  const pierce = move.effect === 'pierce', shell = target.t === 'pachyrhynchus';
+  const armour = pierce && !shell ? 1 : 1 - (target.st.def - 3) * 0.04;
+  const guard = 1 - target.guard * (!pierce || shell ? 1 : s.t === 'pyrops' ? 0 : 0.5);
+  const mine = hp[by] / maxHp[by], theirs = hp[foe] / maxHp[foe];
+  let mult = 1;
+  if (s.t === 'macrodontia' && turnNo <= 3) mult *= 1 + TRAIT.front;
+  if (s.t === 'phrictus' && attacks % 5 === 0) mult *= 1 + TRAIT.fifth;
+  if (s.t === 'phanaeus') mult *= 1 + TRAIT.streak * Math.min(5, s.streak);
+  if (s.t === 'manticora' && theirs < 0.3) mult *= 1 + TRAIT.maneater;
+  if (s.t === 'lamprima' && mine > theirs) mult *= 1 + TRAIT.log;
+  if (s.t === 'lethocerus' && theirs > mine) mult *= 1 + TRAIT.turtles;
+  if (s.t === 'empusa') mult *= 1 + TRAIT.prey * target.st.spd;
+  if (s.kick) mult *= 1 + TRAIT.kick;
+  if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
+  if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
+  if (shell && pierce) mult *= 1 - TRAIT.shell;
+  return Math.min(hp[foe], Math.max(1, Math.round(move.power * roll * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * target.ward * guard * s.weaken * mult)));
+}
+const scalesOf = (target) => (target.t === 'eupholus' ? 1 - TRAIT.scales : 1); // venom and weaken half flake off
+const venomOf = (s, target, move) => Math.max(1, Math.round(move.venom * s.stats.damageMultiplier * scalesOf(target) * (s.t === 'graphocephala' ? 1 + TRAIT.xylella : 1)));
+/**
+ * For the move panel: how each of side `i`'s unlocked moves would go if used on its next action, as things stand
+ * now. Nothing is rolled. `hit` is a chance, `dmg` the least and most a hit does, `venom` [damage a turn, turns],
+ * `weaken` and `guard` the share taken off the next attack, `heal` the HP it would give back.
+ */
+export function odds(S, i) {
+  const s = S.side[i], target = S.side[1 - i];
+  return Object.fromEntries(s.moves.filter(move => move.unlocked).map(move => {
+    if (move.effect === 'heal') return [move.id, { heal: Math.min(S.maxHp[i] - S.hp[i], Math.round(move.heal * s.stats.damageMultiplier)) }];
+    return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
+      ...(move.criticalChance ? { crit: move.criticalChance } : {}),
+      ...(move.effect === 'venom' ? { venom: [venomOf(s, target, move), move.duration] } : {}),
+      ...(move.effect === 'weaken' ? { weaken: (1 - move.weaken) * scalesOf(target) } : {}),
+      ...(move.effect === 'guard' ? { guard: move.guard } : {}) }];
+  }));
+}
+
 /** One action by whoever's turn it is. `choice` is a move id its owner lined up; anything unusable falls back to the bug's own pick. */
 export function stepBout(S, choice) {
   if (S.over) return [];
@@ -122,32 +173,12 @@ export function stepBout(S, choice) {
     if (s.t === 'helicopsyche') { s.guard = TRAIT.caseGuard; s.guardLeft = 1; detail += ' and coils into its case'; }
   } else {
     s.attacks++;
-    let spd = (target.st.spd - 3) * 0.03; if (s.t === 'polyphylla') spd = Math.min(0, spd) - TRAIT.fan;
-    let acc = move.accuracy - spd;
-    if (target.t === 'nemoptera' && !target.damaged) acc -= TRAIT.calm;
-    if (s.blind) { acc -= TRAIT.blind; s.blind = false; }
-    if (target.t === 'ceroplophana' && hp[foe] < maxHp[foe] / 4) acc *= 1 - TRAIT.vanish;
-    hit = R() < acc;
-    const pierce = move.effect === 'pierce', shell = target.t === 'pachyrhynchus';
-    const armour = pierce && !shell ? 1 : 1 - (target.st.def - 3) * 0.04;
-    const guard = 1 - target.guard * (!pierce || shell ? 1 : s.t === 'pyrops' ? 0 : 0.5);
+    hit = R() < aim(S, by, move); s.blind = false;
     if (hit) {
-      const masked = target.t === 'acanthaspis' && target.mask; if (masked) target.mask = false;
+      const masked = target.t === 'acanthaspis' && target.mask;
       let roll = 0.8 + R() * 0.45; if (s.t === 'chrysochroa') roll = Math.max(roll, 0.8 + R() * 0.45);
-      const mine = hp[by] / maxHp[by], theirs = hp[foe] / maxHp[foe];
-      let mult = 1;
-      if (s.t === 'macrodontia' && s.turn <= 3) mult *= 1 + TRAIT.front;
-      if (s.t === 'phrictus' && s.attacks % 5 === 0) mult *= 1 + TRAIT.fifth;
-      if (s.t === 'phanaeus') mult *= 1 + TRAIT.streak * Math.min(5, s.streak);
-      if (s.t === 'manticora' && theirs < 0.3) mult *= 1 + TRAIT.maneater;
-      if (s.t === 'lamprima' && mine > theirs) mult *= 1 + TRAIT.log;
-      if (s.t === 'lethocerus' && theirs > mine) mult *= 1 + TRAIT.turtles;
-      if (s.t === 'empusa') mult *= 1 + TRAIT.prey * target.st.spd;
-      if (s.kick) { mult *= 1 + TRAIT.kick; s.kick = false; }
-      if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
-      if (masked) mult *= 1 - TRAIT.mask;
-      if (shell && pierce) mult *= 1 - TRAIT.shell;
-      dmg = Math.min(hp[foe], Math.max(1, Math.round(move.power * roll * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * target.ward * guard * s.weaken * mult)));
+      dmg = blow(S, by, move, roll, s.attacks, s.turn);
+      s.kick = false; if (masked) target.mask = false;
       if (move.criticalChance && dmg < hp[foe] && R() < move.criticalChance) {
         critical = true; dmg = hp[foe] - 1;
         detail = `; critical hit leaves ${target.c.name} at 1 HP`;
@@ -155,12 +186,11 @@ export function stepBout(S, choice) {
       dmg = hurt(foe, dmg); s.streak++;
       if (masked) detail += `; ${target.c.name}'s corpse mask takes some of it`;
       if (stood) detail += `; ${target.c.name} lies still at 1 HP`;
-      const scales = target.t === 'eupholus' ? 1 - TRAIT.scales : 1; // venom and weaken half flake off
       if (move.effect === 'venom') {
-        target.venom = { damage: Math.max(1, Math.round(move.venom * s.stats.damageMultiplier * scales * (s.t === 'graphocephala' ? 1 + TRAIT.xylella : 1))), left: move.duration, name: move.name, moveId: move.id, tier: move.tier };
+        target.venom = { damage: venomOf(s, target, move), left: move.duration, name: move.name, moveId: move.id, tier: move.tier };
         detail += ' and poisons for two turns';
         if (s.t === 'platymeris') target.blind = true;
-      } else if (move.effect === 'weaken') { target.weaken = 1 - (1 - move.weaken) * scales; detail += ' and weakens the next attack'; }
+      } else if (move.effect === 'weaken') { target.weaken = 1 - (1 - move.weaken) * scalesOf(target); detail += ' and weakens the next attack'; }
       if (s.t === 'trachelophorus' && hp[foe] > 0 && R() < TRAIT.stun) { target.skip = true; detail += `; ${target.c.name} is knocked off the leaf`; }
       if (s.t === 'pseudocreobotra') hp[by] = Math.min(maxHp[by], hp[by] + TRAIT.lure);
     } else { s.streak = 0; if (target.t === 'sagra') target.kick = true; }
@@ -182,4 +212,29 @@ export function simulateBout(a, b, seed) {
   const S = startBout(a, b, seed);
   while (!S.over) stepBout(S);
   return { rounds: S.rounds, winner: S.winner, maxHp: S.maxHp, startHp: S.startHp };
+}
+
+export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
+const lines = new Map();
+const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain]);
+/**
+ * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, attack and
+ * defense gear, packed lunch, stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is
+ * exactly 1. To the nearest 5%, kept between 10% and 90%: 400 fights say no more than that, and an owner who picks
+ * the moves can beat it. Stakes and win XP follow this number (riskFor, upsetXp).
+ */
+export function line(a, b) {
+  const ka = lineKey(a), kb = lineKey(b);
+  if (ka > kb) return (100 - Math.round(line(b, a) * 100)) / 100;
+  const key = `${ka}|${kb}`;
+  if (!lines.has(key)) {
+    if (lines.size >= 5000) lines.clear(); // ponytail: the whole cache at once; a line costs 3 ms, so evict properly only if that ever shows
+    let won = 0;
+    for (let k = 0; k < LINE.fights; k++) {
+      const x = simulateBout(a, b, `line:${k}`).winner, y = simulateBout(b, a, `line:${k}`).winner;
+      won += (x === 0 ? 1 : x === null ? 0.5 : 0) + (y === 1 ? 1 : y === null ? 0.5 : 0);
+    }
+    lines.set(key, Math.min(LINE.max, Math.max(LINE.min, Math.round((won / (2 * LINE.fights)) * (100 / LINE.step)) * LINE.step)) / 100);
+  }
+  return lines.get(key);
 }
