@@ -114,7 +114,7 @@ function poolTexture(acid = plainAcid) {
 function disposeMeshes(root, textures = true) {
   const resources = new Set();
   root.traverse((o) => {
-    if (o.geometry) resources.add(o.geometry);
+    if (o.geometry && !o.isSprite) resources.add(o.geometry);
     for (const material of [].concat(o.material || [])) {
       resources.add(material);
       if (textures && material.map) resources.add(material.map);
@@ -312,7 +312,7 @@ export class MineScene {
     this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
     if (this.self.tag) this.self.tag.visible = false;
     this.self.group.visible = false; this.scene.add(this.self.group);
-    this.hands = buildMineHands(who.id); resizeMineHands(this.hands, this.camera.aspect);
+    this.hands = buildMineHands(who.avatar?.seed || who.id); resizeMineHands(this.hands, this.camera.aspect);
   }
   startDance(id) {
     const d = danceId(id); if (!d) return false;

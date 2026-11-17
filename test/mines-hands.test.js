@@ -3,8 +3,18 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildMineHands, resizeMineHands, stepMineHands } from '../client/src/mines/hands.js';
 import { MineScene } from '../client/src/mines/scene.js';
+import { looks } from '../client/src/avatar/genbust.js';
 
 const pose = h => [h.left, h.right].flatMap(arm => [...arm.position.toArray(), arm.rotation.x, arm.rotation.y, arm.rotation.z]);
+
+test('first-person hands use the saved avatar colors rather than rerolling from the account id', () => {
+  const mine = Object.assign(Object.create(MineScene.prototype), { scene: new THREE.Scene(), camera: { aspect: 1.6 } });
+  mine.setSelf({ id: 'player-account', avatar: { kind: 'gen', seed: 'saved-avatar-79' } });
+  const expected = looks('saved-avatar-79'), colors = new Set();
+  mine.hands.group.traverse(part => { if (part.material?.color) colors.add(`#${part.material.color.getHexString()}`); });
+  assert.ok(colors.has(expected.skin)); assert.ok(colors.has(expected.shirt));
+  assert.equal(mine.self.group.visible, false, 'full body stays hidden in first person');
+});
 
 test('walking follows travelled distance, settles at rest, and mining moves the right-hand pickaxe', () => {
   const hands = buildMineHands('miner'), rest = pose(hands);

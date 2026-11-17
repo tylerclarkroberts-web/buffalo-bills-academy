@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { looks } from '../avatar/genbust.js';
 
 /** A foreground viewmodel shares the mine's pixelated renderer, but never disappears inside a wall. */
-export function buildMineHands(id) {
+export function buildMineHands(seed) {
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(50, 1, 0.01, 5);
   const group = new THREE.Group(); scene.add(group);
   scene.add(new THREE.AmbientLight('#d8dfc4', 1.5));
   const lamp = new THREE.DirectionalLight('#fff1cc', 2.2); lamp.position.set(-1, 2, 3); scene.add(lamp);
-  const look = looks(id);
+  const look = looks(seed);
   const material = color => new THREE.MeshLambertMaterial({ color, flatShading: true });
   const skin = material(look.skin), shirt = material(look.shirt), cuff = material('#30372c');
   const wood = material('#85572d'), grain = material('#4d301b'), steel = material('#75888b');
