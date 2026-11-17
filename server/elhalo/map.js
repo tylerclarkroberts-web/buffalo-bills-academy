@@ -67,6 +67,12 @@ export function terrain(x, z) {
 }
 
 // ---- spawns
+// La Bufadora: a rocky blowhole in the creek just before Fortín Sur, near the south mouth of the canyon.
+export const BUFADORA = ((z = 45.5) => {
+  const x = creekX(z);
+  return { x, z, r: 2.2, rockR: 3.15 };
+})();
+
 export const ENEMY_SPAWNS = [[-22.5, -40], [22.5, -28], [-22.5, -4], [22.5, 20], [-22.5, 46], [22.5, 44], [0, -62.5], [-12, -62], [12, -62], [0, 62.5], [12, 62], [-12, 62]];
 export const PLAYER_SPAWNS = [[0, -44], [3.5, -44], [-3.5, 44], [0, 44], [2, -8], [-4, 12], [6, 18], [-2, -20]];
 

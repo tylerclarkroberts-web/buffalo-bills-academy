@@ -560,6 +560,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       if (req.method === 'HEAD') return res.end();
       fs.createReadStream(hit.gz).on('error', () => res.destroy()).pipe(res);
     });
+    // /elhalo is the game route. public/elhalo/ holds musica and the lobby thumb, and express.static
+    // would 301 /elhalo to /elhalo/ (a path the client treats as the lobby). Serve the app instead.
+    app.get(['/elhalo', '/elhalo/'], (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
     app.get('/{*splat}', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   } else {

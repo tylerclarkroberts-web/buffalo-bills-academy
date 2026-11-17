@@ -91,6 +91,10 @@ export function headOf(type, x, y, z, yaw = 0) {
   return { x: x - Math.sin(yaw) * h.f, y: y + h.y, z: z - Math.cos(yaw) * h.f, r: h.r };
 }
 
+// La Bufadora: a shared, server-timed geyser. Everyone sees the same rumble, then the same blast.
+// period is seconds between blows (from the moment the match leaves the lobby); warn is the gurgle lead-in.
+export const BUFADORA_RULES = { period: 300, warn: 4, blast: 2.4, launchVy: 28, enemyVy: 24 };
+
 export const MATCH = {
   tickHz: 10, maxAlive: 30, maxPlayers: 8, breakSecs: 4, firstBreakSecs: 5, overSecs: 9,
   downedSecs: 20, reviveSecs: 3, reviveRange: 1.9, buyRange: 1.8, elote: { heal: 30, cool: 60 },

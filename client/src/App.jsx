@@ -61,7 +61,7 @@ export default function App() {
   // owner only; the API enforces it. The boundary means a crash or a failed download shows a message, never a blank page.
   if (path === '/admin') return <AdminBoundary><Suspense fallback={<BoScreen testId="bo-loading"><p style={{ margin: 0, opacity: 0.7 }}>Opening the back office…</p></BoScreen>}><Admin /></Suspense></AdminBoundary>;
   if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // lobby card unlocks this after the film
-  if (path === '/elhalo') return <Suspense fallback={<div style={{ background: '#1d0f24', minHeight: '100vh' }} />}><ElHalo /></Suspense>;
+  if (path === '/elhalo' || path === '/elhalo/') return <Suspense fallback={<div style={{ background: '#1d0f24', minHeight: '100vh' }} />}><ElHalo /></Suspense>;
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);
   const p = path.match(/^\/players\/([\w-]+)/);
   const room = path.match(/^\/rooms\/([\w-]+)\/?$/);

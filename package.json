@@ -24,6 +24,7 @@
     "e2e:hall": "node scripts/e2e-door-hall.mjs",
     "e2e:elhalo": "node scripts/e2e-el-halo.mjs",
     "e2e:elhalo3": "node scripts/e2e-el-halo-v3.mjs",
+    "e2e:bufadora": "node scripts/e2e-el-halo-bufadora.mjs",
     "e2e:gag": "node scripts/e2e-gag.mjs",
     "e2e:barn": "node scripts/e2e-barn.mjs",
     "e2e:bout": "node scripts/e2e-bout.mjs",
