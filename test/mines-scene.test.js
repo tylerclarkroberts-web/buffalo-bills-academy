@@ -10,13 +10,32 @@ function fixture() {
   const poolMesh = new THREE.Mesh(new THREE.CircleGeometry(0.95, 20), new THREE.MeshBasicMaterial({ map: poolTex }));
   const poolLight = new THREE.PointLight(); scene.add(floor, poolMesh, poolLight);
   return Object.assign(Object.create(MineScene.prototype), {
-    scene, maze: { size: 15, pool: { x: 3, y: 3 } }, floor, poolTex, poolMesh, poolLight,
+    scene, maze: { size: 15, pool: { x: 3, y: 3 } }, wilds: new Map(), floor, poolTex, poolMesh, poolLight,
     wallMaterial: new THREE.MeshLambertMaterial({ map: new THREE.Texture() }),
     crystals: [], puddleGlints: [], poolPos: new THREE.Vector3(), pos: new THREE.Vector2(),
     stalker: { pool: null }, renderer: { dispose() {} },
   });
 }
 const pool = (id, x, quantity, remaining = quantity) => ({ id, x, y: 3, quantity, remaining });
+
+test('the nearest wild changes as miners walk and the daily population thins', () => {
+  const mine = fixture();
+  const a = { id: 'a', x: 3, y: 2 }, b = { id: 'b', x: 6, y: 2 };
+  mine.setWilds([a, b]);
+  const first = mine.wilds.get(a.id), second = mine.wilds.get(b.id);
+  mine.pos.set(3 * 2.2, 2 * 2.2);
+  assert.deepEqual(mine.nearestWild(), { wild: first, tiles: 0 });
+  mine.pos.set(6 * 2.2, 2 * 2.2);
+  assert.equal(mine.nearestWild().wild, second);
+  let released = 0;
+  second.mesh.material.addEventListener('dispose', () => released++);
+  mine.setWilds([a]);
+  assert.equal(mine.nearestWild().wild, first, 'the remaining bug keeps its sprite');
+  assert.equal(released, 1);
+  assert.equal(second.group.parent, null);
+  mine.setWilds([]);
+  assert.equal(mine.nearestWild(), null);
+});
 
 test('deposit basins grow with quantity and cut real openings in the floor', () => {
   const mine = fixture();

@@ -165,7 +165,7 @@ test('a toy earns the bug XP every day on its own, and only the one that is out'
 
 test('with several bugs: food packs a lunch for the partner, the toy pays only the partner, and a lunch eaten by a stalled bug is gone', () => {
   const { clock, barn, shop, player, pen, setNeeds, own } = setup();
-  barn.layEgg(player.id); clock.now += 1; barn.view(player.id);
+  barn.adopt(player.id, { wildId: 'wild-1', battleId: 'catch-1', species: pen.species, level: 1, health: 100 });
   const stalled = barn.doc.bench[player.id][0];
   own('food-banquet'); shop.use(player, 'food-banquet');
   assert.deepEqual(barn.view(player.id).stable.bugs.map((b) => b.lunch), [{ name: 'Bug Banquet', heal: LUNCH_CAP }, null]);
