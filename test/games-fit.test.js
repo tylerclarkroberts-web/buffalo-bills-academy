@@ -21,9 +21,9 @@ test('Games tab CSS hides the marquee and host strip on phones and keeps a scrol
   assert.match(block, /\.panel-body\.games-tab/);
   assert.match(block, /overflow-y: auto/);
   assert.match(block, /\.lobby5\.narrow \.promo-pair/);
-  assert.match(block, /\.sp-art \{ width: 40px; height: 40px; \}/);
+  assert.match(block, /\.sp-art(?:, [^\n]+)? \{ width: 40px; height: 40px; \}/);
   assert.match(block, /orientation: landscape/);
-  assert.match(block, /grid-template-columns: 1fr 1fr/);
+  assert.match(block, /grid-template-columns: 1fr 1fr 1fr/);
   // Desktop column rules must not be rewritten by the phone block.
   assert.doesNotMatch(block, /@media \(min-width: 900px\)/);
 });
@@ -38,6 +38,7 @@ test('Games tab panel is marked games-tab and still lists every promo', () => {
   assert.match(slice, /<SlotsPromo \/>/);
   assert.match(slice, /<FoffPromo \/>/);
   assert.match(slice, /<ScumPromo \/>/);
+  assert.match(slice, /<ElHaloPromo \/>/);
 });
 
 test('phone footer hides the long affiliation clause; house play-money line stays', () => {
@@ -55,14 +56,18 @@ test('SCUM card line and slots copy stay as shipped', () => {
   assert.equal(promo.includes('Play money only'), false);
 });
 
-test('e2e no-scroll check covers 390x664, 375x667 and landscape', () => {
+test('e2e no-scroll check covers 390x664, 375x667, 390x844, landscape, 1280x800 and 1440x900', () => {
   const e2e = read('scripts/e2e-games-fit.mjs');
   assert.match(e2e, /width: 390, height: 664/);
   assert.match(e2e, /width: 375, height: 667/);
+  assert.match(e2e, /width: 390, height: 844/);
+  assert.match(e2e, /width: 1280, height: 800/);
+  assert.match(e2e, /width: 1440, height: 900/);
   assert.match(e2e, /landscape/i);
   assert.match(e2e, /bj-go/);
   assert.match(e2e, /slots-go/);
   assert.match(e2e, /foff-go/);
   assert.match(e2e, /scum-go/);
+  assert.match(e2e, /elhalo-go/);
   assert.match(e2e, /getBoundingClientRect|within the viewport|inView|fullyVisible/);
 });
