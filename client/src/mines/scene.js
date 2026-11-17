@@ -314,7 +314,7 @@ export class MineScene {
     this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
     if (this.self.tag) this.self.tag.visible = false;
     this.self.group.visible = false; this.scene.add(this.self.group);
-    this.hands = buildMineHands(who.avatar?.seed || who.id); resizeMineHands(this.hands, this.camera.aspect);
+    this.hands = buildMineHands(who.avatar?.seed || who.id, who.avatar?.skinTone); resizeMineHands(this.hands, this.camera.aspect);
   }
   startDance(id) {
     const d = danceId(id); if (!d) return false;
@@ -438,6 +438,15 @@ export class MineScene {
       if (!nearest || tiles < nearest.tiles) nearest = { wild, tiles };
     }
     return nearest;
+  }
+  seesWild(wild) {
+    const x = wild.x * TILE, z = wild.y * TILE;
+    if (Math.hypot(this.pos.x - x, this.pos.y - z) >= 4 * TILE) return false;
+    const camera = this.camera, point = camera.worldToLocal(wild.mesh.getWorldPosition(new THREE.Vector3()));
+    if (this.scene.fog && -point.z >= this.scene.fog.far) return false;
+    point.applyMatrix4(camera.projectionMatrix);
+    return Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1 && Math.abs(point.z) <= 1 &&
+      lineOfSight(this.maze.grid, camera.position.x, camera.position.z, x, z);
   }
   updateBugGuide(now, dt) {
     const bg = this.bugGuide, m = this.bugMesh; if (!bg || !m) return;

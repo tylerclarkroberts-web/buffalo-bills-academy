@@ -4,9 +4,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { GameError } from './engine/game.js';
+import { SKIN_TONES } from './engine/avatar-appearance.js';
 
 export const MAX_AVATAR_BYTES = 160 * 1024;
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function checkSkinTone(tone) {
+  if (tone !== null && !SKIN_TONES.includes(tone)) throw new GameError('Choose one of the skin tones or use the default.');
+}
 
 /** Validate a PNG data URL; returns the bytes. Only small, square-ish PNGs are accepted. */
 export function parsePng(dataUrl) {
@@ -32,21 +37,32 @@ export class Avatars {
     if (!p) return null;
     const a = p.avatar;
     const wear = this.wearOf?.(p.id); // v34: store items worn on the avatar (cosmetic)
-    if (a?.kind === 'photo') return { kind: 'photo', v: a.v, ...(wear ? { wear } : {}) };
-    return { kind: 'gen', seed: a?.seed ?? p.id, ...(wear ? { wear } : {}) };
+    const avatar = a?.kind === 'photo' ? { kind: 'photo', v: a.v } : { kind: 'gen', seed: a?.seed ?? p.id };
+    if (wear) avatar.wear = wear;
+    if (SKIN_TONES.includes(p.skinTone)) avatar.skinTone = p.skinTone;
+    return avatar;
   }
-  setPhoto(p, dataUrl) {
-    const buf = parsePng(dataUrl);
-    const tmp = `${this.file(p.id)}.tmp`;
-    fs.writeFileSync(tmp, buf); fs.renameSync(tmp, this.file(p.id));
-    p.avatar = { kind: 'photo', v: this.now() };
-    this.store.savePlayers();
-    return this.info(p);
+  setAvatar(p, { kind, png, seed, skinTone }) {
+    if (skinTone !== undefined) checkSkinTone(skinTone);
+    if (kind === 'photo') {
+      const buf = parsePng(png);
+      const file = this.file(p.id), tmp = `${file}.tmp`;
+      fs.writeFileSync(tmp, buf); fs.renameSync(tmp, file);
+      p.avatar = { kind, v: this.now() };
+    } else if (kind === 'gen') {
+      const s = String(seed ?? '').slice(0, 40) || p.id;
+      try { fs.unlinkSync(this.file(p.id)); } catch { /* none */ }
+      p.avatar = { kind, seed: s, v: this.now() };
+    } else throw new GameError('Choose a photo avatar or a generated one.');
+    return this.save(p, skinTone);
   }
-  setGenerated(p, seed) {
-    const s = String(seed ?? '').slice(0, 40) || p.id;
-    try { fs.unlinkSync(this.file(p.id)); } catch { /* none */ }
-    p.avatar = { kind: 'gen', seed: s, v: this.now() };
+  setSkinTone(p, skinTone) {
+    checkSkinTone(skinTone);
+    return this.save(p, skinTone);
+  }
+  save(p, skinTone) {
+    if (skinTone === null) delete p.skinTone;
+    else if (skinTone !== undefined) p.skinTone = skinTone;
     this.store.savePlayers();
     return this.info(p);
   }
@@ -57,6 +73,7 @@ export class Avatars {
   }
   /** Move an avatar from one player record to another (used when an old player is merged into a Google account). */
   move(from, to) {
+    if (!to.skinTone && from.skinTone) to.skinTone = from.skinTone;
     if (!from.avatar || to.avatar) return;
     to.avatar = from.avatar;
     if (from.avatar.kind === 'photo') { try { fs.renameSync(this.file(from.id), this.file(to.id)); } catch { delete to.avatar; } }

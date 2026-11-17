@@ -20,8 +20,8 @@ function Shoulders({ shirt, seed }) {
   return polys.map((p, i) => <path key={i} d={p.d} fill={p.fill} />);
 }
 
-function GenHead({ seed }) {
-  const h = useMemo(() => headParts(seed), [seed]);
+function GenHead({ seed, skinTone }) {
+  const h = useMemo(() => headParts(seed, skinTone), [seed, skinTone]);
   const { L, cx, cy } = h;
   return (
     <svg viewBox="-4 -12 68 84" className="b-headsvg" aria-hidden="true">
@@ -40,12 +40,13 @@ function GenHead({ seed }) {
 export function avatarSrc(id, avatar) { return avatar?.kind === 'photo' ? `/api/avatars/${id}.png?v=${avatar.v || 0}` : null; }
 
 /**
- * id: player id (seed + photo url). avatar: {kind, v, seed} from the server. size: px width.
+ * id: player id (seed + photo url). avatar: {kind, v, seed, skinTone} from the server. size: px width.
  * state: '' | 'win' | 'folded' | 'toact'. still: no animation. phase: animation offset (0..1).
  */
 export function Bust({ id, avatar, size = 64, state = '', still = false, relaxed = false, phase, title, src: srcOverride }) {
   const seed = avatar?.seed || id || 'x';
-  const L = useMemo(() => looks(seed), [seed]);
+  const skinTone = avatar?.skinTone;
+  const L = useMemo(() => looks(seed, skinTone), [seed, skinTone]);
   const src = srcOverride || avatarSrc(id, avatar);
   const h = hashSeed(String(id || seed));
   const ph = phase ?? (h % 1000) / 1000;
@@ -54,7 +55,7 @@ export function Bust({ id, avatar, size = 64, state = '', still = false, relaxed
     <div className={`bust ${still ? 'still' : ''} ${state}${relaxed ? ' relaxed' : ''}`} style={style} title={title} aria-hidden={title ? undefined : 'true'} role={title ? 'img' : undefined} aria-label={title}>
       <svg viewBox="0 0 100 110" className="b-body"><rect x="42" y="62" width="16" height="22" fill={shade(L.skin, -0.25)} /><Shoulders shirt={shirtOf(avatar?.wear, L.shirt)} seed={seed} /><BodyWear wear={avatar?.wear} /></svg>
       <div className="b-head">
-        {src ? <img src={src} alt="" draggable="false" className="b-photo" /> : <GenHead seed={seed} />}
+        {src ? <img src={src} alt="" draggable="false" className="b-photo" /> : <GenHead seed={seed} skinTone={skinTone} />}
         <HeadWear wear={avatar?.wear} photo={!!src} />
       </div>
     </div>

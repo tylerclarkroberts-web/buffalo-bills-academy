@@ -188,6 +188,14 @@ test('cash is clamped to what the victim has (never below zero); stolen acid is 
   assert.ok(!g.bob.txns.some((x) => x.type === 'pvp'), 'no zero-dollar ledger lines');
 });
 
+test('closing right up to an unaware miner from behind still allows an ambush', (t) => {
+  const f = fixture(t);
+  const { a, view } = f.setup({ gap: 0.2 });
+  assert.deepEqual(view.ambush, { id: 'bob', name: 'BOB' });
+  assert.equal(view.battle, undefined);
+  assert.ok(f.pvp.ambush(f.ann, { shiftId: a.shiftId, target: 'bob' }).raid);
+});
+
 test('no ambush when the victim has seen you, is facing you, is shielded, or you are the victim', (t) => {
   const f = fixture(t);
   const { a } = f.setup({ bobFacing: WEST }); // bob looking straight at ann: that is a battle, not an ambush

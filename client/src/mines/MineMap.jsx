@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { RUBBLE } from '../../../server/engine/maze.js';
+import { BY_ID } from '../../../server/engine/creatures.js';
 import { entranceLayout } from './entrance.js';
 
-export default function MineMap({ maze, explored, pools, pose, onClose, returnFocus }) {
+export default function MineMap({ maze, explored, pools, wilds = [], pose, onClose, returnFocus }) {
   const dialog = useRef(null);
   useEffect(() => {
     const el = dialog.current; el.showModal();
@@ -10,6 +11,7 @@ export default function MineMap({ maze, explored, pools, pose, onClose, returnFo
   }, []);
   const knownPools = pools.filter(p => explored.pools.has(p.id));
   const wet = knownPools.filter(p => p.remaining > 0).length;
+  const bugs = wilds.map(w => ({ ...w, label: `Wild ${BY_ID[w.species]?.name || 'bug'} · Lv ${w.level}` }));
   const entranceKnown = explored.tiles.has(`${maze.start.x},${maze.start.y}`);
   const { lift, door } = entranceLayout(maze);
   return (
@@ -22,6 +24,7 @@ export default function MineMap({ maze, explored, pools, pose, onClose, returnFo
       <p className="m-map-note">Walk to fill it in. New shift, new sheet.</p>
       <div className="m-map-chart">
         <svg viewBox={`-1 -1 ${maze.size + 2} ${maze.size + 2}`} role="img" aria-label={`Explored mine tunnels. You are at column ${Math.round(pose.x)}, row ${Math.round(pose.y)}. ${wet} known acid pools. Unexplored areas are blank.`}>
+          {bugs.length > 0 && <desc>{bugs.map(b => `${b.label} at column ${b.x}, row ${b.y}.`).join(' ')}</desc>}
           {[...explored.tiles].map(key => {
             const [x, y] = key.split(',').map(Number), tile = maze.grid[y][x];
             return <g key={key}>
@@ -30,6 +33,7 @@ export default function MineMap({ maze, explored, pools, pose, onClose, returnFo
             </g>;
           })}
           {knownPools.map(p => <circle key={p.id} data-pool={p.id} cx={p.x} cy={p.y} r=".32" className={`m-map-pool${p.remaining > 0 ? ' wet' : ''}`}><title>{p.remaining > 0 ? 'Acid pool' : p.quantity == null ? 'Uninspected pool' : 'Empty pool'}</title></circle>)}
+          {bugs.map(b => <path key={b.id} data-wild={b.id} transform={`translate(${b.x} ${b.y})`} d="M0,-.5 .5,0 0,.5 -.5,0 Z" className="m-map-wild"><title>{b.label}</title></path>)}
           {entranceKnown && <>
             <g data-test="map-lift" transform={`translate(${lift.x} ${lift.y}) rotate(${-lift.rotation * 180 / Math.PI})`}>
               <title>Lift · Surface</title>
@@ -44,6 +48,7 @@ export default function MineMap({ maze, explored, pools, pose, onClose, returnFo
       <div className="m-map-legend">
         <span><i className="m-map-key-you">▲</i> YOU</span><span><i className="m-map-key-acid">●</i> ACID</span>
         <span><i>○</i> EMPTY / UNKNOWN</span><span><i className="m-map-key-lift">▥</i> LIFT</span><span><i className="m-map-key-door">▰</i> RED DOOR</span>
+        {bugs.map(b => <span className="m-map-wild-label" key={b.id}><i aria-hidden="true">◆</i> {b.label}</span>)}
       </div>
       <p className="m-map-note">Still on the clock.</p>
     </dialog>

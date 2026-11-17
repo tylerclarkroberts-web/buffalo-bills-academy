@@ -1,20 +1,14 @@
-// The faun in the tunnels: a low-poly Tumnus who sometimes joins a shift (the server decides which
-// shifts, about 20% of them, and never the same shift as the visitor). Pure logic, no three.js, so
-// node --test can drive it. He follows at a short distance, is solid (walk around him), bleats on a
-// short timer, and steps aside or lets you pass if he would trap you in a one-wide dead end. He stays
-// for the whole shift; pay, vein timing and the bug guide ignore him.
+// Tumnus lingers in the tunnels until the miner gets well ahead. If approached, he makes room at the wall.
 import { bfs, tileOf, TILE } from './stalker.js';
 
 export const APPEAR_AFTER_MS = 2500;
-export const FOLLOW_GAP = 1.8;       // metres: he stops about this close
+export const FOLLOW_GAP = 2 * TILE;
+const REJOIN_GAP = 4 * TILE;
+const YIELD_GAP = 1.6;
 export const WALK_SPEED = 2.7;       // a bit slower than the player (3.6), so he trails
 export const CATCH_UP_SPEED = 3.5;
 export const BODY_RADIUS = 0.42;
-export const YIELD_S = 1.15;         // shove or trapped this long → step aside / swap
-export const PASS_S = 0.55;          // brief window where he is not solid, so a swap can complete
-export const BLEAT_MIN_S = 2.2;
-export const BLEAT_MAX_S = 5.0;
-export const PLAYER_RADIUS = 0.38;
+const BLEAT_MIN_S = 12, BLEAT_MAX_S = 24;
 export const MOON_SECONDS = 3;
 export const MOON_MIN_S = 18, MOON_MAX_S = 40;
 
@@ -25,23 +19,6 @@ function neighbors(grid, tx, ty) {
   return DIRS.filter(([dx, dy]) => open(grid, tx + dx, ty + dy)).map(([dx, dy]) => [tx + dx, ty + dy]);
 }
 
-/** Walk distances treating a tile as blocked (the faun's body in a one-wide tunnel). */
-export function bfsAvoiding(grid, tx, ty, avoidX, avoidY) {
-  const H = grid.length, W = grid[0].length;
-  const d = Array.from({ length: H }, () => new Array(W).fill(-1));
-  if (!open(grid, tx, ty) || (tx === avoidX && ty === avoidY)) return d;
-  const q = [[tx, ty]]; d[ty][tx] = 0;
-  for (let i = 0; i < q.length; i++) {
-    const [x, y] = q[i];
-    for (const [dx, dy] of DIRS) {
-      const X = x + dx, Y = y + dy;
-      if (!open(grid, X, Y) || (X === avoidX && Y === avoidY) || d[Y][X] >= 0) continue;
-      d[Y][X] = d[y][x] + 1; q.push([X, Y]);
-    }
-  }
-  return d;
-}
-
 export class FaunFollower {
   /** maze: { grid, pool:{x,y}, start?:{x,y} } · armed: the server rolled a faun for this shift · rand: seeded 0..1 */
   constructor(maze, { armed = false, rand = Math.random, afterMs = APPEAR_AFTER_MS } = {}) {
@@ -49,7 +26,7 @@ export class FaunFollower {
     this.rand = rand; this.afterMs = Math.max(0, afterMs || 0);
     this.state = armed ? 'dormant' : 'off'; // off | dormant | following
     this.x = 0; this.z = 0; this.facing = 0; this.moving = false;
-    this.next = null; this.repath = 0; this.shove = 0; this.stuck = 0; this.pass = 0;
+    this.next = null; this.aside = null;
     this.nextBleat = 0; this.events = [];
     this.nextMoon = MOON_MIN_S; this.moonLeft = 0;
   }
@@ -59,32 +36,10 @@ export class FaunFollower {
     const k = Math.max(0, Math.min(1, (MOON_SECONDS - this.moonLeft) / .55, this.moonLeft / .55));
     return k * k * (3 - 2 * k);
   }
-  /** Solid body: false while he is yielding so a swap can finish. */
-  blocks(x, z, r) { return this.present && this.pass <= 0 && Math.hypot(x - this.x, z - this.z) < r + BODY_RADIUS; }
+  /** Keep the passage open for as long as the miner needs to get by. */
+  blocks(x, z, r) { return this.present && !this.aside && Math.hypot(x - this.x, z - this.z) < r + BODY_RADIUS; }
 
   setPool(p) { if (p) this.pool = p; }
-
-  /**
-   * True if the faun is the reason the player cannot reach the pool (or cannot leave a dead end).
-   * Used so visible acid stays reachable and a 1-wide dead end is never a permanent trap.
-   */
-  trapping(px, pz) {
-    if (!this.present || this.pass > 0) return false;
-    const [ptx, pty] = tileOf(px, pz);
-    const [etx, ety] = tileOf(this.x, this.z);
-    if (ptx === etx && pty === ety) return Math.hypot(px - this.x, pz - this.z) < FOLLOW_GAP;
-    const close = Math.hypot(px - this.x, pz - this.z) < FOLLOW_GAP + PLAYER_RADIUS + BODY_RADIUS + 0.35;
-    if (!close) return false;
-    const exits = neighbors(this.grid, ptx, pty);
-    const free = exits.filter(([x, y]) => !(x === etx && y === ety) && !this.blocks(x * TILE, y * TILE, PLAYER_RADIUS));
-    if (exits.length <= 1 && free.length === 0) return true;
-    if (!this.pool) return free.length === 0 && exits.length > 0;
-    const clear = bfs(this.grid, ptx, pty);
-    const blocked = bfsAvoiding(this.grid, ptx, pty, etx, ety);
-    const poolOk = clear[this.pool.y]?.[this.pool.x] >= 0;
-    const poolBlocked = blocked[this.pool.y]?.[this.pool.x] < 0;
-    return poolOk && poolBlocked;
-  }
 
   /**
    * One frame. p = { t (s), x, z, yaw, elapsedMs, pushing (blocked by him), busy (mining or dancing) }.
@@ -96,51 +51,49 @@ export class FaunFollower {
     }
     if (this.state !== 'following') return;
     this.nextMoon -= dt;
-    if (this.pass > 0) this.pass = Math.max(0, this.pass - dt);
-    this.nextBleat -= dt;
-    if (this.nextBleat <= 0) { this.events.push('bleat'); this.scheduleBleat(); }
-    this.shove = p.pushing ? this.shove + dt : 0;
-    this.stuck = this.trapping(p.x, p.z) ? this.stuck + dt : 0;
-    if (this.shove > YIELD_S || this.stuck > YIELD_S) { this.yieldTo(p); return; }
-
     const dx = p.x - this.x, dz = p.z - this.z, dist = Math.hypot(dx, dz);
-    const [ptx, pty] = tileOf(p.x, p.z);
-    const [etx, ety] = tileOf(this.x, this.z);
-    const d = bfs(this.grid, ptx, pty);
-    const pathTiles = d[ety]?.[etx] ?? -1;
+    this.nextBleat -= dt;
+    if (this.nextBleat <= 0) {
+      if (dist <= REJOIN_GAP) this.events.push('bleat');
+      this.scheduleBleat();
+    }
     this.moving = false;
-    if (this.pass <= 0 && dist <= FOLLOW_GAP + 1e-6) {
-      this.facing = Math.atan2(dx, dz);
-      if (p.busy || p.pushing || this.stuck > 0) this.moonLeft = 0;
+    if (this.aside && this.walkTo(...this.aside, WALK_SPEED * dt)) return;
+    if (dist > REJOIN_GAP) this.aside = null;
+    else if (!this.aside && (dist < YIELD_GAP || p.pushing)) { this.yieldTo(p); return; }
+
+    // Once settled, stay put through nearby turns, stops and backtracking.
+    if (dist <= (this.next ? FOLLOW_GAP : REJOIN_GAP) + 1e-6) {
+      this.next = null;
+      // He can cross a deposit en route; only choose a place beside it when he stops.
+      if (this.stepOffPool(p) || p.busy || p.pushing || dist < YIELD_GAP || dist > FOLLOW_GAP + 1e-6) this.moonLeft = 0;
       else if (this.moonLeft > 0) this.moonLeft = Math.max(0, this.moonLeft - dt);
       else if (this.nextMoon <= 0) {
+        this.facing = Math.atan2(dx, dz);
         this.moonLeft = MOON_SECONDS;
         this.nextMoon = MOON_MIN_S + this.rand() * (MOON_MAX_S - MOON_MIN_S);
       }
       return;
     }
     this.moonLeft = 0;
-    this.repath -= dt;
-    if (!this.next || this.repath <= 0 || (Math.abs(this.x - this.next[0] * TILE) < 0.05 && Math.abs(this.z - this.next[1] * TILE) < 0.05)) {
-      this.repath = 0.25;
-      let best = null;
-      if (pathTiles > 0) for (const [ox, oy] of DIRS) {
-        const X = etx + ox, Y = ety + oy;
-        if (d[Y]?.[X] >= 0 && d[Y][X] < pathTiles && (!best || d[Y][X] < d[best[1]][best[0]])) best = [X, Y];
-      }
-      this.next = pathTiles <= 1 ? [ptx, pty] : best || [etx, ety];
+    const [ptx, pty] = tileOf(p.x, p.z);
+    const [etx, ety] = tileOf(this.x, this.z);
+    if (!this.next || (Math.abs(this.x - this.next[0] * TILE) < 0.05 && Math.abs(this.z - this.next[1] * TILE) < 0.05)) {
+      const d = bfs(this.grid, ptx, pty);
+      const pathTiles = d[ety]?.[etx] ?? -1;
+      this.next = neighbors(this.grid, etx, ety).find(([x, y]) => d[y][x] === pathTiles - 1) || [etx, ety];
     }
-    let tx = this.next[0] * TILE, tz = this.next[1] * TILE;
-    if (pathTiles <= 1) { tx = p.x; tz = p.z; }
-    const vx = tx - this.x, vz = tz - this.z, len = Math.hypot(vx, vz);
-    if (len < 1e-4) return;
-    const sp = (pathTiles > 6 ? CATCH_UP_SPEED : WALK_SPEED) * dt;
-    let step = Math.min(sp, len);
-    if (this.pass <= 0 && pathTiles <= 1) step = Math.min(step, Math.max(0, dist - FOLLOW_GAP));
-    this.x += (vx / len) * step; this.z += (vz / len) * step; this.moving = step > 0;
-    this.facing = Math.atan2(vx, vz);
-    // stay off the current acid tile when the miner is heading there
-    this.clearPool(p);
+    const speed = dist > 6 * TILE ? CATCH_UP_SPEED : WALK_SPEED;
+    this.walkTo(this.next[0] * TILE, this.next[1] * TILE, Math.min(speed * dt, dist - FOLLOW_GAP));
+  }
+
+  walkTo(x, z, maxStep) {
+    const dx = x - this.x, dz = z - this.z, distance = Math.hypot(dx, dz);
+    if (distance < 1e-5) return false;
+    const step = Math.min(maxStep, distance);
+    this.x += dx * step / distance; this.z += dz * step / distance;
+    this.facing = Math.atan2(dx, dz); this.moving = true;
+    return true;
   }
 
   spawn(p) {
@@ -174,43 +127,34 @@ export class FaunFollower {
     if (!at) return;
     this.x = at[0] * TILE; this.z = at[1] * TILE;
     this.facing = Math.atan2(p.x - this.x, p.z - this.z);
-    this.state = 'following'; this.next = null; this.pass = 0;
+    this.state = 'following';
     this.moonLeft = 0; this.nextMoon = MOON_MIN_S + this.rand() * (MOON_MAX_S - MOON_MIN_S);
     this.events.push('appear'); this.events.push('bleat'); this.scheduleBleat();
   }
 
   yieldTo(p) {
     this.moonLeft = 0;
-    const [ptx, pty] = tileOf(p.x, p.z);
-    const [etx, ety] = tileOf(this.x, this.z);
-    const d = bfs(this.grid, ptx, pty);
-    const nearPool = (x, y) => this.pool && x === this.pool.x && y === this.pool.y;
-    const farther = neighbors(this.grid, etx, ety)
-      .filter(([x, y]) => !nearPool(x, y) && !(x === ptx && y === pty) && (d[y][x] ?? -1) > (d[ety]?.[etx] ?? 0))
-      .sort((a, b) => (d[b[1]][b[0]] - d[a[1]][a[0]]));
-    const side = neighbors(this.grid, etx, ety)
-      .filter(([x, y]) => !nearPool(x, y) && !(x === ptx && y === pty));
-    const pick = farther[0] || side[0];
-    if (pick) {
-      this.x = pick[0] * TILE; this.z = pick[1] * TILE;
-    } else {
-      // No free tile: briefly stop being solid and step onto the miner's tile so they can take ours.
-      this.pass = PASS_S;
-      this.x = ptx * TILE; this.z = pty * TILE;
-    }
-    this.next = null; this.shove = 0; this.stuck = 0; this.events.push('yield');
+    const [tx, ty] = tileOf(this.x, this.z);
+    let x = tx * TILE, z = ty * TILE;
+    const side = TILE / 2 - BODY_RADIUS;
+    if (Math.abs(p.x - this.x) > Math.abs(p.z - this.z)) z += p.z > z ? -side : side;
+    else x += p.x > x ? -side : side;
+    this.aside = [x, z];
+    this.next = null;
+    this.events.push('yield');
   }
 
-  clearPool(p) {
+  stepOffPool(p) {
     if (!this.pool) return;
     const [etx, ety] = tileOf(this.x, this.z);
     if (etx !== this.pool.x || ety !== this.pool.y) return;
     const [ptx, pty] = tileOf(p.x, p.z);
-    const d = bfs(this.grid, ptx, pty);
     const n = neighbors(this.grid, etx, ety).filter(([x, y]) => !(x === ptx && y === pty));
-    if (!n.length) { this.pass = Math.max(this.pass, PASS_S); return; }
+    if (!n.length) { if (!this.aside) this.yieldTo(p); return true; }
+    const d = bfs(this.grid, ptx, pty);
     n.sort((a, b) => (d[b[1]]?.[b[0]] ?? 0) - (d[a[1]]?.[a[0]] ?? 0));
-    this.x = n[0][0] * TILE; this.z = n[0][1] * TILE; this.next = null;
+    this.aside = [n[0][0] * TILE, n[0][1] * TILE];
+    return true;
   }
 
   scheduleBleat() { this.nextBleat = BLEAT_MIN_S + this.rand() * (BLEAT_MAX_S - BLEAT_MIN_S); }

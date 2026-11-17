@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { createApp } from '../server/app.js';
+import { SKIN_TONES } from '../server/engine/avatar-appearance.js';
 import { buildHead, OUT_W, OUT_H } from '../client/src/avatar/facepoly.js';
 
 function renderedHead() {
@@ -67,4 +68,60 @@ test('invalid PNGs and unsigned avatar replacements preserve the previous image 
   assert.deepEqual(service.store.players[id].avatar, previous);
   const image = await request('GET', '/api/avatars/' + id + '.png');
   assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+});
+
+test('skin tone survives face changes and is optional for both new and existing avatars', async (t) => {
+  const { request, id, dataDir } = await fixture(t);
+  const tone = SKIN_TONES[3], changed = SKIN_TONES[5], endpoint = '/api/me/avatar/skin-tone';
+  const { body, png } = renderedHead();
+  const setTone = (skinTone) => request('POST', endpoint, { skinTone });
+  const me = async () => (await request('GET', '/api/me')).json();
+  assert.equal((await setTone(tone)).status, 200);
+  assert.equal((await me()).hasAvatar, false, 'skin alone does not complete face setup');
+  assert.deepEqual((await me()).avatar, { kind: 'gen', seed: id, skinTone: tone });
+  const gen = await (await request('POST', '/api/me/avatar', { kind: 'gen', seed: 'kept-seed' })).json();
+  assert.deepEqual(gen.avatar, { kind: 'gen', seed: 'kept-seed', skinTone: tone });
+  assert.equal((await setTone(changed)).status, 200);
+  assert.equal((await me()).avatar.seed, 'kept-seed');
+  const photo = await (await request('POST', '/api/me/avatar', { ...body, skinTone: tone })).json();
+  assert.equal(photo.avatar.skinTone, tone);
+  const updated = await (await setTone(changed)).json();
+  assert.deepEqual(updated.avatar, { ...photo.avatar, skinTone: changed }, 'photo version stays put');
+  assert.equal((await request('POST', endpoint, { skinTone: null }, false)).status, 401);
+  assert.equal((await request('POST', endpoint, {})).status, 400);
+  assert.equal((await setTone('#ffffff')).status, 400);
+  assert.equal((await request('POST', '/api/me/avatar', { kind: 'gen', seed: 'other', skinTone: {} })).status, 400);
+  assert.equal((await request('POST', '/api/me/avatar', { kind: 'photo', png: 'invalid', skinTone: null })).status, 400);
+  assert.deepEqual((await me()).avatar, updated.avatar);
+  assert.deepEqual(Buffer.from(await (await request('GET', '/api/avatars/' + id + '.png')).arrayBuffer()), png);
+  const profile = await (await request('GET', '/api/players/' + id + '/profile', undefined, false)).json();
+  assert.deepEqual(profile.avatar, updated.avatar);
+  const savedPlayer = JSON.parse(fs.readFileSync(path.join(dataDir, 'players.json'), 'utf8'))[id];
+  assert.equal(savedPlayer.skinTone, changed);
+  assert.deepEqual((await (await setTone(null)).json()).avatar, { kind: 'photo', v: photo.avatar.v });
+});
+
+test('other miners and a seated poker table receive the current tone', async (t) => {
+  const { request, service, id } = await fixture(t);
+  const table = await (await request('POST', '/api/tables', { name: 'Test table' })).json();
+  const v = { rulesVersion: 2 }, shift = await (await request('POST', '/api/mines/start', v)).json();
+  await request('POST', '/api/mines/pvp/tick', { ...v, shiftId: shift.shiftId, x: 1, y: 1, yaw: 0 });
+  const tone = SKIN_TONES[2];
+  const skin = await (await request('POST', '/api/me/avatar/skin-tone', { skinTone: tone })).json();
+  const tableView = await (await request('GET', '/api/tables/' + table.code)).json();
+  assert.deepEqual(tableView.avatars[id], skin.avatar);
+  const other = service.getPlayer(service.createPlayer('Second miner').id);
+  const visit = service.mines.start(other, v);
+  const tick = service.pvp.tick(other, { ...v, shiftId: visit.shiftId, x: 1, y: 1, yaw: 0 });
+  assert.deepEqual(tick.others.find(miner => miner.id === id).avatar, skin.avatar);
+});
+
+test('merging an account keeps the destination tone or brings over the source preference', async (t) => {
+  const { service } = await fixture(t);
+  const first = { skinTone: SKIN_TONES[0] }, kept = { skinTone: SKIN_TONES[1] };
+  service.avatars.move(first, kept);
+  assert.equal(kept.skinTone, SKIN_TONES[1]);
+  const unconfigured = {};
+  service.avatars.move(first, unconfigured);
+  assert.deepEqual(unconfigured, first);
 });

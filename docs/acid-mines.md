@@ -35,7 +35,7 @@ In a permit shaft, each pool after the first may cave in as the miner arrives, d
 
 A permit shaft may also have the other faun waiting at the elevator: 10% of shifts in Shaft 8, 20% in Shaft 12 and 30% on Earl's Level, decided at clock-in from its own random source and never sent to the browser beforehand. He takes a third of whatever the shift pays, rare finds included; the result then carries `twin` (`took`). Shaft 7 never meets him.
 
-About 20% of shifts (any shaft) also have the faun follow you in the tunnels, decided at clock-in from the same encounter roll as the visitor: 28% visitor, 20% faun, never both. Public state carries `faun: true` when he is on the shift. He is solid, bleats, and yields if he would trap you; pay and deposit amounts ignore him.
+About 20% of shifts (any shaft) also have the faun follow you in the tunnels, decided at clock-in from the same encounter roll as the visitor: 28% visitor, 20% faun, never both. Public state carries `faun: true` when he is on the shift. He lingers until you get four tiles ahead, then trails at two tiles. Walk toward him and he steps to the wall so you can pass. He occasionally bleats nearby. Pay and deposit amounts ignore him.
 
 Prices are deliberately high because the mines are the only source of new money. The owned-bug guide's feeding is not built.
 
@@ -77,7 +77,7 @@ Failed stages leave recoverable state. Receipts replay lost responses without an
 
 After displaying a result, the browser stores only its shift ID in the account-scoped localStorage key `acidMine.seenResult:<playerId>`. A later clock-in passes it as `afterShiftId`; no amount, bucket or balance is stored locally. If storage is unavailable or the response was never displayed, the server can replay the saved result. No database, dependency or environment setting is added.
 
-The shift map stores explored tiles and discovered pool IDs in `acidMine.map:<playerId>`, alongside the shift ID. Reloading the same shift restores the chart; starting a different shift replaces it, even on the same day's maze. With browser storage unavailable, exploration lasts until the page is closed. The map does not change the saved shift, pause its clock or remove the miner from PvP.
+The shift map stores explored tiles and discovered pool and wild-bug IDs in `acidMine.map:<playerId>`, alongside the shift ID. A sighted wild bug appears as an orange diamond while it is still available in that shift. Reloading the same shift restores the chart. Starting a different shift replaces it, even on the same day's maze. With browser storage unavailable, exploration lasts until the page is closed. Opening the map keeps the shift clock and PvP running.
 
 ## The daily mine and miner-vs-miner (v71)
 
@@ -104,9 +104,9 @@ The local dev server's `MINE_TEST_TIER=1..5` (with `DEV_LOGIN`) forces a tier fo
 
 **Presence.** The page posts `POST /api/mines/pvp/tick` about every 250 ms with `{rulesVersion: 2, shiftId, x, y, yaw, fresh?}` (tile units). The server keeps positions in memory only, rejects a spot inside rock or further than ~2.5 tiles/s from the last accepted one (answering `snap`), and lets `fresh: true` (a page reload) restart at the elevator. A miner who has not reported for 4 s is not in the tunnels as far as anyone can tell. The answer lists up to 12 other miners on today's maze (`id`, `name`, `avatar`, `x`, `y`, `yaw`, `bug`, `shield`, `cooling`), `ambush` (`{id, name}` when you can stab someone right now), your own `shield`, and `battle` when you are in one. After your shift ends, it answers `{ended: true, ...result}`.
 
-**Seeing.** You see someone within 5 tiles, inside a 100° cone ahead, with a clear line through tunnel (not rock), or by bumping into them. "Has seen you" lasts 4 s.
+**Seeing.** You see someone within 5 tiles, inside a 100° cone ahead, with a clear line through the tunnel. "Has seen you" lasts 4 s.
 
-**Ambush.** `POST /api/mines/pvp/ambush {target}` succeeds only if the server agrees: touching (≤0.75 tile), you are behind them (inside the 180° half behind their facing), and they have not seen you in the last 4 s. The victim's shift ends at once with an AMBUSHED receipt (no pay, not counted as a shift, the fare is lost). The attacker takes all the acid in the victim's bucket (anything past their own capacity is spilled) and $20–$100, never more than the victim has.
+**Ambush.** Press X or tap **Assassinate** behind an unsuspecting miner. The server accepts `POST /api/mines/pvp/ambush {target}` anywhere within 0.75 tile on their rear half, with clear tunnel between you and no sighting in the last 4 s. The victim's shift ends at once with an AMBUSHED receipt (no pay, not counted as a shift, the fare is lost). The attacker takes all the acid in the victim's bucket (anything past their own capacity is spilled) and $20–$100, never more than the victim has.
 
 **Bug battle.** Two miners who have both seen each other and touch go straight into a fight: the same turn-based ring fight the Barn runs (`server/fights.js`, `server/engine/bout.js`; the rules are in [Barn care and combat](bug-combat.md)), shown in the ring on a tunnel floor. Every roll is made on the server. A player with no living hatched bug, or whose bug is in a Barn bout at that moment, fights with the Foreman's loaner, *Gerald (on loan)*, a level 1 onymacris. Mining and movement stop during a battle. `POST /api/mines/pvp/move {battleId, moves}` lines up to three of the bug's learned moves; a bug with nothing lined up picks for itself, one action every few seconds. A fight that reaches the bell dead level is no contest and nobody is robbed. Not being heard from for 15 s, clocking out, or `POST /api/mines/pvp/forfeit` loses the battle. The winner takes the loser's acid, $20–$100 (clamped as above) and every tobacco product they own; one the winner already has is smoked instead. Battles live in memory: a server restart ends them with no winner and nothing taken.
 
@@ -128,7 +128,7 @@ Both owned bugs earn 20 XP for a mine fight with a knockout or points decision. 
 
 **Money.** Bankroll is the app's play money. Every raid is one atomic `players.json` write for both players, with `pvp` ledger lines ("Acid Mines: ambushed X" / "ambushed by X" / "won a bug battle against X" / "lost a bug battle to X") and the raid id on both players so a retry can't pay twice. `pvp.json` keeps raid records (30 days), pair cooldowns and daily losses. A raid is saved before any money moves and then applied in steps (mine, money, shop); after a crash, `recover()` finishes those steps on restart.
 
-Run `PLAYWRIGHT_DIR=<dir with playwright-core> OUT=<dir> node scripts/e2e-pvp.mjs` after `npm run build` for the three-browser check. It uses the `PVP_TEST=1` / `PVP_TEST_GRACE_MS` hooks, which only work with `DEV_LOGIN`. For fight recovery, run `node scripts/e2e-bug-hp.mjs` with the same variables and `CHROME` pointing to your Chrome executable. It checks a survivor's next bout and both treatment prices on desktop and phone layouts.
+Run `PLAYWRIGHT_DIR=<dir with playwright-core> OUT=<dir> node scripts/e2e-pvp.mjs` after `npm run build` for the multiplayer browser check. Set `CHROME` to your Chrome executable. The script uses the `PVP_TEST=1` / `PVP_TEST_GRACE_MS` hooks with development login. For fight recovery, run `node scripts/e2e-bug-hp.mjs` with the same variables. It checks a survivor's next bout and both treatment prices on desktop and phone layouts.
 
 ## Horror Night
 

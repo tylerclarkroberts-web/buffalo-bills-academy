@@ -1,7 +1,8 @@
 // Original generated low-poly busts for players without a photo. Seeded, so everyone keeps the same face.
+import { SKIN_TONES } from '../../../server/engine/avatar-appearance.js';
+
 export function hashSeed(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 export function rng(seed) { let a = hashSeed(seed) || 1; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const SKIN = ['#f3cfb3', '#e8b48f', '#d39a72', '#b77a52', '#94603e', '#6e4429', '#4f301d', '#f6dccb'];
 const HAIR = ['#17110d', '#2f2016', '#5a3a20', '#8b5a2b', '#c99a55', '#e3c98d', '#9a9a9a', '#ece6da', '#b8322f', '#1f2a44'];
 export const SHIRTS = ['#ff4f7b', '#21c7b8', '#ffb547', '#7b5cff', '#ff7a59', '#2b6f8a', '#f2e8d5', '#d6336c', '#3fbf8f'];
 const HAIRSTYLES = ['short', 'bald', 'long', 'quiff', 'buzz', 'bun'];
@@ -11,10 +12,11 @@ export function shade(hex, f) {
   const ch = (v) => Math.max(0, Math.min(255, Math.round(f >= 0 ? v + (255 - v) * f : v * (1 + f))));
   return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`;
 }
-export function looks(seed) {
+export function looks(seed, skinTone) {
   const r = rng(seed);
   const pick = (a) => a[Math.floor(r() * a.length)];
-  return { skin: pick(SKIN), hair: pick(HAIR), shirt: pick(SHIRTS), style: pick(HAIRSTYLES), wide: 0.92 + r() * 0.16, brows: r() < 0.5, beard: r() < 0.22, r };
+  const seededSkin = pick(SKIN_TONES); // Keep every subsequent seeded feature in the same place.
+  return { skin: SKIN_TONES.includes(skinTone) ? skinTone : seededSkin, hair: pick(HAIR), shirt: pick(SHIRTS), style: pick(HAIRSTYLES), wide: 0.92 + r() * 0.16, brows: r() < 0.5, beard: r() < 0.22, r };
 }
 const LIGHT = [-0.45, -0.6, 0.66];
 function facet(pts, base, z = [0.6, 0.6, 0.6]) {
@@ -25,8 +27,8 @@ function facet(pts, base, z = [0.6, 0.6, 0.6]) {
   return { d: `M${pts.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' L')}Z`, fill: shade(base, (d - 0.55) * 0.55 + z[0] * 0 ) };
 }
 /** Head (viewBox 0 0 60 72): returns polygons for skin, hair, features. */
-export function headParts(seed) {
-  const L = looks(seed);
+export function headParts(seed, skinTone) {
+  const L = looks(seed, skinTone);
   const cx = 30, cy = 36, rx = 19 * L.wide, ry = 24;
   const ring = (k, n, off = 0) => Array.from({ length: n }, (_, i) => { const a = (i / n) * Math.PI * 2 + off; const jit = 1 + (L.r() - 0.5) * 0.05; return [cx + Math.cos(a) * rx * k * jit, cy + Math.sin(a) * ry * k * (a > 0 && a < Math.PI ? 1.02 : 1) * jit]; });
   const outer = ring(1, 14), inner = ring(0.56, 7, 0.2), c = [cx, cy + 2];

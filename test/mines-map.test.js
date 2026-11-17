@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readExploration, rememberExploration, revealExploration } from '../client/src/mines/exploration.js';
+import { markWild, readExploration, rememberExploration, revealExploration } from '../client/src/mines/exploration.js';
 
 const grid = [
   [1, 1, 1, 1, 1, 1, 1],
@@ -11,7 +11,7 @@ const grid = [
   [1, 0, 0, 0, 0, 0, 1],
   [1, 1, 1, 1, 1, 1, 1],
 ];
-const blank = () => ({ tiles: new Set(), pools: new Set() });
+const blank = () => ({ tiles: new Set(), pools: new Set(), wilds: new Set() });
 const storage = () => {
   const records = new Map();
   return { records, getItem: key => records.get(key), setItem: (key, value) => records.set(key, value) };
@@ -89,6 +89,23 @@ test('malformed stored charts are discarded without breaking a shift', () => {
     store.setItem('acidMine.map:alice', value);
     assert.deepEqual(readExploration('alice', 'shift-1', grid, pools, store), blank());
   }
+});
+
+test('wild sightings persist only for this shift and only while a known bug is still available', () => {
+  const store = storage(), key = 'acidMine.map:alice';
+  const a = { id: 'a', x: 3, y: 1 }, b = { id: 'b', x: 4, y: 1 }, unknown = { id: 'c', x: 1, y: 1 };
+  const read = (wilds) => readExploration('alice', 'shift-1', grid, [], store, wilds);
+  store.setItem(key, JSON.stringify({ shiftId: 'shift-1', tiles: ['1,1'], pools: [] }));
+  const chart = read([a, b, unknown]);
+  assert.deepEqual(chart.tiles, new Set(['1,1']), 'older chart is preserved');
+  assert.equal(chart.wilds.size, 0, 'charted ground alone never reveals a wild bug');
+  assert.ok(markWild(chart, a)); assert.ok(markWild(chart, b));
+  assert.equal(markWild(chart, a), false, 'spotting the same bug again is silent');
+  assert.ok(chart.tiles.has('3,1') && chart.tiles.has('4,1'));
+  rememberExploration('alice', 'shift-1', chart, store);
+  assert.deepEqual(read([a, b, unknown]).wilds, new Set(['a', 'b']));
+  assert.deepEqual(read([a, unknown]).wilds, new Set(['a']), 'a caught or departed bug is gone after a reload');
+  assert.equal(readExploration('alice', 'shift-2', grid, [], store, [a]).wilds.size, 0);
 });
 
 test('blocked storage and missing identity leave the in-memory chart usable', () => {
