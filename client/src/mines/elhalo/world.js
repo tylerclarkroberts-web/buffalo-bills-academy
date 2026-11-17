@@ -5,7 +5,8 @@
 // vertex-coloured meshes. No boards anywhere: every door and window is open.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BOUNDS, BUILDINGS, MAP, OPENINGS, STATIONS, ENEMY_SPAWNS, CASES, creekX, terrain, fortRects, rng } from '../../../../server/elhalo/map.js';
+import { BOUNDS, BUILDINGS, MAP, OPENINGS, STATIONS, ENEMY_SPAWNS, CASES, BUFADORA, creekX, terrain, fortRects, rng } from '../../../../server/elhalo/map.js';
+import { BUFADORA_RULES as BF } from '../../../../server/elhalo/rules.js';
 import { logoCanvas, signCanvas } from './michoacana.js';
 
 export { BOUNDS, terrain };
@@ -200,6 +201,9 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   const water = new THREE.Mesh(wg, new THREE.MeshLambertMaterial({ color: 0x3ec7d6, emissive: 0x0a3a44, transparent: true, opacity: 0.82 }));
   scene.add(water);
 
+  // ---- La Bufadora: a rocky blowhole near the south mouth of the creek
+  const bufadora = buildBufadora(scene);
+
   // ---- La Michoacana's paint: the sign over the storefront, the round logo on the side wall and inside, glass on the cases
   const plankMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const shop = buildShop(scene);
@@ -255,7 +259,79 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
 
   scene.fog.near = 45; scene.fog.far = 160;
   const night = buildNight(scene, { skyMesh, mtsMesh, sun, hemi, sunLight, lowEnd });
-  return { water, picado, stations, night, shop };
+  return { water, picado, stations, night, shop, bufadora };
+}
+
+
+// a ring of low-poly stones around a dark hole in the creek, plus the geyser jet (hidden until it blows)
+function buildBufadora(scene) {
+  const { x, z, r } = BUFADORA;
+  const y = terrain(x, z);
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  const R = rng(0xB0FA);
+  const parts = [];
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + (R() - 0.5) * 0.18;
+    const rr = r * 0.72 + R() * 0.55;
+    const g = new THREE.DodecahedronGeometry(0.42 + R() * 0.38, 0);
+    g.scale(1, 0.5 + R() * 0.4, 0.9 + R() * 0.2);
+    g.translate(Math.cos(a) * rr, 0.55 + R() * 0.28, Math.sin(a) * rr);
+    const t = 0.75 + R() * 0.35;
+    parts.push(paint(g, [C.rock2[0] * t, C.rock2[1] * t, C.rock2[2] * t]));
+  }
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.2;
+    const g = new THREE.DodecahedronGeometry(0.28 + R() * 0.15, 0);
+    g.scale(1, 0.4, 1);
+    g.translate(Math.cos(a) * r * 0.45, 0.42, Math.sin(a) * r * 0.45);
+    parts.push(paint(g, C.rock3));
+  }
+  for (const g of parts) { if (g.attributes.uv) g.deleteAttribute('uv'); }
+  const rocks = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  group.add(rocks);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(r * 0.5, 12), new THREE.MeshLambertMaterial({ color: 0x071520, emissive: 0x031018 }));
+  hole.rotation.x = -Math.PI / 2;
+  hole.position.y = 0.48;
+  group.add(hole);
+  const jetMat = new THREE.MeshLambertMaterial({ color: 0x8eecff, emissive: 0x1a7088, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 1.05, 1, 8, 1, true), jetMat);
+  jet.visible = false;
+  group.add(jet);
+  const capMat = new THREE.MeshLambertMaterial({ color: 0xc8f6ff, emissive: 0x3a90a8, transparent: true, opacity: 0, depthWrite: false });
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1.6, 8), capMat);
+  cap.visible = false;
+  group.add(cap);
+  scene.add(group);
+  return {
+    group, x, z, y, r, jet,
+    tick(ph, remain) {
+      if (ph === 'blow') {
+        const age = Math.max(0, BF.blast - remain);
+        let k = 1;
+        if (age < 0.25) k = age / 0.25;
+        else if (remain < 0.6) k = Math.max(0, remain / 0.6);
+        const h = 14 + 8 * k;
+        jet.visible = true; cap.visible = true;
+        jet.scale.set(0.85 + 0.3 * k, h, 0.85 + 0.3 * k);
+        jet.position.y = h / 2;
+        jetMat.opacity = 0.42 + 0.28 * k;
+        cap.position.y = h + 0.4;
+        cap.scale.setScalar(0.8 + 0.6 * k);
+        capMat.opacity = 0.35 * k;
+        hole.material.emissive.setHex(0x145060);
+      } else if (ph === 'warn') {
+        jet.visible = false; cap.visible = false;
+        jetMat.opacity = 0; capMat.opacity = 0;
+        const pulse = 0.5 + 0.5 * Math.sin(remain * 10);
+        hole.material.emissive.setRGB(0.12 * pulse, 0.18 * pulse, 0.22 * pulse);
+      } else {
+        jet.visible = false; cap.visible = false;
+        jetMat.opacity = 0; capMat.opacity = 0;
+        hole.material.emissive.setHex(0x031018);
+      }
+    },
+  };
 }
 
 // ---- la noche (wave 10+): the sky bruises over, fog rolls down the canyon, a moon comes up, the lanterns gutter.

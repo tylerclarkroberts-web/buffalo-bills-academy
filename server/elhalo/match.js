@@ -3,11 +3,11 @@
 // and points; clients own their own movement (checked here: speed, bounds, walls, falls) and send what they did
 // (shots as rays, grenade throws, swings, holding ACTION). Free play: nothing in here knows about money.
 import * as L from './rules.js';
-import { BOUNDS, OPENINGS, BUILDINGS, ELOTE, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, OBSTACLES, FORT_ROUTES, FORT_DECK, fortRects,
+import { BOUNDS, OPENINGS, BUILDINGS, ELOTE, BUFADORA, ENEMY_SPAWNS, PLAYER_SPAWNS, STATIONS, OBSTACLES, FORT_ROUTES, FORT_DECK, fortRects,
   buildingAt, fortAt, terrain, groundAt, collide, wallDist, insideSolid, segHitsRect, truckAt, TRUCK, AMMO_SPOTS, NADE_SPOTS, JEEP_SPAWN } from './map.js';
 import { dogsAt, eloteShout } from './critters.js';
 
-const { MATCH, WEAPONS, ENEMIES } = L;
+const { MATCH, WEAPONS, ENEMIES, BUFADORA_RULES: BF } = L;
 export const EYE = 1.62;
 const P_RADIUS = 0.38, MAX_SPEED = 7.6, MOVE_SLACK = 1.3, LUNGE_SPEED = 24;
 const TYPE_IDX = Object.fromEntries(L.ENEMY_TYPES.map((t, i) => [t, i]));
@@ -34,6 +34,7 @@ export class Match {
     this.enemies = []; this.notes = []; this.nades = []; this.shots = []; this.pickups = []; this.events = []; this.nextId = 1;
     this.idleT = 0; this.last = this.last || null;
     this.truck = null; this.jeep = null; this.night = false; this.ammoT = 6; this.nadeT = 12; this.host = null; this.forceNight = null;
+    this.bufNext = null; this.bfPh = 'idle'; this.bfUntil = 0;
     if (hard) { this.players.clear(); return; }
     for (const [id, p] of this.players) { if (!p.joined) this.players.delete(id); else this.freshStats(p); }
     if (this.online().length) this.phase = 'lobby';
@@ -108,6 +109,7 @@ export class Match {
   }
   countdown() {
     this.phase = 'break'; this.wave = 0; this.phaseUntil = this.t + MATCH.lobbyCountdown;
+    if (this.bufNext == null) this.bufNext = this.t + BF.period;
     for (const p of this.online()) { p.ready = false; if (p.state !== 'alive') this.respawn(p); }
     this.ev('go');
   }
@@ -171,6 +173,14 @@ export class Match {
     if (dist > top * Math.max(0.1, dt) + MOVE_SLACK) return reject();
     const g = groundAt(x, z, y);
     if (y < terrain(x, z) - 0.6) return reject();
+    // La Bufadora: a launched player is allowed to go very high and come down. No fall damage, and no 3s hover snap.
+    if (p.launched) {
+      p.moving = dist > 0.03 ? 1 : 0; p.x = x; p.y = y; p.z = z;
+      const air = y - g;
+      if (air < 0.3) { p.launched = false; p.groundY = y; p.airT = 0; }
+      else p.airT = 0; // keep the launch until they land; the usual hover snap must not cancel it
+      return;
+    }
     // high above the ground is fine on the way DOWN (stepping or jumping off a roof deck: no fall damage, no snapping
     // back); going up is capped by a jump from the last place you stood
     if (y > Math.max(g + 2.6, p.groundY + 1.7)) return reject();
@@ -416,6 +426,7 @@ export class Match {
     }
     for (const p of online) this.action(p, dt);
     this.phases(dt);
+    this.tickBufadora(dt);
     this.ai(dt);
     this.projectiles(dt);
     this.vehicles(dt);
@@ -526,6 +537,13 @@ export class Match {
     const t = this.t, ps = this.alive();
     for (const e of this.enemies) {
       if (e.dead) continue;
+      if (e.blowVy) {
+        e.blowVy -= 16 * dt;
+        e.y += e.blowVy * dt;
+        const floor = groundAt(e.x, e.z, e.y);
+        if (e.y <= floor) { e.y = floor; e.blowVy = 0; }
+        else continue; // in the air off La Bufadora: no walking or leaping this tick
+      }
       const st = e.st;
       e.cool -= dt; e.tcool -= dt; e.ncool -= dt; e.bcool -= dt; e.strafeT -= dt; e.lcool -= dt; if (e.act > 0) e.act -= dt;
       e.retarget -= dt;
@@ -955,6 +973,60 @@ export class Match {
   }
 
   // ---- what every client sees (built once a tick) and the bit only you see
+
+  // ---- La Bufadora: a shared blowhole. Everyone hears the same rumble, then the same geyser.
+  overBufadora(x, z, y = 0) {
+    const d = Math.hypot(x - BUFADORA.x, z - BUFADORA.z);
+    if (d > BUFADORA.r + 0.15) return false;
+    const g = groundAt(BUFADORA.x, BUFADORA.z, 50);
+    return y < g + 5; // standing on it, or just above it (a jump, a jeep, a floater)
+  }
+  tickBufadora() {
+    if (['idle', 'lobby', 'over'].includes(this.phase)) {
+      if (this.bfPh !== 'idle') this.bfPh = 'idle';
+      return;
+    }
+    if (this.bufNext == null) this.bufNext = this.t + BF.period;
+    const warnAt = this.bufNext - BF.warn;
+    if (this.bfPh === 'blow' && this.t >= this.bfUntil) this.bfPh = 'idle';
+    if (this.t >= this.bufNext) {
+      this.bfPh = 'blow';
+      this.bfUntil = this.t + BF.blast;
+      this.ev('bfb');
+      this.launchBufadora();
+      this.bufNext += BF.period;
+    } else if (this.t >= warnAt && this.bfPh !== 'warn' && this.bfPh !== 'blow') {
+      this.bfPh = 'warn';
+      this.ev('bfw');
+    }
+  }
+  launchBufadora() {
+    for (const p of this.alive()) {
+      if (p.seat) continue; // riding EL TORO: stay in the jeep
+      if (!this.overBufadora(p.x, p.z, p.y)) continue;
+      p.launched = true; p.airT = 0;
+      this.ev('bfl', p.id, BF.launchVy);
+    }
+    for (const e of this.enemies) {
+      if (e.dead || e.st.fly) continue;
+      if (!this.overBufadora(e.x, e.z, e.y)) continue;
+      e.blowVy = BF.enemyVy;
+      this.ev('bfe', e.id, BF.enemyVy);
+    }
+  }
+  // dev / e2e: start the warning now so the blast lands in `warn` seconds (same path as the timer).
+  triggerBufadora() {
+    if (['idle', 'lobby'].includes(this.phase)) {
+      if (this.phase === 'idle') this.phase = 'break';
+      else this.countdown();
+    }
+    this.bufNext = this.t + BF.warn;
+    this.bfPh = 'warn';
+    this.bfUntil = 0;
+    this.ev('bfw');
+    return { ok: true, in: BF.warn };
+  }
+
   snapshot({ events = true } = {}) {
     const pl = [];
     for (const p of this.players.values()) {
@@ -978,6 +1050,7 @@ export class Match {
       jp: j ? [r2(j.x), r2(j.y), r2(j.z), r2(j.yaw), j.driver, j.gunner, r2(j.ty), r2(j.tp)] : 0,
       last: this.phase === 'over' ? this.last : undefined,
       ev: events ? this.events : [],
+      bf: this.bfPh === 'idle' ? 0 : [this.bfPh === 'blow' ? 1 : 0, r2(this.bfPh === 'blow' ? Math.max(0, this.bfUntil - this.t) : Math.max(0, this.bufNext - this.t))],
     };
     if (events) this.events = [];
     return s;

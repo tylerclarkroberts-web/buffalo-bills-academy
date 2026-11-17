@@ -92,7 +92,7 @@ function Board({ rows, onClose, touch }) {
 }
 
 export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO THE HALL', showShift = true }) {
-  const canvas = useRef(null), stage = useRef(null), game = useRef(null);
+  const canvas = useRef(null), stage = useRef(null), game = useRef(null), hostRef = useRef(null);
   const [touch] = useState(isTouch);
   const [muted, setMuted] = useState(() => localStorage.getItem('bba.elhalo.muted') === '1');
   const [mode, setMode] = useState({ mode: 'loading' });
@@ -138,7 +138,11 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
   }, [!!board]);
 
   const secs = Math.floor(elapsedMs / 1000);
-  const host = document.querySelector('.mines') || document.body;
+  // Pin the portal host on first render. On /elhalo the .mines wrapper is not in the document yet
+  // (its child is still rendering), so the first lookup falls through to document.body; a later
+  // lookup would find .mines and remount the canvas, leaving the WebGL context on a detached node.
+  if (!hostRef.current) hostRef.current = document.querySelector('.mines') || document.body;
+  const host = hostRef.current;
   const m = mode.mode;
   const over = info?.phase === 'over' && info?.joined && info?.last;
   return createPortal(

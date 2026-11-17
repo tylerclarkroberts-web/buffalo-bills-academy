@@ -87,6 +87,11 @@ export class ElHalo {
       if (r.error) return res.status(r.status || 409).json({ error: r.error });
       res.json({ ok: true });
     });
+    // La Bufadora test hook: only on the local dev server (DEV_LOGIN). Production always 404s.
+    api.post('/elhalo/dev/bufadora', (req, res, next) => {
+      if (!this.testHooks) return res.status(404).end();
+      needPlayer(req, res, next);
+    }, (req, res) => res.json(this.match.triggerBufadora()));
     if (!this.testHooks) return;
     // Local dev server only (DEV_LOGIN): put people and things where the browser checks and screenshots need them.
     const m = this.match;
@@ -108,6 +113,7 @@ export class ElHalo {
       if (b.down && p) { p.P.shield = 0; m.hurtPlayer(p, 999, null, { id: 'test' }, 'test'); }
       if (b.pickup) m.pickups.push({ id: m.nextId++, kind: b.pickup.kind, x: +b.pickup.x, z: +b.pickup.z, y: groundAt(+b.pickup.x, +b.pickup.z, 50), life: 60 });
       if (b.hp && p) { p.P.health = +b.hp; p.P.shield = 0; }
+      if (b.bufadora) m.triggerBufadora();
       res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), maxHp: e.maxHp, state: e.state, leap: e.leapS ? e.leapS.ph : null, x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, t: m.t, dogs: b.dogs ? dogsAt(m.t) : undefined, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, me: p ? { x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield } : null });
     });
   }

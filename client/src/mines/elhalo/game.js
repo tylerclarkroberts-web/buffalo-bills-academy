@@ -8,7 +8,7 @@ import { buildWorld, terrain, PICADO } from './world.js';
 import { ENEMY_MAKERS, makeViewModels, makePinata, makePickup, makePlayerModel, makeNote, makeTruck, makeJeep, makeSticky, makeRocket, makeNeedle,
   makeBleedRing, setBleed, makeWeaponDisplay, PLAYER_COLORS, makeDog, makeEloteCart, makeBubble, makeLandRing } from './models.js';
 import * as L from './logic.js';
-import { BOUNDS, ELOTE, groundAt, collide, wallDist } from '../../../../server/elhalo/map.js';
+import { BOUNDS, ELOTE, BUFADORA, groundAt, collide, wallDist } from '../../../../server/elhalo/map.js';
 import { dogsAt, DOG_COUNT, DOG_PLANS, ELOTE_LINES } from '../../../../server/elhalo/critters.js';
 import { createAudio } from './audio.js';
 import { connect, join, leave, inputSender, post } from './net.js';
@@ -321,6 +321,17 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     else if (k === 'g') { if (e[1] !== myId) sfx('throw'); }
     else if (k === 'buy') { if (e[1] === myId) { sfx('pickup'); banner = { text: e[2] === 'ammo' ? '¡PARQUE!' : '¡PIÑATAS!', until: t + 1.2 }; } }
     else if (k === 'broke') { if (e[1] === myId) { sfx('empty'); banner = { text: 'NO TE ALCANZA', until: t + 1.2 }; } }
+    else if (k === 'bfw') {
+      banner = { text: 'LA BUFADORA…', until: t + 2.2 };
+      if (near(BUFADORA.x, BUFADORA.z, 40)) { sfx('rumble'); sfx('gurgle'); shake = Math.max(shake, 0.28); }
+    }
+    else if (k === 'bfb') {
+      banner = { text: '¡LA BUFADORA!', until: t + 1.8 };
+      if (near(BUFADORA.x, BUFADORA.z, 55)) { sfx('blow'); shake = Math.max(shake, 0.7); }
+      emit(BUFADORA.x, world.bufadora.y + 1, BUFADORA.z, touch ? 40 : 90, [...BLUE, ...STEAM], { speed: 6, up: 14, life: 1.6, g: 8, drag: 1.1 });
+    }
+    else if (k === 'bfl') { if (e[1] === myId) { vy = e[2] || 28; onGround = false; shake = Math.max(shake, 0.85); } }
+    else if (k === 'bfe') { const en = ents.en.get(e[1]); if (en) emit(en.to.x, en.to.y + 0.4, en.to.z, 18, BLUE, { speed: 3, up: 8, life: 1.1, g: 6 }); }
   }
   function feed(text, mine = false, cls = '') {
     const f = H.feed; if (!f) return;
@@ -770,6 +781,15 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     for (const b of beams) if (b.visible) { b.life -= dt; b.material.opacity = Math.max(0, b.life / 0.3); const s = 0.4 + b.life * 3; b.scale.x = s; b.scale.y = s; if (b.life <= 0) b.visible = false; }
     for (let i = blasts.length - 1; i >= 0; i--) { const b = blasts[i]; b.life -= dt; b.m.scale.setScalar(1 + (0.3 - b.life) * b.big); b.m.material.opacity = Math.max(0, b.life / 0.3) * 0.8; if (b.life <= 0) { scene.remove(b.m); b.m.material.dispose(); blasts.splice(i, 1); } }
     world.water.material.emissive.setRGB(0.04, 0.2 + Math.sin(performance.now() / 400) * 0.04, 0.25);
+    const bf = snap?.bf;
+    const bfPh = !bf ? 'idle' : (bf[0] ? 'blow' : 'warn');
+    const bfLeft = !bf ? 0 : bf[1];
+    world.bufadora?.tick(bfPh, bfLeft);
+    if (bfPh === 'warn' && near(BUFADORA.x, BUFADORA.z, 28)) shake = Math.max(shake, 0.08);
+    if (bfPh === 'blow' && world.bufadora) {
+      const n = touch ? 2 : 5;
+      emit(BUFADORA.x, world.bufadora.y + 1.2 + Math.random() * 8, BUFADORA.z, n, [...BLUE, ...STEAM, ...WISP], { speed: 3.5, up: 9, life: 1.1, g: 7, drag: 1.2 });
+    }
     // night falls (or lifts) over a few seconds
     if (Math.abs(nightK - nightTarget) > 0.001) { nightK += Math.sign(nightTarget - nightK) * Math.min(Math.abs(nightTarget - nightK), dt / 3.5); world.night?.set(nightK); }
   }
@@ -847,8 +867,10 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   }
   let W = 0, Hh = 0;
   function resize() {
-    const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h || (w === W && h === Hh)) return; W = w; Hh = h;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h || (w === W && h === Hh)) return;
     renderer.setSize(w, h, false);
+    W = w; Hh = h;
     const a = w / h, deg = Math.PI / 180, base = touch ? 74 : 70;
     camera.aspect = a; camera.userData.base = a >= 1 ? base : Math.min(98, 2 * Math.atan(Math.tan(36 * deg) / a) / deg); camera.fov = camera.userData.base; camera.updateProjectionMatrix();
     vmCam.aspect = a; vmCam.fov = a >= 1 ? 55 : 2 * Math.atan(Math.tan(31 * deg) / a) / deg; vmCam.updateProjectionMatrix();
@@ -906,7 +928,8 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       pickups: [...ents.pk.values()].length, projectiles: ents.pr.size, nadesLive: ents.gr.size,
       foes: [...ents.en.values()].map((e) => { const c = cur(e, performance.now()); return { id: e.id, type: e.type, st: e.st, hp: e.hp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.z.toFixed(2) }; }), rings: rings.length,
       dogs: dogs.map((d) => ({ i: d.i, x: +d.m.root.position.x.toFixed(2), z: +d.m.root.position.z.toFixed(2), yaw: +d.m.root.rotation.y.toFixed(2), pair: d.pair || null })), dogT: +dogT.toFixed(3), shop: world.shop?.children.length || 0,
-      elote: { x: ELOTE.x, z: ELOTE.z, say: eloteSay, line: eloteSay >= 0 ? ELOTE_LINES[eloteSay] : null } }),
+      elote: { x: ELOTE.x, z: ELOTE.z, say: eloteSay, line: eloteSay >= 0 ? ELOTE_LINES[eloteSay] : null },
+      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA }),
     aimAt(x, y, z) { const o = eye(); yaw = Math.atan2(-(x - o.x), -(z - o.z)); pitch = Math.atan2(y - o.y, Math.hypot(x - o.x, z - o.z)); },
     aimAtNearest(head = false) { const now = performance.now(); const e = [...ents.en.values()].sort((a, b) => Math.hypot(a.to.x - pos.x, a.to.z - pos.z) - Math.hypot(b.to.x - pos.x, b.to.z - pos.z))[0]; if (!e) return false; const c = head ? enemyHead(e, now) : enemyCenter(e, now); api.aimAt(c.x, c.y, c.z); return true; },
     aimAtPlayer(name, head = false) { const p = [...ents.pl.values()].find((q) => q.name === name); if (!p) return false; const c = cur(p, performance.now()); api.aimAt(c.x, c.y + (head ? 1.62 : 1), c.z); return true; },

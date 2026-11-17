@@ -121,6 +121,9 @@ export function createAudio() {
     engine() { tone(sfx, ctx.currentTime, 0.5, 55, { f2: 80, type: 'sawtooth', v: 0.08 }); },
     beep(hi) { tone(sfx, ctx.currentTime, 0.12, hi ? 1320 : 880, { type: 'square', v: 0.08 }); },
     night() { const t = ctx.currentTime; [62, 61, 57, 56].forEach((n, k) => tone(sfx, t + k * 0.35, 0.8, midi(n - 12), { type: 'triangle', v: 0.18, a: 0.1 })); },
+    rumble() { const t = ctx.currentTime; nz(sfx, t, 1.1, { type: 'lowpass', f: 180, f2: 70, v: 0.7 }); tone(sfx, t, 1.0, 48, { f2: 32, type: 'sine', v: 0.28, a: 0.15 }); },
+    gurgle() { const t = ctx.currentTime; for (let k = 0; k < 5; k++) { nz(sfx, t + k * 0.14, 0.16, { f: 400 + k * 80, q: 4, v: 0.22 }); tone(sfx, t + k * 0.14, 0.12, 180 + k * 40, { f2: 90, type: 'sine', v: 0.08 }); } },
+    blow() { const t = ctx.currentTime; nz(sfx, t, 1.6, { type: 'lowpass', f: 1400, f2: 280, v: 0.95 }); tone(sfx, t, 0.9, 70, { f2: 28, v: 0.7 }); nz(sfx, t, 0.7, { f: 900, f2: 2200, q: 1.2, v: 0.45 }); api.whoosh(); },
     close() { if (el) { el.pause(); el.src = ''; } ctx.close().catch(() => {}); },
   };
   return api;
