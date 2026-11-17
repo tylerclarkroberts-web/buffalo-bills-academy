@@ -15,6 +15,7 @@ import './room.css';
 
 const left = (ms) => ms > 0 ? `${Math.max(1, Math.ceil(ms / 60000))} min` : 'Ready';
 const SHELF_SIZES = [{ id: 'standard', label: 'Small shelf', detail: '1 item' }, { id: 'wide', label: 'Large shelf', detail: '3 items' }];
+const FLUSH_MESSAGE = 'The pipes knock twice.';
 
 function ShelfSizes({ value, disabled, onChange }) {
   return <div className="room-choices room-shelf-sizes" role="group" aria-label="Shelf size">{SHELF_SIZES.map(size => <button key={size.id} className="btn room-choice room-shelf-size" aria-pressed={value ? value === size.id : undefined} disabled={disabled} onClick={() => onChange(size.id)}><span>{size.label}</span><small className="muted">{size.detail}</small></button>)}</div>;
@@ -54,6 +55,7 @@ export default function Room({ id }) {
   const [moneyHovered, setMoneyHovered] = useState(false);
   const [cameraView, setCameraView] = useState(roomView);
   const [activityPaused, setActivityPaused] = useState(false);
+  const [houseState, setHouseState] = useState('home');
   const [speech, setSpeech] = useState(null);
   const speechRef = useRef(null);
   const [clock, setClock] = useState(Date.now());
@@ -66,6 +68,7 @@ export default function Room({ id }) {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const editing = owner && !preview;
+  const canUseHouse = editing && !draft && !busy && !fitOpen && !sceneFailed;
   panelRef.current = editing && room ? selection.kind : null;
   const draftRef = useRef(draft), canMoveShelf = useRef(false);
   draftRef.current = draft; canMoveShelf.current = editing && !!draft && !busy && !fitOpen;
@@ -131,6 +134,7 @@ export default function Room({ id }) {
   useEffect(() => {
     epoch.current += 1; sequence.current += 1;
     setRoom(null); setDraft(null); setPreview(false); setBarn(null); setShop(null); setFitOpen(false);
+    setHouseState('home');
     setErr(''); setMsg(''); setConflict(false); setPendingPath(null); setSceneFailed(false); setMoneyHovered(false); setCameraView(roomView());
     busyRef.current = false; setBusy(false);
     if (allowed) load();
@@ -171,7 +175,7 @@ export default function Room({ id }) {
     if (!room || !canvas.current) return undefined;
     let renderer;
     try {
-      renderer = new RoomScene(canvas.current, { onSelect: setSelection, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onZoom: step => moveView(step), onError: () => { setSceneFailed(true); setMoneyHovered(false); setSpeech(null); } });
+      renderer = new RoomScene(canvas.current, { onSelect: setSelection, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onHouseState: setHouseState, onZoom: step => moveView(step), onError: () => { setSceneFailed(true); setMoneyHovered(false); setSpeech(null); } });
       scene.current = renderer; setSceneFailed(false);
     } catch { setSceneFailed(true); }
     return () => { renderer?.dispose(); scene.current = null; };
@@ -180,6 +184,14 @@ export default function Room({ id }) {
   useEffect(() => { scene.current?.setEditing(editing && !!draft && !busy && !fitOpen, selection); }, [editing, !!draft, busy, fitOpen, selection, room?.owner.id]);
   useEffect(() => { scene.current?.setView(cameraView); }, [cameraView, room?.owner.id]);
   useEffect(() => { scene.current?.setActivityPaused(activityPaused || !!draft || fitOpen); }, [activityPaused, !!draft, fitOpen, room?.owner.id]);
+  const useHouse = useCallback(action => {
+    const result = scene.current?.houseAction(action);
+    if (result === 'blocked') setMsg('The way to the porch is blocked. Move a furnishing to clear a path.');
+    else if (result === 'ok') setMsg(action === 'flush' ? FLUSH_MESSAGE : '');
+  }, []);
+  useEffect(() => {
+    if (scene.current) scene.current.onHouseAction = canUseHouse ? useHouse : null;
+  }, [canUseHouse, useHouse, room?.owner.id]);
 
   useEffect(() => {
     if (!moneyHovered) return undefined;
@@ -232,6 +244,7 @@ export default function Room({ id }) {
 
   function arrange() {
     if (!room || preview || busy) return;
+    setCameraView(roomView({ area: 'parlor' }));
     const next = layoutOf(room); base.current = layoutKey(next); setDraft(next); setConflict(false); setErr('');
     setMsg('Drag things to move them. Click one to change it.');
     if (!['anchor', 'wardrobe', 'finish', 'surface'].includes(selection.kind)) setSelection({ kind: 'none' });
@@ -261,7 +274,7 @@ export default function Room({ id }) {
     }, (next) => { setShop(next.shop); if (next.room) setRoom(next.room); }, wearing ? 'Taken off. Your outfit changes throughout the Academy.' : 'Wearing it throughout the Academy.');
   }
   function moveView(zoom = 0, rotation = 0) {
-    setCameraView((current) => roomView({ zoom: current.zoom + zoom, rotation: current.rotation + rotation }));
+    setCameraView((current) => roomView({ ...current, zoom: current.zoom + zoom, rotation: current.rotation + rotation }));
   }
   async function invite() {
     if (!me.signedIn) { setSelection({ kind: 'door' }); return; }
@@ -361,9 +374,22 @@ export default function Room({ id }) {
     {pendingPath && <div className="room-leave" role="alert"><p>Leave without saving your arrangement?</p><div className="room-actions"><button className="btn" onClick={() => setPendingPath(null)}>Keep editing</button><button className="btn ghost" onClick={() => { const destination = pendingPath; dirtyRef.current = false; setDraft(null); setPendingPath(null); navigate(destination); }}>Discard and leave</button></div></div>}
     <div className={`room-body ${selection.kind === 'none' ? '' : 'has-detail'}`}>
       <section className="room-view" aria-label="Your room scene">
-        <div className={`room-canvas-wrap ${sceneFailed ? 'room-scene-unavailable' : ''}`}><canvas ref={canvas} className="room-canvas" role="img" tabIndex={editing && draft ? 0 : undefined} aria-keyshortcuts={editing && draft ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined} aria-label={editing && draft ? 'Your room. Select an object, then use the arrow keys here to move it.' : 'A western cutaway room. The buttons below it look around and open its objects.'} data-test="room-canvas" />{speech && !sceneFailed && <div ref={speechRef} className="room-speech" role="status" aria-label={speech.speaker === 'faun' ? 'A shy faun says' : `${room.owner.name} says`} style={{ left: speech.x, top: speech.y }}>{speech.text}</div>}{sceneFailed && <p className="room-fallback">The 3D view is unavailable here. The buttons below still work.</p>}{moneyHovered && <div className="room-money-tooltip" role="tooltip" id="room-money-tooltip" onPointerEnter={() => hoverMoney(true)} onPointerLeave={() => hoverMoney(false)}><strong>Cash: {money(display.worth?.bankroll)}</strong><span>Chips at tables: {money(display.worth?.chips)}</span></div>}</div>
-        {!preview && <div className="room-feedback" aria-live="polite">{err && <p className="error" role="alert">{err}</p>}{msg && <p role="status">{msg}</p>}{conflict && draft && <button className="btn ghost small" disabled={busy} onClick={() => { discard(); load(); }}>Load saved room</button>}</div>}
+        <div className={`room-canvas-wrap ${sceneFailed ? 'room-scene-unavailable' : ''}`}><canvas ref={canvas} className="room-canvas" role="img" tabIndex={editing && draft ? 0 : undefined} aria-keyshortcuts={editing && draft ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined} aria-label={editing && draft ? 'Your room. Select an object, then use the arrow keys here to move it.' : 'A cutaway bunkhouse, bathroom, sleeping nook and porch overlook a desert trail. Use the controls below to explore.'} data-test="room-canvas" />{speech && !sceneFailed && <div ref={speechRef} className="room-speech" role="status" aria-label={speech.speaker === 'faun' ? 'A shy faun says' : `${room.owner.name} says`} style={{ left: speech.x, top: speech.y }}>{speech.text}</div>}{sceneFailed && <p className="room-fallback">The 3D view is unavailable here. The buttons below still work.</p>}{moneyHovered && <div className="room-money-tooltip" role="tooltip" id="room-money-tooltip" onPointerEnter={() => hoverMoney(true)} onPointerLeave={() => hoverMoney(false)}><strong>Cash: {money(display.worth?.bankroll)}</strong><span>Chips at tables: {money(display.worth?.chips)}</span></div>}</div>
+        {!preview && <div className="room-feedback" aria-live="polite">{err && <p className="error" role="alert">{err}</p>}{msg && <p role="status">{msg}</p>}
+          {canUseHouse && msg === FLUSH_MESSAGE && cameraView.area && cameraView.area !== 'porch' && <button className="btn ghost small" onClick={() => {
+            setCameraView(roomView({ area: 'porch' })); scene.current?.houseAction('flush'); setMsg('The lawn chair is getting watered.');
+          }}>Look outside</button>}
+          {conflict && draft && <button className="btn ghost small" disabled={busy} onClick={() => { discard(); load(); }}>Load saved room</button>}</div>}
         <div className="room-tools">
+          <div className="room-house-tools">
+            <select className="room-pick" aria-label="Look around the homestead" disabled={sceneFailed} value={cameraView.area || 'house'} onChange={e => setCameraView(roomView({ area: e.target.value }))}>
+              <option value="house">Whole house</option><option value="parlor">Living room</option><option value="bathroom">Bathroom</option><option value="bunk">Kitchen &amp; bunk</option><option value="porch">Porch &amp; yard</option>
+            </select>
+            {canUseHouse && <>
+              <button className="btn ghost" disabled={houseState === 'returning'} onClick={() => useHouse(houseState === 'home' ? 'coffee' : 'inside')}>{houseState === 'home' ? 'Take coffee outside' : houseState === 'returning' ? 'Heading inside…' : 'Head inside'}</button>
+              <button className="btn ghost" onClick={() => useHouse('flush')}>Flush toilet</button>
+            </>}
+          </div>
           {editing && draft ? <select className="room-pick" aria-label="Select something to change" value={picked < 0 ? '' : picked} disabled={busy} onChange={e => setSelection(e.target.value === '' ? { kind: 'none' } : editTargets[e.target.value].target)}>
             <option value="">Select…</option>{editTargets.map(({ label }, i) => <option key={label} value={i}>{label}</option>)}
           </select> : <nav className="room-destinations" aria-label="Room objects">{[['pet', 'Pet'], ['wardrobe', 'Wardrobe'], ['collection', editing ? 'Collection' : 'Displays'], ['wealth', 'Chips & cash']].map(([kind, title]) => <button key={kind} className="btn ghost" aria-pressed={selection.kind === kind} {...(kind === 'wealth' ? wealthProps : {})} onClick={() => setSelection({ kind: selection.kind === kind ? 'none' : kind })}>{title}</button>)}</nav>}

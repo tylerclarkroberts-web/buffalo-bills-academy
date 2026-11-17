@@ -6,16 +6,16 @@
 /* The room gets every pixel the page has left; details open beside it only when something is selected. */
 .room-body { flex: 1 0 340px; min-height: 340px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 14px; }
 .room-body.has-detail { grid-template-columns: minmax(0, 1fr) minmax(270px, 340px); }
-.room-view { position: relative; }
-.room-canvas-wrap { position: relative; height: 100%; min-height: 300px; overflow: hidden; border-radius: 14px; background: radial-gradient(ellipse at 50% 70%, #49301d, #1c1119 75%); }
-.room-tools { position: absolute; inset: auto 10px 10px; display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 8px; pointer-events: none; }
-.room-tools > * { pointer-events: auto; }
+.room-view { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.room-canvas-wrap { position: relative; flex: 1; min-height: 250px; overflow: hidden; border-radius: 14px; background: linear-gradient(#a2b6b9, #efd1a3 55%, #c2a078); }
+.room-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+.room-house-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .room-destinations, .room-camera { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(28, 17, 25, .78); }
 .room-camera { margin-left: auto; }
-.room-page .room-tools .btn { min-height: 40px; padding: 0 12px; font-size: 13px; }
+.room-page .room-tools .btn { min-height: 44px; padding: 0 12px; font-size: 13px; }
 .room-page .room-camera .btn, .room-page .room-close, .room-page .room-nudge { width: 40px; min-width: 40px; min-height: 40px; padding: 0; font-size: 19px; }
 .room-tools .btn[aria-pressed="true"] { --bd: var(--amber); color: var(--amber); }
-.room-page .room-pick { width: auto; min-height: 40px; padding: 0 12px; border-radius: 999px; background: rgba(28, 17, 25, .9); font-size: 14px; }
+.room-page .room-pick { width: auto; min-height: 44px; padding: 0 12px; border-radius: 999px; background: rgba(28, 17, 25, .9); font-size: 14px; }
 .room-feedback { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; max-width: calc(100% - 20px); padding: 8px 12px; border-radius: 10px; background: rgba(28, 17, 25, .85); font-size: 13px; color: var(--amber); }
 .room-feedback:empty { display: none; }
 .room-feedback p { margin: 0; }
@@ -86,8 +86,15 @@
 .room-page .fit-dialog .panel { max-height: calc(100dvh - 32px); overflow: auto; }
 @media (max-width: 860px) {
   .room-body, .room-body.has-detail { flex: none; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
-  .room-canvas-wrap { height: clamp(260px, 78vw, 58dvh); min-height: 260px; }
+  .room-canvas-wrap { flex: none; height: clamp(260px, 78vw, 58dvh); min-height: 260px; }
   .room-tools { position: static; margin-top: 8px; }
   .room-detail { max-height: none; }
 }
-@media (max-width: 480px) { .room-page { padding: 10px 10px 20px; } .room-heading .room-actions { width: 100%; } .room-heading .room-actions .btn { flex: 1; padding-inline: 8px; } .room-destinations { flex: 1; } .room-destinations .btn { flex: 1; } }
+@media (max-width: 480px) {
+  .room-page { padding: 10px 10px 20px; }
+  .room-heading .room-actions { width: 100%; }
+  .room-heading .room-actions .btn { flex: 1; padding-inline: 8px; }
+  .room-destinations, .room-destinations .btn { flex: 1; }
+  .room-house-tools { gap: 2px; }
+  .room-page .room-house-tools .btn, .room-page .room-house-tools select { padding-inline: 8px; }
+}

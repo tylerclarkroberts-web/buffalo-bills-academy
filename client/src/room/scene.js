@@ -5,6 +5,8 @@ import { ROOM_ITEM, anchorHost, ROOM_FINISHES, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZE
 import { furnitureOf } from './layout.js';
 import { coveredWagon } from './wagon.js';
 import { roomFaun } from './faun.js';
+import { buildHomestead } from './homestead.js';
+import { homesteadLandscape } from './landscape.js';
 import { RoomActivity, residentPose, faunPose } from './activity.js';
 import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from './lighting.js';
 import { pixGrid } from '../store/pixart.js';
@@ -467,12 +469,14 @@ function oddity(id) {
   return bake(group);
 }
 
+const COFFEE_WALK = 5500, PIPE_DELAY = 650, SPRINKLER_END = 3600;
+
 /** A clickable cutaway. React owns the controls; room activity is cosmetic. */
 export class RoomScene {
-  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onZoom, onError } = {}) {
+  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onZoom, onError } = {}) {
     this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onMoveFurniture = onMoveFurniture; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
     this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition; this.onZoom = onZoom; this.pan = [0, 0];
-    this.onSpeech = onSpeech; this.activity = new RoomActivity();
+    this.onSpeech = onSpeech; this.onHouseState = onHouseState; this.activity = new RoomActivity();
     this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
@@ -482,6 +486,8 @@ export class RoomScene {
     this.static = new THREE.Group(); this.dynamic = new THREE.Group(); this.highlights = new THREE.Group(); this.dragPreview = new THREE.Group(); this.scene.add(this.static, this.dynamic, this.highlights, this.dragPreview);
     this.picks = []; this.raycaster = new THREE.Raycaster();
     this.buildRoom();
+    this.scene.add(homesteadLandscape());
+    this.homestead = buildHomestead(this.static, { onReady: () => { this.lighting.invalidate(); this.render(); } });
     this.faun = roomFaun(); this.faun.position.set(6.65 * ROOM_FLOOR_SCALE, 0.02, 2.25 * ROOM_FLOOR_SCALE); this.faun.rotation.y = -0.45;
     this.faun.scale.y = 1.25; this.faunHead = this.faun.getObjectByName('faun-head'); this.faunLegs = this.faun.children.filter(part => part.name === 'faun-goat-leg');
     this.faun.visible = false; this.scene.add(this.faun);
@@ -643,7 +649,8 @@ export class RoomScene {
     }
     if (!start || Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 8 || this.disposed || this.failed) return;
     const selection = this.targetAt(e.clientX, e.clientY);
-    if (selection) this.onSelect?.(selection);
+    if (selection?.kind === 'houseAction') this.onHouseAction?.(selection.action);
+    else if (selection) this.onSelect?.(selection);
   }
   cancelPointer() {
     this.moveDragObjects();
@@ -716,6 +723,7 @@ export class RoomScene {
     const r = this.canvas.getBoundingClientRect(); if (!r.width || !r.height) return null;
     this.raycaster.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, 1 - (y - r.top) / r.height * 2), this.camera);
     const picks = [...this.picks, ...(this.shelfItemPicks || [])];
+    if (this.onHouseAction && !this.editing) picks.push(...(this.homestead?.picks || []));
     const targets = this.editing ? [...picks, ...this.walls] : picks.filter(target => !['surface', 'couch'].includes(target.userData.selection.kind));
     const hit = this.raycaster.intersectObjects(targets.filter(target => shown(target) && !(this.wagon && target.userData.selection.anchorId === 'window')), false)[0];
     const wagonHit = this.wagon && this.raycaster.intersectObject(this.wagon, true)[0];
@@ -727,6 +735,7 @@ export class RoomScene {
     const visible = roomWallVisibility(this.camera.position);
     if (this.backWall) this.backWall.visible = visible.back;
     if (this.leftWall) this.leftWall.visible = visible.left;
+    if (this.homestead) this.homestead.leftWall.visible = visible.left;
     if (this.cornerPost) this.cornerPost.visible = visible.back || visible.left;
     for (const group of [this.dynamic, this.highlights]) for (const object of group?.children || []) {
       if (object.userData.wallSide) object.visible = visible[object.userData.wallSide];
@@ -830,8 +839,17 @@ export class RoomScene {
     box(this.backWall, openingWidth + 0.06, 0.16, 0.09, '#987047', windowX, opening.bottom - 0.17, -2.88);
     box(this.backWall, 0.12, 0.035, 0.055, '#6b5735', windowX + 0.06, windowY - 0.05, -2.77);
     // A ground-level side yard keeps large outdoor possessions visible beyond the room's edge.
-    box(p, 4.2, 0.16, 6, '#78805a', 6.35, -0.08, 0);
-    box(p, 4.1, 0.015, 0.95, '#ab9569', 6.35, 0.01, 1.9);
+    const turf = paintedTexture(64, 96, ctx => {
+      const grass = new THREE.Color('#849062'), dust = new THREE.Color('#ae9068'), patch = new THREE.Color();
+      for (let z = 0; z < 96; z++) for (let x = 0; x < 64; x++) {
+        const edge = Math.min(x, 63 - x, z, 95 - z);
+        const tufts = Math.sin(x * 0.26 + z * 0.12) + Math.cos(z * 0.31 - x * 0.09);
+        const wear = Math.max(1 - edge / 8, 1 - Math.abs(z - 74 - 2 * Math.sin(x / 14)) / 10);
+        patch.copy(grass).lerp(dust, THREE.MathUtils.clamp(0.18 + wear * 0.85 + tufts * 0.14, 0, 1));
+        ctx.fillStyle = patch.getStyle(); ctx.fillRect(x, z, 1, 1);
+      }
+    });
+    mesh(p, new THREE.BoxGeometry(4.2, 0.16, 6), material('#ffffff', { map: turf }), 6.35, -0.08, 0);
     box(p, 0.4, 0.08, 1.05, '#ad8657', 4.45, 0.04, 1.9);
     for (const x of [4.4, 6.35, 8.35]) box(p, 0.12, 0.78, 0.12, '#80603c', x, 0.39, -2.9);
     for (const y of [0.28, 0.58]) box(p, 3.95, 0.1, 0.09, '#a58656', 6.375, y, -2.9);
@@ -919,7 +937,7 @@ export class RoomScene {
     mesh(side, new THREE.BoxGeometry(0.02, clerestoryTop - clerestoryBottom, 5.88), glass, 4.08, (clerestoryTop + clerestoryBottom) / 2, 0);
     box(side, 0.48, 0.1, 1.48, '#bda079', 4.18, 0.025, 1.525);
     // Door leaf swings out into the clear walkway, away from the parked wagon.
-    const door = new THREE.Group(); door.name = 'open-yard-door'; door.position.set(4.08, 0.06, 2.2); door.rotation.y = -Math.PI / 2.7; side.add(door);
+    const door = new THREE.Group(); door.name = 'open-yard-door'; door.position.set(4.08, 0.06, 2.2); door.rotation.y = -Math.PI / 2; side.add(door);
     door.scale.y = ROOM_DOOR_HEIGHT / 2.45;
     for (const z of [0, -1.3]) box(door, 0.08, 2.45, 0.1, trim, 0, 1.225, z);
     for (const y of [0.05, 0.85, 2.4]) box(door, 0.08, 0.1, 1.4, trim, 0, y, -0.65);
@@ -1122,7 +1140,8 @@ export class RoomScene {
     const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.order = 'YXZ'; group.rotation.y = 0.35; this.dynamic.add(group);
     group.userData.dragId = 'rug'; this.residentFace = null;
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
-    this.errands = residentErrands(this.furniture); this.residentYaw = 0.35;
+    this.errands = residentErrands(this.furniture, this.shelves); this.residentYaw = 0.35;
+    if (this.coffee && !this.errands.some(errand => errand.kind === 'coffee')) this.coffee = null;
     const avatar = owner?.avatar, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
     this.residentLegs = [-0.14, 0.14].map(x => {
@@ -1141,6 +1160,10 @@ export class RoomScene {
       skinParts.push(mesh(arm, new THREE.IcosahedronGeometry(0.1, 1), material(look.skin), side * 0.03, -0.58)); return arm;
     });
     this.residentNote = box(this.residentArms[1], 0.22, 0.012, 0.12, '#b3b48a', 0.03, -0.68, 0.04); this.residentNote.visible = false;
+    const mug = this.residentMug = new THREE.Group(); mug.position.set(0.08, -0.61, 0.1); this.residentArms[1].add(mug); mug.visible = false;
+    cylinder(mug, 0.12, 0.1, 0.2, '#f1dfaf', 0.1, 0.02, 0);
+    cylinder(mug, 0.1, 0.1, 0.01, '#503323', 0.1, 0.119, 0);
+    mesh(mug, new THREE.TorusGeometry(0.075, 0.022, 5, 12), material('#f1dfaf'), -0.035, 0.035, 0);
     box(group, 0.52, 0.075, 0.41, '#493526', 0, 0.75); box(group, 0.1, 0.075, 0.025, '#bda475', 0, 0.75, 0.22);
     for (const y of [0.9, 1.04, 1.18]) box(group, 0.025, 0.025, 0.02, '#d9c8a7', 0, y, 0.235);
     for (const side of [-1, 1]) { const collar = box(group, 0.13, 0.13, 0.03, shade(shirt, 1.2), side * 0.07, 1.3, 0.19); collar.rotation.z = side * 0.45; }
@@ -1250,11 +1273,61 @@ export class RoomScene {
     });
   }
   isVisible() { return !document.hidden && this.inViewport !== false; }
+  houseAction(kind, now = performance.now()) {
+    if (!this.residentGroup || this.editing || this.failed || this.disposed || document.hidden) return 'unavailable';
+    if (this.lastFrame != null) { this.advanceActivity(now - this.lastFrame); this.lastFrame = now; }
+    if (kind === 'flush') {
+      if (this.flushAge != null) return 'busy';
+      this.flushAge = 0;
+    } else if (kind === 'coffee') {
+      if (this.coffee) return 'busy';
+      if (!this.errands?.some(errand => errand.kind === 'coffee')) return 'blocked';
+      const { phase, errand } = residentPose(this.residentTime()), prior = errand % this.errands.length;
+      let elapsed = 0;
+      if (this.motion.matches) elapsed = COFFEE_WALK;
+      else if (phase > 7 && phase < 23) {
+        // Reverse the current errand from its exact position, including standing up from the couch.
+        const back = phase < 12 ? 30 - phase : Math.max(18, phase);
+        elapsed = this.errands[prior].kind === 'coffee' ? Math.min(1, (23 - back) / 4) * COFFEE_WALK : (back - 23) * 1000;
+      }
+      this.coffee = { elapsed, prior, returning: false };
+    } else if (kind === 'inside' && this.coffee) {
+      if (this.coffee.returning) return 'busy';
+      this.coffee.returning = true;
+      if (this.coffee.elapsed === 0 || this.motion.matches) this.finishCoffee();
+    } else return 'unavailable';
+    this.notifyHouseState(); this.lighting?.invalidate(); this.render();
+    return 'ok';
+  }
+  residentTime() { return this.activityPaused || this.motion.matches ? 0 : (this.activity.time - (this.residentRestart || 0)) / 1000; }
+  finishCoffee() { this.coffee = null; this.residentRestart = this.activity.time; }
+  notifyHouseState() {
+    const state = !this.coffee ? 'home' : this.coffee.returning ? 'returning' : this.coffee.elapsed >= COFFEE_WALK ? 'porch' : 'walking';
+    if (this.houseState !== state) { this.houseState = state; this.onHouseState?.(state); }
+  }
+  advanceActivity(ms) {
+    const delta = Math.max(0, ms);
+    if (!this.activityPaused) this.activity.advance(delta);
+    if (this.coffee) {
+      const step = this.motion.matches ? Infinity : delta;
+      if (this.coffee.returning && this.coffee.elapsed < 0) {
+        this.coffee.elapsed += step;
+        if (this.coffee.elapsed >= 0) this.finishCoffee();
+      } else if (this.coffee.returning) {
+        this.coffee.elapsed -= step;
+        if (this.coffee.elapsed <= 0) this.finishCoffee();
+      } else this.coffee.elapsed = Math.min(COFFEE_WALK, this.coffee.elapsed + step);
+    }
+    if (this.flushAge != null) {
+      this.flushAge += delta;
+      if (this.flushAge >= SPRINKLER_END) this.flushAge = null;
+    }
+  }
   visibilityChanged(now = performance.now()) {
     if (this.disposed || this.failed) return;
     if (this.isVisible()) { this.render(); return; }
     // Reduced motion may leave a long interval between renders; retain time already spent viewing.
-    if (this.lastFrame != null) this.activity.advance(now - this.lastFrame);
+    if (this.lastFrame != null) this.advanceActivity(now - this.lastFrame);
     this.lastFrame = null; clearTimeout(this.activityTimer);
     this.cancelPointer(); cancelAnimationFrame(this.raf); this.raf = 0;
   }
@@ -1266,21 +1339,37 @@ export class RoomScene {
   }
   stopActivity() {
     clearTimeout(this.activityTimer); this.lastFrame = null;
+    if (this.coffee) this.finishCoffee();
+    this.flushAge = null; this.homestead?.setSprinkler(false); this.notifyHouseState();
     this.activity?.quiet();
     if (this.faun) this.faun.visible = false;
     this.lighting?.invalidate();
     this.speechKey = ''; this.onSpeech?.(null);
   }
   animateActivity(now) {
-    const active = this.isVisible() && !this.editing && !this.activityPaused && !!this.residentGroup;
-    if (active && this.lastFrame != null) this.activity.advance(now - this.lastFrame);
-    this.lastFrame = active ? now : null;
-    const state = active ? this.activity.state() : { text: null, faun: false };
-    const t = active && !this.motion.matches ? this.activity.time / 1000 : 0;
+    const visible = this.isVisible() && !this.editing && !!this.residentGroup;
+    if (visible && this.lastFrame != null) this.advanceActivity(now - this.lastFrame);
+    const ambient = visible && !this.activityPaused;
+    const coffeeMoving = this.coffee && (this.coffee.elapsed < COFFEE_WALK || this.coffee.returning);
+    const active = visible && !!(ambient || coffeeMoving || this.flushAge != null);
+    this.lastFrame = active ? now : null; this.notifyHouseState();
+    this.homestead?.setSprinkler(this.flushAge != null && this.flushAge >= PIPE_DELAY);
+    const state = ambient ? this.activity.state() : { text: null, faun: false };
+    const t = ambient && !this.motion.matches ? this.activity.time / 1000 : 0;
     if (this.residentGroup) {
-      const pose = residentPose(t), home = this.residentHome, route = this.residentRoute || { x: 0, z: 0 };
+      const home = this.residentHome, route = this.residentRoute || { x: 0, z: 0 };
       const errands = this.errands?.length ? this.errands : home && (route.x || route.z) ? [{ kind: 'stroll', path: [[home.x + route.x, home.z + route.z]], facing: 0.35 }] : [];
-      const errand = errands.length ? errands[pose.errand % errands.length] : null, walking = !!errand && pose.facing !== 0;
+      let pose = residentPose(ambient ? this.residentTime() : 0), errand = errands[pose.errand % errands.length];
+      if (this.coffee) {
+        if (this.coffee.elapsed < 0) {
+          pose = residentPose(23 + this.coffee.elapsed / 1000); errand = errands[this.coffee.prior];
+        } else {
+          const fraction = this.coffee.elapsed / COFFEE_WALK;
+          pose = residentPose(this.coffee.returning ? 23 - fraction * 4 : fraction < 1 ? 7 + fraction * 4 : 15);
+          errand = errands.find(errand => errand.kind === 'coffee');
+        }
+      }
+      const walking = !!errand && pose.facing !== 0, coffee = errand?.kind === 'coffee' && pose.phase >= 7 && pose.phase < 23;
       const sit = errand?.kind === 'sit' ? pose.act : 0, look = errand?.kind === 'inspect' ? pose.act : 0, cash = errand?.kind === 'cash', grab = cash ? pose.act : 0;
       let aim = 0.35;
       if (home && errand) {
@@ -1294,7 +1383,7 @@ export class RoomScene {
       } else if (home && !this.dragging) this.residentGroup.position.copy(home);
       // Turn toward where they are going rather than snapping round.
       const yaw = this.residentYaw ?? 0.35;
-      this.residentYaw = t ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
+      this.residentYaw = this.motion.matches ? aim : t || coffee ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
       this.residentGroup.scale.y = RESIDENT_HEIGHT_SCALE * (1 + Math.sin(t * 1.5) * 0.008);
       this.residentGroup.rotation.set(look * 0.06 + grab * 0.12, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
       this.residentHead.rotation.y = pose.glance * (1 - look);
@@ -1312,10 +1401,12 @@ export class RoomScene {
       // Sideways, an arm only ever swings away from the body (positive for the right arm, negative for the left):
       // the wave used to turn the right arm inward, straight through the torso.
       this.residentArms?.forEach((arm, i) => {
-        arm.rotation.x = (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035 + look * 0.45 - sit * 0.3 - (i ? grab * 1.2 : 0);
+        arm.rotation.x = coffee && i ? -0.65 - pose.act * 0.22 : (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035 + look * 0.45 - sit * 0.3 - (i ? grab * 1.2 : 0);
         arm.rotation.z = i ? pose.wave * 1.1 : -0.02 - 0.02 * Math.sin(t * 0.8);
       });
       if (this.residentNote) this.residentNote.visible = cash && pose.phase > 13 && pose.phase < 30;
+      if (this.residentMug) { this.residentMug.visible = coffee; this.residentMug.rotation.x = -this.residentArms[1].rotation.x; }
+      if (this.activityPaused && (coffeeMoving || this.houseState === 'porch')) this.lighting?.invalidate();
     }
     if (this.petSprite && !this.dragging) {
       const { sprite, size, grumpy, home, mark } = this.petSprite, turn = (this.furniture.pet.r || 0) * Math.PI / 2, pace = grumpy ? 2.2 : 1;
@@ -1362,9 +1453,12 @@ export class RoomScene {
       if (!this.disposed && !this.failed && this.isVisible()) {
         try {
           const active = this.animateActivity(now);
-          if (this.lighting) animateRoomLighting(this.lighting, this.activity.time, active && !this.motion.matches);
+          if (this.lighting) animateRoomLighting(this.lighting, this.activity.time, active && !this.activityPaused && !this.motion.matches);
           this.renderer.render(this.scene, this.camera);
-          if (active) this.activityTimer = setTimeout(() => this.render(), this.motion.matches ? this.activity.untilChange() : 1000 / 24);
+          if (active) {
+            const pipeChange = this.flushAge == null ? Infinity : (this.flushAge < PIPE_DELAY ? PIPE_DELAY : SPRINKLER_END) - this.flushAge;
+            this.activityTimer = setTimeout(() => this.render(), this.motion.matches ? Math.min(pipeChange, this.activity.untilChange()) : 1000 / 24);
+          }
         } catch (error) { this.failed = true; this.stopActivity(); this.onError?.(error); }
       }
     });
@@ -1380,6 +1474,6 @@ export class RoomScene {
     this.canvas.removeEventListener('wheel', this.wheel); this.canvas.removeEventListener('webglcontextlost', this.lost); document.removeEventListener('visibilitychange', this.visible);
     window.removeEventListener('blur', this.cancel); document.removeEventListener('keydown', this.keys);
     for (const map of Object.values(this.floorMaps || {})) if (map !== this.floor?.material.map) map.dispose();
-    this.lighting?.dispose(); disposeObjects(this.scene); this.renderer.dispose();
+    this.homestead?.dispose(); this.lighting?.dispose(); disposeObjects(this.scene); this.renderer.dispose();
   }
 }

@@ -9,8 +9,8 @@ export function setupRoomLighting(scene, renderer) {
   const sun = new THREE.DirectionalLight('#ffe0a6', 2.25);
   const lamp = new THREE.PointLight('#ffd18b', LAMP_INTENSITY, 7 * ROOM_FLOOR_SCALE, 2);
   lamp.position.set(-3.45 * ROOM_FLOOR_SCALE, 2.7, 1.9 * ROOM_FLOOR_SCALE);
-  sun.target.position.set((ROOM_BOUNDS.min[0] + ROOM_BOUNDS.max[0]) / 2, 0, 0);
-  sun.position.copy(sun.target.position).add(new THREE.Vector3(2, 10, 6));
+  sun.target.position.set((ROOM_BOUNDS.min[0] + ROOM_BOUNDS.max[0]) / 2, 0, (ROOM_BOUNDS.min[2] + ROOM_BOUNDS.max[2]) / 2);
+  sun.position.copy(sun.target.position).add(new THREE.Vector3(2, 14, 6));
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.intensity = 0.48;

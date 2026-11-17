@@ -8,7 +8,7 @@ test('the couch starts somewhere valid and the resident can walk to it, the cash
   const furniture = defaultFurniture(), errands = residentErrands(furniture);
   assert.ok(furnitureValid(furniture)); assert.ok(wallMountsFit(defaultShelves(), defaultWallDisplays(), furniture));
   assert.deepEqual(roomFinishes().couch, { typeId: 'settee', colorId: 'oxblood' });
-  assert.deepEqual(errands.slice(0, 3).map(errand => errand.kind), ['sit', 'inspect', 'cash']);
+  assert.deepEqual(errands.slice(0, 4).map(errand => errand.kind), ['sit', 'coffee', 'inspect', 'cash']);
   const solid = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off).map(id => furnitureRect(id, furniture[id]));
   for (const errand of errands) {
     let from = [furniture.rug.x, furniture.rug.z];
@@ -25,6 +25,29 @@ test('the couch starts somewhere valid and the resident can walk to it, the cash
   assert.equal(residentErrands({ ...furniture, couch: { ...furniture.couch, off: true } }).some(errand => errand.kind === 'sit'), false);
   const boxedIn = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.45, z: 0, r: 0 } };
   assert.deepEqual(residentErrands(boxedIn), []);
+});
+
+test('coffee crosses the open door and stays clear of a wagon parked at the edge of its yard', () => {
+  const furniture = defaultFurniture();
+  furniture.window = { x: 5.5 * S, z: 1.4 * S - 1.025, r: 0 };
+  assert.ok(furnitureValid(furniture));
+  const { path } = residentErrands(furniture, defaultShelves()).find(errand => errand.kind === 'coffee');
+  assert.deepEqual(path.at(-1), [6.55 * S, 3.5 * S]);
+  const wagon = furnitureRect('window', furniture.window);
+  let from = [furniture.rug.x, furniture.rug.z], crossed = false;
+  for (const to of path) {
+    if (from[0] < 4.08 * S && to[0] > 4.08 * S) {
+      const z = from[1] + (to[1] - from[1]) * (4.08 * S - from[0]) / (to[0] - from[0]);
+      assert.ok(z > 0.8 * S + 0.35 && z < 2.2 * S - 0.35);
+      crossed = true;
+    }
+    for (let part = 0; part <= 1; part += 0.05) {
+      const x = from[0] + (to[0] - from[0]) * part, z = from[1] + (to[1] - from[1]) * part;
+      assert.ok(x + 0.35 <= wagon[0] || x - 0.35 >= wagon[2] || z + 0.3 <= wagon[1] || z - 0.3 >= wagon[3]);
+    }
+    from = to;
+  }
+  assert.ok(crossed);
 });
 
 test('rooms arranged on the earlier floor spread out and gain a couch only where one fits', () => {
