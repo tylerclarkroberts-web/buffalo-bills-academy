@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Bout, { mergeFight } from '../barn/Bout.jsx';
-import { createPvpClient, pvpAmbush, pvpForfeit, pvpMove, pvpWild, pvpJar } from './pvpClient.js';
+import { createPvpClient, minerHint, pvpAmbush, pvpForfeit, pvpMove, pvpWild, pvpJar } from './pvpClient.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
@@ -357,7 +357,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
             <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
             <li>A hatched barn bug knows the tunnels and leads you to the glow. If it gets knocked out, take it to the <b>Bug Center</b> in the Barn. Otherwise it recovers all HP after the fight.</li>
-            <li><b>One mine a day, shared.</b> Everyone on shift walks the same tunnels. Sneak up behind someone to <b>assassinate</b> them for their acid and $20–$100. Meet face to face and your <b>bugs battle</b> — the winner also takes the loser's smokes.</li>
+            <li><b>Everyone shares today's tunnels.</b> Get close behind an unsuspecting miner and press <b>X</b> or tap <b>Assassinate</b> for their acid and up to $100. Meet face to face and your <b>bugs battle automatically</b> for the haul and the loser's smokes. You'll need a day-old account and three finished shifts. Guests and the elevator landing are protected.</li>
           </ol>
           <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
@@ -508,9 +508,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const jump = useRef(null);
   const horrorEl = useRef(null);
   // v71: the shared mine. Other miners, a back you could stab, and a bug battle in progress.
-  const [others, setOthers] = useState(0);
+  const [otherMiners, setOtherMiners] = useState('');
   const [prey, setPrey] = useState(null);
   const preyRef = useRef(null);
+  const ambushBusy = useRef(false);
   const [battle, setBattle] = useState(null);
   const battleRef = useRef(null);
   const dismissed = useRef(new Set());
@@ -592,14 +593,16 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (v.result || Object.hasOwn(v, 'pending')) accept(v);
       return;
     }
-    sceneRef.current?.setOthers(v.others || []); setOthers(v.others?.length || 0); guideRef.current?.setOthers(v.others || []);
+    sceneRef.current?.setOthers(v.others || []); guideRef.current?.setOthers(v.others || []);
     if (v.wilds) sceneRef.current?.setWilds(v.wilds);
     if (v.egg === false && eggRef.current === 'there') {
       eggRef.current = 'gone'; sceneRef.current?.removeEgg('sink'); setEggNear(false);
     }
     if (typeof v.canFightWild === 'boolean') canFightWild.current = v.canFightWild;
-    const p = v.battle ? null : v.ambush; if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
+    const p = ambushBusy.current ? null : v.ambush;
+    if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
     if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);
+    setOtherMiners(minerHint(v, chartPosition(), maze.grid));
     if (v.battle) showBattle(v.battle);
     else if (battleRef.current && !battleRef.current.over) { battleRef.current = null; setBattle(null); } // restart: the battle is gone
     if (v.notice) {
@@ -609,7 +612,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     }
   };
   const stab = async () => {
-    const target = preyRef.current; if (!target || battleRef.current || done.current) return;
+    const target = preyRef.current; if (!target || ambushBusy.current || battleRef.current || closing.current || done.current) return;
+    ambushBusy.current = true;
     preyRef.current = null; setPrey(null);
     try {
       const r = await pvpAmbush(pvpSend, target.id);
@@ -618,6 +622,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       const { raid: _raid, ...state } = r; void _raid;
       if (state.pools || state.result || Object.hasOwn(state, 'pending')) accept(state);
     } catch (e) { setLine(String(e.message || 'TOO LATE.').toUpperCase()); }
+    finally { ambushBusy.current = false; }
   };
   const battleMove = async (moves) => { const b = battleRef.current; if (!b) return; try { showBattle((await pvpMove(pvpSend, b.id, moves, b.rounds.length)).battle); } catch (e) { setLine(String(e.message).toUpperCase()); } };
   // Throw a jar at the wild bug: true if it held, false if it got out, or the server's reason for refusing.
@@ -820,7 +825,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         if (doorRef.current) { openDoor.current(); return; }
       }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
-      if (k === 'x' && preyRef.current) { stab(); return; }
+      if (k === 'x' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
       if (k === 'b' && !e.repeat) { showPicker(!pickerRef.current); return; }
       if (k === 'v' && !e.repeat && guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
@@ -990,7 +995,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       {tier && <div className="m-dark" style={{ '--dark': [0, 0.15, 0.35, 0.65, 1][tier.tier - 1] }} aria-hidden="true" />}
       <Worms worms={worms} cutting={cutting} onCut={(id, a) => cutWorm.current(id, a)} />
-      <div className="m-hud tl">{tier && <TierBadge tier={tier.tier} />}<div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{others > 0 && <div className="m-others" data-test="others">⛏ {others} OTHER MINER{others > 1 ? 'S' : ''} DOWN HERE</div>}</div>
+      <div className="m-hud tl">{tier && <TierBadge tier={tier.tier} />}<div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{otherMiners && <div className="m-others" data-test="others">{otherMiners}</div>}</div>
       <div className="m-hud tr">
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
@@ -1014,11 +1019,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
       </div>}
       <div className="m-ticker" aria-live="polite">{line}</div>
-      {prey && !battle && !doom && (
+      {prey && !battle && !doom && !mapOpen && (
         <div className="m-door-prompt m-stab" data-test="ambush-prompt">
           <span className="m-dim">{prey.name.toUpperCase()} HASN'T SEEN YOU.</span>
-          <button className="m-btn" onClick={stab} data-test="ambush">[ ASSASSINATE ]</button>
-          <span className="m-dim small">or press X · takes their acid and $20–$100</span>
+          <button className="m-btn" aria-keyshortcuts="X" disabled={clockingOut} onClick={stab} data-test="ambush">ASSASSINATE<span className="m-key"> · X</span></button>
         </div>
       )}
       {near && !prey && !dance && (

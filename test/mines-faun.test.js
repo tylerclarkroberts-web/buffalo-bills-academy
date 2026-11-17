@@ -1,4 +1,4 @@
-// The mines faun: 20% of shifts, never with the visitor, solid, follows, and cannot trap the miner.
+// The mines faun: 20% of shifts, never with the visitor, lingers between visits and steps aside for the miner.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Mines, rollScare, SCARE_CHANCE, FAUN_CHANCE } from '../server/mines.js';
-import { FaunFollower, bfsAvoiding, APPEAR_AFTER_MS, FOLLOW_GAP, YIELD_S, PASS_S, BODY_RADIUS, MOON_SECONDS, MOON_MIN_S } from '../client/src/mines/faunFollower.js';
+import { FaunFollower, APPEAR_AFTER_MS, FOLLOW_GAP, BODY_RADIUS, MOON_SECONDS, MOON_MIN_S } from '../client/src/mines/faunFollower.js';
 import { tileOf, TILE } from '../client/src/mines/stalker.js';
 import { buildFaun } from '../client/src/mines/faunMesh.js';
 
@@ -93,6 +93,19 @@ test('an unarmed faun never appears; an armed one trots in after the delay and b
   assert.ok(Math.abs(tx - MAZE.pool.x) + Math.abs(ty - MAZE.pool.y) > 1, 'not on the acid');
 });
 
+test('bleats leave a quiet stretch and a distant faun stays inaudible', () => {
+  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
+  feed(fn, at(1, 1));
+  fn.events.length = 0;
+  feed(fn, at(1, 1), .05, 200);
+  assert.ok(!fn.events.includes('bleat'));
+  feed(fn, at(1, 1), .05, 50);
+  assert.ok(fn.events.includes('bleat'));
+  fn.events.length = 0; fn.nextBleat = 0;
+  feed(fn, { x: 3 * TILE, z: 5 * TILE + .4 });
+  assert.ok(!fn.events.includes('bleat'));
+});
+
 test('he is solid up close and you can stand beside him out of his body', () => {
   const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
   fn.update(0.05, { t: 0, ...at(1, 1), yaw: -Math.PI / 2, elapsedMs: APPEAR_AFTER_MS + 10, pushing: false });
@@ -100,53 +113,47 @@ test('he is solid up close and you can stand beside him out of his body', () => 
   assert.equal(fn.blocks(fn.x + BODY_RADIUS + 0.38 + 0.05, fn.z, 0.38), false);
 });
 
-test('he follows the miner and stops a short distance away', () => {
+test('he lets the miner explore nearby, catches up at a distance, and lingers again', () => {
   const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
-  fn.update(0.05, { t: 0, ...at(1, 1), yaw: -Math.PI / 2, elapsedMs: APPEAR_AFTER_MS + 10, pushing: false });
-  // Walk the miner down the top corridor, away from wherever he spawned.
-  for (let i = 0; i < 240; i++) {
-    const x = (1 + i * 0.03) * TILE;
-    fn.update(1 / 60, { t: 1 + i / 60, x, z: 1 * TILE, yaw: -Math.PI / 2, elapsedMs: APPEAR_AFTER_MS + 1000 + i * 16, pushing: false });
+  fn.state = 'following'; fn.x = TILE; fn.z = TILE;
+  for (const x of [3, 4, 3, 2, 5]) feed(fn, at(x, 1), .05, 40);
+  assert.equal(fn.x, TILE);
+  assert.equal(fn.facing, 0, 'small movements do not make him turn to track the miner');
+
+  feed(fn, at(7, 1), .05, 150);
+  const stopped = fn.x;
+  assert.ok(Math.abs(7 * TILE - stopped - FOLLOW_GAP) < 1e-6);
+  feed(fn, { x: 7 * TILE + .4, z: TILE }, .05, 40);
+  assert.equal(fn.x, stopped, 'stays put as the miner moves off again');
+});
+
+test('he steps toward the wall before contact and stays aside for a slow walk out of a dead end', () => {
+  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
+  fn.state = 'following'; fn.x = 3 * TILE; fn.z = 4 * TILE;
+  let z = 5 * TILE;
+  for (let i = 0; i < 160; i++) {
+    z -= .025;
+    assert.equal(fn.blocks(3 * TILE, z, .38), false, 'centre of the passage stays walkable');
+    feed(fn, { x: 3 * TILE, z }, .05);
+    if (i === 32) {
+      const offset = Math.abs(fn.x - 3 * TILE);
+      assert.ok(offset > 0 && offset < TILE / 2, 'visible sidestep stays inside the tunnel');
+      feed(fn, { x: 3 * TILE, z }, .05, 80); // stop partway through the pass
+    }
   }
-  const dist = Math.hypot(fn.x - 5 * TILE, fn.z - 1 * TILE);
-  assert.ok(dist < FOLLOW_GAP + 1.2, `ended near the miner, dist=${dist.toFixed(2)}`);
-  assert.ok(dist > FOLLOW_GAP - 0.6, 'did not close all the way into the miner');
+  assert.deepEqual(fn.events.filter(e => e === 'yield'), ['yield']);
+  assert.equal(fn.z, 4 * TILE, 'no retreat down the middle of the same tunnel');
+  assert.ok(Math.abs(fn.x - 3 * TILE) > .6);
+  assert.equal(fn.blocks(fn.x, fn.z, .38), false, 'can turn around and walk right back');
 });
 
-test('in a one-wide dead end he steps back or lets the miner swap after a moment', () => {
-  const fn = new FaunFollower(MAZE, { armed: true, rand: () => 0 });
-  // Place him by hand in the corridor, blocking the only way out of (3,5).
-  fn.state = 'following'; fn.x = 3 * TILE; fn.z = 4 * TILE; fn.pass = 0;
-  const p = { t: 10, x: 3 * TILE, z: 5 * TILE, yaw: 0, elapsedMs: 20000, pushing: true };
-  assert.equal(fn.trapping(p.x, p.z), true, 'he is the only way out of the dead end');
-  for (let i = 0; i < Math.ceil(YIELD_S / (1 / 60)) + 2; i++) fn.update(1 / 60, { ...p, t: 10 + i / 60 });
-  assert.ok(fn.events.includes('yield'));
-  const [tx, ty] = tileOf(fn.x, fn.z);
-  assert.ok(!(tx === 3 && ty === 4) || fn.pass > 0, 'left the blocking tile or went passable');
-  // After the yield, the dead-end tile's exit is open enough for the miner to leave.
-  assert.equal(fn.trapping(p.x, p.z) && fn.pass <= 0 && tileOf(fn.x, fn.z).join(',') === '3,4', false);
-  const exitOpen = !fn.blocks(3 * TILE, 4 * TILE, 0.38);
-  assert.equal(exitOpen, true, 'the miner can walk out of the dead end');
-});
-
-test('if there is no tile to step onto he briefly stops being solid so the miner can swap', () => {
-  // A two-tile alcove: only (1,1) and (1,2) are open.
-  const tight = [
-    '#####',
-    '#.###',
-    '#.###',
-    '#####',
-  ].map((r) => [...r].map((c) => (c === '#' ? 1 : 0)));
-  const maze = { grid: tight, pool: { x: 1, y: 1 }, start: { x: 1, y: 2 } };
-  const fn = new FaunFollower(maze, { armed: true, rand: () => 0 });
-  fn.state = 'following'; fn.x = 1 * TILE; fn.z = 1 * TILE; fn.pool = { x: 1, y: 1 };
-  const p = { t: 10, x: 1 * TILE, z: 2 * TILE, yaw: 0, elapsedMs: 20000, pushing: true };
-  for (let i = 0; i < Math.ceil(YIELD_S / (1 / 60)) + 2; i++) fn.update(1 / 60, { ...p, t: 10 + i / 60 });
-  assert.ok(fn.events.includes('yield'));
-  assert.ok(fn.pass > 0 || !fn.blocks(p.x, p.z - 0.5, 0.38), 'swap window or he has moved off the only exit');
-  // During pass-through the body is not solid.
-  fn.pass = PASS_S;
-  assert.equal(fn.blocks(fn.x, fn.z, 0.38), false);
+test('he yields even in a two-tile alcove with the pool at his feet', () => {
+  const tight = ['####', '#.##', '#.##', '####'].map(r => [...r].map(c => c === '#' ? 1 : 0));
+  const fn = new FaunFollower({ grid: tight, pool: { x: 1, y: 1 } }, { armed: true, rand: () => 0 });
+  fn.state = 'following'; fn.x = TILE; fn.z = TILE;
+  feed(fn, at(1, 2), .05, 40);
+  assert.equal(fn.blocks(TILE, TILE, .38), false);
+  assert.equal(fn.z, TILE, 'does not swap onto the miner');
 });
 
 test('a faun standing on the acid steps off so the pool stays reachable', () => {
@@ -155,14 +162,6 @@ test('a faun standing on the acid steps off so the pool stays reachable', () => 
   fn.update(1 / 60, { t: 10, x: 5 * TILE, z: 1 * TILE, yaw: -Math.PI / 2, elapsedMs: 20000, pushing: false });
   const [tx, ty] = tileOf(fn.x, fn.z);
   assert.ok(!(tx === 7 && ty === 1), `stepped off the pool onto ${tx},${ty}`);
-});
-
-test('bfsAvoiding treats the faun tile as a wall', () => {
-  const clear = bfsAvoiding(G, 3, 5, -1, -1);
-  const blocked = bfsAvoiding(G, 3, 5, 3, 3);
-  assert.ok(clear[1][3] >= 0);
-  assert.equal(blocked[1][3], -1);
-  assert.ok(blocked[5][3] === 0);
 });
 
 test('the faun only moons occasionally while idle, then returns to his normal pose', () => {
@@ -191,7 +190,7 @@ test('mooning waits for mining and ends immediately for movement, mining or yiel
   feed(fn, p, .05, 12); assert.equal(fn.moon, 1);
   feed(fn, { ...p, busy: true }); assert.equal(fn.moon, 0);
   fn.moonLeft = 2;
-  feed(fn, { ...p, x: 6 * TILE });
+  feed(fn, { ...p, x: 7 * TILE + .25 });
   assert.equal(fn.moon, 0); assert.ok(fn.moving, 'follows a departing miner without waiting for the gag');
   fn.moonLeft = 2; fn.yieldTo(p);
   assert.equal(fn.moon, 0, 'steps aside immediately');
@@ -202,12 +201,12 @@ test('a faun that follows to his normal stopping distance can settle and moon', 
   fn.state = 'following'; fn.x = TILE; fn.z = TILE;
   let mooned = false;
   for (let i = 0; i < 600; i++) {
-    feed(fn, at(5, 1), .05);
+    feed(fn, at(7, 1), .05);
     mooned ||= fn.moon > 0;
   }
   assert.ok(mooned, 'rounding at the follow gap must not keep him walking in place');
   assert.equal(fn.moving, false);
-  assert.ok(Math.abs(5 * TILE - fn.x - FOLLOW_GAP) < 1e-6);
+  assert.ok(Math.abs(7 * TILE - fn.x - FOLLOW_GAP) < 1e-6);
 });
 
 test('the faun mesh is a low-poly figure with scarf, parcels, umbrella and goat legs', () => {

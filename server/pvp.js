@@ -12,7 +12,7 @@ import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
 import { MAX_SHIFT_MS } from './mines.js';
 import { RUN_SPEED } from './engine/mine-movement.js';
-import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
+import { sees, touching, behind, onTunnel, lineOfSight } from './engine/pvp-geometry.js';
 import { BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { danceId } from './engine/dances.js';
@@ -118,7 +118,7 @@ export class Pvp {
     if (!A || !B || A.key !== B.key || a === b) return false;
     if (this.shield(a) || this.shield(b) || this.cooling(a, b)) return false;
     const { grid } = this.mazeAt(A.key);
-    return touching(A, B) && behind(B, A) && !this.aware(b, a) && !sees(grid, B, A);
+    return touching(A, B) && behind(B, A) && !this.aware(b, a) && lineOfSight(grid, A, B);
   }
   canBattle(a, b) {
     const A = this.fresh(a), B = this.fresh(b);

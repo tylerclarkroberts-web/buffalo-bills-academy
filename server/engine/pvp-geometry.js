@@ -30,7 +30,6 @@ export function lineOfSight(grid, a, b) {
 export function sees(grid, a, b) {
   const d = Math.hypot(b.x - a.x, b.y - a.y);
   if (d > SIGHT_TILES) return false;
-  if (d <= TOUCH_TILES * 0.5) return true; // bumping into someone: you notice
   return bearing(a, b) <= VIEW_HALF_ANGLE && lineOfSight(grid, a, b);
 }
 

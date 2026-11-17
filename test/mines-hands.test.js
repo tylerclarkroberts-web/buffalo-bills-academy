@@ -46,17 +46,25 @@ test('reduced motion holds the resting pose, and dancing hides the foreground ar
   assert.equal(hands.group.visible, true);
 });
 
-test('the idle pick fits desktop and narrow/short phone views while keeping the center clear', () => {
+test('the pick stays in view from its resting grip through a forward stroke on desktop and phones', () => {
   const hands = buildMineHands('miner');
   for (const [w, h] of [[1280, 800], [390, 844], [320, 568], [844, 390], [568, 320]]) {
     resizeMineHands(hands, w / h); hands.scene.updateMatrixWorld(true);
     assert.equal(hands.camera.aspect, w / h);
-    const blade = hands.pickaxe.children.find(mesh => mesh.geometry.type === 'ExtrudeGeometry');
+    const blade = hands.pickaxe.getObjectByName('pick-head');
     const vertices = blade.geometry.attributes.position;
-    for (let i = 0; i < vertices.count; i++) {
-      const point = new THREE.Vector3().fromBufferAttribute(vertices, i).applyMatrix4(blade.matrixWorld).project(hands.camera);
-      assert.ok(point.x > 0 && point.x < 1 && point.y > -1 && point.y < .5, `pick head fits right side at ${w}×${h}`);
+    const rest = blade.localToWorld(new THREE.Vector3().fromBufferAttribute(vertices, 0));
+    for (let frame = 0; frame <= 5; frame++) {
+      hands.scene.updateMatrixWorld(true);
+      for (let i = 0; i < vertices.count; i++) {
+        const point = new THREE.Vector3().fromBufferAttribute(vertices, i).applyMatrix4(blade.matrixWorld).project(hands.camera);
+        assert.ok(Math.abs(point.x) < 1 && point.y > -1 && point.y < .5, `pick head fits at ${w}×${h}`);
+        assert.ok(point.x > 0 || (frame > 0 && point.y < -.3), 'only the downstroke can cross into the lower center');
+      }
+      if (frame < 5) stepMineHands(hands, .05, { mining: true });
     }
+    const struck = blade.localToWorld(new THREE.Vector3().fromBufferAttribute(vertices, 0));
+    assert.ok(struck.z < rest.z && struck.y < rest.y, 'the point strikes forward and down');
     for (const arm of [hands.left, hands.right]) {
       const wrist = arm.position.clone().project(hands.camera);
       assert.ok(Math.abs(wrist.x) < 1 && wrist.y > -1 && wrist.y < 0, 'both hands sit in the lower view');
