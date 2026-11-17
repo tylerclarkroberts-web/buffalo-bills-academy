@@ -33,6 +33,7 @@ const hook = (p, body) => p.evaluate((b) => fetch('/api/elhalo/test', { method: 
 const until = async (p, fn, arg, ms = 8000) => { try { await p.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch { return false; } };
 const board = (p) => p.evaluate(() => window.__elHalo.board());
 const tap = (p, sel) => (p.m ? p.tap(sel) : p.click(sel));
+let vid0 = 0; const mark = (what) => console.log(`     [video ${((Date.now() - vid0) / 1000).toFixed(1)}s] ${what}`);
 const place = (p, x, z, yaw, y) => hook(p, { place: { x, z, yaw, ...(y !== undefined ? { y } : {}) } });
 
 async function open(browser, sid, s) {
@@ -59,6 +60,7 @@ async function main() {
   const [sT, sJ, sK, sA] = [await login('Tyler', 'tyler.v2@example.com'), await login('Joe', 'joe.v2@example.com'), await login('Kash', 'kash.v2@example.com'), await login('Ana', 'ana.v2@example.com')];
 
   // ================= LOBBY =================
+  vid0 = Date.now();
   const T = await open(browser, sT, { w: 1280, h: 720, n: 'tyler', video: true });
   check(await T.isVisible('[data-test=elhalo-preview]') && await noScroll(T), 'Tyler: lobby with the 3D preview, no scroll');
   await tap(T, '[data-test=elhalo-start]');
@@ -108,6 +110,7 @@ async function main() {
   await hook(T, { calm: true, clear: true });
 
   // ================= WEAPONS =================
+  mark('weapons');
   const ids = Object.keys(WEAPONS).filter((id) => !WEAPONS[id].mounted); // the jeep's turret gun isn't a pickup
   check(ids.length === 12, `12 weapons (${ids.join(', ')})`);
   await place(T, 0, 10, 0);
@@ -125,8 +128,10 @@ async function main() {
     if (id === 'martillo' || id === 'francotirador') await shot(T, `weapon-${id}`);
     await place(T, 0, 10, 0);
   }
-  // headshots: sniper at a still luchador's head
-  await hook(T, { give: 'francotirador', clear: true, spawn: [{ type: 'luchador', x: 0, z: -8, still: true, yaw: Math.PI }] });
+  // headshots: sniper at a still luchador's head (send the truck on its way first so it isn't in the shot)
+  if ((await hook(T, {})).truck) { await hook(T, { truckT: 999 }); await until(T, () => window.__elHalo.state().phase !== 'truck', null, 5000); }
+  await hook(T, { give: 'francotirador', clear: true, spawn: [{ type: 'luchador', x: 0, z: 1, still: true, yaw: Math.PI }] });
+  mark('headshot');
   await until(T, () => window.__elHalo.state().weapon === 'francotirador' && window.__elHalo.state().enemies === 1, null, 3000);
   await place(T, 0, 10, 0); await T.waitForTimeout(400);
   const h0 = (await board(T)).find((r) => r.me).heads;
@@ -137,6 +142,7 @@ async function main() {
   check(await until(T, (h) => window.__elHalo.board().find((r) => r.me).heads > h, h0, 3000), 'the scoreboard counts the headshot');
 
   // ================= GRENADES =================
+  mark('grenades');
   await hook(T, { clear: true, nades: [2, 2] }); await place(T, 0, 10, 0);
   await until(T, () => window.__elHalo.state().grenades === 2 && window.__elHalo.state().sticky === 2, null, 3000);
   await T.evaluate(() => window.__elHalo.face(0, 0.2));
@@ -180,14 +186,16 @@ async function main() {
   check(!snapped, 'no snapping back to the roof');
 
   // ================= STAIRS =================
+  mark('stairs');
   await place(T, 0, -53, Math.PI, deckY);
   await hook(T, { calm: true, spawn: [{ type: 'granjero', x: 6.75, z: -45 }, { type: 'luchador', x: -6.75, z: -45 }] });
   const climbed = await (async () => { const t1 = Date.now(); while (Date.now() - t1 < 20000) { const r = await hook(T, { peek: true }); if ((r.list || []).some((e) => e.y > deckY - 0.4)) return true; await sleep(300); } return false; })();
   check(climbed, 'the horde climbs the fort stairs onto the deck');
-  await T.evaluate(() => window.__elHalo.face(-Math.PI / 2, -0.25)); await T.waitForTimeout(300); await shot(T, 'stairs-climb');
+  await place(J, 16, -42, 0); await J.waitForTimeout(400); await J.evaluate(() => window.__elHalo.aimAt(6.5, 3, -52)); await J.waitForTimeout(300); await shot(J, 'stairs-climb');
   await hook(T, { clear: true });
 
   // ================= REVIVE + BLEED RING =================
+  mark('revive');
   await place(T, 3, 6, 0); await place(J, 3, 9, 0);
   await hook(T, { down: true });
   check(await until(T, () => window.__elHalo.state().st === 'downed', null, 3000), 'Tyler goes down');
@@ -200,6 +208,7 @@ async function main() {
   check(await until(T, () => window.__elHalo.state().st === 'alive', null, 3000), 'Joe holds E and Tyler is back up before he bleeds out');
 
   // ================= TRUCK =================
+  mark('truck');
   await hook(T, { truck: 2 });
   check(await until(T, () => window.__elHalo.state().phase === 'truck' && !!window.__elHalo.state().truck, null, 5000), 'the supply truck rolls in between waves');
   const tr = (await st(T)).truck;
@@ -212,20 +221,22 @@ async function main() {
   await place(T, tr2.x + 1.5, tr2.z, Math.PI / 2);
   await T.keyboard.press('KeyE');
   check(await until(T, (w) => window.__elHalo.state().slots.includes(w), tr.weapon, 5000), `walk up / E: Tyler gets the ${tr.weapon}`);
-  await place(T, tr2.x + 9, tr2.z + 6, Math.atan2(9, 6)); await T.waitForTimeout(500); await shot(T, 'supply-truck');
+  const tr3 = (await st(T)).truck; await place(T, tr3.x + 7, tr3.z + 7, 0); await T.waitForTimeout(400);
+  await T.evaluate((t) => window.__elHalo.aimAt(t.x, 1.6, t.z), (await st(T)).truck); await T.waitForTimeout(250); await shot(T, 'supply-truck');
 
   // ================= WAVE 5 / 10 / 15 =================
+  mark('wave 5');
   await hook(T, { wave: 5, calm: true });
   check(await until(T, () => window.__elHalo.state().wave === 5 && window.__elHalo.state().enemyTypes.includes('chupacabra'), null, 30000), 'wave 5: chupacabras show up');
   const ch = await hook(T, { peek: true }); const c = (ch.list || []).find((e) => e.type === 'chupacabra');
-  if (c) { await place(T, c.x, c.z + 6, 0); await T.waitForTimeout(250); await T.evaluate(() => window.__elHalo.aimAtNearest()); await T.waitForTimeout(200); await shot(T, 'wave5-chupacabra'); }
-  await hook(T, { wave: 10, calm: true });
+  if (c) { await hook(T, { clear: true, spawn: [{ type: 'chupacabra', x: 2, z: 4, still: true, yaw: Math.PI * 0.8 }, { type: 'chupacabra', x: -1.5, z: 2.5, still: true, yaw: Math.PI * 1.1 }] }); await place(T, 0, 9.5, 0); await T.waitForTimeout(500); await T.evaluate(() => window.__elHalo.aimAt(0.5, 0.9, 3)); await T.waitForTimeout(250); await shot(T, 'wave5-chupacabra'); }
+  mark('wave 10'); await hook(T, { wave: 10, calm: true });
   check(await until(T, () => window.__elHalo.state().nightOn && window.__elHalo.state().night > 0.8, null, 15000), 'wave 10: night falls');
   check(await until(T, () => ['llorona', 'cucuy', 'nahual', 'lechuza'].some((k) => window.__elHalo.state().enemyTypes.includes(k)), null, 30000), `wave 10: folklore shows up (${(await st(T)).enemyTypes.join(',')})`);
   await hook(T, { spawn: [{ type: 'llorona', x: -2, z: 2, still: true }, { type: 'cucuy', x: 2, z: 1, still: true }, { type: 'nahual', x: 5, z: 3, still: true }, { type: 'lechuza', x: 0, z: 4, still: true }, { type: 'chupacabra', x: -5, z: 3, still: true }] });
   await place(T, 0, 12, 0); await T.evaluate(() => window.__elHalo.face(0, 0.05)); await T.waitForTimeout(800); await shot(T, 'wave10-night-folklore');
   check((await st(T)).fps > 5, `night stays smooth enough on software GL (${(await st(T)).fps} fps)`);
-  await hook(T, { wave: 15, calm: true, clear: true });
+  mark('wave 15'); await hook(T, { wave: 15, calm: true, clear: true });
   check(await until(T, () => window.__elHalo.state().wave === 15 && !!window.__elHalo.state().jeep, null, 15000), 'wave 15: the jeep arrives');
   await hook(T, { jeep: { x: 0, z: 20, yaw: 0 } }); await T.waitForTimeout(300);
   await place(T, 1.8, 20, Math.PI / 2); await T.waitForTimeout(300);

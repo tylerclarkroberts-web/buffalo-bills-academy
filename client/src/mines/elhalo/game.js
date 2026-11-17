@@ -116,7 +116,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     o.to = { x, y, z, yaw: yw }; o.t0 = now; o.dur = dur;
   };
   const cur = (o, now) => { const k = Math.min(1, (now - o.t0) / o.dur); return { x: o.from.x + (o.to.x - o.from.x) * k, y: o.from.y + (o.to.y - o.from.y) * k, z: o.from.z + (o.to.z - o.from.z) * k, yaw: angLerp(o.from.yaw, o.to.yaw, k) }; };
-  const seatAt = (j, seat) => { const fx = -Math.sin(j.yaw), fz = -Math.cos(j.yaw), rx = Math.cos(j.yaw), rz = -Math.sin(j.yaw); return seat === 'd' ? { x: j.x + fx * 0.25 - rx * 0.45, y: j.y - 0.25, z: j.z + fz * 0.25 - rz * 0.45 } : { x: j.x - fx * 1.15, y: j.y + 0.55, z: j.z - fz * 1.15 }; };
+  const seatAt = (j, seat) => { const fx = -Math.sin(j.yaw), fz = -Math.cos(j.yaw), rx = Math.cos(j.yaw), rz = -Math.sin(j.yaw); return seat === 'd' ? { x: j.x + fx * 0.25 - rx * 0.45, y: j.y - 0.25, z: j.z + fz * 0.25 - rz * 0.45 } : { x: j.x - fx * 1.15, y: j.y + 0.85, z: j.z - fz * 1.15 }; };
   const jeepNow = (now) => (veh ? veh : jeepObj ? cur(jeepObj, now) : null);
 
   function onSnap(msg) {
@@ -342,9 +342,9 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
 
   function shoot(id = P.current) {
     const w = L.WEAPONS[id];
+    const o = eye(), f = fwd(); // aim first: the kick lands after the round is out
     sfx('gun', id); vmKick = 1; if (!reduceMotion) pitch = Math.min(1.45, pitch + (KICK[id] || 0.005) * (zoom ? 0.5 : 1));
     if (id === 'escopeta' || id === 'escopetita' || id === 'cohetes') shake = Math.max(shake, 0.12);
-    const o = eye(), f = fwd();
     const spread = (w.spread || 0) * (onGround ? 1 : 1.6) * (zoom ? 0.2 : 1);
     const aim = w.kind === 'pellets' || w.kind === 'rocket' || w.kind === 'needle' ? f.clone() : new THREE.Vector3(f.x + (R() - 0.5) * 2 * spread, f.y + (R() - 0.5) * 2 * spread, f.z + (R() - 0.5) * 2 * spread).normalize();
     if (w.kind === 'pellets') { // the server rolls the real spread; draw our own
@@ -657,6 +657,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       m.root.position.set(c.x, c.y, c.z); m.root.rotation.y = c.yaw;
       const downed = !!(f & 2), seated = !!p.seat;
       m.body.rotation.x = downed ? -1.35 : 0; m.body.position.y = downed ? 0.3 : 0; m.tag.position.y = downed ? 1.2 : 2.95;
+      m.tag.visible = !(seated && me?.seat); // riding together: no name tag in your face
       if (f & 1 && !downed && !seated) p.phase += dt * 9; const sw = f & 1 && !downed && !seated ? Math.sin(p.phase) * 0.6 : 0;
       m.legs[0].rotation.x = seated ? -1.4 : sw; m.legs[1].rotation.x = seated ? -1.4 : -sw;
       m.arms[1].rotation.x = f & 16 || p.seat === 2 ? -1.5 - (p.pitch || 0) : -0.9; m.arms[0].rotation.x = f & 16 || seated ? -1.2 : -sw * 0.6;
@@ -834,7 +835,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     // read-outs + hooks for the browser checks
     state: () => ({ mode, joined, myId, st: me?.st, wave: snap?.wv || 0, phase: snap?.ph, left: snap?.left, pts: me?.pts, shield: Math.round(P.shield), health: Math.round(P.health),
       grenades: (P.nades.frag || 0) - spent.frag, sticky: (P.nades.sticky || 0) - spent.sticky, nadeKind,
-      weapon: P.current, slots: me?.ws || [], mag: P.weapons[P.current]?.mag ?? 0, reserve: P.weapons[P.current]?.reserve ?? 0, pos: { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2) }, yaw: +yaw.toFixed(3), onGround,
+      weapon: P.current, slots: me?.ws || [], mag: P.weapons[P.current]?.mag ?? 0, reserve: P.weapons[P.current]?.reserve ?? 0, pos: { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2) }, yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), onGround,
       enemies: ents.en.size, enemyTypes: [...ents.en.values()].map((e) => e.type), others: [...ents.pl.values()].map((p) => p.name), othersAt: [...ents.pl.values()].map((p) => ({ name: p.name, ...cur(p, performance.now()), flags: p.flags, look: p.look })),
       bars: bars.slice(), prompt: me?.pr || null, fps: Math.round(fps), frames, status, audio: audio ? audio.ctx.state : 'none', music: !!audio?.musicPlaying,
       truck: truckObj ? { ...cur(truckObj, performance.now()), weapon: WIDS[truckGunIdx] } : null, jeep: jeepObj ? { ...jeepNow(performance.now()), driver: jeepObj.driver, gunner: jeepObj.gunner } : null, seat: me?.seat || null,

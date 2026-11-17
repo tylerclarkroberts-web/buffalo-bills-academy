@@ -147,8 +147,12 @@ export class Match {
     } else if (p.state === 'alive' && Array.isArray(msg.p) && msg.p.length === 3 && finite(...msg.p)) this.move(p, msg.p[0], msg.p[1], msg.p[2], dt, nowMs);
     else if (p.state !== 'alive' && Array.isArray(msg.p) && finite(...msg.p) && Math.hypot(msg.p[0] - p.x, msg.p[2] - p.z) > 0.6) p.corr = [r2(p.x), r2(p.y), r2(p.z)];
     // fire-rate bucket for the gun in hand (a burst counts as its three rounds; slow, heavy guns can't bank shots)
-    const w = WEAPONS[p.w], rate = w.rate * (w.burst || 1);
-    p.tokens = Math.min(rate >= 4 ? 3 : 1.25, p.tokens + dt * rate * 1.15);
+    const w = WEAPONS[p.w], rate = w.rate * (w.burst || 1), cap = rate >= 4 ? 3 : 1.25;
+    if (p.tokW !== p.w) { // each gun keeps its own bucket, so swapping neither drains nor refills it
+      p.tokBy = p.tokBy || {}; if (p.tokW) p.tokBy[p.tokW] = { v: p.tokens, t: this.t };
+      const b = p.tokBy[p.w]; p.tokens = b ? Math.min(cap, b.v + (this.t - b.t) * rate * 1.15) : cap; p.tokW = p.w;
+    }
+    p.tokens = Math.min(cap, p.tokens + dt * rate * 1.15);
     for (const e of evs) {
       if (!Array.isArray(e) || p.state !== 'alive' || this.phase === 'lobby') continue;
       if (e[0] === 's' && e.length >= 7 && finite(...e.slice(1, 7))) this.shot(p, { x: e[1], y: e[2], z: e[3] }, { x: e[4], y: e[5], z: e[6] });
@@ -194,7 +198,7 @@ export class Match {
   }
   seatPos(seat) {
     const j = this.jeep, f = fwdOf(j.yaw), r = rightOf(j.yaw);
-    return seat === 'd' ? { x: j.x + f.x * 0.25 - r.x * 0.45, y: j.y - 0.25, z: j.z + f.z * 0.25 - r.z * 0.45 } : { x: j.x - f.x * 1.15, y: j.y + 0.55, z: j.z - f.z * 1.15 };
+    return seat === 'd' ? { x: j.x + f.x * 0.25 - r.x * 0.45, y: j.y - 0.25, z: j.z + f.z * 0.25 - r.z * 0.45 } : { x: j.x - f.x * 1.15, y: j.y + 0.85, z: j.z - f.z * 1.15 };
   }
   enterJeep(p) {
     const j = this.jeep; if (!j || p.seat) return false;
