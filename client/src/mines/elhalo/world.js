@@ -177,11 +177,13 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   const np = ng.attributes.position, nn = ng.attributes.normal, gc = new Float32Array(np.count * 3);
   for (let t = 0; t < np.count; t += 3) {
     const cx = (np.getX(t) + np.getX(t + 1) + np.getX(t + 2)) / 3, cz = (np.getZ(t) + np.getZ(t + 1) + np.getZ(t + 2)) / 3, cy = (np.getY(t) + np.getY(t + 1) + np.getY(t + 2)) / 3;
-    const out = cx < BOUNDS.x0 - 0.5 || cx > BOUNDS.x1 + 0.5 || cz < BOUNDS.z0 - 0.5 || cz > BOUNDS.z1 + 0.5;
+    const out = cx < BOUNDS.x0 - 0.15 || cx > BOUNDS.x1 + 0.15 || cz < BOUNDS.z0 - 0.15 || cz > BOUNDS.z1 + 0.15;
+    const nearWall = Math.min(cx - BOUNDS.x0, BOUNDS.x1 - cx, cz - BOUNDS.z0, BOUNDS.z1 - cz);
     const flat = nn.getY(t);
     const cd = Math.abs(cx - creekX(cz));
     let c;
     if (out || flat < 0.72) c = cy > 9 ? C.rock2 : R() < 0.5 ? C.rock : C.rock3;
+    else if (nearWall < 1.15) c = nearWall < 0.45 ? [C.rock3[0] * 0.72, C.rock3[1] * 0.72, C.rock3[2] * 0.72] : C.rock;
     else if (cd < 1.9) c = C.mud;
     else if (cd < 3.6) c = C.sand;
     else if (fortRects.some((f) => cx > f.x0 - 2 && cx < f.x1 + 2 && cz > f.z0 - 1 && cz < f.z1 + 1)) c = C.dry;
@@ -191,6 +193,42 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   }
   ng.setAttribute('color', new THREE.BufferAttribute(gc, 3));
   scene.add(new THREE.Mesh(ng, mat));
+
+  // ---- a solid, obvious canyon wall. The vertical face sits on BOUNDS (the same plane
+  // collide() and canyonCollide() use), with a darker band and a rocky ledge at the foot,
+  // and a thick backing so there are no see-through gaps in the displaced cliff mesh.
+  const wallParts = [];
+  const wbox = (x0, x1, y0, y1, z0, z1, col) => { const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0); g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); wallParts.push(paint(g, col)); };
+  const faceH = 16, thick = 8, ledgeIn = 0.2, ledgeOut = 0.9, ledgeH = 0.55, bandH = 1.4;
+  const sides = [
+    { along: 'z', face: BOUNDS.x0, a0: BOUNDS.z0, a1: BOUNDS.z1, nx: -1, nz: 0 },
+    { along: 'z', face: BOUNDS.x1, a0: BOUNDS.z0, a1: BOUNDS.z1, nx: 1, nz: 0 },
+    { along: 'x', face: BOUNDS.z0, a0: BOUNDS.x0, a1: BOUNDS.x1, nx: 0, nz: -1 },
+    { along: 'x', face: BOUNDS.z1, a0: BOUNDS.x0, a1: BOUNDS.x1, nx: 0, nz: 1 },
+  ];
+  for (const s of sides) {
+    for (let a = s.a0; a < s.a1; a += 4) {
+      const a2 = Math.min(a + 4, s.a1), mid = (a + a2) / 2;
+      const mx = s.along === 'z' ? s.face : mid, mz = s.along === 'z' ? mid : s.face;
+      const yb = terrain(Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, mx + (s.along === 'z' ? 0.2 * -s.nx : 0))), Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, mz + (s.along === 'x' ? 0.2 * -s.nz : 0))));
+      const col = tint(R() < 0.5 ? C.rock : C.rock2, 0.9 + R() * 0.12);
+      const dark = tint(C.rock3, 0.7 + R() * 0.08);
+      if (s.along === 'z') {
+        const x0 = s.nx < 0 ? s.face - thick : s.face, x1 = s.nx < 0 ? s.face : s.face + thick;
+        wbox(x0, x1, yb - 2, yb + faceH, a, a2, col);
+        wbox(s.face - 0.1, s.face + 0.1, yb - 0.2, yb + bandH, a, a2, dark);
+        const li = s.nx < 0 ? ledgeIn : -ledgeIn, lo = s.nx < 0 ? -ledgeOut : ledgeOut;
+        wbox(s.face + Math.min(li, lo), s.face + Math.max(li, lo), yb - 0.08, yb + ledgeH, a, a2, tint(C.rock3, 0.78));
+      } else {
+        const z0 = s.nz < 0 ? s.face - thick : s.face, z1 = s.nz < 0 ? s.face : s.face + thick;
+        wbox(a, a2, yb - 2, yb + faceH, z0, z1, col);
+        wbox(a, a2, yb - 0.2, yb + bandH, s.face - 0.1, s.face + 0.1, dark);
+        const li = s.nz < 0 ? ledgeIn : -ledgeIn, lo = s.nz < 0 ? -ledgeOut : ledgeOut;
+        wbox(a, a2, yb - 0.08, yb + ledgeH, s.face + Math.min(li, lo), s.face + Math.max(li, lo), tint(C.rock3, 0.78));
+      }
+    }
+  }
+  scene.add(new THREE.Mesh(mergeGeometries(wallParts), mat));
 
   // ---- the creek: a ribbon of water following its bed
   const pts = [];

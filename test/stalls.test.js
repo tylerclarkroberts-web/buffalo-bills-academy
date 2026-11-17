@@ -19,29 +19,38 @@ function fixture(t) {
   const player = (id, cash = 0) => { const p = store.players[id] = { id, name: id, kind: 'password', login: { username: id }, createdAt: clock.now }; accounts.ensure(p); p.bankroll = cash; store.savePlayers(); return id; };
   /** Pick an egg up and wait for it to hatch. Returns the owner's bugs as the page sees them, partner first. */
   const hatch = (id) => { barn.layEgg(id); clock.now += 2000; return barn.view(id).stable.bugs; };
-  return { clock, store, barn, player, hatch };
+  let catches = 0;
+  const catchWild = (id) => {
+    catches++;
+    barn.adopt(id, { wildId: `wild-${catches}`, battleId: `fight-${catches}`, species: 'onymacris', level: 1, health: 25 });
+    return barn.view(id).stable.bugs;
+  };
+  return { clock, store, barn, player, hatch, catchWild };
 }
 
 test('a barn holds three, the first is the partner, and a paid stall makes room for a fourth', t => {
-  const { barn, store, player, hatch } = fixture(t), ann = player('ann', 2000);
-  hatch(ann); hatch(ann);
-  const bugs = hatch(ann);
+  const { barn, store, player, hatch, catchWild } = fixture(t), ann = player('ann', 2000);
+  hatch(ann);
+  assert.equal(barn.rollEgg(ann), false, 'even with two empty stalls');
+  assert.throws(() => barn.layEgg(ann), /empty barn/);
+  catchWild(ann);
+  const bugs = catchWild(ann);
   assert.equal(bugs.length, STALLS);
   assert.deepEqual(bugs.map(b => b.partner), [true, false, false]);
   assert.equal(new Set(bugs.map(b => b.id)).size, 3, 'each has its own id');
   assert.equal(barn.view(ann).pen.id, bugs[0].id, 'pages that know one bug get the partner');
-  assert.equal(barn.rollEgg(ann), false);
-  assert.throws(() => barn.layEgg(ann), /Every stall is taken/);
+  assert.throws(() => barn.layEgg(ann), /empty barn/);
+  assert.throws(() => catchWild(ann), /Every stall is taken/);
   const view = barn.buildStall(ann);
   assert.deepEqual([view.stable.stalls, view.stable.nextStall, store.players[ann].bankroll], [STALLS + 1, STALL_COSTS[1], 2000 - STALL_COSTS[0]]);
   assert.throws(() => barn.buildStall(ann), /need \$4,000/, 'the next one costs more than is left');
   assert.equal(barn.stalls(ann), STALLS + 1, 'and nothing was built');
-  assert.equal(hatch(ann).length, 4);
+  assert.equal(catchWild(ann).length, 4);
 });
 
 test('a stalled bug gets hungry five times slower, and care still counts for it', t => {
-  const { barn, clock, player, hatch } = fixture(t), ann = player('ann');
-  hatch(ann); const [, stalled] = hatch(ann);
+  const { barn, clock, player, hatch, catchWild } = fixture(t), ann = player('ann');
+  hatch(ann); const [, stalled] = catchWild(ann);
   const before = barn.view(ann).stable.bugs;
   clock.now += 50 * HOUR;
   const [partner, slow] = barn.view(ann).stable.bugs;
@@ -61,8 +70,8 @@ test('a stalled bug gets hungry five times slower, and care still counts for it'
 });
 
 test('choosing a partner swaps the two without a jump in either bug\'s needs, and their clocks trade pace', t => {
-  const { barn, clock, player, hatch } = fixture(t), ann = player('ann');
-  hatch(ann); hatch(ann);
+  const { barn, clock, player, hatch, catchWild } = fixture(t), ann = player('ann');
+  hatch(ann); catchWild(ann);
   clock.now += 40 * HOUR;
   const [first, second] = barn.view(ann).stable.bugs;
   const after = barn.setPartner(ann, second.id);
@@ -76,8 +85,8 @@ test('choosing a partner swaps the two without a jump in either bug\'s needs, an
 });
 
 test('a stalled bug starves five times later; laying the partner to rest brings the next bug forward', t => {
-  const { barn, clock, player, hatch } = fixture(t), ann = player('ann');
-  hatch(ann); const [, stalled] = hatch(ann);
+  const { barn, clock, player, hatch, catchWild } = fixture(t), ann = player('ann');
+  hatch(ann); const [, stalled] = catchWild(ann);
   clock.now += STARVE_MS + DAY;
   let bugs = barn.view(ann).stable.bugs;
   assert.deepEqual(bugs.map(b => b.stage), ['dead', 'creature'], 'three weeks unfed kills the partner; in a stall that is under five days of going hungry');
@@ -89,8 +98,8 @@ test('a stalled bug starves five times later; laying the partner to rest brings 
 });
 
 test('any standing bug can be sent to a bout, and the fight\'s XP and record land on that bug', t => {
-  const { barn, clock, player, hatch } = fixture(t), ann = player('ann'), bob = player('bob');
-  hatch(ann); const [annPartner, annStalled] = hatch(ann); const [bobBug] = hatch(bob);
+  const { barn, clock, player, hatch, catchWild } = fixture(t), ann = player('ann'), bob = player('bob');
+  hatch(ann); const [annPartner, annStalled] = catchWild(ann); const [bobBug] = hatch(bob);
   barn.openBout(ann, { stake: 0, bug: annStalled.id });
   const open = barn.view(bob).bouts[0];
   assert.equal(open.fighter.name, annStalled.name);

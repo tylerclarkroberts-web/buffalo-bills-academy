@@ -6,18 +6,16 @@
 // v33: residents are real bugs (engine/bugs.js); old hybrid rows are migrated once, quietly, on load.
 // v33: bugs can die of neglect, tamagotchi-style, but only slowly: STARVE_MS (21 days) after the last feed (or the
 // end of an automatic feeder's run). Warnings start at 7 days. Death is computed from stored times, never a timer,
-// so a server restart can't cause or skip one. A dead bug leaves a gravestone until it's laid to rest; then the
-// stall is empty and a new egg can turn up in the mines.
+// so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, MAX_LEVEL, levelFor, xpFor } from './engine/creatures.js';
+import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, upsetXp } from './engine/bug-combat.js';
 import { line } from './engine/bout.js';
 import { cents } from './accounts.js';
 
-export const EGG_CHANCE = 10000; // out of 100,000 shifts (10%) with an empty barn; halved for each bug already kept
-export const WILD_CHANCE = 15000; // out of 100,000 shifts (15%): a wild bug loose in the tunnels, for a miner whose partner can fight it
+export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
 export const STALL_COSTS = [1500, 4000, 10000]; // the fourth, fifth and sixth stall
 export const BENCH_SLOW = 5;                    // a stalled bug lives this many times slower than the partner
@@ -75,10 +73,10 @@ const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
 
 export class Barn {
-  constructor({ store, accounts, now, incubateMs, eggInt, forceEgg = false, forceWild = false, startXp = 0, starveMs, fights } = {}) {
+  constructor({ store, accounts, now, incubateMs, eggInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
     this.starveMs = Number(starveMs) > 0 ? Number(starveMs) : STARVE_MS; this.k = this.starveMs / STARVE_MS;
-    this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.forceWild = !!forceWild; this.startXp = Math.max(0, Number(startXp) || 0);
+    this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
     this.incubateMs = Number(incubateMs) > 0 ? Number(incubateMs) : DEFAULT_INCUBATE_MS;
     this.eggInt = eggInt || ((n) => crypto.randomInt(n)); // its own random source: never the mine's pay or vein ones
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
@@ -107,13 +105,13 @@ export class Barn {
     }
     return n;
   }
-  newName(playerId, bug) {
+  newName(playerId, bug, records = this.doc) {
     const nick = bug.sci.split(' ')[0];
-    const n = (this.doc.count[bug.id] || 0) + 1;
+    const n = (records.count[bug.id] || 0) + 1;
     let name = `${nick} ${roman(n)}`.trim();
-    while (this.doc.names[name.toLowerCase()]) name = `${nick} ${roman(n + 1)}-${crypto.randomInt(1000)}`; // belt and braces
-    this.doc.count[bug.id] = n;
-    this.doc.names[name.toLowerCase()] = playerId;
+    while (records.names[name.toLowerCase()]) name = `${nick} ${roman(n + 1)}-${crypto.randomInt(1000)}`; // belt and braces
+    records.count[bug.id] = n;
+    records.names[name.toLowerCase()] = playerId;
     return name;
   }
   /** When it dies if nobody feeds it (ms epoch). Automatic feeder time counts as fed. */
@@ -164,37 +162,33 @@ export class Barn {
   /** A stall is free. An egg, a bug and a grave not yet laid to rest each take one. */
   room(playerId) { return this.bugs(playerId).length < this.stalls(playerId); }
 
-  /** At clock-in: does this shift have an egg in it? Only with a stall free, and half as often for each bug already kept. */
-  rollEgg(playerId) { return this.room(playerId) && (this.forceEgg || this.eggInt(100000) < EGG_CHANCE / 2 ** this.bugs(playerId).length); }
+  rollEgg(playerId) { return !this.has(playerId) && (this.forceEgg || this.eggInt(100000) < EGG_CHANCE); }
 
   /** Picking the egg up in the mine. Which creature is inside is decided now and kept secret until it hatches. */
   layEgg(playerId) {
-    if (!this.room(playerId)) throw new GameError('Every stall is taken. The egg stays where it is.', 409);
+    if (this.has(playerId)) throw new GameError('Mine eggs only turn up for an empty barn.', 409);
     const now = this.now();
     const species = ROSTER[this.eggInt(ROSTER.length)].id;
-    let eggAt = now; while (this.bugs(playerId).some((pen) => idOf(pen) === eggAt)) eggAt++; // this bug's id among its owner's
-    const egg = { stage: 'egg', species, eggAt, hatchAt: now + this.incubateMs, warmedAt: 0 };
-    if (this.doc.pens[playerId]) (this.doc.bench[playerId] ||= []).push(egg); else this.doc.pens[playerId] = egg;
-    this.save();
+    const egg = { stage: 'egg', species, eggAt: now, hatchAt: now + this.incubateMs, warmedAt: 0 };
+    this.commitPen(playerId, egg);
     return this.view(playerId);
   }
-  /**
-   * At clock-in: is a wild bug loose in this shift, and which? Only for a miner whose partner could fight it. `depth`
-   * (0 and up: a rougher day, a deeper shaft) is how grown it is. Rolled from the barn's own source, like the egg.
-   */
-  rollWild(playerId, depth = 0) {
-    if (!this.fit(playerId) || !(this.forceWild || this.eggInt(100000) < WILD_CHANCE)) return null;
-    return { species: ROSTER[this.eggInt(ROSTER.length)].id, level: Math.max(1, Math.min(MAX_LEVEL, 1 + depth + this.eggInt(3))) };
+  wildCaught(id, battleId) {
+    const caught = this.doc.wildCatches?.[id];
+    return battleId === undefined ? !!caught : caught === battleId;
   }
   /** A wild bug jarred in the mine takes a free stall: as grown as it was caught, as hurt as the jar found it. */
-  adopt(playerId, { species, level, health }) {
+  adopt(playerId, { wildId, battleId, species, level, health }) {
+    if (!wildId || !battleId || this.wildCaught(wildId)) throw new GameError('There is nothing wild here.', 409);
     if (!this.room(playerId)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
     const now = this.now(), stalled = !!this.doc.pens[playerId];
     let at = now; while (this.bugs(playerId).some((pen) => idOf(pen) === at || pen.bornAt === at)) at++; // its id, and the bornAt its fight receipts go by
-    const pen = { stage: 'creature', species, name: this.newName(playerId, BY_ID[species]), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
+    const changes = { names: { ...this.doc.names }, count: { ...this.doc.count }, wildCatches: { ...this.doc.wildCatches, [wildId]: battleId } };
+    const pen = { stage: 'creature', species, name: this.newName(playerId, BY_ID[species], changes), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 60, at: now }])), health: Math.max(1, Math.min(100, Math.round(health))), ...(stalled ? { benchedAt: now } : {}) };
-    if (stalled) (this.doc.bench[playerId] ||= []).push(pen); else this.doc.pens[playerId] = pen;
-    this.save();
+    if (stalled) changes.bench = { ...this.doc.bench, [playerId]: [...(this.doc.bench[playerId] || []), pen] };
+    else changes.pens = { ...this.doc.pens, [playerId]: pen };
+    this.commitDoc(changes); // ownership and removal from the mine survive a restart together
     return pen;
   }
   /** Another stall, paid for on the spot. */

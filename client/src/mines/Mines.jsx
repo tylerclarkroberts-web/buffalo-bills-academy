@@ -429,8 +429,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const order = BUG_ORDERS.find((o) => o.id === id), guide = guideRef.current;
     if (order && guide?.order(id)) { setBugOrder(id); setLine(order.line((shift.bug?.name || 'Your bug').toUpperCase())); }
   };
-  // The shift's wild bug: 'there' until it has been fought, null when there is none, 'shy' when it will not fight you.
-  const wildRef = useRef(shift.wild ? 'there' : null), wildSeen = useRef(false), wildAsked = useRef(0);
+  const canFightWild = useRef(!!shift.bug);
   function stopDance() {
     if (!danceRef.current) return;
     danceRef.current = null; setDance(null); sceneRef.current?.stopDance(); audio?.danceBeat(false);
@@ -575,7 +574,6 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (!battleRef.current) { freeze(); audio?.dread(false); }
     // The server sends only the blows this page has not seen; the ring wants the whole fight so far, plus what the mine adds at the end.
     const m = mergeFight(battleRef.current, b), raid = m.over?.raid, sign = m.over?.won ? '+' : '−';
-    if (m.over && m.wild) { wildRef.current = null; sceneRef.current?.removeWild(); } // fought, jarred or run from: it is not there any more
     if (m.over) Object.assign(m, { xpEarned: m.over.bug?.xp, levelBefore: m.over.bug?.levelBefore, levelAfter: m.over.bug?.levelAfter,
       ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: m.wild ? 'Time. It wanders off unbeaten.' : 'No contest. Nobody gets robbed.' } : {}),
       ...(m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
@@ -594,6 +592,11 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       return;
     }
     sceneRef.current?.setOthers(v.others || []); setOthers(v.others?.length || 0); guideRef.current?.setOthers(v.others || []);
+    if (v.wilds) sceneRef.current?.setWilds(v.wilds);
+    if (v.egg === false && eggRef.current === 'there') {
+      eggRef.current = 'gone'; sceneRef.current?.removeEgg('sink'); setEggNear(false);
+    }
+    if (typeof v.canFightWild === 'boolean') canFightWild.current = v.canFightWild;
     const p = v.battle ? null : v.ambush; if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
     if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);
     if (v.battle) showBattle(v.battle);
@@ -620,14 +623,6 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const battleJar = async () => {
     const b = battleRef.current; if (!b) return 'That fight is over.';
     try { const r = await pvpJar(pvpSend, b.id, b.rounds.length); showBattle(r.battle); return r.held; } catch (e) { return e.message; }
-  };
-  const meetWild = async () => {
-    try { onPvp(await pvpWild(pvpSend)); }
-    catch (e) {
-      setLine(String(e.message).toUpperCase());
-      if (/wants a bug/.test(e.message)) wildRef.current = 'shy';
-      else if (/nothing wild/.test(e.message)) { wildRef.current = null; sceneRef.current?.removeWild(); }
-    }
   };
   const battleForfeit = async () => { try { await pvpForfeit(pvpSend); } catch { /* the next heartbeat tells */ } pvp.current?.beat(); };
   const battleDone = () => {
@@ -751,7 +746,20 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
     scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
-    if (wildRef.current) scene.addWild(shift.wild);
+    scene.setWilds(shift.wilds || []);
+    const wildSeen = new Set(), wildRetryAt = new Map();
+    let askingWild = false;
+    const meetWild = async (id) => {
+      askingWild = true;
+      try {
+        const view = await pvpWild(pvpSend, id);
+        if (sceneRef.current === scene) onPvp(view);
+      } catch (e) {
+        if (sceneRef.current !== scene || done.current) return;
+        if (!wildRetryAt.has(id)) setLine(String(e.message).toUpperCase());
+        wildRetryAt.set(id, Date.now() + (/another miner is fighting/i.test(e.message) ? 5000 : 1500));
+      } finally { askingWild = false; }
+    };
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
       eggRef.current = 'taking'; setEggNear(false);
@@ -863,11 +871,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (l !== liftRef.current) { liftRef.current = l; setLiftNear(l); }
       const n = !l && dv.dist < 2.1 && dv.facing > 0.75;
       if (n !== doorRef.current) { doorRef.current = n; setDoorNear(n); }
-      if (wildRef.current === 'there' && !battleRef.current) {
-        const away = scene.wildTiles();
-        if (away < 4 && !wildSeen.current) { wildSeen.current = true; setLine(`A WILD ${(BY_ID[shift.wild.species]?.name || 'BUG').toUpperCase()}, LEVEL ${shift.wild.level}, IS IN THE TUNNEL AHEAD. IT WANTS A FIGHT.`); }
+      const closest = scene.nearestWild();
+      if (closest && !battleRef.current && !doomRef.current && !mapRef.current && !done.current && !document.hidden) {
+        const { wild, tiles } = closest;
+        if (tiles < 4 && !wildSeen.has(wild.id)) {
+          wildSeen.add(wild.id); setLine(`A WILD ${(BY_ID[wild.species]?.name || 'BUG').toUpperCase()}, LEVEL ${wild.level}, IS IN THE TUNNEL.`);
+        }
         // Horror Night: a jump scare has the screen for a moment, so the fight waits for it (the scare itself never starts during a fight)
-        if (away <= 1 && !scareRef.current && Date.now() - wildAsked.current > 1500) { wildAsked.current = Date.now(); meetWild(); }
+        if (tiles <= 1 && canFightWild.current && !scareRef.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) meetWild(wild.id);
       }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }

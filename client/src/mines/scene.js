@@ -174,6 +174,7 @@ export class MineScene {
     this.renderer.setPixelRatio(1);
     this.scale = 0.34; // render small, upscale with pixelated CSS for the CRT look
     this.scene = new THREE.Scene();
+    this.wilds = new Map();
     const look = LOOKS[depth] || LOOKS[0], acid = this.acid = acidOf(look);
     this.scene.background = new THREE.Color(look.bg);
     this.scene.fog = new THREE.Fog(look.bg, 2.5, fogFar); // deeper shafts are darker; a headlamp pushes it back
@@ -418,15 +419,26 @@ export class MineScene {
   }
   /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
   addBugGuide(bug) { this.bugMesh = this.bugBillboard(BY_ID[bug?.species], bug.style || null, '#b6ff7a'); }
-  /** The shift's wild bug, waiting in the tunnel under a red glow. */
-  addWild({ species, x, y }) {
-    this.removeWild();
-    this.wild = { ...this.bugBillboard(BY_ID[species], null, '#ff5a3a'), x: x * TILE, z: y * TILE };
-    this.wild.group.position.set(this.wild.x, 0, this.wild.z); this.wild.group.visible = true;
+  setWilds(wilds) {
+    const ids = new Set(wilds.map(wild => wild.id));
+    for (const [id, wild] of this.wilds) if (!ids.has(id)) {
+      this.scene.remove(wild.group); disposeMeshes(wild.group); this.wilds.delete(id);
+    }
+    for (const wild of wilds) if (!this.wilds.has(wild.id)) {
+      const sprite = this.bugBillboard(BY_ID[wild.species], null, '#ff5a3a');
+      sprite.group.position.set(wild.x * TILE, 0, wild.y * TILE);
+      sprite.group.visible = true;
+      this.wilds.set(wild.id, { ...wild, ...sprite });
+    }
   }
-  removeWild() { if (this.wild) { this.scene.remove(this.wild.group); this.wild = null; } }
-  /** How far the miner is from the wild bug, in tiles (Infinity when there is none). */
-  wildTiles() { return this.wild ? Math.hypot(this.pos.x - this.wild.x, this.pos.y - this.wild.z) / TILE : Infinity; }
+  nearestWild() {
+    let nearest = null;
+    for (const wild of this.wilds.values()) {
+      const tiles = Math.hypot(this.pos.x / TILE - wild.x, this.pos.y / TILE - wild.y);
+      if (!nearest || tiles < nearest.tiles) nearest = { wild, tiles };
+    }
+    return nearest;
+  }
   updateBugGuide(now, dt) {
     const bg = this.bugGuide, m = this.bugMesh; if (!bg || !m) return;
     bg.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart });
@@ -629,9 +641,9 @@ export class MineScene {
     if (this.stalker) this.updateVisitor(now, dt);
     if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
-    if (this.wild) {
-      this.wild.group.rotation.y = this.yaw; this.wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05;
-      this.wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
+    for (const wild of this.wilds.values()) {
+      wild.group.rotation.y = this.yaw; wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05;
+      wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
     }
     if (this.horror) this.updateHorror(now, dt);
     this.miners?.update(dt, now, this.yaw);
