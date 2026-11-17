@@ -440,6 +440,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/slots', needPlayer, wrap((req) => slots.view(req.player)));
   api.post('/slots/spin', needPlayer, wrap((req) => slots.spin(req.player, req.body?.bet)));
   api.post('/slots/end', needPlayer, wrap((req) => slots.end(req.player)));
+  // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
+  if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
   if (barnTest) api.post('/dev/slots-force', needPlayer, wrap((req) => { const f = String(req.body?.force || ''); slots.force = ['toot', 'stash', 'free'].includes(f) ? f : null; slots.lastAt.clear(); return { force: slots.force }; }));
   api.get('/shop', needPlayer, wrap((req) => shop.view(req.player)));
   api.post('/shop/buy', needPlayer, wrap((req) => shop.buy(req.player, String(req.body?.id || ''), { confirm: req.body?.confirm === true })));
