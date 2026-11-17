@@ -16,7 +16,7 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 
 | Gear | Effect |
 | --- | --- |
-| Buckets (Second Bucket to Golden Bucket) | Capacity of 200, 400, 600, 800 or 1,000 units; the largest owned counts. |
+| Buckets (Second Bucket to Golden Bucket) | Capacity of 200, 400, 600, 800 or 1,600 units; the largest owned counts. |
 | Bendy Straw, Shop-Vac | Collection is 2 or 10 times the base five units per second; the fastest owned counts. |
 | Headlamp Helmet | Longer lamp and fog distance. This is drawn by the browser only. |
 | The Foreman's Nephew | `POST /api/mines/nephew` once a UTC day (the faun's day) pays the owner $40 to $90, fixed by player and day, plus $1 for each day he has already worked (up to $30). His record (days, total, best day and a tally of what he did instead) is kept in `mines.json`. It is not a shift: no shift count, history or mining earnings. |
@@ -25,15 +25,15 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 | Shaft | Permit | Most a bucket brings up | Fare | Cave-in per pool |
 | --- | --- | --- | --- | --- |
 | Shaft 7 | none | 100 | free | never |
-| Shaft 8 | $40,000 | 400 | $40 | 4% |
-| Shaft 12 | $150,000 | 800 | $80 | 7% |
-| Earl's Level | $500,000 | 1,000 | $100 | 10% |
+| Shaft 8 | $15,000 | 400 | $20 | 4% |
+| Shaft 12 | $50,000 | 800 | $80 | 7% |
+| Earl's Level | $100,000 | 1,600 | $160 | 10% |
 
 A shift's capacity is the smaller of the bucket and the shaft's limit, so big buckets do nothing in Shaft 7. The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid fills are a share of that shift's capacity, so a halfway fill in a 200-unit bucket is 100 units. Acid and mud pay per 100 units, so a 200-unit bucket of ordinary acid pays twice the $80–$120 roll. The three rare finds pay the same for a full bucket of any size: Motherlode $10,000 (0.05%), Alien Skeletons $25,000 (0.02%) and Diamond Well $50,000 (0.01%).
 
 In a permit shaft, each pool after the first may cave in as the miner arrives, decided at clock-in from a separate random source and never sent to the browser beforehand. A cave-in spills a quarter of the bucket's current contents once; state then carries `spill` (`poolId`, `lost`). Later deposits still use their own fill roll, clamped to whatever space is left after the spill, so a cave-in costs volume, or pay if the miner clocks out early.
 
-A permit shaft may also have the other faun waiting at the elevator: 8% of shifts in Shaft 8, 12% in Shaft 12 and 15% on Earl's Level, decided at clock-in from its own random source and never sent to the browser beforehand. He takes a third of whatever the shift pays, rare finds included; the result then carries `twin` (`took`). Shaft 7 never meets him.
+A permit shaft may also have the other faun waiting at the elevator: 10% of shifts in Shaft 8, 20% in Shaft 12 and 30% on Earl's Level, decided at clock-in from its own random source and never sent to the browser beforehand. He takes a third of whatever the shift pays, rare finds included; the result then carries `twin` (`took`). Shaft 7 never meets him.
 
 About 20% of shifts (any shaft) also have the faun follow you in the tunnels, decided at clock-in from the same encounter roll as the visitor: 28% visitor, 20% faun, never both. Public state carries `faun: true` when he is on the shift. He is solid, bleats, and yields if he would trap you; pay and vein timing ignore him.
 

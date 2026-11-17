@@ -13,8 +13,8 @@ const FOOD = [
   ['mealworms', 'Mealworm Bucket', 300, '🪱', 60, 'Wriggly. Nutritious. Don\'t ask.'],
   ['dung', 'Premium Dung Ball', 450, '🟤', 70, 'Hand-rolled. For connoisseurs only.'],
   ['moss', 'Artisan Moss', 600, '🌿', 75, 'Grown in a terrarium by a man named Gil.'],
-  ['banquet', 'Bug Banquet', 2500, '🍱', 100, 'A full spread. Your bug will be insufferable about it.'],
-  ['ambrosia', 'Golden Ambrosia', 20000, '✨', 100, 'A lavish, golden meal. Your bug stays full for 7 days afterwards, like an automatic feeder.', 7],
+  ['banquet', 'Bug Banquet', 900, '🍱', 100, 'A full spread. Your bug will be insufferable about it.'],
+  ['ambrosia', 'Golden Ambrosia', 3000, '✨', 100, 'A lavish, golden meal. Your bug stays full for 7 days afterwards, like an automatic feeder.', 7],
 ];
 for (const [id, name, price, emoji, food, desc, days] of FOOD) add({ id: `food-${id}`, name, price, emoji, ...(days ? { days } : {}),
   desc: `Single use: press Use for +${food} Fed now (max 100), a fresh starvation clock and 12 XP. Wait 15 minutes between store foods. Fed normally falls 0.6/hour. ${desc}`,

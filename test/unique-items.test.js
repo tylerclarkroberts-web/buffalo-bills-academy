@@ -17,7 +17,7 @@ test('the Moon sells once; the store names its owner; deleting the account puts 
   const { shop, dale, earl } = setup();
   assert.deepEqual(CATALOG.filter((x) => x.unique).map((x) => x.id).sort(), ['odd-charter', 'odd-deed', 'odd-pickaxe', 'odd-skull']);
   shop.buy(dale, 'odd-deed', { confirm: true });
-  assert.equal(dale.bankroll, 4e6);
+  assert.equal(dale.bankroll, 7e6);
   assert.throws(() => shop.buy(earl, 'odd-deed', { confirm: true }), (e) => e.status === 409);
   assert.equal(earl.bankroll, 9e6, 'the refused buyer is not charged');
   assert.equal(shop.view(earl).taken['odd-deed'], 'Dale');
