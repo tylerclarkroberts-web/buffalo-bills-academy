@@ -139,7 +139,7 @@ function fixture(t, tier, { payout = 20000 } = {}) {
   const players = ['ann', 'bob'].map((id) => { const p = store.players[id] = { id, name: id }; accounts.ensure(p); return p; });
   const wet = (p) => {
     let s = mines.start(p, V2);
-    while (s.pools.find((x) => x.id === s.currentPoolId).quantity === null) { clock.now = Math.max(clock.now, s.readyAt); s = mines.probe(p, s.shiftId, { ...V2, poolId: s.currentPoolId }); }
+    while (s.pools.find((x) => x.id === s.currentPoolId).quantity === null) { s = mines.probe(p, s.shiftId, { ...V2, poolId: s.currentPoolId }); }
     return s;
   };
   const fill = (p, s) => {

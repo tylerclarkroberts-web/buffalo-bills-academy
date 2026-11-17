@@ -10,6 +10,7 @@ import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
+import { buildMineHands, resizeMineHands, stepMineHands } from './hands.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -312,6 +313,7 @@ export class MineScene {
     this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
     if (this.self.tag) this.self.tag.visible = false;
     this.self.group.visible = false; this.scene.add(this.self.group);
+    this.hands = buildMineHands(who.id); resizeMineHands(this.hands, this.camera.aspect);
   }
   startDance(id) {
     const d = danceId(id); if (!d) return false;
@@ -339,6 +341,7 @@ export class MineScene {
     const minH = (76 * Math.PI) / 180;
     this.baseFov = this.camera.fov = Math.min(105, Math.max(72, (2 * Math.atan(Math.tan(minH / 2) / this.camera.aspect) * 180) / Math.PI));
     this.camera.updateProjectionMatrix();
+    if (this.hands) resizeMineHands(this.hands, w / h);
   }
   blocked(x, z) {
     const g = this.maze.grid;
@@ -595,6 +598,7 @@ export class MineScene {
   loop(now) {
     if (this.paused) return;
     const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
+    const startX = this.pos.x, startY = this.pos.y;
     const { f, s, t } = this.input;
     if (!this.dance) this.yaw -= t * TURN * dt;
     if (!this.mining && !this.dance && (f || s)) {
@@ -662,6 +666,13 @@ export class MineScene {
     this.stepEgg(now);
     this.onNear?.(this.distanceToPool(), this.pathToPool(), this.facingToPool());
     this.renderer.render(this.scene, this.camera);
+    if (this.hands) {
+      stepMineHands(this.hands, dt, { distance: Math.hypot(this.pos.x - startX, this.pos.y - startY), mining: this.mining, hidden: !!this.dance || this.danceBlend > .001, reduce: this.reduce });
+      if (this.hands.group.visible) {
+        this.renderer.autoClear = false; this.renderer.clearDepth();
+        this.renderer.render(this.hands.scene, this.hands.camera); this.renderer.autoClear = true;
+      }
+    }
     this.raf = requestAnimationFrame(this.loop);
   }
   /**
@@ -706,6 +717,7 @@ export class MineScene {
     cancelAnimationFrame(this.raf);
     this.miners?.dispose();
     if (this.self) { this.scene.remove(this.self.group); disposeMeshes(this.self.group); this.self = null; }
+    if (this.hands) { disposeMeshes(this.hands.scene); this.hands = null; }
     if (this.horror) for (const m of this.horror.meshes.values()) { this.scene.remove(m.group); disposeCrewMember(m); }
     disposeMeshes(this.scene);
     this.renderer.dispose();

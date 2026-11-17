@@ -28,14 +28,14 @@ export default function MineMap({ maze, explored, pools, pose, onClose, returnFo
               {tile === RUBBLE && <path d={`M${x - 0.3},${y - 0.3}l.6,.6m0,-.6l-.6,.6`} className="m-map-rubble" />}
             </g>;
           })}
-          {knownPools.map(p => <circle key={p.id} data-pool={p.id} cx={p.x} cy={p.y} r=".32" className={`m-map-pool${p.remaining > 0 ? ' wet' : ''}`}><title>{p.remaining > 0 ? 'Acid pool' : p.quantity == null ? 'Seeping pool' : 'Empty pool'}</title></circle>)}
+          {knownPools.map(p => <circle key={p.id} data-pool={p.id} cx={p.x} cy={p.y} r=".32" className={`m-map-pool${p.remaining > 0 ? ' wet' : ''}`}><title>{p.remaining > 0 ? 'Acid pool' : p.quantity == null ? 'Uninspected pool' : 'Empty pool'}</title></circle>)}
           {door && <rect data-test="map-door" x={maze.start.x - (behindX ? 0.6 : 0.38)} y={maze.start.y - (behindX ? 0.38 : 0.6)} width={behindX ? 0.22 : 0.76} height={behindX ? 0.76 : 0.22} className="m-map-door"><title>Red door · Hall of Doors</title></rect>}
           <path data-test="map-player" d="M0,-.46 L.3,.3 0,.16 -.3,.3 Z" transform={`translate(${pose.x} ${pose.y}) rotate(${-pose.yaw * 180 / Math.PI})`} className="m-map-you"><title>You · facing this way</title></path>
         </svg>
       </div>
       <div className="m-map-legend">
         <span><i className="m-map-key-you">▲</i> YOU</span><span><i className="m-map-key-acid">●</i> ACID</span>
-        <span><i>○</i> EMPTY / SEEPING</span><span><i className="m-map-key-door">▰</i> RED DOOR</span>
+        <span><i>○</i> EMPTY / UNKNOWN</span><span><i className="m-map-key-door">▰</i> RED DOOR</span>
       </div>
       <p className="m-map-note">Still on the clock.</p>
     </dialog>

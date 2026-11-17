@@ -36,7 +36,7 @@ import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
 import { listTurns, registerTurnSource, scumSource } from './turns.js';
 
-export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, veinInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
+export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
   const config = authConfig(env);
   if (devLogin !== undefined) config.devLogin = devLogin;
@@ -67,7 +67,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
-  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, veinInt, poolInt, vein, barn, foreman,
+  const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, poolInt, vein, barn, foreman,
     ...(mineTier ? { layout: (now) => dailyLayout(mineDay(now), mineTier) } : {}) });
   const avatars = new Avatars({ dir: service.store.dir, store: service.store, now: service.now });
   service.avatars = avatars;

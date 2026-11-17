@@ -135,7 +135,7 @@ test('server: shifts started in the window are stamped (same for everyone); outs
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-horror-'));
     const clock = { t: ct(iso) };
     const fixed = (n) => Math.floor(n / 3);
-    const r = createApp({ dataDir, now: () => clock.t, devLogin: true, env: {}, randInt: fixed, scareInt: () => 99, veinInt: fixed, poolInt: fixed });
+    const r = createApp({ dataDir, now: () => clock.t, devLogin: true, env: {}, randInt: fixed, scareInt: () => 99, poolInt: fixed });
     const server = await new Promise((res) => { const s = r.app.listen(0, () => res(s)); });
     const base = `http://127.0.0.1:${server.address().port}`;
     try {
@@ -154,8 +154,8 @@ test('server: shifts started in the window are stamped (same for everyone); outs
   assert.equal(mon.sa.horror, undefined); assert.equal(mon.sb.horror, undefined);
   const forced = await run('2026-11-16T21:30:00-06:00', true);
   assert.ok(forced.sa.horror, 'dev override forces it on');
-  // the same randomness gives the same shift either way: outcome, vein, pools, capacity (eggs roll from the barn's own source)
-  const strip = ({ id, horror, startedAt, readyAt, egg, ...rest }) => ({ ...rest, pools: rest.pools.map(({ id: pid, ...p }) => ({ pid, ...p })) });
+  // the same randomness gives the same shift either way: outcome, pools, capacity (eggs roll from the barn's own source)
+  const strip = ({ id, horror, startedAt, egg, ...rest }) => ({ ...rest, pools: rest.pools.map(({ id: pid, ...p }) => ({ pid, ...p })) });
   assert.deepEqual(strip(forced.doc[0]), strip(mon.doc[0]));
   assert.deepEqual(forced.doc[0].outcome, mon.doc[0].outcome);
 });

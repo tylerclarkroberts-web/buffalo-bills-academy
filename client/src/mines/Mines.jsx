@@ -347,7 +347,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>A hatched barn bug comes with you — it knows the tunnels and leads you to the glow. A bug that loses a battle faints and stays home until the <b>Bug Center</b> in the Barn heals it.</li>
             <li><b>One mine a day, shared.</b> Everyone on shift walks the same tunnels. Sneak up behind someone to <b>assassinate</b> them for their acid and $20–$100. Meet face to face and your <b>bugs battle</b> — the winner also takes the loser's smokes.</li>
           </ol>
-          <p className="m-dim">Acid seeps in over time. Later finds tend to be fuller. Payroll weighs the bucket when you finish.</p>
+          <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
             {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}</span></button>)}
           </div>}
@@ -444,8 +444,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const eggLocation = useRef(eggSpot(maze, shift.seed)).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
-  const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker(chain);
-  const mapPools = () => bucketShift ? bucketRef.current.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}`, quantity: i < vein.current.i ? 0 : null, remaining: i === vein.current.i && vein.current.flowing ? 1 : 0 }));
+  const vein = useRef(null); if (!vein.current) vein.current = new VeinTracker();
+  const mapPools = () => bucketShift ? bucketRef.current.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}`, quantity: null, remaining: i === 0 && vein.current.flowing ? 1 : 0 }));
   const explored = useRef(null);
   if (!explored.current) explored.current = readExploration(me?.id, shift.shiftId, maze.grid, bucketShift ? shift.pools : chain.map((p, i) => ({ ...p, id: `legacy-${i}` })));
   const chartPosition = () => {
@@ -454,7 +454,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const chart = () => {
     const pos = chartPosition();
-    if (revealExploration(explored.current, maze.grid, pos.x, pos.y, mapPools(), bucketShift ? bucketRef.current.currentPoolId : `legacy-${vein.current.i}`)) rememberExploration(me?.id, shift.shiftId, explored.current);
+    if (revealExploration(explored.current, maze.grid, pos.x, pos.y, mapPools(), bucketShift ? bucketRef.current.currentPoolId : 'legacy-0')) rememberExploration(me?.id, shift.shiftId, explored.current);
   };
   const dreadEl = useRef(null);
   const visitorHere = useRef(false);
@@ -506,6 +506,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     sceneRef.current?.setDeposits(state.pools, state.currentPoolId);
     const pool = state.pools.find(p => p.id === state.currentPoolId);
     vein.current.flowing = !!pool?.remaining;
+    vein.current.inspected = pool?.quantity != null;
     if (state.currentPoolId !== previous.currentPoolId) {
       hold(false); setNear(false);
       const dry = state.pools.find(p => p.id === previous.currentPoolId)?.quantity === 0;
@@ -514,10 +515,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     } else if (pool?.remaining) {
       setStatus('FIND THE ACID POOL');
       if (previous.pools.find(p => p.id === pool.id)?.quantity == null) setLine(pool.quantity >= state.capacity ? 'A GUSHER. ONE HOLE, ONE WHOLE BUCKET. TELL NOBODY.'
-        : pool.quantity <= 10 * (SHAFTS.find(s => s.id === state.shaft)?.scale || 1) ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : 'THE ACID IS IN. TAKE WHAT YOU CAN CARRY.');
+        : pool.quantity <= 10 * (SHAFTS.find(s => s.id === state.shaft)?.scale || 1) ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : 'TAKE WHAT YOU CAN CARRY.');
     } else {
-      setStatus('IT\'S SEEPING IN. WAIT FOR IT.');
-      vein.current.waitUntil = Date.now() + Math.max(250, Math.min(2500, state.readyAt - state.serverNow));
+      setStatus(pool?.quantity != null ? 'POOLS DRAINED. CLOCK OUT WITH YOUR HAUL.' : 'FIND THE ACID POOL');
     }
     if (state.spill && state.spill.poolId !== previous.spill?.poolId) {
       setStatus('CAVE-IN.'); setLine('THE ROOF CAME DOWN. A QUARTER OF YOUR BUCKET IS NOW FLOOR. THE REST IS STILL YOURS.');
@@ -634,6 +634,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       const pool = shift.pools.find(p => p.id === shift.currentPoolId);
       if (pool) maze.pool = pool;
       vein.current.flowing = !!pool?.remaining;
+      vein.current.inspected = pool?.quantity != null;
+      if (vein.current.inspected && !vein.current.flowing) setStatus('POOLS DRAINED. CLOCK OUT WITH YOUR HAUL.');
     }
     // The server decided at clock-in whether he's on shift today (shift.scare); when and where he shows is up to how you move.
     const dark = Math.max(0, ['7', '8', '12', 'earl'].indexOf(shift.shaft));
@@ -646,32 +648,23 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
-    // v67: the vein tracker owns "is the acid in?". Pools are drawn damp until the server says it's in, then glow;
-    // a glowing pool in reach always shows MINE. At a pool: ask (dry: the vein moves on and this one stays a crater;
-    // seeping or no pools left: wait and ask again). Walking: ask now and then so the pool lights up when it comes in.
-    const askVein = async (kind) => {
+    // Inspect on arrival: the server confirms the pool's fixed amount before collection.
+    const askVein = async () => {
       const v = vein.current;
       if (closing.current || done.current || errorRef.current || doomRef.current) return;
-      v.begin(kind);
+      v.asking = true;
       try {
         if (bucketShift) { await client.current.probe(bucketRef.current.currentPoolId); return; } // accept() reads the answer
         const r = await api('POST', '/mines/probe', { shiftId: shift.shiftId });
-        const out = v.settle(r, Date.now());
-        if (out.flowing) { sceneRef.current?.setAcid(true); setStatus('FIND THE ACID POOL'); setLine('THE ACID IS IN. FILL THE BUCKET.'); return; }
-        if (out.seeping) { setStatus('IT\'S SEEPING IN. WAIT FOR IT.'); setLine('THE POOL IS DAMP. THE GEIGER SAYS SOON. THE GEIGER LIES.'); return; }
-        if (out.moved) {
-          const p = out.moved;
-          maze.pool = p; stalker.pool = p; faun?.setPool(p); bugGuide?.setPool(p); sceneRef.current?.setPool(p.x, p.y);
-          setStatus('DRY. THE VEIN MOVED DEEPER. FOLLOW THE CLICKS.');
-          setLine(DRY_LINES[(v.i + shift.seed) % DRY_LINES.length]);
-        }
+        v.flowing = !!r.flowing; v.inspected = true; sceneRef.current?.setAcid(v.flowing);
+        if (v.flowing) { setStatus('FIND THE ACID POOL'); setLine('FILL THE BUCKET.'); }
       } catch { v.fail(Date.now()); } finally { v.asking = false; }
     };
     const scene = new MineScene(canvas.current, maze, {
       onNear: (d, path, facing) => {
         const v = vein.current; v.reach(d);
         // Bucket shifts only ask at the pool: there a probe is the look that reveals the deposit.
-        const kind = v.wantProbe(Date.now()); if (kind === 'pool' || (kind && !bucketShift)) askVein(kind);
+        if (v.wantProbe(Date.now())) askVein();
         const n = v.canMine() && !done.current;
         if (n) { stalker.acidFound(); bugGuide?.acidFound(); }
         if (n !== lastNear) { lastNear = n; nearRef.current = n; setNear(n); if (!n) release(); }
@@ -900,16 +893,15 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   }, [holding, near, mineError, clockingOut]);
   useEffect(() => {
     if (bucketShift || progress < 1 || done.current) return;
-    const left = shift.minMs + 400 - (Date.now() - shift.localStart);
-    if (left > 0) { setStatus('BUCKET FULL. FOREMAN SAYS THE SHIFT ISN\'T OVER. KEEP SCRAPING.'); }
+    let cancelled = false, timer;
     const go = async () => {
-      if (done.current) return;
+      if (done.current || cancelled) return;
       setStatus('WEIGHING YOUR BUCKET…');
       const ok = await onFinish();
-      if (ok) done.current = true; else setTimeout(go, 800);
+      if (ok) done.current = true; else if (!cancelled) timer = setTimeout(go, 800);
     };
-    const id = setTimeout(go, Math.max(0, left));
-    return () => clearTimeout(id);
+    go();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [progress >= 1]);
 
   const secs = Math.floor(elapsed / 1000);
