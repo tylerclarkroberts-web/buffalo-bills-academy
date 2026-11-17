@@ -3,39 +3,124 @@
 
 export const SHIELD = { max: 100, delay: 3.2, rate: 45 };   // waits `delay` after the last hit, then refills at `rate`/s
 export const HEALTH = { max: 100 };                         // health never refills by itself: drops, revives and new rounds do
-export const GRENADES = { start: 2, max: 4, fuse: 1.7, radius: 5.5, damage: 120, speed: 15, lift: 4.5 };
+// Grenades. Piñatas (frags) bounce and go off on a timer; pegajosas stick to whatever they touch first.
+export const GRENADES = { start: 2, max: 3, fuse: 1.7, radius: 5.5, damage: 120, speed: 15, lift: 4.5 };
+export const STICKY = { start: 0, max: 2, fuse: 2.4, stuckFuse: 1.1, radius: 4.6, damage: 170, speed: 14, lift: 4, grab: 0.75 };
+export const NADE_KINDS = ['frag', 'sticky'];
 export const MELEE = { damage: 60, range: 2.6, cooldown: 0.75 };
 
+// The armory. Every gun is an original low-poly design that plays like a familiar archetype.
+//   kind: hitscan (default) | pellets (server spreads the pellets) | needle (homing crystals, server projectiles)
+//         rocket (server projectile, splash) | beam (charge, then a piercing line) | melee (lunge + strike, no ammo,
+//         a charge that runs down per swing)
+//   head: headshot multiplier. Precision guns hit hardest; explosives and melee weapons get nothing extra.
+//   tier: the order the supply truck hands them out (0 = what you start with).
 export const WEAPONS = {
-  rifle: { id: 'rifle', name: 'LA CHICHARRA', mag: 32, reserve: 192, rate: 10, damage: 8, spread: 0.022, reload: 1.6, auto: true },
-  pistol: { id: 'pistol', name: 'EL CHIFLÓN', mag: 10, reserve: 60, rate: 4, damage: 24, spread: 0.006, reload: 1.2, auto: false },
+  pistol: { id: 'pistol', name: 'PISTOLA', mag: 10, reserve: 60, rate: 4, damage: 24, spread: 0.006, reload: 1.2, auto: false, range: 80, head: 2, tier: 0 },
+  rifle: { id: 'rifle', name: 'RIFLE DE ASALTO', mag: 32, reserve: 192, rate: 10, damage: 8, spread: 0.022, reload: 1.6, auto: true, range: 60, head: 1.5, tier: 0 },
+  chispas: { id: 'chispas', name: 'PISTOLA DE CHISPAS', mag: 24, reserve: 72, rate: 5, damage: 17, spread: 0.01, reload: 1.4, auto: false, range: 50, head: 1.5, stun: 0.8, tier: 1 },
+  agujas: { id: 'agujas', name: 'AGUJAS', mag: 21, reserve: 84, rate: 9, damage: 7, spread: 0.03, reload: 1.8, auto: true, range: 45, head: 1.5, kind: 'needle', combine: 7, combineDamage: 150, combineRadius: 3.2, speed: 30, tier: 2 },
+  rafaga: { id: 'rafaga', name: 'RIFLE DE RÁFAGA', mag: 36, reserve: 216, rate: 2.6, burst: 3, burstGap: 0.07, damage: 15, spread: 0.004, reload: 1.8, auto: false, range: 95, head: 2, tier: 3 },
+  escopeta: { id: 'escopeta', name: 'ESCOPETA', mag: 6, reserve: 36, rate: 1.15, pellets: 9, damage: 16, spread: 0.075, reload: 2.4, auto: false, range: 14, head: 1.5, kind: 'pellets', tier: 4 },
+  escopetita: { id: 'escopetita', name: 'LA ESCOPETITA', mag: 5, reserve: 30, rate: 2.2, pellets: 6, damage: 15, spread: 0.095, reload: 1.6, auto: false, range: 9, head: 1.5, kind: 'pellets', tier: 5 },
+  francotirador: { id: 'francotirador', name: 'FRANCOTIRADOR', mag: 4, reserve: 24, rate: 1.1, damage: 110, spread: 0, reload: 2.2, auto: false, range: 220, head: 3, pierce: 2, zoom: 3.2, tier: 6 },
+  machete: { id: 'machete', name: 'MACHETE DE ENERGÍA', mag: 12, reserve: 0, rate: 1.7, damage: 160, reach: 2.9, lunge: 6.5, auto: false, head: 1, kind: 'melee', tier: 7 },
+  laser: { id: 'laser', name: 'CAÑÓN LÁSER', mag: 5, reserve: 10, rate: 0.75, damage: 320, spread: 0, reload: 2.6, auto: false, range: 160, head: 1.5, kind: 'beam', charge: 0.8, pierce: 6, tier: 8 },
+  cohetes: { id: 'cohetes', name: 'LANZACOHETES', mag: 2, reserve: 8, rate: 1, damage: 230, radius: 5.5, speed: 34, reload: 2.8, auto: false, head: 1, kind: 'rocket', tier: 9 },
+  martillo: { id: 'martillo', name: 'MARTILLO DE GRAVEDAD', mag: 10, reserve: 0, rate: 0.95, damage: 210, radius: 4.6, reach: 2.6, lunge: 5, auto: false, head: 1, kind: 'melee', slam: true, tier: 10 },
+  // the jeep's mounted gun: endless belt, it just gets hot
+  torreta: { id: 'torreta', name: 'AMETRALLADORA', mag: 60, reserve: 0, rate: 11, damage: 13, spread: 0.018, reload: 2.2, auto: true, range: 90, head: 1.5, mounted: true, tier: -1 },
 };
+export const WEAPON_IDS = Object.keys(WEAPONS);
+export const HAND_WEAPONS = WEAPON_IDS.filter((id) => !WEAPONS[id].mounted);
+export const START_WEAPONS = ['rifle', 'pistol'];
+// The supply truck's list, weakest first. After the last one it keeps bringing the big stuff.
+export const TRUCK_TIERS = HAND_WEAPONS.filter((id) => WEAPONS[id].tier > 0).sort((a, b) => WEAPONS[a].tier - WEAPONS[b].tier);
+export function truckWeapon(waveCleared, rnd = Math.random) {
+  const i = Math.max(0, waveCleared - 1);
+  if (i < TRUCK_TIERS.length) return TRUCK_TIERS[i];
+  const top = TRUCK_TIERS.slice(-4);
+  return top[Math.floor(rnd() * top.length) % top.length];
+}
+export const headMult = (id) => WEAPONS[id]?.head ?? 1;
+// damage at a distance: full out to 40% of the range, then down to a quarter at the range (pellets drop to nothing past 1.5x)
+export function falloff(id, dist) {
+  const w = WEAPONS[id]; if (!w.range) return 1;
+  if (dist <= w.range * 0.4) return 1;
+  if (dist >= w.range) return w.kind === 'pellets' ? Math.max(0, 0.25 * (1 - (dist - w.range) / (w.range * 0.5))) : 0.5;
+  return 1 - 0.75 * (dist - w.range * 0.4) / (w.range * 0.6);
+}
 
-// The horde. Cartoon party-crashers, not monsters: everyone bursts into confetti and marigolds.
-//   luchador  fast, grabby, tackles from a few metres out
-//   mariachi  keeps their distance and lobs musical notes (a trumpet blast up close)
-//   granjero  a farmer with a pitchfork: slow, tanky, pulls boards off fast
-//   padre     a padre with a censer: blesses nearby foes (heals them, hurries them along), weak in a scrap
+// The horde. Cartoon party-crashers at first; from wave 5 the canyon gets uglier, and from wave 10 it gets dark.
+//   luchador   fast, grabby, tackles from a few metres out
+//   mariachi   keeps their distance and lobs musical notes
+//   granjero   a farmer with a pitchfork: slow, tanky, pulls boards off fast
+//   padre      blesses nearby foes (heals them, hurries them along), weak in a scrap
+//   chupacabra (wave 5+) gaunt, spiny and horribly fast, twitchy, pounces, climbs the fort walls
+//   llorona    (wave 10+) floats, weeps, drifts through walls and boards, wails, appears behind you
+//   cucuy      (wave 10+) a hulking thing from under the bed: slow, huge hits, rips boards in a blink
+//   nahual     (wave 10+) a shapeshifter: a cloaked man that drops onto all fours as a wolf and runs you down
+//   lechuza    (wave 10+) an owl-witch that circles high over the canyon and dives at your head
+// head: where the head hitbox sits (height above the feet, radius, how far forward of the middle).
 export const ENEMIES = {
-  luchador: { hp: 70, speed: 4.9, radius: 0.45, height: 1.9, hit: 12, every: 0.85, reach: 1.55, tackle: { range: 7, speed: 2.3, time: 0.6, damage: 22, cool: 4 }, tear: 1.2, points: 100 },
-  mariachi: { hp: 60, speed: 3.1, radius: 0.42, height: 1.85, hit: 7, every: 1.0, reach: 1.5, note: { damage: 10, every: 1.9, speed: 16, keep: 11, range: 30 }, tear: 1.4, points: 120 },
-  granjero: { hp: 170, speed: 2.5, radius: 0.5, height: 1.95, hit: 20, every: 1.3, reach: 2.1, tear: 0.6, points: 130 },
-  padre: { hp: 120, speed: 2.7, radius: 0.46, height: 1.95, hit: 8, every: 1.1, reach: 1.5, bless: { every: 3.5, radius: 8, heal: 0.3, haste: 1.25, time: 3 }, keep: 6, tear: 1.4, points: 160 },
+  luchador: { hp: 70, speed: 4.9, radius: 0.45, height: 1.9, hit: 12, every: 0.85, reach: 1.55, tackle: { range: 7, speed: 2.3, time: 0.6, damage: 22, cool: 4 }, tear: 1.2, points: 100, climb: true, head: { y: 1.8, r: 0.3, f: 0 } },
+  mariachi: { hp: 60, speed: 3.1, radius: 0.42, height: 1.85, hit: 7, every: 1.0, reach: 1.5, note: { damage: 10, every: 1.9, speed: 16, keep: 11, range: 30 }, tear: 1.4, points: 120, head: { y: 1.8, r: 0.3, f: 0 } },
+  granjero: { hp: 170, speed: 2.5, radius: 0.5, height: 1.95, hit: 20, every: 1.3, reach: 2.1, tear: 0.6, points: 130, head: { y: 1.82, r: 0.3, f: 0 } },
+  padre: { hp: 120, speed: 2.7, radius: 0.46, height: 1.95, hit: 8, every: 1.1, reach: 1.5, bless: { every: 3.5, radius: 8, heal: 0.3, haste: 1.25, time: 3 }, keep: 6, tear: 1.4, points: 160, head: { y: 1.82, r: 0.3, f: 0 } },
+  chupacabra: { hp: 55, speed: 9.2, radius: 0.42, height: 1.15, hit: 13, every: 0.5, reach: 1.5, tackle: { range: 7.5, speed: 2.2, time: 0.45, damage: 20, cool: 2.6 }, tear: 0.8, points: 150, climb: true, jitter: true, head: { y: 0.95, r: 0.25, f: 0.55 } },
+  llorona: { hp: 420, speed: 2.6, radius: 0.45, height: 2.1, hit: 18, every: 1.2, reach: 1.8, float: 0.55, etereo: true, wail: { every: 7, radius: 10, damage: 8 }, blink: { every: 10, dist: 6, min: 11 }, tear: 99, points: 500, cap: 2, head: { y: 1.85, r: 0.28, f: 0 } },
+  cucuy: { hp: 320, speed: 3.4, radius: 0.62, height: 2.65, hit: 34, every: 1.4, reach: 2.3, tear: 0.35, points: 350, cap: 3, head: { y: 2.38, r: 0.36, f: 0.05 } },
+  nahual: { hp: 120, speed: 6.6, radius: 0.5, height: 1.4, hit: 16, every: 0.7, reach: 1.7, tackle: { range: 8, speed: 2.1, time: 0.5, damage: 22, cool: 3.2 }, shift: { man: 0.55, wolf: 1.2, every: 4.5 }, tear: 0.9, points: 200, climb: true, cap: 6, head: { y: 1.1, r: 0.27, f: 0.6 } },
+  lechuza: { hp: 70, speed: 7.5, radius: 0.5, height: 1.0, hit: 15, every: 1.5, reach: 1.7, fly: { cruise: 7, swoop: 11, near: 9 }, tear: 99, points: 220, cap: 4, head: { y: 0.8, r: 0.26, f: 0.2 } },
 };
 export const ENEMY_TYPES = Object.keys(ENEMIES);
+export const FOLKLORE = ['llorona', 'cucuy', 'nahual', 'lechuza'];
+// where an enemy's head is, given its pose (yaw: facing (-sin, -cos) like everything else; lift for floaters/flyers)
+export function headOf(type, x, y, z, yaw = 0) {
+  const h = ENEMIES[type].head;
+  return { x: x - Math.sin(yaw) * h.f, y: y + h.y, z: z - Math.cos(yaw) * h.f, r: h.r };
+}
 
 export const MATCH = {
-  tickHz: 10, maxAlive: 30, maxPlayers: 8, breakSecs: 8, firstBreakSecs: 5, overSecs: 9,
-  downedSecs: 18, reviveSecs: 3, reviveRange: 1.9, respawnSecs: 22, buildSecs: 0.8, buildRange: 2.2, buyRange: 1.8,
+  tickHz: 10, maxAlive: 30, maxPlayers: 8, breakSecs: 4, firstBreakSecs: 5, overSecs: 9,
+  downedSecs: 20, reviveSecs: 3, reviveRange: 1.9, buildSecs: 0.8, buildRange: 2.2, buyRange: 1.8,
   offlineDropSecs: 20, emptyResetSecs: 20, pickupLife: 25,
-  points: { hit: 5, board: 10, boardsPerRound: 30, revive: 60, pvpKill: 100 },
+  lobbyCountdown: 5, truck: { grab: 3.4, reach: 5 }, chupaWave: 5, nightWave: 10, jeepWave: 15,
+  jeep: { enter: 3.2, maxSpeed: 19, runOver: 260, hp: 1200 },
+  spots: { ammoEvery: 18, nadeEvery: 26, maxAmmo: 4, maxNades: 3 },
+  points: { hit: 5, board: 10, boardsPerRound: 30, revive: 60, pvpKill: 100, head: 5 },
 };
 
-export function createPlayer() {
-  return { health: HEALTH.max, shield: SHIELD.max, lastHit: -Infinity, grenades: GRENADES.start, dead: false, meleeAt: -Infinity,
-    weapons: { rifle: loadout('rifle'), pistol: loadout('pistol') }, current: 'rifle', other: 'pistol' };
+// ---- your look: picked in the lobby, saved to your profile, worn in the match. Each slot is an option index.
+export const LOOK = {
+  poncho: ['ROSA', 'TURQUESA', 'MARIGOLD', 'NEGRO', 'ARCOÍRIS', 'ZIGZAG'],
+  sombrero: ['CHARRO', 'RANCHERO', 'SOMBRERÓN', 'NINGUNO'],
+  hatColor: ['PAJA', 'NEGRO', 'BLANCO', 'ROJO', 'VERDE', 'AZUL'],
+  bigote: ['MANUBRIO', 'HERRADURA', 'LÁPIZ', 'NINGUNO'],
+  cuello: ['NINGUNO', 'PALIACATE', 'SARAPE'],
+  cuelloColor: ['ROJO', 'AZUL', 'NEGRO', 'MORADO', 'VERDE', 'NARANJA'],
+  botas: ['CAFÉ', 'NEGRAS', 'PITÓN'],
+};
+export const LOOK_KEYS = Object.keys(LOOK);
+export const DEFAULT_LOOK = [0, 0, 0, 0, 1, 0, 0];
+// anything that came off the wire, made into a valid look (unknowns fall back to the default)
+export function cleanLook(a) {
+  const src = typeof a === 'string' ? [...a].map(Number) : Array.isArray(a) ? a : [];
+  return LOOK_KEYS.map((k, i) => { const v = Math.floor(Number(src[i])); return Number.isFinite(v) && v >= 0 && v < LOOK[k].length ? v : DEFAULT_LOOK[i]; });
 }
-function loadout(id) { const w = WEAPONS[id]; return { id, mag: w.mag, reserve: w.reserve, nextShot: 0, reloadUntil: 0 }; }
+export const lookStr = (a) => cleanLook(a).join('');
+
+export function createPlayer(slots = START_WEAPONS) {
+  const weapons = {}; for (const id of slots) weapons[id] = loadout(id);
+  return { health: HEALTH.max, shield: SHIELD.max, lastHit: -Infinity, nades: { frag: GRENADES.start, sticky: STICKY.start }, dead: false, meleeAt: -Infinity,
+    weapons, current: slots[0], other: slots[1] };
+}
+export function loadout(id) { const w = WEAPONS[id]; return { id, mag: w.mag, reserve: w.reserve, nextShot: 0, reloadUntil: 0 }; }
+// swap the gun in hand for a new one (or top up the one you already carry). Returns 'new' | 'refill'.
+export function giveWeapon(p, id) {
+  if (p.weapons[id]) { const s = p.weapons[id], w = WEAPONS[id]; s.mag = w.mag; s.reserve = Math.max(s.reserve, w.reserve); return 'refill'; }
+  delete p.weapons[p.current]; p.weapons[id] = loadout(id); p.current = id; return 'new';
+}
 
 // Shield takes the hit first; whatever is left over goes to health. Every hit restarts the recharge delay.
 export function applyDamage(p, amount, now) {
@@ -58,9 +143,10 @@ export function tickShield(p, now, dt) {
 }
 
 export const heal = (p, n) => { if (!p.dead) p.health = Math.min(HEALTH.max, p.health + n); };
-export function reloading(p, now) { return p.weapons[p.current].reloadUntil > now; }
+export function reloading(p, now) { return (p.weapons[p.current]?.reloadUntil || 0) > now; }
 
 // One trigger pull. Returns true if a round left the barrel. An empty magazine starts a reload by itself.
+// Melee weapons spend one charge per swing and never reload.
 export function tryFire(p, now) {
   const s = p.weapons[p.current], w = WEAPONS[s.id];
   if (p.dead || s.reloadUntil > now || now < s.nextShot) return false;
@@ -71,26 +157,35 @@ export function tryFire(p, now) {
 }
 export function startReload(p, now) {
   const s = p.weapons[p.current], w = WEAPONS[s.id];
-  if (s.reloadUntil > now || s.mag >= w.mag || s.reserve <= 0) return false;
+  if (s.reloadUntil > now || s.mag >= w.mag) return false;
+  if (w.mounted) { s.reloadUntil = now + w.reload; return true; } // the belt cools down instead
+  if (s.reserve <= 0) return false;
   s.reloadUntil = now + w.reload;
   return true;
 }
 export function tickReload(p, now) {
   for (const s of Object.values(p.weapons)) {
     if (s.reloadUntil && s.reloadUntil <= now) {
-      const take = Math.min(WEAPONS[s.id].mag - s.mag, s.reserve);
+      const w = WEAPONS[s.id];
+      if (w.mounted) { s.mag = w.mag; s.reloadUntil = 0; continue; }
+      const take = Math.min(w.mag - s.mag, s.reserve);
       s.mag += take; s.reserve -= take; s.reloadUntil = 0;
     }
   }
 }
 export function swapWeapon(p) {
-  const s = p.weapons[p.current]; s.reloadUntil = 0; // swapping cancels a reload, like you'd expect
+  const s = p.weapons[p.current]; if (s) s.reloadUntil = 0; // swapping cancels a reload, like you'd expect
   [p.current, p.other] = [p.other, p.current];
 }
-export function addAmmo(p, id, n) { const s = p.weapons[id]; s.reserve = Math.min(WEAPONS[id].reserve * 2, s.reserve + n); }
-export function addGrenade(p, n = 1) { const before = p.grenades; p.grenades = Math.min(GRENADES.max, p.grenades + n); return p.grenades - before; }
-export function throwGrenade(p) { if (p.dead || p.grenades <= 0) return false; p.grenades -= 1; return true; }
-export function tryMelee(p, now) { if (p.dead || now - p.meleeAt < MELEE.cooldown) return false; p.meleeAt = now; return true; }
+export function addAmmo(p, id, n) { const s = p.weapons[id]; if (!s || !WEAPONS[id].reserve) return; s.reserve = Math.min(WEAPONS[id].reserve * 2, s.reserve + n); }
+// one ammo box: about a third of a full reserve for each gun you carry (melee charges don't come in boxes)
+export const ammoPack = (id) => Math.ceil((WEAPONS[id]?.reserve || 0) / 3);
+export function addGrenade(p, n = 1, kind = 'frag') {
+  const cap = kind === 'sticky' ? STICKY.max : GRENADES.max;
+  const before = p.nades[kind] || 0; p.nades[kind] = Math.min(cap, before + n); return p.nades[kind] - before;
+}
+export function throwGrenade(p, kind = 'frag') { if (p.dead || !(p.nades[kind] > 0)) return false; p.nades[kind] -= 1; return true; }
+export function tryMelee(p, now, cooldown = MELEE.cooldown) { if (p.dead || now - p.meleeAt < cooldown) return false; p.meleeAt = now; return true; }
 
 // Splash falls off linearly to nothing at the edge of the blast.
 export const splash = (dist, radius = GRENADES.radius, damage = GRENADES.damage) => (dist >= radius ? 0 : Math.round(damage * (1 - dist / radius)));
@@ -104,22 +199,35 @@ export function waveScale(n) {
   return { hp: 1 + 0.15 * (n - 1), speed: Math.min(1.45, 1 + 0.035 * (n - 1)), damage: Math.min(1.8, 1 + 0.05 * (n - 1)), gap: Math.max(0.35, 1.5 - 0.08 * n) };
 }
 export function waveMix(n) { // shares of each type for round n
-  const mariachi = n < 2 ? 0 : Math.min(0.35, 0.12 + 0.025 * n);
-  const padre = n < 4 ? 0 : Math.min(0.14, 0.06 + 0.01 * n);
-  const granjero = n < 2 ? 0.25 : Math.min(0.3, 0.2 + 0.01 * n);
-  return { luchador: 1 - mariachi - padre - granjero, mariachi, granjero, padre };
+  const mariachi = n < 2 ? 0 : Math.min(0.3, 0.12 + 0.025 * n);
+  const padre = n < 4 ? 0 : Math.min(0.12, 0.06 + 0.01 * n);
+  const granjero = n < 2 ? 0.25 : Math.min(0.25, 0.2 + 0.01 * n);
+  const chupacabra = n < MATCH.chupaWave ? 0 : Math.min(0.2, 0.1 + 0.015 * (n - MATCH.chupaWave));
+  const night = n >= MATCH.nightWave;
+  const cucuy = night ? 0.05 : 0, nahual = night ? 0.08 : 0, lechuza = night ? 0.07 : 0;
+  const llorona = 0; // placed by hand below: one a wave at night, two from the jeep wave on
+  const mix = { mariachi, granjero, padre, chupacabra, llorona, cucuy, nahual, lechuza };
+  const rest = Object.values(mix).reduce((a, b) => a + b, 0);
+  if (rest > 0.85) for (const k of Object.keys(mix)) mix[k] *= 0.85 / rest; // luchadors never vanish entirely
+  mix.luchador = 1 - Object.values(mix).reduce((a, b) => a + b, 0);
+  return mix;
 }
 export function waveRoster(n, players = 1, rnd = Math.random) {
   const size = waveSize(n, players), mix = waveMix(n), out = [];
   for (const t of ENEMY_TYPES) for (let i = 0; i < Math.round(size * mix[t]); i++) out.push(t);
-  if (n >= 4 && !out.includes('padre')) out[out.length - 1] = 'padre';
   while (out.length < size) out.push('luchador');
   out.length = size;
+  const must = [];
+  if (n >= 4) must.push('padre');
+  if (n >= MATCH.chupaWave) must.push('chupacabra', 'chupacabra');
+  if (n >= MATCH.nightWave) must.push('llorona', 'cucuy', 'nahual', 'lechuza');
+  if (n >= MATCH.jeepWave) must.push('llorona');
+  for (const t of must) { const have = out.filter((x) => x === t).length, need = must.filter((x) => x === t).length; if (have < need) { let i = out.lastIndexOf('luchador'); if (i < 0) i = out.findLastIndex((x) => !must.includes(x)); if (i >= 0) out[i] = t; } }
   for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
   return out;
 }
 export const waveBonus = (n) => 50 * n;
-export const killPoints = (type, how) => Math.round(ENEMIES[type].points * (how === 'melee' ? 1.6 : how === 'grenade' ? 1.25 : 1));
+export const killPoints = (type, how) => Math.round(ENEMIES[type].points * (how === 'melee' ? 1.6 : how === 'grenade' ? 1.25 : how === 'head' ? 1.3 : 1));
 
 // Ray (origin o, unit direction d) against a sphere: distance to the hit or Infinity.
 export function raySphere(o, d, c, r) {

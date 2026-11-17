@@ -347,7 +347,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
   // EL HALO (Hall of Doors): the shared horde match. Free play; it never touches accounts.
-  const elhalo = new ElHalo({ tickMs: env.ELHALO_TICK_MS !== undefined ? Number(env.ELHALO_TICK_MS) : undefined, testHooks: barnTest });
+  const elhalo = new ElHalo({ tickMs: env.ELHALO_TICK_MS !== undefined ? Number(env.ELHALO_TICK_MS) : undefined, testHooks: barnTest, store: service.store });
   elhalo.mount(api, needPlayer);
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));

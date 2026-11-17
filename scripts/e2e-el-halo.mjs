@@ -1,6 +1,7 @@
 // Browser check + screenshots for EL HALO (Hall of Doors), the shared horde match. Boots its own throwaway server,
-// clocks three miners in (two desktops and a phone), walks each through the mine door and the hall into El Halo, and
-// checks: they share one world and see each other and the horde; nailing boards back over a mission window works
+// clocks three miners in (two desktops and a phone), walks each through the mine door and the hall into El Halo (the
+// lobby first; the host starts it), and checks: they share one world and see each other and the horde; nailing boards
+// back over a hacienda window works
 // (desktop E and the phone's ACCIÓN button) and pays points; friendly fire lands and scores a PVP down; a friend can
 // pick you back up; a late joiner gets the current wave as it stands; leaving takes you off everyone's screen; and
 // nothing but /api/elhalo is called from inside the room. No page errors.
@@ -27,7 +28,7 @@ async function login(name, email) {
   return r.headers.get('set-cookie').split(';')[0].split('=')[1];
 }
 const noScroll = (p) => p.evaluate(() => { const de = document.documentElement; return !(de.scrollHeight > innerHeight + 1 || de.scrollWidth > innerWidth + 1); });
-const inView = (p, sel) => p.evaluate((s) => [...document.querySelectorAll(s)].every((el) => { const r = el.getBoundingClientRect(); return r.width > 10 && r.height > 10 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), sel);
+const inView = (p, sel) => p.evaluate((s) => [...document.querySelectorAll(s)].filter((el) => el.getClientRects().length).every((el) => { const r = el.getBoundingClientRect(); return r.width > 10 && r.height > 10 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), sel);
 const st = (p) => p.evaluate(() => window.__elHalo.state());
 const hook = (p, body) => p.evaluate((b) => fetch('/api/elhalo/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json()), body);
 const until = async (p, fn, arg, ms = 8000) => { try { await p.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch { return false; } };
@@ -48,12 +49,17 @@ async function open(browser, sid, s) {
   check(!p.reqs.some((r) => /ElHaloRoom/.test(r.url)), `${s.n}: El Halo chunk not loaded in the hall`);
   p.tIn = Date.now();
   if (s.m) await p.tap('[data-test=hall-door-elhalo]'); else await p.click('[data-test=hall-door-elhalo]');
-  await p.waitForSelector('[data-test=elhalo-title]', { timeout: 15000 });
+  await p.waitForSelector('[data-test=elhalo-lobby]', { timeout: 15000 });
   await p.waitForFunction(() => !!window.__elHalo && window.__elHalo.mode === 'title', null, { timeout: 10000 });
   return p;
 }
 async function start(p) {
-  if (p.m) await p.tap('[data-test=elhalo-start]'); else await p.click('[data-test=elhalo-start]');
+  const tap = (sel) => (p.m ? p.tap(sel) : p.click(sel));
+  await tap('[data-test=elhalo-start]');
+  await until(p, () => ['lobby', 'playing'].includes(window.__elHalo.state().mode));
+  if ((await st(p)).mode === 'lobby') { // in the lobby: the host starts it (or everyone gets ready)
+    if (await p.isVisible('[data-test=elhalo-begin]')) await tap('[data-test=elhalo-begin]'); else await tap('[data-test=elhalo-ready]');
+  }
   return until(p, () => window.__elHalo.state().mode === 'playing' && window.__elHalo.state().joined && window.__elHalo.state().st === 'alive');
 }
 async function holdKey(p, key, ms) { await p.keyboard.down(key); await p.waitForTimeout(ms); await p.keyboard.up(key); }
@@ -69,7 +75,7 @@ async function main() {
   // ---- Tyler opens the door to an empty canyon and starts it
   const T = await open(browser, sT, { w: 1280, h: 720, n: 'tyler-1280x720' });
   await until(T, () => /NADIE|EN LA CANCHA/.test(document.querySelector('[data-test=elhalo-live]')?.textContent || ''));
-  check(/NADIE/.test(await T.textContent('[data-test=elhalo-live]')), `Tyler: title says the canyon is empty (${await T.textContent('[data-test=elhalo-live]')})`);
+  check(/NADIE/.test(await T.textContent('[data-test=elhalo-live]')), `Tyler: lobby says the canyon is empty (${await T.textContent('[data-test=elhalo-live]')})`);
   await shot(T, '01-title-spectating');
   check(await start(T), 'Tyler: joins the match');
   await hook(T, { calm: true }); // the horde can't hurt anyone during the checks (players still can)
@@ -83,17 +89,19 @@ async function main() {
   check(await start(J), 'Joe: joins the same match');
   check(await until(T, () => window.__elHalo.state().others.includes('Joe')) && await until(J, () => window.__elHalo.state().others.includes('Tyler')), 'Tyler and Joe see each other');
 
-  // ---- boarding inside the mission: an east window, boards pulled down, enemies outside
-  const win = OPENINGS.find((o) => o.b === 'mision' && o.side === 'e' && !o.door);
+  // ---- boarding inside the hacienda (la misión is wide open now): a window, boards pulled down, enemies outside
+  const win = OPENINGS.find((o) => o.b === 'hacienda' && o.side === 'w' && !o.door);
+  const nx = win.nx, nz = win.nz, ix = win.in.x - nx * 0.4, iz = win.in.z - nz * 0.4;
   await hook(T, { boards: { i: win.i, n: 1 } });
-  await place(T, win.in.x - 0.4, win.in.z, yawTo(win.in, win)); // inside, facing the window
-  await hook(T, { spawn: [{ type: 'luchador', x: win.out.x + 2.5, z: win.out.z - 1, still: true }, { type: 'granjero', x: win.out.x + 4, z: win.out.z + 1.5, still: true }, { type: 'mariachi', x: win.out.x + 6, z: win.out.z - 2.5, still: true }] });
+  await place(T, ix, iz, yawTo(win.in, win)); // inside, facing the window
+  const outAt = (d, s) => ({ x: win.out.x + nx * d - nz * s, z: win.out.z + nz * d + nx * s });
+  await hook(T, { spawn: [{ type: 'luchador', ...outAt(2.5, -1), still: true }, { type: 'granjero', ...outAt(4, 1.5), still: true }, { type: 'mariachi', ...outAt(6, -2.5), still: true }] });
   await until(T, (i) => window.__elHalo.state().bars[i] === 1 && window.__elHalo.state().prompt?.k === 'build', win.i);
   a = await st(T);
-  check(a.prompt?.k === 'build' && Math.hypot(a.pos.x - win.in.x + 0.4, a.pos.z - win.in.z) < 0.5, `Tyler: inside the mission at a broken window, prompt to nail boards (${JSON.stringify(a.prompt)})`);
+  check(a.prompt?.k === 'build' && Math.hypot(a.pos.x - ix, a.pos.z - iz) < 0.5, `Tyler: inside the hacienda at a broken window, prompt to nail boards (${JSON.stringify(a.prompt)})`);
   const pts0 = a.pts;
   await T.keyboard.down('KeyE'); await T.waitForTimeout(1300);
-  await shot(T, '03-mission-boarding');
+  await shot(T, '03-hacienda-boarding');
   await T.waitForTimeout(1900); await T.keyboard.up('KeyE');
   await until(T, (i) => window.__elHalo.state().bars[i] >= 4, win.i, 3000);
   a = await st(T);
@@ -101,6 +109,7 @@ async function main() {
   check(await until(J, (i) => window.__elHalo.state().bars[i] >= 4, win.i, 3000), 'Joe sees the same boards');
 
   // ---- friendly fire: Joe shoots Tyler in the open, then finishes him (a PVP down), then picks him back up
+  await hook(T, { clear: true }); // nobody else in the line of fire
   await place(T, 3, -6, 0); await place(J, 3, 0, Math.PI);
   await sleep(600);
   await J.evaluate(() => window.__elHalo.aimAtPlayer('Tyler'));
@@ -175,7 +184,7 @@ async function main() {
     check(p.errs.length === 0, `${p.n}: no page errors ${p.errs.slice(0, 3).join(' | ')}`);
   }
   const idx = fs.readdirSync(path.join(ROOT, 'dist/assets')).filter((n) => /^(index|Mines)-.*\.js$/.test(n)).map((n) => fs.readFileSync(path.join(ROOT, 'dist/assets', n), 'utf8')).join('');
-  check(!/LA CHICHARRA|\/api\/elhalo|HORDA EN EL CA/.test(idx), 'El Halo code is only in its own chunk (not index or Mines)');
+  check(!/MARTILLO DE GRAVEDAD|\/api\/elhalo|HORDA EN EL CA/.test(idx), 'El Halo code is only in its own chunk (not index or Mines)');
   const vid = await J.video()?.path();
   await J.ctx.close(); await T.ctx.close(); await K.ctx.close();
   if (OUT && vid) { fs.copyFileSync(vid, path.join(OUT, 'joe-session.webm')); console.log('     video:', path.join(OUT, 'joe-session.webm')); }
