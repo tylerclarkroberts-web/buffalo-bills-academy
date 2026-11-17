@@ -102,6 +102,10 @@ export function createAudio() {
     pickup() { const t = ctx.currentTime; tone(sfx, t, 0.08, 1320, { type: 'triangle', v: 0.2 }); tone(sfx, t + 0.07, 0.12, 1760, { type: 'triangle', v: 0.2 }); },
     wave() { const t = ctx.currentTime; [74, 78, 81, 86].forEach((n, k) => horn(t + k * 0.12, n, 0.14 + (k === 3 ? 0.4 : 0), 0.22)); },
     death() { const t = ctx.currentTime; [74, 73, 72, 71].forEach((n, k) => horn(t + k * 0.28, n - 12, 0.3 + (k === 3 ? 0.6 : 0), 0.22)); },
+    hammer() { const t = ctx.currentTime; nz(sfx, t, 0.05, { f: 1800, q: 3, v: 0.5 }); tone(sfx, t, 0.06, 420, { f2: 200, type: 'square', v: 0.12 }); },
+    crack() { const t = ctx.currentTime; nz(sfx, t, 0.16, { f: 700, q: 1.5, v: 0.6 }); nz(sfx, t + 0.05, 0.12, { f: 2400, q: 2, v: 0.25 }); },
+    bless() { const t = ctx.currentTime; [76, 81, 85].forEach((n, k) => tone(sfx, t + k * 0.06, 0.5, midi(n), { type: 'sine', v: 0.08, a: 0.05 })); },
+    hitmark() { tone(sfx, ctx.currentTime, 0.04, 2600, { type: 'triangle', v: 0.06 }); },
     close() { clearInterval(timer); ctx.close().catch(() => {}); },
   };
   return api;
