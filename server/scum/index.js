@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { GameError } from '../engine/game.js';
 import { attachSeatBugs, tableBugOf } from '../tableBug.js';
 import * as S from './rules.js';
+import * as Royal from './royal.js';
 
 export const cryptoRng = (n) => crypto.randomInt(n);
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -349,6 +350,53 @@ export class Scum {
   }
   seatedOpen(pid) { return Object.values(this.doc.tables).some((t) => ['lobby', 'playing'].includes(t.status) && t.seats.some((s) => s && !s.left && s.id === pid)); }
 
+
+  /**
+   * The King of the last finished round issues one cosmetic command to the Scum.
+   * One per round; never changes cards, titles, turns or bankroll.
+   */
+  command(p, code, { cmd, targetSeat } = {}) {
+    const t = this.table(code);
+    return this.mutate(t, p.id, () => {
+      const court = Royal.court(t, p.id);
+      const spec = Royal.byId[cmd];
+      if (!spec) throw new GameError('That is not a royal command.', 400);
+      if (!court.canCommand) {
+        if (!t.lastRound) throw new GameError('No court yet. Finish a round first.', 409);
+        if (court.already) throw new GameError('The King already issued a command this round.', 409);
+        throw new GameError('Only the King may issue a royal command.', 403);
+      }
+      let target = null;
+      if (spec.needsTarget) {
+        const ts = Number(targetSeat);
+        const ok = court.targets.find((x) => x.seat === ts);
+        if (!ok) throw new GameError('Pick someone at the table to do the tooting.', 400);
+        target = ts;
+      } else if (targetSeat != null && targetSeat !== '') throw new GameError('That command does not take a target.', 400);
+      t.royal ||= [];
+      const ev = {
+        id: `r${(t.seq || 0) + 1}`,
+        round: court.round, at: this.now(), cmd: spec.id,
+        kingSeat: court.kingSeat, scumSeat: court.scumSeat, targetSeat: target,
+        kingName: court.kingName, scumName: court.scumName, targetName: target != null ? this.nm(t, target) : null,
+        seen: { [p.id]: this.now() }, // the King already watched it happen on their own table
+      };
+      t.royal.push(ev);
+      if (t.royal.length > 40) t.royal.splice(0, t.royal.length - 40);
+      const names = { king: ev.kingName, scum: ev.scumName, target: ev.targetName };
+      this.log(t, Royal.logText(ev, names), { k: 'royal', id: ev.id, cmd: ev.cmd, kingSeat: ev.kingSeat, scumSeat: ev.scumSeat, targetSeat: ev.targetSeat });
+    });
+  }
+  /** Mark a royal command as seen by this player so it will not auto-play again. Rewatch is client-side. */
+  seenRoyal(p, code, { id } = {}) {
+    const t = this.table(code);
+    const ev = (t.royal || []).find((e) => e.id === String(id || ''));
+    if (!ev) throw new GameError('That command is gone.', 404);
+    ev.seen = { ...ev.seen, [p.id]: this.now() };
+    this.save();
+    return this.viewOf(t, p.id);
+  }
+
   // ---------------------------------------------------------------- the view (never another player's cards)
   view(p, code, { away = false } = {}) {
     const t = this.table(code);
@@ -382,6 +430,22 @@ export class Scum {
       minPlayers: S.MIN_PLAYERS, payouts: this.payouts ? { ...S.PAY, need: S.DUES_MAX } : null, hold: !!t.hold, mySeat: me,
       bankroll: me >= 0 && this.payouts && !t.seats[me].bot ? this.getPlayer(viewerId)?.bankroll ?? null : null, seats, round, lastRound: t.lastRound, titles: t.titles, waiting, here, seq: t.seq, now,
       log: t.log.filter((e) => !e.vis || e.vis.includes(me)).slice(-80),
+      royal: this.royalView(t, viewerId),
+    };
+  }
+  royalView(t, viewerId) {
+    const court = Royal.court(t, viewerId);
+    const hist = (t.royal || []).map((e) => Royal.publicEvent(e, t));
+    const pend = viewerId ? Royal.pendingFor(t, viewerId) : null;
+    return {
+      catalog: Royal.COMMANDS,
+      canCommand: court.canCommand,
+      issuedThisRound: court.already,
+      kingSeat: court.kingSeat ?? null,
+      scumSeat: court.scumSeat ?? null,
+      targets: court.targets,
+      pending: pend ? Royal.publicEvent(pend, t) : null,
+      history: hist.slice(-12),
     };
   }
 }

@@ -2,7 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { residentErrands, makeRoomCamera } from '../client/src/room/scene-model.js';
 import { residentPose } from '../client/src/room/activity.js';
-import { defaultFurniture, defaultShelves, defaultWallDisplays, furnitureValid, furnitureRect, upgradeFurniture, wallMountsFit, roomFinishes, ROOM_FURNITURE, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
+import { defaultFurniture, defaultShelves, defaultWallDisplays, furnitureValid, furnitureRect, roomCouchScale, upgradeFurniture, wallMountsFit, roomFinishes, ROOM_FURNITURE, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
+
+test('the couch grows to fit clear floor while an older crowded layout keeps all its positions', () => {
+  const furniture = defaultFurniture(), full = roomCouchScale(furniture);
+  assert.deepEqual(full, [1.3, 1.16, 1.25]);
+  furniture.couch.z = Math.round((-3 * S + 0.6) * 100) / 100;
+  assert.deepEqual(roomCouchScale(furniture), [1.3, 1.16, 1.05], 'older back-wall couch can still grow wider');
+  furniture.desk = { ...furniture.desk, x: -0.41, z: furniture.couch.z };
+  assert.deepEqual(furnitureValid(furniture), furniture);
+  assert.deepEqual(roomCouchScale(furniture), [1, 1, 1], 'a nearby desk still fits beside the original couch');
+  const [x, z, right, front] = furnitureRect('couch', { ...furniture.couch, r: 1 }, full);
+  assert.ok(Math.abs(right - x - 1.25) < 1e-9 && Math.abs(front - z - 3.12) < 1e-9);
+});
 
 test('the couch starts somewhere valid and the resident can walk to it, the cash table and things to inspect', () => {
   const furniture = defaultFurniture(), errands = residentErrands(furniture);
