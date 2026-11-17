@@ -1,5 +1,4 @@
-// v75: Game Boy battles end with a faint. The winner's bug earns battle XP plus a win bonus, the loser's bug faints
-// (saved server-side) and sits out battles, barn bouts and guiding until the Bug Center nurse heals it, for free.
+// Knocked-out bugs sit out battles, barn bouts and guiding until the Bug Center nurse heals them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,9 +9,11 @@ import { Accounts } from '../server/accounts.js';
 import { Barn, BATTLE_XP, WIN_BONUS_XP, BOUT_LEVEL, FIND_XP, RECOVER_MS, FAST_HEAL_COST } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines } from '../server/mines.js';
-import { Pvp, PVP } from '../server/pvp.js';
+import { Pvp } from '../server/pvp.js';
 import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
+import { MAX_ROUNDS, simulateBout } from '../server/engine/bout.js';
 import { upsetXp } from '../server/engine/bug-combat.js';
+import { Scum } from '../server/scum/index.js';
 import { tableBugOf } from '../server/tableBug.js';
 import { createApp } from '../server/app.js';
 import { greeting, done, NO, REST, SIGNS, NURSE } from '../client/src/bugcenter/script.js';
@@ -81,6 +82,8 @@ test('the winning bug gets battle XP plus a win bonus; the loser gets battle XP 
   const f = fixture(t);
   const m = f.meet();
   assert.equal(m.view.battle.you.level, 5);
+  const annSide = m.battle.a === 'ann' ? 0 : 1;
+  m.battle.fight.S.hp[annSide] = Math.floor(m.battle.fight.S.maxHp[annSide] / 2);
   const end = f.annWins(m);
   assert.equal(end.battle.over.won, false);
   assert.deepEqual(end.battle.over.bug, { xp: BATTLE_XP, bonus: 0, fainted: true, levelBefore: 4, levelAfter: 4, xpBar: { xp: 360 + BATTLE_XP, level: 4, from: 360, to: 640 } });
@@ -102,6 +105,7 @@ test('the winning bug gets battle XP plus a win bonus; the loser gets battle XP 
   const v = f.barn.view('bob').pen;
   assert.equal(v.fainted, true); assert.equal(v.faintedBy, 'ANN');
   assert.equal(f.barn.view('ann').pen.fainted, false);
+  assert.equal(f.pvp.bugOf('ann').health, 100, 'the surviving bug has full HP for its next fight');
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir, 'barn.json'), 'utf8')).pens.bob.faintedAt, f.barn.doc.pens.bob.faintedAt);
 });
 
@@ -267,27 +271,21 @@ test('Bug Center script: all Japanese on screen, English on request, and the rig
   assert.ok(HEAL_TUNE.length >= 4);
 });
 
-// ----- v76: HP never comes back on its own; only the Bug Center heals -----
-import { simulateBout } from '../server/engine/bout.js';
-import { Scum } from '../server/scum/index.js';
-import { healthOf } from '../server/barn.js';
-
-/** Ann posts a free barn bout and Bob joins it; tries seeds until the result isn't a draw. Returns both receipts. */
-function bout(f) {
-  for (let seed = 0; seed < 64; seed++) {
-    f.barn.eggInt = () => seed;
-    for (const id of ['ann', 'bob']) { const pen = f.barn.doc.pens[id]; pen.boutAt = 0; delete pen.faintedAt; delete pen.faintedBy; delete pen.faintedIn; delete pen.health; }
-    f.barn.save();
-    const open = f.barn.openBout('ann', { stake: 0 }).openBout;
-    f.barn.joinBout('bob', open.id); f.clock.now += 10_000; f.barn.fights.sweep(); // nobody is watching, so it runs to the end
-    const ann = f.barn.view('ann').pen.lastBout, bob = f.barn.view('bob').pen.lastBout;
-    if (ann.result !== 'draw') return { ann, bob, winner: ann.result === 'won' ? 'ann' : 'bob', loser: ann.result === 'won' ? 'bob' : 'ann' };
-    f.clock.now += 2 * 3600e3;
-  }
-  throw new Error('only draws');
+function ringBout(f) {
+  const { id } = f.barn.openBout('ann', { stake: 0 }).openBout;
+  f.barn.joinBout('bob', id);
+  return f.barn.fights.get(id);
 }
 
-test('simulateBout: a hurt bug starts the fight with what it has left; no health means full', () => {
+// Put two standing bugs just before the bell, with the last attacker stunned so the score is deterministic.
+function ringBell(fights, fight, hp) {
+  fight.S.hp = hp;
+  fight.S.turn = MAX_ROUNDS - 1;
+  fight.S.side[fight.S.by].skip = true;
+  fights.advance(fight);
+}
+
+test('simulateBout records explicit starting HP and defaults to full health', () => {
   const a = { species: 'manticora', name: 'A', level: 5, mood: 80 }, b = { species: 'onymacris', name: 'B', level: 5, mood: 80 };
   const full = simulateBout(a, b, 's1');
   assert.deepEqual(full.startHp, full.maxHp);
@@ -297,71 +295,90 @@ test('simulateBout: a hurt bug starts the fight with what it has left; no health
   assert.ok(hurt.rounds.every((r) => r.hp[0] <= hurt.maxHp[0]));
 });
 
-test('barn bout: the loser faints until the Bug Center; the winner keeps its damage; neither heals with time', (t) => {
-  const f = fixture(t);
-  const { ann, bob, winner, loser } = bout(f);
-  for (const r of [ann, bob]) assert.ok(Number.isFinite(r.healthAfter) && Array.isArray(r.startHp), 'receipts carry the HP the bug walked away with');
-  const lose = f.barn.view(loser).pen, win = f.barn.view(winner).pen;
-  assert.equal(lose.fainted, true); assert.equal(lose.faintedIn, 'ring'); assert.equal(lose.faintedBy, winner.toUpperCase());
-  assert.equal(lose.health, 0); assert.equal(lose.hp, 0); assert.equal(lose.hurt, true);
-  assert.equal(win.fainted, false);
-  assert.ok(win.health >= 1 && win.health <= 100); assert.equal(win.hp, win.health >= 100 ? win.maxHp : Math.round(win.maxHp * win.health / 100));
-  // Fainted: no bouts until healed, even after the cooldown
-  f.clock.now += 2 * 3600e3;
-  assert.throws(() => f.barn.openBout(loser, { stake: 0 }), /fainted\. Take it to the Bug Center/);
-  // Time does nothing: three days later (fed, so alive) the HP is exactly where the bout left it
-  const before = { [winner]: f.barn.doc.pens[winner].health, [loser]: 0 };
-  f.clock.now += 3 * 86400e3;
-  for (const id of ['ann', 'bob']) { f.barn.doc.pens[id].fedAt = f.clock.now; for (const s of ['hunger', 'mood', 'clean']) f.barn.doc.pens[id].stats[s] = { v: 80, at: f.clock.now }; }
-  f.barn.save(); f.boot();
-  assert.equal(f.barn.view(winner).pen.health, before[winner] ?? 100, 'no passive regen');
-  assert.equal(f.barn.view(loser).pen.fainted, true, 'fainting never wears off');
-  // A hurt winner can still fight, starting at its reduced HP
-  const pen = f.barn.doc.pens[winner]; pen.health = 40; f.barn.save();
-  assert.equal(f.barn.view(winner).pen.hurt, true);
-  const open = f.barn.openBout(winner, { stake: 0 }).openBout;
-  assert.equal(open.fighter.health, 40);
-  // The nurse: free, full HP, faint cleared, and the only way back
-  const money = f.store.players[loser].bankroll;
-  const healed = f.barn.heal(loser);
-  assert.equal(healed.healed, true); assert.equal(healed.cost, 0); assert.equal(f.store.players[loser].bankroll, money);
-  assert.equal(healed.pen.health, 100); assert.equal(healed.pen.hurt, false); assert.equal(healed.pen.fainted, false);
-  assert.equal(f.barn.doc.pens[loser].faintedIn, undefined);
-  f.barn.cancelBout(winner, open.id);
-  const patched = f.barn.heal(winner);
-  assert.equal(patched.healed, true, 'a hurt (not fainted) bug is healed too'); assert.equal(patched.pen.hp, patched.pen.maxHp);
-  assert.equal(f.barn.heal(winner).healed, false, 'healthy: polite no-op');
+test('barn knockout: the survivor starts its next bout at full HP while the loser must see the nurse', (t) => {
+  const f = fixture(t), fight = ringBout(f);
+  fight.S.by = 0;
+  fight.S.hp = [60, 1];
+  fight.S.R = () => 0.1;
+  f.barn.fights.advance(fight);
+  const win = f.barn.view('ann').pen, lose = f.barn.view('bob').pen;
+  assert.deepEqual(win.lastBout.rounds.at(-1).hp, [60, 0], 'replay shows the actual finishing blow');
+  assert.deepEqual([win.lastBout.healthAfter, win.health, win.hp, win.fainted], [100, 100, win.maxHp, false]);
+  assert.deepEqual([lose.lastBout.healthAfter, lose.hp, lose.fainted, lose.faintedIn, lose.faintedBy], [0, 0, true, 'ring', 'ANN']);
+  assert.equal(f.barn.openBout('ann', { stake: 0 }).openBout.fighter.health, 100);
+  assert.equal(f.barn.heal('ann', { pay: true }).healed, false);
+  f.clock.now += RECOVER_MS;
+  f.boot();
+  assert.throws(() => f.barn.openBout('bob', { stake: 0 }), /Bug Center/);
+  const healed = f.barn.heal('bob');
+  assert.deepEqual([healed.cost, healed.pen.fainted, healed.pen.health], [0, false, 100]);
 });
 
-test('barn bout: the host fights with its HP at join time, and old receipts without HP change nothing', (t) => {
+for (const draw of [false, true]) {
+  test(`barn bell: both bugs recover after a ${draw ? 'draw' : 'decision'} and the replay keeps the final HP`, (t) => {
+    const f = fixture(t);
+    f.barn.doc.pens.bob.xp = f.barn.doc.pens.ann.xp;
+    const fight = ringBout(f);
+    const hp = [draw ? 40 : 60, 40];
+    ringBell(f.barn.fights, fight, hp);
+    const ann = f.barn.view('ann').pen, bob = f.barn.view('bob').pen;
+    assert.deepEqual([ann.lastBout.result, bob.lastBout.result], draw ? ['draw', 'draw'] : ['won', 'lost']);
+    assert.deepEqual(ann.lastBout.rounds.at(-1).hp, hp);
+    assert.deepEqual(bob.lastBout.rounds.at(-1).hp, [...hp].reverse());
+    for (const pen of [ann, bob]) {
+      assert.deepEqual([pen.lastBout.healthAfter, pen.hp, pen.fainted], [100, pen.maxHp, false]);
+    }
+  });
+}
+
+test('old partial-HP saves and posted bouts start at full HP; pre-health receipts do not invent a knockout', (t) => {
   const f = fixture(t);
-  f.barn.eggInt = () => 3;
   const open = f.barn.openBout('ann', { stake: 0 }).openBout;
-  f.barn.doc.pens.ann.health = 30; f.barn.save(); // hurt after posting (e.g. a mine battle win)
-  f.barn.joinBout('bob', open.id); f.clock.now += 10_000; f.barn.fights.sweep(); // nobody is watching, so it runs to the end
-  const r = f.barn.view('ann').pen.lastBout;
-  assert.equal(r.startHp[0], Math.ceil(r.maxHp[0] * 0.3));
-  // a pre-v76 receipt (no healthAfter) leaves the pen untouched
-  const pen = f.barn.doc.pens.bob; const { faintedAt: _a, faintedBy: _b, faintedIn: _c, health: _h, ...clean } = pen;
-  f.barn.doc.pens.bob = { ...clean, settledBoutId: null };
-  f.store.players.bob.barnBouts.lastBout = { ...f.store.players.bob.barnBouts.lastBout, id: 'old', healthAfter: undefined, result: 'lost' };
+  f.store.players.ann.barnBouts.open.fighter.health = 30;
+  f.store.savePlayers();
+  f.barn.doc.pens.ann.health = 30;
+  f.barn.save();
+  f.boot();
+  const { pen: ann, openBout } = f.barn.view('ann');
+  assert.equal(openBout.fighter.health, 100);
+  assert.deepEqual([ann.health, ann.hp, ann.hurt, f.barn.heal('ann', { pay: true }).healed], [100, ann.maxHp, false, false]);
+  f.store.players.bob.barnBouts = { lastBout: { id: 'old', petBornAt: f.barn.doc.pens.bob.bornAt, result: 'lost', xpEarned: 20 } };
   f.barn.applyBoutReward('bob');
-  assert.equal(f.barn.doc.pens.bob.faintedAt, undefined); assert.equal(healthOf(f.barn.doc.pens.bob), 100);
+  assert.equal(f.barn.view('bob').pen.fainted, false);
+  f.barn.joinBout('bob', open.id);
+  const live = f.barn.fights.get(open.id);
+  assert.deepEqual(live.S.startHp, live.S.maxHp);
 });
 
-test('mine battle: the winner keeps its scrapes until the Bug Center', (t) => {
-  const f = fixture(t);
-  const m = f.meet();
-  const annSide = m.battle.a === 'ann' ? 0 : 1, S = m.battle.fight.S;
-  S.hp[annSide] = Math.floor(S.maxHp[annSide] / 2);
-  f.annWins(m);
-  const h = f.barn.doc.pens.ann.health;
-  assert.ok(h > 0 && h < 100, `ann is hurt (${h}%)`);
-  assert.equal(f.barn.view('ann').pen.hurt, true);
-  assert.equal(f.pvp.bugOf('ann').health, h, 'and its next battle starts hurt');
-  f.barn.heal('ann');
-  assert.equal(f.pvp.bugOf('ann').health, 100);
-});
+for (const outcome of ['decision', 'draw', 'forfeit']) {
+  test(`mine ${outcome}: both standing bugs recover and nobody is reported as fainted`, (t) => {
+    const f = fixture(t);
+    f.barn.doc.pens.bob.xp = f.barn.doc.pens.ann.xp;
+    const { battle } = f.meet();
+    if (outcome === 'forfeit') {
+      battle.fight.S.hp = [60, 40];
+      f.pvp.forfeit(battle.b);
+    } else {
+      ringBell(f.pvp.fights, battle.fight, [outcome === 'draw' ? 40 : 60, 40]);
+    }
+    const a = f.pvp.battleView(battle, battle.a).over, b = f.pvp.battleView(battle, battle.b).over;
+    assert.equal(a.reason, outcome);
+    assert.equal(a.foeFainted, false);
+    assert.equal(b.foeFainted, false);
+    if (outcome === 'draw') {
+      assert.equal(a.raid, null);
+      assert.equal(b.bug, null);
+    } else {
+      assert.equal(a.won, true);
+      assert.deepEqual([b.bug.fainted, b.bug.xp, b.raid.fainted], [false, outcome === 'forfeit' ? 0 : BATTLE_XP, false]);
+      assert.equal(f.mines.doc.completed[battle.b].result.pvp.fainted, undefined);
+    }
+    for (const id of [battle.a, battle.b]) {
+      const pen = f.barn.view(id).pen;
+      assert.deepEqual([pen.fainted, pen.health, pen.hp], [false, 100, pen.maxHp]);
+    }
+  });
+}
 
 test('Scum: a fainted bug is at the Bug Center, so a stray covers the missed turn', () => {
   const pens = { p1: { stage: 'creature', species: 'manticora', name: 'Manticora I', fainted: true }, p2: { stage: 'creature', species: 'manticora', name: 'Sagra', fainted: false } };
@@ -374,7 +391,7 @@ test('Scum: a fainted bug is at the Bug Center, so a stray covers the missed tur
   assert.equal(Scum.prototype.bugWho(Scum.prototype.bugOf.call(fake, t, 2)), 'a stray bug');
 });
 
-test('Bug Center script: a hurt bug gets its HP read out and an offer to patch it up', () => {
-  const lines = greeting({ stage: 'creature', name: 'Sagra II', fainted: false, hurt: true, hp: 41, maxHp: 112 });
-  assert.match(lines.at(-2).en, /hurt.*41\/112/); assert.ok(lines.at(-1).ask); assert.match(lines.at(-1).en, /won't heal on its own/);
+test('Bug Center script treats a standing bug with old partial HP as healthy', () => {
+  const pen = { stage: 'creature', name: 'Sagra II', fainted: false };
+  assert.deepEqual(greeting({ ...pen, hurt: true, hp: 41, maxHp: 112 }), greeting(pen));
 });

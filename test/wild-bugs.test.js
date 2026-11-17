@@ -98,12 +98,28 @@ test('walking into it starts the fight; beating it pays the partner, robs nobody
   assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: s.wilds[0].id }), /nothing wild/);
 });
 
+test('losing to a wild bug needs the nurse only if the partner was knocked out', t => {
+  for (const remainingHp of [0, 1]) {
+    const f = fixture(t); f.partner();
+    const s = f.walkUp(); f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
+    const battle = f.fight();
+    battle.fight.S.hp[0] = remainingHp;
+    f.pvp.fights.finish(battle.fight, 1);
+    const pen = f.barn.view('ann').pen;
+    assert.equal(battle.over.bug.xp, BATTLE_XP);
+    assert.equal(battle.over.reason, remainingHp ? 'decision' : 'fainted');
+    assert.equal(pen.fainted, remainingHp === 0);
+    assert.equal(pen.hp, remainingHp ? pen.maxHp : 0);
+  }
+});
+
 test('a jar needs the bug under a quarter health, a jar and a free stall; a miss spends it, a catch stalls the bug', t => {
   const f = fixture(t); f.partner(10);
   const s = f.walkUp(); f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
   const battle = f.fight(), S = battle.fight.S, body = { battleId: battle.id };
   assert.throws(() => f.pvp.jar(f.ann, body), /too lively/);
   S.hp[1] = Math.floor(S.maxHp[1] * 0.2);
+  S.hp[0] = Math.floor(S.maxHp[0] / 2);
   assert.throws(() => f.pvp.jar(f.ann, body), /out of jars/);
   assert.equal(ITEM.jar.price, 150);
   f.shop.buy(f.ann, 'jar'); f.shop.buy(f.ann, 'jar');
@@ -120,7 +136,8 @@ test('a jar needs the bug under a quarter health, a jar and a free stall; a miss
   assert.equal(hit.held, true);
   assert.deepEqual([hit.battle.over.won, hit.battle.over.reason, hit.battle.over.caught], [true, 'jarred', f.barn.bugs('ann')[1].name]);
   const caught = f.barn.view('ann').stable.bugs[1];
-  assert.deepEqual([caught.partner, caught.level, caught.species, caught.health], [false, s.wilds[0].level, s.wilds[0].species, 20], 'in a stall, as grown and as hurt as it was caught');
+  assert.deepEqual([caught.partner, caught.level, caught.species, caught.health], [false, s.wilds[0].level, s.wilds[0].species, 100]);
+  assert.equal(f.barn.view('ann').pen.health, 100, 'both survivors recover after the catch');
   assert.equal(f.shop.jars('ann'), 0);
   assert.deepEqual(f.mines.stateFor(f.ann).wilds, s.wilds.slice(1));
   assert.equal(jarChance(0.26), 0); assert.equal(jarChance(0.25), WILD.jarBase); assert.equal(jarChance(0), WILD.jarBest);
@@ -176,7 +193,7 @@ test('an interrupted winning throw returns the jar or keeps its catch, once', t 
   assert.equal(f.barn.bugs(f.ann.id).length, 2);
 });
 
-test('with every stall taken a jar is refused before it is spent; running keeps the damage and faints nobody', t => {
+test('with every stall taken a jar is refused before it is spent; running leaves the partner at full HP', t => {
   const f = fixture(t); f.partner(10);
   f.barn.doc.bench.ann = [{ stage: 'egg', eggAt: 5, hatchAt: f.clock.now + 9e9 }, { stage: 'egg', eggAt: 6, hatchAt: f.clock.now + 9e9 }];
   f.shop.buy(f.ann, 'jar');
@@ -186,8 +203,8 @@ test('with every stall taken a jar is refused before it is spent; running keeps 
   assert.throws(() => f.pvp.jar(f.ann, { battleId: battle.id }), /Every stall is taken/);
   assert.equal(f.shop.jars('ann'), 1);
   f.pvp.forfeit('ann');
-  const pen = f.barn.doc.pens.ann;
-  assert.deepEqual([battle.over.reason, !!pen.faintedAt, pen.health], ['forfeit', false, 50]);
+  const pen = f.barn.view('ann').pen;
+  assert.deepEqual([battle.over.reason, pen.fainted, pen.health], ['forfeit', false, 100]);
   assert.deepEqual(f.mines.stateFor(f.ann).wilds, s.wilds.slice(1), 'it does not wait around');
 });
 
@@ -203,9 +220,10 @@ test('a packed lunch eaten against a wild bug is gone; one the partner never nee
   const lunch = { name: 'Bug Banquet', heal: 10 };
   const run = (health) => {
     const f = fixture(t); f.partner(10);
-    Object.assign(f.barn.doc.pens.ann, { lunch, ...(health ? { health } : {}) }); f.barn.save();
+    f.barn.doc.pens.ann.lunch = lunch; f.barn.save();
     const s = f.walkUp(); f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
     const battle = f.fight();
+    if (health) battle.fight.S.hp[0] = Math.floor(battle.fight.S.maxHp[0] * health / 100);
     for (let i = 0; i < 200 && !battle.over; i++) { f.clock.now += 5000; f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }); }
     return [battle.fight.S.rounds.filter(r => r.type === 'snack').length, f.barn.doc.pens.ann.lunch || null];
   };

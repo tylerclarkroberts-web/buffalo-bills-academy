@@ -76,10 +76,10 @@ function CenterDoor({ urgent }) {
     バグセンター</button>;
 }
 
-/** v76: HP on the bug, Game Boy style. It only refills at the Bug Center. */
+/** HP on the bug, Game Boy style. */
 function HpTag({ pen }) {
   const pct = Math.max(0, Math.min(100, pen.health ?? 100));
-  return <span className={`barn-hp${pct <= 25 ? ' low' : pct < 100 ? ' mid' : ''}`} data-test="barn-hp" role="meter" aria-label={`${pen.name} health`} aria-valuemin={0} aria-valuemax={pen.maxHp} aria-valuenow={pen.hp}>
+  return <span className={`barn-hp${pen.fainted ? ' low' : ''}`} data-test="barn-hp" role="meter" aria-label={`${pen.name} health`} aria-valuemin={0} aria-valuemax={pen.maxHp} aria-valuenow={pen.hp}>
     <b>HP</b><span className="barn-hp-bar"><i style={{ width: `${pct}%` }} /></span><span className="num">{pen.hp}/{pen.maxHp}</span>
   </span>;
 }
@@ -178,7 +178,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         <BugThumb bug={bug} />
         <div>
           <div className="barn-listing-title"><b>{bug.name}</b><span className="small">{bug.owner}</span></div>
-          <p className="small">Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : bug.fainted ? ' · fainted' : bug.health < 100 ? ` · ${bug.health}% HP` : ''}{mine && bug.line?.[mine.id] ? <span data-test="roster-line"> · {chance(mine.name, bug.line[mine.id])}</span> : null}</p>
+          <p className="small">Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : bug.fainted ? ' · fainted' : ''}{mine && bug.line?.[mine.id] ? <span data-test="roster-line"> · {chance(mine.name, bug.line[mine.id])}</span> : null}</p>
         </div>
         {out ? <div className="barn-row"><span className="small">Called out{out.stake ? stakeLabel(out.stake) : ''} · {left(out.expiresAt - now)} left</span><button className="btn ghost" onClick={() => drop(out.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
           : calling === key ? <form className="barn-post" onSubmit={(event) => { event.preventDefault(); call(bug.ownerId, bug.id, Number(callStake), mine?.id); setCalling(null); }}>
@@ -216,7 +216,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         </div>
         <button className="btn ghost" onClick={() => watch(fight.id)} disabled={busy} data-test="fight-watch">Watch</button>
       </li>; })}</ul> : <p className="small muted" data-test="fights-empty">No fights yet. The bottle caps are gathering dust.</p>}
-      <p className="small muted">Both bugs earn {mine?.boutXp ?? 20} XP, and the winner more: most for an upset. The loser faints. Draws refund both stakes.</p>
+      <p className="small muted">Both bugs earn {mine?.boutXp ?? 20} XP, with a bigger win bonus for an upset. Draws refund both stakes. Bugs still standing recover all HP. Knocked out? See the nurse.</p>
     </section>
   </div>;
 }
@@ -345,7 +345,7 @@ function BarnHome({ me }) {
         <header className="barn-head">
           <h1 className="western">The Barn</h1>
           <div className="barn-head-acts">
-            {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted || bug.hurt)} />}
+            {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted)} />}
             <button className={`btn small${!ring && waiting ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : waiting ? `The ring · ${waiting} waiting` : 'The ring'}</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
@@ -415,7 +415,6 @@ function BarnHome({ me }) {
                 ? <p className="small muted" data-test="barn-partner">★ Your partner: with you in the mine and the terrarium.</p>
                 : <p className="small barn-stalled" data-test="barn-stalled"><span className="muted">In its stall, where needs drop {stable.slow}× slower.</span> <button className="btn small" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button></p>)}
               {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it: free after an hour's rest, or ${pen.healCost} now.</p>}
-              {!pen.fainted && pen.hurt && <button className="barn-hurt small" onClick={() => navigate('/barn/center')} data-test="barn-hurt">Your bug is hurt — visit the Bug Center →</button>}
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
               {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
               <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={(e) => {

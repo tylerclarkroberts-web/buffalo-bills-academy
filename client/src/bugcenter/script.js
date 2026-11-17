@@ -1,5 +1,4 @@
 // v75: what Nurse Hikari (蛍野ヒカリ) says. All Japanese on screen; the English is the optional 訳 subtitle.
-// Pure so node --test can check the branches: fainted bug, hurt bug (v76), healthy bug, egg, empty stall, a grave, and "no thanks".
 export const NURSE = { ja: '蛍野ヒカリ', kana: 'ほたるの ひかり', en: 'Nurse Hikari Hotaruno' };
 const L = (ja, en, extra = {}) => ({ ja, en, ...extra });
 
@@ -15,12 +14,11 @@ export function greeting(pen) {
     // Free once it has rested an hour since fainting; before that the nurse offers the paid shortcut (`pay` rides on the question).
     if (pen.recoverMs > 0) {
       const m = Math.ceil(pen.recoverMs / 60000);
-      return [...out, eyes, L(`しぜんに元気になるまで、あと${m}分かかります。`, `It needs another ${m} minutes of rest to recover on its own.`),
+      return [...out, eyes, L(`あと${m}分休んだら、無料で治療できますよ。`, `After another ${m} minute${m === 1 ? '' : 's'} of rest, I can treat ${n} for free.`),
         L(`お急ぎなら、$${pen.healCost}で今すぐ元気にできますよ。どうしますか？`, `In a hurry? For $${pen.healCost} I can have it up right now. Shall I?`, { ask: true, pay: true })];
     }
     return [...out, eyes, L('あなたのバグを元気にしますね！', "I'll get your bug back on its feet!", { ask: true })];
   }
-  if (pen.hurt) return [...out, L(`あら、${n}ちゃん、けがをしていますね。HPが ${pen.hp}/${pen.maxHp} です。`, `Oh, ${n} is hurt. Its HP is ${pen.hp}/${pen.maxHp}.`), L('しぜんには なおりませんよ。回復しましょうか？', "That won't heal on its own. Shall I patch it up?", { ask: true })];
   return [...out, L(`${n}ちゃんはもう元気いっぱいですね！`, `${n} is already full of energy!`), L('念のため、診ておきましょうか？', 'Shall I give it a quick check-up, just in case?', { ask: true })];
 }
 export const WAIT = L('少々お待ちください♪', 'Just a moment, please ♪');

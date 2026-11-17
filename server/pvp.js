@@ -17,7 +17,7 @@ import { BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
-import { healthOf, pctOf } from './barn.js';
+import { healthOf } from './barn.js';
 
 export const PVP = {
   staleMs: 4000,            // a miner who has not reported in this long is not in the tunnels as far as anyone can tell
@@ -292,16 +292,13 @@ export class Pvp {
     this.mines.holds.delete(a); const pr = this.presence.get(a); if (pr) pr.lastBattle = id;
     return battle;
   }
-  /**
-   * A wild fight is over. Nobody is robbed either way. Beating or jarring it pays the partner its battle XP; losing
-   * faints it; running, the bell or a dropped connection just keeps the damage. Whatever happened, the wild bug is
-   * gone from this shift.
-   */
+  /** A wild bug leaves the shift however the fight ends. A verdict or a catch pays battle XP. */
   wildOver(battle, winnerSide, reason, fight) {
     if (reason !== 'jarred') this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
-    const bug = battle.bugs.a, hpPct = pctOf(fight.S.hp[0], fight.S.maxHp[0]);
-    if (reason === 'fainted' || reason === 'jarred') battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: bug.bornAt, won: winnerSide === 'a', foeName: `a wild ${battle.wild.name}`, hpPct, odds: fight.line });
-    else if (reason !== 'abandoned') this.barn.keepScrapes(battle.a, { battleId: battle.id, bornAt: bug.bornAt, hpPct });
+    if (reason === 'fainted' || reason === 'decision' || reason === 'jarred') {
+      battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: battle.bugs.a.bornAt,
+        won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeName: `a wild ${battle.wild.name}`, odds: fight.line });
+    }
   }
   /**
    * Throw a jar at the wild bug you are fighting. It has to be at or under a quarter of its health, you need a jar
@@ -319,7 +316,7 @@ export class Pvp {
     const wildId = battle.wild.id, battleId = battle.id;
     if (!this.shop.takeJar(player.id, held ? { wildId, battleId } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {
-      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: battle.wild.level, health: pctOf(S.hp[1], S.maxHp[1]) });
+      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: battle.wild.level });
       this.finish(battle, 'a', 'jarred', caught.name);
     } else battle.jarTurn = S.turn;
     return { held, battle: this.battleView(battle, player.id, body.have) };
@@ -328,14 +325,15 @@ export class Pvp {
   fought(battle, fight) {
     if (battle.over) return; // a forfeit or a disconnect already ended it
     const winner = fight.over.winner;
-    this.finish(battle, winner === 1 ? 'b' : 'a', winner === null ? 'draw' : 'fainted');
+    const reason = winner === null ? 'draw' : fight.S.hp[1 - winner] === 0 ? 'fainted' : 'decision';
+    this.finish(battle, winner === 1 ? 'b' : 'a', reason);
   }
   /** Hearing from a battler at all keeps them in the fight (before the sweep decides who has gone quiet). */
   touch(pid) { const b = this.battles.get(this.inBattle.get(pid)); if (b && !b.over) b.lastSeen[pid] = this.now(); }
   sideOf(battle, pid) { return battle.a === pid ? 'a' : battle.b === pid ? 'b' : null; }
   /** The ring's view of the fight from this miner's corner, plus what the mine adds: the spoils and the bug's XP. */
   battleView(battle, pid, have = 0) {
-    const side = this.sideOf(battle, pid), foe = side === 'a' ? 'b' : 'a';
+    const side = this.sideOf(battle, pid);
     if (!side) return null;
     battle.lastSeen[pid] = this.now();
     const rec = battle.over?.raid ? this.doc.raids[battle.over.raid] : null;
@@ -348,7 +346,7 @@ export class Pvp {
       over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
         bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
-        foeFainted: battle.over.winner === side && !!battle.bugs?.[foe] } : null };
+        foeFainted: battle.over.winner === side && !!rec?.barn?.loser?.fainted } : null };
   }
   /** Line up your bug's next moves (up to three). */
   move(player, body = {}) {
@@ -374,16 +372,10 @@ export class Pvp {
     this.fights.finish(fight, reason === 'draw' ? null : w, reason); // stops a fight that was walked out on; a no-op when it ran its course
     for (const [k, i] of [['a', 0], ['b', 1]]) if (battle.bugs?.[k] && fight.S.side[i].ate) this.barn?.lunchEaten?.(battle[k], battle.bugs[k].bornAt); // a packed lunch eaten in the fight is gone, however it ended
     if (battle.wild) return this.wildOver(battle, winnerSide, reason, fight);
-    if (reason === 'draw') { // no contest: nobody is robbed, but the damage stays (HP never comes back on its own)
-      for (const [k, i] of [['a', 0], ['b', 1]]) {
-        const bug = battle.bugs?.[k];
-        if (bug) this.barn?.keepScrapes?.(battle[k], { battleId: battle.id, bornAt: bug.bornAt, hpPct: pctOf(fight.S.hp[i], fight.S.maxHp[i]) });
-      }
-      return;
-    }
-    if (reason === 'abandoned') return;
+    if (reason === 'draw' || reason === 'abandoned') return;
     const loserSide = winnerSide === 'a' ? 'b' : 'a';
-    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(fight.S.hp[w], fight.S.maxHp[w]), odds: this.fights.lineOf(fight, w) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
+    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], odds: this.fights.lineOf(fight, w) } : null,
+      loser: battle.bugs?.[loserSide] ? { ...battle.bugs[loserSide], fainted: fight.S.hp[1 - w] === 0 } : null, fought: reason === 'fainted' || reason === 'decision',
       winnerBug: fight.fighters[w].name, loserBug: fight.fighters[1 - w].name };
     battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
   }
@@ -446,12 +438,12 @@ export class Pvp {
     }
     return rec;
   }
-  /** v75: XP for both real bugs (bonus for the winner), and the loser's bug faints. Each call is idempotent per battle. */
+  /** Older raids always fainted the losing bug and did not store a separate knockout flag. */
   settleBugs(rec) {
     const b = rec.bugs, out = { winner: null, loser: null };
     if (!this.barn?.battleResult) return out;
-    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, hpPct: b.winner.hpPct ?? null, odds: b.winner.odds });
-    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, foeName: rec.winnerName });
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, odds: b.winner.odds });
+    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, fainted: b.loser.fainted ?? true, foeName: rec.winnerName });
     return out;
   }
   /** Both bankrolls in one atomic write, with the raid id on both players so a retry is a no-op. Never below zero. */

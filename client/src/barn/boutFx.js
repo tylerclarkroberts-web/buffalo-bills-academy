@@ -295,14 +295,13 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
   }
 
   const ended = loc.phase === 'finish' || loc.phase === 'done';
-  const losers = !ended ? [] : bout.result === 'won' ? [1] : bout.result === 'lost' ? [0] : [];
-  const dizzy = !ended ? [] : bout.result === 'draw' ? [0, 1] : losers;
+  const endHp = ended ? bout.rounds.at(-1)?.hp : null;
   if (ended) {
     const q = reduced ? 1 : ease.out(clamp01((loc.phase === 'done' ? FINISH_MS : lt) / 700)), tt = reduced ? 0 : t;
     P.forEach((p, s) => {
       const [tx, ty] = toward(s);
-      if (losers.includes(s)) { p.rot += Math.PI * 0.85 * q; p.x -= tx * size * 0.16 * q; p.y -= ty * size * 0.16 * q; p.alt = 0; p.tint = ['#000000', 0.35 * q]; }
-      else if (bout.result !== 'draw' && !reduced) { if (ST[s] === 'flyer') { p.x += Math.cos(tt / 280) * size * 0.14; p.y += Math.sin(tt / 280) * size * 0.07; p.alt = size * 0.3; } else p.alt += Math.abs(Math.sin(tt / 170)) * size * 0.08; }
+      if (endHp?.[s] === 0) { p.rot += Math.PI * 0.85 * q; p.x -= tx * size * 0.16 * q; p.y -= ty * size * 0.16 * q; p.alt = 0; p.tint = ['#000000', 0.35 * q]; }
+      else if (bout.result === (s === 0 ? 'won' : 'lost') && !reduced) { if (ST[s] === 'flyer') { p.x += Math.cos(tt / 280) * size * 0.14; p.y += Math.sin(tt / 280) * size * 0.07; p.alt = size * 0.3; } else p.alt += Math.abs(Math.sin(tt / 170)) * size * 0.08; }
     });
   }
 
@@ -326,7 +325,7 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
       for (let i = 0; i <= 6; i++) { const ang = a0 + (i / 6) * Math.PI * 2; x.lineTo(p.x + Math.cos(ang) * rr, p.y - p.alt + Math.sin(ang) * rr); } x.stroke(); x.globalAlpha = 0.08; x.fillStyle = '#ffcf5a'; x.fill(); x.globalAlpha = 1; }
     if (status?.[s].weak && !reduced) { const by = p.y - p.alt - size * 0.48 + Math.sin(t / 220) * u * 2; x.fillStyle = '#c58bff';
       for (let k = 0; k < 2; k++) for (let i = 0; i < 4; i++) { x.fillRect(p.x - u * (4 - i) - u, by + k * u * 4 + i * u, u * 2, u); x.fillRect(p.x + u * (4 - i) - u, by + k * u * 4 + i * u, u * 2, u); } }
-    if (dizzy.includes(s)) { const cx = p.x, cy = p.y - size * 0.32; for (let i = 0; i < 3; i++) { const ang = (reduced ? 0 : t / 260) + (i / 3) * Math.PI * 2, sx = cx + Math.cos(ang) * size * 0.22, sy = cy + Math.sin(ang) * size * 0.08;
+    if (endHp?.[s] === 0) { const cx = p.x, cy = p.y - size * 0.32; for (let i = 0; i < 3; i++) { const ang = (reduced ? 0 : t / 260) + (i / 3) * Math.PI * 2, sx = cx + Math.cos(ang) * size * 0.22, sy = cy + Math.sin(ang) * size * 0.08;
       x.fillStyle = '#ffe27a'; x.fillRect(sx - u, sy - u * 3, u * 2, u * 6); x.fillRect(sx - u * 3, sy - u, u * 6, u * 2); } }
   });
   if (!reduced) drawParts(x, fx, dt, u);

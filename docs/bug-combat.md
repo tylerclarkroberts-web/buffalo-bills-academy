@@ -15,13 +15,13 @@ A Barn starts with three stalls. Each holds an egg, a living bug or an unburied 
 ## Stalls and the partner
 
 - **Stalls.** Three to start. The fourth, fifth and sixth cost $1,500, $4,000 and $10,000 (`STALL_COSTS` in `server/barn.js`), bought from the last slot in the Barn's stall row. An egg, a bug and a memorial not yet laid to rest each take one.
-- **Wild bugs.** A bug jarred in the mine takes a free stall at the level and health it was caught at; the rules are in [Acid Mines](acid-mines.md).
+- **Wild bugs.** A bug jarred in the mine takes a free stall at full health and its original level. See [Acid Mines](acid-mines.md).
 - **Eggs.** An empty Barn gives you a 15% chance to find an egg each new shift. Any occupied stall takes you out of the roll, including an unhatched egg or an unburied memorial. Catch wild bugs to fill additional stalls.
 - **The partner.** The first bug is the partner; **Make partner** on any other hatched, living bug swaps them, except while one of your bugs is in a fight. The mine guide, mine battles, My Room and store items (food, feeders, misters, toys) all act on the partner.
 - **A stalled bug lives five times slower** (`BENCH_SLOW`). Its needs decay at a fifth of the rate, it starves after 105 days instead of 21, and its 24-hour XP checkpoint comes every five days. It still needs looking after: care works on any bug, on the usual cooldowns, and gives the usual 12 XP. Swapping partners carries each bug's needs over as they are. A feeder's dates stay on the wall clock, so one bought for a bug that is later stalled covers fewer of its slow days.
 - **No empty partner's place.** When the partner is laid to rest, the first living stalled bug becomes the partner.
 - **Fights.** Any standing bug can post, join or be called out; the ring's roster lists every living bug, and a challenge names both. An owner has one fight at a time.
-- **The Bug Center** treats whichever of your bugs needs it most: fainted first, then hurt.
+- **The Bug Center** treats knocked-out bugs from any stall. The nurse charges $50 for immediate treatment and treats the bug for free an hour after the knockout.
 
 ### Parked for later: one-of-a-kind bugs
 
@@ -29,7 +29,7 @@ Left out on purpose, as a possible expansion once a rare tier exists (wild bugs 
 
 ## Leveling and moves
 
-Any hatched bug may bout, from **level 1**, with no rest between them: the loser faints and must see the Bug Center nurse, who heals it free an hour after it fainted or for $50 at once. Challenge another player's bug, post a bout open to anyone, or join one; there is no automatic opponent or level matching. Both bugs earn **20 XP** and the winner a bonus on top that follows the line (below): 10 in an even fight, up to 18 for the longest shot and as little as 2 for a sure thing. Both records update. A bug guiding its miner in the Acid Mines earns **2 XP** for each pool with acid it finds. Watching a replay gives no XP or money. Fights cannot injure the pet outside the bout. Five wins earn the title **Barn Menace**.
+Any hatched bug may bout, from **level 1**, and any bug still standing at the end recovers to full HP immediately, even after a loss on points. A bug reduced to 0 HP needs the Bug Center. Challenge another player's bug, post a bout open to anyone, or join one; there is no automatic opponent or level matching. Both bugs earn **20 XP** and the winner a bonus on top that follows the line (below): 10 in an even fight, up to 18 for the longest shot and as little as 2 for a sure thing. Both records update. A bug guiding its miner in the Acid Mines earns **2 XP** for each pool with acid it finds. Watching a replay gives no XP or money. Five wins earn the title **Barn Menace**.
 
 | Level | Total XP | Unlock |
 | --- | ---: | --- |

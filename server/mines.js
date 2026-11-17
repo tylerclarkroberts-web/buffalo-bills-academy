@@ -462,7 +462,7 @@ export class Mines {
           title: battle ? 'YOUR BUG LOST' : 'AMBUSHED',
           text: battle ? `${rec.winnerName}'s bug beat yours fair and square. They took your bucket${rec.tobacco?.length ? ' and your smokes' : ''}. Your bug will live. Your pride is on a feeding tube.`
             : `${rec.winnerName} crept up behind you in the dark. You never saw them. Payroll does not cover this.`,
-          pvp: { kind: rec.kind, by: rec.winnerName, cash: rec.cash, acid: taken / 1000, tobacco: rec.tobaccoNames || [], ...(rec.bugs?.loser ? { fainted: rec.bugs.loserBug || true } : {}) } } };
+          pvp: { kind: rec.kind, by: rec.winnerName, cash: rec.cash, acid: taken / 1000, tobacco: rec.tobaccoNames || [], ...(rec.bugs?.loser && rec.bugs.loser.fainted !== false ? { fainted: rec.bugs.loserBug || true } : {}) } } };
     }
     if (won && won.id === rec.winnerShift && won.rulesVersion === 2 && !won.settlement) {
       gained = Math.max(0, Math.min(taken, cap(won) - won.collected));
