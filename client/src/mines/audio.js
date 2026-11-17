@@ -257,5 +257,102 @@ export class MineAudio {
     };
     count(); this.danceTimer = setInterval(count, 60000 / 116 / 2);
   }
+  // ---------- Horror Night: all synthesized here, nothing recorded. Everything goes through the master gain. ----------
+  /** A panner placed relative to you: x metres to your right, z metres ahead. Distance and side come through headphones. */
+  spatial(x = 0, z = -10) {
+    const c = this.ctx, p = c.createPanner();
+    p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 1.5; p.rolloffFactor = 1.1; p.maxDistance = 60;
+    if (p.positionX) { p.positionX.value = x; p.positionY.value = 0; p.positionZ.value = -z; } else p.setPosition(x, 0, -z);
+    // the tunnel answers back: a dark, short echo
+    const dry = c.createGain(), wet = c.createGain(), dl = c.createDelay(1), fb = c.createGain(), lp = c.createBiquadFilter();
+    dl.delayTime.value = 0.21 + Math.random() * 0.12; fb.gain.value = 0.38; lp.type = 'lowpass'; lp.frequency.value = 1700; wet.gain.value = 0.5;
+    p.connect(dry); dry.connect(this.master); p.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(wet); wet.connect(this.master);
+    return p;
+  }
+  /** The breaker goes: a heavy clunk, the hum dies, the strings creep in. */
+  lightsOut() {
+    if (!this.on || !this.ctx) { this.dreadOn = true; return; }
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.55);
+    this.noise(0.08, 3000, 800, 0.6);
+    this.dread(true);
+  }
+  /** Someone screaming a long way off: a voice through two vowel formants, pitch climbing then cracking. */
+  scream(x, z) {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime, len = 1.4 + Math.random() * 1.1, f0 = 480 + Math.random() * 260, out = this.spatial(x, z);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.connect(out);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.12); g.gain.setValueAtTime(0.5, t + len * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + len); g.connect(lp);
+    const bands = [[850, 6, 1], [1250, 8, 0.7], [2900, 10, 0.25]].map(([fc, q, v]) => {
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fc; bp.Q.value = q;
+      const bg = c.createGain(); bg.gain.value = v; bp.connect(bg); bg.connect(g); return bp;
+    });
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 1.9, t + len * 0.45); o.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + len);
+    const vib = c.createOscillator(); vib.frequency.value = 6 + Math.random() * 3; const vg = c.createGain(); vg.gain.value = f0 * 0.05; vib.connect(vg); vg.connect(o.frequency);
+    for (const bp of bands) o.connect(bp);
+    o.start(t); o.stop(t + len + 0.05); vib.start(t); vib.stop(t + len + 0.05);
+  }
+  /** Crying somewhere in the dark: a few catching breaths, then a thin wavering whimper. */
+  sob(x, z) {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t0 = c.currentTime, out = this.spatial(x, z), n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * (0.32 + Math.random() * 0.1);
+      const buf = c.createBuffer(1, Math.ceil(c.sampleRate * 0.22), c.sampleRate), d = buf.getChannelData(0);
+      for (let k = 0; k < d.length; k++) d[k] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k / d.length);
+      const s = c.createBufferSource(); s.buffer = buf; const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100 + i * 90; bp.Q.value = 2;
+      const g = c.createGain(); g.gain.value = 0.32; s.connect(bp); bp.connect(g); g.connect(out); s.start(t);
+    }
+    const t = t0 + n * 0.38, len = 1.3 + Math.random() * 0.8, f = 300 + Math.random() * 80;
+    const o = c.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(f * 1.25, t); o.frequency.exponentialRampToValueAtTime(f, t + len);
+    const lfo = c.createOscillator(); lfo.frequency.value = 5.5; const lg = c.createGain(); lg.gain.value = 14; lfo.connect(lg); lg.connect(o.frequency);
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 1.2;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    o.connect(bp); bp.connect(g); g.connect(out); o.start(t); o.stop(t + len + 0.05); lfo.start(t); lfo.stop(t + len + 0.05);
+  }
+  /** Whispering close by: breathy noise in syllables, never words. */
+  whisper(x, z) {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime, len = 1.2 + Math.random() * 1.2, out = this.spatial(x, z);
+    const buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate), d = buf.getChannelData(0);
+    let syl = 0, phase = 0;
+    for (let k = 0; k < d.length; k++) {
+      if (k % Math.floor(c.sampleRate / 40) === 0) { syl = Math.random() < 0.2 ? 0 : 0.4 + Math.random() * 0.6; }
+      phase += (5 + Math.random()) / c.sampleRate;
+      d[k] = (Math.random() * 2 - 1) * syl * (0.5 + 0.5 * Math.sin(phase * Math.PI * 2)) * Math.min(1, k / 2000, (d.length - k) / 4000);
+    }
+    const s = c.createBufferSource(); s.buffer = buf;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600 + Math.random() * 1200; bp.Q.value = 1.4;
+    const g = c.createGain(); g.gain.value = 0.7; s.connect(bp); bp.connect(g); g.connect(out); s.start(t);
+  }
+  /** A heartbeat for Horror Night: level 0..1, how close the nearest one is. Louder and harder than the visitor's. */
+  thump(level = 0) {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    for (const [at, v] of [[0, 1], [0.22, 0.7]]) {
+      const o = c.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(66, t + at); o.frequency.exponentialRampToValueAtTime(36, t + at + 0.16);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime((0.12 + 0.55 * level) * v, t + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.22);
+      o.connect(g); g.connect(this.master); o.start(t + at); o.stop(t + at + 0.26);
+    }
+  }
+  /** The jump scare: a dissonant shriek of strings on top of a noise blast and a drop in the floor. */
+  sting() {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.55, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1); g.connect(this.master);
+    for (const f of [987, 1046, 1397, 1480, 2093]) {
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.94, t + 1);
+      const og = c.createGain(); og.gain.value = 0.16; o.connect(og); og.connect(g); o.start(t); o.stop(t + 1.15);
+    }
+    const b = c.createOscillator(); b.type = 'sine'; b.frequency.setValueAtTime(120, t); b.frequency.exponentialRampToValueAtTime(28, t + 0.6);
+    const bg = c.createGain(); bg.gain.setValueAtTime(0.0001, t); bg.gain.exponentialRampToValueAtTime(1, t + 0.01); bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    b.connect(bg); bg.connect(this.master); b.start(t); b.stop(t + 0.85);
+    this.noise(0.35, 6000, 600, 0.7);
+  }
   dispose() { clearInterval(this.danceTimer); clearTimeout(this.dripTimer); try { this.ctx?.close(); } catch { /* ignore */ } }
 }
