@@ -127,6 +127,12 @@ The local dev server's `MINE_TEST_TIER=1..5` (with `DEV_LOGIN`) forces a tier fo
 
 Run `PLAYWRIGHT_DIR=<dir with playwright-core> OUT=<dir> node scripts/e2e-pvp.mjs` after `npm run build` for the three-browser check, and `scripts/e2e-bug-center.mjs` (same variables; `SWAP=1` swaps phone and desktop) for the intro, the faint and a heal. It uses the `PVP_TEST=1` / `PVP_TEST_GRACE_MS` hooks, which only work with `DEV_LOGIN`.
 
+## Horror Night
+
+Once a week the mine goes dark for everyone. `HORROR_SCHEDULE` in `server/engine/horror.js` is the only knob (default Fridays 9 PM to midnight, `America/Chicago`). A shift clocked in inside the window is stamped `horror: { lightsOutMs }` (30–60 s, from the shift id) and keeps it to the end; a shift started at 8:59 PM stays normal. It is cosmetic only: no roll, payout, timer or PvP rule reads it, and it uses no random source the shift's pay uses. The lamp flicker, the Last Crew (they follow while unwatched, freeze when watched, vanish in a working lamp beam, have no body, never stand in the acid, capped at 3 / 2 on phones), the synthesized audio and the per-chunk jump scare (`ScareGate`: small chance, 35 s cooldown) live in `client/src/mines/horror.js`. "FLASHING: LOW" (default with reduced motion) keeps the lamp from strobing and fades the scare in instead.
+
+To force it locally: `POST /api/dev/horror {"on": true|false|null}`, which only exists with `DEV_LOGIN=1`. `scripts/e2e-horror.mjs` (same variables as the PvP check; `GIF=1` writes a clip) drives it on desktop, phone and reduced motion.
+
 ## Checks and deployment boundary
 
 Run the focused checks, frontend build and full suite from the repository root:

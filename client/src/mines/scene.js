@@ -9,6 +9,7 @@ import { bugTexture } from '../barn/sprite.js';
 import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
+import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, SPEED = 3.6, TURN = 2.3;
 
@@ -166,7 +167,8 @@ export class MineScene {
     this.scene.fog = new THREE.Fog(look.bg, 2.5, fogFar); // deeper shafts are darker; a headlamp pushes it back
     this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 60);
     this.scene.add(this.camera);
-    this.scene.add(new THREE.AmbientLight(look.ambient, look.ambientI * ambient));
+    this.ambientLight = new THREE.AmbientLight(look.ambient, look.ambientI * ambient); this.scene.add(this.ambientLight);
+    this.base = { fogNear: 2.5, fogFar, lampReach, ambient: this.ambientLight.intensity }; // what Horror Night darkens from
     this.lamp = new THREE.PointLight(look.lamp, 18, lampReach, 1.6);
     this.camera.add(this.lamp);
 
@@ -492,6 +494,7 @@ export class MineScene {
       deposit.liquid.scale.setScalar(radius * (0.68 + 0.32 * (deposit.liquid.position.y + depth) / depth) * 0.98);
       deposit.liquid.visible = pool.quantity !== null && pool.remaining > 0; // damp (no liquid) until the server has filled it in: what you see is what you can mine
       deposit.liquid.material.color.set(pool.quantity === null ? '#8a9a6a' : '#ffffff'); // not looked at yet: duller
+      deposit.liquid.material.fog = !this.horror?.target; // Horror Night: acid you can mine still glows through the dark
     }
     const floorKey = visible.map((p) => `${p.id}:${p.x},${p.y}:${this.deposits.get(p.id).radius}`).join('|');
     if (floorKey !== this.depositFloorKey) {
@@ -616,6 +619,7 @@ export class MineScene {
     if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
     if (this.wild) { this.wild.group.rotation.y = this.yaw; this.wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05; }
+    if (this.horror) this.updateHorror(now, dt);
     this.miners?.update(dt, now, this.yaw);
     const swing = this.mining ? Math.sin(now / 70) * 0.04 : 0;
     // v89: dancing pulls the camera out in front of you; stopping brings it straight back behind your eyes
@@ -652,7 +656,9 @@ export class MineScene {
     if (this.sputter > 0) { this.sputter -= dt; sput = Math.random() < 0.5 ? -6 - 9 * fl * Math.random() : -2 * Math.random(); }
     const jitter = fl ? (Math.random() - 0.5) * 2.4 * fl : 0;
     this.lamp.intensity = Math.max(1.5, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter) * this.lampPower); // a tired headlamp (more tired when he's near)
+    if (this.horror?.target) this.lamp.intensity = Math.max(0.25, this.lamp.intensity * (0.08 + 0.92 * this.horror.lamp)); // Horror Night: it barely holds on
     this.poolLight.intensity = this.acidIn ? 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4) : 1.6;
+    if (this.horror?.target) this.poolLight.intensity *= 0.65; // the acid still glows (the liquid itself is unlit and unfogged), it just lights less of the tunnel
     if (this.acidIn && !this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);
     if (this.door) { const k = this.reduce ? 0.7 : 0.55 + 0.25 * Math.sin(now / 700); this.door.seamMat.opacity = k; this.doorLight.intensity = 1.2 + k; }
     for (const d of this.drops) {
@@ -666,10 +672,49 @@ export class MineScene {
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   }
+  /**
+   * Horror Night (horror.js): `crew` and `flicker` come from the page. Nothing changes until lightsOut(); then the
+   * fog closes in, the ambient light all but goes, the lamp flickers and the crew start to come. Cosmetic only:
+   * the crew have no body (blocked() never sees them) and the acid keeps glowing.
+   */
+  setHorror({ crew, flicker }) { this.horror = { crew, flicker, dark: 0, target: 0, lamp: 1, meshes: new Map() }; }
+  lightsOut() {
+    const h = this.horror; if (!h || h.target) return;
+    h.target = 1; h.crew.start();
+    for (const d of this.deposits?.values() || []) { d.liquid.material.fog = false; d.liquid.material.needsUpdate = true; }
+  }
+  updateHorror(now, dt) {
+    const h = this.horror; if (!h.target) return;
+    h.dark = Math.min(1, h.dark + dt / 1.4);
+    const k = h.dark, b = this.base, fog = this.scene.fog;
+    fog.near = b.fogNear + (0.6 - b.fogNear) * k;
+    fog.far = b.fogFar + (Math.min(b.fogFar, 6.5) - b.fogFar) * k;
+    this.lamp.distance = b.lampReach + (Math.min(b.lampReach, 7.5) - b.lampReach) * k;
+    this.ambientLight.intensity = b.ambient * (1 - 0.9 * k);
+    h.lamp = h.flicker.step(dt);
+    h.crew.update(dt, { x: this.pos.x, z: this.pos.y, yaw: this.yaw, lamp: h.lamp });
+    while (h.crew.events.length) this.onEvent?.(`crew-${h.crew.events.shift().kind}`);
+    for (const m of h.crew.members) {
+      let mesh = h.meshes.get(m.id);
+      if (!mesh) { mesh = buildCrewMember(); h.meshes.set(m.id, mesh); this.scene.add(mesh.group); }
+      const g = mesh.group, there = m.state !== 'gone' && m.dist < fog.far + 2.5;
+      g.visible = there;
+      if (!there) continue;
+      // out of your gaze they are not quite there: the odd frame they're missing
+      if (!m.seen && !this.reduce && !h.flicker.calm && Math.random() < 0.06) g.visible = false;
+      g.position.set(m.x, m.moving && !this.reduce ? Math.abs(Math.sin(now / 170 + m.id)) * 0.03 : 0, m.z);
+      g.rotation.y = m.facing;
+      mesh.head.rotation.z = m.tilt + (!m.seen && !this.reduce && Math.random() < 0.04 ? (Math.random() - 0.5) * 0.7 : 0);
+      // faces don't fog out, but they do fade with distance and when the lamp drops: a pale smile, then just the smile
+      const shade = Math.max(0.18, (1 - m.dist / (fog.far + 3)) * (0.45 + 0.55 * h.lamp));
+      for (const mat of mesh.mats) { mat.opacity = m.alpha; if (mat.map) mat.color.setScalar(Math.min(1, shade + 0.25)); else if (mat.isMeshBasicMaterial) mat.color.setRGB(0.81 * shade, 0.78 * shade, 0.7 * shade); }
+    }
+  }
   dispose() {
     cancelAnimationFrame(this.raf);
     this.miners?.dispose();
     if (this.self) { this.scene.remove(this.self.group); disposeMeshes(this.self.group); this.self = null; }
+    if (this.horror) for (const m of this.horror.meshes.values()) { this.scene.remove(m.group); disposeCrewMember(m); }
     disposeMeshes(this.scene);
     this.renderer.dispose();
   }
