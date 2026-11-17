@@ -63,6 +63,8 @@ export class Shop {
       // anything bought before it became one of a kind: the first owner on file is the owner
       for (const id of Object.keys(iv.own)) if (ITEM[id]?.unique && !this.doc.unique[id]) { this.doc.unique[id] = pid; dirty = true; }
       if ('noPranks' in iv) { iv.noGags = !!iv.noPranks; delete iv.noPranks; dirty = true; }
+      // an equipped item sits in the slot it is sold for: defense gear used to share the one battle gear slot
+      for (const [slot, id] of Object.entries(iv.eq)) { const to = ITEM[id]?.slot; if (to && to !== slot) { if (!iv.eq[to]) iv.eq[to] = id; delete iv.eq[slot]; dirty = true; } }
     }
     if (dirty) this.save();
   }
@@ -74,7 +76,7 @@ export class Shop {
   view(p) {
     const iv = this.inv(p.id); const hatched = this.hatched(p.id);
     const month = shopMonth(this.now());
-    const items = CATALOG.filter((x) => (hatched || x.kind !== 'bug') && (!x.month || x.month === month || iv.own[x.id]) && (!x.award || iv.own[x.id]));
+    const items = CATALOG.filter((x) => (hatched || x.kind !== 'bug') && (!x.month || x.month === month || iv.own[x.id]) && ((!x.award && !x.retired) || iv.own[x.id]));
     const tabs = TABS.filter((t) => (hatched || !t.bug) && (t.id !== 'seasonal' || items.some((x) => x.cat === 'seasonal')));
     this.accounts.ensure(p);
     // who holds each one-of-a-kind item (a name only; hidden and departed owners stay anonymous)
@@ -85,6 +87,7 @@ export class Shop {
     const x = ITEM[id];
     if (!x) throw new GameError('The shopkeeper has never heard of that.', 404);
     if (x.award) throw new GameError('That one has to be earned.', 409);
+    if (x.retired) throw new GameError('The shopkeeper stopped stocking those.', 409); // off the shelf for good; what you hold still works
     const iv = this.inv(p.id);
     if (x.kind === 'bug' && !this.hatched(p.id)) throw new GameError('Bug supplies are for folks with a hatched bug.', 409);
     if (ONCE(x)) { if (iv.own[id]) throw new GameError('One at a time: use the one you have first.', 409); }
@@ -114,7 +117,7 @@ export class Shop {
     iv.eq[x.slot] = id; this.save();
     return this.view(p);
   }
-  /** Use a consumable on your bug: food (a real feed), feeder (pauses the starvation clock), mister, heat lamp. */
+  /** Use a consumable on your bug: food (a real feed, and a packed lunch for its next fight), feeder (keeps its needs full), and the retired mister and heat lamp. */
   use(p, id) {
     const x = ITEM[id]; const iv = this.inv(p.id);
     if (!x || !CONSUMABLE(x)) throw new GameError('That can\'t be used.', 400);
@@ -123,9 +126,9 @@ export class Shop {
     if (!this.hatched(p.id)) throw new GameError('You need a hatched bug for that.', 409);
     const now = this.now(); const cd = USE_COOLDOWN_MS[x.use] || 0;
     if (cd && now - (iv.used[x.use] || 0) < cd) throw new GameError('Your bug needs a little while before the next one.', 429);
-    // `days` (the feeder, and Golden Ambrosia) keeps the bowl full that long; checked before anything is spent
+    // `days` (the feeder, and Golden Ambrosia) keeps Fed, Mood and Clean full that long; checked before anything is spent
     if (x.days && Math.max(now, this.barn.view(p.id).pen.feederUntil || 0) + x.days * DAY - now > FEEDER_MAX_AHEAD_MS) throw new GameError('The feeder is already stocked for the next two months.', 409);
-    if (x.use !== 'feeder') this.barn.boost(p.id, x.use === 'food' ? { stat: 'hunger', gain: x.food, fed: true } : { stat: x.use === 'clean' ? 'clean' : 'mood', gain: 40, xp: BOOST_XP });
+    if (x.use !== 'feeder') this.barn.boost(p.id, x.use === 'food' ? { stat: 'hunger', gain: x.food, fed: true, lunch: { name: x.name, heal: x.heal } } : { stat: x.use === 'clean' ? 'clean' : 'mood', gain: 40, xp: BOOST_XP });
     if (x.days) this.barn.addFeeder(p.id, x.days * DAY);
     iv.own[id] -= 1; if (!iv.own[id]) delete iv.own[id];
     iv.used[x.use] = now; this.save();
@@ -168,7 +171,9 @@ export class Shop {
     const out = {}; for (const s of BUG_SLOTS) if (iv.eq[s] && iv.own[iv.eq[s]]) out[s] = iv.eq[s];
     for (const s of ['bugskin', 'bughat', 'bugacc']) if (out[s]) out[s] = lookOf(out[s]);
     out.gearBonus = Math.min(GEAR_CAP, ITEM[out.gear]?.gear || 0);
+    out.defenseBonus = Math.min(GEAR_CAP, ITEM[out.defense]?.defense || 0);
     out.toyMood = Math.min(20, ITEM[out.toy]?.mood || 0);
+    out.toyXp = Math.min(20, ITEM[out.toy]?.xp || 0); // a day, earned by the bug on its own (server/barn.js accrue)
     return out;
   }
   /** A deleted account's one-of-a-kind items go back on the shelf. */

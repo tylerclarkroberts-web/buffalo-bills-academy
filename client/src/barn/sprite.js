@@ -400,7 +400,7 @@ function paintWear(ctx, wear, body, outline) {
  * a big drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
  */
 export function spriteCanvas(bug, style, level, fine = 1) {
-  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${fine}`;
+  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${fine}`;
   if (cache.has(key)) return cache.get(key);
   const b = style?.bugskin?.pal ? { ...bug, look: { ...(bug.look || {}), pal: style.bugskin.pal } } : bug;
   const grid = spriteGrid(b, level), N = SPRITE * fine;
@@ -410,10 +410,11 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
   const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
   const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
+  if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape); // defense gear goes on first, the attack item over it
   if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape);
   if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eyeSpot(b, level));
   if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
-  if (fine !== 1 && (style?.gear?.shape || style?.bugacc?.shape || style?.bughat?.shape)) paintWear(ctx, wear, body, b.look?.pal?.[0] || '#111111');
+  if (fine !== 1 && (style?.gear?.shape || style?.defense?.shape || style?.bugacc?.shape || style?.bughat?.shape)) paintWear(ctx, wear, body, b.look?.pal?.[0] || '#111111');
   cache.set(key, c);
   return c;
 }

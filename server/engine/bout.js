@@ -7,6 +7,9 @@ import { battleFor, combatStats, movesFor, STANCES, TRAIT } from './bug-combat.j
 export const BOUT_HP = 100;
 export const MAX_ROUNDS = 32; // actions; venom and a bombardier's pop can add events around an action
 export const GEAR_CAP = 0.06;
+// HP: the most a packed lunch (store food) gives back, once a fight. Measured over every species pair, 10 HP moves an
+// even fight to about 65% (60% at level 10), level with the best armour; 15 HP made it 72%, more than any gear.
+export const LUNCH_CAP = 10;
 
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -14,7 +17,7 @@ function mulberry32(a) {
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const PRIORITY = { aggressive: ['pierce', 'venom', 'weaken', 'guard', 'heal'], defensive: ['heal', 'guard', 'weaken', 'venom', 'pierce'] };
 
-/** Inputs include species, level, needs' minimum as mood, gear and the saved stance. The state lives in memory only. */
+/** Inputs include species, level, needs' minimum as mood, attack gear (`gear`), defense gear (`defense`), a packed `lunch` ({ name, heal }) and the saved stance. The state lives in memory only. */
 export function startBout(a, b, seed) {
   const R = mulberry32(hash(`${seed}`) ^ hash(a.species) ^ (hash(b.species) << 1));
   const side = [a, b].map(c => {
@@ -22,6 +25,8 @@ export function startBout(a, b, seed) {
     // `plain` (tests, balance runs) fights without the species trait
     return { c, t: c.plain ? null : c.species, st: BY_ID[c.species].stats, battle, stats, stance, moves: movesFor(c.species, c.level, c.legacyAbilities),
       boost: stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage,
+      ward: 1 - Math.max(0, Math.min(GEAR_CAP, Number(c.defense) || 0)), // defense gear: what is left of each hit it takes
+      lunch: Number(c.lunch?.heal) > 0 ? { name: String(c.lunch.name || 'packed lunch'), heal: Math.min(LUNCH_CAP, Math.round(Number(c.lunch.heal))) } : null, ate: false,
       turn: 0, readyAt: {}, usedAt: {}, guard: 0, guardLeft: 0, weaken: 1, venom: null, lastSpecial: null,
       attacks: 0, streak: 0, kick: false, blind: false, skip: false, damaged: false, mask: true, still: true, popped: false, regen: 0 };
   });
@@ -88,7 +93,7 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
   if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
   if (shell && pierce) mult *= 1 - TRAIT.shell;
-  return Math.min(hp[foe], Math.max(1, Math.round(move.power * roll * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * guard * s.weaken * mult)));
+  return Math.min(hp[foe], Math.max(1, Math.round(move.power * roll * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * target.ward * guard * s.weaken * mult)));
 }
 const scalesOf = (target) => (target.t === 'eupholus' ? 1 - TRAIT.scales : 1); // venom and weaken half flake off
 const venomOf = (s, target, move) => Math.max(1, Math.round(move.venom * s.stats.damageMultiplier * scalesOf(target) * (s.t === 'graphocephala' ? 1 + TRAIT.xylella : 1)));
@@ -128,7 +133,16 @@ export function stepBout(S, choice) {
     rounds.push({ by: i, type: 'venom', pop: true, effect: 'pierce', moveId: 'trait', ability: 'Firing Chamber', tier: 2, hit: true, dmg, hp: [...hp], turn,
       line: `${q.c.name} is below half and fires its chamber: ${dmg} damage.` });
   };
+  // A packed lunch is eaten once, the first time its bug is left standing below half health. It costs no turn.
+  const snack = (i) => {
+    const q = side[i];
+    if (!q.lunch || q.ate || hp[i] <= 0 || hp[i] >= maxHp[i] / 2) return;
+    q.ate = true; const healed = Math.min(maxHp[i] - hp[i], q.lunch.heal); hp[i] += healed;
+    rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'lunch', ability: q.lunch.name, tier: 0, hit: true, dmg: 0, healed, hp: [...hp], turn,
+      line: `${q.c.name} is below half and stops to eat its ${q.lunch.name}: ${healed} HP back.` });
+  };
   const done = () => {
+    snack(by); snack(foe);
     S.by = foe;
     if (hp[0] <= 0 || hp[1] <= 0 || S.turn >= MAX_ROUNDS) { const score = hp[0] * maxHp[1] - hp[1] * maxHp[0]; S.over = true; S.winner = score === 0 ? null : score > 0 ? 0 : 1; }
     return rounds.slice(from);
@@ -139,7 +153,7 @@ export function stepBout(S, choice) {
     rounds.push({ by: foe, type: 'venom', effect: 'venom', moveId: s.venom.moveId, ability: s.venom.name, tier: s.venom.tier, hit: true, dmg, hp: [...hp], turn,
       line: `${s.c.name} takes ${dmg} venom damage${stood ? ' and lies still at 1 HP' : ''}.` });
     if (--s.venom.left === 0) s.venom = null;
-    pop(by);
+    pop(by); snack(by); snack(foe);
     if (hp[0] <= 0 || hp[1] <= 0) return done();
   }
   if (s.t === 'onymacris') { s.regen += TRAIT.regen; const n = Math.floor(s.regen); s.regen -= n; hp[by] = Math.min(maxHp[by], hp[by] + n); }
@@ -202,10 +216,10 @@ export function simulateBout(a, b, seed) {
 
 export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
 const lines = new Map();
-const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.health ?? 100, !!c.plain]);
+const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain]);
 /**
- * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, gear,
- * stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is
+ * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, attack and
+ * defense gear, packed lunch, stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is
  * exactly 1. To the nearest 5%, kept between 10% and 90%: 400 fights say no more than that, and an owner who picks
  * the moves can beat it. Stakes and win XP follow this number (riskFor, upsetXp).
  */

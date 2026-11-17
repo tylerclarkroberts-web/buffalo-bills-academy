@@ -155,6 +155,25 @@ test('joining a bout holds both stakes, plays live and pays the pot when it ends
   assert.equal(cash(host) + cash(guest), start[0] + start[1]);
 });
 
+test('a packed lunch goes into the ring with the bug, is eaten there, and is gone afterwards', async t => {
+  const f = await fixture(t), { host, guest, hatch, clock } = f;
+  hatch(host.id, 3); hatch(guest.id, 3);
+  const id = (await host.api('POST', '/api/barn/bouts', { stake: 20 })).body.openBout.id;
+  // packed after the bout was posted, by a bug already below half: it eats as soon as the fight starts
+  Object.assign(f.barn.doc.pens[host.id], { lunch: { name: 'Bug Banquet', heal: 10 }, health: 45 }); f.barn.save();
+  assert.deepEqual((await host.api('GET', '/api/barn')).body.pen.lunch, { name: 'Bug Banquet', heal: 10 });
+  // the board's line already counts the lunch, so the stake it shows is the stake the join asks for
+  const { risk } = Object.values((await guest.api('GET', '/api/barn')).body.bouts[0].terms)[0];
+  assert.equal((await guest.api('POST', `/api/barn/bouts/${id}/join`, { risk })).status, 200);
+  clock.now += 10_000; f.barn.fights.sweep();
+  const mine = (await host.api('GET', '/api/barn')).body.pen, meals = mine.lastBout.rounds.filter(r => r.type === 'snack');
+  assert.equal(meals.length, 1); assert.equal(meals[0].by, 0); assert.equal(meals[0].healed, 10);
+  assert.equal(mine.lunch, null, 'eaten');
+  const theirs = (await guest.api('GET', '/api/barn')).body.pen;
+  assert.equal(theirs.lastBout.rounds.find(r => r.type === 'snack').by, 1, 'the other corner saw it too');
+  assert.equal(theirs.lunch, null, 'and packed nothing');
+});
+
 test('a restart mid-fight calls it off: both stakes go back and nobody is paid or scored', async t => {
   const f = await fixture(t), { host, guest, hatch, cash } = f;
   hatch(host.id, 3); hatch(guest.id, 3);

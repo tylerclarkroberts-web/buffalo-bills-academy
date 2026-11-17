@@ -126,3 +126,17 @@ test('a fainted partner is no fight for it: the wild bug stays where it is', t =
   assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId }), /wants a bug to fight/);
   assert.ok(f.mines.stateFor(f.ann).wild, 'still there');
 });
+
+test('a packed lunch eaten against a wild bug is gone; one the partner never needed is kept', t => {
+  const lunch = { name: 'Bug Banquet', heal: 10 };
+  const run = (health) => {
+    const f = fixture(t); f.partner(10);
+    Object.assign(f.barn.doc.pens.ann, { lunch, ...(health ? { health } : {}) }); f.barn.save();
+    const s = f.walkUp(); f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
+    const battle = f.fight();
+    for (let i = 0; i < 200 && !battle.over; i++) { f.clock.now += 5000; f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }); }
+    return [battle.fight.S.rounds.filter(r => r.type === 'snack').length, f.barn.doc.pens.ann.lunch || null];
+  };
+  assert.deepEqual(run(45), [1, null], 'already below half: it eats, and the lunch is used up');
+  assert.deepEqual(run(), [0, lunch], 'a level 10 at full health never gets that low against the least grown');
+});

@@ -20,7 +20,7 @@ export const TABS = [
   { id: 'bugcare', label: 'Bug care', bug: true }, { id: 'gear', label: 'Battle gear', bug: true },
 ];
 export const AVATAR_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'skin', 'acc'];
-export const BUG_SLOTS = ['toy', 'bugskin', 'bughat', 'bugacc', 'gear'];
+export const BUG_SLOTS = ['toy', 'bugskin', 'bughat', 'bugacc', 'gear', 'defense']; // 'gear' is the attack item
 export const tier = (price) => (price >= 20000 ? 'crazy' : price >= 1500 ? 'expensive' : price >= 300 ? 'medium' : 'cheap');
 
 const ids = new Set();

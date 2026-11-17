@@ -357,6 +357,7 @@ export class Pvp {
     battle.over = { winner: winnerSide, reason, at: this.now(), raid: null };
     const fight = battle.fight, w = winnerSide === 'a' ? 0 : 1;
     this.fights.finish(fight, reason === 'draw' ? null : w, reason); // stops a fight that was walked out on; a no-op when it ran its course
+    for (const [k, i] of [['a', 0], ['b', 1]]) if (battle.bugs?.[k] && fight.S.side[i].ate) this.barn?.lunchEaten?.(battle[k], battle.bugs[k].bornAt); // a packed lunch eaten in the fight is gone, however it ended
     if (battle.wild) return this.wildOver(battle, winnerSide, reason, fight);
     if (reason === 'draw') { // no contest: nobody is robbed, but the damage stays (HP never comes back on its own)
       for (const [k, i] of [['a', 0], ['b', 1]]) {
