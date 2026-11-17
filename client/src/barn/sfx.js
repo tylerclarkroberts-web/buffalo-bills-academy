@@ -1,8 +1,20 @@
-// The Barn (v30): synthesized sounds only (Web Audio, no files). Each creature has a voice from its roster entry.
-let ac = null, on = false;
+// The Barn (v30): synthesized sounds (Web Audio), plus the ring announcer's recorded clips. Each creature has a
+// voice from its roster entry.
+import { LINES } from './announcer.js';
+let ac = null, on = false, clip = null;
+const hush = () => { clip?.pause(); clip = null; };
+/** The ring announcer says one of his lines for `key`. `interrupt: false` waits its turn instead of talking over
+ *  him. A clip that is missing or will not play is just silence. */
+export function announce(key, interrupt = true) {
+  const n = LINES[key]?.length; if (!on || !n) return;
+  if (!interrupt && clip && !clip.paused && !clip.ended) return;
+  hush(); clip = new Audio(`/barn/announcer/${key}-${1 + Math.floor(Math.random() * n)}.mp3`);
+  clip.play().catch(() => {});
+}
+announce.stop = hush;
 const ctx = () => { if (!ac) { const A = window.AudioContext || window.webkitAudioContext; if (!A) return null; ac = new A(); } if (ac.state === 'suspended') ac.resume(); return ac; };
 /** Sound off also silences what is already playing. */
-export const setSound = (v) => { on = !!v; if (!on) music.stop(); };
+export const setSound = (v) => { on = !!v; if (!on) { music.stop(); hush(); } };
 export const soundOn = () => on;
 function tone(f0, f1, dur, { wave = 'sine', vol = 0.12, at = 0 } = {}) {
   const a = on && ctx(); if (!a) return;

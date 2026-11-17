@@ -11,7 +11,7 @@ import { movesFor, STANCES } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
-import Bout from './Bout.jsx';
+import Bout, { mergeFight } from './Bout.jsx';
 import Dizzy from './Dizzy.jsx';
 import { navigate } from '../App.jsx';
 import './barn.css';
@@ -69,7 +69,7 @@ function Notes({ bug }) {
 
 /** v75: the Bug Center door, an option inside the barn. Lit up when your bug needs it. */
 function CenterDoor({ urgent }) {
-  return <button className={`btn small ${urgent ? '' : 'ghost'} barn-center-door`} onClick={() => navigate('/barn/center')} title="Bug Center: free healing" data-test="barn-center" lang="ja">
+  return <button className={`btn small ${urgent ? '' : 'ghost'} barn-center-door`} onClick={() => navigate('/barn/center')} title="Bug Center" data-test="barn-center" lang="ja">
     <svg viewBox="0 0 12 12" width="14" height="14" aria-hidden="true" shapeRendering="crispEdges"><rect x="1" y="3" width="10" height="8" fill="#fff" /><rect x="0" y="2" width="12" height="2" fill="#e65d70" /><rect x="5" y="5" width="2" height="5" fill="#e65d70" /><rect x="3.5" y="6.5" width="5" height="2" fill="#e65d70" /></svg>
     バグセンター</button>;
 }
@@ -129,18 +129,16 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   const { openBout, roster, challenges } = b;
   const mine = b.pen?.stage === 'creature' ? b.pen : null;
   const [calling, setCalling] = useState(null), [callStake, setCallStake] = useState('0');
-  const cooldown = mine ? Math.max(0, b.serverNow + mine.boutCoolMs - now) : 0;
-  const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted || cooldown > 0;
-  const others = roster.filter((bug) => bug.ownerId !== meId), full = challenges.outgoing.length >= challenges.max;
+  const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
+  const others = roster.filter((bug) => bug.ownerId !== meId);
   const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
-  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{Math.round((fighter.gear || 0) * 100)}% damage</p><p className="small">{movesFor(fighter.species, fighter.level, fighter.legacyAbilities).filter((move) => fighter.battle.specials.includes(move.id)).map((move) => move.name).join(' · ') || 'Basic attack only'}</p></details>;
+  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{Math.round((fighter.gear || 0) * 100)}% damage</p></details>;
   const stakeLabel = (amount) => (Number(amount) > 0 ? ` for ${money(Number(amount))}` : ' for free');
   return <div className="barn-ring" data-test="barn-ring">
-    <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug at level 3 to fight. Watching is free.'
+    <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
       : !grown ? `Bouts unlock at level ${mine.arenaLevel}. Watching is free.`
-      : mine.fainted ? <>{mine.name} fainted. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it for free.</>
+      : mine.fainted ? <>{mine.name} fainted. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> has a bed for it.</>
       : unsaved ? 'Save or discard your Combat changes before fighting.'
-      : cooldown > 0 ? `Icing its ego. Ready in ${left(cooldown)}.`
       : <span className="num">Available: {money(b.bankroll)} · play money</span>}</p>
     <section className="barn-board">
       {challenges.incoming.length > 0 && <>
@@ -156,7 +154,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         </li>; })}</ul>
       </>}
       <h3>Every bug in the barn</h3>
-      {grown && <p className="small muted">{full ? `${challenges.max} challenges out. Withdraw one to send another.` : 'Call one out. Nothing is held until its owner accepts.'}</p>}
+      {grown && <p className="small muted">Call one out. Nothing is held until its owner accepts.</p>}
       {others.length ? <ul className="barn-roster">{others.map((bug) => { const out = challenges.outgoing.find((c) => c.to === bug.ownerId); return <li key={bug.ownerId} data-test="roster-bug">
         <BugThumb bug={bug} />
         <div>
@@ -169,7 +167,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
             <button className="btn" type="submit" disabled={busy || callStake === ''} data-test="challenge-send">Send{stakeLabel(callStake)}</button>
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
           </form>
-          : grown && bug.fights && <button className="btn" onClick={() => setCalling(bug.ownerId)} disabled={busy || unsaved || full || fainted} data-test="challenge-open">Challenge</button>}
+          : grown && bug.fights && <button className="btn" onClick={() => setCalling(bug.ownerId)} disabled={busy || unsaved || fainted} data-test="challenge-open">Challenge</button>}
       </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>}
     </section>
     <section className="barn-board">
@@ -198,7 +196,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         </div>
         <button className="btn ghost" onClick={() => watch(fight.id)} disabled={busy} data-test="fight-watch">Watch</button>
       </li>; })}</ul> : <p className="small muted" data-test="fights-empty">No fights yet. The bottle caps are gathering dust.</p>}
-      <p className="small muted">Win, lose or draw, both bugs earn {mine?.boutXp ?? 20} XP and rest for an hour. Draws refund both stakes.</p>
+      <p className="small muted">The winner earns {mine?.boutWinXp ?? 30} XP, the loser {mine?.boutXp ?? 20}. The loser faints. Draws refund both stakes.</p>
     </section>
   </div>;
 }
@@ -240,7 +238,9 @@ function BarnHome({ me }) {
     skew.current = r.serverNow - Date.now(); setB(r);
     const last = r.pen?.lastBout;
     const id = last?.id || last?.at || null;
-    if (seenBout.current !== undefined && id && id !== seenBout.current) { setReplay(false); setBout(last); }
+    // A new fight since the last look, or one decided while you were away (the Barn button was counting it).
+    if (id && (r.unseenBout || (seenBout.current !== undefined && id !== seenBout.current))) { setReplay(false); setBout(last); }
+    if (r.unseenBout) refreshSession();
     seenBout.current = id;
     if (wallet.current !== undefined && wallet.current !== r.bankroll) refreshSession();
     wallet.current = r.bankroll;
@@ -249,7 +249,7 @@ function BarnHome({ me }) {
     if (pending.current || loading.current) return;
     loading.current = true;
     const before = mutation.current;
-    api('GET', '/barn').then((r) => { if (before === mutation.current) take(r); }).catch((e) => { if (before === mutation.current) setErr(e.message); }).finally(() => { loading.current = false; });
+    api('GET', '/barn?seen=1').then((r) => { if (before === mutation.current) take(r); }).catch((e) => { if (before === mutation.current) setErr(e.message); }).finally(() => { loading.current = false; });
   };
   useEffect(() => {
     document.title = "The Barn · Buffalo Bill's Academy";
@@ -259,6 +259,27 @@ function BarnHome({ me }) {
     return () => { mutation.current += 1; clearInterval(id); clearInterval(t); };
   }, [me?.id]);
   const pen = b?.pen;
+  // Your bug is in the ring right now: follow it blow by blow. When it ends, the next look at the Barn (take) swaps
+  // in the finished bout, with its payout and XP, on the same ring. Walking away leaves the bug to its own picks.
+  const [left, setLeft] = useState(null);
+  const liveId = b?.live && b.live !== left ? b.live : null, held = useRef(null);
+  useEffect(() => {
+    if (!liveId) return undefined;
+    let off = false; held.current = null;
+    const pull = async () => {
+      try {
+        const { fight } = await api('GET', `/barn/fight?id=${encodeURIComponent(liveId)}&have=${held.current?.rounds.length || 0}`);
+        if (off || !fight) return;
+        held.current = mergeFight(held.current, fight); setReplay(false); setBout(held.current);
+        if (!fight.live) { off = true; load(); }
+      } catch { /* the next beat tries again */ }
+    };
+    pull(); const id = setInterval(pull, 1000);
+    return () => { off = true; clearInterval(id); };
+  }, [liveId]);
+  const lineUp = async (moves) => {
+    try { const { fight } = await api('POST', `/barn/fight/${liveId}/moves`, { moves, have: held.current?.rounds.length || 0 }); held.current = mergeFight(held.current, fight); setBout(held.current); } catch (e) { setErr(e.message); }
+  };
   useEffect(() => { if (b && !ringOpened.current) { ringOpened.current = true; if (b.challenges.incoming.length) setRing(true); } }, [b]);
   const battle = battleDraft || pen?.battle;
   // hatch moment: the egg's countdown ran out on this screen, so ask the server (it decides)
@@ -285,12 +306,13 @@ function BarnHome({ me }) {
   };
   const watch = (id) => act(async () => { const fight = await api('GET', `/barn/fights/${id}`); setReplay(true); setBout(fight); });
   const saveBattle = () => act(async () => {
-    take(await api('PATCH', '/barn/battle', battleDraft)); setBattleDraft(null); setMsg('Combat setup saved. Your next bout will use it.');
+    take(await api('PATCH', '/barn/battle', { stance: battleDraft.stance })); setBattleDraft(null); setMsg('Stance saved.');
   });
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
   if (!b) return <div className="screen barn"><div className="barn-empty muted">{err ? <><p role="alert">{err}</p><button className="btn" onClick={() => { setErr(''); load(); }}>Try again</button></> : 'Opening the barn doors…'}</div></div>;
   const now = Date.now() + skew.current;
   const nextAbility = pen?.abilities?.find((a) => !a.unlocked);
+  const waiting = b.challenges.incoming.length + b.bouts.filter((x) => x.hostId !== me.id).length;
   return (
     <div className="screen barn" data-test="barn">
       <div className="barn-wrap panel">
@@ -298,7 +320,7 @@ function BarnHome({ me }) {
           <h1 className="western">The Barn</h1>
           <div className="barn-head-acts">
             {pen?.stage === 'creature' && <CenterDoor urgent={pen.fainted || pen.hurt} />}
-            <button className={`btn small${!ring && b.challenges.incoming.length ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : b.challenges.incoming.length ? `The ring · ${b.challenges.incoming.length} waiting` : 'The ring'}</button>
+            <button className={`btn small${!ring && waiting ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : waiting ? `The ring · ${waiting} waiting` : 'The ring'}</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
         </header>
@@ -350,8 +372,8 @@ function BarnHome({ me }) {
             <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
               {pen.title && <span className="small barn-title">{pen.title}</span>}
-              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active, outside the care XP cap"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
-              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it. Free.</p>}
+              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b>{pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed full, pauses starvation and adds 12 XP at each daily checkpoint while active"> · 🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}</p>
+              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it: free after an hour's rest, or ${pen.healCost} now.</p>}
               {!pen.fainted && pen.hurt && <button className="barn-hurt small" onClick={() => navigate('/barn/center')} data-test="barn-hurt">Your bug is hurt — visit the Bug Center →</button>}
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
               {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
@@ -373,11 +395,10 @@ function BarnHome({ me }) {
                 <div className="barn-needs">
                   {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
                 </div>
-                <p className="small muted barn-xp-limit">Care XP: max 120/day, shared with store care. Resets at midnight UTC; daily, feeder and battle XP are extra.</p>
                 <div className="barn-acts">
                   {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
                 </div>
-                <p className="small muted barn-xp-limit">Keep all three needs up for stronger bouts. Visit Combat to choose a stance and special moves.</p>
+                <p className="small muted barn-xp-limit">Keep all three needs up for stronger bouts. Visit Combat for its stance, moves and trait.</p>
                 </div> : <div className="barn-tab-content" id="barn-panel-combat" role="tabpanel" aria-labelledby="barn-tab-combat">
                   <dl className="barn-combat-stats">
                     <div><dt>Health</dt><dd>{pen.combat.maxHp} HP</dd></div>
@@ -387,15 +408,16 @@ function BarnHome({ me }) {
                     <div><dt>Speed</dt><dd>{pen.combat.stats.spd}/5</dd></div>
                   </dl>
                   <p className="small muted">Attack increases damage; defense softens hits; speed helps with initiative and dodging. Each level from 3 to 10 adds health and damage.</p>
+                  {pen.trait && <p className="small" data-test="barn-trait"><b>{pen.trait.name}.</b> {pen.trait.description}</p>}
                   {b.openBout && <p className="small barn-warn">Cancel your waiting bout in the ring to change your setup.</p>}
                   <fieldset className="barn-setup" disabled={busy || !!b.openBout}>
                     <legend>Combat setup</legend>
                     <label className="barn-stance">Stance<select value={battle.stance} onChange={(e) => setBattleDraft({ ...battle, stance: e.target.value })} data-test="battle-stance">{Object.values(STANCES).map((stance) => <option key={stance.id} value={stance.id}>{stance.name}</option>)}</select></label>
                     <p className="small muted">{STANCES[battle.stance].description}</p>
-                    <p className="small">Choose up to two specials. Your basic move fills the gaps while specials recover.</p>
+                    <p className="small">In the ring you choose its moves. The stance is how it fights when you leave it to it.</p>
                     <ul className="barn-moves">
                       {pen.abilities.map((a) => <li key={a.id} className={!a.unlocked ? 'locked' : ''}>
-                        <label>{a.id !== 'basic' && <input type="checkbox" checked={battle.specials.includes(a.id)} disabled={!a.unlocked || !battle.specials.includes(a.id) && battle.specials.length >= 2} onChange={(e) => setBattleDraft({ ...battle, specials: e.target.checked ? [...battle.specials, a.id] : battle.specials.filter((id) => id !== a.id) })} />}<b>{a.name}</b><span className="small muted">{battle.specials.includes(a.id) && `Selected ${battle.specials.indexOf(a.id) + 1} · `}{!a.unlocked ? `Unlocks at level ${a.level}` : a.level > pen.level ? 'Previously learned' : a.id === 'basic' ? 'Basic · always available' : `Level ${a.level} special`}</span></label>
+                        <b>{a.name}</b> <span className="small muted">{!a.unlocked ? `Unlocks at level ${a.level}` : a.id === 'basic' ? 'Plain strike' : 'Special'}</span>
                         <p className="small muted">{a.heal ? `Base healing: ${a.heal} HP` : `Power ${a.power} · Base accuracy ${Math.round(a.accuracy * 100)}%`}{a.venom ? ` · Venom: ${a.venom} base damage × ${a.duration} turns` : ''}</p>
                         <p className="small">{a.description}{a.cooldown > 0 ? ` Cooldown: ${a.cooldown} own turns.` : ''}</p>
                       </li>)}
@@ -412,7 +434,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {bout && <Bout key={bout.id || bout.at} bout={bout} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
+        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setLeft(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>

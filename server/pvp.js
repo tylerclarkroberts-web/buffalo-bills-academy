@@ -1,5 +1,5 @@
 // The shared daily mine (v71): miners on shift at the same time see each other, can ambush someone from behind,
-// and fight Game Boy-style bug battles when they meet face to face. The server decides everything: positions are
+// and their bugs fight when they meet face to face (the same ring fight as the Barn's: server/fights.js). The server decides everything: positions are
 // checked against the maze and a speed limit, "seen" is worked out here from those positions, every roll uses the
 // server's random source, and the spoils (acid, play money, tobacco) move only through `raid()` below.
 //
@@ -11,7 +11,6 @@ import { FIRST_POOL_STEPS } from './engine/maze.js';
 import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
 import { sees, touching, behind, onTunnel } from './engine/pvp-geometry.js';
-import { makeFighter, newBattle, resolveTurn, autoMove, legalMoves, fighterView } from './engine/gb-battle.js';
 import { levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { danceId } from './engine/dances.js';
@@ -30,8 +29,6 @@ export const PVP = {
   minShifts: 3,             // greenhorns (fewer finished shifts, or an account under a day old, or a guest) are untouchable
   minAgeMs: 24 * 3600e3,
   cash: { min: 20, max: 100 },
-  turnMs: 20000,            // pick a move within 20 s or your bug picks one for you
-  introMs: 6000,            // v75: the first turn's clock also covers the Game Boy intro (flash, versus screen, "wants to battle!")
   disconnectMs: 15000,      // a battler not heard from for 15 s forfeits
   keepOverMs: 60000,        // a finished battle stays readable for a minute
   maxVisible: 12,
@@ -42,9 +39,9 @@ const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const LOANER = { species: 'onymacris', name: 'Gerald', level: 1 }; // the Foreman's lunchbox beetle
 
 export class Pvp {
-  constructor({ store, accounts, mines, shop, barn, avatars, now, randInt }) {
+  constructor({ store, accounts, mines, shop, barn, avatars, now, randInt, fights }) {
     this.store = store; this.accounts = accounts; this.mines = mines; this.shop = shop; this.barn = barn; this.avatars = avatars;
-    this.now = now; this.randInt = randInt || ((n) => crypto.randomInt(n));
+    this.now = now; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.fights = fights || barn.fights;
     this.doc = store.loadDoc('pvp', { raids: {}, pairs: {}, losses: {} });
     this.doc.raids ||= {}; this.doc.pairs ||= {}; this.doc.losses ||= {};
     this.presence = new Map(); // playerId -> { shiftId, key, x, y, yaw, at, startedAt, seen: Map(otherId -> at), notice }
@@ -154,7 +151,7 @@ export class Pvp {
     if (!this.inBattle.has(player.id)) {
       for (const [oid] of this.neighbours(player.id)) if (this.canBattle(player.id, oid)) { this.startBattle(player.id, oid); break; }
     }
-    return this.view(player, { snap });
+    return this.view(player, { snap, have: body.have });
   }
 
   /**
@@ -169,7 +166,7 @@ export class Pvp {
     pr.dance = want; pr.danceAt = now;
   }
 
-  view(player, { snap = false } = {}) {
+  view(player, { snap = false, have = 0 } = {}) {
     const pr = this.presence.get(player.id);
     const others = this.neighbours(player.id).slice(0, PVP.maxVisible).map(([oid, o]) => {
       const p = this.store.players[oid];
@@ -179,7 +176,7 @@ export class Pvp {
     const target = others.find((o) => this.canAmbush(player.id, o.id));
     const notice = pr?.notice || null; if (pr) pr.notice = null;
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
-    const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id) : null;
+    const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id, have) : null;
     return { serverNow: this.now(), others, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
       ...(notice ? { notice, shift: this.mines.stateFor(player) } : {}) };
@@ -230,56 +227,51 @@ export class Pvp {
   }
   startBattle(a, b) {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');
-    const fa = this.bugOf(a), fb = this.bugOf(b);
-    const state = newBattle(
-      makeFighter({ owner: a, ownerName: fa.ownerName, name: fa.loaner ? `${fa.name} (on loan)` : fa.name, species: fa.species, level: fa.level, loaner: fa.loaner, health: fa.health }),
-      makeFighter({ owner: b, ownerName: fb.ownerName, name: fb.loaner ? `${fb.name} (on loan)` : fb.name, species: fb.species, level: fb.level, loaner: fb.loaner, health: fb.health }));
-    const battle = { id, a, b, startedAt: now, deadline: now + PVP.turnMs + PVP.introMs, state, choices: {}, lastSeen: { [a]: now, [b]: now }, turns: [], over: null,
+    // A bug already in a Barn bout cannot be in two rings at once: its miner borrows Gerald, like anyone without one.
+    const pick = (pid) => (this.fights.fightOf(pid) ? { ...LOANER, loaner: true, ownerName: this.store.players[pid]?.name } : this.bugOf(pid));
+    const fa = pick(a), fb = pick(b);
+    const fighter = (f, pid) => (f.loaner ? { species: f.species, name: `${f.name} (on loan)`, level: f.level, owner: f.ownerName }
+      : { ...this.barn.fighter(pid, this.barn.doc.pens[pid]), owner: f.ownerName });
+    const battle = { id, a, b, startedAt: now, lastSeen: { [a]: now, [b]: now }, over: null,
       bugs: { a: fa.loaner ? null : { bornAt: fa.bornAt, xp: fa.xp }, b: fb.loaner ? null : { bornAt: fb.bornAt, xp: fb.xp } },
       benched: { a: fa.benched || null, b: fb.benched || null } };
+    // The same fight the Barn runs (server/fights.js): one action a beat, each miner lining up moves or leaving it to the bug.
+    battle.fight = this.fights.start({ id, kind: 'mine', players: [a, b], fighters: [fighter(fa, a), fighter(fb, b)], seed: `${now}:${this.randInt(1e9)}`, watching: [a, b],
+      onFinish: (fight) => this.fought(battle, fight) });
     this.battles.set(id, battle); this.inBattle.set(a, id); this.inBattle.set(b, id);
     for (const pid of [a, b]) { this.mines.holds.delete(pid); const pr = this.presence.get(pid); if (pr) pr.lastBattle = id; }
     return battle;
   }
+  /** The fight ran its course. A draw at the bell is no contest: nobody is robbed. */
+  fought(battle, fight) {
+    if (battle.over) return; // a forfeit or a disconnect already ended it
+    const winner = fight.over.winner;
+    this.finish(battle, winner === 1 ? 'b' : 'a', winner === null ? 'draw' : 'fainted');
+  }
   /** Hearing from a battler at all keeps them in the fight (before the sweep decides who has gone quiet). */
   touch(pid) { const b = this.battles.get(this.inBattle.get(pid)); if (b && !b.over) b.lastSeen[pid] = this.now(); }
   sideOf(battle, pid) { return battle.a === pid ? 'a' : battle.b === pid ? 'b' : null; }
-  battleView(battle, pid) {
+  /** The ring's view of the fight from this miner's corner, plus what the mine adds: the spoils and the bug's XP. */
+  battleView(battle, pid, have = 0) {
     const side = this.sideOf(battle, pid), foe = side === 'a' ? 'b' : 'a';
     if (!side) return null;
     battle.lastSeen[pid] = this.now();
-    const st = battle.state;
     const rec = battle.over?.raid ? this.doc.raids[battle.over.raid] : null;
     const mine = rec?.barn?.[side === battle.over?.winner ? 'winner' : 'loser'] || null;
     const xpBefore = battle.bugs?.[side]?.xp;
-    return { id: battle.id, side, turn: st.turn, msLeft: Math.max(0, battle.deadline - this.now()), introMs: PVP.introMs,
-      you: { ...fighterView(st.sides[side], true), xpBar: this.xpBar(xpBefore) }, foe: fighterView(st.sides[foe], false),
-      benched: battle.benched?.[side] || null,
-      chosen: battle.choices[side] !== undefined, foeChosen: battle.choices[foe] !== undefined,
-      turns: battle.turns.slice(-3), // the last few resolved turns' events, numbered, for the text box
+    return { ...this.fights.view(battle.fight, pid, have), benched: battle.benched?.[side] || null,
       over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
         bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
         foeFainted: battle.over.winner === side && !!battle.bugs?.[foe] } : null };
   }
+  /** Line up your bug's next moves (up to three). */
   move(player, body = {}) {
     this.touch(player.id); this.sweep();
     const id = this.inBattle.get(player.id), battle = id && this.battles.get(id);
     if (!battle || battle.id !== String(body.battleId || '')) throw new GameError('That battle is over.', 409);
-    const side = this.sideOf(battle, player.id);
-    if (battle.choices[side] !== undefined) throw new GameError('Your bug already has its orders.', 409);
-    const legal = legalMoves(battle.state.sides[side]);
-    const idx = Number(body.move);
-    if (!(legal.length ? legal.includes(idx) : idx === -1)) throw new GameError('Your bug does not know that one (or is out of PP).', 400);
-    battle.choices[side] = idx; battle.lastSeen[player.id] = this.now();
-    if (battle.choices.a !== undefined && battle.choices.b !== undefined) this.resolve(battle);
-    return { battle: this.battleView(battle, player.id) };
-  }
-  resolve(battle) {
-    const { state, events } = resolveTurn(battle.state, battle.choices, this.randInt);
-    battle.turns = [...battle.turns, { turn: battle.state.turn, events }].slice(-10);
-    battle.state = state; battle.choices = {}; battle.deadline = this.now() + PVP.turnMs;
-    if (state.winner) this.finish(battle, state.winner, 'fainted');
+    if (!this.fights.line(battle.fight, player.id, body.moves)) throw new GameError('Your bug does not know that one.', 400);
+    return { battle: this.battleView(battle, player.id, body.have) };
   }
   /** Walking away from a battle (clocking out, closing the page for good) is a forfeit. */
   forfeit(playerId, reason = 'forfeit') {
@@ -293,27 +285,30 @@ export class Pvp {
     const winner = winnerSide === 'a' ? battle.a : battle.b, loser = winnerSide === 'a' ? battle.b : battle.a;
     this.inBattle.delete(battle.a); this.inBattle.delete(battle.b);
     battle.over = { winner: winnerSide, reason, at: this.now(), raid: null };
+    const fight = battle.fight, w = winnerSide === 'a' ? 0 : 1;
+    this.fights.finish(fight, reason === 'draw' ? null : w, reason); // stops a fight that was walked out on; a no-op when it ran its course
+    if (reason === 'draw') { // no contest: nobody is robbed, but the damage stays (HP never comes back on its own)
+      for (const [k, i] of [['a', 0], ['b', 1]]) {
+        const bug = battle.bugs?.[k];
+        if (bug) this.barn?.keepScrapes?.(battle[k], { battleId: battle.id, bornAt: bug.bornAt, hpPct: pctOf(fight.S.hp[i], fight.S.maxHp[i]) });
+      }
+      return;
+    }
     if (reason === 'abandoned') return;
     const loserSide = winnerSide === 'a' ? 'b' : 'a';
-    // However it ended, the loser's bar runs out: walking away or going quiet still leaves your bug flat on the floor.
-    if (battle.state.sides[loserSide].hp > 0) battle.state = { ...battle.state, winner: winnerSide, sides: { ...battle.state.sides, [loserSide]: { ...battle.state.sides[loserSide], hp: 0 } } };
-    const won = battle.state.sides[winnerSide];
-    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(won.hp, won.maxHp) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
-      winnerBug: battle.state.sides[winnerSide].name, loserBug: battle.state.sides[loserSide].name };
+    const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], hpPct: pctOf(fight.S.hp[w], fight.S.maxHp[w]) } : null, loser: battle.bugs?.[loserSide] || null, fought: reason === 'fainted',
+      winnerBug: fight.fighters[w].name, loserBug: fight.fighters[1 - w].name };
     battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
   }
   /** Turn timers and disconnects, checked on every PvP request (and by the app's one-second sweep). */
   sweep() {
     const now = this.now();
+    this.fights.sweep();
     for (const [id, battle] of this.battles) {
       if (battle.over) { if (now - battle.over.at > PVP.keepOverMs) this.battles.delete(id); continue; }
       const goneA = now - battle.lastSeen[battle.a] > PVP.disconnectMs, goneB = now - battle.lastSeen[battle.b] > PVP.disconnectMs;
       if (goneA && goneB) { this.finish(battle, 'a', 'abandoned'); continue; } // nobody left to collect: no spoils
-      if (goneA || goneB) { this.finish(battle, goneA ? 'b' : 'a', 'disconnect'); continue; }
-      if (now >= battle.deadline) {
-        for (const s of ['a', 'b']) if (battle.choices[s] === undefined) battle.choices[s] = autoMove(battle.state.sides[s], this.randInt);
-        this.resolve(battle);
-      }
+      if (goneA || goneB) this.finish(battle, goneA ? 'b' : 'a', 'disconnect');
     }
     // Forget miners whose shift is over (a battle loser keeps theirs until their page hears how it went).
     for (const [pid, pr] of this.presence) if (this.shiftOf(pid)?.id !== pr.shiftId && !(pr.lastBattle && this.battles.has(pr.lastBattle)) && !this.inBattle.has(pid)) this.presence.delete(pid);

@@ -29,6 +29,6 @@ export function createPvpClient({ send, pose, onView, onError, path = '/mines/pv
 }
 
 /** Battle calls go straight through; the next heartbeat shows the result. */
-export const pvpMove = (send, battleId, move) => send('/mines/pvp/move', { battleId, move });
+export const pvpMove = (send, battleId, moves, have) => send('/mines/pvp/move', { battleId, moves, have });
 export const pvpAmbush = (send, target) => send('/mines/pvp/ambush', { target });
 export const pvpForfeit = (send) => send('/mines/pvp/forfeit', {});

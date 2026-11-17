@@ -90,7 +90,7 @@ function GamesMenu({ me }) {
   return (
     <div className="games-nav" ref={box} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
       <button type="button" ref={trigger} className="btn small games-toggle" aria-expanded={open} aria-controls="games-navigation" onClick={() => setOpen(!open)}>
-        Games{me?.barnChallenges > 0 && <b className="barn-count" data-test="barn-count" aria-label={`${me.barnChallenges} waiting to fight your bug`}>{me.barnChallenges}</b>} <span aria-hidden="true">▾</span>
+        Games{me?.barnChallenges > 0 && <b className="barn-count" data-test="barn-count" aria-label={`${me.barnChallenges} waiting in the ring`}>{me.barnChallenges}</b>} <span aria-hidden="true">▾</span>
       </button>
       {open && (
         <nav id="games-navigation" className="acct-menu games-menu" aria-label="Games" onClick={() => setOpen(false)}>
@@ -128,7 +128,7 @@ export function Shell({ path, children }) {
           {compactNav ? <GamesMenu me={me} /> : <>
           <Link to="/conquest" className="barn-btn" title="ConquestK and play-money Risk bets"><Ico k="board" /><span>Risk bets</span></Link>
           <button className="mines-btn" onClick={goToMines} title="Work a shift in the Acid Mines"><Ico k="pick" /><span>Acid Mines</span></button>
-          {me && <Link to="/barn" className="barn-btn" title={me.barnChallenges ? `Your barn: ${me.barnChallenges} waiting to fight your bug` : 'Your barn'} data-test="barn-btn"><Ico k="barn" /><span>Barn</span>{me.barnChallenges > 0 && <b className="barn-count" data-test="barn-count">{me.barnChallenges}</b>}</Link>}
+          {me && <Link to="/barn" className="barn-btn" title={me.barnChallenges ? `Your barn: ${me.barnChallenges} waiting in the ring` : 'Your barn'} data-test="barn-btn"><Ico k="barn" /><span>Barn</span>{me.barnChallenges > 0 && <b className="barn-count" data-test="barn-count">{me.barnChallenges}</b>}</Link>}
           {me && <Link to="/store" className="barn-btn store-btn" title="The General Store (play money)" aria-label="General Store" data-test="store-btn"><Ico k="store" /><span>General Store</span></Link>}
           </>}
           {me ? <AccountMenu me={me} /> : (config.google ? <a className="btn small light" href={signInUrl()}>Sign in</a> : <Link to="/" className="btn small light">Sign in</Link>)}

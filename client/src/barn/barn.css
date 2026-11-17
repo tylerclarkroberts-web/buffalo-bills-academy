@@ -74,6 +74,24 @@
 .bout { position: fixed; inset: 0; width: min(980px, calc(100vw - 24px)); height: min(620px, calc(100dvh - 100px)); max-width: none; max-height: none; margin: auto; box-sizing: border-box; color: var(--paper-2); border: 1px solid #7a4a2a; display: grid; grid-template-rows: auto minmax(80px, 1fr) auto auto; gap: 6px; padding: 12px 16px; border-radius: 18px;
   background: radial-gradient(120% 80% at 50% 30%, #5a2e14, #1e0c06 85%); }
 .bout::backdrop { background: rgba(0,0,0,.65); }
+/* a live fight: the move panel sits under the ring, so the dialog gets more room */
+.bout.live { height: min(760px, calc(100dvh - 40px)); }
+.bout[data-kind="mine"] { border-color: #4a6a3a; background: radial-gradient(120% 80% at 50% 30%, #23301c, #0a0f08 85%); }
+.bout-panel { display: grid; gap: 6px; }
+.bout-queue { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; min-height: 34px; font-size: 13px; }
+.bout-pick { font: inherit; color: inherit; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 6px 10px; min-height: 32px; cursor: pointer; }
+.bout-pick:hover, .bout-pick:focus-visible { background: rgba(255,255,255,.18); }
+.bout-moves { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; }
+.bout-move { display: grid; gap: 2px; align-content: center; padding: 6px; min-height: 48px; border-radius: 10px; border: 1px solid var(--fx); background: rgba(0,0,0,.35); color: var(--paper-2); font: inherit; text-align: center; cursor: pointer; }
+.bout-move b { font-size: 13px; line-height: 1.15; }
+.bout-move small { font-size: 10.5px; color: var(--fx); }
+.bout-move:hover:not(:disabled), .bout-move:focus-visible { background: rgba(255,255,255,.1); }
+.bout-move:disabled { opacity: .5; cursor: default; }
+.bout-trait { margin: 0; text-align: center; }
+@media (max-width: 760px) { .bout.live { height: calc(100dvh - 16px); } .bout-moves { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); } .bout-move b { font-size: 12px; } }
+@media (max-height: 560px) { .bout-trait { display: none; } }
+@media (max-height: 500px) { .bout.live { height: calc(100dvh - 8px); gap: 3px; padding: 6px 10px; } .bout.live .bout-line { min-height: 0; font-size: 12px; } .bout-queue { min-height: 0; font-size: 12px; }
+  .bout-pick { min-height: 28px; padding: 2px 8px; } .bout-moves { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; } .bout-move { min-height: 40px; padding: 2px 4px; } .bout-move b { font-size: 11.5px; } .bout-move small { font-size: 9.5px; } }
 .bout:not([open]) { display: none; }
 .bout-top { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .bout-side { min-width: 0; display: grid; grid-template-columns: minmax(0, auto) 1fr; align-items: baseline; gap: 2px 8px; }

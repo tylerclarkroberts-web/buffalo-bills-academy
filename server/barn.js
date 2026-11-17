@@ -9,8 +9,8 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
-import { simulateBout } from './engine/bout.js';
-import { movesFor, battleFor, combatStats, STANCES } from './engine/bug-combat.js';
+import { Fights } from './fights.js';
+import { movesFor, battleFor, combatStats, traitFor, STANCES } from './engine/bug-combat.js';
 import { cents } from './accounts.js';
 
 export const EGG_CHANCE = 10000; // out of 100,000 shifts (10%), for players with an empty barn
@@ -27,25 +27,29 @@ export const CARE = {
   play: { stat: 'mood', gain: 30, cooldownMs: 20 * 60e3, word: 'played with' },
   clean: { stat: 'clean', gain: 45, cooldownMs: 40 * 60e3, word: 'hosed down' },
 };
-export const CARE_XP = 12;   // per care action...
-export const CARE_XP_PER_DAY = 120; // ...shared with store care, per UTC day
+export const CARE_XP = 12;   // per care action. No daily cap: the care cooldowns are the only brake
 export const DAY_XP = 10;    // per full day since hatching, while it's not neglected
-export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action, inside the same daily cap
+export const BOOST_XP = 6;   // a store mister or heat lamp: half a care action
 export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
-export const BOUT_LEVEL = 3;
+export const BOUT_LEVEL = 1; // any hatched bug: they could already fight in the mine
 export const BOUT_XP = 20;
-export const BOUT_COOLDOWN_MS = 60 * 60e3; // one bout an hour
+export const BOUT_WIN_XP = 10; // on top, for the winner only
+export const FIND_XP = 2;      // each acid pool a guide bug leads its miner to. ponytail: uncapped (pool travel time is the brake); cap it if someone farms shifts
 export const BOUT_OPEN_MS = 60 * 60e3;
 export const MAX_BOUT_STAKE = 10000;
-// v75 mine battles: both bugs that fight to the end earn BATTLE_XP; the winner gets WIN_BONUS_XP on top. Outside the
-// care XP cap (the two-hour pair cooldown in pvp.js is the brake). A loser (mine battle or, since v76, barn bout) faints: pen.faintedAt is set and it can't
-// battle, guide or take a barn bout until the nurse at the Bug Center heals it (free).
+// v75 mine battles: both bugs that fight to the end earn BATTLE_XP; the winner gets WIN_BONUS_XP on top. The two-hour
+// pair cooldown in pvp.js is the brake. A loser (mine battle or, since v76, barn bout) faints: pen.faintedAt is set and it can't
+// battle, guide or take a barn bout until the nurse at the Bug Center heals it.
 export const BATTLE_XP = 20;
 export const WIN_BONUS_XP = 30;
 // v76 health: a bug's HP is kept as pen.health, a percent of its max (absent = 100). It NEVER comes back on its own:
 // no regen over time, no rest, no level-up refill. Whatever a barn bout or mine battle leaves is what it has until
-// the Bug Center nurse heals it (free). A bout's loser faints (0 HP); a winner or a draw keeps the HP it ended on.
+// the Bug Center nurse heals it. A bout's loser faints (0 HP); a winner or a draw keeps the HP it ended on.
 // A hurt but standing bug may still fight, guide and take bouts; it just starts them with less HP.
+// A fainted bug recovers with the nurse for free once RECOVER_MS has passed since it fainted; sooner costs FAST_HEAL_COST.
+// This replaced the one-bout-an-hour rest: losing is what slows a bug down now. A hurt but standing bug is always free.
+export const RECOVER_MS = 60 * 60e3;
+export const FAST_HEAL_COST = 50;
 export function healthOf(pen) {
   if (!pen || pen.faintedAt) return 0;
   const h = Number(pen.health);
@@ -54,14 +58,13 @@ export function healthOf(pen) {
 /** HP left after a fight, as a percent, never rounding a standing bug down to 0. */
 export const pctOf = (hp, max) => (hp <= 0 ? 0 : Math.max(1, Math.min(100, Math.round((hp / max) * 100))));
 export const CHALLENGE_OPEN_MS = 24 * 3600e3; // a challenge waits a day: nothing is held, so it can afford to
-export const MAX_CHALLENGES = 3;              // outgoing, per player
 export const FIGHT_LOG = 20;                  // recent fights anyone can watch
 const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
 
 export class Barn {
-  constructor({ store, accounts, now, incubateMs, eggInt, forceEgg = false, startXp = 0, starveMs } = {}) {
+  constructor({ store, accounts, now, incubateMs, eggInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
     this.starveMs = Number(starveMs) > 0 ? Number(starveMs) : STARVE_MS; this.k = this.starveMs / STARVE_MS;
     this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
@@ -70,6 +73,7 @@ export class Barn {
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
     this.doc.pens ||= {}; this.doc.names ||= {}; this.doc.count ||= {}; this.doc.graves ||= {};
     this.doc.challenges ||= []; this.doc.fights ||= [];
+    this.fights = fights || new Fights({ now }); // the mine shares this one (server/app.js)
     if (this.migrate()) this.save();
   }
   /** v33: hybrid eggs and creatures become randomly chosen bugs. Level, XP, needs, record and cooldowns are kept;
@@ -177,9 +181,13 @@ export class Barn {
     return pen;
   }
 
-  view(playerId) {
+  /** `seen` is the Barn page itself asking: it clears the "decided while you were away" flag and reports it once. */
+  view(playerId, { seen = false } = {}) {
+    this.fights.sweep();
     this.expireBouts();
-    return { ...this.petView(playerId), ...this.board(playerId), ...this.ring(playerId) };
+    const player = this.store.players?.[playerId], unseenBout = seen && !!player?.barnBouts?.unseen;
+    if (unseenBout) this.store.commitPlayerDrafts([{ ...player, barnBouts: { ...player.barnBouts, unseen: null } }]);
+    return { ...this.petView(playerId), ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null };
   }
 
   /** The ring: every living bug, the caller's challenges and the recent fights. The same for a player with no bug. */
@@ -191,16 +199,21 @@ export class Barn {
       const level = levelFor(pen.xp);
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
       return [{ ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId) || null,
-        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt, restMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now) }];
+        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt }];
     }).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
     const named = c => ({ ...c, fromName: players[c.from]?.name || 'Someone', toName: players[c.to]?.name || 'Someone' });
     return { roster,
-      challenges: { incoming: this.doc.challenges.filter(c => c.to === playerId).map(named), outgoing: this.doc.challenges.filter(c => c.from === playerId).map(named), max: MAX_CHALLENGES },
+      challenges: { incoming: this.doc.challenges.filter(c => c.to === playerId).map(named), outgoing: this.doc.challenges.filter(c => c.from === playerId).map(named) },
       fights: this.doc.fights.map(({ id, at, stake, winner, sides }) => ({ id, at, stake, winner, sides: sides.map(({ ownerId, owner, fighter }) => ({ ownerId, owner, name: fighter.name, species: fighter.species, level: fighter.level })) })) };
   }
 
-  /** How many challenges are waiting on this player, for the Barn button. */
-  challengeCount(playerId) { const now = this.now(); return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length; }
+  /** The Barn button's count: challenges to this player, a fight decided while they were away, and (with a bug fit to fight) bouts anyone else has open. */
+  challengeCount(playerId) {
+    const now = this.now(), players = this.store.players || {}, pen = this.doc.pens[playerId];
+    const canFight = pen?.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp) >= BOUT_LEVEL && now < this.deathAt(pen);
+    return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length + (players[playerId]?.barnBouts?.unseen ? 1 : 0) + (this.fights.fightOf(playerId) ? 1 : 0)
+      + (canFight ? Object.values(players).filter(p => p.id !== playerId && p.barnBouts?.open && now < p.barnBouts.open.expiresAt).length : 0);
+  }
 
   /** A recent fight as anyone may watch it: the bugs as drawn and the blows, without setups, condition or wallets. */
   fight(id) {
@@ -226,15 +239,15 @@ export class Barn {
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, style: this.looksOf(playerId) || null, gearBonus: this.styleOf?.(playerId).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= 10 ? null : xpFor(level + 1),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
-      abilities: movesFor(c.id, level, pen.legacyAbilities || 0),
+      abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
       battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
       combat: { ...combatStats(level), stats: c.stats },
-      arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
+      arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, boutWinXp: BOUT_XP + BOUT_WIN_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
       title: pen.record?.w >= 5 ? 'Barn Menace' : null,
-      fainted: !!pen.faintedAt, ...(pen.faintedAt ? { faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null, faintedIn: pen.faintedIn || 'mines' } : {}),
+      fainted: !!pen.faintedAt, ...(pen.faintedAt ? { recoverMs: Math.max(0, pen.faintedAt + RECOVER_MS - now), healCost: FAST_HEAL_COST, faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null, faintedIn: pen.faintedIn || 'mines' } : {}),
       ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
-      boutCoolMs: Math.max(0, (pen.boutAt || 0) + BOUT_COOLDOWN_MS - now), lastBout: pen.lastBout || null }, serverNow: now };
+      lastBout: pen.lastBout || null }, serverNow: now };
   }
 
   /** HP for display: percent, points out of the level's max, and whether a nurse visit would help. */
@@ -260,15 +273,12 @@ export class Barn {
     if (pen.stage === 'dead') throw new GameError('It is past caring now.', 409);
     if (now - (pen.cool[action] || 0) < a.cooldownMs) throw new GameError(`You just ${a.word} it. Give it a minute.`, 429);
     const n = this.needs(pen, now);
-    const day = Math.floor(now / 86400e3);
-    if (pen.xpDay !== day) { pen.xpDay = day; pen.xpToday = 0; }
     for (const s of STATS) pen.stats[s] = { v: n[s], at: now }; // re-base all three, then bump one
     const toy = action === 'play' ? (this.styleOf?.(playerId).toyMood || 0) : 0; // store toy: capped at +20
     pen.stats[a.stat].v = Math.min(100, n[a.stat] + a.gain + toy);
     pen.cool[action] = now;
     if (action === 'feed') pen.fedAt = now;
-    const gain = Math.min(CARE_XP, CARE_XP_PER_DAY - pen.xpToday);
-    if (gain > 0) { pen.xp += gain; pen.xpToday += gain; }
+    pen.xp += CARE_XP;
     this.save();
     return this.view(playerId);
   }
@@ -276,17 +286,13 @@ export class Barn {
   /** Save an owned bug's unlocked moves; settings and fight rewards persist before becoming visible. */
   setBattle(playerId, settings) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)
-      || Object.keys(settings).some((key) => !['stance', 'specials'].includes(key))
-      || typeof settings.stance !== 'string' || !Object.hasOwn(STANCES, settings.stance)
-      || !Array.isArray(settings.specials) || settings.specials.length > 2
-      || new Set(settings.specials).size !== settings.specials.length) throw new GameError('Choose a fighting style and up to two different unlocked specials.', 400);
+      || Object.keys(settings).some((key) => key !== 'stance')
+      || typeof settings.stance !== 'string' || !Object.hasOwn(STANCES, settings.stance)) throw new GameError('Choose a stance: balanced, aggressive or defensive.', 400);
     const pen = this.refresh(playerId);
     if (!pen || pen.stage !== 'creature') throw new GameError('You need a hatched bug for that.', 409);
     this.expireBouts();
     if (this.store.players?.[playerId]?.barnBouts?.open) throw new GameError('Cancel your open bout before changing its setup.', 409);
-    const unlocked = movesFor(pen.species, levelFor(pen.xp), pen.legacyAbilities || 0).filter((move) => move.unlocked && move.id !== 'basic');
-    if (settings.specials.some((id) => !unlocked.some((move) => move.id === id))) throw new GameError('Choose only special moves your bug has learned.', 400);
-    this.commitPen(playerId, { ...pen, battle: { stance: settings.stance, specials: [...settings.specials] } });
+    this.commitPen(playerId, { ...pen, battle: { stance: settings.stance } });
     return this.view(playerId);
   }
 
@@ -302,21 +308,20 @@ export class Barn {
       legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
   }
 
-  /** Alive and old enough to fight. `rested` also wants its hour since the last bout: a challenge can be sent without it. */
-  ready(playerId, rested = true) {
+  /** Alive, standing and old enough to fight. */
+  ready(playerId) {
     const pen = this.refresh(playerId);
     if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
     if (pen.stage === 'dead') throw new GameError('It is resting. For good.', 409);
     if (pen.stage !== 'creature') throw new GameError('Eggs do not fight. Mostly.', 409);
-    const now = this.now();
     const level = levelFor(pen.xp);
     if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
+    if (this.fights.fightOf(playerId)) throw new GameError(`${pen.name} is in the ring right now.`, 409);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
-    if (rested && now - (pen.boutAt || 0) < BOUT_COOLDOWN_MS) throw new GameError('It is still icing its ego. Try again later.', 429);
     return pen;
   }
 
-  escrow(player) { return player?.barnBouts?.open?.stake || 0; }
+  escrow(player) { return (player?.barnBouts?.open?.stake || 0) + (player?.barnBouts?.live?.stake || 0); }
 
   board(playerId) {
     const player = this.store.players?.[playerId];
@@ -340,7 +345,6 @@ export class Barn {
     next.xp += receipt.xpEarned;
     next.record ||= { w: 0, l: 0, d: 0 };
     next.record[receipt.result === 'won' ? 'w' : receipt.result === 'lost' ? 'l' : 'd']++;
-    next.boutAt = receipt.at;
     // v76: the damage stays. A loser faints until the Bug Center; a winner or a draw keeps what it ended on.
     if (Number.isFinite(receipt.healthAfter)) {
       if (receipt.result === 'lost' || receipt.healthAfter <= 0) { next.faintedAt = receipt.at; next.faintedBy = receipt.owners?.[1]?.name || receipt.them?.name || null; next.faintedIn = 'ring'; next.health = 0; }
@@ -366,6 +370,8 @@ export class Barn {
 
   expireBouts() {
     for (const player of Object.values(this.store.players || {})) {
+      const live = player.barnBouts?.live;
+      if (live && !this.fights.get(live.id)) this.refundLive(player);
       const open = player.barnBouts?.open;
       if (!open) continue;
       const pen = this.doc.pens[player.id];
@@ -389,13 +395,12 @@ export class Barn {
     const theirs = target && !target.hidden ? this.doc.pens[body.to] : null;
     if (!theirs || theirs.stage !== 'creature' || this.now() >= this.deathAt(theirs)) throw new GameError('There is no bug there to challenge.', 404);
     if (levelFor(theirs.xp) < BOUT_LEVEL) throw new GameError(`That bug is too young. Bouts open at level ${BOUT_LEVEL}.`, 409);
-    const pen = this.ready(playerId, false);
+    const pen = this.ready(playerId);
     const mine = this.doc.challenges.filter(c => c.from === playerId), same = mine.find(c => c.to === body.to);
     if (same) {
       if (same.stake !== body.stake) throw new GameError('Withdraw your challenge to that bug before changing it.', 409);
       return this.view(playerId);
     }
-    if (mine.length >= MAX_CHALLENGES) throw new GameError(`${MAX_CHALLENGES} challenges at a time. Withdraw one first.`, 409);
     this.accounts.requireFunds(player, body.stake, 'this challenge');
     const now = this.now(), made = { id: crypto.randomUUID(), from: playerId, to: body.to, stake: body.stake, at: now, expiresAt: now + CHALLENGE_OPEN_MS };
     this.commitDoc({ challenges: [...this.doc.challenges, made] });
@@ -420,6 +425,7 @@ export class Barn {
     this.expireBouts();
     const player = this.accounts.ensure(this.store.players[playerId]);
     const found = this.doc.challenges.find(c => c.id === id);
+    if (this.fights.fightOf(playerId)?.id === id) return this.view(playerId); // a second tap while it is on
     if (player.barnBouts?.lastBout?.id === id) { // a retry after the fight was paid
       if (found) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
       return this.view(playerId);
@@ -436,39 +442,82 @@ export class Barn {
     const pen = this.ready(playerId);
     this.accounts.requireFunds(player, found.stake, 'this bout');
     if (rival.bankroll + 1e-9 < found.stake) throw new GameError(`${rival.name} can no longer cover that stake.`, 409);
-    this.settle(id, [{ player: rival, pen: rivalPen, fighter: this.fighter(found.from, rivalPen) }, { player, pen, fighter: this.fighter(playerId, pen) }], found.stake, false);
-    this.applyBoutReward(found.from);
+    this.startFight(id, [{ player: rival, pen: rivalPen, fighter: this.fighter(found.from, rivalPen) }, { player, pen, fighter: this.fighter(playerId, pen) }], found.stake, false, playerId);
     return this.view(playerId);
   }
 
   /**
-   * Decide a fight and commit both wallets with their reward receipts in one players.json write. Side 0 posted the
-   * bout or sent the challenge; `held` says its stake is already in escrow. The ring's public record follows.
+   * Both bugs go to the ring. Every stake is held now, in one players.json write, so nobody can spend theirs while
+   * the fight is on. Side 0 posted the bout or sent the challenge; `held` says its stake is already in escrow.
+   * `watcher` took the fight and is looking at it; the other owner's bug fights on its own until they turn up.
    */
-  settle(id, sides, stake, held) {
-    const now = this.now(), fighters = sides.map(side => side.fighter);
-    const seed = `${now}:${this.eggInt(1e9)}`;
-    const { rounds, winner, maxHp, startHp } = simulateBout(...fighters, seed);
-    const endHp = rounds.length ? rounds[rounds.length - 1].hp : startHp;
-    const drafts = sides.map(({ player: p, pen }, side) => {
+  startFight(id, sides, stake, held, watcher) {
+    const now = this.now(), seed = `${now}:${this.eggInt(1e9)}`;
+    const drafts = sides.map(({ player: p }, side) => {
+      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, live: { id, stake, at: now } } };
+      if (stake && (side === 1 || !held)) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
+      return draft;
+    });
+    this.store.commitPlayerDrafts(drafts);
+    if (this.doc.challenges.some(c => c.id === id)) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
+    const entrants = sides.map(({ player, pen, fighter }) => ({ id: player.id, bornAt: pen.bornAt, fighter }));
+    this.fights.start({ id, kind: 'barn', players: entrants.map(e => e.id), fighters: entrants.map(e => e.fighter), seed, watching: [watcher],
+      onFinish: (fight) => this.settle(fight, entrants, stake, seed) });
+  }
+
+  /**
+   * The fight is over: pay the pot and write both reward receipts in one players.json write, then let each pet catch
+   * up. An owner who was not watching at the end gets the result flagged until they open the Barn.
+   */
+  settle(fight, entrants, stake, seed) {
+    const now = this.now(), id = fight.id, winner = fight.over.winner, { rounds, maxHp, startHp, hp: endHp } = fight.S;
+    const fighters = entrants.map(e => e.fighter);
+    const drafts = entrants.flatMap((e, side) => {
+      const p = this.store.players[e.id];
+      if (!p) return []; // the account was deleted mid-fight
+      const pen = this.doc.pens[e.id], xp = pen?.bornAt === e.bornAt ? pen.xp : 0;
+      const xpEarned = BOUT_XP + (winner === side ? BOUT_WIN_XP : 0);
       const payout = winner === null ? stake : winner === side ? cents(stake * 2) : 0;
       const healthAfter = winner !== null && winner !== side ? 0 : pctOf(endHp[side], maxHp[side]);
-      const receipt = { version: 4, id, at: now, seed, petBornAt: pen.bornAt, healthAfter,
+      const receipt = { version: 5, id, at: now, seed, petBornAt: e.bornAt, healthAfter,
         startHp: side === 0 ? startHp : [...startHp].reverse(),
         you: fighters[side], them: fighters[1 - side],
         rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
-        maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned: BOUT_XP,
-        levelBefore: levelFor(pen.xp), levelAfter: levelFor(pen.xp + BOUT_XP),
+        maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned,
+        levelBefore: levelFor(xp), levelAfter: levelFor(xp + xpEarned),
         result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', stake, payout, net: cents(payout - stake),
-        owners: [side, 1 - side].map(i => ({ id: sides[i].player.id, name: sides[i].player.name })) };
-      const draft = { ...p, barnBouts: { ...p.barnBouts, open: null, lastBout: receipt } };
-      if (stake && (side === 1 || !held)) this.accounts.change(draft, -stake, 'barn-stake', 'Barn bout: stake held', { save: false });
+        owners: [side, 1 - side].map(i => ({ id: entrants[i].id, name: this.store.players[entrants[i].id]?.name || 'A former member' })) };
+      const draft = { ...this.accounts.ensure(p), barnBouts: { ...p.barnBouts, live: null, lastBout: receipt, ...(fight.over.watched[side] ? {} : { unseen: id }) } };
       if (payout) this.accounts.change(draft, payout, winner === null ? 'barn-refund' : 'barn-win', winner === null ? 'Barn bout: draw, stake returned' : 'Barn bout: won the pot', { save: false });
-      return draft;
+      return [draft];
     });
     // Both wallets and their reward receipts must land in the same atomic players.json write.
     this.store.commitPlayerDrafts(drafts);
-    if (this.doc.challenges.some(c => c.id === id)) this.commitDoc({ challenges: this.doc.challenges.filter(c => c.id !== id) });
+    for (const e of entrants) this.applyBoutReward(e.id);
+  }
+
+  /** A held stake whose fight is gone (the server restarted mid-fight): nobody won, so it goes back. */
+  refundLive(player) {
+    const live = player.barnBouts.live;
+    const draft = { ...player, barnBouts: { ...player.barnBouts, live: null } };
+    if (live.stake) this.accounts.change(draft, live.stake, 'barn-refund', 'Barn bout: called off, stake returned', { save: false });
+    this.store.commitPlayerDrafts([draft]);
+  }
+
+  /** The fight your bug is in (or just finished), from your corner. `have` is how many blows the page already holds. */
+  liveFight(playerId, id, have) {
+    this.fights.sweep();
+    const fight = this.fights.get(String(id || '')) || this.fights.fightOf(playerId);
+    if (!fight || fight.kind !== 'barn' || this.fights.sideOf(fight, playerId) < 0) return { fight: null };
+    return { fight: this.fights.view(fight, playerId, have) };
+  }
+  /** Line up your bug's next moves (up to three). It picks for itself whenever the list is empty or a move is not ready. */
+  lineUp(playerId, id, body) {
+    this.fights.sweep();
+    const fight = this.fights.get(String(id || ''));
+    if (!fight || fight.over || fight.kind !== 'barn' || this.fights.sideOf(fight, playerId) < 0) throw new GameError('That fight is over.', 409);
+    if (!body || typeof body !== 'object' || !this.fights.line(fight, playerId, body.moves)) throw new GameError('Line up to three of your bug\'s own moves.', 400);
+    return { fight: this.fights.view(fight, playerId, body.have) };
   }
 
   openBout(playerId, body) {
@@ -506,7 +555,7 @@ export class Barn {
     if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) throw new GameError('Join the posted stake as shown.', 400);
     this.expireBouts();
     const player = this.accounts.ensure(this.store.players[playerId]);
-    if (player.barnBouts?.lastBout?.id === id) return this.view(playerId);
+    if (player.barnBouts?.lastBout?.id === id || this.fights.fightOf(playerId)?.id === id) return this.view(playerId);
     const host = Object.values(this.store.players).find(p => p.barnBouts?.open?.id === id);
     if (!host) throw new GameError('That bout has already filled, expired or been cancelled.', 409);
     if (host.id === playerId) throw new GameError('Your bug cannot fight itself. It has tried.', 409);
@@ -514,8 +563,7 @@ export class Barn {
     const hostPen = this.ready(host.id), guestPen = this.ready(playerId);
     const open = host.barnBouts.open;
     this.accounts.requireFunds(player, open.stake, 'this bout');
-    this.settle(id, [{ player: host, pen: hostPen, fighter: { ...open.fighter, health: healthOf(hostPen) } }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true);
-    this.applyBoutReward(host.id);
+    this.startFight(id, [{ player: host, pen: hostPen, fighter: { ...open.fighter, health: healthOf(hostPen) } }, { player, pen: guestPen, fighter: this.fighter(playerId, guestPen) }], open.stake, true, playerId);
     return this.view(playerId);
   }
 
@@ -523,6 +571,12 @@ export class Barn {
   fit(playerId) {
     const pen = this.doc.pens[playerId];
     return pen?.stage === 'creature' && !pen.faintedAt && !(this.now() >= this.deathAt(pen));
+  }
+  /** A guide bug led its miner to a pool with acid in it: a little XP. */
+  foundAcid(playerId) {
+    if (!this.fit(playerId)) return;
+    const pen = this.doc.pens[playerId];
+    this.commitPen(playerId, { ...pen, xp: (pen.xp || 0) + FIND_XP });
   }
   /**
    * A mine bug battle's result for one bug (pvp.js calls this while settling the raid). Idempotent per battle id, and
@@ -545,18 +599,42 @@ export class Barn {
     this.commitPen(playerId, next);
     return { xp, bonus: won ? WIN_BONUS_XP : 0, fainted: !won, levelBefore, levelAfter: levelFor(next.xp) };
   }
-  /** The Bug Center: the nurse heals a fainted or hurt bug to full HP. The only way HP comes back. Always free; a healthy bug is a polite no-op. */
-  heal(playerId) {
+  /**
+   * A mine fight that ran to the bell with nobody down (no contest): no XP, no record, but each bug keeps the HP it
+   * ended on, so the fight's damage stays until the nurse heals it. Never raises HP. Idempotent per battle id.
+   */
+  keepScrapes(playerId, { battleId, bornAt, hpPct }) {
+    const pen = this.doc.pens[playerId];
+    if (!pen || pen.stage !== 'creature' || pen.bornAt !== bornAt || pen.faintedAt || !Number.isFinite(hpPct)) return false;
+    if ((pen.mineBattles || []).includes(battleId)) return false;
+    const health = Math.max(1, Math.min(healthOf(pen), Math.round(hpPct)));
+    this.commitPen(playerId, { ...pen, health, mineBattles: [...(pen.mineBattles || []), battleId].slice(-20) });
+    return true;
+  }
+  /**
+   * The Bug Center: the nurse heals a fainted or hurt bug to full HP. The only way HP comes back. A hurt bug is free;
+   * a fainted one is free RECOVER_MS after it fainted, or FAST_HEAL_COST right now with `pay`. A healthy bug is a polite no-op.
+   */
+  heal(playerId, { pay = false } = {}) {
     const pen = this.refresh(playerId);
     if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
     if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
     if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
     const was = !!pen.faintedAt || healthOf(pen) < 100;
+    const waitMs = pen.faintedAt ? pen.faintedAt + RECOVER_MS - this.now() : 0;
+    let cost = 0;
+    if (waitMs > 0) {
+      if (!pay) throw new GameError(`${pen.name} needs ${Math.ceil(waitMs / 60e3)} more minutes of rest. Or $${FAST_HEAL_COST} gets it up now.`, 409);
+      const player = this.accounts.ensure(this.store.players[playerId]);
+      this.accounts.requireFunds(player, FAST_HEAL_COST, 'expedited recovery');
+      this.accounts.change(player, -FAST_HEAL_COST, 'barn-heal', 'Bug Center: expedited recovery');
+      cost = FAST_HEAL_COST;
+    }
     if (was) {
       const { faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, ...rest } = pen;
       this.commitPen(playerId, { ...rest, healedAt: this.now(), heals: (pen.heals || 0) + 1 });
     }
-    return { ...this.view(playerId), healed: was, cost: 0 };
+    return { ...this.view(playerId), healed: was, cost };
   }
   /** Store looks for a bug (skin palette, hat, accessory, equipped battle gear), for drawing only. */
   looksOf(playerId) {
@@ -574,7 +652,7 @@ export class Barn {
     delete this.doc.pens[playerId]; this.save();
     return { ...this.view(playerId), graves: this.doc.graves[playerId] };
   }
-  /** A store consumable: bump one need and earn `xp` care XP inside the daily cap (food also counts as a feed). */
+  /** A store consumable: bump one need and earn `xp` care XP (food also counts as a feed). */
   boost(playerId, { stat, gain, fed = false, xp = fed ? CARE_XP : 0 }) {
     const pen = this.refresh(playerId);
     if (!pen || pen.stage !== 'creature') throw new GameError('You need a hatched bug for that.', 409);
@@ -582,12 +660,7 @@ export class Barn {
     for (const st of STATS) pen.stats[st] = { v: n[st], at: now };
     pen.stats[stat].v = Math.min(100, n[stat] + Math.max(0, Math.min(100, gain)));
     if (fed) pen.fedAt = now;
-    if (xp > 0) {
-      const day = Math.floor(now / 86400e3);
-      if (pen.xpDay !== day) { pen.xpDay = day; pen.xpToday = 0; }
-      const g = Math.min(xp, CARE_XP_PER_DAY - pen.xpToday);
-      if (g > 0) { pen.xp += g; pen.xpToday += g; }
-    }
+    if (xp > 0) pen.xp += xp;
     this.save();
     return this.view(playerId);
   }

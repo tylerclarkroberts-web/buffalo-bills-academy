@@ -45,6 +45,7 @@ const VERDICTS = {
   lost: ['{b} wins. {a} will sulk about it.', '{b} wins. {a} says it slipped on some straw.', '{b} wins. {a} demands a rematch from the floor.'],
   draw: ['A draw. Both of them claim victory.', 'A draw. Nobody is happy. Someone is writing to the Foreman.'],
 };
+const MINE_SIGNS = ['DO NOT LICK THE WALLS', 'FOREMAN NOT LIABLE', 'ACID IS NOT A SNACK', 'NO REFUNDS UNDERGROUND', 'RING: 4 BOTTLE CAPS, BORROWED'];
 const SIGNS = ['NO REFUNDS', 'DO NOT FEED THE FIGHTERS', 'NOT LIABLE FOR STINGS', 'NO FLYING OVER THE ROPES', 'RING: 4 BOTTLE CAPS'];
 const seedOf = (bout) => bout.id || bout.seed || bout.at || 'bout';
 export const introLine = (bout) => fill(pick(INTROS, `${seedOf(bout)}:intro`), bout);
@@ -59,13 +60,13 @@ export function planBout(bout) {
   const beats = []; let at = INTRO_MS;
   rounds.forEach((r, i) => {
     const special = r.type === 'move' && !!r.moveId && r.moveId !== 'basic';
-    const kind = r.type === 'venom' ? 'tick' : r.effect === 'heal' ? 'heal' : 'attack';
+    const kind = r.type === 'venom' ? 'tick' : r.skipped ? 'skip' : r.effect === 'heal' ? 'heal' : 'attack';
     const charge = special ? (r.tier >= 4 ? 950 : 700) : 0;
-    const impactAt = kind === 'tick' ? 220 : charge + (kind === 'heal' ? 320 : STYLES[styleOf(fighters[r.by]?.species)].approach);
+    const impactAt = kind === 'tick' || kind === 'skip' ? 220 : charge + (kind === 'heal' ? 320 : STYLES[styleOf(fighters[r.by]?.species)].approach);
     const stop = kind !== 'attack' || !r.hit || !(r.dmg > 0) ? 0 : r.critical ? 280 : special ? 120 : 70;
-    const dur = impactAt + stop + (kind === 'tick' ? 520 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
+    const dur = impactAt + stop + (kind === 'tick' || kind === 'skip' ? 520 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
     const before = copy(), me = r.by, foe = 1 - r.by;
-    if (kind === 'tick') status[foe].poison = Math.max(0, status[foe].poison - 1); // a venom round's `by` is the poisoner
+    if (kind === 'tick') { if (!r.pop) status[foe].poison = Math.max(0, status[foe].poison - 1); } // a venom round's `by` is the poisoner
     else if (kind === 'attack') {
       status[foe].guard = false; status[me].weak = false; // both are spent by any attack, hit or miss
       if (r.effect === 'guard') status[me].guard = true;
@@ -76,13 +77,14 @@ export function planBout(bout) {
     at += dur;
   });
   const last = rounds[rounds.length - 1];
-  return { beats, intro: INTRO_MS, end: at, total: at + FINISH_MS, seed: seedOf(bout), ending: last && last.hp.some((h) => h <= 0) ? 'ko' : 'time' };
+  return { beats, open: !!bout.live, intro: INTRO_MS, end: at, total: at + FINISH_MS, seed: seedOf(bout), ending: last && last.hp.some((h) => h <= 0) ? 'ko' : 'time' };
 }
 
 /** Where the replay is at time t: the intro, a beat (charging, moving in, landed), the finish, or done. */
 export function locate(plan, t) {
   if (t < plan.intro) return { i: -1, phase: 'intro', lt: t };
   for (const b of plan.beats) if (t < b.at + b.dur) { const lt = t - b.at; return { i: b.i, phase: lt < b.charge ? 'charge' : lt < b.impactAt ? 'act' : 'land', lt }; }
+  if (plan.open) return { i: plan.beats.length, phase: 'wait', lt: 0 };
   const lt = t - plan.end;
   return { i: plan.beats.length, phase: lt < FINISH_MS ? 'finish' : 'done', lt };
 }
@@ -197,18 +199,20 @@ function drawParts(x, fx, dt, u) {
 }
 
 /** A bug-scale ring on barn boards: bottle-cap corner posts, twine ropes, a chalk circle, straw and a hand-lettered sign. */
-function arena(fx, W, H, seed) {
-  if (fx.arena && fx.arena.W === W && fx.arena.H === H) return fx.arena.c;
+function arena(fx, W, H, seed, kind) {
+  if (fx.arena && fx.arena.W === W && fx.arena.H === H && fx.arena.kind === kind) return fx.arena.c;
+  const mine = kind === 'mine';
   const c = makeCanvas(W, H), g = c.getContext('2d'), rand = rng(`${seed}:arena`), u = Math.max(2, Math.round(Math.min(W, H) / 110));
   const plank = u * 13;
   for (let y = 0, k = 0; y < H; y += plank, k++) {
-    g.fillStyle = ['#5e3d22', '#664429', '#59391f'][k % 3]; g.fillRect(0, y, W, plank);
+    g.fillStyle = (mine ? ['#3b3f44', '#43474c', '#35393d'] : ['#5e3d22', '#664429', '#59391f'])[k % 3]; g.fillRect(0, y, W, plank);
     g.fillStyle = 'rgba(0,0,0,.14)'; for (let i = 0; i < W / (u * 18); i++) g.fillRect(rand() * W, y + u * (2 + Math.floor(rand() * 9)), u * (4 + rand() * 12), u);
-    g.fillStyle = '#2e1c0e'; g.fillRect(0, y, W, u);
+    g.fillStyle = mine ? '#1d2023' : '#2e1c0e'; g.fillRect(0, y, W, u);
+    if (mine) continue; // rock has seams, not nailed boards
     for (let xx = rand() * W * 0.5; xx < W; xx += W * (0.3 + rand() * 0.45)) { g.fillStyle = '#2e1c0e'; g.fillRect(xx | 0, y, u, plank); g.fillStyle = '#20140a'; g.fillRect((xx | 0) + u * 3, y + u * 3, u, u); g.fillRect((xx | 0) - u * 3, y + plank - u * 4, u, u); }
   }
   for (let i = 0; i < 90; i++) { const sx = rand() * W, sy = rand() * H, len = u * (3 + rand() * 7), ang = rand() * Math.PI;
-    g.strokeStyle = rand() < 0.5 ? '#d8b860' : '#a8843a'; g.lineWidth = u; g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len); g.stroke(); }
+    g.strokeStyle = mine ? (rand() < 0.3 ? '#8cff5a' : '#2a2d30') : rand() < 0.5 ? '#d8b860' : '#a8843a'; g.lineWidth = u; g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len); g.stroke(); }
   const L = layout(W, H), cx = (L.home[0][0] + L.home[1][0]) / 2, cy = (L.home[0][1] + L.home[1][1]) / 2;
   g.setLineDash([u * 4, u * 3]); g.strokeStyle = 'rgba(240,232,210,.3)'; g.lineWidth = u * 1.5; g.beginPath();
   g.ellipse(cx, cy, L.tall ? W * 0.42 : W * 0.38, L.tall ? H * 0.4 : H * 0.36, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
@@ -224,14 +228,14 @@ function arena(fx, W, H, seed) {
     g.fillStyle = col; g.beginPath(); g.arc(px + u * 0.6, py + u * 0.6, cr * 0.62, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(255,255,255,.6)'; g.fillRect(px - cr * 0.4, py - cr * 0.45, u * 1.5, u * 1.5);
   });
-  const sign = SIGNS[Math.floor(dress() * SIGNS.length)], fs = Math.max(9, u * 4.2);
+  const sign = (mine ? MINE_SIGNS : SIGNS)[Math.floor(dress() * SIGNS.length)], fs = Math.max(9, u * 4.2);
   g.font = `${fs}px Rye, Georgia, serif`; const sw = g.measureText(sign).width + u * 6, sx = W / 2 - sw / 2, sy = top + u * 3;
   g.save(); g.translate(W / 2, sy); g.rotate((dress() - 0.5) * 0.06); g.translate(-W / 2, -sy);
   g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(sx + u, sy + u, sw, fs + u * 4); g.fillStyle = '#efe2c0'; g.fillRect(sx, sy, sw, fs + u * 4);
   g.fillStyle = '#7a2a1a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(sign, W / 2, sy + (fs + u * 4) / 2 + u * 0.4); g.restore();
   const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
-  fx.arena = { W, H, c };
+  v.addColorStop(0, mine ? 'rgba(120,255,90,.05)' : 'rgba(0,0,0,0)'); v.addColorStop(1, mine ? 'rgba(0,8,0,.72)' : 'rgba(0,0,0,.55)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  fx.arena = { W, H, c, kind };
   return c;
 }
 
@@ -261,7 +265,8 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
   let shake = 0, flash = 0, dim = 0, attacker = -1;
   if (beat && !reduced) {
     const r = beat.r, A = beat.charge, I = beat.impactAt, Rr = I + beat.stop;
-    if (beat.kind === 'tick') { const q = P[1 - r.by]; if (lt < 420) { q.x += Math.sin(lt / 18) * size * 0.02; q.flash = lt < 260 && Math.floor(lt / 60) % 2 ? '#8cff5a' : null; } }
+    if (beat.kind === 'tick') { const q = P[1 - r.by]; if (lt < 420) { q.x += Math.sin(lt / 18) * size * 0.02; q.flash = lt < 260 && Math.floor(lt / 60) % 2 ? (r.pop ? '#ffb040' : '#8cff5a') : null; } }
+    else if (beat.kind === 'skip') { if (lt < 520) P[r.by].rot += Math.sin(lt / 70) * 0.16 * (1 - lt / 520); }
     else {
       const a = r.by, d = 1 - a, p = P[a], q = P[d], [tx, ty] = toward(a); attacker = a;
       if (lt < A) { p.sy *= 0.92; p.x += (R() - 0.5) * size * 0.012; p.aura = clamp01(lt / 220); dim = 0.5 * clamp01(lt / 160) * clamp01((A - lt) / 160 + 0.2); }
@@ -286,7 +291,7 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
         }
       }
     }
-    if (lt >= I && !fx.fired.has(beat.i)) { fx.fired.add(beat.i); impact(fx, beat, P, ST, size, u, ...toward(beat.r.by)); }
+    if (beat.kind !== 'skip' && lt >= I && !fx.fired.has(beat.i)) { fx.fired.add(beat.i); impact(fx, beat, P, ST, size, u, ...toward(beat.r.by)); }
   }
 
   const ended = loc.phase === 'finish' || loc.phase === 'done';
@@ -301,13 +306,13 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
     });
   }
 
-  const status = loc.phase === 'intro' || ended ? null : beat ? (lt >= beat.impactAt ? beat.after : beat.before) : null;
+  const status = loc.phase === 'intro' || ended ? null : beat ? (lt >= beat.impactAt ? beat.after : beat.before) : plan.beats.length ? plan.beats[plan.beats.length - 1].after : null;
   if (status && !reduced) P.forEach((p, s) => { if (status[s].poison) { p.tint ||= ['#5aff3a', 0.22 + 0.12 * Math.sin(t / 180)]; if (R() < dt / 260) spawn(fx, 1, () => ({ kind: 'px', color: '#8cff5a', x: p.x + (R() - 0.5) * size * 0.4, y: p.y - p.alt, vy: -size * 0.35, life: 700, size: u * 2 })); } });
 
   x.save();
   if (shake) x.translate((R() - 0.5) * shake * 2, (R() - 0.5) * shake * 2);
   x.fillStyle = '#20120a'; x.fillRect(-40, -40, W + 80, H + 80);
-  x.drawImage(arena(fx, W, H, plan.seed), 0, 0);
+  x.drawImage(arena(fx, W, H, plan.seed, bout.kind), 0, 0);
   P.forEach((p) => { const k = clamp01(p.alt / size); x.fillStyle = `rgba(0,0,0,${0.38 * (1 - k * 0.55)})`; x.beginPath(); x.ellipse(p.x, p.y + size * 0.04, size * 0.34 * (1 - k * 0.35), size * 0.13 * (1 - k * 0.35), 0, 0, Math.PI * 2); x.fill(); });
   const order = [0, 1].sort((s0, s1) => (s0 === attacker ? 1 : s1 === attacker ? -1 : P[s0].y - P[s1].y));
   order.forEach((s) => {

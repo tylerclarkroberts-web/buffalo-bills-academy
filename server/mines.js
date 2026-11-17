@@ -351,6 +351,8 @@ export class Mines {
       // Acid fill is a share of this shift's bucket, not the old time-based sizes or shaft scale.
       pool.quantity = pool.remaining = acidFillAmount(cap(next), pool.roll, cap(next) - next.collected);
       this.advance(next, this.now()); this.commit(player.id, next);
+      // the shift is already saved, so a barn hiccup costs the bug 2 XP, not the miner a pool
+      if (pool.quantity > 0) try { this.barn?.foundAcid?.(player.id); } catch { /* XP only */ }
       return this.publicShift(next, true);
     }
     const left = Math.max(MIN_SHIFT_MS, cur.veinMs || 0) - (this.now() - cur.startedAt);
