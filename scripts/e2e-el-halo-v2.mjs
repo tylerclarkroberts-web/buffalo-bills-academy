@@ -253,8 +253,10 @@ async function main() {
   await hook(T, { spawn: [{ type: 'luchador', x: j1.x, z: j1.z - 12, still: true }, { type: 'mariachi', x: j1.x + 2, z: j1.z - 14, still: true }] });
   await J.waitForTimeout(400); await J.evaluate(() => window.__elHalo.aimAtNearest());
   const e0 = (await st(J)).enemies;
+  // watch while firing: the hit marker only lasts a moment, and a big wave keeps the enemy count climbing
+  const mowed = until(J, (n) => window.__elHalo.state().enemies < n || window.__elHalo.state().hitMark || window.__elHalo.state().headMark, e0, 4500);
   await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(1500); await J.evaluate(() => window.__elHalo.fire(false));
-  check(await until(J, (n) => window.__elHalo.state().enemies < n || window.__elHalo.state().hitMark, e0, 3000), 'Joe mows them down from the turret');
+  check(await mowed, 'Joe mows them down from the turret');
   await shot(J, 'jeep-turret'); await shot(T, 'jeep-driver');
   await T.keyboard.press('KeyE'); await J.keyboard.press('KeyE');
   check(await until(T, () => !window.__elHalo.state().seat, null, 3000) && await until(J, () => !window.__elHalo.state().seat, null, 3000), 'E gets both out');
