@@ -91,7 +91,7 @@ function Board({ rows, onClose, touch }) {
   );
 }
 
-export default function ElHaloRoom({ onExit, elapsedMs }) {
+export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO THE HALL', showShift = true }) {
   const canvas = useRef(null), stage = useRef(null), game = useRef(null);
   const [touch] = useState(isTouch);
   const [muted, setMuted] = useState(() => localStorage.getItem('bba.elhalo.muted') === '1');
@@ -144,9 +144,9 @@ export default function ElHaloRoom({ onExit, elapsedMs }) {
   return createPortal(
     <div className={`m-doom m-elh${touch ? ' touch' : ''}`} role="dialog" aria-label="El Halo" data-test="elhalo-room" data-mode={m}>
       <div className="m-doom-bar m-elh-bar">
-        <button className="m-btn m-doom-exit" onClick={onExit} data-test="elhalo-exit">◄ BACK TO THE HALL</button>
+        <button className="m-btn m-doom-exit" onClick={onExit} data-test="elhalo-exit">{exitLabel}</button>
         <span className="m-elh-name" aria-hidden="true">EL HALO</span>
-        <span className="m-dim m-doom-clock" title="Your shift is still on the clock while you're in here">SHIFT {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</span>
+        {showShift && <span className="m-dim m-doom-clock" title="Your shift is still on the clock while you're in here">SHIFT {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</span>}
         {touch && m === 'playing' && <button className="m-link" onClick={() => setBoard((b) => (b ? null : game.current.board()))} data-test="elhalo-board-btn">MARCADOR</button>}
         <button className="m-link" onClick={cycleMusic} data-test="elhalo-music" title="Music volume">MÚSICA {MUSIC_LEVELS[music][0]}</button>
         <button className="m-link" onClick={() => setMuted((v) => !v)} aria-pressed={!muted} data-test="elhalo-mute">{muted ? '♪ OFF' : '♪ ON'}<span className="sr-only"> game sound</span></button>
