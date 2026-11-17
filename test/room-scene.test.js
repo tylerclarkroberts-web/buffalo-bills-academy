@@ -39,9 +39,13 @@ test('the expanded floor preserves the scale and placement of furniture, shelves
   assert.ok(Math.abs(floorSize.x * floorSize.z / (8.33 * 6.5) - 3.15) < 1e-6);
   assert.equal(scene.floor.getWorldScale(new THREE.Vector3()).y, 1, 'height is unchanged');
   assert.deepEqual(scene.wagon.position.toArray(), ROOM_POSITIONS.window, 'the original yard placement stays over the graded lawn');
-  for (const fixture of scene.static.children.filter(object => object !== scene.structure)) {
+  for (const fixture of scene.static.children.filter(object => object !== scene.structure && object !== scene.couch)) {
     assert.deepEqual(fixture.getWorldScale(new THREE.Vector3()).toArray(), [1, 1, 1]);
   }
+  const couchSize = new THREE.Box3().setFromObject(scene.couch).getSize(new THREE.Vector3());
+  const couchPick = scene.picks.find(object => object.userData.selection.kind === 'couch');
+  assert.ok(couchSize.x > 3.0 && couchSize.z > 1.1 && couchSize.y > 1.25, 'an adult-size sofa fits the default parlor');
+  assert.ok(Math.abs(couchPick.geometry.parameters.width - couchSize.x) < 0.08, 'click target covers the wider arms');
   const wardrobeSize = new THREE.Box3().setFromObject(scene.wardrobe.children[0]).getSize(new THREE.Vector3());
   for (const [actual, expected] of [[wardrobeSize.x, 1.5], [wardrobeSize.y, 2.5], [wardrobeSize.z, 0.85]]) assert.ok(Math.abs(actual - expected) < 1e-6);
   const shelf = scene.dynamic.children.find(object => object.isGroup && object.position.equals(new THREE.Vector3(...ROOM_POSITIONS['shelf-left'])));
@@ -275,7 +279,7 @@ test('room view has finite limits and resets to a high cutaway of the whole hous
 test('room close-ups frame each destination on a phone and reset unknown destinations', () => {
   const aspect = 360 / 280;
   const wide = makeRoomCamera(aspect);
-  for (const [area, x, z] of [['bathroom', -0.38, 5.2], ['bunk', -0.23, -5.03], ['porch', 6.25, 3.1], ['parlor', 0, 0]]) {
+  for (const [area, x, z] of [['bathroom', 0.45, 5.2], ['bunk', -0.23, -5.03], ['porch', 6.25, 3.1], ['yard', 6.4, -0.78], ['parlor', 0, 0]]) {
     const view = roomView({ area }), focused = makeRoomCamera(aspect, view);
     const middle = new THREE.Vector3(x * S, 1.8, z * S).project(focused);
     assert.ok(Math.abs(middle.x) < 0.12 && Math.abs(middle.y) < 0.2, area);

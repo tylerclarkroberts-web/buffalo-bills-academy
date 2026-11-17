@@ -73,7 +73,7 @@ test('visitors receive displayed possessions and exact worth without unrelated p
   const visit = await visitor.api('GET', `/api/players/${owner.id}/room`);
   assert.equal(visit.status, 200);
   assert.equal(visit.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(Object.keys(visit.body).sort(), ['finishes', 'furniture', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wallDisplays', 'wealthStage', 'worth']);
+  assert.deepEqual(Object.keys(visit.body).sort(), ['finishes', 'furniture', 'homestead', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wallDisplays', 'wealthStage', 'worth']);
   assert.deepEqual(Object.keys(visit.body.owner).sort(), ['avatar', 'id', 'name']);
   assert.deepEqual(visit.body.placements, layout.placements);
   assert.ok(!JSON.stringify(visit.body).includes('odd-vaccine'), 'undisplayed collection stays private');
@@ -99,6 +99,20 @@ test('HTTP layout writes enforce ownership, reject stale edits and cannot target
   assert.equal((await visitor.api('PATCH', `/api/players/${owner.id}/room`, draft)).status, 404);
   assert.deepEqual((await owner.api('GET', '/api/room')).body.placements, draft.placements);
   assert.deepEqual((await visitor.api('GET', '/api/room')).body.placements, []);
+});
+
+test('HTTP homestead edits allow catalog choices, reject unknown or cross-target values and keep the saved revision', async t => {
+  const { owner, visitor } = await fixture(t);
+  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements: [], homestead: { tub: { typeId: 'copper', colorId: 'slate', layoutId: 'alternate' } } };
+  assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 200);
+  assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 409);
+  for (const homestead of [null, [], { workshop: {} }, { tub: [] }, { bed: { typeId: 'copper' } }, { porch: { colorId: 'unknown' } },
+    { kitchen: { layoutId: 'free' } }, { tub: { x: 40 } }]) {
+    assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, homestead })).status, 400);
+  }
+  const shown = (await visitor.api('GET', `/api/players/${owner.id}/room`)).body;
+  assert.equal(shown.layoutRevision, 1);
+  assert.deepEqual(shown.homestead.tub, draft.homestead.tub);
 });
 
 test('HTTP saves reject furniture intersecting shelves and shelves intersecting saved furniture', async t => {

@@ -1,6 +1,6 @@
 # Personal rooms
 
-My Room displays the owner's existing pet, outfit, oddities and in-game wealth in a furnished 3D bunkhouse. The bathroom, kitchen, bunk, porch and surrounding desert are fixed scenery around the player's arrangement. Existing furniture and display positions keep their saved coordinates.
+My Room displays the owner's existing pet, outfit, oddities and in-game wealth in a furnished 3D bunkhouse. The owner can arrange the parlor furniture and choose finishes and placements for the bathroom, bedroom, kitchen and porch. Existing parlor furniture and displays keep their saved coordinates. The couch uses the largest size that clears the walls, furniture and mounted displays at its saved position.
 
 ## Visits and privacy
 
@@ -15,7 +15,7 @@ My Room displays the owner's existing pet, outfit, oddities and in-game wealth i
 
 **Save room** commits layout choices together; **Cancel** restores them. Failed saves retain the draft, revision conflicts require reloading, and leaving with unsaved changes offers to continue or discard. **Visitor view** shows the saved layout.
 
-Pet care and clothing changes save immediately, even during layout editing, and are not undone by Cancel. They use the existing [Barn care rules](bug-combat.md#xp-and-the-daily-care-limit). Visiting never feeds the pet, pauses neglect or awards care XP.
+Pet care and clothing changes save immediately, even during layout editing, and are not undone by Cancel. They use the existing [Barn care rules](bug-combat.md#xp-and-care). Visiting never feeds the pet, pauses neglect or awards care XP.
 
 Each owned oddity can appear once in a compatible spot. Besides shelves, there are two wall displays that are always up and four more the owner can hang or take down, a floor display with two more in storage, the writing desk, the window sill, the top of the wardrobe and the yard. Anything that fits a shelf also fits the desk, the sill, the wardrobe top and the display case.
 
@@ -34,7 +34,7 @@ The resident can take coffee outside through the side door when the saved layout
 | Endpoint | Contract |
 | --- | --- |
 | `GET /api/room` | Owner view: layout, curated pet/appearance, exact worth and owned oddity IDs. |
-| `PATCH /api/room/layout` | Owner-only replacement with `expectedRevision`, `themeId`, `placements` and optional `shelves`, `wallDisplays`, `finishes`, `furniture`. |
+| `PATCH /api/room/layout` | Owner-only layout edit with `expectedRevision`, `themeId`, `placements` and optional `shelves`, `wallDisplays`, `finishes`, `furniture`, `homestead`. |
 | `GET /api/players/:id/room` | Signed-in visitor view of an available account, including exact worth. |
 
 Responses use `Cache-Control: no-store`, including errors. Missing authentication returns 401, a legacy guest visiting returns 403, and an unavailable target returns 404. Invalid fields, ownership, compatibility or placement return 400; stale revision returns 409. The former sharing endpoint is removed. A successful save returns the owner view with `layoutRevision` incremented.
@@ -44,9 +44,10 @@ Important replacement and compatibility rules:
 - `placements` replaces the full list of `{anchorId,itemId}` pairs, with at most 34 compatible, uniquely owned items/positions. An empty list clears displays. Do not send an owner ID, sharing fields, image URLs or HTML.
 - Supplied `shelves` replaces the list (zero to six). Each entry has `id`, `spotId`, `typeId`, `colorId` and optional `sizeId` (`standard` or `wide`). Omitted size preserves an existing shelf's size; new shelves default small. Wide shelves retain their centre ID plus `<id>-slot-2` and `<id>-slot-3` in ordinary placements. Shrinking requires removing outer placements; removing all shelves requires `shelves:[]` and no shelf placements.
 - Supplied `wallDisplays` contains `wall-left` and `wall-right`, and optionally any of `wall-3` to `wall-6`, each on a distinct approved mount clear of shelves, furniture and the resident. Every display listed reserves its space even when empty; leaving an optional one out takes it down.
-- Supplied `finishes` contains floor, rug and wardrobe objects, and optionally couch, each with `typeId` and `colorId`. An omitted couch keeps its default style.
+- Supplied `finishes` contains floor, rug and wardrobe objects, and optionally couch and fence, each with `typeId` and `colorId`. Omitted couch and fence finishes keep their saved values.
+- `homestead` maps `bathroom`, `bedroom`, `kitchen`, `porch`, `bed`, `tub` and `porchChair` to catalog choices. Each target accepts its own `typeId`, `colorId` and `layoutId`. Layout IDs select authored placements with room for the surrounding fixtures. Omitted targets and fields keep their saved choices. Older rooms receive the default for each missing choice on read.
 - Supplied `furniture` maps pieces (`desk`, `pet`, `wardrobe`, `wealth`, `rug`, `floor`, `floor-2`, `floor-3`, `window`, `couch`, `case`, `poker`) to finite `x`, `z`, quarter-turn `r` (0–3) and optional boolean `off`. Only desk, wardrobe, couch, `floor-2`, `floor-3`, `case` and `poker` accept `off:true`; the last four start stored, and `case` and `poker` must be owned to come out. Omitted pieces return to their defaults; coordinates store to two decimals.
-- Omitting an entire optional `shelves`, `wallDisplays`, `finishes` or `furniture` field preserves its saved value for older clients. The resulting combination still undergoes all collision and ownership checks.
+- Omitting an entire optional layout field preserves its saved value for older clients. The resulting combination still undergoes all collision and ownership checks.
 
 Visitor JSON contains `owner`, layout fields, curated `pet`, `worth` (`bankroll`, `chips`, `holdings`, `riskEscrow`, `total`) and `wealthStage` when the total is finite. Invalid amounts are omitted. Owner JSON additionally contains `owned` (oddities and bought furniture). The profile's `roomVisitAvailable` flag is only a navigation hint; the endpoint rechecks access.
 

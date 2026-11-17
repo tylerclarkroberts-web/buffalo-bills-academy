@@ -1,27 +1,38 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ROOM_FLOOR_SCALE as S } from '../../../server/catalog/room.js';
+import { ROOM_FLOOR_SCALE as S, ROOM_HOMESTEAD, roomHomestead } from '../../../server/catalog/room.js';
 import { ROOM_WALL_HEIGHT } from './scene-model.js';
 import { buildWings } from './wings.js';
 
 const INCH = ROOM_WALL_HEIGHT / 102, FLOOR = 0.016, DECK = 0.025;
-const counterX = 1.61, kitchenBack = -6.96, counterZ = kitchenBack + 25 * INCH / (2 * S);
-const worktop = 36 * INCH;
-const furnishings = [
-  // Model, floor-plan x/z, unrotated width/height/depth in inches, heading, support height, action.
-  ['bathtub', -0.95, 6.66, [60, 21, 31], Math.PI],
-  ['toilet', 0.85, 6.73, [19, 31, 29], Math.PI, FLOOR, 'flush'],
-  ['bathroomSink', -3.74, 5.70, [22, 38.8, 18], Math.PI / 2],
-  // The twin mattress occupies 89% of the frame length between the two rails.
-  ['bedSingle', -2.95, -5.65, [39, 32, 84], Math.PI / 2],
-  // The backsplash projects above the working countertop, which is at 14/15 of the mesh height.
-  ['kitchenStove', counterX - 30 * INCH / S, kitchenBack + 28 * INCH / (2 * S), [30, 36 * 15 / 14, 28], 0],
-  ['kitchenCabinet', counterX, counterZ, [30, 36 * 15 / 14, 25], 0],
-  ['kitchenCoffeeMachine', counterX, counterZ, [10, 13, 13], 0, FLOOR + worktop, 'coffee'],
-  ['pottedPlant', 4.69, 3.93, [14, 42, 16], 0.33, DECK],
-  ['chair', 7.55, 3.7, [19.5, 35.25, 21], -Math.PI / 2, DECK, 'coffee'],
-];
+const kitchenBack = -6.96, counterZ = kitchenBack + 25 * INCH / (2 * S), worktop = 36 * INCH;
+
+function furnishingPlan(style) {
+  const alt = id => style[id].layoutId === 'alternate';
+  const counterX = alt('kitchen') ? -0.65 : 1.61;
+  const bed = alt('bed') ? [2.46, -5.10, -Math.PI / 2] : [-2.90, -5.65, Math.PI / 2];
+  const tub = alt('tub') ? [-1.84, 4.53, Math.PI / 2] : [-0.85, 6.64, Math.PI];
+  const chair = alt('porchChair') ? [5.55, 3.80, Math.PI / 2] : [7.55, 3.70, -Math.PI / 2];
+  const plant = alt('porch') ? [8.04, 4.25] : [4.69, 3.93];
+  const items = [
+    // Model, style target, floor-plan x/z, size in inches, heading, support height, action.
+    ['bathtub', 'tub', tub[0], tub[1], [72, 24, 36], tub[2]],
+    ['toilet', 'bathroom', 0.85, 6.73, [19, 31, 29], Math.PI, FLOOR, 'flush'],
+    ['bathroomSink', 'bathroom', -2.06, 5.70, [22, 38.8, 18], Math.PI / 2],
+    // An 80-inch queen mattress fills 89% of the timber frame.
+    ['bedSingle', 'bed', bed[0], bed[1], [61, 34, 90], bed[2]],
+    // The backsplash is the upper fifteenth of the range and cabinet.
+    ['kitchenStove', 'kitchen', counterX - 30 * INCH / S, kitchenBack + 28 * INCH / (2 * S), [30, 36 * 15 / 14, 28], 0],
+    ['kitchenCabinet', 'kitchen', counterX, counterZ, [30, 36 * 15 / 14, 25], 0],
+    ['kitchenCoffeeMachine', 'kitchen', counterX, counterZ, [10, 13, 13], 0, FLOOR + worktop, 'coffee'],
+    ['pottedPlant', 'porch', ...plant, [14, 42, 16], 0.33, DECK],
+    ['chair', 'porchChair', chair[0], chair[1], [19.5, 35.25, 21], chair[2], DECK, 'coffee'],
+  ];
+  const bedSide = Math.sign(bed[2]);
+  return { items, bed, tub, chair, counterX, nightX: bed[0] - bedSide * 0.70,
+    nightZ: bed[1] + bedSide * (alt('bedroom') ? -1.02 : 1.02) };
+}
 
 // A timber windpump and stock tank beyond the fence. Local dimensions are in world units.
 function ranchWindpump(paint) {
@@ -72,8 +83,7 @@ function ranchWindpump(paint) {
   tankRing(1.23, 0.49, 0.401, 0.012, '#527f91');
 }
 
-function architecture(parent) {
-  const plank = '#966a46', trim = '#6b4834', pale = '#ccad82';
+function joinery(material = new THREE.MeshLambertMaterial({ vertexColors: true })) {
   const parts = [];
   function paint(geometry, color) {
     const rgb = new THREE.Color(color).toArray(), colors = [];
@@ -84,7 +94,6 @@ function architecture(parent) {
   function box(w, h, d, color, x, y, z, turn = 0) {
     paint(new THREE.BoxGeometry(w * S, h, d * S).rotateY(turn).translate(x * S, y, z * S), color);
   }
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
   function batch(name) {
     const piece = new THREE.Mesh(mergeGeometries(parts), material);
     for (const geometry of parts) geometry.dispose();
@@ -94,10 +103,22 @@ function architecture(parent) {
     return piece;
   }
 
-  const boards = ['#b6895e', '#b08a63', '#bc936a', '#ad8059'];
+  return { paint, box, batch };
+}
+
+function architecture(parent, style, plan) {
+  const { paint, box, batch } = joinery();
+  const plank = '#966a46', trim = '#6b4834', pale = '#ccad82';
+  const boards = [0.94, 1.03, 0.89, 1.07].map(factor => style.porch.paint.clone().multiplyScalar(factor));
+  function addPiece(name, id) {
+    const mesh = batch(name);
+    mesh.userData.editSelection = { kind: 'homestead', id };
+    parent.add(mesh);
+    return mesh;
+  }
 
   // Bedside drawer and an oil lamp at pillow height.
-  const nightX = -3.55, nightZ = -4.85, tableTop = FLOOR + 25 * INCH;
+  const { nightX, nightZ } = plan, tableTop = FLOOR + 25 * INCH;
   box(0.41, 2 * INCH, 0.44, plank, nightX, tableTop - INCH, nightZ);
   for (const x of [-0.15, 0.15]) for (const z of [-0.16, 0.16]) {
     box(0.052, 23 * INCH, 0.052, trim, nightX + x, FLOOR + 11.5 * INCH, nightZ + z);
@@ -112,13 +133,16 @@ function architecture(parent) {
   lamp(new THREE.LatheGeometry([[0.06,0], [0.13,0.09], [0.13,0.15], [0.072,0.25], [0.078,0.32]].map(([x,y]) => new THREE.Vector2(x,y)), 8), '#ebcb8c', tableTop + 0.105);
   lamp(new THREE.CylinderGeometry(0.075, 0.10, 0.055, 8), '#755a3e', tableTop + 0.425);
 
+  addPiece('Nightstand and lamp', 'bedroom');
+
   // Local joinery measurements are in inches above the finished floor.
   function cabinetAt(x, z, turn = 0) {
     const cos = Math.cos(turn), sin = Math.sin(turn);
     return (w, h, d, color, dx, y, dz) => box(w * INCH / S, h * INCH, d * INCH / S, color,
       x + (dx * cos + dz * sin) * INCH / S, FLOOR + y * INCH, z + (dz * cos - dx * sin) * INCH / S, turn);
   }
-  const linen = cabinetAt(2.22, 6.05, -Math.PI / 2), sage = '#87947e', cream = '#e5d2b4', rust = '#ad715c';
+  const linen = style.bathroom.layoutId === 'alternate' ? cabinetAt(0.2, 3.77, Math.PI) : cabinetAt(2.22, 6.05, -Math.PI / 2);
+  const sage = style.bathroom.paint, cream = '#e5d2b4', rust = '#ad715c';
   linen(42, 1.5, 19, plank, 0, 33.25, 0);
   linen(39, 28.5, 0.8, '#667661', 0, 18.25, 8.6);
   for (const dx of [-19.5, 19.5]) linen(1.4, 32.5, 17.5, sage, dx, 16.25, 0);
@@ -133,10 +157,14 @@ function architecture(parent) {
   towel(17, cream, -7.6, 34);
   towel(16, '#aabcb2', -7.4, 36.7);
 
-  const prepX = 0.13, prepZ = -4.74, prep = cabinetAt(prepX, prepZ);
-  prep(42, 2, 24, '#b79164', 0, 35, 0);
-  for (const dx of [-18, 18]) for (const dz of [-9, 9]) prep(2.7, 34, 2.7, '#6c7766', dx, 17, dz);
-  for (const dz of [-9, 9]) prep(37, 4.5, 1, '#7f8b74', 0, 32, dz);
+  addPiece('Linen cupboard', 'bathroom');
+
+  // Build the island around the origin so the worktop, bowl and rolling pin move as one.
+  const prepX = 0, prepZ = 0, prep = cabinetAt(prepX, prepZ);
+  const enamel = style.kitchen.typeId === 'enamel';
+  prep(42, 2, 24, enamel ? '#e0e2d3' : style.kitchen.paint, 0, 35, 0);
+  for (const dx of [-18, 18]) for (const dz of [-9, 9]) prep(2.7, 34, 2.7, style.kitchen.paint, dx, 17, dz);
+  for (const dz of [-9, 9]) prep(37, 4.5, 1, style.kitchen.paint, 0, 32, dz);
   prep(38, 1.2, 20, plank, 0, 8.5, 0);
   prep(15, 0.85, 10, '#c59c70', 8.5, 36.425, -0.5);
   // A flared enamel mixing bowl and a wooden rolling pin on the chopping board.
@@ -148,13 +176,19 @@ function architecture(parent) {
     paint(pin.translate(prepX * S + 8.5 * INCH, FLOOR + 38 * INCH, prepZ * S - 0.5 * INCH), color);
   }
 
+  const table = addPiece('Kitchen worktable', 'kitchen');
+  const turned = style.kitchen.layoutId === 'alternate';
+  table.position.set((turned ? 0.33 : 0.13) * S, 0, (turned ? -4.04 : -4.74) * S);
+  if (turned) table.rotation.y = Math.PI / 2;
+
   // One continuous deck from the side-door sill to the wide step onto the dirt track.
   const deckLeft = 4.13, deckRight = 8.50, deckBack = 1.47, deckFront = 4.80;
   box(deckRight - deckLeft, 0.19, deckFront - deckBack, trim,
     (deckLeft + deckRight) / 2, -0.100, (deckBack + deckFront) / 2);
   box(0.17, 0.06, 0.07, plank, 4.215, DECK - 0.03, 1.45);
-  const boardDepth = (deckFront - deckBack) / 24;
-  for (let i = 0; i < 24; i++) {
+  const cedar = style.porch.typeId === 'cedar', plankCount = cedar ? 17 : 24;
+  const boardDepth = (deckFront - deckBack) / plankCount;
+  for (let i = 0; i < plankCount; i++) {
     const z = deckBack + (i + 0.5) * boardDepth, joint = 5.4 + (i % 4) * 0.47;
     box(joint - deckLeft - 0.006, 0.049, boardDepth - 0.006, boards[(i + 1) % 4], (deckLeft + joint) / 2, DECK - 0.0245, z);
     box(deckRight - joint - 0.006, 0.049, boardDepth - 0.006, boards[i % 4], (joint + deckRight) / 2, DECK - 0.0245, z);
@@ -175,7 +209,7 @@ function architecture(parent) {
       const span = Math.abs(dx || dz), alongX = !!dx;
       for (const [height, railWidth] of [[9,0.071], [35,0.095]]) {
         box(alongX ? span : railWidth, 2 * INCH, alongX ? railWidth : span,
-          height === 35 ? pale : plank, (x1 + x2) / 2, DECK + height * INCH, (z1 + z2) / 2);
+          height === 35 ? (cedar ? '#a06545' : pale) : boards[0], (x1 + x2) / 2, DECK + height * INCH, (z1 + z2) / 2);
       }
       const gaps = Math.ceil(span * S / (9 * INCH));
       for (let n = 1; n < gaps; n++) {
@@ -188,20 +222,17 @@ function architecture(parent) {
   box(0.078, 0.16, 0.078, '#8d8669', 6.98, 0.167, 4.35);
   box(0.30, 0.079, 0.065, '#54806a', 6.98, 0.256, 4.35, 0.26);
   box(0.047, 0.049, 0.39, '#54664a', 6.98, 0.052, 4.57);
-  const shell = batch('Porch and fixed furnishings');
+  addPiece('Porch and rails', 'porch');
+  return buildWings(parent, box, batch, style, plan);
 
-  const walls = buildWings(parent, box, batch);
-  ranchWindpump(paint);
-  const windpump = batch('Ranch windpump and stock trough');
-  return { shell, walls, windpump };
 }
 
-function waterSpray() {
+function waterSpray([chairX, chairZ]) {
   const points = [];
   for (let jet = 0; jet < 7; jet++) for (let step = 0; step < 19; step++) {
     for (const t of [step / 19, (step + 0.79) / 19]) {
-      points.push((6.98 + t * (0.4 + jet * 0.054)) * S, 0.3 + 4.0 * t * (1 - t) - 0.2 * t,
-        (4.35 - t * (0.46 + jet * 0.061)) * S);
+      points.push((6.98 + t * (chairX - 6.98 + (jet - 3) * 0.054)) * S, 0.3 + 3.4 * t * (1 - t) + (DECK + 18 * INCH - 0.3) * t,
+        (4.35 + t * (chairZ - 4.35 - (jet - 3) * 0.061)) * S);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -218,57 +249,154 @@ function releaseModels(group) {
   for (const material of materials) material.dispose();
 }
 
-export function buildHomestead(parent, { onReady } = {}) {
-  const group = new THREE.Group(), picks = [], { shell, walls, windpump } = architecture(group), spray = waterSpray();
-  group.name = 'Homestead extension';
-  group.add(shell, windpump, spray);
-  parent.add(group);
-  let disposed = false;
-  function place(mesh, x, z, inches, heading, y = FLOOR, action) {
-    mesh.geometry.computeBoundingBox();
-    const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
-    mesh.scale.fromArray(inches).multiplyScalar(INCH).divide(size);
-    mesh.position.set(x * S, y, z * S);
-    mesh.rotation.y = heading;
-    mesh.castShadow = mesh.receiveShadow = true;
-    if (action) { mesh.userData.selection = { kind: 'houseAction', action }; picks.push(mesh); }
-    group.add(mesh);
+// Keep the original timber, porcelain and hardware when dyeing the model's editable surfaces.
+const dyes = {
+  bedSingle: { 107: 'fabric' }, bathtub: { 128: 'rim', 210: 'body' }, chair: { 32: 'body' },
+  kitchenCabinet: { 95: 'body', 47: 'inset', 90: 'top' }, kitchenStove: { 95: 'body', 90: 'top' },
+  pottedPlant: { 95: 'body' },
+};
+function finishModel(mesh, choice) {
+  const channels = dyes[mesh.name], colors = mesh.geometry.getAttribute('color');
+  if (!channels || !colors) return;
+  const key = choice.typeId + '/' + choice.colorId;
+  if (mesh.userData.finishKey === key) return;
+  mesh.userData.finishKey = key;
+  if (!mesh.userData.dyeVertices) {
+    // The local GLB uses one vertex palette. Its original red bytes identify each material.
+    mesh.userData.dyeVertices = {};
+    for (let i = 0; i < colors.count; i++) {
+      const channel = channels[Math.round(colors.getX(i) * 255)];
+      if (channel) (mesh.userData.dyeVertices[channel] ||= []).push(i);
+    }
+    mesh.material = mesh.material.clone();
   }
-  // A missing art download still leaves each action attached to a visible fixture.
-  function fallback() {
-    const block = (w, h, d, y, z = 0) => new THREE.BoxGeometry(w, h, d).translate(0, y, z);
-    const models = {
-      toilet: ['#eae1cf', new THREE.CylinderGeometry(0.38, 0.21, 0.56, 12).translate(0, 0.28, 0.1),
-        block(0.64, 0.88, 0.23, 0.44, -0.33)],
-      kitchenCabinet: ['#927252', block(0.95, 14 / 15, 1, 7 / 15), block(0.95, 1 / 15, 0.05, 29 / 30, -0.475)],
-      kitchenCoffeeMachine: ['#535f58', block(0.65, 0.08, 0.96, 0.04), block(0.65, 0.70, 0.35, 0.37, -0.27),
-        block(0.65, 0.18, 0.87, 0.64), new THREE.CylinderGeometry(0.17, 0.15, 0.25, 10).translate(0, 0.20, 0.20)],
-      chair: ['#63806b', block(1, 0.12, 0.95, 1.14), block(0.96, 1.32, 0.13, 1.69, -0.42),
-        ...[-0.39, 0.39].flatMap(x => [-0.39, 0.39].map(z => block(0.11, 1.08, 0.11, 0.54, z).translate(x, 0, 0)))],
-    };
-    for (const [name, x, z, inches, heading, y, action] of furnishings) {
-      if (!models[name]) continue;
-      const [color, ...parts] = models[name];
-      const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshLambertMaterial({ color }));
-      for (const geometry of parts) geometry.dispose();
-      mesh.name = name;
-      place(mesh, x, z, inches, heading, y, action);
+  const copper = choice.typeId === 'copper', enamel = choice.typeId === 'enamel';
+  const body = copper ? choice.paint.clone().lerp(new THREE.Color('#a65d3b'), 0.39) : choice.paint;
+  const palette = { fabric: body, body, inset: body.clone().multiplyScalar(0.65),
+    rim: new THREE.Color(copper ? '#c17d53' : '#c5b797'), top: enamel ? new THREE.Color('#e9e8db') : body.clone().lerp(new THREE.Color('#bbc0a9'), 0.42) };
+  for (const [channel, vertices] of Object.entries(mesh.userData.dyeVertices)) {
+    const { r, g, b } = palette[channel];
+    for (const i of vertices) colors.setXYZ(i, r, g, b);
+  }
+  colors.needsUpdate = true;
+  mesh.material.roughness = copper ? 0.49 : enamel || choice.typeId === 'painted' ? 0.64 : 0.93;
+  mesh.material.metalness = copper ? 0.38 : 0;
+
+  const old = mesh.getObjectByName('Surface pattern');
+  if (old) { mesh.remove(old); releaseModels(old); }
+  if (mesh.name !== 'bedSingle' && !(mesh.name === 'chair' && choice.typeId === 'wood')) return;
+  const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3()), { paint, batch } = joinery();
+  const panel = (w, d, x, y, z, color) => paint(new THREE.PlaneGeometry(w * size.x, d * size.z)
+    .rotateX(-Math.PI / 2).translate(x * size.x, y * size.y, z * size.z), color);
+  if (mesh.name === 'chair') {
+    for (const z of [-0.30, -0.12, 0.06, 0.24]) panel(0.88, 0.015, 0, 0.512, z, body.clone().multiplyScalar(0.62));
+  } else if (choice.typeId === 'striped') {
+    for (let row = 0; row < 7; row++) panel(0.92, row % 2 ? 0.044 : 0.018, 0, 0.670, -0.18 + row * 0.098, '#d1bc96');
+  } else {
+    const patches = [body.clone().multiplyScalar(0.86), body.clone().lerp(new THREE.Color('#efe0b7'), 0.25)];
+    for (let row = 0; row < 5; row++) for (let col = 0; col < 4; col++) {
+      panel(0.226, 0.13, -0.3465 + col * 0.231, 0.670, -0.14 + row * 0.137, patches[(row + col) % 2]);
     }
   }
+  const pattern = batch('Surface pattern');
+  pattern.castShadow = false;
+  mesh.add(pattern);
+}
+
+function fallbackModels() {
+  const block = (w, h, d, y, z = 0) => new THREE.BoxGeometry(w, h, d).translate(0, y, z);
+  const models = new THREE.Group();
+  const { paint, batch } = joinery(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
+  // Palette entries match the GLB so all seven finish and arrangement controls also work offline.
+  for (const [name, parts] of Object.entries({
+    toilet: [['#ede0c5', new THREE.CylinderGeometry(0.38, 0.21, 0.56, 12).translate(0, 0.28, 0.1), block(0.64, 0.88, 0.23, 0.44, -0.33)]],
+    bathtub: [[210, block(1, 0.046, 0.47, 0.023), block(1, 0.35, 0.037, 0.175, 0.216), block(1, 0.35, 0.037, 0.175, -0.216),
+      ...[-0.48,0.48].map(x => block(0.04, 0.35, 0.42, 0.175).translate(x,0,0))], [128, block(0.09, 0.06, 0.04, 0.35, -0.213)]],
+    bathroomSink: [['#eee2ca', block(0.27, 0.76, 0.3, 0.38), block(0.61, 0.19, 0.50, 0.85)]],
+    bedSingle: [['#88684c', block(0.5, 0.11, 1, 0.055), block(0.5, 0.333, 0.05, 0.1665, -0.475)],
+      ['#eee1c7', block(0.49, 0.07, 0.90, 0.145), block(0.39, 0.06, 0.15, 0.203, -0.31)], [107, block(0.49, 0.04, 0.72, 0.202, 0.13)]],
+    kitchenStove: [[95, block(0.95, 1, 1, 0.5)], [90, block(0.91, 0.03, 0.91, 1.01)], ['#38423f', block(0.67, 0.37, 0.04, 0.52, 0.49)]],
+    kitchenCabinet: [[95, block(0.95, 0.89, 1, 0.445)], [90, block(0.95, 0.044, 1, 0.912), block(0.95, 1/15, 0.05, 29/30, -0.475)]],
+    kitchenCoffeeMachine: [['#535f58', block(0.65, 0.08, 0.96, 0.04), block(0.65, 0.70, 0.35, 0.37, -0.27),
+      block(0.65, 0.18, 0.87, 0.64), new THREE.CylinderGeometry(0.17, 0.15, 0.25, 10).translate(0, 0.20, 0.20)]],
+    chair: [[32, block(1, 0.12, 0.95, 1.14), block(0.96, 1.32, 0.13, 1.69, -0.42),
+      ...[-0.39, 0.39].flatMap(x => [-0.39, 0.39].map(z => block(0.11, 1.08, 0.11, 0.54, z).translate(x, 0, 0)))]],
+    pottedPlant: [[95, new THREE.CylinderGeometry(0.28,0.19,0.57,6).translate(0,0.285,0)], ['#6c895c', new THREE.ConeGeometry(0.34,1.05,5).translate(0,1.02,0)]],
+  })) {
+    for (const [tint, ...partsOfColor] of parts) {
+      const color = typeof tint === 'number' ? new THREE.Color(tint / 255, 0.35, 0.25) : tint;
+      for (const part of partsOfColor) paint(part, color);
+    }
+    models.add(batch(name));
+  }
+  return models;
+}
+
+export function buildHomestead(parent, { onReady } = {}) {
+  const group = new THREE.Group(), walls = [], picks = [], editPicks = [];
+  const pump = joinery(); ranchWindpump(pump.paint);
+  group.add(pump.batch('Ranch windpump and stock trough'));
+  group.name = 'Homestead extension'; parent.add(group);
+  let disposed = false, structure, models, spray, state, plan, savedKey, shapeKey, chairPosition;
+
+  function applyModels() {
+    if (!models) return;
+    for (const [name, id, x, z, inches, heading, y = FLOOR, action] of plan.items) {
+      const mesh = models.getObjectByName(name);
+      mesh.geometry.computeBoundingBox();
+      const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
+      mesh.scale.fromArray(inches).multiplyScalar(INCH).divide(size);
+      mesh.position.set(x * S, y, z * S);
+      mesh.rotation.y = heading; mesh.castShadow = mesh.receiveShadow = true;
+      mesh.userData.editSelection = { kind: 'homestead', id };
+      if (action) { mesh.userData.selection = { kind: 'houseAction', action }; picks.push(mesh); }
+      editPicks.push(mesh);
+      finishModel(mesh, state[id]);
+    }
+  }
+  function update(value) {
+    if (disposed) return;
+    const options = roomHomestead(value), key = JSON.stringify(options);
+    if (key === savedKey) return;
+    savedKey = key;
+    for (const [id, choice] of Object.entries(options)) {
+      choice.paint = new THREE.Color(ROOM_HOMESTEAD[id].colors.find(c => c.id === choice.colorId).color);
+    }
+    state = options; plan = furnishingPlan(state);
+    const architectureKey = JSON.stringify([state.bathroom, state.bedroom, state.kitchen, state.porch, state.bed.layoutId, state.tub.layoutId]);
+    if (architectureKey !== shapeKey) {
+      shapeKey = architectureKey;
+      if (structure) { group.remove(structure); releaseModels(structure); }
+      structure = new THREE.Group(); group.add(structure);
+      const nextWalls = architecture(structure, state, plan);
+      walls.splice(0, walls.length, ...nextWalls);
+    }
+    if (state.porchChair.layoutId !== chairPosition) {
+      chairPosition = state.porchChair.layoutId;
+      const visible = spray?.visible || false;
+      if (spray) { group.remove(spray); releaseModels(spray); }
+      spray = waterSpray(plan.chair); spray.visible = visible; group.add(spray);
+    }
+    picks.length = editPicks.length = 0;
+    structure.traverse(mesh => { if (mesh.userData.editSelection) editPicks.push(mesh); });
+    applyModels();
+    group.updateWorldMatrix(true, true);
+  }
+  update();
   const url = new URL('./assets/homestead-furnishings.glb', import.meta.url).href;
-  const ready = new GLTFLoader().loadAsync(url).then(({ scene }) => {
-    if (disposed) { releaseModels(scene); return; }
-    for (const [name, ...placement] of furnishings) place(scene.getObjectByName(name), ...placement);
-  }, () => { if (!disposed) fallback(); }).then(() => { if (!disposed) onReady?.(); });
+  const ready = new GLTFLoader().loadAsync(url).then(({ scene }) => scene, () => disposed ? null : fallbackModels()).then(loaded => {
+    if (!loaded) return;
+    if (disposed) { releaseModels(loaded); return; }
+    models = loaded; group.add(models); applyModels(); group.updateWorldMatrix(true, true); onReady?.();
+  });
   return {
-    picks, walls, ready,
+    picks, editPicks, walls, ready, update,
     setSprinkler(visible) { spray.visible = visible; },
     dispose() {
       if (disposed) return;
       disposed = true;
-      group.removeFromParent();
-      releaseModels(group);
-      picks.length = 0;
+      group.removeFromParent(); releaseModels(group);
+      picks.length = editPicks.length = walls.length = 0;
     },
   };
 }

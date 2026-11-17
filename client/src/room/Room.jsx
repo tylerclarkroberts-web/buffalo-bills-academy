@@ -7,7 +7,7 @@ import { Bust } from '../avatar/Bust.jsx';
 import { FitDialog } from '../avatar/FitEditor.jsx';
 import { PixIcon } from '../store/PixIcon.jsx';
 import { money } from '../util.js';
-import { ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_ANCHORS, ROOM_FINISHES, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_WALL_IDS, ROOM_FURNITURE, defaultWallDisplays, roomAnchors, roomItemFits, shelfSlots, shelfForAnchor } from '../../../server/catalog/room.js';
+import { ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_ANCHORS, ROOM_FINISHES, ROOM_HOMESTEAD, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_WALL_IDS, ROOM_FURNITURE, defaultWallDisplays, roomAnchors, roomItemFits, shelfSlots, shelfForAnchor } from '../../../server/catalog/room.js';
 import { RoomScene } from './scene.js';
 import { roomView, nudgeAxes, ROOM_VIEW_LIMITS } from './scene-model.js';
 import { layoutOf, layoutKey, addShelf, resizeShelf, moveShelf, moveWallDisplay, addWallDisplay, removeWallDisplay, removeShelf, changeStyle, furnitureOf, placeFurniture } from './layout.js';
@@ -22,10 +22,14 @@ function ShelfSizes({ value, disabled, onChange }) {
 }
 
 function StyleChoices({ kind, label, value, onChange, disabled }) {
-  const options = ROOM_FINISHES[kind], selected = value || options.default;
+  const options = ROOM_HOMESTEAD[kind] || ROOM_FINISHES[kind], selected = value || options.default;
+  const title = options.layouts ? 'Finish' : label + ' style';
   return <div className="room-style-choices">
-    <h3>{label} style</h3><div className="room-choices" role="group" aria-label={`${label} style`}>{options.types.map(option => <button key={option.id} className="btn room-choice" aria-label={`${label} style ${option.name}`} aria-pressed={selected.typeId === option.id} disabled={disabled} onClick={() => onChange('typeId', option.id)}>{option.name}</button>)}</div>
-    {selected.typeId !== 'none' && <><h3>{label} color</h3><div className="room-colors" role="group" aria-label={`${label} color`}>{options.colors.map(option => <button key={option.id} className="btn ghost room-color" aria-label={`${label} color ${option.name}`} aria-pressed={selected.colorId === option.id} disabled={disabled} onClick={() => onChange('colorId', option.id)}><span aria-hidden="true" style={{ backgroundColor: option.color }} />{option.name}</button>)}</div></>}
+    {options.layouts && <><h3>Placement</h3><div className="room-choices room-shelf-sizes" role="group" aria-label={label + ' placement'}>
+      {options.layouts.map(option => <button key={option.id} className="btn room-choice" aria-pressed={selected.layoutId === option.id} disabled={disabled} onClick={() => onChange('layoutId', option.id)}>{option.name}</button>)}
+    </div></>}
+    <h3>{title}</h3><div className="room-choices" role="group" aria-label={label + ' style'}>{options.types.map(option => <button key={option.id} className="btn room-choice" aria-label={label + ' style ' + option.name} aria-pressed={selected.typeId === option.id} disabled={disabled} onClick={() => onChange('typeId', option.id)}>{option.name}</button>)}</div>
+    {selected.typeId !== 'none' && <><h3>{options.layouts ? 'Color' : label + ' color'}</h3><div className="room-colors" role="group" aria-label={`${label} color`}>{options.colors.map(option => <button key={option.id} className="btn ghost room-color" aria-label={`${label} color ${option.name}`} aria-pressed={selected.colorId === option.id} disabled={disabled} onClick={() => onChange('colorId', option.id)}><span aria-hidden="true" style={{ backgroundColor: option.color }} />{option.name}</button>)}</div></>}
   </div>;
 }
 
@@ -175,7 +179,7 @@ export default function Room({ id }) {
     if (!room || !canvas.current) return undefined;
     let renderer;
     try {
-      renderer = new RoomScene(canvas.current, { onSelect: setSelection, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onHouseState: setHouseState, onZoom: step => moveView(step), onError: () => { setSceneFailed(true); setMoneyHovered(false); setSpeech(null); } });
+      renderer = new RoomScene(canvas.current, { onSelect: next => { setSelection(next); setMsg(''); }, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onHouseState: setHouseState, onZoom: step => moveView(step), onError: () => { setSceneFailed(true); setMoneyHovered(false); setSpeech(null); } });
       scene.current = renderer; setSceneFailed(false);
     } catch { setSceneFailed(true); }
     return () => { renderer?.dispose(); scene.current = null; };
@@ -244,10 +248,8 @@ export default function Room({ id }) {
 
   function arrange() {
     if (!room || preview || busy) return;
-    // Face both display walls when arranging shelves and artwork.
-    setCameraView(roomView({ area: 'parlor', rotation: -45 }));
     const next = layoutOf(room); base.current = layoutKey(next); setDraft(next); setConflict(false); setErr('');
-    setMsg('Drag things to move them. Click one to change it.');
+    setMsg('Select a furnishing or surface to change it.');
     if (!['anchor', 'wardrobe', 'finish', 'surface'].includes(selection.kind)) setSelection({ kind: 'none' });
   }
   function place(anchorId, itemId) {
@@ -256,7 +258,7 @@ export default function Room({ id }) {
   }
   function discard() { dirtyRef.current = false; setDraft(null); setConflict(false); setErr(''); setMsg('Room layout changes canceled.'); setSelection({ kind: 'none' }); }
   function save() {
-    run(() => api('PATCH', '/room/layout', { expectedRevision: draft.layoutRevision, themeId: draft.themeId, placements: draft.placements, shelves: draft.shelves, wallDisplays: draft.wallDisplays, finishes: draft.finishes, furniture: draft.furniture }), (next) => {
+    run(() => api('PATCH', '/room/layout', { expectedRevision: draft.layoutRevision, themeId: draft.themeId, placements: draft.placements, shelves: draft.shelves, wallDisplays: draft.wallDisplays, finishes: draft.finishes, furniture: draft.furniture, homestead: draft.homestead }), (next) => {
       dirtyRef.current = false; setRoom(next); setDraft(null); setConflict(false); setSelection({ kind: 'none' });
     }, 'Room saved. Visitors see this arrangement.');
   }
@@ -343,23 +345,36 @@ export default function Room({ id }) {
   const selectedItem = draft?.placements.find((p) => p.anchorId === selection.anchorId)?.itemId || '';
   const privatePet = editing ? barn?.pen : null;
   const elapsed = barn ? Math.max(0, clock - barn.receivedAt) : 0;
-  const surfaceLabel = selection.surface === 'floor' ? 'Floor' : 'Rug';
+  const surfaceLabel = { floor: 'Floor', rug: 'Rug', fence: 'Yard fence' }[selection.surface];
+  const selectedHome = selection.kind === 'homestead' ? ROOM_HOMESTEAD[selection.id] : null;
   const pieceId = editing && draft ? furnitureOf(selection) : null, piece = ROOM_FURNITURE[pieceId], piecePlace = draft?.furniture[pieceId];
+  const canNudge = editing && draft && (pieceId || selectedShelf || display.wallDisplays?.[selection.anchorId]);
   const has = id => !ROOM_FURNITURE[id].item || room.owned?.includes(ROOM_FURNITURE[id].item);
   const stored = editing && draft ? Object.keys(ROOM_FURNITURE).filter(id => draft.furniture[id].off && has(id)) : [];
   const forSale = Object.keys(ROOM_FURNITURE).filter(id => !has(id)).map(id => ROOM_FURNITURE[id].label.toLowerCase());
   const steps = nudgeAxes(cameraView.rotation);
   const nudge = ([x, z], sign) => arrangeFurniture(pieceId, { x: piecePlace.x + x * sign * 0.25, z: piecePlace.z + z * sign * 0.25 });
-  const panelTitle = { add: 'Add to the room', surface: surfaceLabel, finish: 'Walls', pet: 'The terrarium', wardrobe: 'Wardrobe & mirror', wealth: 'Chips & cash', poker: 'Poker table', couch: 'Couch', door: 'The front door', collection: editing ? 'Your collection' : 'On display' }[selection.kind]
+  const panelTitle = selectedHome?.label || { add: 'Add to the room', surface: surfaceLabel, finish: 'Walls', pet: 'The terrarium', wardrobe: 'Wardrobe & mirror', wealth: 'Chips & cash', poker: 'Poker table', couch: 'Couch', door: 'The front door', collection: editing ? 'Your collection' : 'On display' }[selection.kind]
     || selectedShelfLabel || selectedAnchor?.label || 'Display spot';
-  const editTargets = [{ label: 'Walls', target: { kind: 'finish' } }, { label: 'Floor finish', target: { kind: 'surface', surface: 'floor' } }, { label: 'Rug', target: { kind: 'surface', surface: 'rug' } }, ...anchors.filter(anchor => !anchor.shelfId || anchor.id === anchor.shelfId).map(anchor => ({ label: ROOM_ANCHORS.find(base => base.id === anchor.id)?.label || anchor.label, target: { kind: 'anchor', anchorId: anchor.id } })), { label: 'Wardrobe', target: { kind: 'wardrobe' } }, ...(!draft || draft.furniture.couch.off ? [] : [{ label: 'Couch', target: { kind: 'couch' } }]), { label: 'Terrarium', target: { kind: 'pet' } }, { label: 'Cash table', target: { kind: 'wealth' } }, ...(!draft || draft.furniture.poker.off ? [] : [{ label: 'Poker table', target: { kind: 'poker' } }])];
-  const picked = editTargets.findIndex(({ target }) => selection.kind === target.kind && (selection.anchorId === target.anchorId || selectedShelf?.id === target.anchorId) && selection.surface === target.surface);
+  const parlorTargets = [{ label: 'Walls', target: { kind: 'finish' } }, { label: 'Floor finish', target: { kind: 'surface', surface: 'floor' } }, { label: 'Rug', target: { kind: 'surface', surface: 'rug' } }, ...anchors.filter(anchor => !anchor.shelfId || anchor.id === anchor.shelfId).map(anchor => ({ label: ROOM_ANCHORS.find(base => base.id === anchor.id)?.label || anchor.label, target: { kind: 'anchor', anchorId: anchor.id } })), { label: 'Wardrobe', target: { kind: 'wardrobe' } }, ...(!draft || draft.furniture.couch.off ? [] : [{ label: 'Couch', target: { kind: 'couch' } }]), { label: 'Terrarium', target: { kind: 'pet' } }, { label: 'Cash table', target: { kind: 'wealth' } }, ...(!draft || draft.furniture.poker.off ? [] : [{ label: 'Poker table', target: { kind: 'poker' } }])];
+  const homeTargets = Object.entries(ROOM_HOMESTEAD).map(([id, option]) => ({ label: option.label, target: { kind: 'homestead', id } }));
+  homeTargets.push({ label: 'Yard fence', target: { kind: 'surface', surface: 'fence' } });
+  const editTargets = [...homeTargets, ...parlorTargets];
+  const picked = editTargets.findIndex(({ target }) => selection.kind === target.kind && selection.id === target.id
+    && (selection.anchorId === target.anchorId || selectedShelf?.id === target.anchorId) && selection.surface === target.surface);
+  function selectEditTarget(index) {
+    const target = index === '' ? { kind: 'none' } : editTargets[index].target;
+    setSelection(target); setMsg('');
+    if (target.kind === 'none') return;
+    const area = ROOM_HOMESTEAD[target.id]?.area || (target.surface === 'fence' || target.anchorId === 'window' ? 'yard' : 'parlor');
+    if (area !== cameraView.area) setCameraView(roomView({ area, rotation: area === 'parlor' ? -45 : 0 }));
+  }
   const shelvesFull = !!draft && draft.shelves.length >= ROOM_SHELF_IDS.length;
   const wallCount = draft ? Object.keys(draft.wallDisplays).length : 0, wallsFull = wallCount >= ROOM_WALL_IDS.length;
   const extraWall = editing && draft && selectedAnchor?.type === 'wall' && !Object.hasOwn(defaultWallDisplays(), selectedAnchor.id);
   const wealthProps = { onPointerEnter: () => hoverMoney(true), onPointerLeave: () => hoverMoney(false), onFocus: () => hoverMoney(true), onBlur: () => hoverMoney(false), 'aria-describedby': moneyHovered ? 'room-money-tooltip' : undefined };
 
-  return <div className="screen room-page" data-test="personal-room">
+  return <div className={editing && draft ? "screen room-page is-arranging" : "screen room-page"} data-test="personal-room">
     <header className="room-heading">
       <h1 className="western">{owner ? 'My Room' : `${room.owner.name}’s room`}{preview && <small role="status"> as visitors see it</small>}</h1>
       {owner && <div className="room-actions">{editing && draft ? <>
@@ -375,7 +390,7 @@ export default function Room({ id }) {
     {pendingPath && <div className="room-leave" role="alert"><p>Leave without saving your arrangement?</p><div className="room-actions"><button className="btn" onClick={() => setPendingPath(null)}>Keep editing</button><button className="btn ghost" onClick={() => { const destination = pendingPath; dirtyRef.current = false; setDraft(null); setPendingPath(null); navigate(destination); }}>Discard and leave</button></div></div>}
     <div className={`room-body ${selection.kind === 'none' ? '' : 'has-detail'}`}>
       <section className="room-view" aria-label="Your room scene">
-        <div className={`room-canvas-wrap ${sceneFailed ? 'room-scene-unavailable' : ''}`}><canvas ref={canvas} className="room-canvas" role="img" tabIndex={editing && draft ? 0 : undefined} aria-keyshortcuts={editing && draft ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined} aria-label={editing && draft ? 'Your room. Select an object, then use the arrow keys here to move it.' : 'A cutaway bunkhouse, bathroom, sleeping nook and porch overlook a desert trail. Use the controls below to explore.'} data-test="room-canvas" />{speech && !sceneFailed && <div ref={speechRef} className="room-speech" role="status" aria-label={speech.speaker === 'faun' ? 'A shy faun says' : `${room.owner.name} says`} style={{ left: speech.x, top: speech.y }}>{speech.text}</div>}{sceneFailed && <p className="room-fallback">The 3D view is unavailable here. The buttons below still work.</p>}{moneyHovered && <div className="room-money-tooltip" role="tooltip" id="room-money-tooltip" onPointerEnter={() => hoverMoney(true)} onPointerLeave={() => hoverMoney(false)}><strong>Cash: {money(display.worth?.bankroll)}</strong><span>Chips at tables: {money(display.worth?.chips)}</span></div>}</div>
+        <div className={`room-canvas-wrap ${sceneFailed ? 'room-scene-unavailable' : ''}`}><canvas ref={canvas} className="room-canvas" role="img" tabIndex={editing && draft ? 0 : undefined} aria-keyshortcuts={canNudge ? 'ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined} aria-label={canNudge ? 'Use the arrow keys to move the selected furnishing.' : editing && draft ? 'Bunkhouse editor. Select a furnishing or surface on the scene or in the menu below.' : 'A cutaway bunkhouse, bathroom, sleeping nook and porch overlook a desert trail. Use the controls below to explore.'} data-test="room-canvas" />{speech && !sceneFailed && <div ref={speechRef} className="room-speech" role="status" aria-label={speech.speaker === 'faun' ? 'A shy faun says' : `${room.owner.name} says`} style={{ left: speech.x, top: speech.y }}>{speech.text}</div>}{sceneFailed && <p className="room-fallback">The 3D view is unavailable here. The buttons below still work.</p>}{moneyHovered && <div className="room-money-tooltip" role="tooltip" id="room-money-tooltip" onPointerEnter={() => hoverMoney(true)} onPointerLeave={() => hoverMoney(false)}><strong>Cash: {money(display.worth?.bankroll)}</strong><span>Chips at tables: {money(display.worth?.chips)}</span></div>}</div>
         {!preview && <div className="room-feedback" aria-live="polite">{err && <p className="error" role="alert">{err}</p>}{msg && <p role="status">{msg}</p>}
           {canUseHouse && msg === FLUSH_MESSAGE && cameraView.area && cameraView.area !== 'porch' && <button className="btn ghost small" onClick={() => {
             setCameraView(roomView({ area: 'porch' })); scene.current?.houseAction('flush'); setMsg('The lawn chair is getting watered.');
@@ -384,15 +399,17 @@ export default function Room({ id }) {
         <div className="room-tools">
           <div className="room-house-tools">
             <select className="room-pick" aria-label="Look around the homestead" disabled={sceneFailed} value={cameraView.area || 'house'} onChange={e => setCameraView(roomView({ area: e.target.value }))}>
-              <option value="house">Whole house</option><option value="parlor">Living room</option><option value="bathroom">Bathroom</option><option value="bunk">Kitchen &amp; bunk</option><option value="porch">Porch &amp; yard</option>
+              <option value="house">Whole house</option><option value="parlor">Living room</option><option value="bathroom">Bathroom</option><option value="bunk">Kitchen &amp; bunk</option><option value="porch">Porch</option><option value="yard">Yard</option>
             </select>
             {canUseHouse && <>
               <button className="btn ghost" disabled={houseState === 'returning'} onClick={() => useHouse(houseState === 'home' ? 'coffee' : 'inside')}>{houseState === 'home' ? 'Take coffee outside' : houseState === 'returning' ? 'Heading inside…' : 'Head inside'}</button>
               <button className="btn ghost" onClick={() => useHouse('flush')}>Flush toilet</button>
             </>}
           </div>
-          {editing && draft ? <select className="room-pick" aria-label="Select something to change" value={picked < 0 ? '' : picked} disabled={busy} onChange={e => setSelection(e.target.value === '' ? { kind: 'none' } : editTargets[e.target.value].target)}>
-            <option value="">Select…</option>{editTargets.map(({ label }, i) => <option key={label} value={i}>{label}</option>)}
+          {editing && draft ? <select className="room-pick" aria-label="Select something to change" value={picked < 0 ? '' : picked} disabled={busy} onChange={e => selectEditTarget(e.target.value)}>
+            <option value="">Select…</option>
+            <optgroup label="House &amp; yard">{homeTargets.map(({ label }, i) => <option key={label} value={i}>{label}</option>)}</optgroup>
+            <optgroup label="Living room &amp; displays">{parlorTargets.map(({ label }, i) => <option key={label} value={i + homeTargets.length}>{label}</option>)}</optgroup>
           </select> : <nav className="room-destinations" aria-label="Room objects">{[['pet', 'Pet'], ['wardrobe', 'Wardrobe'], ['collection', editing ? 'Collection' : 'Displays'], ['wealth', 'Chips & cash']].map(([kind, title]) => <button key={kind} className="btn ghost" aria-pressed={selection.kind === kind} {...(kind === 'wealth' ? wealthProps : {})} onClick={() => setSelection({ kind: selection.kind === kind ? 'none' : kind })}>{title}</button>)}</nav>}
           <div className="room-camera" role="group" aria-label="Room view" data-test="room-view-controls">
             <button className="btn ghost" aria-label="Rotate left" disabled={sceneFailed} onClick={() => moveView(0, -15)}>↶</button>
@@ -422,6 +439,7 @@ export default function Room({ id }) {
         </>}
         {selection.kind === 'door' && <><p>Sign in with an account so friends can visit.</p><SignIn compact next="/room" /></>}
         {selection.kind === 'couch' && editing && draft && <StyleChoices kind="couch" label="Couch" value={draft.finishes.couch} disabled={busy} onChange={(field, value) => style('couch', field, value)} />}
+        {selectedHome && editing && draft && <StyleChoices kind={selection.id} label={selectedHome.label} value={draft.homestead[selection.id]} disabled={busy} onChange={(field, value) => style(selection.id, field, value)} />}
         {selection.kind === 'surface' && editing && draft && <StyleChoices kind={selection.surface} label={surfaceLabel} value={draft.finishes[selection.surface]} disabled={busy} onChange={(field, value) => style(selection.surface, field, value)} />}
         {selection.kind === 'finish' && editing && draft && <div className="room-choices">{ROOM_THEMES.map((theme) => <button key={theme.id} className="btn room-choice" aria-pressed={draft.themeId === theme.id} disabled={busy} onClick={() => setDraft({ ...draft, themeId: theme.id })}>{theme.name}</button>)}</div>}
         {selection.kind === 'pet' && <>

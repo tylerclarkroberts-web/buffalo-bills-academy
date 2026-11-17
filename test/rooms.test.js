@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Rooms } from '../server/rooms.js';
 import { Barn, DAY_XP } from '../server/barn.js';
-import { ROOM_ANCHORS, ROOM_ITEMS, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES, defaultShelves, roomFinishes, roomAnchors, wealthStage, defaultFurniture, furnitureFits, defaultWallDisplays, roomWallDisplays, wallMountsFit, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
+import { ROOM_ANCHORS, ROOM_ITEMS, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_FINISHES, ROOM_HOMESTEAD, roomHomestead, defaultShelves, roomFinishes, roomAnchors, wealthStage, defaultFurniture, furnitureFits, defaultWallDisplays, roomWallDisplays, wallMountsFit, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-rooms-'));
@@ -37,6 +37,7 @@ test('rooms are open without setup or writes; visitors require an account', t =>
   assert.equal(rooms.owner(owner).layoutRevision, 0);
   assert.deepEqual(rooms.owner(owner).shelves, defaultShelves());
   assert.deepEqual(rooms.owner(owner).finishes, roomFinishes());
+  assert.deepEqual(rooms.owner(owner).homestead, roomHomestead());
   assert.equal(fs.existsSync(path.join(dir, 'rooms.json')), false);
   assert.throws(() => rooms.visit(null, owner), status(401));
   assert.throws(() => rooms.visit(guest, owner), status(403));
@@ -54,7 +55,7 @@ test('visitors see displayed things, appearance and exact current worth without 
   const { rooms, owner, visitor } = fixture(t);
   rooms.saveLayout(owner, layout());
   const shown = rooms.visit(visitor, owner);
-  assert.deepEqual(Object.keys(shown).sort(), ['finishes', 'furniture', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wallDisplays', 'wealthStage', 'worth']);
+  assert.deepEqual(Object.keys(shown).sort(), ['finishes', 'furniture', 'homestead', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wallDisplays', 'wealthStage', 'worth']);
   assert.deepEqual(shown.owner, { id: 'owner', name: 'Room Owner', avatar: { kind: 'gen', seed: 'owner' } });
   assert.deepEqual(shown.placements, [{ anchorId: 'wall-left', itemId: 'odd-deed' }]);
   assert.deepEqual(shown.pet, { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 4,
@@ -155,13 +156,35 @@ test('shelf moves preserve contents and styles across restart without changing p
   rooms.saveLayout(owner, { ...layout(1, placements), shelves: moved, finishes });
   const shown = new Rooms(options).visit(visitor, owner);
   assert.deepEqual(shown.shelves, moved);
-  assert.deepEqual(shown.finishes, finishes);
+  assert.deepEqual(shown.finishes, roomFinishes(finishes));
   assert.deepEqual(shown.placements, placements);
   assert.deepEqual(shop.doc, inventory);
   assert.equal(owner.bankroll, bankroll);
   const next = rooms.saveLayout(owner, layout(2, placements));
   assert.deepEqual(next.shelves, moved, 'an older client omitting furniture fields retains their current values');
-  assert.deepEqual(next.finishes, finishes);
+  assert.deepEqual(next.finishes, roomFinishes(finishes));
+});
+
+test('homestead choices survive older and partial edits and the visitor sees the saved arrangement', t => {
+  const { rooms, owner, visitor, store, options } = fixture(t);
+  const homestead = Object.fromEntries(Object.entries(ROOM_HOMESTEAD).map(([id, choices]) =>
+    [id, { typeId: choices.types[1].id, colorId: choices.colors[1].id, layoutId: choices.layouts[1].id }]));
+  const fence = { typeId: 'wire', colorId: 'whitewash' };
+  const finishes = { ...roomFinishes(), fence };
+  rooms.saveLayout(owner, { ...layout(0), finishes, homestead });
+  const olderFinishes = { ...finishes }; delete olderFinishes.fence;
+  rooms.saveLayout(owner, { ...layout(1), finishes: olderFinishes });
+  rooms.saveLayout(owner, { ...layout(2), homestead: { bed: { colorId: 'indigo' } } });
+  const reloaded = new Rooms({ ...options, store: new Store(store.dir) }).visit(visitor, owner);
+  assert.deepEqual(reloaded.homestead, { ...homestead, bed: { ...homestead.bed, colorId: 'indigo' } });
+  assert.deepEqual(reloaded.finishes.fence, fence);
+  assert.equal(reloaded.layoutRevision, 3);
+});
+
+test('saved homestead styles expose only known keys and recover each damaged field independently', t => {
+  const { rooms, owner, visitor } = fixture(t);
+  rooms.doc.rooms.owner = { homestead: { ownerName: 'private', bed: { colorId: 'indigo', layoutId: 'invented', note: 'private' } } };
+  assert.deepEqual(rooms.visit(visitor, owner).homestead, { ...roomHomestead(), bed: { ...ROOM_HOMESTEAD.bed.default, colorId: 'indigo' } });
 });
 test('wide shelf sizes and three owned displays survive restart and older writes without changing legacy positions', t => {
   const { rooms, owner, visitor, shop, options, store } = fixture(t), inventory = structuredClone(shop.doc);
@@ -287,6 +310,7 @@ test('furniture validation rejects arbitrary values, occupied spots, absent shel
   ];
   for (const value of invalidShelves) assert.throws(() => rooms.saveLayout(owner, { ...layout(0, []), shelves: value }), status(400), JSON.stringify(value));
   const invalidFinishes = [null, {}, [], { ...finishes, shelf: ROOM_FINISHES.shelf.default },
+    { ...finishes, fence: { typeId: 'stonewall', colorId: 'walnut' } },
     { ...finishes, floor: { typeId: 'stone', colorId: 'secret' } }, { ...finishes, floor: { typeId: 'html', colorId: 'honey' } },
     { ...finishes, floor: { ...finishes.floor, url: 'https://example.com' } }, { ...finishes, floor: 'stone' }];
   for (const value of invalidFinishes) assert.throws(() => rooms.saveLayout(owner, { ...layout(0, []), finishes: value }), status(400), JSON.stringify(value));
@@ -359,7 +383,7 @@ test('legacy private flags do not block visits or exact worth and disappear on t
   assert.equal(shown.worth.bankroll, 142.87);
   rooms.saveLayout(owner, layout(3));
   const saved = new Store(store.dir).loadDoc('rooms').rooms.owner;
-  assert.deepEqual(Object.keys(saved).sort(), ['finishes', 'furniture', 'layoutRevision', 'placements', 'plan', 'shelves', 'themeId', 'wallDisplays']);
+  assert.deepEqual(Object.keys(saved).sort(), ['finishes', 'furniture', 'homestead', 'layoutRevision', 'placements', 'plan', 'shelves', 'themeId', 'wallDisplays']);
   assert.equal(new Rooms({ ...options, store: new Store(store.dir) }).visit(visitor, owner).wealthStage, 3);
 });
 

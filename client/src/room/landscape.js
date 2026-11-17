@@ -25,7 +25,7 @@ export function homesteadLandscape() {
       z + 7.65 - .055 * (x - 3.9) ** 2, 8.0 - .057 * (x - 4.7) ** 2 - z) + waviness;
   }
   function turfLevel(x, z) {
-    // Wheels on the saved wagon pad sit just below floor level. The verge slopes down to the gate.
+    // Wheels on the saved wagon pad sit just below floor level. The verge slopes down to the footpath.
     return EARTH + 0.119 * smooth(yardEdge(x, z), -.42, .62) * (1 - smooth(x, 8.34, 8.62));
   }
   const points = soil.getAttribute('position'), uv = soil.getAttribute('uv');
@@ -37,10 +37,10 @@ export function homesteadLandscape() {
     const mottling = .08 * Math.sin(2.4 * x + 1.3 * z) + .07 * Math.sin(1.65 * z - x * .36);
     const dry = .16 + .43 * (1 - smooth(z, -5, 1)) + .15 * smooth(x, 6.5, 9.6) + mottling;
     patch.copy(sage).lerp(hay, dry);
-    // The lawn wears away under the gate and between the trough and the old display paddock.
-    const gate = smooth(x, 8.15, 8.70) * (1 - smooth(Math.abs(z - 2.65), .37, .77));
+    // The lawn wears away along the footpath and beside the stock trough.
+    const footpath = smooth(x, 8.15, 8.70) * (1 - smooth(Math.abs(z - 2.65), .37, .77));
     const trough = (1 - smooth(Math.hypot((x - 6.9) * .65, z + 4.50), .46, 1.36)) * .54;
-    shade.lerp(patch, green * (1 - Math.max(gate, trough))).toArray(soilColors, i * 3);
+    shade.lerp(patch, green * (1 - Math.max(footpath, trough))).toArray(soilColors, i * 3);
     points.setXYZ(i, x, turfLevel(x, z) - EARTH, z);
     uv.setXY(i, .5 + x / 78, .5 - z / 78);
   }
@@ -95,40 +95,6 @@ export function homesteadLandscape() {
   }
   trail([[15.1,10.9],[13.5,7.4],[11.5,5.8],[10.6,3.6],[10.8,2.0],[11.65,0],[11.25,-1.8],[9.55,-3.65],[9.4,-5.15],[11,-6.9],[13.4,-7.5],[14.4,-9.3],[13,-12.25],[14.4,-16.5]], 0.46, true);
   trail([[8.70,2.60],[9.17,2.60],[9.85,2.72],[10.7,2.83]], 0.40, false);
-
-  const rails = color('#ad8960'), endGrain = color('#927351');
-  function timber(a, b, heightA, heightB, halfWidth, height, paint) {
-    const dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz);
-    const acrossX = -dz * halfWidth / length, acrossZ = dx * halfWidth / length;
-    const end = ([x,z], y) => [[x + acrossX, y, z + acrossZ], [x - acrossX, y, z - acrossZ],
-      [x - acrossX, y + height, z - acrossZ], [x + acrossX, y + height, z + acrossZ]];
-    const start = end(a, heightA), finish = end(b, heightB);
-    for (const [j, light] of [[1, .77], [2, 1.1], [3, .88], [0, .70]]) {
-      const k = (j + 1) % 4;
-      quad(start[j], start[k], finish[k], finish[j], paint.clone().multiplyScalar(light));
-    }
-    quad(...start, endGrain); quad(...finish, endGrain);
-  }
-  function post([x,z], top) {
-    timber([x - .055, z], [x + .055, z], EARTH, EARTH, .058, top - EARTH, endGrain);
-    timber([x - .056, z], [x + .056, z], top - .06, top - .014, .059, .066, rails);
-  }
-  // The gate hangs open toward the old yard. Its free end stays away from the stairs and the wagon.
-  const hinge = [9.53, 1.84], latch = [9.59, 3.49];
-  for (const run of [
-    [[4.70,-7.55], [6.4,-7.28], [7.88,-6.5], [8.83,-4.88], [9.15,-3.0], [9.45,-.68], hinge],
-    [latch, [9.69,5.45], [9.56,7.0], [7.33,7.6], [5.5,7.8]],
-  ]) {
-    run.forEach((p, i) => {
-      post(p, i % 3 === 1 ? 1.10 : 1.05);
-      if (!i) return;
-      for (const y of [.23, .78]) timber(run[i - 1], p, y, y + (i % 2 ? .045 : -.025), .035, .105, rails);
-    });
-  }
-  const free = [8.96, .34], gateWood = color('#8d694a');
-  for (const p of [hinge, free]) timber([p[0] - .038, p[1]], [p[0] + .038, p[1]], .08, .08, .048, .93, gateWood);
-  for (const y of [.12, .48, .90]) timber(hinge, free, y, y, .033, .073, gateWood);
-  timber(hinge, free, .15, .87, .029, .074, rails);
 
   // A soft apron under cut vertical cliffs, pale sediment seams, and a resistant cap.
   const strata = [[0,1.05,0.8],[0.16,0.88,0.96],[0.25,0.70,0.78],[0.53,0.66,0.96],[0.57,0.65,1.2],[0.78,0.62,0.91],[0.82,0.67,0.78],[0.96,0.66,1.01],[1,0.61,1.16]];
@@ -236,7 +202,7 @@ export function homesteadLandscape() {
     }
   }
 
-  // Bunchgrass survives along the fence and the margins of the garden, outside the editable wagon bay.
+  // Bunchgrass survives along the margins of the garden, outside the editable wagon bay.
   for (const [x, z, radius] of [[4.2,6.7,.48],[5.05,6.35,.36],[6.35,7.11,.66],[7.4,6.45,.32],[8.82,5.75,.41],
     [9.01,4.0,.25],[8.83,-1.77,.31],[8.29,-5.35,.36],[6.95,-6.44,.60],[5.28,-6.87,.47],[4.62,-5.55,.32]]) {
     for (let i = 0; i < 12; i++) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect } from '../../../server/catalog/room.js';
+import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect, roomCouchScale } from '../../../server/catalog/room.js';
 
 export { ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
@@ -18,9 +18,10 @@ function lotBounds(left, back, right, front) {
 export const ROOM_BOUNDS = lotBounds(-4.55, -7.4, 9.2, 7.55);
 const AREAS = {
   parlor: lotBounds(-4.1, -3.1, 4.2, 3.25),
-  bathroom: lotBounds(-4.1, 3.2, 3.35, 7.25),
+  bathroom: lotBounds(-2.45, 3.2, 3.35, 7.25),
   bunk: lotBounds(-4.1, -7.15, 3.65, -3),
   porch: lotBounds(4, 1.1, 9, 5.05),
+  yard: lotBounds(4, -3.2, 8.8, 1.65),
 };
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
@@ -84,10 +85,11 @@ export function nearestWallSpot(camera, rect, x, y, shelves, wallDisplays, id, f
 
 /** A short clear route beside the rug; the same footprint rules keep the resident out of furniture. */
 export function residentStep(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays()) {
+  const couchScale = roomCouchScale(furniture, shelves, wallDisplays);
   for (const [dx, dz] of [[0.55, 0], [-0.55, 0], [0, 0.55], [0, -0.55]]) {
     if ([0.25, 0.5, 0.75, 1].every(part => {
       const moved = { ...furniture, rug: { ...furniture.rug, x: furniture.rug.x + dx * part, z: furniture.rug.z + dz * part } };
-      return furnitureFits(moved, 'rug') && wallMountsFit(shelves, wallDisplays, moved);
+      return furnitureFits(moved, 'rug', couchScale) && wallMountsFit(shelves, wallDisplays, moved, couchScale);
     })) return { x: dx, z: dz };
   }
   return { x: 0, z: 0 };
@@ -97,9 +99,10 @@ export function residentStep(furniture = defaultFurniture(), shelves = [], wallD
  * Places the resident can stroll to from the rug, including the porch through the open side door.
  * Each has a `path` of floor points ending at the spot where they stand, found on a quarter-unit grid around the furniture.
  */
-export function residentErrands(furniture = defaultFurniture(), shelves = []) {
+export function residentErrands(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays(undefined, shelves), chairLayout = 'classic') {
   const home = furniture.rug, live = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off);
-  const solid = live.map(id => furnitureRect(id, furniture[id]));
+  const couchScale = roomCouchScale(furniture, shelves, wallDisplays);
+  const solid = live.map(id => furnitureRect(id, furniture[id], couchScale));
   for (const shelf of shelves) {
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
     if (!spot) continue;
@@ -132,7 +135,7 @@ export function residentErrands(furniture = defaultFurniture(), shelves = []) {
   const errands = [];
   for (const [id, kind] of [['couch', 'sit'], ['pet', 'inspect'], ['wealth', 'cash'], ['desk', 'inspect'], ['floor', 'inspect'], ['floor-2', 'inspect'], ['floor-3', 'inspect'], ['case', 'inspect'], ['poker', 'inspect'], ['wardrobe', 'inspect']]) {
     if (!live.includes(id)) continue;
-    const place = furniture[id], rect = furnitureRect(id, place), turn = place.r * Math.PI / 2, front = [Math.round(Math.sin(turn)), Math.round(Math.cos(turn))];
+    const place = furniture[id], rect = furnitureRect(id, place, couchScale), turn = place.r * Math.PI / 2, front = [Math.round(Math.sin(turn)), Math.round(Math.cos(turn))];
     // Doors, drawers and cushions have a front; tables can be approached from whichever side is nearest.
     const sides = id !== 'desk' && id !== 'wardrobe' && id !== 'couch' ? [[0, 1], [1, 0], [-1, 0], [0, -1]] : [front];
     // Inspecting means leaning in, so stand a little further back than when sitting down or reaching for cash.
@@ -148,7 +151,7 @@ export function residentErrands(furniture = defaultFurniture(), shelves = []) {
   const gate = route([home.x, home.z], [4 * S - 0.55, 1.75 * S]);
   if (gate) {
     const path = [...gate, [4.3 * S, 1.75 * S], [6.55 * S, 1.85 * S], [6.55 * S, 3.5 * S]];
-    errands.splice(1, 0, { kind: 'coffee', path, facing: Math.PI / 2 });
+    errands.splice(1, 0, { kind: 'coffee', path, facing: chairLayout === 'alternate' ? -Math.PI / 2 : Math.PI / 2 });
   }
   return errands;
 }
@@ -325,8 +328,9 @@ export function faunVisitRoute(furniture = defaultFurniture(), shelves = [], wal
     return swept[0] >= area[0] && swept[1] >= area[1] && swept[2] <= area[2] && swept[3] <= area[3]
       && obstacles.every(obstacle => !overlaps(swept, obstacle));
   };
+  const couchScale = roomCouchScale(furniture, shelves, wallDisplays);
   const roomObstacles = Object.entries(ROOM_FURNITURE).filter(([id, piece]) => !piece.flat && !piece.yard && !furniture[id].off).map(([id]) => {
-    const rect = furnitureRect(id, furniture[id]), pad = id === 'wardrobe' ? 0.18 : id === 'desk' ? 0.08 : 0;
+    const rect = furnitureRect(id, furniture[id], couchScale), pad = id === 'wardrobe' ? 0.18 : id === 'desk' ? 0.08 : 0;
     return [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
   });
   const resident = residentRect(furniture);

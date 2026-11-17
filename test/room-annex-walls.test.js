@@ -21,7 +21,7 @@ test('both wings have open back, front and side windows at full wall height', as
   await home.ready;
   root.updateMatrixWorld(true);
   const windows = [
-    ['Bathroom rear window', 'left', -4.3, 4.05, 1, 0],
+    ['Bathroom rear window', 'left', -2.65, 4.05, 1, 0],
     ['Bunk rear window', 'left', -4.3, -5.35, 1, 0],
     ['Bathroom porch window', 'right', 3.55, 5.0, -1, 0],
     ['Bunk porch window', 'right', 3.85, -5.1, -1, 0],

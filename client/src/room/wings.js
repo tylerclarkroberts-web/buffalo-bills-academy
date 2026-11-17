@@ -1,38 +1,62 @@
-import { DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
+import { Color, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 import { ROOM_DOOR_HEIGHT, ROOM_FLOOR_SCALE as S, ROOM_WALL_HEIGHT as height } from './scene-model.js';
 import { makeWallCutaway } from './cutaway.js';
 
 // x runs from the long rear wall to the porch. Looking in from the porch, +z is on the left.
-export function buildWings(parent, box, batch) {
-  const oak = '#996c48', trim = '#674832', honey = '#c39a67';
-  const boards = ['#ab8058', '#b18b65', '#a77a52', '#bb956d'];
-  box(7.25, 0.19, 3.90, trim, -0.375, -0.095, 5.20);
-  for (let i = 0; i < 14; i++) for (let j = 0; j < 8; j++) {
-    const w = 7.25 / 14, d = 3.90 / 8;
-    box(w - 0.012, 0.016, d - 0.012, (i + j) % 2 ? '#93a39a' : '#c3c9b8',
-      -4 + (i + 0.5) * w, 0.008, 3.25 + (j + 0.5) * d);
+export function buildWings(parent, box, batch, style, plan) {
+  const oak = '#996c48', trim = '#674832', honey = '#c39a67', bathRear = -2.35, bathWidth = 3.25 - bathRear;
+  const bathColor = style.bathroom.paint, bedColor = style.bedroom.paint;
+  const wood = new Color('#b48c64').lerp(bedColor, 0.18);
+  const boards = [0.95, 1.08, 0.91, 1.13].map(k => wood.clone().multiplyScalar(k));
+  function floorMesh(name, id) {
+    const floor = batch(name);
+    floor.userData.editSelection = { kind: 'homestead', id };
+    parent.add(floor);
   }
+  box(bathWidth, 0.19, 3.90, trim, bathRear + bathWidth / 2, -0.095, 5.20);
+  const stone = style.bathroom.typeId === 'stone', columns = stone ? 7 : 11, rows = stone ? 6 : 8;
+  const tile = [bathColor, bathColor.clone().lerp(new Color('#f2e9d6'), stone ? 0.20 : 0.63)];
+  for (let i = 0; i < columns; i++) for (let j = 0; j < rows; j++) {
+    const w = bathWidth / columns, d = 3.90 / rows;
+    box(w - 0.012, 0.016, d - 0.012, tile[(i + j) % 2],
+      bathRear + (i + 0.5) * w, 0.008, 3.25 + (j + 0.5) * d);
+  }
+  const turnedTub = style.tub.layoutId === 'alternate', matX = turnedTub ? plan.tub[0] + 0.73 : plan.tub[0];
+  const matZ = turnedTub ? plan.tub[1] : plan.tub[1] - 0.77;
+  box(1.48, 0.020, 0.55, bathColor, matX, 0.026, matZ, turnedTub ? Math.PI / 2 : 0);
+  for (const dx of [-0.61, 0.61]) box(0.056, 0.007, 0.53, '#c0c9a6',
+    matX + (turnedTub ? 0 : dx), 0.039, matZ + (turnedTub ? dx : 0), turnedTub ? Math.PI / 2 : 0);
+  floorMesh('Bathroom floor', 'bathroom');
+
   box(7.55, 0.19, 4.05, trim, -0.225, -0.095, -5.025);
-  for (let j = 0; j < 14; j++) {
+  if (style.bedroom.typeId === 'parquet') {
+    const w = 7.55 / 10, d = 4.05 / 5;
+    for (let i = 0; i < 10; i++) for (let j = 0; j < 5; j++) for (let k = 0; k < 3; k++) {
+      const across = (i + j) % 2 === 0;
+      box((across ? w : w / 3) - 0.009, 0.016, (across ? d / 3 : d) - 0.009, boards[(i + j + k) % 4],
+        -4 + w * (i + (across ? 0.5 : (k + 0.5) / 3)), 0.008, -7.05 + d * (j + (across ? (k + 0.5) / 3 : 0.5)));
+    }
+  } else for (let j = 0; j < 14; j++) {
     const z = -7.05 + (j + 0.5) * 4.05 / 14, seam = -1.72 + (j % 3) * 1.14;
     box(seam + 3.996, 0.016, 4.05 / 14 - 0.009, boards[j % 4], (seam - 4) / 2, 0.008, z);
     box(3.546 - seam, 0.016, 4.05 / 14 - 0.009, boards[(j + 1) % 4], (seam + 3.55) / 2, 0.008, z);
   }
-  box(1.95, 0.020, 0.68, '#915948', 1.30, 0.026, -5.96);
-  for (const dx of [-0.84, -0.76, 0.76, 0.84]) box(0.034, 0.007, 0.66, '#cfaf82', 1.30 + dx, 0.039, -5.96);
-  box(1.48, 0.020, 0.55, '#7d997d', -0.95, 0.026, 5.98);
-  for (const dx of [-0.61, 0.61]) box(0.056, 0.007, 0.53, '#c0c9a6', -0.95 + dx, 0.039, 5.98);
+  floorMesh('Bedroom floor', 'bedroom');
+  box(1.95, 0.020, 0.68, style.kitchen.paint.clone().multiplyScalar(0.68), plan.counterX - 0.31, 0.026, -5.96);
+  for (const dx of [-0.84, -0.76, 0.76, 0.84]) box(0.034, 0.007, 0.66, '#cfaf82', plan.counterX - 0.31 + dx, 0.039, -5.96);
+  floorMesh('Kitchen runner', 'kitchen');
 
-  const bath = { paint: '#dedfca', lower: '#839a91', base: 0.60 };
-  const bunk = { paint: '#e7d5b3', lower: oak, base: 0.60 };
+  const bath = { paint: new Color('#eee5cd').lerp(bathColor, 0.25), lower: bathColor, base: 0.60 };
+  const bunk = { paint: new Color('#f1e2c7').lerp(bedColor, 0.16), lower: wood, base: 0.60 };
   const faces = [
-    { name: 'Bathroom rear window', side: 'left', at: -4, span: [3.25, 7.15], opening: [3.65, 4.85, 1.85, 3.28], ...bath, mirror: true },
+    { name: 'Bathroom rear window', side: 'left', at: bathRear, span: [3.25, 7.15], opening: [3.65, 4.85, 1.85, 3.28], ...bath, mirror: true },
     { name: 'Bunk rear window', side: 'left', at: -4, span: [-7.05, -3], opening: [-6.35, -4.70, 1.86, 3.33], ...bunk },
     { name: 'Bathroom porch window', side: 'right', at: 3.25, span: [3.30, 7.10], opening: [4.38, 5.78, 1.45, 3.02], ...bath },
     { name: 'Bunk porch window', side: 'right', at: 3.55, span: [-7, -3.11], opening: [-5.97, -4.53, 1.43, 3.05], ...bunk },
-    { name: 'Bathroom outer window', side: 'front', at: 7.15, span: [-3.95, 3.30], opening: [-1.64, 0.06, 1.98, 3.24], ...bath, towel: true },
+    { name: 'Bathroom outer window', side: 'front', at: 7.15, span: [bathRear + 0.05, 3.30], opening: [-1.64, 0.06, 1.98, 3.24], ...bath, towel: true },
     { name: 'Kitchen counter window', side: 'back', at: -7.05, span: [-3.95, 3.60], opening: [0.57, 2.20, 1.89, 3.20], ...bunk },
-    { name: 'Bathroom doorway', side: 'front', at: 3.35, span: [-3.95, 3.20], opening: [1.41, 2.59, 0, ROOM_DOOR_HEIGHT], ...bath, base: 0.88, reverseFor: 'bathroom' },
+    { name: 'Parlor garden window', side: 'front', at: 3.35, span: [-4.05, bathRear + 0.05], opening: [-3.70, -2.70, 1.82, 3.17], ...bunk },
+    { name: 'Bathroom doorway', side: 'front', at: 3.35, span: [bathRear + 0.05, 3.20], opening: [1.41, 2.59, 0, ROOM_DOOR_HEIGHT], ...bath, base: 0.88, reverseFor: 'bathroom' },
   ];
 
   function panel({ side, at }, start, end, bottom, top, paint, depth = 0.105, inset = 0) {
@@ -61,6 +85,8 @@ export function buildWings(parent, box, batch) {
     if (sill) panel(face, a, b, bottom, sill, paint);
     panel(face, a, b, lintel, height, paint);
     const solid = batch(name);
+    if (name !== 'Parlor garden window') solid.userData.editSelection = { kind: 'homestead',
+      id: name.startsWith('Bathroom') ? 'bathroom' : name.startsWith('Kitchen') ? 'kitchen' : 'bedroom' };
     parent.add(solid);
     const wall = makeWallCutaway(side, solid, [solid]);
     if (face.reverseFor) wall.reverseFor = face.reverseFor;
@@ -89,7 +115,7 @@ export function buildWings(parent, box, batch) {
     }
     if (face.mirror) {
       const inch = height / 102;
-      panel(face, from, to, bottom, 1.54, '#91aa9c', 0.015, 0.063);
+      panel(face, from, to, bottom, 1.54, bathColor, 0.015, 0.063);
       for (let i = 1; i < 10; i++) panel(face, from + i * 0.40, from + i * 0.40 + 0.019, bottom, 1.54, '#809c8e', 0.012, 0.080);
       for (const y of [0.95, 1.24, 1.52]) panel(face, from, to, y, y + 0.023, '#809c8e', 0.012, 0.084);
       panel(face, 5.39, 6.01, 43 * inch, 75 * inch, trim, 0.075, 0.086);

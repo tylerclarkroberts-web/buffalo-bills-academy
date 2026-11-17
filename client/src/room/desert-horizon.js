@@ -65,8 +65,8 @@ export function desertHorizon(soilMaterial) {
   const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
   backdrop.name = 'ranch-horizon'; backdrop.frustumCulled = false; backdrop.renderOrder = -10;
   const S = ROOM_FLOOR_SCALE, forward = new THREE.Vector3(), point = new THREE.Vector3();
-  // Ground outline includes both wings, the windpump and the foreground ranch fence.
-  const yard = [[-4.3, -7.3], [3.8, -7.3], [8.3, -5.3], [9.40, -3.15], [9.85, 1.84], [9.88, 7.18], [5.55, 7.98], [3.5, 7.4], [-4.3, 7.4]];
+  // Ground outline includes both wings, the windpump, front steps and garden.
+  const yard = [[-4.3, -7.3], [3.8, -7.3], [8.3, -5.3], [8.6, -3.15], [8.98, 3.26], [8.65, 4.95], [5.55, 7.55], [3.5, 7.4], [-3.1, 7.4], [-4.3, 3.6]];
   backdrop.onBeforeRender = (renderer, scene, camera) => {
     camera.getWorldDirection(forward);
     let skyline = 0.50;
