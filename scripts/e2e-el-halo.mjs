@@ -113,9 +113,9 @@ async function main() {
   await place(T, 3, -6, 0); await place(J, 3, 0, Math.PI);
   await sleep(600);
   await J.evaluate(() => window.__elHalo.aimAtPlayer('Tyler'));
-  await J.mouse.down(); await J.waitForTimeout(500); await J.mouse.up();
+  await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(500); await J.evaluate(() => window.__elHalo.fire(false));
   check(await until(T, () => window.__elHalo.state().shield < 100, null, 3000), `PVP: Joe's rifle takes Tyler's shield down (${(await st(T)).shield})`);
-  for (let k = 0; k < 14 && (await st(T)).st === 'alive'; k++) { await J.evaluate(() => window.__elHalo.aimAtPlayer('Tyler')); await J.mouse.down(); await J.waitForTimeout(900); await J.mouse.up(); if ((await st(J)).mag < 8) { await J.keyboard.press('KeyR'); await J.waitForTimeout(2200); } }
+  for (let k = 0; k < 14 && (await st(T)).st === 'alive'; k++) { await J.evaluate(() => window.__elHalo.aimAtPlayer('Tyler')); await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(900); await J.evaluate(() => window.__elHalo.fire(false)); if ((await st(J)).mag < 8) { await J.keyboard.press('KeyR'); await J.waitForTimeout(2200); } }
   check(await until(T, () => window.__elHalo.state().st === 'downed', null, 3000), `PVP: Tyler goes down (${(await st(T)).st})`);
   check(await until(T, () => /CAÍSTE/.test(document.querySelector('[data-test=elhalo-down]').textContent)), 'Tyler: downed notice on screen');
   const jb = (await board(J)).find((r) => r.name === 'Joe');
@@ -166,7 +166,7 @@ async function main() {
   await shot(J, '04-multiple-players');
   await T.evaluate(() => window.__elHalo.overview(true)); await T.waitForTimeout(500); await shot(T, '02-map-overview'); await T.evaluate(() => window.__elHalo.overview(false));
   await hook(T, { calm: true, clear: true, spawn: [{ type: 'luchador', x: -3, z: 24 }, { type: 'padre', x: 0, z: 26 }, { type: 'granjero', x: -6, z: 25 }, { type: 'mariachi', x: 3, z: 27 }, { type: 'luchador', x: 1, z: 22 }] });
-  for (let k = 0; k < 18; k++) { await J.evaluate(() => window.__elHalo.aimAtNearest()); await J.mouse.down(); await J.waitForTimeout(330); await J.mouse.up(); if (k === 6) await J.keyboard.press('KeyG'); if ((await st(J)).mag < 8) { await J.keyboard.press('KeyR'); await J.waitForTimeout(2000); } }
+  for (let k = 0; k < 18; k++) { await J.evaluate(() => window.__elHalo.aimAtNearest()); await J.evaluate(() => window.__elHalo.fire(true)); await J.waitForTimeout(330); await J.evaluate(() => window.__elHalo.fire(false)); if (k === 6) await J.keyboard.press('KeyG'); if ((await st(J)).mag < 8) { await J.keyboard.press('KeyR'); await J.waitForTimeout(2000); } }
   a = await st(J);
   check((await board(J)).find((r) => r.name === 'Joe').kills > 0, `Joe: horde kills land (${(await board(J)).find((r) => r.name === 'Joe').kills}; ${a.st} ${a.mode} pts ${a.pts} mag ${a.mag}/${a.reserve} enemies ${a.enemies})`);
   await shot(J, '09-fight');

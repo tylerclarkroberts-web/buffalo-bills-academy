@@ -135,7 +135,7 @@ export class Match {
     const dt = Math.min(1, dtMs / 1000);
     if (finite(msg.yaw)) p.yaw = ((msg.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     if (finite(msg.pitch)) p.pitch = Math.max(-1.5, Math.min(1.5, msg.pitch));
-    if (typeof msg.w === 'string' && (p.slots.includes(msg.w) || (msg.w === 'torreta' && p.seat === 'g'))) p.w = msg.w;
+    if (typeof msg.w === 'string' && (msg.wv === undefined || msg.wv === p.wv) && (p.slots.includes(msg.w) || (msg.w === 'torreta' && p.seat === 'g'))) p.w = msg.w;
     if (p.seat !== 'g' && p.w === 'torreta') p.w = p.slots[0];
     p.act = !!msg.act;
     const evs = Array.isArray(msg.ev) ? msg.ev.slice(0, 24) : [];
@@ -488,8 +488,13 @@ export class Match {
   }
   gift(p) {
     const id = this.truck.weapon; p.truckGot = this.truck.n;
+    // the gun in hand is the one that gets swapped out; anything not in a slot is long gone
+    const held = p.w === 'torreta' || !p.slots.includes(p.w) ? p.slots[0] : p.w;
+    for (const k of Object.keys(p.P.weapons)) if (!p.slots.includes(k) && k !== 'torreta') delete p.P.weapons[k];
+    p.P.current = held;
     const r = L.giveWeapon(p.P, id);
-    if (r === 'new') { const i = p.slots.indexOf(p.w === 'torreta' ? p.slots[0] : p.w); p.slots[i >= 0 ? i : 0] = id; p.w = id; }
+    if (r === 'new') { const i = p.slots.indexOf(held); p.slots[i >= 0 ? i : 0] = id; }
+    if (!p.seat) p.w = id; // you're holding what you just got (topped up if you already had it)
     p.wv++; this.ev('tg', p.id, id, r);
   }
 

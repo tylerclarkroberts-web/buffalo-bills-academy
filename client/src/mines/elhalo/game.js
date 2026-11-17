@@ -94,7 +94,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   let mode = 'loading', t = 0, raf = 0, last = performance.now(), frames = 0, fps = 60, fpsT = 0, fpsN = 0;
   let P = L.createPlayer(), pos = { x: 0, y: 2, z: 0 }, vy = 0, onGround = true, yaw = 0, pitch = 0;
   let banner = { text: '', until: 0 }, shake = 0, vmKick = 0, swing = -1, swapAnim = 0, hurtFlash = 0, shieldFlash = 0, alarmT = 0, dirHit = null, bob = 0, emptyT = 0, hitMark = 0, headMark = 0;
-  let overview = false, autopilot = null, zoom = false, charging = null, burstQ = 0, burstT = 0, lunge = null, nadeKind = 'frag', wvSeen = -1, nightK = 0, engineT = 0;
+  let overview = false, autopilot = null, zoom = false, charging = null, burstQ = 0, burstT = 0, lunge = null, nadeKind = 'frag', wvSeen = -1, nightK = 0, engineT = 0, actTap = false;
   let veh = null; // the jeep, while you drive it: { x, y, z, yaw, spd }
   const spent = { frag: 0, sticky: 0 };
   const input = { keys: new Set(), fire: false, fireHeld: false, act: false, look: [0, 0], stick: [0, 0], edges: new Set() };
@@ -421,7 +421,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const k = e.code;
     if (mode === 'playing' && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(k)) e.preventDefault();
     if (mode !== 'playing') { if (k === 'Enter' && mode === 'title') api.start(); return; }
-    if (!input.keys.has(k)) input.edges.add(k);
+    if (!input.keys.has(k)) { input.edges.add(k); if (k === 'KeyE') actTap = true; }
     input.keys.add(k);
   };
   const onKeyUp = (e) => input.keys.delete(e.code);
@@ -467,7 +467,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     on(lookZone, 'pointerdown', (e) => { e.preventDefault(); lookStart(e); }); on(lookZone, 'pointermove', lookMove); on(lookZone, 'pointerup', lookEnd); on(lookZone, 'pointercancel', lookEnd);
     for (const b of root.querySelectorAll('[data-pad-btn]')) {
       const what = b.dataset.padBtn;
-      on(b, 'pointerdown', (e) => { e.preventDefault(); b.classList.add('on'); if (what === 'fire') { input.fire = true; lookStart(e); } else if (what === 'act') input.act = true; else input.edges.add(what); });
+      on(b, 'pointerdown', (e) => { e.preventDefault(); b.classList.add('on'); if (what === 'fire') { input.fire = true; lookStart(e); } else if (what === 'act') { input.act = true; actTap = true; } else input.edges.add(what); });
       on(b, 'pointermove', (e) => { if (what === 'fire') lookMove(e); });
       const up = (e) => { b.classList.remove('on'); if (what === 'fire') { input.fire = false; lookEnd(e); } if (what === 'act') input.act = false; };
       on(b, 'pointerup', up); on(b, 'pointercancel', up); on(b, 'contextmenu', (e) => e.preventDefault());
@@ -610,10 +610,10 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   function sendInput(now) {
     if (!joined || now - sendT < SEND_MS) return;
     sendT = now;
-    const act = input.act || input.keys.has('KeyE');
-    const msg = { p: [+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2)], yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), w: P.current, act, ev: pending };
+    const act = input.act || input.keys.has('KeyE') || actTap; // a quick tap still reaches the server once
+    const msg = { p: [+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2)], yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), w: P.current, wv: wvSeen, act, ev: pending }; // wv: which weapon list our pick refers to
     if (veh) msg.veh = [+veh.x.toFixed(2), +veh.y.toFixed(2), +veh.z.toFixed(2), +veh.yaw.toFixed(3)];
-    if (sender.send(msg)) pending = [];
+    if (sender.send(msg)) { pending = []; actTap = false; }
     else if (pending.length > 40) pending = pending.slice(-40);
   }
 
