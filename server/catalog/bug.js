@@ -18,12 +18,12 @@ const FOOD = [
   ['mealworms', 'Mealworm Bucket', 300, '🪱', 60, 7, 'Wriggly. Nutritious. Don\'t ask.'],
   ['dung', 'Premium Dung Ball', 450, '🟤', 70, 8, 'Hand-rolled. For connoisseurs only.'],
   ['moss', 'Artisan Moss', 600, '🌿', 75, 9, 'Grown in a terrarium by a man named Gil.'],
-  ['banquet', 'Bug Banquet', 2500, '🍱', 100, 10, 'A full spread. Your bug will be insufferable about it.'],
+  ['banquet', 'Bug Banquet', 900, '🍱', 100, 10, 'A full spread. Your bug will be insufferable about it.'],
 ];
 for (const [id, name, price, emoji, food, heal, joke] of FOOD) add({ id: `food-${id}`, name, price, emoji,
   desc: `${joke} Feeds your bug now (+${food} Fed, 12 XP) and packs it a lunch: the first time it drops below half health in its next fight, it eats and gets ${heal} HP back. It carries one lunch and keeps the bigger.`,
   cat: 'food', slot: null, use: 'food', food, heal });
-add({ id: 'food-ambrosia', name: 'Golden Ambrosia', price: 20000, emoji: '✨', cat: 'food', slot: null, use: 'food', food: 100, heal: 10, days: 7, retired: true,
+add({ id: 'food-ambrosia', name: 'Golden Ambrosia', price: 3000, emoji: '✨', cat: 'food', slot: null, use: 'food', food: 100, heal: 10, days: 7, retired: true,
   desc: 'The shopkeeper stopped stocking it; nobody could say what it was. Yours still works: a full meal (+100 Fed, 12 XP), a packed lunch worth 10 HP, and 7 days of the Automatic Feeder.' });
 
 // toys: owned and equipped in the bug's toy slot. Left with one, the bug earns `xp` a day on its own (capped at 20);

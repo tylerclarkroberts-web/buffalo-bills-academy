@@ -9,7 +9,7 @@ export const GAG_ITEMS = [
   { id: 'gag-spaghetti', name: 'Uncooked Spaghetti Noodle', price: 120, effect: 'noodle', emoji: '🍝', desc: 'One single dry spaghetti noodle, brandished with intent. Taps a seat — tik — and snaps in half. Not al dente. Not even close.' },
   { id: 'gag-pie', name: 'Cream Pie', price: 300, effect: 'pie', emoji: '🥧', desc: 'Cartoon pie, splat, gone in two seconds. No calories.' },
   { id: 'gag-tumbleweed', name: 'Tumbleweed', price: 25, effect: 'tumbleweed', emoji: '🌾', desc: 'Rolls a tumbleweed past someone who is taking too long.' },
-  { id: 'gag-mariachi', name: 'Mariachi Trio', price: 4000, effect: 'mariachi', emoji: '🎺', desc: 'Three tiny musicians serenade a seat for a few seconds. A shower of notes, no song you could name. Never touches the cards.' },
+  { id: 'gag-mariachi', name: 'Mariachi Trio', price: 1500, effect: 'mariachi', emoji: '🎺', desc: 'Three tiny musicians serenade a seat for a few seconds. A shower of notes, no song you could name. Never touches the cards.' },
 ].map((x) => ({ kind: 'gag', cat: 'gags', slot: null, once: true, pix: x.id.slice(4), ...x }));
 /** v36 migration: old prank ids -> gag ids (the rubber chicken became the spaghetti noodle). */
 export const GAG_RENAME = { 'prank-squirt': 'gag-squirt', 'prank-soaker': 'gag-soaker', 'prank-confetti': 'gag-confetti', 'prank-chicken': 'gag-spaghetti', 'prank-pie': 'gag-pie', 'prank-tumbleweed': 'gag-tumbleweed' };
@@ -37,7 +37,7 @@ export const ABSURD_ITEMS = [
   ['charter', 'The Academy\'s Founding Charter', 250000, '📜', 'The original. Signed by Bill, witnessed by a horse. Nobody has read past the first line.', true],
   ['skull', 'Buffalo Skull', 500000, '💀', 'The buffalo. Not a buffalo. Bill gets quiet when it comes up.', true],
   ['pickaxe', 'Golden Pickaxe', 1000000, '⛏️', 'Solid gold, so it bends on the first swing. The Foreman cried when he saw it. He would not say which kind.', true],
-  ['deed', 'Deed to the Moon', 5000000, '🌕', 'Legally meaningless. Spiritually enormous. Hang it up and they deliver.', true],
+  ['deed', 'Deed to the Moon', 2000000, '🌕', 'Legally meaningless. Spiritually enormous. Hang it up and they deliver.', true],
   // Seasonal (a month number): sold during that month only, kept for good. See Shop.buy.
   ['jackolantern', 'Jack-o\'-Lantern', 800, '🎃', 'Carved by the Foreman. He says it is you. It is not flattering.', false, 10],
   ['ghost', 'Bedsheet Ghost', 3000, '👻', 'A bedsheet with two holes. Nobody is under it. Somebody was.', false, 10],
