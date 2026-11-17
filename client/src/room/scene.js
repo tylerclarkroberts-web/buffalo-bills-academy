@@ -8,7 +8,7 @@ import { roomFaun } from './faun.js';
 import { RoomActivity, residentPose, faunPose } from './activity.js';
 import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from './lighting.js';
 import { pixGrid } from '../store/pixart.js';
-import { spriteCanvas, drawGrave, bugScale } from '../barn/sprite.js';
+import { bugTexture, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks, shade as tint } from '../avatar/genbust.js';
 import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
@@ -1075,25 +1075,28 @@ export class RoomScene {
       case 'toy-castle': box(toy, 0.34, 0.22, 0.26, '#7d5a38', 0, 0.11); for (const x of [-0.17, 0.17]) { cylinder(toy, 0.07, 0.07, 0.34, '#6b4a30', x, 0.17, 0, 7); mesh(toy, new THREE.ConeGeometry(0.09, 0.14, 7), material('#a5433a'), x, 0.41, 0); } break;
       case 'toy-disco': ball(toy, 0.12, '#dfe6f0', 0, 0.6, 0, 0); cylinder(toy, 0.008, 0.008, 0.26, '#8a8780', 0, 0.8, 0, 4); break;
     }
-    const gear = new THREE.Group(); gear.position.set(0.05, 0, -0.44); group.add(gear);
-    switch (pet.gear) {
-      case 'gear-shell': cylinder(gear, 0.09, 0.09, 0.07, '#d9c8a7', 0, 0.035); cylinder(gear, 0.095, 0.095, 0.02, '#a5433a', 0, 0.08); break;
-      case 'gear-claws': box(gear, 0.28, 0.035, 0.07, '#8a8f94', 0, 0.02).rotation.y = 0.4; box(gear, 0.1, 0.045, 0.08, '#6b4a30', -0.13, 0.022, 0.055).rotation.y = 0.4; break;
-      case 'gear-boots': for (let i = 0; i < 6; i++) box(gear, 0.05, 0.07, 0.08, '#5c4028', (i % 3 - 1) * 0.09, 0.035, i < 3 ? -0.05 : 0.05); break;
-      case 'gear-helmet': ball(gear, 0.11, '#8a623c', 0, 0.05, 0).scale.y = 0.8; cylinder(gear, 0.015, 0.015, 0.06, '#5c4028', 0, 0.16, 0, 5); break;
-      case 'gear-shield': ball(gear, 0.15, '#5f8a4a', 0, 0.16, 0).scale.set(0.8, 1, 0.2); break;
-      case 'gear-mandibles': mesh(gear, new THREE.TorusGeometry(0.1, 0.022, 5, 10, Math.PI), material('#d9b23d'), 0, 0.03, 0).rotation.x = -Math.PI / 2; break;
-      case 'gear-armor': for (let i = 0; i < 3; i++) box(gear, 0.24 - i * 0.04, 0.05, 0.16, '#70767c', 0, 0.025 + i * 0.05); break;
-      case 'gear-bandage': box(gear, 0.2, 0.06, 0.08, '#eee6d6', 0, 0.03).rotation.y = 0.3; box(gear, 0.05, 0.065, 0.085, '#b8433e', 0, 0.03).rotation.y = 0.3; break;
+    const kit = []; // the attack item and the defense item lie side by side
+    for (const [id, x] of [[pet.gear, 0.05], [pet.defense, 0.5]]) {
+      const gear = new THREE.Group(); gear.position.set(x, 0, -0.44); group.add(gear); kit.push(gear);
+      switch (id) {
+        case 'gear-shell': cylinder(gear, 0.09, 0.09, 0.07, '#d9c8a7', 0, 0.035); cylinder(gear, 0.095, 0.095, 0.02, '#a5433a', 0, 0.08); break;
+        case 'gear-claws': box(gear, 0.28, 0.035, 0.07, '#8a8f94', 0, 0.02).rotation.y = 0.4; box(gear, 0.1, 0.045, 0.08, '#6b4a30', -0.13, 0.022, 0.055).rotation.y = 0.4; break;
+        case 'gear-boots': for (let i = 0; i < 6; i++) box(gear, 0.05, 0.07, 0.08, '#5c4028', (i % 3 - 1) * 0.09, 0.035, i < 3 ? -0.05 : 0.05); break;
+        case 'gear-helmet': ball(gear, 0.11, '#8a623c', 0, 0.05, 0).scale.y = 0.8; cylinder(gear, 0.015, 0.015, 0.06, '#5c4028', 0, 0.16, 0, 5); break;
+        case 'gear-shield': ball(gear, 0.15, '#5f8a4a', 0, 0.16, 0).scale.set(0.8, 1, 0.2); break;
+        case 'gear-mandibles': mesh(gear, new THREE.TorusGeometry(0.1, 0.022, 5, 10, Math.PI), material('#d9b23d'), 0, 0.03, 0).rotation.x = -Math.PI / 2; break;
+        case 'gear-armor': for (let i = 0; i < 3; i++) box(gear, 0.24 - i * 0.04, 0.05, 0.16, '#70767c', 0, 0.025 + i * 0.05); break;
+        case 'gear-bandage': box(gear, 0.2, 0.06, 0.08, '#eee6d6', 0, 0.03).rotation.y = 0.3; box(gear, 0.05, 0.065, 0.085, '#b8433e', 0, 0.03).rotation.y = 0.3; break;
+      }
     }
     if (pet.feeder) { cylinder(group, 0.11, 0.14, 0.05, '#c9b28a', 0.34, 0.025, 0.42); cylinder(group, 0.07, 0.07, 0.3, '#d6ecee', 0.34, 0.2, 0.36, 8); cylinder(group, 0.08, 0.08, 0.04, '#a5433a', 0.34, 0.37, 0.36, 8); }
-    if (toy.children.length || gear.children.length || pet.feeder) this.dynamic.add(group);
+    if (toy.children.length || kit.some((gear) => gear.children.length) || pet.feeder) this.dynamic.add(group);
   }
   pet(pet) {
     this.petSprite = null;
     if (!pet) return;
     let map;
-    if (pet.stage === 'creature' && BY_ID[pet.species]) map = canvasTexture(spriteCanvas(BY_ID[pet.species], pet.style, pet.level));
+    if (pet.stage === 'creature' && BY_ID[pet.species]) map = bugTexture(THREE, BY_ID[pet.species], pet.style, pet.level);
     else if (pet.stage === 'egg' || pet.stage === 'dead') map = paintedTexture(128, 128, ctx => {
       if (pet.stage === 'egg') drawEgg(ctx, { w: 128, h: 128, still: true }); else drawGrave(ctx, { w: 128, h: 128 });
     }, true);

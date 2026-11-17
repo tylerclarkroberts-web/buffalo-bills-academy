@@ -10,7 +10,7 @@ import { MINE_ITEMS } from './mine.js';
 
 export const CATALOG = [...AVATAR_ITEMS, ...GAG_ITEMS, ...SPECTACLE_ITEMS, ...ABSURD_ITEMS, ...FURNITURE_ITEMS, ...MINE_ITEMS, ...TOBACCO_ITEMS, ...BUG_ITEMS];
 /** The most anything in the store can cost: the Deed to the Moon. */
-export const MAX_PRICE = 5000000;
+export const MAX_PRICE = 2000000;
 export const ITEM = Object.fromEntries(CATALOG.map((x) => [x.id, x]));
 /** Tabs in store order. `bug: true` tabs appear only after your egg hatches. */
 export const TABS = [
@@ -20,7 +20,7 @@ export const TABS = [
   { id: 'bugcare', label: 'Bug care', bug: true }, { id: 'gear', label: 'Battle gear', bug: true },
 ];
 export const AVATAR_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'skin', 'acc'];
-export const BUG_SLOTS = ['toy', 'bugskin', 'bughat', 'bugacc', 'gear'];
+export const BUG_SLOTS = ['toy', 'bugskin', 'bughat', 'bugacc', 'gear', 'defense']; // 'gear' is the attack item
 export const tier = (price) => (price >= 20000 ? 'crazy' : price >= 1500 ? 'expensive' : price >= 300 ? 'medium' : 'cheap');
 
 const ids = new Set();

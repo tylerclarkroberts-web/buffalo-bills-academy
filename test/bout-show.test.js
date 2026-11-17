@@ -87,15 +87,19 @@ test('the whole show draws without errors for every style, wide and tall, and wi
 
 test('every battle gear item draws on every bug, and the Barn passes equipped gear to the sprite', (t) => {
   mockCanvas(t);
-  const gear = BUG_ITEMS.filter((item) => item.slot === 'gear').map((item) => item.id.slice(5));
+  const sold = BUG_ITEMS.filter((item) => item.cat === 'gear'), gear = sold.map((item) => item.id.slice(5));
   assert.deepEqual([...gear].sort(), [...GEAR_SHAPES].sort());
   for (const bug of ROSTER) for (const level of [3, 10]) {
     const plain = spriteCanvas(bug, null, level).getContext().pixels.length;
-    for (const shape of GEAR_SHAPES) assert.ok(spriteCanvas(bug, { gear: { shape } }, level).getContext().pixels.length > plain, `${shape} shows on ${bug.id} at level ${level}`);
+    // each item is drawn from the slot it is sold for: the attack item ('gear') or the defense item
+    for (const item of sold) assert.ok(spriteCanvas(bug, { [item.slot]: { shape: item.id.slice(5) } }, level).getContext().pixels.length > plain, `${item.id} shows on ${bug.id} at level ${level}`);
+    const alone = (slot, shape) => spriteCanvas(bug, { [slot]: { shape } }, level).getContext().pixels.length;
+    const both = spriteCanvas(bug, { gear: { shape: 'claws' }, defense: { shape: 'armor' } }, level).getContext().pixels.length;
+    assert.ok(both > alone('gear', 'claws') && both > alone('defense', 'armor'), `an attack item and a defense item both show on ${bug.id} at level ${level}`);
   }
   const barn = Object.create(Barn.prototype);
-  barn.styleOf = () => ({ gear: 'gear-armor', gearBonus: 0.06, bughat: { id: 'bugwear-crown', shape: 'crown' } });
-  assert.deepEqual(barn.looksOf('p'), { bughat: { id: 'bugwear-crown', shape: 'crown' }, gear: { id: 'gear-armor', shape: 'armor' } });
+  barn.styleOf = () => ({ gear: 'gear-claws', gearBonus: 0.02, defense: 'gear-armor', defenseBonus: 0.06, bughat: { id: 'bugwear-crown', shape: 'crown' } });
+  assert.deepEqual(barn.looksOf('p'), { bughat: { id: 'bugwear-crown', shape: 'crown' }, gear: { id: 'gear-claws', shape: 'claws' }, defense: { id: 'gear-armor', shape: 'armor' } });
   barn.styleOf = () => ({ gearBonus: 0 });
   assert.equal(barn.looksOf('p'), undefined);
 });
