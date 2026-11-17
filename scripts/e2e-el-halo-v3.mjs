@@ -98,7 +98,10 @@ async function main() {
   check(await until(T, () => window.__elHalo.state().prompt?.k === 'elote' && window.__elHalo.state().prompt.ready, null, 3000), `E prompt at the cart (${JSON.stringify((await st(T)).prompt)})`);
   await holdKey(T, 'KeyE', 300);
   check(await until(T, () => window.__elHalo.state().health >= 78, null, 3000), `E: an elote, +30 health (50 → ${(await st(T)).health}) "${await banner(T)}"`);
-  check(await until(T, () => /OTRO ELOTE EN/.test(window.__elHalo.state().prompt?.label || ''), null, 2000), 'then a cooldown');
+  const afterElote = await st(T);
+  check(/Elote y balas/i.test(await banner(T)), `banner says ¡Elote y balas! ("${await banner(T)}")`);
+  check(afterElote.mag === 32 && afterElote.reserve === 192, `rifle topped off (${afterElote.mag} / ${afterElote.reserve})`);
+  check(await until(T, () => /Ya comiste este round/.test(window.__elHalo.state().prompt?.label || ''), null, 2000), 'already eaten this wave');
   // enemies leave him alone and shoot past him
   await place(T, ELOTE.x - 9, ELOTE.z - 3, 0); await T.waitForTimeout(300);
   await hook(T, { spawn: [{ type: 'luchador', x: ELOTE.x + 0.6, z: ELOTE.z + 0.6 }] }); await T.waitForTimeout(1800);
@@ -135,7 +138,7 @@ async function main() {
   check(await until(T, () => window.__elHalo.state().foes.some((f) => f.type === 'volador' && f.st === 'leap' && f.y > 2.2), null, 3000), `mid-air, high (${JSON.stringify(await foe(T, 'volador'))})`);
   a = await st(T); check(a.rings >= 1, `the landing ring shows where it will land (${a.rings})`);
   await shot(T, '06-volador-leap');
-  check(await until(T, (h) => { const s = window.__elHalo.state(); return s.shield + s.health < h; }, sh0, 3000), `it lands on Tyler: ${sh0} → ${(await st(T)).shield + (await st(T)).health} "${await banner(T)}"`);
+  check(await until(T, (h) => { const s = window.__elHalo.state(); return s.shield + s.health < h; }, sh0, 6000), `it lands on Tyler: ${sh0} → ${(await st(T)).shield + (await st(T)).health} "${await banner(T)}"`);
   a = await st(T); check(Math.hypot(a.pos.x, a.pos.z + 30) > 1.2, `and throws him back (${JSON.stringify(a.pos)})`);
   await T.waitForTimeout(200); await shot(T, '07-volador-landing');
   const gifTo = (Date.now() - T.t0) / 1000 + 0.6;

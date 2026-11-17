@@ -8,7 +8,7 @@
 .elh-hud { position: absolute; inset: 0; pointer-events: none; font-family: 'VT323', monospace; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
 [data-mode=title] .elh-hud, [data-mode=loading] .elh-hud, [data-mode=lobby] .elh-hud { display: none; }
 
-.elh-top { position: absolute; top: 8px; left: 10px; right: 10px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 10px; }
+.elh-top { position: absolute; top: 8px; z-index: 2; left: 10px; right: 10px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 10px; }
 .elh-score { display: grid; line-height: 1; } .elh-score b { font-size: 30px; color: var(--sun); font-weight: 400; } .elh-score small { font-size: 16px; letter-spacing: .12em; color: #ffd9e8; }
 .elh-bars { width: min(340px, 44vw); display: grid; gap: 3px; }
 .elh-shield, .elh-health { position: relative; height: 14px; background: rgba(20,8,24,.55); border: 1px solid rgba(255,255,255,.35); overflow: hidden;
@@ -22,12 +22,31 @@
 .elh-bars.charging .elh-shield i { background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(20,8,24,.6) calc(10% - 2px) 10%), linear-gradient(90deg, #fff, var(--sun)); }
 .elh-bars.down .elh-shield { border-color: #ff2a4a; animation: elh-blink .5s steps(2) infinite; }
 @keyframes elh-blink { 50% { background: rgba(255,42,74,.45); } }
-.elh-ammo { justify-self: end; display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 6px; text-align: right; line-height: 1; }
-.elh-ammo b { font-size: 34px; font-weight: 400; } .elh-ammo small { font-size: 18px; opacity: .75; }
-.elh-ammo .elh-wname { grid-column: 1 / -1; font-size: 14px; letter-spacing: .1em; color: #ffd9e8; }
-.elh-ammo .elh-nades { grid-column: 1 / -1; font-size: 18px; color: var(--rosa); letter-spacing: .1em; }
-.elh-ammo.reloading b { color: var(--sun); animation: elh-blink .4s steps(2) infinite; }
-.elh-ammo.empty b { color: #ff2a4a; }
+.elh-ammo { justify-self: end; display: grid; justify-items: end; gap: 3px; text-align: right; line-height: 1; min-width: 0; }
+.elh-ammo .elh-wmeta { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.elh-ammo .elh-wname { font-size: 13px; letter-spacing: .1em; color: #ffd9e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+.elh-ammo .elh-ammo-read { font-size: clamp(28px, 4.6vw, 42px); font-weight: 400; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.elh-ammo .elh-ammo-hint { font-size: 15px; letter-spacing: .16em; color: var(--sun); min-height: 1em; font-weight: 400; }
+.elh-ammo .elh-nades { font-size: 18px; color: var(--rosa); letter-spacing: .1em; }
+.elh-ammo.low .elh-ammo-read { color: var(--sun); animation: elh-ammo-pulse .7s ease-in-out infinite; }
+.elh-ammo.empty .elh-ammo-read, .elh-ammo.empty .elh-ammo-hint { color: #ff2a4a; }
+.elh-ammo.empty .elh-ammo-read { animation: elh-ammo-pulse .45s ease-in-out infinite; }
+.elh-ammo.reloading .elh-ammo-read { color: var(--sun); }
+.elh-reload { display: none; width: 112px; height: 4px; background: rgba(255,255,255,.16); border-radius: 2px; overflow: hidden; }
+.elh-ammo.reloading .elh-reload { display: block; }
+.elh-reload em { display: block; height: 100%; width: 100%; transform-origin: left center; background: var(--sun); }
+.elh-ammo-toast { justify-self: end; font-size: 20px; color: var(--tq); letter-spacing: .06em; opacity: 0; max-height: 0; overflow: hidden; text-shadow: 0 1px 0 #000, 0 0 10px rgba(31,199,192,.5); pointer-events: none; }
+.elh-ammo-toast.on { opacity: 1; max-height: 1.3em; }
+@keyframes elh-ammo-pulse { 50% { opacity: .55; } }
+.elh-wicon { position: relative; width: 22px; height: 12px; flex: 0 0 auto; display: inline-block; background: #ffd9e8; border-radius: 1px 2px 1px 1px; box-shadow: inset 0 -2px 0 rgba(0,0,0,.25); }
+.elh-wicon[data-w=pistol], .elh-wicon[data-w=chispas] { width: 16px; height: 10px; }
+.elh-wicon[data-w=rifle], .elh-wicon[data-w=rafaga], .elh-wicon[data-w=torreta] { width: 24px; }
+.elh-wicon[data-w=francotirador] { width: 28px; height: 10px; }
+.elh-wicon[data-w=escopeta], .elh-wicon[data-w=escopetita] { width: 20px; height: 13px; border-radius: 0 2px 6px 0; }
+.elh-wicon[data-w=cohetes], .elh-wicon[data-w=laser] { width: 20px; height: 14px; background: var(--sun); }
+.elh-wicon[data-w=agujas] { width: 18px; background: #9ffff4; }
+.elh-wicon[data-w=machete], .elh-wicon[data-w=martillo] { width: 8px; height: 18px; background: var(--sun); border-radius: 2px 2px 1px 1px; }
+.elh-wicon[data-w=jeep] { width: 20px; height: 12px; background: var(--tq); border-radius: 3px; }
 
 .elh-reticle { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 2px solid rgba(255,255,255,.75); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
 .elh-reticle span { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: #fff; border-radius: 50%; }
@@ -60,7 +79,7 @@
 /* horde HUD: wave/left, players online, kill feed, the ACTION prompt, downed notice, scoreboard */
 .elh-score .elh-left { font-size: 14px; color: #fff; opacity: .8; letter-spacing: .08em; }
 .elh-count { justify-self: center; font-size: 13px; letter-spacing: .1em; opacity: .7; }
-.elh-feed { position: absolute; top: 74px; right: 10px; display: grid; gap: 2px; justify-items: end; font-size: 16px; letter-spacing: .05em; }
+.elh-feed { position: absolute; top: 130px; right: 10px; display: grid; gap: 2px; justify-items: end; font-size: 16px; letter-spacing: .05em; z-index: 1; }
 .elh-feed div { background: rgba(20,8,24,.5); padding: 0 6px; animation: elh-in .2s ease-out; }
 .elh-feed div.me { color: var(--sun); } .elh-feed div.pvp { color: var(--rosa); }
 @keyframes elh-in { from { transform: translateX(10px); opacity: 0; } }
@@ -99,14 +118,14 @@
 .elh-acts .act { grid-area: 1 / 1; font-size: 13px; opacity: .55; } .elh-acts .act.ready { opacity: 1; background: rgba(31,199,192,.45); border-color: #9ffff4; }
 /* phones in landscape: shorter, tighter */
 @media (max-height: 460px) {
-  .elh-top { top: 4px; } .elh-score b { font-size: 24px; } .elh-ammo b { font-size: 26px; } .elh-ammo .elh-wname { display: none; }
+  .elh-top { top: 4px; } .elh-score b { font-size: 24px; } .elh-ammo .elh-ammo-read { font-size: 24px; } .elh-ammo .elh-wname { font-size: 10px; max-width: 16ch; }
   .elh-acts { grid-template-columns: 52px 52px 68px; grid-template-rows: 36px 52px 68px; gap: 6px; } .elh-acts .fire { height: 110px; }
   .elh-base { left: 80px; top: calc(100% - 84px); }
   .elh-title { padding-bottom: 14px; gap: 6px; } .elh-title p { font-size: 17px; } .elh-logo { font-size: 52px; }
-  .elh-feed { top: 50px; font-size: 14px; } .elh-count { display: none; } .elh-prompt { top: calc(50% + 30px); font-size: 16px; } .elh-pbar { top: calc(50% + 54px); }
+  .elh-feed { top: 96px; font-size: 14px; } .elh-count { display: none; } .elh-prompt { top: calc(50% + 30px); font-size: 16px; } .elh-pbar { top: calc(50% + 54px); }
 }
-@media (max-width: 480px) { .elh-feed { top: 66px; font-size: 14px; } .elh-prompt { font-size: 16px; } .elh-top { grid-template-columns: auto 1fr auto; } .elh-bars { width: auto; } .elh-score b { font-size: 24px; } .elh-ammo b { font-size: 28px; } }
-@media (prefers-reduced-motion: reduce) { .elh-bars.down .elh-shield, .elh-vig.down, .elh-ammo.reloading b { animation: none; } }
+@media (max-width: 480px) { .elh-feed { top: 108px; font-size: 14px; } .elh-prompt { font-size: 16px; } .elh-top { grid-template-columns: auto 1fr auto; } .elh-bars { width: auto; } .elh-score b { font-size: 24px; } .elh-ammo .elh-ammo-read { font-size: 30px; } .elh-ammo .elh-wname { font-size: 11px; } .elh-ammo .elh-slots { display: none; } }
+@media (prefers-reduced-motion: reduce) { .elh-bars.down .elh-shield, .elh-vig.down, .elh-ammo.reloading b, .elh-ammo.low .elh-ammo-read, .elh-ammo.empty .elh-ammo-read { animation: none; } }
 
 /* ---- v2 HUD bits: second gun, grenade type, sniper scope, headshot pop, bleed-out ring, extra pad buttons */
 .elh-ammo .elh-slots { grid-column: 1 / -1; font-size: 13px; letter-spacing: .08em; opacity: .65; }
