@@ -66,7 +66,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
-  const circuit = new Circuit({ store: service.store, barn, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
+  const circuit = new Circuit({ store: service.store, barn, accounts, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;

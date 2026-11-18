@@ -1,4 +1,4 @@
-import { BY_ID, ABILITY_LEVELS, MAX_LEVEL } from './creatures.js';
+import { BY_ID, ABILITY_LEVELS, LEVEL_CAP } from './creatures.js';
 
 export const MOVE_IDS = ['basic', 'technique', 'signature', 'tactic', 'capstone'];
 export const STANCES = {
@@ -179,7 +179,9 @@ export const gapXp = (mine, theirs) => { const gap = theirs - mine; return gap >
 export const fightXp = ({ won, base, bonus, odds = 0.5, level, foeLevel = level }) => (won ? Math.max(1, Math.round((base + upsetXp(bonus, odds)) * gapXp(level, foeLevel))) : fadedXp(base, level));
 export const traitFor = (species) => { const [name, text] = TRAITS[species] || []; return name ? { name, description: text() } : null; };
 
+// What a level is worth: each one past GROWTH.from adds this much health and this share of damage.
+export const GROWTH = { from: 1, hp: 5, dmg: 0.03 };
 export function combatStats(level) {
-  const growth = Math.max(0, Math.min(MAX_LEVEL, Number.isFinite(level) ? Math.floor(level) : 3) - 3);
-  return { maxHp: 100 + growth * 3, damageMultiplier: (100 + growth * 2) / 100 };
+  const growth = Math.max(0, Math.min(LEVEL_CAP, Number.isFinite(level) ? Math.floor(level) : 3) - GROWTH.from);
+  return { maxHp: 100 + growth * GROWTH.hp, damageMultiplier: 1 + growth * GROWTH.dmg };
 }

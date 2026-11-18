@@ -9,9 +9,19 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { idOf } from './barn.js';
+import { MAX_LEVEL, LEVEL_CAP } from './engine/creatures.js';
 
 export const RIBBON_XP = 100;
 export const RIBBONS = 8; // the leaders still to come show as empty hooks
+// One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
+// ribbon number. Nothing can be beaten twice, so none of it can be farmed.
+export const PURSE = { trainer: 75, ribbon: 750 };
+export const purseOf = (stop, area) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'trainer' ? PURSE.trainer : 0) * area.ribbon;
+// Circuit bugs are drilled: in top condition, with the best gear, and TRAINED more health and damage than a barn bug
+// of their level. With both left to themselves, a barn bug of the same level wins about one fight in eight.
+export const TRAINED = 0.1;
+/** The top level a player's bugs can reach: one more for every ribbon. */
+export const capFor = (ribbons) => Math.min(LEVEL_CAP, MAX_LEVEL + ribbons);
 
 export const AREAS = [{
   id: 'back40', name: 'The Back Forty', ribbon: 1, blurb: 'The field behind the Barn. Last mown in 2019.',
@@ -44,10 +54,11 @@ export const AREAS = [{
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
 
 export class Circuit {
-  constructor({ store, barn, fights, now }) {
-    this.store = store; this.barn = barn; this.fights = fights || barn.fights; this.now = now;
+  constructor({ store, barn, accounts, fights, now }) {
+    this.store = store; this.accounts = accounts; this.barn = barn; this.fights = fights || barn.fights; this.now = now;
     this.doc = store.loadDoc('circuit', { players: {} });
     this.doc.players ||= {};
+    barn.capOf = (pid) => capFor(Object.keys(this.doc.players[pid]?.ribbons || {}).length);
   }
   save() { this.store.saveDoc('circuit', this.doc); }
   me(pid) { return (this.doc.players[pid] ||= { done: {}, ribbons: {}, run: null }); }
@@ -71,7 +82,8 @@ export class Circuit {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
       areas: AREAS.map((area) => ({ id: area.id, name: area.name, ribbon: area.ribbon, blurb: area.blurb,
-        stops: area.stops.map((stop) => ({ ...stop, done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
+        stops: area.stops.map((stop) => ({ ...stop, purse: purseOf(stop, area), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
+      cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED,
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
       live: this.fights.fightOf(pid)?.id || null,
       ribbonXp: RIBBON_XP,
@@ -104,7 +116,7 @@ export class Circuit {
     const k = run ? run.foe : 0, foe = stop.bugs[k], health = run?.hp[id];
     const fightId = crypto.randomBytes(9).toString('base64url');
     const fighters = [{ ...this.barn.fighter(pid, pen), owner: ownerName, ...(health != null ? { health } : {}) },
-      { species: foe.species, name: foe.name, level: foe.level, mood: 75, battle: { stance: foe.stance || 'balanced' }, owner: stop.who,
+      { species: foe.species, name: foe.name, level: foe.level, mood: 100, gear: 0.06, defense: 0.06, trained: TRAINED, battle: { stance: foe.stance || 'balanced' }, owner: stop.who,
         ...(run?.foeHp != null ? { health: run.foeHp } : {}), ...(stop.rule ? { rule: stop.rule, tell: stop.tell } : {}) }];
     this.fights.start({ id: fightId, kind: 'circuit', players: [pid, null], fighters, seed: `${this.now()}:${fightId}`, watching: [pid],
       onFinish: (fight) => this.settle(pid, stop, { id, bornAt: pen.bornAt }, foe, fight) });
@@ -121,8 +133,9 @@ export class Circuit {
     const extra = { ...(res.xp ? { xpEarned: res.xp } : {}), levelBefore: res.levelBefore, levelAfter: res.levelAfter, ...(fainted ? { healthAfter: 0 } : {}) }; // a loss says nothing about XP: there is none
     const say = (line) => `${stop.who}: “${line}”`;
     const run = me.run?.stop === stop.id ? me.run : null;
+    const area = STOPS.get(stop.id).area;
     if (stop.kind === 'trainer') {
-      if (won) me.done[stop.id] = this.now();
+      if (won) { me.done[stop.id] = this.now(); extra.spoils = [this.pay(pid, stop, area)]; }
       extra.verdict = say(won ? stop.won : stop.lost);
     } else if (run) {
       run.live = null;
@@ -135,14 +148,14 @@ export class Circuit {
       }
       const standing = this.barn.bugs(pid).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && !run.out.includes(idOf(pen)));
       if (run.foe >= stop.bugs.length) {
-        const area = STOPS.get(stop.id).area;
         me.done[stop.id] = me.ribbons[area.ribbon] = this.now(); me.run = null;
         for (const bornAt of run.won) {
           const got = this.barn.grantXp(pid, bornAt, RIBBON_XP);
           if (got && bornAt === bug.bornAt) { extra.xpEarned = (extra.xpEarned || 0) + RIBBON_XP; extra.levelAfter = got.levelAfter; }
         }
         extra.verdict = say(stop.won);
-        extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, `+${RIBBON_XP} XP to every bug that won a round`];
+        const cap = capFor(Object.keys(me.ribbons).length);
+        extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, this.pay(pid, stop, area), `Your bugs can now reach level ${cap}`, `+${RIBBON_XP} XP to every bug that won a round`];
       } else if (!won && !standing.length) {
         me.run = null;
         extra.verdict = say(stop.lost);
@@ -156,6 +169,12 @@ export class Circuit {
     this.save();
   }
 
+  /** The stop's one-time purse, into the bankroll. Returns the line the ring shows. */
+  pay(pid, stop, area) {
+    const amount = purseOf(stop, area), player = this.store.players[pid];
+    if (amount && player && this.accounts) this.accounts.change(player, amount, 'circuit', `Bug Circuit: ${stop.kind === 'leader' ? `ribbon ${area.ribbon} from` : 'beat'} ${stop.who}`);
+    return `$${amount} purse`;
+  }
   /** Walk away from a leader's gauntlet between rounds. It starts from the first bug next time. */
   giveUp(pid) {
     const me = this.me(pid);

@@ -15,7 +15,7 @@ export function denverHour(t) {
 }
 
 export const SOURCES = {
-  start: 'Starting bankroll', poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', pvp: 'Mine PvP', fawn: 'Faun gifts', golf: 'Foff golf',
+  start: 'Starting bankroll', poker: 'Poker', blackjack: 'Blackjack', mines: 'Acid Mines', pvp: 'Mine PvP', fawn: 'Faun gifts', circuit: 'Bug Circuit purses', golf: 'Foff golf',
   slots: 'Slots', scum: 'SCUM', store: 'General Store', invest: 'Investing', barn: 'Barn bouts', risk: 'Risk bets', admin: 'Admin / dev grants', other: 'Other',
 };
 /** Where a bankroll change came from: { source, sub } from its type and note. */
@@ -30,6 +30,7 @@ export function classify(type, note = '') {
     case 'mine': return { source: 'mines', sub: /elevator fare/.test(n) ? 'Elevator fare' : /nephew/.test(n) ? "Nephew's shift" : /foreman/.test(n) ? "Foreman's bonus" : 'Shift payout' };
     case 'pvp': return { source: 'pvp', sub: /lost a bug battle/.test(n) ? 'Lost bug battle' : /won a bug battle/.test(n) ? 'Won bug battle' : /ambushed by/.test(n) ? 'Was ambushed' : 'Ambushed someone' };
     case 'fawn': return { source: 'fawn', sub: "Faun's wooden box" };
+    case 'circuit': return { source: 'circuit', sub: /ribbon/.test(n) ? 'Ribbon purse' : 'Trainer purse' };
     case 'foff': return { source: 'golf', sub: /Medal/.test(n) ? 'Medal of Freedom' : 'Bachelor party quest' };
     case 'slots': return { source: 'slots', sub: 'Spin result' };
     case 'scum': return { source: 'scum', sub: /from Scum to King/.test(n) ? 'Scum to King haul' : /dethroned/.test(n) ? 'Dethroned King paid out' : /King payout/.test(n) ? 'King payout' : /Queen payout/.test(n) ? 'Queen payout' : /Baby Scum dues/.test(n) ? 'Baby Scum dues' : /Scum dues/.test(n) ? 'Scum dues' : 'Other' };
@@ -221,7 +222,7 @@ export function buildReport(ctx) {
   const worthTotals = players.reduce((o, p) => { const w = ctx.worth ? ctx.worth(p) : { bankroll: p.bankroll, total: p.bankroll }; for (const k of ['bankroll', 'holdings', 'chips', 'riskEscrow', 'barnEscrow', 'total']) o[k] = r2((o[k] || 0) + (w[k] || 0)); return o; }, {});
   let bjChips = 0, bjBanks = 0;
   for (const t of Object.values(docs.blackjack?.tables || {})) { if (t.status === 'closed' || t.paidOut) continue; for (const s of t.seats || []) if (s && !s.bot && !s.left) bjChips += s.chips || 0; if (t.house?.mode === 'player' && t.house.staked) bjBanks += t.house.bank || 0; }
-  const faucets = ['start', 'mines', 'fawn', 'golf'].reduce((a, k) => a + (sourceTotals[k]?.net || 0), 0) + (sourceTotals.poker.subs['Guntrad fight won']?.net || 0) + (sourceTotals.poker.subs['Guntrad fight lost']?.net || 0);
+  const faucets = ['start', 'mines', 'fawn', 'golf', 'circuit'].reduce((a, k) => a + (sourceTotals[k]?.net || 0), 0) + (sourceTotals.poker.subs['Guntrad fight won']?.net || 0) + (sourceTotals.poker.subs['Guntrad fight lost']?.net || 0);
   const today = denverDay(now);
   const todayNet = {}; for (const x of ledger) if (denverDay(x.t) === today && x.source !== 'start') todayNet[x.p] = r2((todayNet[x.p] || 0) + (Number(x.amt) || 0));
 

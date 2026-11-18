@@ -309,7 +309,7 @@ test('wins, losses and draws award both players; a draw returns both stakes', as
   const outcomes = new Set();
   let seed = 0;
   barn.eggInt = n => seed % n;
-  for (; seed < 256 && outcomes.size < 3; seed++) {
+  for (; seed < 1500 && outcomes.size < 3; seed++) {
     for (const player of [owner, other]) {
       const pen = barn.doc.pens[player.id];
       pen.xp = xpFor(6); pen.species = 'lamprima'; delete pen.faintedAt; delete pen.health; // v76: a nurse visit between bouts

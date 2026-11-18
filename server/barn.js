@@ -9,7 +9,7 @@
 // so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
+import { ROSTER, BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { line } from './engine/bout.js';
@@ -83,7 +83,7 @@ export class Barn {
     let n = 0; const now = this.now();
     for (const [id, pen] of Object.entries(this.doc.pens)) {
       if (pen.stage === 'creature' && !pen.combatVersion) {
-        pen.legacyAbilities = [1, 3, 5].filter((level) => levelFor(pen.xp) >= level).length;
+        pen.legacyAbilities = [1, 3, 5].filter((level) => levelFor(pen.xp, pen.cap) >= level).length;
         pen.combatVersion = 1; n++;
       }
       if (BY_ID[pen.species]) continue;
@@ -241,7 +241,7 @@ export class Barn {
     while (now - pen.dayXpAt >= 24 * 3600e3) {
       pen.dayXpAt += 24 * 3600e3;
       const n = this.needsAt(pen, pen.dayXpAt);
-      const level = levelFor(pen.xp); // each day's XP fades by the level it had that day
+      const level = levelFor(pen.xp, pen.cap); // each day's XP fades by the level it had that day
       if ((n.hunger + n.mood + n.clean) / 3 >= 25) pen.xp += fadedXp(DAY_XP, level);
       pen.xp += fadedXp(toyXp, level);
       if ((pen.feederUntil || 0) >= pen.dayXpAt && (pen.feederFrom || 0) < pen.dayXpAt) pen.xp += fadedXp(FEEDER_DAY_XP, level);
@@ -255,6 +255,8 @@ export class Barn {
     if (!pen) { if (bug != null) throw new GameError('That bug is not in your barn.', 404); return null; }
     const now = this.now();
     let dirty = this.hatchIfDue(playerId, pen, now, pen !== this.doc.pens[playerId]);
+    // the top level its owner has earned on the circuit (10 with no ribbons): stamped here so every level lookup can read it off the bug
+    const cap = this.capOf?.(playerId) || MAX_LEVEL; if ((pen.cap || MAX_LEVEL) !== cap) { pen.cap = cap; dirty = true; }
     if (pen.stage === 'creature') {
       const before = pen.xp; const dies = this.deathAt(pen);
       if (now >= dies) { pen.diedAt = dies; }
@@ -289,7 +291,7 @@ export class Barn {
     const roster = Object.keys(this.doc.pens).flatMap((ownerId) => this.bugs(ownerId).flatMap((pen) => {
       const owner = players[ownerId];
       if (!owner || owner.hidden || pen.stage !== 'creature' || now >= this.deathAt(pen)) return [];
-      const level = levelFor(pen.xp), theirs = ownerId !== playerId && !pen.faintedAt && level >= BOUT_LEVEL && corner.length ? this.fighter(ownerId, pen) : null;
+      const level = levelFor(pen.xp, pen.cap), theirs = ownerId !== playerId && !pen.faintedAt && level >= BOUT_LEVEL && corner.length ? this.fighter(ownerId, pen) : null;
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
       return [{ id: idOf(pen), ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId, pen) || null,
         record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt,
@@ -309,7 +311,7 @@ export class Barn {
   /** The Barn button's count: challenges to this player, a fight decided while they were away, and (with a bug fit to fight) bouts anyone else has open. */
   challengeCount(playerId) {
     const now = this.now(), players = this.store.players || {};
-    const canFight = this.bugs(playerId).some((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp) >= BOUT_LEVEL && now < this.deathAt(pen));
+    const canFight = this.bugs(playerId).some((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen));
     return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length + (players[playerId]?.barnBouts?.unseen ? 1 : 0) + (this.fights.fightOf(playerId) ? 1 : 0)
       + (canFight ? Object.values(players).filter(p => p.id !== playerId && p.barnBouts?.open && now < p.barnBouts.open.expiresAt).length : 0);
   }
@@ -330,14 +332,14 @@ export class Barn {
     const which = { id: idOf(pen), partner: pen === this.doc.pens[playerId] };
     if (pen.stage === 'egg') return { pen: { ...which, stage: 'egg', eggAt: pen.eggAt, hatchAt: pen.hatchAt, warmCoolMs: Math.max(0, (pen.warmedAt || 0) + CARE.play.cooldownMs - now) }, serverNow: now };
     const c = BY_ID[pen.species];
-    if (pen.stage === 'dead') return { pen: { ...which, stage: 'dead', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt, diedAt: pen.diedAt, level: levelFor(pen.xp), record: pen.record || { w: 0, l: 0, d: 0 } }, serverNow: now };
-    const level = levelFor(pen.xp);
+    if (pen.stage === 'dead') return { pen: { ...which, stage: 'dead', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt, diedAt: pen.diedAt, level: levelFor(pen.xp, pen.cap), record: pen.record || { w: 0, l: 0, d: 0 } }, serverNow: now };
+    const level = levelFor(pen.xp, pen.cap);
     const needs = this.needs(pen, now);
     const cool = Object.fromEntries(Object.entries(CARE).map(([k, a]) => [k, Math.max(0, (pen.cool[k] || 0) + a.cooldownMs - now)]));
     const dies = this.deathAt(pen); const warn = this.starving(pen, now);
     return { pen: { ...which, stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt,
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen) || null, gearBonus: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
-      level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= 10 ? null : xpFor(level + 1),
+      level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= (pen.cap || MAX_LEVEL) ? null : xpFor(level + 1), cap: pen.cap || MAX_LEVEL,
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
       abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
       battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
@@ -351,7 +353,7 @@ export class Barn {
   }
 
   /** HP for display: percent, points out of the level's max, and whether a nurse visit would help. */
-  hpOf(pen, level = levelFor(pen.xp)) {
+  hpOf(pen, level = levelFor(pen.xp, pen.cap)) {
     const health = healthOf(pen), maxHp = combatStats(level).maxHp;
     return { health, hp: health === 0 ? 0 : maxHp, maxHp, hurt: health === 0 };
   }
@@ -378,7 +380,7 @@ export class Barn {
     pen.stats[a.stat].v = Math.min(100, n[a.stat] + a.gain + toy);
     pen.cool[action] = now;
     if (action === 'feed') pen.fedAt = own;
-    pen.xp += fadedXp(CARE_XP, levelFor(pen.xp));
+    pen.xp += fadedXp(CARE_XP, levelFor(pen.xp, pen.cap));
     this.save();
     return this.view(playerId);
   }
@@ -401,7 +403,7 @@ export class Barn {
   }
 
   fighter(playerId, pen) {
-    const level = levelFor(pen.xp);
+    const level = levelFor(pen.xp, pen.cap);
     return { species: pen.species, name: pen.name, level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
       gear: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, defense: this.styleOf?.(playerId, idOf(pen)).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen),
@@ -414,7 +416,7 @@ export class Barn {
     if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
     if (pen.stage === 'dead') throw new GameError('It is resting. For good.', 409);
     if (pen.stage !== 'creature') throw new GameError('Eggs do not fight. Mostly.', 409);
-    const level = levelFor(pen.xp);
+    const level = levelFor(pen.xp, pen.cap);
     if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
     if (this.fights.fightOf(playerId)) throw new GameError('One of your bugs is in the ring right now.', 409);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
@@ -426,7 +428,7 @@ export class Barn {
   /** The caller's bugs that could step into the ring now, as the ring would take them: what each line on the board is worked out against. */
   corner(playerId) {
     const now = this.now();
-    return this.bugs(playerId).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp) >= BOUT_LEVEL && now < this.deathAt(pen)).map((pen) => [idOf(pen), this.fighter(playerId, pen)]);
+    return this.bugs(playerId).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen)).map((pen) => [idOf(pen), this.fighter(playerId, pen)]);
   }
   /**
    * Both stakes for a fight: side 0 named `stake`, side 1's follows the line as the two bugs stand now. When the
@@ -513,7 +515,7 @@ export class Barn {
     if (body.to === playerId) throw new GameError('Your bug cannot fight itself. It has tried.', 409);
     const theirs = target && !target.hidden ? this.penOf(body.to, body.their) : null;
     if (!theirs || theirs.stage !== 'creature' || this.now() >= this.deathAt(theirs)) throw new GameError('There is no bug there to challenge.', 404);
-    if (levelFor(theirs.xp) < BOUT_LEVEL) throw new GameError(`That bug is too young. Bouts open at level ${BOUT_LEVEL}.`, 409);
+    if (levelFor(theirs.xp, theirs.cap) < BOUT_LEVEL) throw new GameError(`That bug is too young. Bouts open at level ${BOUT_LEVEL}.`, 409);
     const pen = this.ready(playerId, body.bug);
     const mine = this.doc.challenges.filter(c => c.from === playerId), same = mine.find(c => c.to === body.to && this.penOf(c.to, c.toBug) === theirs);
     if (same) {
@@ -525,7 +527,7 @@ export class Barn {
     this.commitDoc({ challenges: [...this.doc.challenges, made] });
     // Tell the owner, if they have alerts on. The challenge is already saved, so a failed alert changes nothing.
     try {
-      this.onChallenge?.({ id: made.id, toId: body.to, from: player.name, bug: pen.name, species: BY_ID[pen.species].name, level: levelFor(pen.xp), yours: theirs.name, stake: made.stake,
+      this.onChallenge?.({ id: made.id, toId: body.to, from: player.name, bug: pen.name, species: BY_ID[pen.species].name, level: levelFor(pen.xp, pen.cap), yours: theirs.name, stake: made.stake,
         risk: riskFor(made.stake, line(this.fighter(playerId, pen), this.fighter(body.to, theirs))) });
     } catch { /* an alert must never undo or fail a challenge */ }
     return this.view(playerId);
@@ -598,9 +600,9 @@ export class Barn {
     const drafts = entrants.flatMap((e, side) => {
       const p = this.store.players[e.id];
       if (!p) return []; // the account was deleted mid-fight
-      const xp = this.bugs(e.id).find((kept) => kept.bornAt === e.bornAt)?.xp || 0;
+      const kept = this.bugs(e.id).find((bug) => bug.bornAt === e.bornAt), xp = kept?.xp || 0, cap = kept?.cap;
       const stake = stakes[side], against = stakes[1 - side], odds = this.fights.lineOf(fight, side); // this bug's chance as it walked in
-      const xpEarned = fightXp({ won: winner === side, base: BOUT_XP, bonus: BOUT_WIN_XP, odds, level: levelFor(xp), foeLevel: fighters[1 - side].level });
+      const xpEarned = fightXp({ won: winner === side, base: BOUT_XP, bonus: BOUT_WIN_XP, odds, level: levelFor(xp, cap), foeLevel: fighters[1 - side].level });
       const payout = winner === null ? stake : winner === side ? cents(stake + against) : 0;
       const healthAfter = endHp[side] > 0 ? 100 : 0;
       const receipt = { version: 5, id, at: now, seed, petBornAt: e.bornAt, healthAfter,
@@ -608,7 +610,7 @@ export class Barn {
         you: fighters[side], them: fighters[1 - side],
         rounds: side === 0 ? rounds : rounds.map(round => ({ ...round, by: 1 - round.by, hp: [...round.hp].reverse() })),
         maxHp: side === 0 ? maxHp : [...maxHp].reverse(), xpEarned,
-        levelBefore: levelFor(xp), levelAfter: levelFor(xp + xpEarned),
+        levelBefore: levelFor(xp, cap), levelAfter: levelFor(xp + xpEarned, cap),
         result: winner === null ? 'draw' : winner === side ? 'won' : 'lost', line: odds, stake, against, payout, net: cents(payout - stake),
         owners: [side, 1 - side].map(i => ({ id: entrants[i].id, name: this.store.players[entrants[i].id]?.name || 'A former member' })) };
       const draft = { ...this.accounts.ensure(p), barnBouts: { ...p.barnBouts, live: null, lastBout: receipt, ...(fight.over.watched[side] ? {} : { unseen: id }) } };
@@ -713,24 +715,24 @@ export class Barn {
     if (!pen) return { xp: 0, fainted: false, skipped: true };
     if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
     const next = structuredClone(pen);
-    const levelBefore = levelFor(next.xp || 0);
+    const levelBefore = levelFor(next.xp || 0, next.cap);
     // a win pays by the line (`odds`: this bug's chance) and the level it beat; a loss fought to the end pays less the higher its own level
     const xp = won || fought ? fightXp({ won, base: BATTLE_XP, bonus: WIN_BONUS_XP, odds, level: levelBefore, foeLevel: foeLevel ?? levelBefore }) : 0, bonus = won ? Math.max(0, xp - BATTLE_XP) : 0;
     next.xp = (next.xp || 0) + xp;
     if (place === 'mines') next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
     if (fainted) { next.faintedAt = this.now(); next.faintedBy = foeName; next.faintedIn = place; }
     next.mineBattles = [...(next.mineBattles || []), battleId].slice(-20);
-    next.lastMineBattle = { id: battleId, won, xp, levelBefore, levelAfter: levelFor(next.xp), at: this.now() };
+    next.lastMineBattle = { id: battleId, won, xp, levelBefore, levelAfter: levelFor(next.xp, next.cap), at: this.now() };
     this.commitPen(playerId, next);
-    return { xp, bonus, fainted, levelBefore, levelAfter: levelFor(next.xp) };
+    return { xp, bonus, fainted, levelBefore, levelAfter: levelFor(next.xp, next.cap) };
   }
   /** XP for one living bug (`bornAt`), outside a fight: a circuit ribbon. Returns the levels it went between. */
   grantXp(playerId, bornAt, xp) {
     const pen = this.bugs(playerId).find((kept) => kept.stage === 'creature' && kept.bornAt === bornAt);
     if (!pen) return null;
-    const levelBefore = levelFor(pen.xp || 0);
+    const levelBefore = levelFor(pen.xp || 0, pen.cap);
     this.commitPen(playerId, { ...structuredClone(pen), xp: (pen.xp || 0) + xp });
-    return { levelBefore, levelAfter: levelFor((pen.xp || 0) + xp) };
+    return { levelBefore, levelAfter: levelFor((pen.xp || 0) + xp, pen.cap) };
   }
   /** The nurse treats a knockout for free after RECOVER_MS or immediately for FAST_HEAL_COST. */
   heal(playerId, { pay = false, bug } = {}) {
@@ -765,7 +767,7 @@ export class Barn {
   bury(playerId, bug) {
     const pen = this.refresh(playerId, bug);
     if (!pen || pen.stage !== 'dead') throw new GameError('There is nothing to bury. Good.', 409);
-    (this.doc.graves[playerId] ||= []).push({ name: pen.name, species: pen.species, bornAt: pen.bornAt, diedAt: pen.diedAt, level: levelFor(pen.xp) });
+    (this.doc.graves[playerId] ||= []).push({ name: pen.name, species: pen.species, bornAt: pen.bornAt, diedAt: pen.diedAt, level: levelFor(pen.xp, pen.cap) });
     this.doc.graves[playerId] = this.doc.graves[playerId].slice(-10);
     if (pen === this.doc.pens[playerId]) delete this.doc.pens[playerId]; else this.doc.bench[playerId] = this.doc.bench[playerId].filter((kept) => kept !== pen);
     this.save();
@@ -779,7 +781,7 @@ export class Barn {
     const pen = this.refresh(playerId, bug);
     if (!pen || pen.stage !== 'creature') throw new GameError('Only a hatched, living bug can be let go.', 409);
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
-    const stray = { id: `stray:${playerId}:${pen.bornAt}`, species: pen.species, name: pen.name, level: levelFor(pen.xp), owner: this.store.players[playerId]?.name || 'Somebody', at: this.now() };
+    const stray = { id: `stray:${playerId}:${pen.bornAt}`, species: pen.species, name: pen.name, level: levelFor(pen.xp, pen.cap), owner: this.store.players[playerId]?.name || 'Somebody', at: this.now() };
     const changes = { strays: [...(this.doc.strays || []), stray].slice(-STRAYS_KEPT) };
     if (pen === this.doc.pens[playerId]) { changes.pens = { ...this.doc.pens }; delete changes.pens[playerId]; }
     else changes.bench = { ...this.doc.bench, [playerId]: this.doc.bench[playerId].filter((kept) => kept !== pen) };
@@ -807,7 +809,7 @@ export class Barn {
     for (const st of STATS) pen.stats[st] = { v: n[st], at: now };
     pen.stats[stat].v = Math.min(100, n[stat] + Math.max(0, Math.min(100, gain)));
     if (fed) pen.fedAt = now;
-    if (xp > 0) pen.xp += fadedXp(xp, levelFor(pen.xp));
+    if (xp > 0) pen.xp += fadedXp(xp, levelFor(pen.xp, pen.cap));
     if (lunch?.heal > 0 && lunch.heal >= (pen.lunch?.heal || 0)) pen.lunch = { name: lunch.name, heal: lunch.heal };
     this.save();
     return this.view(playerId);

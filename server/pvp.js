@@ -244,14 +244,14 @@ export class Pvp {
     const fit = alive && !pen.faintedAt;
     const p = this.store.players[id];
     if (!fit) return full ? { ...LOANER, loaner: true, ownerName: p?.name, ...(alive ? { benched: pen.name } : {}) } : null;
-    const xp = pen.xp || 0, level = levelFor(xp);
-    return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp, health: healthOf(pen) } : { species: pen.species, name: pen.name };
+    const xp = pen.xp || 0, level = levelFor(xp, pen.cap);
+    return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp, cap: pen.cap, health: healthOf(pen) } : { species: pen.species, name: pen.name };
   }
   /** Own-side XP bar numbers for the battle screen (null for a loaner). */
-  xpBar(xp) {
+  xpBar(xp, cap = MAX_LEVEL) {
     if (xp == null) return null;
-    const level = levelFor(xp);
-    return { xp, level, from: xpFor(level), to: level >= MAX_LEVEL ? null : xpFor(level + 1) };
+    const level = levelFor(xp, cap);
+    return { xp, level, from: xpFor(level), to: level >= (cap || MAX_LEVEL) ? null : xpFor(level + 1) };
   }
   startBattle(a, b) {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');
@@ -261,7 +261,7 @@ export class Pvp {
     const fighter = (f, pid) => (f.loaner ? { species: f.species, name: `${f.name} (on loan)`, level: f.level, owner: f.ownerName }
       : { ...this.barn.fighter(pid, this.barn.doc.pens[pid]), owner: f.ownerName });
     const battle = { id, a, b, startedAt: now, lastSeen: { [a]: now, [b]: now }, over: null,
-      bugs: { a: fa.loaner ? null : { bornAt: fa.bornAt, xp: fa.xp }, b: fb.loaner ? null : { bornAt: fb.bornAt, xp: fb.xp } },
+      bugs: { a: fa.loaner ? null : { bornAt: fa.bornAt, xp: fa.xp, cap: fa.cap }, b: fb.loaner ? null : { bornAt: fb.bornAt, xp: fb.xp, cap: fb.cap } },
       benched: { a: fa.benched || null, b: fb.benched || null } };
     // The same fight the Barn runs (server/fights.js): one action a beat, each miner lining up moves or leaving it to the bug.
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, b], fighters: [fighter(fa, a), fighter(fb, b)], seed: `${now}:${this.randInt(1e9)}`, watching: [a, b],
@@ -298,7 +298,7 @@ export class Pvp {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
     // a stray (a released bug) fights under its own name and says whose it was
     const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: wild.stray?.name || BY_ID[species].name, ...(wild.stray ? { stray: wild.stray } : {}) }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
-      bugs: { a: { bornAt: mine.bornAt, xp: mine.xp }, b: null }, benched: { a: null, b: null } };
+      bugs: { a: { bornAt: mine.bornAt, xp: mine.xp, cap: mine.cap }, b: null }, benched: { a: null, b: null } };
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
       fighters: [{ ...this.barn.fighter(a, this.barn.penOf(a, bug)), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true, ...(wild.stray ? { owner: `abandoned by ${wild.stray.owner}` } : {}) }],
       onFinish: (fight) => this.fought(battle, fight) });
@@ -360,7 +360,7 @@ export class Pvp {
       ...(battle.wild ? { wild: true, wildId: battle.wild.id, ...(battle.over ? {} : { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), at: WILD.jarAt, chance: jarChance(share, battle.wild.level - battle.fight.fighters[0].level), keeps: caughtLevel(battle.wild.level, battle.fight.fighters[0].level) } }) } : {}),
       over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
-        bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
+        bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0), battle.bugs?.[side]?.cap) } : null,
         foeFainted: battle.over.winner === side && !!rec?.barn?.loser?.fainted } : null };
   }
   /** Line up your bug's next moves (up to three). */
@@ -457,8 +457,8 @@ export class Pvp {
   settleBugs(rec) {
     const b = rec.bugs, out = { winner: null, loser: null };
     if (!this.barn?.battleResult) return out;
-    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, odds: b.winner.odds, foeLevel: b.loser ? levelFor(b.loser.xp || 0) : 1 });
-    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, fainted: b.loser.fainted ?? true, foeName: rec.winnerName, foeLevel: b.winner ? levelFor(b.winner.xp || 0) : 1 });
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, odds: b.winner.odds, foeLevel: b.loser ? levelFor(b.loser.xp || 0, b.loser.cap) : 1 });
+    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, fainted: b.loser.fainted ?? true, foeName: rec.winnerName, foeLevel: b.winner ? levelFor(b.winner.xp || 0, b.winner.cap) : 1 });
     return out;
   }
   /** Both bankrolls in one atomic write, with the raid id on both players so a retry is a no-op. Never below zero. */

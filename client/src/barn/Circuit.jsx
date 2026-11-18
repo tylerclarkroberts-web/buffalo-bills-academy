@@ -95,7 +95,7 @@ function Stop({ stop, c, b, busy, act: run0, setC, pin, next }) {
       : !stop.open ? <p className="small muted">Finish the stops before this one first.</p>
       : !bugs.length ? <p className="small muted">You need a hatched bug. The mines sometimes leave an egg behind.</p>
       : <>
-        <p className="small muted cc-send">{leader && !run ? `${stop.bugs.length} rounds. Your bugs' health carries over; a beaten bug sits out.` : 'Send in'}</p>
+        <p className="small muted cc-send">{leader && !run ? `${stop.bugs.length} rounds for $${stop.purse} and the ribbon. Health carries over; a beaten bug sits out.` : run ? 'Send in' : `Send in · $${stop.purse} purse`}</p>
         <Pick bugs={bugs} run={run} foe={foe} sel={chosen?.id} setSel={setSel} />
         <div className="barn-row cc-go">
           <button className="btn primary" disabled={busy || !chosen || !!b.live} onClick={fight} data-test="circuit-fight">{!chosen ? 'Nobody fit to fight' : b.live ? 'A fight is on' : `Send in ${chosen.name}`}</button>
@@ -118,7 +118,7 @@ export default function Circuit({ b, busy, act, boutOpen }) {
   const stop = area.stops.find((s) => s.id === sel) || next;
   return <div className="cc-wrap" data-test="circuit">
     <div className="cc-top">
-      <div><span className="cc-org">Tri-County Invertebrate Athletic Association</span><h2>{area.name}</h2><p className="small muted">{area.blurb}</p></div>
+      <div><span className="cc-org">Tri-County Invertebrate Athletic Association</span><h2>{area.name}</h2><p className="small muted">{area.blurb} · Your bugs top out at level {c.cap}.</p></div>
       <div className="cc-rack" aria-label="Ribbons">{c.ribbons.map((r) => <Rosette key={r.n} n={r.n} on={!!r.at} />)}</div>
     </div>
     <div className="cc-body">
@@ -126,7 +126,7 @@ export default function Circuit({ b, busy, act, boutOpen }) {
         {area.stops.map((s) => <li key={s.id}>
           <button className={`cc-node${s.id === stop.id ? ' on' : ''}${s.done ? ' done' : ''}${!s.open ? ' locked' : ''}${s.kind === 'leader' ? ' leader' : ''}`} aria-current={s.id === stop.id ? 'step' : undefined} onClick={() => pick(s.id)} data-test="circuit-node">
             <span className="cc-icon"><Icon stop={s} /></span>
-            <span className="cc-label"><b>{s.who}</b><small>{s.title || (s.bugs ? `${s.bugs[0].name} · Lv ${s.bugs[0].level}` : '')}</small></span>
+            <span className="cc-label"><b>{s.who}</b><small>{s.title || (s.bugs ? `${s.bugs[0].name} · Lv ${s.bugs[0].level}` : '')}{s.purse && !s.done ? ` · $${s.purse}` : ''}</small></span>
             <span className={`cc-state${s.done ? ' done' : ''}`}>{s.done ? '✓ ' : ''}{stateOf(s, c.run)}</span>
           </button>
         </li>)}

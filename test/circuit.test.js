@@ -6,8 +6,9 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP } from '../server/circuit.js';
-import { xpFor } from '../server/engine/creatures.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor } from '../server/circuit.js';
+import { simulateBout } from '../server/engine/bout.js';
+import { xpFor, levelFor } from '../server/engine/creatures.js';
 import { startBout, stepBout, tellDue } from '../server/engine/bout.js';
 
 function setup(t) {
@@ -17,7 +18,7 @@ function setup(t) {
   const store = new Store(dir);
   const accounts = new Accounts({ store, now });
   const barn = new Barn({ store, accounts, now, incubateMs: 1 });
-  const circuit = new Circuit({ store, barn, now });
+  const circuit = new Circuit({ store, barn, accounts, now });
   const pid = 'p1';
   store.players[pid] = { id: pid, name: 'Tester', bankroll: 100 };
   let n = 0;
@@ -26,7 +27,7 @@ function setup(t) {
     else { barn.layEgg(pid); clock.now += 5; barn.view(pid); }
     const pen = barn.bugs(pid).at(-1); pen.xp = xpFor(level); barn.save(); return pen;
   };
-  return { clock, barn, circuit, pid, hatch };
+  return { clock, barn, circuit, pid, hatch, store };
 }
 const fake = (id, winner, hp) => ({ id, line: 0.5, S: { hp, maxHp: [100, 100] }, over: { winner } });
 
@@ -75,6 +76,7 @@ test('a leader gauntlet: health carries, a lost round benches that bug, two wins
   assert.equal(me.run, null);
   assert.ok(me.ribbons[1] && me.done.pugh);
   assert.match(win.extra.spoils[0], /Ribbon 1/);
+  assert.deepEqual(win.extra.spoils.slice(1, 3), [`$${PURSE.ribbon} purse`, 'Your bugs can now reach level 11']);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === b.bornAt).xp >= xpB + RIBBON_XP);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === a.bornAt).xp >= xpFor(6) + RIBBON_XP); // a won a round too
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'pugh' }), /already yours/);
@@ -102,4 +104,31 @@ test('dodgeball: every third own turn of the leader\'s bug cannot miss, and the 
       if (own && !due) assert.doesNotMatch(own.line, /DODGEBALL/);
     }
   }
+});
+
+test('a beaten trainer pays its purse once, and a ribbon pays more and raises the level cap by one', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  const a = hatch(6);
+  const me = circuit.me(pid), salad = circuit.stopOf('salad'), pugh = circuit.stopOf('pugh');
+  circuit.settle(pid, salad, { id: idOf(a), bornAt: a.bornAt }, salad.bugs[0], fake('t1', 0, [50, 0]));
+  assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'salad' }), /Not yet|enough for one lifetime/);
+  assert.equal(barn.view(pid).pen.cap, 10);
+  me.run = { stop: 'pugh', foe: 1, foeHp: null, out: [], hp: {}, won: [], live: null };
+  circuit.settle(pid, pugh, { id: idOf(a), bornAt: a.bornAt }, pugh.bugs[1], fake('r9', 0, [30, 0]));
+  assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer + PURSE.ribbon);
+  assert.deepEqual([capFor(0), capFor(1), capFor(8), capFor(30)], [10, 11, 18, 20]);
+  const pen = barn.view(pid).pen;
+  assert.equal(pen.cap, 11);
+  barn.doc.pens[pid].xp = xpFor(15);
+  assert.equal(barn.view(pid).pen.level, 11, 'XP past the cap waits for the next ribbon');
+  assert.equal(levelFor(xpFor(15)), 10, 'and a bug with no ribbons behind it still tops out at 10');
+});
+
+test('circuit bugs are drilled: a barn bug a level below one seldom wins on its own', () => {
+  let won = 0, n = 0;
+  for (const mine of ['lamprima', 'pyrops', 'eupholus', 'gyrinus']) for (const theirs of ['trachelophorus', 'nemoptera', 'sagra']) for (let k = 0; k < 20; k++) {
+    won += simulateBout({ species: mine, level: 4, mood: 75 }, { species: theirs, level: 5, mood: 100, gear: 0.06, defense: 0.06, trained: TRAINED }, `drill:${k}`).winner === 0 ? 1 : 0; n++;
+  }
+  assert.ok(won / n < 0.2, `a level 4 beat a trained level 5 in ${Math.round((won / n) * 100)}% of fights`);
 });

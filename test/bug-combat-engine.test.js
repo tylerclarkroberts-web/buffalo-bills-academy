@@ -29,9 +29,10 @@ test('a bug left alone reaches for every special it has learned; only the stance
   assert.deepEqual(battleFor('ceroplophana', 10, 0, { stance: 'defensive', specials: [] }), { stance: 'defensive', specials: all }, 'an older save that chose two no longer limits it');
   assert.deepEqual(battleFor('ceroplophana', 4, 0, { stance: 'constructor', specials: ['capstone', 'basic'] }), { stance: 'balanced', specials: ['technique', 'signature'] });
   assert.deepEqual(battleFor('ceroplophana', 3, 3).specials, ['technique', 'signature'], 'a move learned on the old schedule stays learned');
-  assert.deepEqual(combatStats(3), { maxHp: 100, damageMultiplier: 1 });
-  assert.deepEqual(combatStats(10), { maxHp: 121, damageMultiplier: 1.14 });
-  assert.deepEqual(combatStats(100), combatStats(10));
+  assert.deepEqual(combatStats(1), { maxHp: 100, damageMultiplier: 1 });
+  assert.deepEqual(combatStats(3), { maxHp: 110, damageMultiplier: 1.06 });
+  assert.deepEqual(combatStats(10), { maxHp: 145, damageMultiplier: 1.27 });
+  assert.deepEqual(combatStats(100), combatStats(20), 'ribbons raise the cap to 20 at most');
   assert.deepEqual(combatStats(NaN), combatStats(3));
 });
 
@@ -106,7 +107,7 @@ test('levels without a new move still improve combat strength', () => {
     const bout = simulateBout(fighter('ceroplophana', ['technique', 'signature'], 'balanced', 7), fighter('ceroplophana', ['technique', 'signature'], 'balanced', 6), seed);
     score += bout.winner === 0 ? 1 : bout.winner === null ? 0.5 : 0;
   }
-  assert.ok(score / 600 > 0.5 && score / 600 < 0.8, `adjacent-level score ${score / 600}`);
+  assert.ok(score / 600 > 0.55 && score / 600 < 0.88, `adjacent-level score ${score / 600}`);
 });
 
 test('only piercing capstones advertise the 5% critical chance', () => {
