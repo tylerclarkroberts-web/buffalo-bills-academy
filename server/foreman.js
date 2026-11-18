@@ -218,6 +218,8 @@ export function makeScene(reason, r) {
   const mid = shuffled(ESCALATION, r).slice(0, n - head.length - 1);
   return [...head, ...mid, pick(CLOSERS, r)];
 }
+/** Two sayings to a box: the longest tirade (20 lines) is ten clicks, and nothing he says is cut. */
+export const boxed = (lines) => Array.from({ length: Math.ceil(lines.length / 2) }, (_, i) => lines.slice(2 * i, 2 * i + 2).join(' '));
 export const JABS = [
   'WRONG! Dagnabbit, my mule does better sums!',
   'Cow-patties! Not even close. Try THIS one, sport.',
@@ -275,7 +277,7 @@ export class Foreman {
   scold(playerId, reason, shiftId) {
     if (shiftId && this.doc.lastMineShift?.[playerId] === shiftId) return this.view(playerId);
     if (this.doc.pending[playerId]) return this.view(playerId);
-    const lines = makeScene(reason, this.r);
+    const lines = boxed(makeScene(reason, this.r));
     const next = { ...this.doc, pending: { ...this.doc.pending, [playerId]: { id: crypto.randomBytes(9).toString('base64url'), reason, lines, problem: makeProblem(this.r), misses: 0, at: this.now() } },
       ...(shiftId ? { lastMineShift: { ...this.doc.lastMineShift, [playerId]: shiftId } } : {}) };
     this.store.saveDoc('foreman', next); this.doc = next;

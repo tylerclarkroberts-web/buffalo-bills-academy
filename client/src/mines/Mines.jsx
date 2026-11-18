@@ -297,7 +297,7 @@ export default function Mines() {
         {phase === 'play' && shift && <Shift key={shift.shiftId} shift={shift} me={me} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} onComplete={complete} exitShift={exitShift} onLeaving={setLeaving} />}
         {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} fare={going?.fare} />}
       </div>
-      {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); navigate('/'); }} />}
+      {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); if (lecture.reason === 'paid') navigate('/'); else setPhase('intro'); }} />}
     </div>
   );
 }

@@ -86,7 +86,7 @@ export default function Foreman({ pending, sound, onDone }) {
         {stage === 'done' && (
           <div className="fm-math">
             <span className="fm-q">{done.bonus ? `+$${done.bonus} "CAN COUNT" BONUS` : 'NO BONUS AFTER A MISS'}</span>
-            <button className="m-btn" onClick={() => onDone(done)}>[ BACK HOME ]</button>
+            <button className="m-btn" onClick={() => onDone(done)}>[ BACK TO THE MINE ]</button>
           </div>
         )}
       </div>
