@@ -15,9 +15,11 @@ import { pixGrid } from '../store/pixart.js';
 import { bugTexture, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks, shade as tint } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_GRADE, ROOM_DESK_TOP, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, residentTasks, ROOM_SIGNPOST, faunVisitRoute } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_GRADE, ROOM_DESK_TOP, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, wallTurn, residentStep, residentErrands, residentTasks, ROOM_SIGNPOST, faunVisitRoute } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#d3b88c', 'bunkhouse-sage': '#a7b59a', 'bunkhouse-clay': '#c79883' };
+/** The rooms that look at a parlor wall from behind, where its shelves and displays stay out of sight. */
+const BEHIND_WALL = { back: ['bunk', 'bathroom'], front: ['kitchen'], right: ['porch', 'yard'] };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 const mesh = (parent, geometry, mat, x = 0, y = 0, z = 0) => {
   const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); parent.add(m); return m;
@@ -776,8 +778,9 @@ export class RoomScene {
     const spots = shelf ? ROOM_SHELF_SPOTS : ROOM_WALL_SPOTS, position = shelf ? roomShelfPosition : wallDisplayPosition;
     const current = spots.find(spot => spot.id === (shelf?.spotId || wall)), origin = new THREE.Vector3(...position(current)).project(this.camera);
     let closest = null, score = Infinity;
+    const visible = roomWallVisibility(this.camera.position);
     for (const spot of spots) {
-      if (spot.id === current.id) continue;
+      if (spot.id === current.id || !visible[spot.wallSide]) continue;
       const fits = shelf ? wallMountsFit(this.shelves.map(value => value.id === shelf.id ? { ...value, spotId: spot.id } : value), this.wallDisplays, this.furniture)
         : wallSpotAvailable(this.shelves, this.wallDisplays, this.selection.anchorId, spot.id, this.furniture);
       if (!fits) continue;
@@ -795,13 +798,13 @@ export class RoomScene {
     const { wall, id } = this.dragging, spots = wall ? ROOM_WALL_SPOTS : ROOM_SHELF_SPOTS, position = wall ? wallDisplayPosition : roomShelfPosition;
     const origin = spots.find(spot => spot.id === this.dragging.originalSpotId), destination = spots.find(spot => spot.id === spotId);
     this.moveDragObjects(destination ? new THREE.Vector3(...position(destination)).sub(new THREE.Vector3(...position(origin))) : undefined);
-    if (destination) for (const { object, rotation } of this.dragging.objects || []) object.rotation.y = rotation.y + ((destination.wallSide === 'left') - (origin.wallSide === 'left')) * Math.PI / 2;
+    if (destination) for (const { object, rotation } of this.dragging.objects || []) object.rotation.y = rotation.y + wallTurn(destination.wallSide) - wallTurn(origin.wallSide);
     disposeObjects(this.dragPreview); this.dragPreview.clear();
     const spot = destination || origin, size = ROOM_SHELF_SIZES[this.shelves.find(shelf => shelf.id === id)?.sizeId || 'standard'];
     if (spot) {
       const geometry = new THREE.BoxGeometry(...(wall ? [1.2, 1.1, 0.12] : [size.width + 0.05, 0.12, size.depth + 0.05]));
       const marker = mesh(this.dragPreview, geometry, new THREE.MeshBasicMaterial({ color: destination ? '#b9df83' : '#d8604f', transparent: true, opacity: 0.3, depthWrite: false }), ...position(spot));
-      marker.rotation.y = (spot.wallSide === (wall ? 'left' : 'back')) ? (wall ? 1 : -1) * Math.PI / 2 : 0;
+      marker.rotation.y = wallTurn(spot.wallSide) + (wall ? Math.PI / 2 : 0);
       if (wall) marker.position.y += 0.4;
       marker.renderOrder = 5;
       const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: destination ? '#ffdc83' : '#d8604f', transparent: true, opacity: 0.85 }));
@@ -838,7 +841,7 @@ export class RoomScene {
     }
     if (this.cornerPost) this.cornerPost.visible = visible.back || visible.left;
     for (const group of [this.dynamic, this.highlights]) for (const object of group?.children || []) {
-      if (object.userData.wallSide) object.visible = visible[object.userData.wallSide] && !(object.userData.wallSide === 'back' && (area === 'bunk' || area === 'bathroom'));
+      if (object.userData.wallSide) object.visible = visible[object.userData.wallSide] && !BEHIND_WALL[object.userData.wallSide]?.includes(area);
     }
     this.lighting?.invalidate();
   }
@@ -1185,7 +1188,7 @@ export class RoomScene {
   shelf(shelf, position) {
     const group = new THREE.Group(); group.position.set(...position); this.dynamic.add(group);
     group.userData.wallSide = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId)?.wallSide;
-    if (group.userData.wallSide === 'back') group.rotation.y = -Math.PI / 2;
+    group.rotation.y = wallTurn(group.userData.wallSide);
     group.userData.dragId = shelf.id;
     const color = finishColor('shelf', shelf), size = ROOM_SHELF_SIZES[shelf.sizeId || 'standard'];
     box(group, size.width, 0.14, size.depth, shade(color, 0.58), 0, -0.08, 0);
@@ -1229,11 +1232,11 @@ export class RoomScene {
       const holder = shelf ? shelfGroups.get(shelf.id) : null;
       const wallSpot = ROOM_WALL_SPOTS.find(spot => spot.id === this.wallDisplays[anchorId]), host = anchorHost(anchorId);
       const wallSide = wallSpot?.wallSide || holder?.userData.wallSide || (anchorId === 'sill' ? 'back' : undefined);
-      const rotation = wallSpot?.wallSide === 'left' ? Math.PI / 2 : holder ? holder.rotation.y : furniture[host] ? turn(host) : 0;
-      const itemId = view.placements?.find(p => p.anchorId === anchorId)?.itemId;
+      const rotation = wallSpot ? wallTurn(wallSpot.wallSide) + Math.PI / 2 : holder ? holder.rotation.y : furniture[host] ? turn(host) : 0;
+      const placed = view.placements?.find(p => p.anchorId === anchorId), itemId = placed?.itemId, spin = (placed?.r || 0) * Math.PI / 2;
       if (ROOM_ITEM[itemId]) {
-        const prop = oddity(itemId); if (!holder) { prop.position.set(...position); prop.rotation.y = rotation; }
-        else prop.position.z = shelfSlots(shelf).find(slot => slot.id === anchorId).offset;
+        const prop = oddity(itemId); if (!holder) { prop.position.set(...position); prop.rotation.y = rotation + spin; }
+        else { prop.position.z = shelfSlots(shelf).find(slot => slot.id === anchorId).offset; prop.rotation.y = spin; }
         if (!holder && (furniture[host] || wallSpot)) prop.userData.dragId = wallSpot ? anchorId : host;
         if (!holder && wallSide) prop.userData.wallSide = wallSide;
         if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y -= 0.16; this.wagon = prop; }

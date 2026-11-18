@@ -127,6 +127,10 @@ test('contextual positions accept a desk item but keep the wagon outdoors', t =>
   for (const itemId of ['odd-lamp', 'odd-piano']) {
     assert.equal(rooms.saveLayout(owner, layout(revision++, [{ anchorId: 'desk', itemId }])).placements[0].itemId, itemId);
   }
+  // An oddity can be turned a quarter at a time; facing front is not stored.
+  const turned = rooms.saveLayout(owner, layout(revision++, [{ anchorId: 'desk', itemId: 'odd-telegraph', r: 3 }, { anchorId: 'floor', itemId: 'odd-anvil', r: 0 }])).placements;
+  assert.deepEqual(turned, [{ anchorId: 'desk', itemId: 'odd-telegraph', r: 3 }, { anchorId: 'floor', itemId: 'odd-anvil' }]);
+  for (const r of [4, 1.5, '1']) assert.throws(() => rooms.saveLayout(owner, layout(revision, [{ anchorId: 'desk', itemId: 'odd-telegraph', r }])), status(400));
   assert.deepEqual(shop.doc, inventory);
 });
 

@@ -46,12 +46,31 @@ export function shelfSlots(shelf) {
   return (wide ? [0, -0.8, 0.8] : [0]).map((offset, i) => ({ id: i ? `${shelf.id}-slot-${i + 1}` : shelf.id, offset, label: wide ? `${label} · ${i + 1}` : label }));
 }
 export const shelfForAnchor = (shelves, anchorId) => shelves.find(shelf => shelfSlots(shelf).some(slot => slot.id === anchorId));
+/**
+ * The parlor's four walls in floor-plan units: the plane each stands on, which way its face points, and
+ * its openings as [from, to, bottom, top] (windows include the projecting sill, doors their trim).
+ */
+export const ROOM_WALLS = {
+  left: { at: -4, facing: 1, alongZ: true, openings: [] },
+  back: { at: -3, facing: 1, alongZ: false, openings: [[-0.45, 1.95, 1.15, 2.98]] },
+  right: { at: 4, facing: -1, alongZ: true, openings: [[-1.5, -0.22, 1.2, 2.8], [1.38, 2.34, 0, 9]] },
+  front: { at: 3.27, facing: -1, alongZ: false, openings: [[-3.8, -2.6, 1.65, 3.3], [1.35, 2.65, 0, 9]] },
+};
+/** Scene point `out` units off a wall's face, `along` plan units along it. */
+export const wallPoint = (side, along, y, out) => {
+  const wall = ROOM_WALLS[side], across = wall.at * ROOM_FLOOR_SCALE + wall.facing * out;
+  return wall.alongZ ? [across, y, along * ROOM_FLOOR_SCALE] : [along * ROOM_FLOOR_SCALE, y, across];
+};
+export const spotAlong = spot => ROOM_WALLS[spot.wallSide].alongZ ? spot.position[2] : spot.position[0];
+const WALL_NAMES = { left: 'Left', back: 'Back', right: 'Right', front: 'Front' };
 const wallMountGrid = (kind, wallSide, coordinates, heights) => heights.flatMap((y, row) => coordinates.map((along, column) => ({
-  id: `${wallSide}-${kind}-${row + 1}-${column + 1}`, label: `${wallSide === 'left' ? 'Left' : 'Back'} wall · row ${row + 1}, position ${column + 1}`, wallSide,
-  position: wallSide === 'left' ? [kind === 'shelf' ? -3.25 : -3.81, y, along] : [along, y, kind === 'shelf' ? -2.25 : -2.81],
+  id: `${wallSide}-${kind}-${row + 1}-${column + 1}`, label: `${WALL_NAMES[wallSide]} wall · row ${row + 1}, position ${column + 1}`, wallSide,
+  position: ROOM_WALLS[wallSide].alongZ ? [ROOM_WALLS[wallSide].at, y, along] : [along, y, ROOM_WALLS[wallSide].at],
 })));
 const LEFT_MOUNTS = [-2.5, -1.9, -1.25, -0.6, 0.05, 0.7, 1.35, 1.6, 2, 2.3, 2.55];
 const BACK_MOUNTS = [-3.3, -2.65, -2, -1.35, -0.7, -0.05, 0.5, 1.15, 1.8, 2.35, 3, 3.4];
+const RIGHT_MOUNTS = [-2.5, -1.9, -1.25, -0.6, 0.05, 0.7, 2.75];
+const FRONT_MOUNTS = [-3.35, -2.05, -1.4, -0.75, -0.1, 0.55, 3, 3.45];
 export const ROOM_SHELF_SPOTS = [
   { id: 'left-low-back', label: 'Left wall · back lower', wallSide: 'left', position: [-3.25, 1.22, -1.7] },
   { id: 'left-low-front', label: 'Left wall · middle lower', wallSide: 'left', position: [-3.25, 1.22, -0.4] },
@@ -67,6 +86,8 @@ export const ROOM_SHELF_SPOTS = [
   { id: 'back-high-right', label: 'Back wall · right upper', wallSide: 'back', position: [-1.3, 2.25, -2.25] },
   ...wallMountGrid('shelf', 'left', LEFT_MOUNTS, [0.4, 1.22, 1.75, 2.25]),
   ...wallMountGrid('shelf', 'back', BACK_MOUNTS, [0.4, 1.22, 1.75, 2.25]),
+  ...wallMountGrid('shelf', 'right', RIGHT_MOUNTS, [0.4, 1.22, 1.75, 2.25]),
+  ...wallMountGrid('shelf', 'front', FRONT_MOUNTS, [0.4, 1.22, 1.75, 2.25]),
 ];
 export const ROOM_WALL_SPOTS = [
   { id: 'back-high-left', label: 'Back wall · left upper', wallSide: 'back', position: [-2.9, 2.55, -2.81] },
@@ -79,6 +100,8 @@ export const ROOM_WALL_SPOTS = [
   { id: 'left-high-front', label: 'Left wall · front upper', wallSide: 'left', position: [-3.81, 2.4, 0.9] },
   ...wallMountGrid('display', 'left', LEFT_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
   ...wallMountGrid('display', 'back', BACK_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
+  ...wallMountGrid('display', 'right', RIGHT_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
+  ...wallMountGrid('display', 'front', FRONT_MOUNTS, [0.1, 0.7, 1.5, 2.4]),
 ];
 /** The first two wall displays are always up; the rest are hung and taken down by the owner. */
 export const ROOM_WALL_IDS = ROOM_ANCHORS.filter(anchor => anchor.type === 'wall').map(anchor => anchor.id);
@@ -98,22 +121,24 @@ export function roomWallDisplays(value, shelves = []) {
 /** Fixed wall footprints keep shelves, their contents and framed displays clear, including corners. */
 export function wallMountsFit(shelves, wallDisplays, furniture, couchScale) {
   const scale = ROOM_FLOOR_SCALE;
+  // A box standing off a wall: `from`..`to` plan units along it, `depth` scene units out from its face.
+  const slab = (side, from, to, [bottom, top], [near, far]) => {
+    const a = wallPoint(side, from, bottom, near), b = wallPoint(side, to, top, far);
+    return [a.map((v, axis) => Math.min(v, b[axis])), a.map((v, axis) => Math.max(v, b[axis]))];
+  };
   const bounds = (spot, shelf) => {
-    const [x, y, z] = spot.position, half = shelf ? (shelf.sizeId === 'wide' ? 1.25 : 0.45) : 0.6;
-    const depth = shelf ? [0.1, 1.4] : [0.15, 0.3], height = shelf ? [-0.3, 0.7] : [-0.15, 0.95];
-    return spot.wallSide === 'left'
-      ? [[-4 * scale + depth[0], y + height[0], z * scale - half], [-4 * scale + depth[1], y + height[1], z * scale + half]]
-      : [[x * scale - half, y + height[0], -3 * scale + depth[0]], [x * scale + half, y + height[1], -3 * scale + depth[1]]];
+    const y = spot.position[1], along = spotAlong(spot), half = (shelf ? (shelf.sizeId === 'wide' ? 1.25 : 0.45) : 0.6) / scale;
+    return slab(spot.wallSide, along - half, along + half, shelf ? [y - 0.3, y + 0.7] : [y - 0.15, y + 0.95], shelf ? [0.1, 1.4] : [0.15, 0.3]);
   };
   const mounts = [...shelves.map(shelf => [ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId), shelf]),
     ...Object.values(wallDisplays).map(id => [ROOM_WALL_SPOTS.find(spot => spot.id === id), null])];
   if (mounts.some(([spot]) => !spot)) return false;
   const boxes = mounts.map(([spot, shelf]) => bounds(spot, shelf));
   const intersects = (a, b) => a[0].every((min, axis) => min < b[1][axis] - 0.01 && b[0][axis] < a[1][axis] - 0.01);
-  // Include the lower window apron and projecting sill, not just its glass opening.
-  const window = [[-0.45 * scale, 1.15, -3 * scale], [1.95 * scale, 2.98, -3 * scale + 0.65]];
-  if (boxes.some(box => box[0][0] < -4 * scale + 0.08 || box[1][0] > 4 * scale - 0.08
-    || box[0][2] < -3 * scale + 0.08 || box[1][2] > 3 * scale - 0.08 || intersects(box, window))) return false;
+  const openings = Object.entries(ROOM_WALLS).flatMap(([side, wall]) => wall.openings.map(([from, to, bottom, top]) => slab(side, from, to, [bottom, top], [-0.1, 0.65])));
+  // Side-wall mounts keep clear of the front corner; the front wall's own mounts stand on its face.
+  if (boxes.some((box, i) => box[0][0] < -4 * scale + 0.08 || box[1][0] > 4 * scale - 0.08 || box[0][2] < -3 * scale + 0.08
+    || box[1][2] > (mounts[i][0].wallSide === 'front' ? ROOM_WALLS.front.at : 3) * scale - 0.08 || openings.some(opening => intersects(box, opening)))) return false;
   const furnitureBoxes = furniture ? Object.entries(ROOM_FURNITURE).filter(([id, piece]) => !piece.yard && !piece.area && !furniture[id].off).map(([id]) => {
     const place = furniture[id], rect = id === 'rug' ? residentRect(furniture) : furnitureRect(id, place, couchScale);
     // Include wardrobe trim/handles, desk decorations and the taller resident's hat, regardless of current styling.
