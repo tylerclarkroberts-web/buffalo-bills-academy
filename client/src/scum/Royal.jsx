@@ -2,16 +2,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { royalSfx } from './royalSfx.js';
 import { isMuted } from '../bj/sfx.js';
-import { SONG_MS, SONG_START, dialogAt, lyricAt, phaseAt } from './songScript.js';
+import { dialogAt, lyricAt, phaseAt, loadSongScript, getScript, songDurationMs } from './songScript.js';
 
 export const ROYAL_MS = {
   jig: 2800, bow: 2500, milk: 4200, toot: 3200, fan: 3000, carpet: 3200,
-  dunce: 2800, boots: 3200, sing: SONG_MS, serenade: 3200, train: 3400, sweep: 3000,
+  dunce: 2800, boots: 3200, get sing() { return songDurationMs(); }, serenade: 3200, train: 3400, sweep: 3000,
 };
 
-export function durationOf(cmd) {
+export function durationOf(cmd, audioDurationSec = null) {
   const hold = typeof window !== 'undefined' && Number(window.__scumRoyalMs);
-  const base = ROYAL_MS[cmd] || 3000;
+  const base = cmd === 'sing' ? songDurationMs(getScript(), audioDurationSec) : (ROYAL_MS[cmd] || 3000);
   if (Number.isFinite(hold) && hold > 0) return Math.max(base, hold);
   return base;
 }
@@ -75,13 +75,28 @@ function useElapsed(active) {
 export function RoyalPlay({ ev, pos, onSkip, onDone, reduced }) {
   const done = useRef(false);
   const elapsed = useElapsed(ev.cmd === 'sing' && !reduced);
-  const phase = ev.cmd === 'sing' ? (reduced ? 'song' : phaseAt(elapsed)) : ev.cmd;
+  const script = useSongScript(ev.cmd === 'sing');
+  const phase = ev.cmd === 'sing' ? (reduced ? 'song' : phaseAt(elapsed, script)) : ev.cmd;
   useEffect(() => {
     done.current = false;
-    if (!isMuted() && !reduced) royalSfx.play(ev.cmd);
-    const ms = reduced ? (ev.cmd === 'sing' ? 1600 : 400) : durationOf(ev.cmd);
-    const t = setTimeout(() => { if (!done.current) { done.current = true; royalSfx.stop?.(); onDone(); } }, ms);
-    return () => { clearTimeout(t); royalSfx.stop?.(); };
+    let t, cancelled = false;
+    (async () => {
+      let audioDur = null;
+      if (ev.cmd === 'sing') {
+        await loadSongScript();
+        if (cancelled) return;
+        if (!reduced) {
+          const el = await royalSfx.play('sing');
+          if (el && Number.isFinite(el.duration)) audioDur = el.duration;
+        }
+      } else if (!isMuted() && !reduced) {
+        royalSfx.play(ev.cmd);
+      }
+      if (cancelled) return;
+      const ms = reduced ? (ev.cmd === 'sing' ? 1600 : 400) : durationOf(ev.cmd, audioDur);
+      t = setTimeout(() => { if (!done.current) { done.current = true; royalSfx.stop?.(); onDone(); } }, ms);
+    })();
+    return () => { cancelled = true; clearTimeout(t); royalSfx.stop?.(); };
   }, [ev.id, ev.cmd]);
   const skip = () => { if (!done.current) { done.current = true; royalSfx.stop?.(); onSkip(); } };
   const at = (seat, extra = {}) => {
@@ -107,7 +122,7 @@ export function RoyalPlay({ ev, pos, onSkip, onDone, reduced }) {
       {cmd === 'dunce' && <span className="sc-royal-prop dunce" style={at(ev.scumSeat)} aria-hidden="true">▲</span>}
       {cmd === 'boots' && <span className="sc-royal-prop sparkle" style={at(ev.kingSeat)} aria-hidden="true">✨</span>}
       {cmd === 'serenade' && <span className="sc-royal-prop notes" style={at(ev.scumSeat)} aria-hidden="true">🎵🎶</span>}
-      {cmd === 'sing' && <SongScene ev={ev} pos={pos} at={at} reduced={reduced} elapsed={elapsed} />}
+      {cmd === 'sing' && <SongScene ev={ev} pos={pos} at={at} reduced={reduced} elapsed={elapsed} script={script} />}
       {cmd === 'train' && <span className="sc-royal-cape" style={at(ev.kingSeat)} aria-hidden="true" />}
       {cmd === 'sweep' && <span className="sc-royal-prop broom" style={at(ev.scumSeat)} aria-hidden="true">🧹</span>}
     </div>
@@ -115,10 +130,31 @@ export function RoyalPlay({ ev, pos, onSkip, onDone, reduced }) {
 }
 
 
-function SongScene({ ev, pos, at, reduced, elapsed = 0 }) {
-  const t = reduced ? SONG_START + 800 : elapsed;
-  const talk = dialogAt(t);
-  const line = lyricAt(t);
+
+function useSongScript(active) {
+  const [script, setScript] = useState(() => getScript());
+  useEffect(() => {
+    if (!active) return undefined;
+    let live = true;
+    loadSongScript().then((s) => { if (live && s) setScript(s); });
+    return () => { live = false; };
+  }, [active]);
+  return script;
+}
+
+function SongScene({ ev, pos, at, reduced, elapsed = 0, script }) {
+  const [audioSec, setAudioSec] = useState(null);
+  useEffect(() => {
+    if (reduced) return undefined;
+    let id;
+    const tick = () => { setAudioSec(royalSfx.songTime?.() ?? null); id = requestAnimationFrame(tick); };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, [reduced]);
+  if (!script) return null;
+  const t = reduced ? script.songStart + 800 : elapsed;
+  const talk = dialogAt(t, script);
+  const line = lyricAt(t, script, audioSec);
   const king = ev.kingSeat, scum = ev.scumSeat;
   const bubbleAt = (seat) => {
     const p = pos?.[seat];
@@ -138,7 +174,7 @@ function SongScene({ ev, pos, at, reduced, elapsed = 0 }) {
           {line.text}
         </div>
       )}
-      {t >= SONG_START && <TomatoMess style={at(king)} />}
+      {t >= script.songStart && <TomatoMess style={at(king)} />}
     </>
   );
 }

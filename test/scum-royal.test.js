@@ -152,9 +152,16 @@ test('the picker is compact, the Scum does not press anything, and there is a sk
 });
 
 
-import { SONG_DIALOG, SONG_LYRICS, SONG_MS, SONG_START, SONG_NOTES, dialogAt, lyricAt, phaseAt } from '../client/src/scum/songScript.js';
+import { parseScript, songDurationMs, dialogAt, lyricAt, phaseAt, SONG_NOTES, SCRIPT_FILE, AUDIO_FILE, AUDIO_URL, SCRIPT_URL } from '../client/src/scum/songScript.js';
 
-test('Sing me a song has paced original dialogue, lyrics, and a flute line timed to them', () => {
+test('Sing me a song is driven by the public script file, with lyrics syncable to audio.currentTime', () => {
+  const raw = read(SCRIPT_FILE);
+  assert.match(raw, /^# Sing me a song/m);
+  assert.match(raw, /client\/public\/scum\/song\/song\.mp3/);
+  assert.match(raw, /KING:/);
+  const script = parseScript(raw);
+  const { dialogue: SONG_DIALOG, lyrics: SONG_LYRICS, songStart: SONG_START } = script;
+  const SONG_MS = songDurationMs(script);
   assert.equal(COMMANDS.filter((c) => c.id === 'sing').length, 1);
   assert.equal(SONG_DIALOG.length, 3);
   assert.equal(SONG_DIALOG[0].who, 'king');
@@ -163,19 +170,22 @@ test('Sing me a song has paced original dialogue, lyrics, and a flute line timed
   assert.equal(SONG_DIALOG[0].text, 'Sing me a song.');
   assert.match(SONG_DIALOG[1].text, /already heard enough/);
   assert.match(SONG_DIALOG[2].text, /didn't ask if you wanted to/);
-  assert.equal(dialogAt(100).who, 'king');
-  assert.equal(dialogAt(3000).who, 'scum');
-  assert.equal(dialogAt(6500).who, 'king');
-  assert.equal(dialogAt(SONG_START), null);
-  assert.equal(phaseAt(100), 'talk');
-  assert.equal(phaseAt(SONG_START), 'song');
+  assert.equal(dialogAt(100, script).who, 'king');
+  assert.equal(dialogAt(3000, script).who, 'scum');
+  assert.equal(dialogAt(6500, script).who, 'king');
+  assert.equal(dialogAt(SONG_START, script), null);
+  assert.equal(phaseAt(100, script), 'talk');
+  assert.equal(phaseAt(SONG_START, script), 'song');
   assert.equal(SONG_LYRICS.length, 8);
   assert.match(SONG_LYRICS[0].text, /lamps burn low/);
   assert.match(SONG_LYRICS.at(-1).text, /night rolls on/);
-  assert.equal(lyricAt(SONG_START).i, 0);
-  assert.equal(lyricAt(SONG_START + SONG_LYRICS[3].at + 10).i, 3);
+  assert.equal(lyricAt(SONG_START, script).i, 0);
+  assert.equal(lyricAt(SONG_START + SONG_LYRICS[3].at + 10, script).i, 3);
+  assert.equal(lyricAt(0, script, 0).i, 0, 'audio.currentTime 0 shows the first lyric');
+  assert.equal(lyricAt(0, script, (SONG_LYRICS[3].at + 10) / 1000).i, 3, 'lyrics follow audio.currentTime even mid-dialogue clock');
   assert.ok(SONG_MS >= 24000 && SONG_MS <= 32000, `SONG_MS ${SONG_MS}`);
-  assert.match(read('client/src/scum/Royal.jsx'), /sing: SONG_MS/);
+  assert.ok(songDurationMs(script, 20) >= SONG_START + 20000, 'scene lasts at least as long as song.mp3');
+  assert.match(read('client/src/scum/Royal.jsx'), /songDurationMs/);
   assert.ok(SONG_NOTES.length >= 16);
   const lastNote = SONG_NOTES.at(-1);
   assert.ok(lastNote.at + lastNote.dur > SONG_LYRICS.at(-1).at / 1000, 'flute covers the last lyric');
@@ -183,6 +193,12 @@ test('Sing me a song has paced original dialogue, lyrics, and a flute line timed
   assert.ok(gaps.every((g) => g >= 2500), 'each spoken line is held long enough to read');
   const lyricGaps = SONG_LYRICS.slice(1).map((d, i) => d.at - SONG_LYRICS[i].at);
   assert.ok(lyricGaps.every((g) => g >= 1600), 'each lyric is held long enough to read');
+  assert.equal(AUDIO_FILE, 'client/public/scum/song/song.mp3');
+  assert.equal(SCRIPT_URL, '/scum/song/script.txt');
+  assert.equal(AUDIO_URL, '/scum/song/song.mp3');
+  assert.throws(() => parseScript('0.0 KING: hi\n'), /lyric/i);
+  const skipped = parseScript('# just a comment\n0 KING: Hello.\nSONG 1\n0 Hi\n');
+  assert.equal(skipped.dialogue[0].text, 'Hello.');
 });
 
 test('the King can issue Sing me a song; skip and rewatch still go through seen/history', () => {
@@ -218,4 +234,8 @@ test('the song scene has bubbles, karaoke, a step-aside, tomatoes, and a mute-aw
   assert.match(sfx, /isMuted/);
   assert.match(sfx, /SONG_NOTES/);
   assert.match(sfx, /lfo/);
+  assert.match(sfx, /AUDIO_URL/);
+  assert.match(sfx, /probeSongMp3/);
+  assert.match(sfx, /songTime/);
+  assert.match(read('client/src/scum/songScript.js'), /script\.txt/);
 });

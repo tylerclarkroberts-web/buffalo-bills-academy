@@ -3,7 +3,9 @@
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createRequire } from 'node:module';
-import { SONG_DIALOG, SONG_LYRICS, SONG_START } from '../client/src/scum/songScript.js';
+import { parseScript } from '../client/src/scum/songScript.js';
+const script = parseScript(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../client/public/scum/song/script.txt'), 'utf8'));
+const SONG_DIALOG = script.dialogue, SONG_LYRICS = script.lyrics, SONG_START = script.songStart;
 
 const req = createRequire(process.env.PLAYWRIGHT_DIR ? path.join(process.env.PLAYWRIGHT_DIR, 'x.js') : import.meta.url);
 const { chromium } = req('playwright-core');
@@ -97,6 +99,12 @@ try {
   fs.writeFileSync(path.join(DATA, 'scum.json'), JSON.stringify(tables(P, Date.now())));
   srv = await boot();
   P = await loginAll();
+  const scriptRes = await fetch(BASE + '/scum/song/script.txt');
+  check(scriptRes.ok && /KING:/.test(await scriptRes.text()), 'public script.txt is served at /scum/song/script.txt');
+  const mp3 = await fetch(BASE + '/scum/song/song.mp3', { method: 'GET', headers: { Range: 'bytes=0-2' } });
+  const mp3Type = mp3.headers.get('content-type') || '';
+  check(!/audio|mpeg|mp3/i.test(mp3Type), `song.mp3 is optional and currently absent (got ${mp3.status} ${mp3Type})`);
+
   const browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox', '--hide-scrollbars'] });
 
   // 1. King picker shows Sing me a song (desktop + phone)

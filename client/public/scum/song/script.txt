@@ -1,0 +1,31 @@
+# Sing me a song — paste your dialogue and lyrics here. No code changes needed.
+#
+# Optional audio: drop your recording in this same folder as
+#   client/public/scum/song/song.mp3
+# If song.mp3 is present, it starts when the Scum begins to sing, and the
+# lyric times below are seconds into that file (synced to the audio clock).
+# If it's missing, the table falls back to a synthesized pan-flute and the
+# same lyric times are counted from the start of the song.
+#
+# Format (lines starting with # are ignored):
+#   <seconds from scene start>  KING: <text>
+#   <seconds from scene start>  SCUM: <text>
+#   SONG <seconds from scene start when the singing begins>
+#   <seconds from start of song / song.mp3>  <lyric text>
+# Times may use decimals (2.8, 9.4). Speaker must be KING or SCUM.
+# These placeholder lines are original; replace them with your own.
+
+0.0  KING: Sing me a song.
+2.8  SCUM: This table already heard enough of me for one night.
+6.2  KING: I didn't ask if you wanted to. Sing.
+
+SONG 9.4
+
+0.0  The lamps burn low on the last long hand
+2.4  The road is a ribbon of dust and sand
+4.8  Through the canyon and over the rise
+7.2  Until morning opens the eastern skies
+9.6  Smoke and whiskey
+11.4  Wind and rain
+13.2  The night rolls on
+15.2  The night rolls on
