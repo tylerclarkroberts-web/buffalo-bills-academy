@@ -59,6 +59,14 @@ test('touch scrolls at the default view and the explicit camera modes take prece
   assert.deepEqual(scene.view, roomView({ zoom: 2, panX: -0.1, panY: 0.1 }), 'zoomed touch keeps its drag-to-pan gesture');
 });
 
+test('Ctrl-drag rotates the camera even while editing, without grabbing the furnishing underneath', () => {
+  const { scene } = makeScene();
+  scene.editing = true; scene.targetAt = () => ({ kind: 'couch' });
+  scene.onMoveFurniture = () => assert.fail('Ctrl-drag moved a furnishing');
+  scene.pointerDown(pointer(300, 150, { ctrlKey: true })); scene.pointerMove(pointer(380, 190)); scene.pointerUp(pointer(380, 190));
+  assert.equal(scene.view.rotation, -18); assert.equal(scene.view.tilt, 6);
+});
+
 test('discrete steps share the drag bounds and an external reset supersedes a captured gesture', () => {
   const { scene, views } = makeScene();
   assert.equal(scene.stepCamera('ArrowLeft'), false);

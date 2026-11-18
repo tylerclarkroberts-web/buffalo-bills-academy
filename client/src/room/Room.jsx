@@ -423,7 +423,7 @@ export default function Room({ id }) {
             <output className="sr-only" aria-label="Room zoom" aria-live="polite" data-test="room-zoom">{Math.round(cameraView.zoom * 100)}%</output>
           </div>
           {cameraMode && <div className="room-camera-pad" role="group" aria-label={cameraMode === 'pan' ? 'Pan controls' : 'Rotate and tilt controls'}>
-            <span>{cameraMode === 'pan' ? 'Drag the scene to pan.' : 'Drag sideways to rotate, up or down to tilt.'}</span>
+            <span>{cameraMode === 'pan' ? 'Drag the scene to pan. Shift-drag pans any time.' : 'Drag sideways to rotate, up or down to tilt. Ctrl-drag does this any time.'}</span>
             {['Left', 'Up', 'Down', 'Right'].map((dir, i) => {
               const action = cameraMode === 'pan' ? 'Pan' : dir === 'Up' || dir === 'Down' ? 'Tilt' : 'Rotate';
               const label = action + ' ' + dir.toLowerCase();

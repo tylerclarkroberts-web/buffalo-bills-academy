@@ -499,7 +499,8 @@ export class RoomScene {
     this.resize = this.resize.bind(this);
     this.down = this.pointerDown.bind(this); this.up = this.pointerUp.bind(this); this.move = this.pointerMove.bind(this);
     this.cancel = e => { if (e?.pointerId === undefined || this.pointerId === undefined || e.pointerId === this.pointerId) this.cancelPointer(); };
-    this.contextMenu = e => { if (e.button === 2 && !this.failed) e.preventDefault(); };
+    // A Mac's Ctrl-click opens a menu; here it starts a camera drag instead.
+    this.contextMenu = e => { if ((e.button === 2 || e.ctrlKey) && !this.failed) e.preventDefault(); };
     this.keys = e => {
       if (e.key === 'Escape') this.cancelPointer();
       else if (e.target === this.canvas && this.stepCamera(e.key)) e.preventDefault();
@@ -509,11 +510,12 @@ export class RoomScene {
       }
     };
     this.lost = e => { e.preventDefault(); this.cancelPointer(); this.failed = true; this.stopActivity(); this.onError?.(new Error('The 3D view is unavailable. Use the room controls below.')); };
-    // The wheel zooms only where it cannot be mistaken for scrolling the page.
+    // The wheel zooms only where it cannot be mistaken for scrolling the page; Ctrl-scroll (and trackpad pinch) always zooms the room.
     this.wheel = e => {
       const page = this.canvas.closest?.('.room-page'), step = e.deltaY < 0 ? 0.25 : -0.25, zoom = this.view.zoom + step;
-      if (this.failed || e.ctrlKey || zoom < 1 || zoom > ROOM_VIEW_LIMITS.maxZoom || (this.view.zoom <= 1 && page && page.scrollHeight > page.clientHeight + 1)) return;
+      if (this.failed || (!e.ctrlKey && (zoom < 1 || zoom > ROOM_VIEW_LIMITS.maxZoom || (this.view.zoom <= 1 && page && page.scrollHeight > page.clientHeight + 1)))) return;
       e.preventDefault();
+      if (zoom < ROOM_VIEW_LIMITS.minZoom || zoom > ROOM_VIEW_LIMITS.maxZoom) return;
       this.wheelSum = (this.wheelSum || 0) + e.deltaY;
       if (Math.abs(this.wheelSum) >= 60) { this.wheelSum = 0; this.cancelPointer(); this.onZoom?.(step); }
     };
@@ -580,7 +582,7 @@ export class RoomScene {
     this.cancelPointer();
     if (this.editing || this.cameraMode) this.canvas.focus?.({ preventScroll: true });
     this.pointerStart = [e.clientX, e.clientY]; this.pointerId = e.pointerId;
-    const forceMode = e.button === 2 || e.shiftKey ? 'pan' : this.cameraMode;
+    const forceMode = e.button === 2 || e.shiftKey ? 'pan' : e.ctrlKey ? 'orbit' : this.cameraMode;
     const target = !forceMode && this.editing && this.targetAt(e.clientX, e.clientY);
     const shelf = this.editing && this.onMoveShelf && target?.kind === 'anchor' && shelfForAnchor(this.shelves || [], target.anchorId);
     const piece = !shelf && this.editing && this.onMoveFurniture && furnitureOf(target);
