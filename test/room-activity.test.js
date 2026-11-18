@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RoomActivity, ROOM_LINES, FAUN_LINES, residentPose, faunPose } from '../client/src/room/activity.js';
+import { RoomActivity, residentPose, faunPose } from '../client/src/room/activity.js';
+import { ROOM_LINES } from '../client/src/room/dialogue.js';
+import { FAUN_EXCHANGES } from '../client/src/room/faun-dialogue.js';
 import * as THREE from 'three';
 import { RoomScene } from '../client/src/room/scene.js';
 import { makeRoomCamera, RESIDENT_HEIGHT_SCALE } from '../client/src/room/scene-model.js';
@@ -18,7 +20,7 @@ test('room comments are brief, spaced apart and never repeat consecutively', () 
   assert.equal(activity.advance(1).text, ROOM_LINES[1]);
 });
 
-test('the first faun visit is discoverable, includes his own line, then leaves a long quiet gap', () => {
+test('the first faun visit is discoverable, trades a line with the resident, then leaves a long quiet gap', () => {
   const activity = new RoomActivity(() => 0);
   assert.ok(new RoomActivity(() => 0.999).nextFaun < 40000);
   assert.equal(activity.advance(19999).faun, false);
@@ -27,19 +29,22 @@ test('the first faun visit is discoverable, includes his own line, then leaves a
   assert.equal(activity.state().text, null, 'he peeks out before speaking');
   assert.equal(activity.untilChange(), 4000, 'reduced motion wakes for his line');
   assert.equal(activity.advance(3999).text, null);
-  assert.equal(activity.advance(1).text, FAUN_LINES[0]);
+  assert.equal(activity.advance(1).text, FAUN_EXCHANGES[0][0]);
   assert.equal(activity.state().speaker, 'faun');
-  assert.equal(activity.untilChange(), 9000);
-  assert.equal(activity.advance(8999).text, FAUN_LINES[0]);
+  assert.equal(activity.untilChange(), 4500, 'wakes for his reply');
+  assert.equal(activity.advance(4499).text, FAUN_EXCHANGES[0][0]);
+  assert.equal(activity.advance(1).text, FAUN_EXCHANGES[0][1], 'the resident answers him');
+  assert.equal(activity.state().speaker, 'resident');
+  assert.equal(activity.advance(4499).text, FAUN_EXCHANGES[0][1]);
   assert.equal(activity.advance(1).text, null);
   assert.equal(activity.untilChange(), 5000, 'reduced motion wakes to hide him after the retreat');
   assert.equal(activity.advance(4999).faun, true);
   assert.equal(activity.advance(1).faun, false);
-  assert.equal(activity.advance(119999).faun, false);
-  assert.equal(activity.advance(1).faun, true);
-  assert.equal(activity.advance(4000).text, FAUN_LINES[1], 'successive visits do not repeat their line');
+  assert.ok(activity.nextFaun - activity.time >= 120000, 'a long quiet gap before the next visit');
+  assert.equal(activity.advance(activity.nextFaun - activity.time).faun, true);
+  assert.equal(activity.advance(4000).text, FAUN_EXCHANGES[1][0], 'successive visits do not repeat their exchange');
   assert.ok(activity.nextSpeech >= activity.faunUntil + 15000, 'resident chatter waits until the visitor has left');
-  assert.ok(FAUN_LINES.every(line => line.length <= 110));
+  assert.ok(FAUN_EXCHANGES.flat().every(line => line.length <= 110));
 });
 
 test('editing before the first visit gives a short fresh wait and retains later visit cooldowns', () => {
@@ -228,7 +233,7 @@ test('the faun peeks from cover, speaks above his own model, then retreats and l
   assert.equal(scene.faunLegs[0].rotation.x, -scene.faunLegs[1].rotation.x);
   scene.animateActivity(4000);
   assert.deepEqual(scene.faun.position.toArray(), [3, 0.02, 0.5]);
-  assert.equal(bubbles.at(-1)?.text, FAUN_LINES[0]);
+  assert.equal(bubbles.at(-1)?.text, FAUN_EXCHANGES[0][0]);
   assert.equal(bubbles.at(-1)?.speaker, 'faun');
   const anchor = new THREE.Vector3(3, 2.82, 0.5).project(scene.camera);
   assert.equal(bubbles.at(-1).x, Math.round(Math.max(126, Math.min(720, (anchor.x + 1) * 846 / 2))));
@@ -313,7 +318,7 @@ test('resident takes bounded steps and gestures, while speech position updates d
   scene.residentHome = new THREE.Vector3(0, 0.05, 1); scene.residentRoute = { x: 0.55, z: 0 };
   scene.residentLegs = [new THREE.Group(), new THREE.Group()]; scene.residentArms = [new THREE.Group(), new THREE.Group()];
   scene.onSpeechPosition = (x, y) => positions.push([x, y]);
-  scene.activity.time = 8000; scene.activity.lastLine = 0; scene.activity.speechUntil = 17000;
+  scene.activity.time = 8000; scene.activity.line = ROOM_LINES[0]; scene.activity.speechUntil = 17000;
   scene.animateActivity(0); scene.animateActivity(1000);
   assert.equal(bubbles.length, 1); assert.equal(positions.length, 2);
   assert.ok(scene.residentGroup.position.x > 0 && scene.residentGroup.position.x < 0.55);

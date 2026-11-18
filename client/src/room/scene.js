@@ -474,10 +474,10 @@ const COFFEE_WALK = 5500, PIPE_DELAY = 650, SPRINKLER_END = 3600;
 
 /** A clickable cutaway. React owns the controls; room activity is cosmetic. */
 export class RoomScene {
-  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onZoom, onViewChange, onError } = {}) {
+  constructor(canvas, { activity = new RoomActivity(), onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onZoom, onViewChange, onError } = {}) {
     this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onMoveFurniture = onMoveFurniture; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
     this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition; this.onZoom = onZoom; this.onViewChange = onViewChange;
-    this.onSpeech = onSpeech; this.onHouseState = onHouseState; this.activity = new RoomActivity();
+    this.onSpeech = onSpeech; this.onHouseState = onHouseState; this.activity = activity;
     this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
@@ -701,6 +701,7 @@ export class RoomScene {
     if (!start || Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 8 || this.disposed || this.failed) return;
     const selection = this.targetAt(e.clientX, e.clientY);
     if (selection?.kind === 'houseAction') this.onHouseAction?.(selection.action);
+    else if (selection?.kind === 'resident') this.talk();
     else if (selection) this.onSelect?.(selection);
   }
   cancelPointer(publishView = true) {
@@ -781,7 +782,10 @@ export class RoomScene {
     if (this.editing) {
       picks.push(...(this.homestead?.editPicks || []));
       if (this.yardFence) picks.push(this.yardFence);
-    } else if (this.onHouseAction) picks.push(...(this.homestead?.picks || []));
+    } else {
+      if (this.residentPick && !this.activityPaused) picks.push(this.residentPick);
+      if (this.onHouseAction) picks.push(...(this.homestead?.picks || []));
+    }
     const targets = this.editing ? [...picks, ...this.walls] : picks.filter(target => !['surface', 'couch'].includes(target.userData.selection.kind));
     const hit = this.raycaster.intersectObjects(targets.filter(target => shown(target) && !(this.wagon && target.userData.selection?.anchorId === 'window')), false)[0];
     const wagonHit = this.wagon && this.raycaster.intersectObject(this.wagon, true)[0];
@@ -1278,6 +1282,8 @@ export class RoomScene {
   resident(owner, generation) {
     const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.order = 'YXZ'; group.rotation.y = 0.35; this.dynamic.add(group);
     group.userData.dragId = 'rug'; this.residentFace = null;
+    this.residentPick = mesh(group, new THREE.BoxGeometry(0.95, 2.15, 0.75), new THREE.MeshBasicMaterial({ visible: false }), 0, 1.07, 0);
+    this.residentPick.userData.selection = { kind: 'resident' };
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
     this.errands = residentErrands(this.furniture, this.shelves, this.wallDisplays, this.chairLayout); this.residentYaw = 0.35;
     if (this.coffee && !this.errands.some(errand => errand.kind === 'coffee')) this.coffee = null;
@@ -1412,6 +1418,12 @@ export class RoomScene {
     });
   }
   isVisible() { return !document.hidden && this.inViewport !== false; }
+  talk(now = performance.now()) {
+    if (this.activityPaused || this.editing || this.disposed || this.failed || document.hidden) return;
+    if (this.lastFrame != null) { this.advanceActivity(now - this.lastFrame); this.lastFrame = now; }
+    this.activity.talk();
+    this.render();
+  }
   houseAction(kind, now = performance.now()) {
     if (!this.residentGroup || this.editing || this.failed || this.disposed || document.hidden) return 'unavailable';
     if (this.lastFrame != null) { this.advanceActivity(now - this.lastFrame); this.lastFrame = now; }
@@ -1574,13 +1586,14 @@ export class RoomScene {
     if (state.text) {
       const speaker = state.speaker === 'faun' ? this.faun : this.residentGroup;
       const anchor = new THREE.Vector3(speaker.position.x, speaker.position.y + (state.speaker === 'faun' ? 2.8 : 2.3 * RESIDENT_HEIGHT_SCALE), speaker.position.z).project(this.camera);
-      if (Math.abs(anchor.x) < 1 && Math.abs(anchor.y) < 1 && Math.abs(anchor.z) < 1) {
-        const w = this.canvas.clientWidth, h = this.canvas.clientHeight, edge = Math.min(126, w / 2);
-        speech = { text: state.text, speaker: state.speaker, x: Math.round(Math.max(edge, Math.min(w - edge, (anchor.x + 1) * w / 2))), y: Math.round(Math.max(115, Math.min(h - 15, (1 - anchor.y) * h / 2))) };
-      }
+      const w = this.canvas.clientWidth, h = this.canvas.clientHeight, edge = Math.min(126, w / 2);
+      const offscreen = Math.abs(anchor.x) >= 1 || Math.abs(anchor.y) >= 1 || Math.abs(anchor.z) >= 1;
+      speech = { text: state.text, speaker: state.speaker, offscreen,
+        x: offscreen ? w / 2 : Math.round(Math.max(edge, Math.min(w - edge, (anchor.x + 1) * w / 2))),
+        y: offscreen ? h - 12 : Math.round(Math.max(115, Math.min(h - 15, (1 - anchor.y) * h / 2))) };
     }
     if (speech) this.onSpeechPosition?.(speech.x, speech.y);
-    const key = speech ? `${speech.speaker}:${speech.text}` : '';
+    const key = speech ? `${speech.speaker}:${speech.text}:${speech.offscreen}` : '';
     if (key !== this.speechKey) { this.speechKey = key; this.onSpeech?.(speech); }
     return active;
   }
