@@ -19,13 +19,13 @@ export const STYLES = {
   wriggler: { name: 'Wriggler', approach: 600, sound: 'wriggle' },
 };
 const BY_STYLE = {
-  flyer: ['phrictus', 'pyrops', 'nemoptera', 'chrysochroa', 'mantispa', 'polyphylla'],
-  hopper: ['bocydium', 'umbonia', 'graphocephala', 'sagra'],
-  charger: ['ceroplophana', 'phanaeus', 'lamprima', 'macrodontia', 'onymacris', 'trachelophorus'],
-  striker: ['pseudocreobotra', 'deroplatys', 'empusa', 'platymeris', 'acanthaspis', 'manticora', 'lethocerus'],
-  sprayer: ['brachinus'],
-  roller: ['eupholus', 'pachyrhynchus', 'sphaerocoris', 'helicopsyche'],
-  wriggler: ['phrixothrix', 'heteropteryx'],
+  flyer: ['phrictus', 'pyrops', 'nemoptera', 'chrysochroa', 'mantispa', 'polyphylla', 'melanophila', 'brevisana', 'bertholdia', 'photuris', 'ampulex'],
+  hopper: ['bocydium', 'umbonia', 'graphocephala', 'sagra', 'halobates', 'micronecta'],
+  charger: ['ceroplophana', 'phanaeus', 'lamprima', 'macrodontia', 'onymacris', 'trachelophorus', 'pyrrhocoris', 'gromphadorhina', 'gryllotalpa', 'dytiscus', 'phloeodes', 'dasymutilla'],
+  striker: ['pseudocreobotra', 'deroplatys', 'empusa', 'platymeris', 'acanthaspis', 'manticora', 'lethocerus', 'notonecta', 'solenopsis', 'myrmeleon', 'odontomachus', 'colobopsis'],
+  sprayer: ['brachinus', 'pheropsophus', 'peruphasma'],
+  roller: ['eupholus', 'pachyrhynchus', 'sphaerocoris', 'helicopsyche', 'gyrinus'],
+  wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa'],
 };
 export const STYLE_OF = Object.fromEntries(Object.entries(BY_STYLE).flatMap(([style, ids]) => ids.map((id) => [id, style])));
 export const styleOf = (species) => STYLE_OF[species] || 'charger';
@@ -70,7 +70,7 @@ export function planBout(bout) {
     else if (kind === 'attack') {
       status[foe].guard = false; status[me].weak = false; // both are spent by any attack, hit or miss
       if (r.effect === 'guard') status[me].guard = true;
-      if (r.hit && r.effect === 'venom') status[foe].poison = 2;
+      if (r.hit && (r.effect === 'venom' || r.poisons)) status[foe].poison = 2; // a venom move, or any hit from a Toxic bug
       if (r.hit && r.effect === 'weaken') status[foe].weak = true;
     }
     beats.push({ i, at, dur, charge, impactAt, stop, special, kind, r, before, after: copy() });
@@ -168,7 +168,7 @@ function impact(fx, beat, P, ST, size, u, tx, ty) {
   if (ST[a] === 'striker') spawn(fx, 1, () => ({ kind: 'slash', color, x: hx, y: hy, rot: Math.atan2(ty, tx) + 0.9, life: 380, size: size * 0.5 }));
   else spawn(fx, 1, () => ({ kind: 'star', color, x: hx, y: hy, life: 420, size: size * (0.18 + r.tier * 0.05) * (r.critical ? 1.6 : 1) }));
   if (r.effect === 'pierce') spawn(fx, 1, () => ({ kind: 'lance', color, x: hx - tx * size * 0.9, y: hy - ty * size * 0.9, x1: hx + tx * size * 1.3, y1: hy + ty * size * 1.3, life: 380, size: u * 4 }));
-  if (r.effect === 'venom') spawn(fx, 14, () => ({ kind: 'px', color: R() < 0.5 ? '#8cff5a' : '#3c9a2a', x: hx, y: hy, vx: (R() - 0.5) * size * 1.4, vy: -size * (0.4 + R()), g: size * 3, life: 700, size: u * 2 }));
+  if (r.effect === 'venom' || r.poisons) spawn(fx, 14, () => ({ kind: 'px', color: R() < 0.5 ? '#8cff5a' : '#3c9a2a', x: hx, y: hy, vx: (R() - 0.5) * size * 1.4, vy: -size * (0.4 + R()), g: size * 3, life: 700, size: u * 2 }));
   if (r.effect === 'weaken') spawn(fx, 1, () => ({ kind: 'spiral', color, x: tgt.x, y: tgt.y - tgt.alt - size * 0.1, life: 900, size: size * 0.32 }));
   if (r.effect === 'guard') spawn(fx, 1, () => ({ kind: 'ring', color, x: src.x, y: src.y - src.alt, life: 520, size: size * 0.65 }));
   text(String(r.dmg), r.critical ? '#ff5a3a' : '#fff4c8', tgt);
@@ -249,6 +249,19 @@ function drawFighter(x, f, p, size, face) {
   x.restore();
 }
 
+/** A specimen jar, lid and air holes, coming down over a caught bug as `k` goes 0 to 1. */
+function drawJar(x, p, size, u, k) {
+  const w = size * 0.6, h = size * 0.72, left = p.x - w / 2, top = p.y - h * 0.56 - (1 - k) * size * 1.1;
+  x.save(); x.globalAlpha = Math.min(1, k * 2.5);
+  x.fillStyle = 'rgba(190, 235, 255, .16)'; x.fillRect(left, top + u * 4, w, h - u * 4);
+  x.strokeStyle = 'rgba(225, 247, 255, .9)'; x.lineWidth = u; x.strokeRect(left + u / 2, top + u * 4 + u / 2, w - u, h - u * 5);
+  x.fillStyle = 'rgba(255, 255, 255, .55)'; x.fillRect(left + u * 3, top + u * 8, u * 2, h * 0.4); x.fillRect(left + u * 3, top + u * 9 + h * 0.4, u * 2, u * 2);
+  x.fillStyle = '#b08a4a'; x.fillRect(left - u, top, w + u * 2, u * 4);
+  x.fillStyle = '#7a5a2a'; x.fillRect(left - u, top + u * 3, w + u * 2, u);
+  x.fillStyle = '#2a1608'; for (let i = -1; i <= 1; i++) x.fillRect(p.x + i * u * 5 - u / 2, top + u, u, u);
+  x.restore();
+}
+
 /** Paints the ring at time t. `fx` carries particles and caches between frames; pass a fresh object per bout. */
 export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
   const L = layout(W, H), size = L.size, home = L.home, u = Math.max(1, Math.floor(size / SPRITE));
@@ -296,8 +309,10 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
 
   const ended = loc.phase === 'finish' || loc.phase === 'done';
   const endHp = ended ? bout.rounds.at(-1)?.hp : null;
+  let jar = 0; // a wild bug that was caught: how far the jar has come down over it
   if (ended) {
     const q = reduced ? 1 : ease.out(clamp01((loc.phase === 'done' ? FINISH_MS : lt) / 700)), tt = reduced ? 0 : t;
+    if (bout.over?.reason === 'jarred') { jar = q; const p = P[1]; p.alt = 0; p.sx *= 1 - 0.42 * q; p.sy *= 1 - 0.42 * q; if (!reduced && q === 1) p.rot += Math.sin(t / 90) * 0.12; }
     P.forEach((p, s) => {
       const [tx, ty] = toward(s);
       if (endHp?.[s] === 0) { p.rot += Math.PI * 0.85 * q; p.x -= tx * size * 0.16 * q; p.y -= ty * size * 0.16 * q; p.alt = 0; p.tint = ['#000000', 0.35 * q]; }
@@ -321,6 +336,7 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
       gl.addColorStop(0, `${col}aa`); gl.addColorStop(1, `${col}00`); x.globalAlpha = p.aura; x.fillStyle = gl; x.beginPath(); x.arc(p.x, p.y - p.alt, rr, 0, Math.PI * 2); x.fill(); x.globalAlpha = 1;
       if (R() < dt / 22) { const ang = R() * Math.PI * 2, d0 = size * 0.85; spawn(fx, 1, () => ({ kind: 'px', color: R() < 0.5 ? col : '#ffffff', x: p.x + Math.cos(ang) * d0, y: p.y - p.alt + Math.sin(ang) * d0, vx: -Math.cos(ang) * d0 * 3, vy: -Math.sin(ang) * d0 * 3, life: 300, size: u * 2 })); } }
     drawFighter(x, F[s], p, size, face[s]);
+    if (s === 1 && jar) drawJar(x, p, size, u, jar);
     if (status?.[s].guard && !reduced) { const rr = size * 0.5, a0 = t / 900; x.strokeStyle = '#ffcf5a'; x.globalAlpha = 0.55 + 0.2 * Math.sin(t / 150); x.lineWidth = u * 2; x.beginPath();
       for (let i = 0; i <= 6; i++) { const ang = a0 + (i / 6) * Math.PI * 2; x.lineTo(p.x + Math.cos(ang) * rr, p.y - p.alt + Math.sin(ang) * rr); } x.stroke(); x.globalAlpha = 0.08; x.fillStyle = '#ffcf5a'; x.fill(); x.globalAlpha = 1; }
     if (status?.[s].weak && !reduced) { const by = p.y - p.alt - size * 0.48 + Math.sin(t / 220) * u * 2; x.fillStyle = '#c58bff';

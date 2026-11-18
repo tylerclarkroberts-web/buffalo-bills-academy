@@ -339,6 +339,10 @@ body.in-mines { background: #020402; }
 @media (orientation: landscape) and (max-height: 520px) { .m-dances { bottom: calc(46px + env(safe-area-inset-bottom)); gap: 4px; padding: 6px; } .m-dance { min-height: 40px; } }
 /* Commands need their full names, even beside the icons and keyboard shortcuts. */
 .m-orders { position: fixed; grid-template-columns: repeat(2, minmax(0, 1fr)); z-index: 60; background: #020402; }
+/* the wild bug's question: one bug to a row, so its name, type and level fit */
+.m-wild { grid-template-columns: 1fr; }
+.m-wild-what { margin: 0; color: var(--y); font: 700 15px/1.25 var(--mono); }
+.m-wild .m-dance-name { white-space: normal; }
 .m-orders .m-dance { min-width: 0; min-height: 52px; font-size: 16px; line-height: 1.35; text-shadow: none; }
 .m-orders .m-dance-name { min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 /* v89 Hall of Doors: behind the mine door. A stone hall, one row of doors (two rows on upright screens), no scroll.

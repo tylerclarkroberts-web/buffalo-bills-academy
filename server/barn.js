@@ -13,6 +13,7 @@ import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, upsetXp } from './engine/bug-combat.js';
 import { line } from './engine/bout.js';
+import { rarityOf } from './engine/bug-types.js';
 import { cents } from './accounts.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
@@ -157,7 +158,8 @@ export class Barn {
   layEgg(playerId) {
     if (this.has(playerId)) throw new GameError('Mine eggs only turn up for an empty barn.', 409);
     const now = this.now();
-    const species = ROSTER[this.eggInt(ROSTER.length)].id;
+    const commons = ROSTER.filter((bug) => rarityOf(bug.id) === 1); // an egg is always a common: the rest are met down the mine
+    const species = commons[this.eggInt(commons.length)].id;
     const egg = { stage: 'egg', species, eggAt: now, hatchAt: now + this.incubateMs, warmedAt: 0 };
     this.commitPen(playerId, egg);
     return this.view(playerId);
@@ -285,7 +287,7 @@ export class Barn {
       if (!owner || owner.hidden || pen.stage !== 'creature' || now >= this.deathAt(pen)) return [];
       const level = levelFor(pen.xp), theirs = ownerId !== playerId && !pen.faintedAt && level >= BOUT_LEVEL && corner.length ? this.fighter(ownerId, pen) : null;
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
-      return [{ id: idOf(pen), ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId) || null,
+      return [{ id: idOf(pen), ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId, pen) || null,
         record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt,
         ...(theirs ? { line: Object.fromEntries(corner.map(([id, mine]) => [id, line(mine, theirs)])) } : {}) }];
     })).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
@@ -330,7 +332,7 @@ export class Barn {
     const cool = Object.fromEntries(Object.entries(CARE).map(([k, a]) => [k, Math.max(0, (pen.cool[k] || 0) + a.cooldownMs - now)]));
     const dies = this.deathAt(pen); const warn = this.starving(pen, now);
     return { pen: { ...which, stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt,
-      fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId) || null, gearBonus: this.styleOf?.(playerId).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
+      fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen) || null, gearBonus: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= 10 ? null : xpFor(level + 1),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
       abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
@@ -398,7 +400,7 @@ export class Barn {
     const level = levelFor(pen.xp);
     return { species: pen.species, name: pen.name, level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
-      gear: this.styleOf?.(playerId).gearBonus || 0, defense: this.styleOf?.(playerId).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId),
+      gear: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, defense: this.styleOf?.(playerId, idOf(pen)).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen),
       legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
   }
 
@@ -703,8 +705,8 @@ export class Barn {
    * a win bonus; a loser that fought to the end gains BATTLE_XP even if it was knocked out.
    */
   battleResult(playerId, { battleId, bornAt, won, fought = true, fainted = false, foeName = null, odds = 0.5 }) {
-    const pen = this.doc.pens[playerId];
-    if (!pen || pen.stage !== 'creature' || pen.bornAt !== bornAt) return { xp: 0, fainted: false, skipped: true };
+    const pen = this.bugs(playerId).find((kept) => kept.stage === 'creature' && kept.bornAt === bornAt); // the partner, or the stalled bug its owner sent in
+    if (!pen) return { xp: 0, fainted: false, skipped: true };
     if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
     const next = structuredClone(pen);
     const bonus = won ? upsetXp(WIN_BONUS_XP, odds) : 0, xp = won ? BATTLE_XP + bonus : fought ? BATTLE_XP : 0; // `odds`: this bug's chance by the line
@@ -739,9 +741,9 @@ export class Barn {
     }
     return { ...this.view(playerId), healed: was, cost };
   }
-  /** Store looks for a bug (skin palette, hat, accessory, equipped battle gear), for drawing only. */
-  looksOf(playerId) {
-    const st = this.styleOf?.(playerId) || {};
+  /** What one bug wears from the store (skin palette, hat, accessory, battle gear), for drawing only. With no bug, the partner. */
+  looksOf(playerId, pen) {
+    const st = this.styleOf?.(playerId, pen ? idOf(pen) : undefined) || {};
     const o = {}; for (const k of ['bugskin', 'bughat', 'bugacc']) if (st[k]) o[k] = st[k];
     for (const k of ['gear', 'defense']) if (typeof st[k] === 'string' && st[k].startsWith('gear-')) o[k] = { id: st[k], shape: st[k].slice(5) };
     return Object.keys(o).length ? o : undefined;

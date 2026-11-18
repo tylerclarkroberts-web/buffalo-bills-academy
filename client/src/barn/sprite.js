@@ -22,6 +22,8 @@ const YOUNG_FORMS = {
   chrysochroa: 'borer', lamprima: 'grub', onymacris: 'crawler', brachinus: 'crawler', macrodontia: 'borer',
   sagra: 'grub', manticora: 'crawler', polyphylla: 'grub', phanaeus: 'grub',
   mantispa: 'jawed-larva', nemoptera: 'jawed-larva', helicopsyche: 'caddis',
+  pheropsophus: 'crawler', melanophila: 'borer', dytiscus: 'crawler', gyrinus: 'crawler', solenopsis: 'legless-grub', bertholdia: 'grub',
+  phloeodes: 'borer', photuris: 'crawler', odontomachus: 'legless-grub', colobopsis: 'legless-grub', dasymutilla: 'legless-grub', ampulex: 'legless-grub',
 };
 export const youngForm = (bug, level) => Number.isFinite(level) && level < 3 ? YOUNG_FORMS[bug.id] : undefined;
 
@@ -114,6 +116,7 @@ const KINDS = {
     legs(c, { y: cy - 4, spread: L.frogleg ? 0.9 : 1 });
     if (L.frogleg) { c.line(22, cy + 6, 10, cy + 14, 'B', 4); c.line(10, cy + 14, 8, cy + 24, 'B', 3); c.line(8, cy + 24, 3, cy + 26, 'D', 2); }
     antennae(c, { y: headY - 2, fan: L.fan });
+    if (L.rim) c.ell(32, cy, rx + 1.3, ry + 1.3, 'A'); // a pale margin round the wing cases
     c.ell(32, cy, rx, ry, 'B'); // elytra
     grooves(c, cy, rx, ry);
     for (let y = cy - ry + 3; y < cy + ry - 1; y++) c.put(31.5, y, 'S'); // the seam
@@ -125,7 +128,9 @@ const KINDS = {
     if (L.grooves) for (let k = 0; k < 3; k++) for (let y = cy; y < cy + ry - 2; y += 1) if (y % 2) c.put(32 - 3 - k * 3, y, 'S');
     if (L.marbled) [[24, 32], [27, 41], [22, 45], [28, 28], [25, 50], [20, 38]].forEach(([x, y]) => { c.ell(x, y, 2, 1.5, 'L'); });
     if (L.rings) [[24, 32], [32, 29], [26, 41], [32, 46], [22, 49]].forEach(([x, y]) => { c.ell(x, y, 2.5, 2.5, 'A'); c.sym(x, y, 'B'); });
-    if (L.lights) {}
+    if (L.blots) { c.ell(25, cy - 4, 3, 3, 'A'); c.ell(26, cy + 7, 2.2, 2.2, 'A'); }
+    if (L.knobs) [[25, 29], [28, 35], [22, 38], [27, 43], [23, 47], [28, 51]].forEach(([x, y]) => c.ell(x, y, 1.7, 1.3, 'L')); // a rough, knobbly shell
+    if (L.lamp) c.ell(32, cy + ry - 3, rx * 0.62, 3.6, 'A'); // a firefly's lantern, at the tail
   },
 };
 
@@ -219,10 +224,11 @@ function draw(c, L) {
     c.ell(32, 40, 15, 15, 'L'); c.ell(32, 40, 10, 10, 'B'); c.ell(32, 40, 5, 5, 'L'); c.ell(32, 40, 2, 2, 'D');
     c.ell(32, 22, 6, 5, 'D'); eyes(c, 29, 21, 1); c.line(27, 25, 21, 30, 'D', 2); c.line(28, 26, 24, 33, 'D', 1);
   } else if (k === 'larva') {
+    if (L.threads) for (const [x, n] of [[7, 6], [14, 9], [20, 5]]) { c.line(x, 4, x, 4 + n * 6, 'W', 1); for (let i = 1; i <= n; i++) c.ell(x, 4 + i * 6, 1.3, 1.3, 'L'); } // a glowworm's snares: silk lines beaded with glue
     for (let i = 0; i < 10; i++) c.ell(32, 14 + i * 4.6, 8 - (i > 7 ? (i - 7) * 1.5 : 0), 3, i % 2 ? 'B' : 'D');
     c.ell(32, 10, 6, 4, 'B'); eyes(c, 29, 10, 1);
-    c.ell(28, 7, 1.5, 1.5, 'A'); // red head lamps
-    for (let i = 1; i < 10; i++) c.ell(25, 14 + i * 4.6, 1.5, 1, 'L');
+    if (L.threads) c.ell(32, 55, 5, 4.5, 'A'); // its one light, at the tail
+    else { c.ell(28, 7, 1.5, 1.5, 'A'); for (let i = 1; i < 10; i++) c.ell(25, 14 + i * 4.6, 1.5, 1, 'L'); } // a railroad worm's red head lamps, and the row down each side
   } else if (k === 'mantis' || k === 'stick') {
     const wide = L.leaf;
     if (L.eyespot) { c.ell(19, 44, 10, 13, 'L'); c.ell(19, 44, 4, 4, 'A'); c.ell(19, 44, 2, 2, 'S'); }
@@ -242,12 +248,70 @@ function draw(c, L) {
     c.ell(32, 40, 3, 13, 'B'); c.ell(32, 25, 4, 4, 'B'); c.ell(32, 19, 4, 3, 'A'); eyes(c, 29, 19, 1.5);
     antennae(c, { y: 16, len: 12, bend: 4 }); legs(c, { y: 30, spread: 0.5, long: 0.7 });
   } else if (k === 'waterbug') {
-    legs(c, { y: 44, spread: 1.3, long: 1.1, fore: 'raptor' });
-    c.line(24, 30, 14, 26, 'D', 3); c.line(14, 26, 18, 16, 'D', 2); c.line(18, 16, 22, 15, 'A', 1);
-    c.ell(32, 42, 14, 16, 'B'); grooves(c, 42, 14, 16); for (let y = 34; y < 57; y++) c.put(31.5, y, 'S'); c.ell(32, 26, 10, 5, 'B'); c.ell(32, 20, 5, 4, 'B'); eyes(c, 27, 19, 2);
+    const rx = L.oars ? 9 : 14; // the rowers (a backswimmer, a water boatman) are slim, with oar legs and no grabbing arms
+    legs(c, { y: 44, spread: L.oars ? 0.9 : 1.3, long: L.oars ? 0.8 : 1.1, fore: 'raptor' });
+    if (L.oars) { c.line(23, 46, 5, 43, 'D', 2); c.ell(5, 43, 3.5, 1.6, 'A'); }
+    else { c.line(24, 30, 14, 26, 'D', 3); c.line(14, 26, 18, 16, 'D', 2); c.line(18, 16, 22, 15, 'A', 1); }
+    c.ell(32, 42, rx, 16, 'B'); grooves(c, 42, rx, 16); for (let y = 34; y < 57; y++) c.put(31.5, y, 'S'); c.ell(32, 26, rx - 4 + (L.oars ? 3 : 0), 5, 'B'); c.ell(32, 20, 5, 4, 'B'); eyes(c, 27, 19, 2);
+  } else if (k === 'ant') {
+    if (L.wings) { c.poly([[29, 25], [13, 33], [9, 50], [18, 55], [28, 38]], 'W'); c.line(27, 28, 13, 48, 'L', 1); } // a wasp's wings, swept back
+    legs(c, { y: 30, spread: 1.15, long: 1.15 });
+    if (L.thighs) { c.line(25, 30, 11, 32, 'A', 2); c.line(26, 36, 15, 45, 'A', 2); } // red thighs on the back two pairs
+    c.line(29, 12, 22, 6, 'D', 1); c.line(22, 6, 16, 10, 'D', 1); // elbowed antennae
+    c.ell(32, 47, 8, 10, 'B'); band(c, 47, 8, 10, [44, 49]); // the gaster
+    if (L.goo) c.ell(32, 47, 5, 6.5, 'A'); // what an exploding ant keeps in it
+    c.poly([[31, 56], [33, 56], [32, 61]], 'A', false); // and its sting
+    c.ell(32, 35, 2.5, 2.5, 'D'); // the waist
+    c.ell(32, 28, 5, 6, 'B'); c.ell(32, 16, 6.5, 6, 'B'); eyes(c, 27, 16, 1.5);
+    if (L.fuzz) { c.ell(32, 28, 4, 5, 'A'); c.ell(32, 44, 6.5, 3.5, 'A'); c.ell(32, 52, 5, 2.5, 'A'); } // velvet: red on the thorax and in bands across the gaster
+    if (L.trap) { c.line(29, 11, 17, 9, 'A', 2); c.line(17, 9, 15, 6, 'A', 1); c.hair([[30, 10], [28, 4]], 'D'); } // jaws held open at 180 degrees, and a trigger hair
+    else { c.line(29, 10, 26, 6, 'A', 2); c.line(26, 6, 30, 4, 'A', 1); } // mandibles
+  } else if (k === 'antlion') {
+    legs(c, { y: 32, spread: 0.85, long: 0.7 });
+    c.ell(32, 44, 12, 13, 'B'); band(c, 44, 12, 13, [37, 42, 47, 52]); // a very plump abdomen
+    for (const [x, y] of [[21, 38], [19, 45], [21, 52]]) c.hair([[x, y], [x - 3, y + 1]], 'D'); // bristles
+    c.ell(32, 29, 6, 4.5, 'B'); c.ell(32, 21, 5.5, 4.5, 'D'); eyes(c, 28, 20, 1); // a small thorax and a flat head
+    c.line(29, 18, 21, 13, 'A', 2); c.line(21, 13, 21, 6, 'A', 1); c.line(21, 6, 25, 3, 'A', 1); // sickle jaws
+  } else if (k === 'moth') {
+    c.poly([[30, 24], [4, 30], [8, 50], [29, 44]], 'B'); c.poly([[29, 40], [12, 50], [18, 58], [30, 52]], 'L'); // forewing over hindwing
+    c.poly([[25, 30], [12, 34], [20, 42]], 'W'); // the clear window in the forewing
+    for (const [x, y] of [[9, 37], [15, 45]]) c.ell(x, y, 1.5, 1.5, 'A');
+    c.ell(32, 40, 4, 14, 'L'); band(c, 40, 4, 14, [34, 38, 42, 46]); // a furry body
+    c.ell(32, 24, 5, 4, 'D'); eyes(c, 28, 23, 1.5); antennae(c, { y: 20, len: 12, bend: 6, feather: true });
+  } else if (k === 'cicada') {
+    legs(c, { y: 30, spread: 0.8, long: 0.8 });
+    c.poly([[26, 24], [16, 30], [13, 46], [19, 62], [27, 57]], 'W'); // long glassy wings, folded back past the tail
+    c.line(25, 27, 17, 44, 'L', 1); c.line(17, 44, 21, 60, 'L', 1); c.line(24, 34, 23, 55, 'L', 1); // their veins
+    c.ell(32, 38, 7, 13, 'B'); band(c, 38, 7, 13, [34, 39, 44, 48]);
+    c.ell(32, 25, 10, 6, 'B'); c.ell(32, 17, 9, 4.5, 'D'); eyes(c, 26, 17, 2); // a broad head, the eyes set wide
+    c.ell(32, 14, 1.5, 1.5, 'A', false); antennae(c, { x: 29, y: 13, len: 4, bend: 2 });
+  } else if (k === 'skater') {
+    c.line(29, 26, 13, 11, 'D', 1); c.line(13, 11, 5, 13, 'D', 1); // short forelegs
+    c.line(28, 32, 7, 30, 'D', 1); c.line(7, 30, 1, 22, 'D', 1); // the middle legs it rows with
+    c.line(28, 38, 11, 52, 'D', 1); c.line(11, 52, 5, 61, 'D', 1); // hind legs, trailing
+    for (const [x, y] of [[4, 14], [2, 21], [6, 61]]) c.ell(x, y, 2.5, 1, 'W'); // dimples where its feet rest on the water
+    c.ell(32, 34, 5, 9, 'B'); c.ell(32, 33, 2.5, 6, 'L'); c.ell(32, 23, 4, 3.5, 'B'); eyes(c, 28, 22, 1.5);
+    antennae(c, { x: 30, y: 20, len: 8, bend: 5 });
+  } else if (k === 'roach') {
+    legs(c, { y: 34, spread: 1.05, long: 0.9 });
+    c.line(29, 12, 20, 2, 'D', 1); c.line(20, 2, 8, 6, 'D', 1); // long antennae
+    c.ell(32, 42, 12, 16, 'B'); band(c, 42, 12, 16, [33, 38, 43, 48, 53]); for (let y = 30; y < 57; y++) c.put(31.5, y, 'S'); // armoured segments, no wings
+    c.ell(32, 22, 11, 7, 'D'); c.ell(27, 21, 2, 1.5, 'B'); // the shield over its head, with the male's two bumps
+    c.ell(32, 14, 4, 3, 'D'); eyes(c, 29, 14, 1);
+  } else if (k === 'cricket') {
+    legs(c, { y: 36, spread: 0.8, long: 0.75, fore: 'raptor' });
+    c.line(26, 24, 17, 21, 'B', 4); c.poly([[18, 16], [10, 14], [8, 22], [12, 26], [18, 24]], 'A'); // shovel forelegs
+    c.line(30, 58, 26, 63, 'D', 1); // cerci
+    c.ell(32, 46, 7, 13, 'L'); band(c, 46, 7, 13, [42, 46, 50, 54]);
+    c.ell(32, 36, 6, 6, 'W'); c.ell(32, 25, 8, 8, 'B'); // short wings under a big collar
+    c.ell(32, 15, 5, 4, 'B'); eyes(c, 28, 14, 1.5); antennae(c, { y: 12, len: 7, bend: 4 });
   } else {
     KINDS.beetle(c, L);
   }
+}
+/** Bands across an oval body part, at the rows given: segment lines, kept inside its edge. */
+function band(c, cy, rx, ry, rows) {
+  for (const y of rows) { const w = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2)); for (let x = Math.ceil(33 - w); x <= 31; x++) c.sym(x, y, 'S'); }
 }
 
 function shade(g, R, part, etch) {

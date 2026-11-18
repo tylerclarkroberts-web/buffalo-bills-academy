@@ -8,6 +8,8 @@ import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
 import { mineDay, daySeed, dailyLayout } from './engine/daily-maze.js';
 import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
+import { roamRoute } from './engine/wild-roam.js';
+import { rarityOf, WILD_ODDS, RARE_TIER } from './engine/bug-types.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -484,15 +486,26 @@ export class Mines {
   }
 }
 
+export const WILDS_A_DAY = [4, 6]; // fewest and most
 function dailyWilds(day, shift) {
-  const maze = shiftMaze(shift), spots = [];
+  const maze = shiftMaze(shift), spots = [], pool = (p) => shift.pools.some((q) => q.x === p.x && q.y === p.y);
   for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
-    if (maze.dist[y][x] >= 6 && !shift.pools.some((p) => p.x === x && p.y === y)) spots.push({ x, y });
+    if (maze.dist[y][x] >= 6 && !pool({ x, y })) spots.push({ x, y });
   }
   const random = rng(daySeed(`wild:${day}`)), pick = (n) => Math.floor(random() * n);
-  const count = Math.min(1 + pick(3), spots.length), species = [...ROSTER], tier = shift.tier || 1;
-  return Array.from({ length: count }, (_, i) => ({
-    id: `${day}:${i + 1}`, species: species.splice(pick(species.length), 1)[0].id,
-    level: Math.min(MAX_LEVEL, tier + pick(tier + 1)), ...spots.splice(pick(spots.length), 1)[0],
-  }));
+  const count = Math.min(WILDS_A_DAY[0] + pick(WILDS_A_DAY[1] - WILDS_A_DAY[0] + 1), spots.length), tier = shift.tier || 1;
+  // First how rare (WILD_ODDS; a rare only on a day rough enough), then a species of that rarity not yet out today.
+  const left = Object.fromEntries([1, 2, 3].map((rarity) => [rarity, ROSTER.filter((bug) => rarityOf(bug.id) === rarity)]));
+  const species = () => {
+    const open = [1, 2, 3].filter((rarity) => left[rarity].length && (rarity < 3 || tier >= RARE_TIER));
+    let roll = random() * open.reduce((sum, rarity) => sum + WILD_ODDS[rarity], 0);
+    const rarity = open.find((r) => (roll -= WILD_ODDS[r]) < 0) ?? open.at(-1);
+    return left[rarity].splice(pick(left[rarity].length), 1)[0].id;
+  };
+  return Array.from({ length: count }, (_, i) => {
+    const wild = { id: `${day}:${i + 1}`, species: species(),
+      level: Math.min(MAX_LEVEL, tier + pick(tier + 1)), ...spots.splice(pick(spots.length), 1)[0] };
+    // it starts on its spot and roams from there: 6 to 12 tiles, keeping out of the acid and away from the lift
+    return { ...wild, path: roamRoute(wild, 6 + pick(7), (p) => maze.dist[p.y]?.[p.x] >= 3 && !pool(p), pick) };
+  });
 }

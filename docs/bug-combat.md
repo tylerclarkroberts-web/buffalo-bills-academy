@@ -10,13 +10,13 @@ A Barn starts with three stalls. Each holds an egg, a living bug or an unburied 
 - Food resets the starvation clock. An automatic feeder fills Fed, Mood and Clean, keeps all three full and pauses starvation while active, so the bug holds full condition. A feeder use adds 14 days, up to 60 days ahead. Toys do not protect against starvation.
 - The Auto-Mister, Cosy Heat Lamp and Golden Ambrosia are no longer sold, because each did less than a free button or the feeder. One already held still shows in its owner's store and still works: 40 Clean or Mood and 6 XP, or a full meal, a 10 HP lunch and seven feeder days.
 - By default, death occurs after 21 days without feeding, or 21 days after feeder expiry, with the server's minimum-life grace period. An empty Fed meter alone does not kill a bug. Visiting or reopening the room does not reset these clocks. A memorial occupies the Barn until buried.
-- Buying a consumable does not apply it; **Use** spends it. Toys and gear are permanent equipment. Toys improve active Play and earn daily XP rather than supplying passive Mood; battle gear comes in two kinds, and a bug wears one of each: an attack item adds at most 6% to the damage of its hits, a defense item takes at most 6% off each hit it receives (venom and trait damage are not hits), and both are drawn on the bug. Gear equipped before the split moved to its own slot the first time the server started. Item-specific amounts and cooldowns are shown in the shop and owned by `server/catalog/bug.js` and `server/shop.js`.
+- Buying a consumable does not apply it; **Use** spends it. Toys and gear are permanent equipment. Toys improve active Play and earn daily XP rather than supplying passive Mood; looks and battle gear are worn by one bug at a time: a piece bought for one bug is not on the others, so a second bug needs its own copy (up to one per possible stall) or the piece moved across, which takes it off the first. The store asks which bug when you keep more than one. Battle gear comes in two kinds, and a bug wears one of each: an attack item adds at most 6% to the damage of its hits, a defense item takes at most 6% off each hit it receives (venom and trait damage are not hits), and both are drawn on the bug. Gear equipped before the split moved to its own slot the first time the server started, and whatever a player's bug had on before gear became per-bug went to their partner. Item-specific amounts and cooldowns are shown in the shop and owned by `server/catalog/bug.js` and `server/shop.js`.
 
 ## Stalls and the partner
 
 - **Stalls.** Three to start. The fourth, fifth and sixth cost $1,500, $4,000 and $10,000 (`STALL_COSTS` in `server/barn.js`), bought from the last slot in the Barn's stall row. An egg, a bug and a memorial not yet laid to rest each take one.
 - **Wild bugs.** A bug jarred in the mine takes a free stall at full health and its original level. See [Acid Mines](acid-mines.md).
-- **Eggs.** An empty Barn gives you a 15% chance to find an egg each new shift. Any occupied stall takes you out of the roll, including an unhatched egg or an unburied memorial. Catch wild bugs to fill additional stalls.
+- **Eggs.** An empty Barn gives you a 15% chance to find an egg each new shift. Any occupied stall takes you out of the roll, including an unhatched egg or an unburied memorial. An egg is always one of the common species. Catch wild bugs to fill additional stalls.
 - **The partner.** The first bug is the partner; **Make partner** on any other hatched, living bug swaps them, except while one of your bugs is in a fight. The mine guide, mine battles, My House and store items (food, feeders, misters, toys) all act on the partner.
 - **A stalled bug lives five times slower** (`BENCH_SLOW`). Its needs decay at a fifth of the rate, it starves after 105 days instead of 21, and its 24-hour XP checkpoint comes every five days. It still needs looking after: care works on any bug, on the usual cooldowns, and gives the usual 12 XP. Swapping partners carries each bug's needs over as they are. A feeder's dates stay on the wall clock, so one bought for a bug that is later stalled covers fewer of its slow days.
 - **No empty partner's place.** When the partner is laid to rest, the first living stalled bug becomes the partner.
@@ -25,7 +25,7 @@ A Barn starts with three stalls. Each holds an egg, a living bug or an unburied 
 
 ### Parked for later: one-of-a-kind bugs
 
-Left out on purpose, as a possible expansion once a rare tier exists (wild bugs and the jar are in: see [Acid Mines](acid-mines.md)): a legendary species of which only one lives in the whole Academy at a time. Whoever jars it owns the only one, and it is up for grabs again when that owner releases or loses it.
+Left out on purpose, as a possible expansion (rare species, wild bugs and the jar are in: see Types below and [Acid Mines](acid-mines.md)): a legendary species of which only one lives in the whole Academy at a time. Whoever jars it owns the only one, and it is up for grabs again when that owner releases or loses it.
 
 ## Leveling and moves
 
@@ -40,9 +40,45 @@ Any hatched bug may bout, from **level 1**, and any bug still standing at the en
 
 The XP curve is `40 * (level - 1)^2`. Level and combat growth cap at 10; XP can still accumulate. Each level after 3 adds 3 HP and 2% base attack damage. Fight XP affects subsequent bouts, not the bout awarding it.
 
-Every fight, in the Barn or the mine, is the same turn-based fight in the ring. The bugs act in turn, one action every few seconds. Under the ring, a panel shows what your bug will do next; tap its moves to line up as many as three, and tap a lined-up move to take it back. Each move shows its chance to hit and the damage it would do right now (or the HP it would heal); the line under the buttons spells out the move you last touched, with its poison, guard or weakening and how long it rests after. A bug with nothing lined up, or whose lined-up move is still recovering, picks for itself, so a fight never waits on an owner: one who is away simply gets their bug's own picks, and a fight nobody is watching runs straight to its end. The saved `balanced`, `aggressive` or `defensive` stance steers those picks (a balanced bug mends when hurt and otherwise takes its specials in turn) and still shifts damage dealt and taken. Specials have cooldowns in the user's own turns. Each species also has one trait, drawn from a fact on its sheet (the Combat tab and the panel name it; `TRAIT` in `server/engine/bug-combat.js` holds the numbers). The Combat tab describes effects; move names do not grant hidden elemental or flying bonuses, and the fighting styles in replays (fliers, hoppers, chargers and so on) are animation only. Condition uses the lowest care need, and gear bonuses of the same kind do not stack: one attack item and one defense item count. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
+Every fight, in the Barn or the mine, is the same turn-based fight in the ring. The bugs act in turn, one action every few seconds. Under the ring, a panel shows what your bug will do next; tap its moves to line up as many as three, and tap a lined-up move to take it back. Each move shows its chance to hit and the damage it would do right now (or the HP it would heal); the line under the buttons spells out the move you last touched, with its poison, guard or weakening and how long it rests after. A bug with nothing lined up, or whose lined-up move is still recovering, picks for itself, so a fight never waits on an owner: one who is away simply gets their bug's own picks, and a fight nobody is watching runs straight to its end. The saved `balanced`, `aggressive` or `defensive` stance steers those picks (a balanced bug mends when hurt and otherwise takes its specials in turn) and still shifts damage dealt and taken. Specials have cooldowns in the user's own turns. Each species also has one trait, drawn from a fact on its sheet (the Combat tab and the panel name it; `TRAIT` in `server/engine/bug-combat.js` holds the numbers). The Combat tab describes effects; move names grant no hidden bonuses, and the fighting styles in replays (hoppers, chargers, rollers and so on) are animation only. A bug's type is a rule: see Types below. Condition uses the lowest care need, and gear bonuses of the same kind do not stack: one attack item and one defense item count. Initiative, accuracy and damage vary using server-seeded randomness. Piercing level-10 capstones have a 5% chance on a nonlethal hit to leave the target at 1 HP; an ordinary knockout stays a knockout. Criticals are recorded in the replay.
 
 Bugs grow slightly through level 10, with shared size and equipped-art scaling across the Barn, room, shop and bouts. Young forms become adults at level 3 where appropriate; some species retain a similar form. These are stylized life stages, not exact biology. Replays use the historical level/form rather than today's pet.
+
+## Types
+
+Every species has a type, taken from its fact sheet (`server/engine/bug-types.js`). There are nine, and each beats three of the others and loses to three. Flier, Brawler, Shell, Toxic, Ambush and Dazzle are the everyday six; Fire, Sonic and Water each beat two of those and one another in a ring. Fifty-two species, five to seven in each type.
+
+| Type | Beats | Loses to |
+| --- | --- | --- |
+| Flier | Brawler, Toxic, Fire | Ambush, Dazzle, Sonic |
+| Brawler | Shell, Dazzle, Fire | Flier, Toxic, Water |
+| Shell | Toxic, Dazzle, Sonic | Brawler, Ambush, Fire |
+| Toxic | Ambush, Brawler, Sonic | Shell, Flier, Water |
+| Ambush | Flier, Shell, Water | Toxic, Dazzle, Fire |
+| Dazzle | Ambush, Flier, Water | Brawler, Shell, Sonic |
+| Fire | Shell, Ambush, Sonic | Flier, Brawler, Water |
+| Sonic | Flier, Dazzle, Water | Shell, Toxic, Fire |
+| Water | Brawler, Toxic, Fire | Ambush, Dazzle, Sonic |
+
+A bug's hits land 10% harder on a type it beats and 8% softer on a type that beats it (`EDGE`). Only hits: venom, a bombardier's pop, a stick insect's spray, an exploding ant's burst and healing are untouched, as with gear. Fights are close, so that is a lot. Over every pairing at equal level, with both bugs left to themselves, the type with the edge wins about four fights in five, roughly what two levels are worth, and each type's record over all 52 species stays within a few points of even (`test/bug-types.test.js`). The line counts the edge, so stakes and win XP follow it. One exception, from its trait: there is no edge either way between a fire ant and a Water bug, because fire ants raft.
+
+Each type also gives every bug in it one perk, whatever its species or level (`PERK`):
+
+| Type | Perk |
+| --- | --- |
+| Flier | Quick: attacks are 6% less likely to hit it. |
+| Brawler | Heavy: every hit it lands is 5% harder. |
+| Shell | Armour: takes 9% less from every hit that is not a pierce. |
+| Toxic | Taint: every hit it lands poisons a target that is not poisoned already, 2 a turn for two turns. Its venom moves still do their own, stronger. |
+| Ambush | First strike: its first attack cannot miss and hits 40% harder. |
+| Dazzle | Startle: the first time it is left standing below half health it flashes, and the opponent's next attack does 50% less. |
+| Fire | Flare-up: below half health, every hit it lands is 10% harder. |
+| Sonic | Loud: a guard blocks 35% less of its hits. |
+| Water | Dive: after a hit lands on it, the next attack against it is 6% less likely to hit. |
+
+The numbers were set by fighting every pairing at levels 1, 5 and 10 until each type's record sat within about five points of even, with the edge still worth 77% to 78%. Ambush is the low one at level 10, about 45%: more of the newer species are Toxic and Dazzle, which beat it. The move panel's odds count the perks: a Toxic bug's strike shows its poison, an Ambush bug's first strike shows 100%.
+
+A bug's type is on its card (the Barn's Card tab, with its moves, trait and what it beats), beside its name in the stall, the ring's roster and a fight, and in the mine's line when a wild bug is first seen. Each species is also Common, Uncommon or Rare (`rarityOf`). The uncommon ones are those whose own sheet says they are rare, threatened, barely known or a record holder. Eight are Rare, with one more stat point than everything else (10, not 9): the Asian Bombardier Beetle, Shrill Thorntree Cicada, Sea Skater, Diabolical Ironclad Beetle, New Zealand Glowworm, Black Beauty Stick Insect, Emerald Cockroach Wasp and Exploding Ant. An egg is always a common; uncommon and rare bugs are only met wild, and a rare only on a rough day (see [Acid Mines](acid-mines.md)).
 
 ## The ring, challenges and open bouts
 

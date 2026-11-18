@@ -146,13 +146,13 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
     assert.deepEqual(round.hp, [...guestResult.rounds[i].hp].reverse());
     assert.equal(round.line, guestResult.rounds[i].line);
   });
-  assert.equal(host.pen.xp, xpFor(4) + 10); assert.equal(host.pen.level, 4);
+  assert.equal(host.pen.xp, xpFor(4) - 10 + earned(host.pen)); assert.equal(host.pen.level, 4); // win or lose (the two species are random, and one type may beat the other), a fight's XP takes it past level 4
   assert.equal(hostResult.you.level, 3); assert.equal(hostResult.levelBefore, 3); assert.equal(hostResult.levelAfter, 4);
   assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + earned(joined.body.pen));
   // a level 10 against a level 3 is as lopsided as the line goes: the favourite puts up nine times the stake for a sliver of bonus XP
   assert.deepEqual([hostResult.line, guestResult.line], [0.1, 0.9]);
   assert.deepEqual([hostResult.stake, guestResult.stake, guestResult.against], [100, riskFor(100, 0.1), 100]);
-  assert.equal(guestResult.xpEarned, BOUT_XP + 2);
+  assert.equal(guestResult.xpEarned, BOUT_XP + (guestResult.result === 'won' ? 2 : 0));
   assert.equal(joined.body.pen.xpNext, null);
   for (const [player, result] of [[owner, host], [other, joined.body]]) {
     assert.equal(result.pen.lastBout.xpEarned, earned(result.pen));
@@ -161,8 +161,8 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
     assert.equal(bout.net, expectedNet);
     assert.equal(bout.payout, expectedNet + bout.stake);
     assert.equal(balance(f, player), 1000 + expectedNet);
-    // the loser fainted: Bug Center first
-    if (result.pen.lastBout.result === 'lost') assert.equal((await post(player)).status, 409);
+    // a loser that was knocked out: Bug Center first
+    if (result.pen.fainted) assert.equal((await post(player)).status, 409);
   }
   assert.equal(balance(f, owner) + balance(f, other), 2000);
   const savedPlayers = structuredClone(f.service.store.players), savedPens = structuredClone(barn.doc.pens);
@@ -554,7 +554,7 @@ test('accepting a challenge takes both stakes then, settles once and puts the fi
   // Either side short of the stake, or the challenger's bug fainted since.
   f.service.getPlayer(owner.id).bankroll = 50;
   const broke = await accept(other, id); assert.equal(broke.status, 409); assert.match(broke.body.error, /BugOwner can no longer cover/);
-  f.service.getPlayer(owner.id).bankroll = 1000; f.service.getPlayer(other.id).bankroll = 50;
+  f.service.getPlayer(owner.id).bankroll = 1000; f.service.getPlayer(other.id).bankroll = 5; // less than the line can ask against $100 ($11 for a 90% favourite's opponent): the two species are random
   assert.equal((await accept(other, id)).status, 402);
   f.service.getPlayer(other.id).bankroll = 1000;
   barn.doc.pens[owner.id].faintedAt = clock.now; barn.save();

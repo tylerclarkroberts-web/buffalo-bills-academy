@@ -82,7 +82,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   pvpSweep.unref?.();
   const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
   avatars.wearOf = (id) => shop.wearOf(id);
-  barn.styleOf = (id) => shop.bugStyle(id);
+  barn.styleOf = (id, bug) => shop.bugStyle(id, bug);
   service.shop = shop;
   // v39 slots. SLOTS_TEST_FORCE (toot|stash|free) is honoured only with dev login, for the e2e recording.
   const slots = new Slots({ store: service.store, accounts, now: service.now, force: barnTest && ['toot', 'stash', 'free'].includes(env.SLOTS_TEST_FORCE) ? env.SLOTS_TEST_FORCE : null });
@@ -446,8 +446,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
   if (barnTest) api.post('/dev/slots-force', needPlayer, wrap((req) => { const f = String(req.body?.force || ''); slots.force = ['toot', 'stash', 'free'].includes(f) ? f : null; slots.lastAt.clear(); return { force: slots.force }; }));
   api.get('/shop', needPlayer, wrap((req) => shop.view(req.player)));
-  api.post('/shop/buy', needPlayer, wrap((req) => shop.buy(req.player, String(req.body?.id || ''), { confirm: req.body?.confirm === true })));
-  api.post('/shop/equip', needPlayer, wrap((req) => shop.equip(req.player, { id: req.body?.id == null ? null : String(req.body.id), slot: String(req.body?.slot || '') })));
+  api.post('/shop/buy', needPlayer, wrap((req) => shop.buy(req.player, String(req.body?.id || ''), { confirm: req.body?.confirm === true, bug: req.body?.bug ?? null })));
+  api.post('/shop/equip', needPlayer, wrap((req) => shop.equip(req.player, { id: req.body?.id == null ? null : String(req.body.id), slot: String(req.body?.slot || ''), bug: req.body?.bug ?? null })));
   api.post('/shop/use', needPlayer, wrap((req) => shop.use(req.player, String(req.body?.id || ''))));
   api.post('/shop/fit', needPlayer, wrap((req) => { const b = req.body || {}; return shop.setFit(req.player, { id: String(b.id || ''), x: b.x, y: b.y, s: b.s, reset: b.reset === true }); }));
   // v36: gags (formerly pranks). The old /pranks routes stay as aliases for clients still open from before.

@@ -3,6 +3,7 @@
 // running the fight or awarding XP again.
 import { BY_ID } from './creatures.js';
 import { battleFor, combatStats, movesFor, STANCES, TRAIT } from './bug-combat.js';
+import { typeEdge, typeOf, PERK } from './bug-types.js';
 
 export const BOUT_HP = 100;
 export const MAX_ROUNDS = 32; // actions; venom and a bombardier's pop can add events around an action
@@ -23,12 +24,13 @@ export function startBout(a, b, seed) {
   const side = [a, b].map(c => {
     const battle = battleFor(c.species, c.level, c.legacyAbilities, c.battle), stats = combatStats(c.level), stance = STANCES[battle.stance];
     // `plain` (tests, balance runs) fights without the species trait
-    return { c, t: c.plain ? null : c.species, st: BY_ID[c.species].stats, battle, stats, stance, moves: movesFor(c.species, c.level, c.legacyAbilities),
+    return { c, t: c.plain ? null : c.species, ty: c.plain ? null : typeOf(c.species), st: BY_ID[c.species].stats, battle, stats, stance, moves: movesFor(c.species, c.level, c.legacyAbilities),
       boost: stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage,
       ward: 1 - Math.max(0, Math.min(GEAR_CAP, Number(c.defense) || 0)), // defense gear: what is left of each hit it takes
       lunch: Number(c.lunch?.heal) > 0 ? { name: String(c.lunch.name || 'packed lunch'), heal: Math.min(LUNCH_CAP, Math.round(Number(c.lunch.heal))) } : null, ate: false,
       turn: 0, readyAt: {}, usedAt: {}, guard: 0, guardLeft: 0, weaken: 1, venom: null, lastSpecial: null,
-      attacks: 0, streak: 0, kick: false, blind: false, skip: false, damaged: false, mask: true, still: true, popped: false, regen: 0 };
+      attacks: 0, streak: 0, kick: false, blind: false, skip: false, damaged: false, mask: true, still: true, popped: false, flashed: false, spots: 0, regen: 0,
+      met: false, grip: false, sung: false, under: false, moulted: false, again: false, jumped: false, landed: 0, sprays: 0, burst: false };
   });
   for (const s of side) if (s.t === 'bocydium') { const k = ['atk', 'def', 'spd'][Math.floor(R() * 3)]; s.st = { ...s.st, [k]: s.st[k] + 1 }; s.globes = k; }
   // Fighter snapshots can specify a starting health percentage; otherwise they enter at full HP.
@@ -64,22 +66,32 @@ export function cooldowns(S, i) {
 }
 
 // The three sums below only read the fight. stepBout rolls against them; odds() shows them to the owner first.
-/** The chance side `by`'s attack lands, as things stand. */
-function aim(S, by, move) {
+/** The chance side `by`'s attack lands, as things stand, on its `attacks`-th attack. */
+function aim(S, by, move, attacks) {
   const foe = 1 - by, s = S.side[by], target = S.side[foe];
   let spd = (target.st.spd - 3) * 0.03; if (s.t === 'polyphylla') spd = Math.min(0, spd) - TRAIT.fan;
   let acc = move.accuracy - spd;
   if (target.t === 'nemoptera' && !target.damaged) acc -= TRAIT.calm;
   if (s.blind) acc -= TRAIT.blind;
+  if (target.ty === 'flier') acc -= PERK.quick;
+  if (target.under) acc -= PERK.dive; // a Water bug that was just hit has gone under
+  if (target.t === 'micronecta') acc -= TRAIT.tiny;
+  if (target.t === 'halobates' && S.hp[foe] > S.maxHp[foe] / 2) acc -= TRAIT.skate;
+  if (target.t === 'notonecta' && !target.met) acc -= TRAIT.upside;
+  if (target.t === 'bertholdia' && attacks % 2 === 0) acc -= TRAIT.jam; // it clicks in bursts: every other attack
+  if (s.t === 'gyrinus') acc += TRAIT.eyes;
+  if (s.t === 'melanophila' && S.hp[foe] < S.maxHp[foe] / 2) acc += TRAIT.heat;
+  if (s.t === 'dytiscus' && s.grip) acc += TRAIT.grip;
+  if (s.t === 'myrmeleon' && target.attacks >= 3) acc += TRAIT.pit; // three attacks in, the opponent has slid into the pit
   if (target.t === 'ceroplophana' && S.hp[foe] < S.maxHp[foe] / 4) acc *= 1 - TRAIT.vanish;
-  return acc;
+  return s.ty === 'ambush' && attacks === 1 ? 1 : acc; // an Ambush bug's first strike cannot miss
 }
 /** What side `by`'s attack does at a given roll (0.8 up to 1.25), on its `attacks`-th attack and `turnNo`-th turn. */
 function blow(S, by, move, roll, attacks, turnNo) {
   const { side, hp, maxHp } = S, foe = 1 - by, s = side[by], target = side[foe];
   const pierce = move.effect === 'pierce', shell = target.t === 'pachyrhynchus';
   const armour = pierce && !shell ? 1 : 1 - (target.st.def - 3) * 0.04;
-  const guard = 1 - target.guard * (!pierce || shell ? 1 : s.t === 'pyrops' ? 0 : 0.5);
+  const guard = 1 - target.guard * (!pierce || shell ? 1 : s.t === 'pyrops' ? 0 : 0.5) * (s.ty === 'sonic' ? 1 - PERK.loud : 1); // a guard does not block sound
   const mine = hp[by] / maxHp[by], theirs = hp[foe] / maxHp[foe];
   let mult = 1;
   if (s.t === 'macrodontia' && turnNo <= 3) mult *= 1 + TRAIT.front;
@@ -93,9 +105,28 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
   if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
   if (shell && pierce) mult *= 1 - TRAIT.shell;
-  return Math.min(hp[foe], Math.max(1, Math.round(move.power * roll * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * target.ward * guard * s.weaken * mult)));
+  // its type beats the target's, or the other way round: hits only, like gear. A fire ant's raft floats: Water has no edge on it
+  if (!((s.t === 'solenopsis' && target.ty === 'water') || (target.t === 'solenopsis' && s.ty === 'water'))) mult *= typeEdge(s.t, target.t);
+  if (s.ty === 'fire' && mine < 0.5) mult *= 1 + PERK.flare;
+  if (s.t === 'gryllotalpa' && move.id !== 'basic' && !s.sung) mult *= 1 + TRAIT.horn;
+  if (target.t === 'gromphadorhina' && attacks <= 3) mult *= 1 - TRAIT.hiss; // one hiss each
+  if (target.t === 'solenopsis' && theirs > 0.5) mult *= 1 - TRAIT.raft;
+  if (target.t === 'arachnocampa') mult *= 1 - TRAIT.thread * Math.min(30, attacks - 1); // one more thread for every attack so far
+  if (target.t === 'odontomachus' && !target.jumped && theirs < 0.5) mult *= 1 - TRAIT.jump; // it flings itself clear, once
+  if (target.t === 'dasymutilla' && s.venom) mult *= 1 - TRAIT.pain;
+  if (s.t === 'colobopsis') mult *= 1 - TRAIT.minor; // a minor worker: built to burst, not to bite
+  if (target.t === 'ampulex' && target.landed >= 2) mult *= 1 - TRAIT.sting * (s.t === 'gromphadorhina' ? 2 : 1); // stung twice, it stops trying; a cockroach more so
+  if (s.ty === 'brawler') mult *= 1 + PERK.heavy;
+  if (s.ty === 'ambush' && attacks === 1) mult *= 1 + PERK.strike;
+  if (target.ty === 'shell' && !pierce) mult *= 1 - PERK.armour;
+  mult *= 1 - s.spots; // a Dazzle bug flashed at it: its next attack is off
+  const dmg = Math.max(1, Math.round(move.power * roll * s.boost * (1 + (s.st.atk - 3) * 0.04) * armour * target.stance.taken * target.ward * guard * s.weaken * mult));
+  return Math.min(hp[foe], dmg, target.t === 'phloeodes' ? Math.round(maxHp[foe] * TRAIT.iron) : Infinity); // an ironclad beetle: no single hit gets more than a share of its health
 }
 const scalesOf = (target) => (target.t === 'eupholus' ? 1 - TRAIT.scales : 1); // venom and weaken half flake off
+/** Any hit a Toxic bug lands poisons a target that is not poisoned already (its venom moves do their own, stronger). */
+const taints = (s, target, move) => s.ty === 'toxic' && move.effect !== 'venom' && move.effect !== 'heal' && !target.venom;
+const TAINT = { venom: PERK.toxin, duration: 2 };
 const venomOf = (s, target, move) => Math.max(1, Math.round(move.venom * s.stats.damageMultiplier * scalesOf(target) * (s.t === 'graphocephala' ? 1 + TRAIT.xylella : 1)));
 /**
  * For the move panel: how each of side `i`'s unlocked moves would go if used on its next action, as things stand
@@ -106,9 +137,9 @@ export function odds(S, i) {
   const s = S.side[i], target = S.side[1 - i];
   return Object.fromEntries(s.moves.filter(move => move.unlocked).map(move => {
     if (move.effect === 'heal') return [move.id, { heal: Math.min(S.maxHp[i] - S.hp[i], Math.round(move.heal * s.stats.damageMultiplier)) }];
-    return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
+    return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move, s.attacks + 1))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
       ...(move.criticalChance ? { crit: move.criticalChance } : {}),
-      ...(move.effect === 'venom' ? { venom: [venomOf(s, target, move), move.duration] } : {}),
+      ...(move.effect === 'venom' ? { venom: [venomOf(s, target, move), move.duration] } : taints(s, target, move) ? { venom: [venomOf(s, target, TAINT), TAINT.duration] } : {}),
       ...(move.effect === 'weaken' ? { weaken: (1 - move.weaken) * scalesOf(target) } : {}),
       ...(move.effect === 'guard' ? { guard: move.guard } : {}) }];
   }));
@@ -119,20 +150,40 @@ export function stepBout(S, choice) {
   if (S.over) return [];
   const { side, hp, maxHp, R, rounds } = S, from = rounds.length, by = S.by, foe = 1 - by, s = side[by], target = side[foe];
   const turn = ++S.turn; s.turn++;
-  let stood = false;
+  let stood = '', flash = -1; // `stood`: how a bug that should have gone down is still there, for the line
   const hurt = (i, n) => {
     let d = Math.min(hp[i], n);
-    if (d >= hp[i] && side[i].t === 'deroplatys' && side[i].still && hp[i] > maxHp[i] * TRAIT.still) { d = hp[i] - 1; side[i].still = false; stood = true; }
+    if (d >= hp[i] && side[i].t === 'deroplatys' && side[i].still && hp[i] > maxHp[i] * TRAIT.still) { d = hp[i] - 1; side[i].still = false; stood = 'lies still'; }
+    if (d >= hp[i] && side[i].t === 'pheropsophus' && side[i].still) { side[i].still = false; if (R() < TRAIT.vomit) { d = hp[i] - 1; stood = 'comes back up'; } } // the first knockout blow only
+    if (d >= hp[i] && side[i].t === 'colobopsis' && !side[i].burst) { d = hp[i] - 1; side[i].burst = 'due'; stood = 'hangs on'; } // an exploding ant goes off before it goes down: see burst
     hp[i] -= d; if (d > 0) side[i].damaged = true;
+    // a Dazzle bug's startle: the first time it is left standing below half, the other bug's next attack is off
+    if (side[i].ty === 'dazzle' && !side[i].flashed && hp[i] > 0 && hp[i] < maxHp[i] / 2) { side[i].flashed = true; side[1 - i].spots = PERK.startle; flash = i; }
+    else if (side[i].t === 'photuris' && side[i].flashed && !side[i].again && hp[i] > 0 && hp[i] < maxHp[i] / 4) { side[i].again = true; side[1 - i].spots = TRAIT.encore; flash = i; } // a Photuris has a second signal
     return d;
   };
+  /** For the line of whatever just hurt it: said once. */
+  const spots = () => { if (flash < 0) return ''; const i = flash; flash = -1; return ` ${side[i].c.name} flashes its colours and ${side[1 - i].c.name} is left seeing spots.`; };
   const pop = (i) => {
     const q = side[i];
     if (q.t !== 'brachinus' || q.popped || hp[i] <= 0 || hp[i] >= maxHp[i] / 2) return;
     q.popped = true; const dmg = hurt(1 - i, TRAIT.pop);
     rounds.push({ by: i, type: 'venom', pop: true, effect: 'pierce', moveId: 'trait', ability: 'Firing Chamber', tier: 2, hit: true, dmg, hp: [...hp], turn,
-      line: `${q.c.name} is below half and fires its chamber: ${dmg} damage.` });
+      line: `${q.c.name} is below half and fires its chamber: ${dmg} damage.${spots()}` });
   };
+  // An exploding ant's last act, once a fight: the blow that would have knocked it out sets it off instead (hurt, above, holds it at 1 HP until this
+  // runs). If the burst finishes the opponent the ant stays standing on that 1 HP; if not, it goes down after all.
+  const burst = (i) => {
+    const q = side[i];
+    if (q.burst !== 'due') return;
+    q.burst = true;
+    if (hp[1 - i] <= 0) return; // nothing left to burst at
+    const dmg = hurt(1 - i, TRAIT.goo), won = hp[1 - i] <= 0;
+    if (!won) hp[i] = 0;
+    rounds.push({ by: i, type: 'venom', pop: true, effect: 'pierce', moveId: 'trait', ability: 'Yellow Goo', tier: 2, hit: true, dmg, hp: [...hp], turn,
+      line: `${q.c.name} bursts instead of going down: ${dmg} damage. ${won ? `That finishes ${side[1 - i].c.name}.` : 'It was not enough.'}${spots()}` });
+  };
+  const bursts = () => { for (const i of [foe, by, foe]) burst(i); }; // either corner, and an ant set off by the other ant's burst
   // A packed lunch is eaten once, the first time its bug is left standing below half health. It costs no turn.
   const snack = (i) => {
     const q = side[i];
@@ -141,8 +192,17 @@ export function stepBout(S, choice) {
     rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'lunch', ability: q.lunch.name, tier: 0, hit: true, dmg: 0, healed, hp: [...hp], turn,
       line: `${q.c.name} is below half and stops to eat its ${q.lunch.name}: ${healed} HP back.` });
   };
+  // A firebug's extra moult: once, the first time it is left standing below a third of its health. It costs no turn.
+  const moult = (i) => {
+    const q = side[i];
+    if (q.t !== 'pyrrhocoris' || q.moulted || hp[i] <= 0 || hp[i] >= maxHp[i] / 3) return;
+    q.moulted = true; const healed = Math.min(maxHp[i] - hp[i], TRAIT.moult); hp[i] += healed;
+    rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'trait', ability: 'Extra Moult', tier: 0, hit: true, dmg: 0, healed, hp: [...hp], turn,
+      line: `${q.c.name} is below a third and moults: ${healed} HP back.` });
+  };
+  const rest = () => { for (const i of [by, foe]) { snack(i); moult(i); } };
   const done = () => {
-    snack(by); snack(foe);
+    rest();
     S.by = foe;
     if (hp[0] <= 0 || hp[1] <= 0 || S.turn >= MAX_ROUNDS) { const score = hp[0] * maxHp[1] - hp[1] * maxHp[0]; S.over = true; S.winner = score === 0 ? null : score > 0 ? 0 : 1; }
     return rounds.slice(from);
@@ -151,49 +211,57 @@ export function stepBout(S, choice) {
   if (s.venom) {
     const dmg = hurt(by, s.venom.damage);
     rounds.push({ by: foe, type: 'venom', effect: 'venom', moveId: s.venom.moveId, ability: s.venom.name, tier: s.venom.tier, hit: true, dmg, hp: [...hp], turn,
-      line: `${s.c.name} takes ${dmg} venom damage${stood ? ' and lies still at 1 HP' : ''}.` });
+      line: `${s.c.name} takes ${dmg} venom damage${stood ? ` and ${stood} at 1 HP` : ''}.${spots()}` });
     if (--s.venom.left === 0) s.venom = null;
-    pop(by); snack(by); snack(foe);
+    pop(by); bursts(); rest();
     if (hp[0] <= 0 || hp[1] <= 0) return done();
   }
   if (s.t === 'onymacris') { s.regen += TRAIT.regen; const n = Math.floor(s.regen); s.regen -= n; hp[by] = Math.min(maxHp[by], hp[by] + n); }
   if (s.skip) {
-    s.skip = false;
+    const why = s.skip === 'din' ? 'cannot hear a thing' : 'is still climbing back onto the leaf'; s.skip = false;
     rounds.push({ by, type: 'move', skipped: true, effect: 'strike', moveId: 'basic', ability: s.moves[0].name, tier: 0, hit: false, critical: false, dmg: 0, healed: 0, hp: [...hp], turn, ownTurn: s.turn,
-      line: `${s.c.name} is still climbing back onto the leaf and loses the turn.` });
+      line: `${s.c.name} ${why} and loses the turn.` });
     return done();
   }
 
   const move = (choice && s.moves.find(m => m.id === choice && usable(s, m, s.turn))) || pickFor(S, by, s.turn);
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
-  let dmg = 0, healed = 0, hit = true, critical = false, detail = '';
+  let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false;
   if (move.effect === 'heal') {
     healed = Math.min(maxHp[by] - hp[by], Math.round(move.heal * s.stats.damageMultiplier)); hp[by] += healed;
     detail = `recovers ${healed} HP`;
     if (s.t === 'helicopsyche') { s.guard = TRAIT.caseGuard; s.guardLeft = 1; detail += ' and coils into its case'; }
   } else {
     s.attacks++;
-    hit = R() < aim(S, by, move); s.blind = false;
+    hit = R() < aim(S, by, move, s.attacks); s.blind = false; target.met = true; s.grip = hit;
+    if (target.ty === 'water') target.under = hit;
     if (hit) {
       const masked = target.t === 'acanthaspis' && target.mask;
       let roll = 0.8 + R() * 0.45; if (s.t === 'chrysochroa') roll = Math.max(roll, 0.8 + R() * 0.45);
+      const leaps = target.t === 'odontomachus' && !target.jumped && hp[foe] < maxHp[foe] / 2;
       dmg = blow(S, by, move, roll, s.attacks, s.turn);
       s.kick = false; if (masked) target.mask = false;
-      if (move.criticalChance && dmg < hp[foe] && R() < move.criticalChance) {
+      if (move.criticalChance && dmg < hp[foe] && target.t !== 'phloeodes' && R() < move.criticalChance) {
         critical = true; dmg = hp[foe] - 1;
         detail = `; critical hit leaves ${target.c.name} at 1 HP`;
       }
-      dmg = hurt(foe, dmg); s.streak++;
+      dmg = hurt(foe, dmg); s.streak++; s.landed++;
       if (masked) detail += `; ${target.c.name}'s corpse mask takes some of it`;
-      if (stood) detail += `; ${target.c.name} lies still at 1 HP`;
+      if (stood) detail += `; ${target.c.name} ${stood} at 1 HP`;
+      if (leaps) { target.jumped = true; detail += `; ${target.c.name} flings itself clear of most of it`; }
+      if (target.t === 'peruphasma' && target.sprays < 2 && hp[foe] > 0) { target.sprays++; detail += `; ${target.c.name} sprays it in the eyes for ${hurt(by, TRAIT.spray)}`; }
       if (move.effect === 'venom') {
         target.venom = { damage: venomOf(s, target, move), left: move.duration, name: move.name, moveId: move.id, tier: move.tier };
         detail += ' and poisons for two turns';
         if (s.t === 'platymeris') target.blind = true;
       } else if (move.effect === 'weaken') { target.weaken = 1 - (1 - move.weaken) * scalesOf(target); detail += ' and weakens the next attack'; }
+      if (taints(s, target, move) && hp[foe] > 0) { target.venom = { damage: venomOf(s, target, TAINT), left: TAINT.duration, name: move.name, moveId: move.id, tier: move.tier }; poisons = true; detail += ' and poisons for two turns'; }
       if (s.t === 'trachelophorus' && hp[foe] > 0 && R() < TRAIT.stun) { target.skip = true; detail += `; ${target.c.name} is knocked off the leaf`; }
+      if (s.t === 'brevisana' && hp[foe] > 0 && R() < TRAIT.din) { target.skip = 'din'; detail += `; ${target.c.name} is deafened`; }
       if (s.t === 'pseudocreobotra') hp[by] = Math.min(maxHp[by], hp[by] + TRAIT.lure);
     } else { s.streak = 0; if (target.t === 'sagra') target.kick = true; }
+    if (flash !== foe) s.spots = 0; // the spots clear with this attack, hit or miss, unless this is the blow that set the flash off
+    if (move.id !== 'basic') s.sung = true; // a mole cricket's tuned burrow carries its first special only
     // protection/debuff is spent on the next attack, including a miss (a thorn bug's guard lingers for one more)
     if (target.guard) target.guard = --target.guardLeft <= 0 ? 0 : TRAIT.linger;
     s.weaken = 1;
@@ -201,9 +269,9 @@ export function stepBout(S, choice) {
     if (move.effect === 'guard') { s.guard = move.guard; s.guardLeft = s.t === 'umbonia' ? 2 : 1; detail += ' and raises a guard'; }
     detail = hit ? `deals ${dmg} damage${detail}` : `misses${move.effect === 'guard' ? ' but raises a guard' : ''}`;
   }
-  rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn,
-    line: `${s.c.name} uses ${move.name}: ${detail}.` });
-  pop(foe);
+  rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
+    line: `${s.c.name} uses ${move.name}: ${detail}.${spots()}` });
+  pop(foe); bursts();
   return done();
 }
 

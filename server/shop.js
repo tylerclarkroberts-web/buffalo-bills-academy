@@ -9,7 +9,7 @@
 import { GameError } from './engine/game.js';
 import { CATALOG, ITEM, TABS, AVATAR_SLOTS, BUG_SLOTS, GAG_RENAME, TOBACCO_NOTICE } from './catalog/index.js';
 import { GEAR_CAP } from './engine/bout.js';
-import { BOOST_XP } from './barn.js';
+import { BOOST_XP, STALLS, STALL_COSTS, idOf } from './barn.js';
 
 export const CONFIRM_OVER = 1000;          // purchases above this need { confirm: true }
 export const MAX_STACK = 20;               // consumables you can hold of one kind
@@ -24,6 +24,10 @@ export const SMOKE = { gapMs: 60e3, keepMs: 24 * 3600e3, maxAhead: 5, showMs: 90
 export const SHOW = { gapMs: 60e3, showMs: 6000 };
 export const FIT = { min: 0.4, max: 2.5, move: 24 };   // fit editor: size 40%..250%, nudge +-24 head units
 const FIT_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'acc']; // not 'skin' (a shirt colour has nothing to place)
+/** What one bug wears: its looks and its battle gear. The toy is not here: it sits in the terrarium, with the partner. */
+export const WORN = BUG_SLOTS.filter((s) => s !== 'toy');
+/** Copies of a worn bug item you can hold: one for every stall a barn can have. */
+export const BUG_COPIES = STALLS + STALL_COSTS.length;
 const CONSUMABLE = (x) => !!x.use;
 /** One-time-use items (gags, tobacco): you can hold at most one of each, and using it uses it up. */
 export const ONCE = (x) => !!x?.once;
@@ -66,12 +70,20 @@ export class Shop {
       if ('noPranks' in iv) { iv.noGags = !!iv.noPranks; delete iv.noPranks; dirty = true; }
       // an equipped item sits in the slot it is sold for: defense gear used to share the one battle gear slot
       for (const [slot, id] of Object.entries(iv.eq)) { const to = ITEM[id]?.slot; if (to && to !== slot) { if (!iv.eq[to]) iv.eq[to] = id; delete iv.eq[slot]; dirty = true; } }
+      // looks and gear are worn by one bug: what "your bug" had on before stalls goes on the partner (owned either way)
+      const partner = this.barn?.doc?.pens?.[pid];
+      for (const slot of WORN) if (iv.eq[slot]) { if (partner) (((iv.bugEq ||= {})[idOf(partner)] ||= {})[slot] ??= iv.eq[slot]); delete iv.eq[slot]; dirty = true; }
     }
     if (dirty) this.save();
   }
   save() { this.store.saveDoc('shop', this.doc); }
-  inv(pid) { this.settleJar(pid); const iv = (this.doc.inv[pid] ||= { own: {}, eq: {}, used: {}, fit: {}, noGags: false }); iv.fit ||= {}; return iv; }
+  inv(pid) { this.settleJar(pid); const iv = (this.doc.inv[pid] ||= { own: {}, eq: {}, used: {}, fit: {}, noGags: false }); iv.fit ||= {}; iv.bugEq ||= {}; return iv; }
   hatched(pid) { return this.barn.view(pid).pen?.stage === 'creature'; }
+  /** What each living bug has on, by bug id: { slot: item id }. A buried bug's things are back in the bag. */
+  worn(pid) {
+    const iv = this.doc.inv[pid], bugs = (this.barn?.bugs?.(pid) || []).filter((pen) => pen.stage === 'creature').map(idOf);
+    return Object.fromEntries(bugs.map((id) => [id, Object.fromEntries(Object.entries(iv?.bugEq?.[id] || {}).filter(([, item]) => iv.own[item]))]));
+  }
 
   /** What the store page needs. Bug tabs and items only once your egg has hatched. */
   view(p) {
@@ -82,9 +94,9 @@ export class Shop {
     this.accounts.ensure(p);
     // who holds each one-of-a-kind item (a name only; hidden and departed owners stay anonymous)
     const taken = Object.fromEntries(Object.entries(this.doc.unique).map(([id, pid]) => { const o = this.store.players?.[pid]; return [id, o && !o.hidden ? o.name : 'somebody']; }));
-    return { tabs, items, taken, own: iv.own, eq: iv.eq, hatched, bankroll: p.bankroll, noGags: !!iv.noGags, noSmoke: !!iv.noSmoke, tobaccoNotice: TOBACCO_NOTICE, confirmOver: CONFIRM_OVER, serverNow: this.now(), month, used: iv.used, fit: iv.fit, fitLimits: FIT };
+    return { tabs, items, taken, own: iv.own, eq: iv.eq, bugEq: this.worn(p.id), bugCopies: BUG_COPIES, hatched, bankroll: p.bankroll, noGags: !!iv.noGags, noSmoke: !!iv.noSmoke, tobaccoNotice: TOBACCO_NOTICE, confirmOver: CONFIRM_OVER, serverNow: this.now(), month, used: iv.used, fit: iv.fit, fitLimits: FIT };
   }
-  buy(p, id, { confirm = false } = {}) {
+  buy(p, id, { confirm = false, bug = null } = {}) {
     const x = ITEM[id];
     if (!x) throw new GameError('The shopkeeper has never heard of that.', 404);
     if (x.award) throw new GameError('That one has to be earned.', 409);
@@ -93,6 +105,7 @@ export class Shop {
     if (x.kind === 'bug' && !this.hatched(p.id)) throw new GameError('Bug supplies are for folks with a hatched bug.', 409);
     if (ONCE(x)) { if (iv.own[id]) throw new GameError('One at a time: use the one you have first.', 409); }
     else if (CONSUMABLE(x)) { if ((iv.own[id] || 0) >= MAX_STACK) throw new GameError(`You can only hold ${MAX_STACK} of those.`, 409); }
+    else if (WORN.includes(x.slot)) { if ((iv.own[id] || 0) >= BUG_COPIES) throw new GameError('You have one for every stall already.', 409); } // one bug wears one: a second bug needs its own
     else if (iv.own[id]) throw new GameError('You already own that.', 409);
     if (x.month && x.month !== shopMonth(this.now())) throw new GameError(`The shopkeeper packed those away. Back in ${MONTHS[x.month - 1]}.`, 409);
     if (x.unique && this.doc.unique[id]) throw new GameError('There was only ever the one, and it is spoken for.', 409);
@@ -101,21 +114,34 @@ export class Shop {
     this.accounts.change(p, -x.price, 'shop', `General Store: ${x.name}`); // never forced: can't go below zero
     iv.own[id] = (iv.own[id] || 0) + 1;
     if (x.unique) this.doc.unique[id] = p.id;
-    if (x.slot && !iv.eq[x.slot]) iv.eq[x.slot] = id; // first one in a slot goes straight on
+    // the first one in a slot goes straight on: you, the terrarium, or the bug it was bought for (the partner unless named)
+    if (WORN.includes(x.slot)) { const pen = this.barn.penOf(p.id, bug); if (pen?.stage === 'creature') ((iv.bugEq[idOf(pen)] ||= {})[x.slot] ??= id); }
+    else if (x.slot && !iv.eq[x.slot]) iv.eq[x.slot] = id;
     this.save();
     return this.view(p);
   }
-  equip(p, { id, slot }) {
-    const iv = this.inv(p.id);
-    if (id == null) { // take off
-      if (![...AVATAR_SLOTS, ...BUG_SLOTS].includes(slot)) throw new GameError('No such slot.', 400);
-      delete iv.eq[slot]; this.save(); return this.view(p);
+  /** Put on or take off (`id` null, with its `slot`). Looks and battle gear go on one bug: `bug`, or the partner. */
+  equip(p, { id, slot, bug = null }) {
+    const iv = this.inv(p.id), x = id == null ? null : ITEM[id];
+    if (id == null && ![...AVATAR_SLOTS, ...BUG_SLOTS].includes(slot)) throw new GameError('No such slot.', 400);
+    if (id != null && (!x || !iv.own[id])) throw new GameError('You don\'t own that.', 404);
+    if (x && !x.slot) throw new GameError('That isn\'t something you wear.', 400);
+    const to = x ? x.slot : slot;
+    if (x && to === 'toy' && !this.hatched(p.id)) throw new GameError('You need a hatched bug for that.', 409);
+    if (!WORN.includes(to)) { if (x) iv.eq[to] = id; else delete iv.eq[to]; }
+    else {
+      const pen = this.barn.penOf(p.id, bug), worn = this.worn(p.id);
+      if (pen?.stage !== 'creature') { if (x) throw new GameError('You need a hatched bug for that.', 409); }
+      else if (!x) delete iv.bugEq[idOf(pen)]?.[to];
+      else {
+        // every copy is on another bug: it comes off the first of them. Buy another to dress both.
+        const others = Object.keys(worn).filter((b) => Number(b) !== idOf(pen) && worn[b][to] === id);
+        if (others.length >= iv.own[id]) delete iv.bugEq[others[0]][to];
+        (iv.bugEq[idOf(pen)] ||= {})[to] = id;
+      }
+      for (const b of Object.keys(iv.bugEq)) if (!(b in worn)) delete iv.bugEq[b]; // a bug that is gone wears nothing
     }
-    const x = ITEM[id];
-    if (!x || !iv.own[id]) throw new GameError('You don\'t own that.', 404);
-    if (!x.slot) throw new GameError('That isn\'t something you wear.', 400);
-    if (BUG_SLOTS.includes(x.slot) && !this.hatched(p.id)) throw new GameError('You need a hatched bug for that.', 409);
-    iv.eq[x.slot] = id; this.save();
+    this.save();
     return this.view(p);
   }
   /** Use a consumable on your bug: food (a real feed, and a packed lunch for its next fight), feeder (keeps its needs full), and the retired mister and heat lamp. */
@@ -181,10 +207,11 @@ export class Shop {
     const w = {}; for (const s of AVATAR_SLOTS) if (iv.eq[s] && iv.own[iv.eq[s]]) { w[s] = lookOf(iv.eq[s]); const f = iv.fit?.[iv.eq[s]]; if (f) w[s].fit = f; }
     return Object.keys(w).length ? w : null;
   }
-  /** For the barn: the bug's equipped looks and bonuses, capped. */
-  bugStyle(pid) {
+  /** For the barn: what one bug (the partner unless named) has on and its bonuses, capped. The toy is the terrarium's. */
+  bugStyle(pid, bug) {
     const iv = this.doc.inv[pid]; if (!iv) return {};
-    const out = {}; for (const s of BUG_SLOTS) if (iv.eq[s] && iv.own[iv.eq[s]]) out[s] = iv.eq[s];
+    const on = { ...iv.bugEq?.[bug ?? idOf(this.barn?.doc?.pens?.[pid] || {})], toy: iv.eq.toy };
+    const out = {}; for (const s of BUG_SLOTS) if (on[s] && iv.own[on[s]]) out[s] = on[s];
     for (const s of ['bugskin', 'bughat', 'bugacc']) if (out[s]) out[s] = lookOf(out[s]);
     out.gearBonus = Math.min(GEAR_CAP, ITEM[out.gear]?.gear || 0);
     out.defenseBonus = Math.min(GEAR_CAP, ITEM[out.defense]?.defense || 0);

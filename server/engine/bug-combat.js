@@ -39,6 +39,28 @@ const KITS = {
   phanaeus: ['heal', 'guard', 'Rainbow Dazzle', 'weaken', 'Scarab Horn Drill', 'pierce'],
   lethocerus: ['pierce', 'guard', 'Pond Recovery', 'heal', 'Water-Bug Venom', 'venom'],
   sphaerocoris: ['venom', 'guard', 'Painted Warning', 'weaken', 'Picasso Recovery', 'heal'],
+  pheropsophus: ['venom', 'pierce', 'Miidera Warning', 'weaken', 'Pressure Chamber', 'guard'],
+  melanophila: ['pierce', 'weaken', 'Charred Bark', 'guard', 'Fresh Burn', 'heal'],
+  solenopsis: ['venom', 'guard', 'Mound Rally', 'heal', 'Unconquered', 'pierce'],
+  pyrrhocoris: ['guard', 'weaken', 'Lime Tree Huddle', 'heal', 'Extra Instar', 'pierce'],
+  brevisana: ['weaken', 'pierce', 'Thorn Perch', 'guard', 'Midday Chorus', 'heal'],
+  micronecta: ['weaken', 'heal', 'Shallows', 'guard', 'Calibration Check', 'pierce'],
+  bertholdia: ['weaken', 'guard', 'Wake Forest', 'heal', 'Highest Click Rate', 'pierce'],
+  gromphadorhina: ['guard', 'weaken', 'Glass Climb', 'heal', 'Breeding Rights', 'pierce'],
+  gryllotalpa: ['pierce', 'weaken', 'Resonator Bulb', 'guard', 'Sunset Solo', 'heal'],
+  dytiscus: ['pierce', 'guard', 'Wet Road Landing', 'weaken', 'Bubble Breath', 'heal'],
+  notonecta: ['pierce', 'weaken', 'Drag Reduction', 'guard', 'A Hundred and Twenty Days', 'heal'],
+  gyrinus: ['weaken', 'guard', 'Bubble Gill', 'heal', 'Split Sight', 'pierce'],
+  halobates: ['weaken', 'pierce', 'Storm Drift', 'guard', 'Plastic Jug Nursery', 'heal'],
+  phloeodes: ['guard', 'pierce', 'Eight Good Years', 'heal', 'Dead Weight', 'weaken'],
+  photuris: ['weaken', 'pierce', 'Dusk Patrol', 'guard', 'Rover for Supper', 'heal'],
+  arachnocampa: ['weaken', 'pierce', 'Midge Supper', 'heal', 'Silk Hammock', 'guard'],
+  myrmeleon: ['pierce', 'weaken', 'Backward Shuffle', 'guard', 'Cocoon of Sand', 'heal'],
+  odontomachus: ['pierce', 'guard', 'Four Trigger Hairs', 'weaken', 'Another Nest', 'heal'],
+  dasymutilla: ['venom', 'guard', 'Warning Squeak', 'weaken', 'Nectar Stop', 'heal'],
+  peruphasma: ['venom', 'pierce', 'Stands Very Still', 'guard', 'Schinus Leaves', 'heal'],
+  ampulex: ['venom', 'pierce', 'Half an Antenna', 'heal', 'By the Antenna', 'weaken'],
+  colobopsis: ['venom', 'guard', 'Epiphyte Graze', 'heal', 'Sixty Metres Up', 'pierce'],
 };
 
 const EFFECTS = {
@@ -75,8 +97,14 @@ export function battleFor(species, level, legacyAbilities = 0, stored = null) {
 // to themselves, until each species averaged near an even record. No single level is perfectly even: a trait tied to
 // a move does nothing until that move is learned.
 export const TRAIT = {
-  still: 0.05, shell: 0.1, vanish: 0.25, fifth: 0.35, linger: 0.25, stun: 0.04, blind: 0.12, mask: 0.35, caseGuard: 0.35, log: 0.3, regen: 0.75, pop: 5, xylella: 0.3,
+  still: 0.05, shell: 0.1, vanish: 0.25, fifth: 0.35, linger: 0.25, stun: 0.04, blind: 0.12, mask: 0.35, caseGuard: 0.35, log: 0.3, regen: 0.75, pop: 8, xylella: 0.3,
   scales: 0.55, lights: 0.06, front: 0.1, kick: 0.4, maneater: 0.3, heavy: 0.07, calm: 0.25, lure: 1, prey: 0.02, fan: 0.05, streak: 0.02, turtles: 0.05, smell: 0.15,
+  // the thirteen that came with Fire, Sonic and Water, set the same way with the type perks on
+  // (the bombardier's pop went from 5 to 8 when it left Toxic for Fire)
+  vomit: 0.43, heat: 0.12, raft: 0.06, moult: 10, din: 0.04, tiny: 0.05, jam: 0.12, hiss: 0.22, horn: 0.5, grip: 0.1, upside: 0.4, eyes: 0.06, skate: 0.08,
+  // and the nine after those, for the types that were here already. `spray` and `goo` are HP; `thread` is a share per attack. An exploding ant's burst only ever helps it, and each point of `goo` was worth over a point of win rate, so `minor` takes a share off its hits to pay for a burst worth having.
+  // (Three Sonic traits went up a little with them, tiny, jam and hiss: the newcomers were mostly Shell and Toxic, which beat Sonic.)
+  iron: 0.2, encore: 0.6, thread: 0.012, pit: 0.08, jump: 0.3, pain: 0.14, spray: 3, sting: 0.05, goo: 14, minor: 0.12,
 };
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 const TRAITS = {
@@ -110,6 +138,28 @@ const TRAITS = {
   phanaeus: ['Keeps Digging', () => `Each hit in a row adds +${pct(TRAIT.streak)} damage, up to five; a miss resets it.`],
   lethocerus: ['Has Taken Turtles', () => `+${pct(TRAIT.turtles)} damage to an opponent with more of its HP left.`],
   sphaerocoris: ['Nasty Smell', () => `Land a special on it and your next attack is ${pct(TRAIT.smell)} weaker.`],
+  pheropsophus: ['Comes Back Up', () => `${pct(TRAIT.vomit)} of the time, the first knockout blow leaves it at 1 HP instead.`],
+  melanophila: ['Follows the Heat', () => `Its attacks are ${pct(TRAIT.heat)} more likely to hit an opponent below half health.`],
+  solenopsis: ['Raft', () => `Takes ${pct(TRAIT.raft)} less from hits while above half health, and Water types get no edge on it.`],
+  pyrrhocoris: ['Extra Moult', () => `The first time it drops below a third of its health, it moults and gets ${TRAIT.moult} HP back.`],
+  brevisana: ['Loudest on Record', () => `${pct(TRAIT.din)} of its hits deafen the opponent: it loses its next turn.`],
+  micronecta: ['Two Millimetres', () => `Attacks are ${pct(TRAIT.tiny)} less likely to hit it.`],
+  bertholdia: ['Jams Sonar', () => `Every other attack against it is ${pct(TRAIT.jam)} less likely to hit.`],
+  gromphadorhina: ['Three Hisses', () => `The opponent's first three attacks each do ${pct(TRAIT.hiss)} less.`],
+  gryllotalpa: ['Tuned Burrow', () => `Its first special of a fight hits ${pct(TRAIT.horn)} harder.`],
+  dytiscus: ['Suction Cups', () => `After it lands a hit, its next attack is ${pct(TRAIT.grip)} more likely to hit.`],
+  notonecta: ['Upside Down', () => `The first attack against it is ${pct(TRAIT.upside)} less likely to hit.`],
+  gyrinus: ['Split Eyes', () => `Its attacks are ${pct(TRAIT.eyes)} more likely to hit.`],
+  halobates: ['Open Water', () => `While it has more than half its health, attacks are ${pct(TRAIT.skate)} less likely to hit it.`],
+  phloeodes: ['39,000 Times Its Weight', () => `No single hit takes more than ${pct(TRAIT.iron)} of its health.`],
+  photuris: ['Second Signal', () => `It flashes again the first time it drops below a quarter of its health: the opponent's next attack does ${pct(TRAIT.encore)} less.`],
+  arachnocampa: ['Thirty Threads', () => `Every attack against it leaves the attacker in one more thread. Each takes ${pct(TRAIT.thread)} off that bug's hits, up to 30.`],
+  myrmeleon: ['The Pit', () => `Once the opponent has attacked it three times it has slid in: the antlion's attacks are ${pct(TRAIT.pit)} more likely to hit.`],
+  odontomachus: ['Escape Jump', () => `The first hit to land on it once it is below half health does ${pct(TRAIT.jump)} less.`],
+  dasymutilla: ['Cow Killer', () => `A poisoned opponent's hits do ${pct(TRAIT.pain)} less.`],
+  peruphasma: ['Sprays When Disturbed', () => `The first two hits that land on it cost the attacker ${TRAIT.spray} HP each.`],
+  ampulex: ['Second Sting', () => `Once it has landed two hits, the opponent's hits do ${pct(TRAIT.sting)} less for the rest of the fight. Twice that on a cockroach.`],
+  colobopsis: ['Yellow Goo', () => `Its hits do ${pct(TRAIT.minor)} less. The blow that would knock it out sets it off instead: ${TRAIT.goo} damage to the opponent, and if that finishes the opponent it is left standing on 1 HP.`],
 };
 // The line and what follows it. `p` is a bug's chance by the line (engine/bout.js).
 /** What the other corner puts up against `stake` from a bug the line gives `p`: fair odds, so the favourite risks more. To the whole dollar: bout money never has cents. */

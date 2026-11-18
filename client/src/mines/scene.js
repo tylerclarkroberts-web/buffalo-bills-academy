@@ -13,6 +13,7 @@ import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
 import { buildMineHands, drawMineHands, resizeMineHands, stepMineHands } from './hands.js';
 import { buildMineEntrance } from './entrance.js';
 import { WALK_SPEED, RUN_SPEED } from './controls.js';
+import { wildAt } from '../../../server/engine/wild-roam.js';
 
 export const TILE = 2.2, WALL_H = 2.6, EYE = 1.35, RADIUS = 0.38, TURN = 2.3;
 const BUG_GLOW = 1.6; // a bug billboard's own light at rest
@@ -426,9 +427,10 @@ export class MineScene {
     }
     for (const wild of wilds) if (!this.wilds.has(wild.id)) {
       const sprite = this.bugBillboard(BY_ID[wild.species], null, '#ff5a3a');
-      sprite.group.position.set(wild.x * TILE, 0, wild.y * TILE);
+      const at = wildAt(wild, Date.now() + (this.clockSkew || 0));
+      sprite.group.position.set(at.x * TILE, 0, at.y * TILE);
       sprite.group.visible = true;
-      this.wilds.set(wild.id, { ...wild, ...sprite });
+      this.wilds.set(wild.id, { ...wild, ...at, ...sprite });
     }
   }
   nearestWild() {
@@ -650,8 +652,10 @@ export class MineScene {
     if (this.stalker) this.updateVisitor(now, dt);
     if (this.faun) this.updateFaun(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
+    const serverNow = Date.now() + (this.clockSkew || 0); // a wild bug is where the server's clock says it has roamed to
     for (const wild of this.wilds.values()) {
-      wild.group.rotation.y = this.yaw; wild.group.position.y = this.reduce ? 0 : Math.sin(now / 300) * 0.05;
+      if (wild.id !== this.heldWild) Object.assign(wild, wildAt(wild, serverNow)); // one its miner has squared up to waits where it is; let go, it is back on its route
+      wild.group.position.set(wild.x * TILE, this.reduce ? 0 : Math.sin(now / 300) * 0.05, wild.y * TILE); wild.group.rotation.y = this.yaw;
       wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
     }
     if (this.horror) this.updateHorror(now, dt);

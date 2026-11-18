@@ -51,5 +51,6 @@ export function createPvpClient({ send, pose, onView, onError, path = '/mines/pv
 export const pvpMove = (send, battleId, moves, have) => send('/mines/pvp/move', { battleId, moves, have });
 export const pvpAmbush = (send, target) => send('/mines/pvp/ambush', { target });
 export const pvpForfeit = (send) => send('/mines/pvp/forfeit', {});
-export const pvpWild = (send, wildId) => send('/mines/pvp/wild', { wildId });
+/** Fight the wild bug you walked up to with one of your bugs (`bug`, its Barn id); `at` is the server's time when you met it. */
+export const pvpWild = (send, wildId, bug, at) => send('/mines/pvp/wild', { wildId, bug, at });
 export const pvpJar = (send, battleId, have) => send('/mines/pvp/jar', { battleId, have });
