@@ -218,6 +218,24 @@
 .bout-side.s1 .bout-hp { justify-content: flex-end; }
 .bout-fav { white-space: nowrap; color: var(--gold); } /* the line the fight opened at, on the favourite's side */
 .bout-chip { font: 600 9.5px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .08em; padding: 3px 6px; border-radius: 999px; border: 1px solid currentColor; }
+/* A thrown jar: it arcs across the ring from your corner, rocks on the knocked-out bug, then clicks shut or bursts open. */
+.bout-toss { position: absolute; z-index: 4; left: 72%; top: 50%; width: clamp(46px, 8vw, 92px); translate: -50% -50%; pointer-events: none; display: grid; justify-items: center; }
+.bout-toss svg { width: 100%; display: block; transform-origin: 50% 90%; filter: drop-shadow(0 4px 0 rgba(0,0,0,.35)); }
+.bout-toss strong.bout-stamp { position: absolute; top: -62%; left: 50%; translate: -50% 0; white-space: nowrap; font-size: clamp(18px, 3.2vw, 36px); margin: 0; -webkit-text-stroke-width: 1px; }
+.bout-toss.fly svg { animation: toss-fly .6s cubic-bezier(.3, .1, .4, 1) both; }
+.bout-toss.shake svg { animation: toss-shake 1.3s ease-in-out both; }
+.bout-toss.held svg { animation: toss-held 1.3s ease-out both; }
+.bout-toss.miss svg { animation: toss-miss 1.1s ease-in both; }
+.bout-toss.miss .lid { animation: toss-lid .9s ease-out both; transform-box: fill-box; transform-origin: center; }
+@keyframes toss-fly { 0% { transform: translate(-520%, 190%) rotate(-300deg) scale(.45); } 55% { transform: translate(-210%, -170%) rotate(-120deg) scale(.8); } 100% { transform: none; } }
+@keyframes toss-shake { 0%, 100% { transform: rotate(0); } 12% { transform: rotate(-16deg); } 30% { transform: rotate(14deg); } 48% { transform: rotate(-11deg); } 64% { transform: rotate(8deg); } 80% { transform: rotate(-4deg); } }
+@keyframes toss-held { 0% { transform: scale(1); } 18% { transform: scale(1.22); } 36% { transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes toss-miss { 0% { transform: none; } 25% { transform: rotate(-18deg) scale(1.1); } 100% { transform: translate(90%, 70%) rotate(95deg); opacity: 0; } }
+@keyframes toss-lid { 0% { transform: none; } 100% { transform: translate(-120%, -420%) rotate(-200deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bout-toss svg, .bout-toss .lid { animation: none !important; } .bout-toss.miss svg { opacity: .35; transform: rotate(60deg); } }
+/* a legendary in the other corner: a gold tag on its name and a gold edge on the ring */
+.bout-legend { font: 700 10px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .1em; color: #2a1300; background: linear-gradient(90deg, #ffe27a, #fff8d0, #ffd84a); border-radius: 999px; padding: 3px 7px; margin-right: 6px; }
+.bout.legendary { border-color: #ffd84a; box-shadow: 0 0 0 2px rgba(255, 216, 74, .5), 0 0 40px rgba(255, 190, 60, .45); }
 .bout-chip.guard { color: #ffcf5a; } .bout-chip.poison { color: #8cff5a; } .bout-chip.weak { color: #c58bff; } .bout-chip.edge { color: #ffe27a; }
 .barn-card-tab { justify-items: center; padding: 4px 0 10px; }
 .barn-kind .bc-type, .barn-roster .bc-type, .barn-open-bouts .bc-type, .bout-side .bc-type, .barn-tab-content .bc-type { vertical-align: middle; }
@@ -293,6 +311,7 @@
 .cc-top p { margin: 2px 0 0; }
 .cc-org { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--paper-2); }
 .cc-rack { display: flex; gap: 3px; }
+.cc-areas { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
 .cc-rosette .tails { fill: rgba(255,255,255,.12); }
 .cc-rosette .petals { fill: none; stroke: rgba(255,255,255,.3); stroke-dasharray: 3 2; }
 .cc-rosette .eye { fill: none; }

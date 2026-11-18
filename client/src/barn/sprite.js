@@ -23,7 +23,7 @@ const YOUNG_FORMS = {
   sagra: 'grub', manticora: 'crawler', polyphylla: 'grub', phanaeus: 'grub',
   mantispa: 'jawed-larva', nemoptera: 'jawed-larva', helicopsyche: 'caddis',
   pheropsophus: 'crawler', melanophila: 'borer', dytiscus: 'crawler', gyrinus: 'crawler', solenopsis: 'legless-grub', bertholdia: 'grub',
-  phloeodes: 'borer', photuris: 'crawler', odontomachus: 'legless-grub', colobopsis: 'legless-grub', dasymutilla: 'legless-grub', ampulex: 'legless-grub',
+  phloeodes: 'borer', photuris: 'crawler', odontomachus: 'legless-grub', colobopsis: 'legless-grub', dasymutilla: 'legless-grub', ampulex: 'legless-grub', megachile: 'legless-grub',
 };
 export const youngForm = (bug, level) => Number.isFinite(level) && level < 3 ? YOUNG_FORMS[bug.id] : undefined;
 
@@ -298,6 +298,15 @@ function draw(c, L) {
     c.ell(32, 42, 12, 16, 'B'); band(c, 42, 12, 16, [33, 38, 43, 48, 53]); for (let y = 30; y < 57; y++) c.put(31.5, y, 'S'); // armoured segments, no wings
     c.ell(32, 22, 11, 7, 'D'); c.ell(27, 21, 2, 1.5, 'B'); // the shield over its head, with the male's two bumps
     c.ell(32, 14, 4, 3, 'D'); eyes(c, 29, 14, 1);
+  } else if (k === 'dragonfly') {
+    c.poly([[30, 23], [3, 15], [1, 23], [29, 29]], 'W'); c.poly([[30, 30], [4, 33], [2, 42], [29, 36]], 'W'); // two pairs of wings, held straight out
+    c.line(29, 25, 4, 18, 'L', 1); c.line(29, 32, 5, 36, 'L', 1); // the leading vein of each
+    for (let x = 8; x < 28; x += 5) { c.hair([[x, 17 + (x - 3) * 0.24], [x + 1, 24 + (x - 3) * 0.2]], 'L'); c.hair([[x, 34 - (x - 4) * 0.1], [x + 1, 41 - (x - 4) * 0.22]], 'L'); } // and the net of veins it is named for
+    for (const [x, y] of [[6, 18], [7, 36]]) c.ell(x, y, 2, 1, 'A'); // a dark spot near each tip
+    legs(c, { y: 24, spread: 0.45, long: 0.5, fore: 'raptor' }); // its front pair is tucked under the head
+    c.ell(32, 44, 2.6, 18, 'B'); band(c, 44, 2.6, 18, [31, 36, 41, 46, 51, 56]); // a long, thin abdomen
+    c.ell(32, 27, 5, 6.5, 'B'); // the thorax the wings hang from
+    c.ell(32, 16, 6, 4.5, 'D'); eyes(c, 27, 15, 2.5); // a head that is mostly eyes
   } else if (k === 'cricket') {
     legs(c, { y: 36, spread: 0.8, long: 0.75, fore: 'raptor' });
     c.line(26, 24, 17, 21, 'B', 4); c.poly([[18, 16], [10, 14], [8, 22], [12, 26], [18, 24]], 'A'); // shovel forelegs

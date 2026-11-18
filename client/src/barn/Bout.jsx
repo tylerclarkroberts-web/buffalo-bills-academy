@@ -39,17 +39,41 @@ function explain(m, them) {
 /** Merge a page of a live fight (the server sends only the blows after `from`) into what the page already holds. */
 export const mergeFight = (held, page) => ({ ...page, rounds: [...(held?.id === page.id ? held.rounds : []).slice(0, page.from || 0), ...page.rounds] });
 
+const TOSS = { fly: 600, shake: 1300, after: 1300 }; // ms: the jar in the air, rocking on the bug, and the result on show
 /**
- * Against a wild bug: throw a jar once it is weak enough. It sits in the ring, small while it cannot be thrown (and
- * says what it is waiting for), big once a throw can hold. It also says what the last throw did.
+ * A wild bug your bug has knocked out: throw a jar before it comes to. The jar flies across the ring and rocks on the
+ * bug while the server decides; then it clicks shut or the bug squeezes out. Says what a throw is worth and how many are left.
  */
-function Jar({ jar, hp, onJar }) {
+function Jar({ jar, level, onJar, setToss, reduced }) {
   const [said, setSaid] = useState(''), [busy, setBusy] = useState(false);
-  useEffect(() => { if (!said) return undefined; const id = setTimeout(() => setSaid(''), 2500); return () => clearTimeout(id); }, [said]);
-  const why = !jar.have ? 'No jars to catch it with' : !jar.room ? 'No free stall to keep it in' : !jar.chance ? `Jar it at ${hp} HP or less` : '';
-  // onJar answers true (caught), false (it got out) or the server's reason for refusing
-  const throwIt = async () => { setBusy(true); const out = await onJar(); setBusy(false); if (out !== true) setSaid(out === false ? 'It squeezed out!' : String(out)); };
-  return <button className={`btn small bout-jar${why ? '' : ' ready'}`} onClick={throwIt} disabled={busy || !!why} data-test="bout-jar">{said || why || `Throw a jar · ${pct(jar.chance)} to hold`}{jar.have > 0 && <small> · {jar.have} left</small>}</button>;
+  useEffect(() => { if (!said) return undefined; const id = setTimeout(() => setSaid(''), 2200); return () => clearTimeout(id); }, [said]);
+  const why = !jar.have ? 'No jars to catch it with' : !jar.room ? 'No free stall to keep it in' : '';
+  const throwIt = async () => {
+    setBusy(true); setToss(reduced ? 'shake' : 'fly'); sfx.whiff?.();
+    const rock = reduced ? null : setTimeout(() => setToss('shake'), TOSS.fly);
+    const landed = new Promise((done) => setTimeout(done, reduced ? 400 : TOSS.fly + TOSS.shake));
+    const out = await onJar(landed); // true (caught), false (it got out) or the server's reason for refusing; the catch is not shown before the jar lands
+    if (out !== true && out !== false) { clearTimeout(rock); setToss(null); setSaid(String(out)); setBusy(false); return; }
+    await landed;
+    setToss(out ? 'held' : 'miss'); if (out) sfx.fanfare?.(); else sfx.nope?.();
+    setTimeout(() => setToss(null), TOSS.after);
+    setBusy(false);
+  };
+  return <button className={`btn small bout-jar${why ? '' : ' ready'}`} onClick={throwIt} disabled={busy || !!why} data-test="bout-jar">
+    {said || why || `Throw a jar · ${pct(jar.chance)} to hold${jar.keeps < level ? ` · arrives Lv ${jar.keeps}` : ''}`}<small> · {jar.left} {jar.left === 1 ? 'throw' : 'throws'} left{jar.have > 0 ? `, ${jar.have} ${jar.have === 1 ? 'jar' : 'jars'}` : ''}</small>
+  </button>;
+}
+/** The thrown jar, over the ring: `toss` is fly, shake, held or miss. */
+function Toss({ toss }) {
+  return <div className={`bout-toss ${toss}`} data-test="bout-toss" data-toss={toss}>
+    <svg viewBox="0 0 40 54" aria-hidden="true">
+      <rect className="lid" x="9" y="2" width="22" height="7" rx="2" fill="#c8a04a" stroke="#5a421c" />
+      <path d="M11 9h18v4q6 3 6 10v22q0 6-6 6H11q-6 0-6-6V23q0-7 6-10z" fill="rgba(190,235,255,.4)" stroke="#e8fdff" strokeWidth="1.6" />
+      <path d="M11 20v22" stroke="rgba(255,255,255,.75)" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+    {toss === 'held' && <strong className="bout-stamp end">CAUGHT!</strong>}
+    {toss === 'miss' && <strong className="bout-stamp crit">IT GOT OUT!</strong>}
+  </div>;
 }
 
 /** Under the ring while a fight is live: what your bug does next, and the buttons to decide that for it. */
@@ -98,6 +122,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const now = useRef({ plan, bout }); now.current = { plan, bout };
   const [pos, setPos] = useState(() => (reduced && !plan.open ? { i: plan.beats.length, phase: 'done' } : { i: -1, phase: 'intro' }));
   const [quit, setQuit] = useState(false);
+  const [toss, setToss] = useState(null); // a jar in the air, rocking, shut or burst open
   const done = pos.phase === 'done', live = !!bout.live;
   const fighters = [bout.you, bout.them];
   // the line the fight opened at (your chance): named on the favourite's side, on neither when it is even
@@ -163,23 +188,22 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const shown = beat ? (landed ? beat.r : bout.rounds[pos.i - 1]) : landed ? bout.rounds[bout.rounds.length - 1] : null;
   const hp = shown ? shown.hp : bout.startHp || maxHp;
   const fainted = !replay && (bout.healthAfter === 0 || bout.over?.bug?.fainted);
-  // a wild bug can be jarred at or under this much health; `weak` once the bar on screen has dropped that far
-  const jarHp = bout.jar ? Math.floor(maxHp[1] * bout.jar.at) : 0, weak = live && !quit && bout.jar?.chance > 0 && bout.jar.have > 0 && bout.jar.room && hp[1] <= jarHp;
+  const legendary = bout.rarity === 4; // the wild bug in the other corner is one of a kind
+
   const jarred = bout.over?.reason === 'jarred';
   const status = beat ? (landed ? beat.after : beat.before) : pos.phase === 'wait' && plan.beats.length ? plan.beats[plan.beats.length - 1].after : null;
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
   return (
-    <dialog ref={dialog} className={`bout${live ? ' live' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
+    <dialog ref={dialog} className={`bout${live ? ' live' : ''}${legendary ? ' legendary' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
       <div className="bout-top">
         {fighters.map((c, i) => {
           const pct = Math.max(0, Math.min(100, (hp[i] / maxHp[i]) * 100));
           return (
             <div key={i} className={`bout-side s${i}`}>
-              <b>{c.name}</b><span className="small muted">{c.wild ? 'wild · ' : c.stray ? 'stray · ' : ''}{c.owner ? `${c.owner} · ` : ''}Lv {c.level} <TypeChip type={typeOf(c.species)} small /></span>
+              <b>{c.name}</b><span className="small muted">{i === 1 && legendary ? <em className="bout-legend" data-test="bout-legendary">✦ legendary</em> : null}{c.wild ? 'wild · ' : c.stray ? 'stray · ' : ''}{c.owner ? `${c.owner} · ` : ''}Lv {c.level} <TypeChip type={typeOf(c.species)} small /></span>
               <div className={`barn-bar hp ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}`} role="progressbar" aria-label={`${c.name} health`} aria-valuemin={0} aria-valuemax={maxHp[i]} aria-valuenow={hp[i]}>
                 <b className="ghost" style={{ width: `${pct}%` }} /><i style={{ width: `${pct}%` }} />
-                {i === 1 && bout.jar && <u className="bout-jarline" style={{ left: `${bout.jar.at * 100}%` }} />}
               </div>
               <span className="small num bout-hp">{hp[i]} / {maxHp[i]} HP{fav === i && <span className="bout-fav" data-test="bout-favoured">favoured {i ? 100 - mine : mine}%</span>}{live && edge(typeOf(c.species), typeOf(fighters[1 - i].species)) > 0 && <em className="bout-chip edge" data-test="bout-edge">type edge</em>}{STATUS.filter(([k]) => status?.[i][k]).map(([k, label]) => <em key={k} className={`bout-chip ${k}`}>{label}</em>)}</span>
             </div>
@@ -198,10 +222,10 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           )}
           {beat?.special && !landed && <div key={`s${pos.i}`} className={`bout-super s${beat.r.by}${beat.r.tier >= 4 ? ' cap' : ''}${pos.phase === 'act' ? ' go' : ''}`} style={{ '--fx': EFFECT_COLOR[beat.r.effect] }}><small>{fighters[beat.r.by].name}</small><strong>{beat.r.ability}</strong></div>}
           {beat?.r.critical && landed && <strong key={`c${pos.i}`} className="bout-stamp crit">CRITICAL!</strong>}
-          {weak && <strong className="bout-stamp jar">WEAK ENOUGH TO JAR!</strong>}
           {pos.phase === 'finish' && <strong className="bout-stamp end">{jarred ? 'CAUGHT!' : plan.ending === 'ko' ? 'K.O.' : 'TIME!'}</strong>}
         </div>
-        {live && bout.jar && onJar && !quit && <Jar jar={bout.jar} hp={jarHp} onJar={onJar} />}
+        {toss && <Toss toss={toss} />}
+        {done && bout.jar && onJar && <Jar jar={bout.jar} level={bout.them.level} onJar={onJar} setToss={setToss} reduced={reduced} />}
       </div>
       <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <>
         <b>{bout.verdict || verdictLine(bout)}</b>

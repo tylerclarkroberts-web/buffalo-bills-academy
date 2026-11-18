@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Bout, { mergeFight } from '../barn/Bout.jsx';
+import BugCard from '../barn/BugCard.jsx';
 import { createPvpClient, minerHint, pvpAmbush, pvpForfeit, pvpMove, pvpWild, pvpJar } from './pvpClient.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { api, useSession, refreshSession } from '../api.js';
@@ -586,7 +587,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: m.wild ? 'Time. It wanders off unbeaten.' : 'No contest. Nobody gets robbed.' } : {}),
       ...(m.over.reason === 'decision' ? { verdict: `${m.over.won ? m.you.name : m.them.name} wins on points.` }
         : m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
-        : m.wild && m.over.reason === 'fainted' && m.over.won ? { verdict: `The wild ${m.them.name} slinks off into the dark.` }
+        : m.wild && m.over.reason === 'fainted' && m.over.won ? { verdict: m.jar ? `${m.them.name} is out cold. Jar it before it comes to.` : m.over.awake ? `${m.them.name} comes to and slinks off into the dark.` : `The wild ${m.them.name} slinks off into the dark.` }
         : m.wild && m.over.reason !== 'fainted' && m.over.reason !== 'draw' && m.over.reason !== 'abandoned' ? { verdict: 'You ran. It keeps the tunnel.' } : {}),
       spoils: raid ? [`${sign}$${raid.cash}${raid.cashCapped ? ' (daily loss cap)' : ''}`, `${sign}${Math.floor(m.over.won ? raid.gained || raid.acid : raid.acid)} acid`,
         ...(raid.tobacco?.length ? [`${sign}${raid.tobacco.join(', ')}`] : [])] : [] });
@@ -633,9 +634,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const battleMove = async (moves) => { const b = battleRef.current; if (!b) return; try { showBattle((await pvpMove(pvpSend, b.id, moves, b.rounds.length)).battle); } catch (e) { setLine(String(e.message).toUpperCase()); } };
   // Throw a jar at the wild bug: true if it held, false if it got out, or the server's reason for refusing.
-  const battleJar = async () => {
+  /** `landed` resolves when the thrown jar has finished rocking: the result is not shown before then. */
+  const battleJar = async (landed) => {
     const b = battleRef.current; if (!b) return 'That fight is over.';
-    try { const r = await pvpJar(pvpSend, b.id, b.rounds.length); showBattle(r.battle); return r.held; } catch (e) { return e.message; }
+    try { const r = await pvpJar(pvpSend, b.id, b.rounds.length); Promise.resolve(landed).then(() => showBattle(r.battle)); return r.held; } catch (e) { return e.message; }
   };
   const battleForfeit = async () => { try { await pvpForfeit(pvpSend); } catch { /* the next heartbeat tells */ } pvp.current?.beat(); };
   const battleDone = () => {
@@ -765,7 +767,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     let askingWild = false;
     const askWild = (wild) => {
       showPicker(false); showBugMenu(false); scene.heldWild = wild.id;
-      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, stray: wild.stray, at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
+      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, stray: wild.stray, legendary: wild.legendary, at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
     };
     const leaveWild = (retryMs) => {
       const ask = wildAskRef.current; if (!ask) return;
@@ -1121,6 +1123,7 @@ function WildPrompt({ wild, bugsRef, onFight, onLeave }) {
   const type = typeOf(wild.species);
   return (
     <div className="m-dances m-orders m-wild" role="dialog" aria-label="A wild bug" data-test="wild-prompt">
+      <div className="m-wild-card" data-test="wild-card"><BugCard species={wild.species} bug={{ name: wild.stray?.name || BY_ID[wild.species]?.name, level: wild.level }} /></div>
       <p className="m-wild-what">{(wild.stray ? '' : 'A ') + wildWhat(wild).toUpperCase()} · {(TYPES[type]?.name || 'BUG').toUpperCase()} · LEVEL {wild.level}. {bugs === null ? 'IT WAITS.' : bugs.length ? 'SEND IN:' : 'NONE OF YOUR BUGS CAN FIGHT.'}</p>
       {(bugs || []).map((bug, i) => { const lean = edge(typeOf(bug.species), type); return (
         <button key={bug.id} type="button" className="m-dance" data-test="wild-send" onClick={() => onFight(bug.id)}>

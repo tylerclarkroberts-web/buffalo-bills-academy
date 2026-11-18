@@ -5,6 +5,7 @@ import { MIN_GAP, lineOfSight } from './stalker.js';
 import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
+import { rarityOf } from '../../../server/engine/bug-types.js';
 import { bugTexture } from '../barn/sprite.js';
 import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
@@ -418,6 +419,13 @@ export class MineScene {
     g.visible = false; this.scene.add(g);
     return { group: g, mesh, glow };
   }
+  /** Six gold sparks that circle up off a legendary bug. */
+  legendSparks(group) {
+    return Array.from({ length: 6 }, () => {
+      const spark = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), new THREE.MeshBasicMaterial({ color: '#ffe27a', transparent: true, depthWrite: false }));
+      group.add(spark); return spark;
+    });
+  }
   /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
   addBugGuide(bug) { this.bugMesh = this.bugBillboard(BY_ID[bug?.species], bug.style || null, '#b6ff7a'); }
   setWilds(wilds) {
@@ -426,7 +434,9 @@ export class MineScene {
       this.scene.remove(wild.group); disposeMeshes(wild.group); this.wilds.delete(id);
     }
     for (const wild of wilds) if (!this.wilds.has(wild.id)) {
-      const sprite = this.bugBillboard(BY_ID[wild.species], null, '#ff5a3a');
+      const legend = rarityOf(wild.species) === 4;
+      const sprite = this.bugBillboard(BY_ID[wild.species], null, legend ? '#ffd84a' : '#ff5a3a');
+      if (legend) sprite.sparks = this.legendSparks(sprite.group);
       const at = wildAt(wild, Date.now() + (this.clockSkew || 0));
       sprite.group.position.set(at.x * TILE, 0, at.y * TILE);
       sprite.group.visible = true;
@@ -657,6 +667,10 @@ export class MineScene {
       if (wild.id !== this.heldWild) Object.assign(wild, wildAt(wild, serverNow)); // one its miner has squared up to waits where it is; let go, it is back on its route
       wild.group.position.set(wild.x * TILE, this.reduce ? 0 : Math.sin(now / 300) * 0.05, wild.y * TILE); wild.group.rotation.y = this.yaw;
       wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
+      if (wild.sparks) { // a legendary: its light pulses and gold sparks rise off it (still, under reduced motion)
+        wild.glow.intensity *= this.reduce ? 2.2 : 2.2 + Math.sin(now / 260) * 0.9;
+        wild.sparks.forEach((spark, k) => { const u = this.reduce ? k / wild.sparks.length : ((now / 1400 + k / wild.sparks.length) % 1); spark.position.set(Math.cos(k * 2.4 + u * 3) * 0.26, 0.3 + u * 0.75, Math.sin(k * 2.4 + u * 3) * 0.26); spark.material.opacity = Math.sin(u * Math.PI); });
+      }
     }
     if (this.horror) this.updateHorror(now, dt);
     this.miners?.update(dt, now, this.yaw);

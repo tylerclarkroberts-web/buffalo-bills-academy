@@ -66,7 +66,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
-  const circuit = new Circuit({ store: service.store, barn, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
+  const circuit = new Circuit({ store: service.store, barn, accounts, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
@@ -346,6 +346,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/circuit', needPlayer, wrap((req) => circuit.view(req.player.id)));
   api.post('/circuit/talk', needPlayer, wrap((req) => circuit.talk(req.player.id, req.body || {})));
   api.post('/circuit/fight', needPlayer, wrap((req) => circuit.fight(req.player.id, req.player.name, req.body || {})));
+  api.post('/circuit/toll', needPlayer, wrap((req) => circuit.payToll(req.player.id, req.body || {})));
   api.post('/circuit/give-up', needPlayer, wrap((req) => circuit.giveUp(req.player.id)));
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));

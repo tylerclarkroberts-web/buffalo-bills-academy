@@ -2,10 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import { RUBBLE } from '../../../server/engine/maze.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { entranceLayout } from './entrance.js';
-import { TYPES, typeOf } from '../../../server/engine/bug-types.js';
+import { TYPES, typeOf, rarityOf } from '../../../server/engine/bug-types.js';
 
 /** How a wild bug is named on screen: a released one (a stray) says whose it was. */
-export const wildWhat = (w) => (w.stray ? `${w.stray.owner}'s abandoned ${w.stray.name}` : `wild ${BY_ID[w.species]?.name || 'bug'}`);
+export const wildWhat = (w) => (w.stray ? `${w.stray.owner}'s abandoned ${w.stray.name}` : `${rarityOf(w.species) === 4 ? 'LEGENDARY' : 'wild'} ${BY_ID[w.species]?.name || 'bug'}`);
 
 export default function MineMap({ maze, explored, pools, wilds = [], pose, onClose, returnFocus }) {
   const dialog = useRef(null);
