@@ -16,7 +16,7 @@ function furnitureScene() {
     setPointerCapture(id) { this.captured = id; }, hasPointerCapture(id) { return this.captured === id; }, releasePointerCapture() { this.captured = null; } };
   return Object.assign(Object.create(RoomScene.prototype), {
     canvas, camera: makeRoomCamera(846 / 380), dynamic: new THREE.Group(), highlights: new THREE.Group(), dragPreview: new THREE.Group(),
-    picks: [], walls: [], wallMaterial: new THREE.MeshLambertMaterial(), wardrobe: new THREE.Group(), rug: new THREE.Group(),
+    picks: [], walls: [], wallMaterial: new THREE.MeshLambertMaterial(), sideMaterials: { outside: new THREE.MeshLambertMaterial() }, wardrobe: new THREE.Group(), rug: new THREE.Group(),
     generation: 0, shelves: defaultShelves(), render() {}, pet() {}, resident() {}, wealth() {},
   });
 }
@@ -72,7 +72,39 @@ test('the expanded floor preserves the scale and placement of furniture, shelves
     scene.onHouseAction = null;
     assert.notEqual(scene.targetAt(at.clientX, at.clientY)?.kind, 'houseAction');
   }
-  scene.scene.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
+  scene.scene.traverse(object => { object.geometry?.dispose(); for (const mat of [object.material ?? []].flat()) { mat.map?.dispose(); mat.dispose(); } });
+});
+
+test('each side of a shared wall belongs to its own room, and from outside the house closes under a roof', t => {
+  const previousDocument = globalThis.document;
+  const context = { fillRect() {}, fillText() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => { if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument; });
+  const scene = furnitureScene(); scene.static = new THREE.Group(); scene.scene = new THREE.Scene(); scene.raycaster = new THREE.Raycaster();
+  scene.scene.add(scene.static, scene.dynamic, scene.highlights, scene.dragPreview);
+  scene.buildRoom();
+  scene.update({ placements: [], themeId: 'bunkhouse-sage', finishes: roomFinishes({ bathroomWalls: { typeId: 'plain', colorId: 'sky' }, outside: { typeId: 'boards', colorId: 'barn' } }) });
+  scene.setEditing(true);
+  const look = (from, to) => {
+    scene.camera = new THREE.PerspectiveCamera(50, 846 / 380, 0.1, 100); scene.camera.position.set(...from); scene.camera.lookAt(...to);
+    scene.scene.updateMatrixWorld(true); scene.camera.updateMatrixWorld(true);
+    return scene.targetAt(423, 190);
+  };
+  // From the bathroom, the back wall of the living room is the bathroom's wall; from the living room it is the living room's.
+  scene.backWall.visible = true;
+  assert.deepEqual(look([-2 * S, 2, -5 * S], [-2 * S, 2, -3 * S]), { kind: 'homestead', id: 'bathroom', wall: true }, 'clicked from its wall, the bathroom opens on its walls');
+  assert.deepEqual(look([-2 * S, 2, -1 * S], [-2 * S, 2, -3 * S]), { kind: 'finish' });
+  assert.equal(scene.sideMaterials.bathroomWalls.color.getHexString(), 'cddde0');
+  assert.equal(scene.sideMaterials.outside.color.getHexString(), '9a4a3c');
+  assert.equal(scene.roof.visible, false);
+  scene.exterior = true; scene.applyCutaway();
+  assert.equal(scene.roof.visible, true); assert.ok(scene.backWall.visible && scene.leftWall.visible && scene.rightWall.visible, 'every wall closes up');
+  assert.deepEqual(look([-7 * S, 1.5, 2 * S], [-4 * S, 1.5, 2 * S]), { kind: 'surface', surface: 'outside' }, 'the outside of a wall edits the outside');
+  assert.deepEqual(look([-7 * S, 2.5, 0], [-4 * S, 2.5, 0]), { kind: 'finish' }, 'through the window, the far wall is the living room inside');
+  assert.deepEqual(look([0, 14, 0.5 * S], [0, 0, 0.5 * S]), { kind: 'surface', surface: 'outside' }, 'so does the roof');
+  scene.setEditing(false);
+  assert.equal(look([0, 14, 0.5 * S], [0, 0, 0.5 * S]), null, 'a visitor clicking the roof does not reach the furniture under it');
+  scene.scene.traverse(object => { object.geometry?.dispose(); for (const mat of [object.material ?? []].flat()) { mat.map?.dispose(); mat.dispose(); } });
 });
 
 test('all wall caps share the 8.5-foot proportion and the yard door stays an ordinary height', t => {
@@ -128,7 +160,7 @@ test('all wall caps share the 8.5-foot proportion and the yard door stays an ord
       assert.equal(divider.ghost.visible, parlorSide);
     }
   }
-  scene.static.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
+  scene.static.traverse(object => { object.geometry?.dispose(); for (const mat of [object.material ?? []].flat()) { mat.map?.dispose(); mat.dispose(); } });
 });
 
 test('yard partition leaves an open doorway and its glazing does not intercept room controls', () => {
@@ -149,8 +181,10 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
     assert.equal(crossing.intersectObjects([partition, door], true).length, 0, 'shoulders clear the jamb and swung leaf on the porch route');
   }
   const through = (y, z) => new THREE.Raycaster(new THREE.Vector3(3.65 * S, y, z * S), new THREE.Vector3(1, 0, 0), 0, S).intersectObject(partition, true);
-  assert.ok(through(2.5, -2).some(hit => hit.object.material === scene.wallMaterial), 'the upper side wall is solid');
-  assert.ok(through(1.0, 3.25).some(hit => hit.object.material === scene.wallMaterial), 'the porch wall reaches the kitchen corner');
+  assert.ok(through(2.5, -2).some(hit => scene.walls.includes(hit.object)), 'the upper side wall is solid');
+  assert.ok(through(1.0, 3.25).some(hit => scene.walls.includes(hit.object)), 'the porch wall reaches the kitchen corner');
+  const outer = through(2.5, -2).find(hit => scene.walls.includes(hit.object));
+  assert.equal(outer.object.material[outer.face.materialIndex], scene.wallMaterial, 'the parlor side wears the room paint');
   const corner = scene.static.getObjectByName('Parlor corner beside kitchen');
   const turn = new THREE.Raycaster(new THREE.Vector3(3.64 * S, 1, 3 * S), new THREE.Vector3(0, 0, 1), 0, S);
   assert.ok(turn.intersectObject(corner, true).length, 'the return wall closes the short gap to the kitchen partition');
@@ -177,7 +211,7 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
     }
   }
   scene.setEditing(false);
-  for (const group of [scene.static, scene.dynamic]) group.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+  for (const group of [scene.static, scene.dynamic]) group.traverse(object => { object.geometry?.dispose(); for (const mat of [object.material ?? []].flat()) mat.dispose(); });
 });
 
 test('a displayed wagon picks its visible canopy without swallowing the nearby wardrobe', () => {

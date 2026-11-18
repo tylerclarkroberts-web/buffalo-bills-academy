@@ -1,4 +1,4 @@
-import { ROOM_ANCHORS, anchorHost, ROOM_WALL_IDS, ROOM_WALL_SPOTS, defaultWallDisplays, ROOM_FINISHES, ROOM_HOMESTEAD, roomHomestead, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
+import { ROOM_ANCHORS, anchorHost, ROOM_WALL_IDS, ROOM_WALL_SPOTS, defaultWallDisplays, ROOM_FINISHES, ROOM_HOMESTEAD, roomHomestead, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FURNITURE, shelfSlots, roomShelves, roomFinishes, roomFurniture, furnitureFits, freeSpot, furnitureRooms, pieceArea, roomWallDisplays, wallMountsFit, wallSpotAvailable } from '../../../server/catalog/room.js';
 
 export const layoutOf = room => ({ layoutRevision: room.layoutRevision, themeId: room.themeId,
   placements: room.placements.map(place => ({ ...place })), shelves: roomShelves(room.shelves), wallDisplays: roomWallDisplays(room.wallDisplays, roomShelves(room.shelves)), finishes: roomFinishes(room.finishes), furniture: roomFurniture(room.furniture), homestead: roomHomestead(room.homestead) });
@@ -68,6 +68,14 @@ export const furnitureOf = selection => {
   const id = selection?.kind === 'anchor' ? anchorHost(selection.anchorId) : selection?.kind === 'surface' ? selection.surface : selection?.kind === 'homestead' ? selection.piece : selection?.kind;
   return id !== 'floor' || selection.kind === 'anchor' ? (Object.hasOwn(ROOM_FURNITURE, id) ? id : null) : null;
 };
+/** Carry a piece into another of its rooms, to the clear floor nearest its spot there; unchanged when there is none. */
+export function moveToRoom(layout, id, area) {
+  if (!layout?.furniture || !Object.hasOwn(ROOM_FURNITURE, id) || !furnitureRooms(id).includes(area) || layout.furniture[id].off) return layout;
+  const [x, z, r] = area === furnitureRooms(id)[0] ? [...ROOM_FURNITURE[id].home, 0] : ROOM_FURNITURE[id].also[area];
+  const turned = { ...layout.furniture, [id]: { ...layout.furniture[id], r } };
+  const spot = freeSpot(turned, id, layout.shelves, roomWallDisplays(layout.wallDisplays, layout.shelves), [x, z]);
+  return spot && pieceArea({ ...turned, [id]: { ...turned[id], ...spot } }, id) === area ? placeFurniture(layout, id, { ...spot, r }) : layout;
+}
 /** Move, turn (`r`), store (`off: true`) or restore (`off: false`) one piece; unchanged when it would not fit. */
 export function placeFurniture(layout, id, change) {
   if (!layout?.furniture || !Object.hasOwn(ROOM_FURNITURE, id) || (change.off && !ROOM_FURNITURE[id].removable)) return layout;

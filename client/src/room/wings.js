@@ -1,6 +1,7 @@
 import { Color, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three';
 import { ROOM_DOOR_HEIGHT, ROOM_FLOOR_SCALE as S, ROOM_WALL_HEIGHT as height } from './scene-model.js';
 import { makeWallCutaway } from './cutaway.js';
+import { ROOM_FINISHES, roomFinishes } from '../../../server/catalog/room.js';
 
 // x runs from the long rear wall to the porch. Looking in from the porch, +z is on the left.
 export function buildWings(parent, box, batch, style) {
@@ -50,34 +51,51 @@ export function buildWings(parent, box, batch, style) {
   }
   floorMesh('Kitchen floor', 'kitchen');
 
-  const bath = { paint: new Color('#eee5cd').lerp(bathColor, 0.25), lower: bathColor, base: 0.60 };
-  const bunk = { paint: new Color('#f1e2c7').lerp(bedColor, 0.16), lower: wood, base: 0.60 };
-  const kitchen = { paint: new Color('#efe0c5').lerp(kitchenColor, 0.23), lower: kitchenColor, base: 0.60 };
+  // Each face of a wall belongs to the room it looks into, or to the outside of the house.
+  const finishes = roomFinishes(style.walls?.finishes);
+  const paintOf = kind => new Color(ROOM_FINISHES[kind].colors.find(color => color.id === finishes[kind].colorId).color);
+  const siding = paintOf('outside'), skirt = siding.clone().multiplyScalar(0.8);
+  const inside = (kind, lower) => {
+    const wall = paintOf(kind), plain = finishes[kind].typeId === 'plain';
+    return { wall, lower: plain ? wall : lower, cap: plain ? wall : new Color(honey), trim: new Color(trim) };
+  };
+  const looks = {
+    outside: { wall: siding, lower: skirt, cap: skirt, trim: skirt },
+    parlor: { wall: new Color(style.walls?.parlor || '#d3b88c'), lower: new Color('#9b7957'), cap: new Color('#c09b69'), trim: new Color(trim) },
+    kitchen: inside('kitchenWalls', kitchenColor), bedroom: inside('bedroomWalls', wood), bathroom: inside('bathroomWalls', bathColor),
+  };
+  // `rooms` are the rooms on the face's low and high side along its normal (x for left and right faces, z for front and back).
   const faces = [
-    { name: 'Kitchen rear window', side: 'left', at: kitchenRear, span: [3.25, 7.15], opening: [3.65, 4.85, 1.85, 3.28], ...kitchen },
-    { name: 'Kitchen porch window', side: 'right', at: 3.25, span: [3.30, 7.10], opening: [4.38, 5.78, 1.45, 3.02], ...kitchen },
-    { name: 'Kitchen counter window', side: 'front', at: 7.15, span: [kitchenRear + 0.05, 3.30], opening: [0.55, 2.27, 1.98, 3.24], ...kitchen },
-    { name: 'Parlor garden window', side: 'front', at: 3.35, span: [-4.05, kitchenRear + 0.05], opening: [-3.70, -2.70, 1.82, 3.17], ...bunk },
-    { name: 'Kitchen doorway', side: 'front', at: 3.35, span: [kitchenRear + 0.05, 3.20], opening: [1.41, 2.59, 0, ROOM_DOOR_HEIGHT], ...kitchen, base: 0.88, reverseFor: ['kitchen'] },
-    { name: 'Bedroom porch window', side: 'right', at: 3.55, span: [-7, -3.11], opening: [-5.97, -4.53, 1.43, 3.05], ...bunk },
-    { name: 'Bedroom side window', side: 'back', at: -7.05, span: [dividerX, 3.60], opening: [0.45, 1.85, 1.89, 3.20], ...bunk },
-    { name: 'Bathroom rear window', side: 'left', at: -4, span: [-7.05, -3], opening: [-6.35, -4.70, 1.86, 3.33], ...bath, mirror: true },
-    { name: 'Bathroom side window', side: 'back', at: -7.05, span: [-3.95, dividerX], opening: [-2.96, -1.50, 1.98, 3.24], ...bath, towel: true },
-    { name: 'Bathroom doorway', side: 'right', at: dividerX, span: [-7, -3.10], opening: [-4.69, -3.51, 0, ROOM_DOOR_HEIGHT], ...bath, base: 0.74, reverseFor: ['bunk'] },
-  ];
+    { name: 'Kitchen rear window', side: 'left', at: kitchenRear, span: [3.25, 7.15], opening: [3.65, 4.85, 1.85, 3.28], rooms: ['outside', 'kitchen'] },
+    { name: 'Kitchen porch window', side: 'right', at: 3.25, span: [3.30, 7.10], opening: [4.38, 5.78, 1.45, 3.02], rooms: ['kitchen', 'outside'] },
+    { name: 'Kitchen counter window', side: 'front', at: 7.15, span: [kitchenRear + 0.05, 3.30], opening: [0.55, 2.27, 1.98, 3.24], rooms: ['kitchen', 'outside'] },
+    { name: 'Parlor garden window', side: 'front', at: 3.35, span: [-4.05, kitchenRear + 0.05], opening: [-3.70, -2.70, 1.82, 3.17], rooms: ['parlor', 'outside'] },
+    { name: 'Kitchen doorway', side: 'front', at: 3.35, span: [kitchenRear + 0.05, 3.20], opening: [1.41, 2.59, 0, ROOM_DOOR_HEIGHT], rooms: ['parlor', 'kitchen'], base: 0.88, reverseFor: ['kitchen'] },
+    { name: 'Bedroom porch window', side: 'right', at: 3.55, span: [-7, -3.11], opening: [-5.97, -4.53, 1.43, 3.05], rooms: ['bedroom', 'outside'] },
+    { name: 'Bedroom side window', side: 'back', at: -7.05, span: [dividerX, 3.60], opening: [0.45, 1.85, 1.89, 3.20], rooms: ['outside', 'bedroom'] },
+    { name: 'Bathroom rear window', side: 'left', at: -4, span: [-7.05, -3], opening: [-6.35, -4.70, 1.86, 3.33], rooms: ['outside', 'bathroom'], mirror: true },
+    { name: 'Bathroom side window', side: 'back', at: -7.05, span: [-3.95, dividerX], opening: [-2.96, -1.50, 1.98, 3.24], rooms: ['outside', 'bathroom'], towel: true },
+    { name: 'Bathroom doorway', side: 'right', at: dividerX, span: [-7, -3.10], opening: [-4.69, -3.51, 0, ROOM_DOOR_HEIGHT], rooms: ['bathroom', 'bedroom'], base: 0.74, reverseFor: ['bunk'] },
+  ].map(face => ({ base: 0.60, ...face }));
+  const ROLES = ['wall', 'lower', 'cap', 'trim'];
+  /** A role colours each side of the panel for its own room; the ends and top take the first room indoors. */
+  const sided = ({ side, rooms }, role) => (nx, nz) => {
+    const n = side === 'left' || side === 'right' ? nx : nz;
+    return looks[n > 0.5 ? rooms[1] : n < -0.5 ? rooms[0] : rooms.find(room => room !== 'outside')][role];
+  };
 
-  function panel({ side, at }, start, end, bottom, top, paint, depth = 0.105, inset = 0) {
-    const along = (start + end) / 2, y = (bottom + top) / 2;
-    if (side === 'left' || side === 'right') box(depth, top - bottom, end - start, paint, at + inset, y, along);
-    else box(end - start, top - bottom, depth, paint, along, y, at + inset);
+  function panel(face, start, end, bottom, top, paint, depth = 0.105, inset = 0) {
+    const { side, at } = face, along = (start + end) / 2, y = (bottom + top) / 2, color = ROLES.includes(paint) ? sided(face, paint) : paint;
+    if (side === 'left' || side === 'right') box(depth, top - bottom, end - start, color, at + inset, y, along);
+    else box(end - start, top - bottom, depth, color, along, y, at + inset);
   }
   // Keep a capped base below every cutaway. Only thresholds interrupt its outline.
   for (const face of faces) {
     const { span: [from, to], opening: [a, b, sill], base } = face;
     for (const [lo, hi] of sill ? [[from, to]] : [[from, a], [b, to]]) {
-      panel(face, lo, hi, 0, base, face.lower);
-      panel(face, lo, hi, 0.03, 0.13, trim, 0.14);
-      panel(face, lo, hi, base, base + 0.065, honey, 0.15);
+      panel(face, lo, hi, 0, base, 'lower');
+      panel(face, lo, hi, 0.03, 0.13, 'trim', 0.14);
+      panel(face, lo, hi, base, base + 0.065, 'cap', 0.15);
     }
   }
   parent.add(batch('Wing floors and capped cutaway bases'));
@@ -85,15 +103,16 @@ export function buildWings(parent, box, batch, style) {
   const walls = [];
   const glass = new MeshBasicMaterial({ color: '#b2cdd3', side: DoubleSide, transparent: true, opacity: 0.20, depthWrite: false });
   for (const face of faces) {
-    const { name, side, span: [from, to], opening: [a, b, sill, lintel], base, paint } = face;
+    const { name, side, span: [from, to], opening: [a, b, sill, lintel], base } = face, paint = 'wall';
     const bottom = base + 0.065;
     panel(face, from, a, bottom, height, paint);
     panel(face, b, to, bottom, height, paint);
     if (sill) panel(face, a, b, bottom, sill, paint);
     panel(face, a, b, lintel, height, paint);
     const solid = batch(name);
-    if (name !== 'Parlor garden window') solid.userData.editSelection = { kind: 'homestead',
+    solid.userData.editSelection = name === 'Parlor garden window' ? { kind: 'finish' } : { kind: 'homestead',
       id: name.startsWith('Bathroom') ? 'bathroom' : name.startsWith('Kitchen') ? 'kitchen' : 'bedroom' };
+    solid.userData.wallRooms = { rooms: face.rooms, axis: side === 'left' || side === 'right' ? 'x' : 'z' };
     parent.add(solid);
     const wall = makeWallCutaway(side, solid, [solid]);
     if (face.reverseFor) wall.reverseFor = face.reverseFor;
@@ -116,8 +135,8 @@ export function buildWings(parent, box, batch, style) {
     }
     if (!face.mirror) {
       for (const [lo, hi] of sill ? [[from, to]] : [[from, a], [b, to]]) {
-        panel(face, lo, hi, bottom, 1.16, face.lower, 0.126);
-        panel(face, lo, hi, 1.16, 1.23, honey, 0.155);
+        panel(face, lo, hi, bottom, 1.16, 'lower', 0.126);
+        panel(face, lo, hi, 1.16, 1.23, 'cap', 0.155);
       }
     }
     if (face.mirror) {

@@ -81,9 +81,10 @@ function ranchWindpump(paint) {
 
 function joinery(material = new THREE.MeshLambertMaterial({ vertexColors: true })) {
   const parts = [];
+  // `color` may be a function of a vertex's normal (x, z), to paint each face of a wall for the room it looks into.
   function paint(geometry, color) {
-    const rgb = new THREE.Color(color).toArray(), colors = [];
-    for (let i = 0; i < geometry.attributes.position.count; i++) colors.push(...rgb);
+    const rgb = typeof color === 'function' ? null : new THREE.Color(color).toArray(), colors = [], normal = geometry.attributes.normal;
+    for (let i = 0; i < geometry.attributes.position.count; i++) colors.push(...(rgb || new THREE.Color(color(normal.getX(i), normal.getZ(i))).toArray()));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     parts.push(geometry);
   }
@@ -415,16 +416,17 @@ export function buildHomestead(parent, { onReady } = {}) {
       finishModel(mesh, state[id]);
     }
   }
-  function update(value, furniture) {
+  /** `paints` carries the parlor paint and the saved wall finishes, for the far side of shared walls and the outside. */
+  function update(value, furniture, paints) {
     if (disposed) return;
-    const options = roomHomestead(value), key = JSON.stringify(options);
+    const options = roomHomestead(value), key = JSON.stringify([options, paints]);
     if (key !== savedKey) {
       savedKey = key;
       for (const [id, choice] of Object.entries(options)) {
         choice.paint = new THREE.Color(ROOM_HOMESTEAD[id].colors.find(c => c.id === choice.colorId).color);
       }
-      state = options;
-      const architectureKey = JSON.stringify([state.bathroom, state.bedroom, state.kitchen, state.porch]);
+      state = { ...options, walls: paints };
+      const architectureKey = JSON.stringify([state.bathroom, state.bedroom, state.kitchen, state.porch, paints]);
       if (architectureKey !== shapeKey) {
         shapeKey = architectureKey;
         if (structure) { group.remove(structure); releaseModels(structure); }

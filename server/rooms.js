@@ -1,5 +1,5 @@
 import { GameError } from './engine/game.js';
-import { ROOM_ANCHORS, ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FINISHES,
+import { ROOM_ANCHORS, ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FINISHES, ROOM_FINISH_KINDS,
   ROOM_FURNITURE, ROOM_HOMESTEAD, roomHomestead, ROOM_WALL_SPOTS, ROOM_WALL_IDS, defaultWallDisplays, roomWallDisplays, wallMountsFit,
   defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture, upgradeFurniture, ownedFurniture, ROOM_FURNITURE_ITEMS, ROOM_PLAN } from './catalog/room.js';
 
@@ -20,7 +20,7 @@ const validShelves = value => Array.isArray(value) && value.length <= ROOM_SHELF
     && ROOM_SHELF_IDS.includes(shelf.id) && ROOM_SHELF_SPOTS.some(spot => spot.id === shelf.spotId)
     && (!Object.hasOwn(shelf, 'sizeId') || typeof shelf.sizeId === 'string' && Object.hasOwn(ROOM_SHELF_SIZES, shelf.sizeId))
     && validFinish('shelf', { typeId: shelf.typeId, colorId: shelf.colorId }));
-const validFinishes = value => allowedBody(value, ['floor', 'rug', 'wardrobe', 'couch', 'fence'])
+const validFinishes = value => allowedBody(value, ROOM_FINISH_KINDS)
   && ['floor', 'rug', 'wardrobe'].every(kind => Object.hasOwn(value, kind))
   && Object.entries(value).every(([kind, style]) => validFinish(kind, style));
 const homesteadFields = { typeId: 'types', colorId: 'colors' };

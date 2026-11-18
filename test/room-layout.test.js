@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ROOM_WALLS, defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, defaultFurniture, furnitureFits, residentRect, defaultWallDisplays, wallMountsFit, shelfSlots, shelfForAnchor, roomAnchors } from '../server/catalog/room.js';
-import { layoutOf, layoutKey, addShelf, moveShelf, resizeShelf, removeShelf, changeStyle, placeFurniture, furnitureOf, moveWallDisplay } from '../client/src/room/layout.js';
+import { ROOM_WALLS, defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, defaultFurniture, furnitureFits, residentRect, defaultWallDisplays, wallMountsFit, shelfSlots, shelfForAnchor, roomAnchors, pieceArea, furnitureValid } from '../server/catalog/room.js';
+import { layoutOf, layoutKey, addShelf, moveShelf, resizeShelf, removeShelf, changeStyle, placeFurniture, furnitureOf, moveWallDisplay, moveToRoom } from '../client/src/room/layout.js';
 
 // The couch is put away so these mount tests keep the open back wall they were written for.
 const cm = n => Math.round(n * 100) / 100, W = 4 * ROOM_FLOOR_SCALE, D = 3 * ROOM_FLOOR_SCALE, DOOR = 0.9 * ROOM_FLOOR_SCALE;
@@ -202,4 +202,17 @@ test('upper shelves stay clear of the taller resident without moving saved furni
   assert.notEqual(shelfFirst, draft);
   assert.equal(placeFurniture(shelfFirst, 'rug', place), shelfFirst, 'moving the resident under a high shelf is also refused');
   assert.ok(wallMountsFit(draft.shelves, draft.wallDisplays, draft.furniture), 'original room defaults still fit');
+});
+
+test('the wardrobe can go in the bathroom and the display case in the bedroom, and back', () => {
+  const saved = layoutOf(room()), cased = placeFurniture(saved, 'case', { off: false });
+  const bath = moveToRoom(saved, 'wardrobe', 'bathroom'), bed = moveToRoom(cased, 'case', 'bunk');
+  assert.equal(pieceArea(bath.furniture, 'wardrobe'), 'bathroom'); assert.equal(pieceArea(bed.furniture, 'case'), 'bunk');
+  for (const layout of [bath, bed]) assert.ok(furnitureValid(layout.furniture), 'the server accepts the move');
+  assert.ok(furnitureFits(bath.furniture, 'tub') && furnitureFits(bed.furniture, 'bed'), 'nothing lands on the bath or the bed');
+  const home = moveToRoom(bath, 'wardrobe', 'parlor').furniture.wardrobe, usual = saved.furniture.wardrobe;
+  assert.ok(Math.hypot(home.x - usual.x, home.z - usual.z) < 0.25, 'back home goes to its usual corner, to the nearest quarter');
+  for (const [id, area] of [['wardrobe', 'kitchen'], ['case', 'bathroom'], ['couch', 'bunk']]) assert.equal(moveToRoom(cased, id, area), cased, `${id} stays out of the ${area}`);
+  // Shelves and wall displays in the living room no longer reach a wardrobe that has gone to the bathroom.
+  assert.ok(furnitureFits(bath.furniture, 'linen') && furnitureFits(bath.furniture, 'sink'));
 });

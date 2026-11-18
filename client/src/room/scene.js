@@ -20,6 +20,9 @@ import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot
 const PAINT = { 'bunkhouse-timber': '#d3b88c', 'bunkhouse-sage': '#a7b59a', 'bunkhouse-clay': '#c79883' };
 /** The rooms that look at a parlor wall from behind, where its shelves and displays stay out of sight. */
 const BEHIND_WALL = { back: ['bunk', 'bathroom'], front: ['kitchen'], right: ['porch', 'yard'] };
+/** What picking each side of a wall edits. */
+const WALL_SELECTION = { outside: { kind: 'surface', surface: 'outside' }, parlor: { kind: 'finish' },
+  kitchen: { kind: 'homestead', id: 'kitchen', wall: true }, bedroom: { kind: 'homestead', id: 'bedroom', wall: true }, bathroom: { kind: 'homestead', id: 'bathroom', wall: true } };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 const mesh = (parent, geometry, mat, x = 0, y = 0, z = 0) => {
   const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); parent.add(m); return m;
@@ -586,7 +589,9 @@ export class RoomScene {
     const previous = this.camera, area = this.framedArea;
     this.camera = makeRoomCamera(Math.max(1, this.canvas.clientWidth) / Math.max(1, this.canvas.clientHeight), this.view);
     const before = previous && roomWallVisibility(previous.position), after = roomWallVisibility(this.camera.position);
-    if (!before || before.back !== after.back || before.left !== after.left || area !== this.view?.area) this.applyCutaway();
+    const exterior = roomView(this.view).zoom <= ROOM_VIEW_LIMITS.minZoom, closed = exterior !== !!this.exterior;
+    this.exterior = exterior;
+    if (!before || before.back !== after.back || before.left !== after.left || area !== this.view?.area || closed) this.applyCutaway();
     this.framedArea = this.view?.area;
     this.render();
   }
@@ -824,8 +829,13 @@ export class RoomScene {
       if (this.residentPick && !this.activityPaused) picks.push(this.residentPick);
       if (this.onHouseAction) picks.push(...(this.homestead?.picks || []), ...(this.signPicks || []));
     }
-    const targets = this.editing ? [...picks, ...this.walls] : picks.filter(target => !['surface', 'couch'].includes(target.userData.selection.kind));
+    const shell = this.exterior ? [...(this.roofParts || []), ...this.walls, ...(this.homestead?.walls || []).map(wall => wall.solid)] : [];
+    const targets = [...(this.editing ? [...picks, ...this.walls] : picks.filter(target => !['surface', 'couch'].includes(target.userData.selection.kind))), ...shell];
     const hit = this.raycaster.intersectObjects(targets.filter(target => shown(target) && !(this.wagon && target.userData.selection?.anchorId === 'window')), false)[0];
+    const tag = hit?.object.userData.wallRooms, n = tag && hit.face && (tag.axis === 'x' ? hit.face.normal.x : hit.face.normal.z);
+    const face = tag && (n > 0.5 ? tag.rooms[1] : n < -0.5 ? tag.rooms[0] : null);
+    if (shell.includes(hit?.object)) return this.editing ? { ...WALL_SELECTION[face || 'outside'] } : null;
+    if (this.editing && face) return { ...WALL_SELECTION[face] };
     const wagonHit = this.wagon && this.raycaster.intersectObject(this.wagon, true)[0];
     if (wagonHit && (!hit || wagonHit.distance < hit.distance)) return { kind: 'anchor', anchorId: 'window' };
     const data = hit?.object.userData;
@@ -836,10 +846,11 @@ export class RoomScene {
     const visible = roomWallVisibility(this.camera.position);
     const area = this.view?.area;
     for (const { side, solid, ghost, reverseFor } of [...(this.wallCutaways || []), ...(this.homestead?.walls || [])]) {
-      solid.visible = reverseFor?.includes(area) ? !visible[side] : visible[side];
+      solid.visible = this.exterior || (reverseFor?.includes(area) ? !visible[side] : visible[side]);
       ghost.visible = !solid.visible;
     }
-    if (this.cornerPost) this.cornerPost.visible = visible.back || visible.left;
+    if (this.roof) this.roof.visible = !!this.exterior;
+    if (this.cornerPost) this.cornerPost.visible = this.exterior || visible.back || visible.left;
     for (const group of [this.dynamic, this.highlights]) for (const object of group?.children || []) {
       if (object.userData.wallSide) object.visible = visible[object.userData.wallSide] && !BEHIND_WALL[object.userData.wallSide]?.includes(area);
     }
@@ -854,6 +865,11 @@ export class RoomScene {
     disposeObjects(this.highlights); this.highlights.clear();
     this.wallMaterial.emissive.set(this.editing ? '#8b6529' : '#000000');
     this.wallMaterial.emissiveIntensity = this.editing ? (selection?.kind === 'finish' ? 0.35 : 0.12) : 0;
+    const lit = { outside: selection?.surface === 'outside', bathroomWalls: selection?.id === 'bathroom', bedroomWalls: selection?.id === 'bedroom', roof: selection?.surface === 'outside' };
+    for (const [kind, paint] of [...Object.entries(this.sideMaterials || {}), ['roof', this.roofing]]) {
+      if (!paint) continue;
+      paint.emissive.set(this.editing ? '#8b6529' : '#000000'); paint.emissiveIntensity = this.editing ? (lit[kind] ? 0.35 : kind === 'roof' ? 0 : 0.12) : 0;
+    }
     if (this.editing) for (const target of this.picks) {
       const chosen = target.userData.selection;
       if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface', 'couch', 'poker'].includes(chosen.kind)) continue;
@@ -909,27 +925,36 @@ export class RoomScene {
     // The left edge stops at the wall's outer face; the right edge meets the yard.
     this.floor = mesh(p, new THREE.BoxGeometry(8.33, 0.2, 6.5), material('#f0d4a2', { map: floorMap }), 0.085, -0.1, 0);
     this.wallMaterial = material(PAINT['bunkhouse-timber']); this.walls = []; this.wallCutaways = [];
+    this.sideMaterials = { outside: material('#c4a47a', { side: THREE.DoubleSide }), bathroomWalls: material('#d6dcc1'), bedroomWalls: material('#e8c9b4') };
     this.backWall = new THREE.Group(); this.leftWall = new THREE.Group(); p.add(this.backWall, this.leftWall);
-    const wall = (parent, w, h, d, x, y, z) => {
-      const panel = mesh(parent, new THREE.BoxGeometry(w, h, d), this.wallMaterial, x, y, z);
-      panel.userData.selection = { kind: 'finish' }; this.walls.push(panel); return panel;
+    // `rooms` are the rooms on the panel's low and high side along `axis`. Box faces run +x, -x, +y, -y, +z, -z.
+    const ROOM_PAINT = { parlor: this.wallMaterial, outside: this.sideMaterials.outside, bathroom: this.sideMaterials.bathroomWalls, bedroom: this.sideMaterials.bedroomWalls };
+    const wall = (parent, w, h, d, x, y, z, axis, rooms) => {
+      const faces = Array(6).fill(this.wallMaterial), at = axis === 'x' ? 0 : 4;
+      faces[at] = ROOM_PAINT[rooms[1]]; faces[at + 1] = ROOM_PAINT[rooms[0]];
+      const panel = mesh(parent, new THREE.BoxGeometry(w, h, d), faces, x, y, z);
+      panel.userData.selection = { kind: 'finish' }; panel.userData.wallRooms = { rooms, axis }; this.walls.push(panel); return panel;
     };
     const opening = { left: -0.3, right: 1.8, bottom: 1.4, top: 2.85 };
     const openingWidth = opening.right - opening.left;
     const windowX = (opening.left + opening.right) / 2;
     const doorLeft = 2.30, doorRight = 3.45, base = 0.78;
-    const backPanel = (from, to, bottom, top) => wall(this.backWall, to - from, top - bottom, 0.16, (to + from) / 2, (top + bottom) / 2, -3);
-    backPanel(-4, opening.left, base, ROOM_WALL_HEIGHT);
+    // Behind the back wall: the bathroom, then the bedroom, then the yard past the bedroom's porch wall.
+    const backPanel = (from, to, bottom, top) => wall(this.backWall, to - from, top - bottom, 0.16, (to + from) / 2, (top + bottom) / 2, -3,
+      'z', [(from + to) / 2 < -0.45 ? 'bathroom' : (from + to) / 2 < 3.55 ? 'bedroom' : 'outside', 'parlor']);
+    backPanel(-4, -0.45, base, ROOM_WALL_HEIGHT);
+    backPanel(-0.45, opening.left, base, ROOM_WALL_HEIGHT);
     backPanel(opening.left, opening.right, base, opening.bottom);
     backPanel(opening.left, opening.right, opening.top, ROOM_WALL_HEIGHT);
     backPanel(opening.right, doorLeft, base, ROOM_WALL_HEIGHT);
     backPanel(doorLeft, doorRight, ROOM_DOOR_HEIGHT, ROOM_WALL_HEIGHT);
-    backPanel(doorRight, 4.08, base, ROOM_WALL_HEIGHT);
+    backPanel(doorRight, 3.55, base, ROOM_WALL_HEIGHT);
+    backPanel(3.55, 4.08, base, ROOM_WALL_HEIGHT);
     for (const [from, to] of [[-4, doorLeft], [doorRight, 4.08]]) {
       box(p, to - from, base, 0.16, '#9b7957', (from + to) / 2, base / 2, -3);
       box(p, to - from, 0.07, 0.20, '#c09b69', (from + to) / 2, base, -3);
     }
-    const leftPanel = (from, to, bottom, top) => wall(this.leftWall, 0.16, top - bottom, to - from, -4, (top + bottom) / 2, (to + from) / 2);
+    const leftPanel = (from, to, bottom, top) => wall(this.leftWall, 0.16, top - bottom, to - from, -4, (top + bottom) / 2, (to + from) / 2, 'x', ['outside', 'parlor']);
     const sashStart = -1.52, sashEnd = 0.50, sashBottom = 1.94, sashTop = 3.36;
     leftPanel(-3, sashStart, 0, ROOM_WALL_HEIGHT);
     leftPanel(sashEnd, 3.35, 0, ROOM_WALL_HEIGHT);
@@ -964,6 +989,7 @@ export class RoomScene {
     windowFrame(this.backWall, openingWidth, opening.bottom, opening.top, windowX, -3, 0);
     windowFrame(this.leftWall, sashEnd - sashStart, sashBottom, sashTop, -4, (sashStart + sashEnd) / 2, Math.PI / 2);
     this.buildYardFence(roomFinishes().fence);
+    this.buildRoof();
     const sign = signpost(); this.static.add(sign);
     this.signPicks = []; sign.traverse(part => { if (part.userData.selection) this.signPicks.push(part); });
     this.buildSideDoor();
@@ -1024,6 +1050,31 @@ export class RoomScene {
     cylinder(this.leftWall, 0.13, 0.115, 0.35, '#f3dab2', -3.62, 2.70, 1.9, 8);
     cylinder(this.leftWall, 0.07, 0.17, 0.11, '#80674a', -3.62, 2.92, 1.9, 8);
   }
+  buildRoof() {
+    const S = ROOM_FLOOR_SCALE, eave = ROOM_WALL_HEIGHT + 0.09, over = 0.35, pitch = 0.5;
+    const tin = paintedTexture(64, 64, ctx => {
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 64, 64);
+      for (let x = 0; x < 64; x += 8) { ctx.fillStyle = '#c4c0b8'; ctx.fillRect(x, 0, 3, 64); ctx.fillStyle = '#e9e6e0'; ctx.fillRect(x + 3, 0, 1, 64); }
+    });
+    tin.wrapS = tin.wrapT = THREE.RepeatWrapping;
+    const roofing = this.roofing = material('#9a6a4a', { map: tin, side: THREE.DoubleSide });
+    this.roof = new THREE.Group(); this.roof.name = 'Roof'; this.roof.visible = false; this.static.add(this.roof); this.roofParts = [];
+    const sheet = (points, uvs, paint) => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs.flat(), 2));
+      geometry.setIndex(points.length === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2]); geometry.computeVertexNormals();
+      const part = new THREE.Mesh(geometry, paint); part.castShadow = part.receiveShadow = true;
+      this.roof.add(part); this.roofParts.push(part);
+    };
+    // A ridge along x over each block, in floor-plan units; gable ends take the outside paint.
+    for (const [x0, x1, z0, z1] of [[-4.08, 4.15, -3.08, 3.42], [-4.08, 3.62, -7.13, -3.02], [-2.43, 3.33, 3.38, 7.23]]) {
+      const [a, b, c, d] = [x0 * S, x1 * S, z0 * S, z1 * S], mid = (c + d) / 2, ridge = eave + (d - c) / 2 * pitch, low = eave - over * pitch;
+      const run = (b - a + 2 * over) / 0.9, slope = Math.hypot((d - c) / 2 + over, ridge - low) / 2;
+      for (const edge of [c - over, d + over]) sheet([[a - over, low, edge], [b + over, low, edge], [b + over, ridge, mid], [a - over, ridge, mid]], [[0, 0], [run, 0], [run, slope], [0, slope]], roofing);
+      for (const x of [a, b]) sheet([[x, eave, c], [x, eave, d], [x, ridge, mid]], [[0, 0], [1, 0], [0.5, 1]], this.sideMaterials.outside);
+    }
+  }
   /** Furniture is built around its own origin; update() places it from the saved layout. */
   fixture() {
     const group = new THREE.Group(); this.static.add(group); return group;
@@ -1037,8 +1088,9 @@ export class RoomScene {
     const casing = new THREE.Group(); side.add(casing);
     const plankWall = (from, to, bottom = 0, top = ROOM_WALL_HEIGHT) => {
       const length = to - from, z = (from + to) / 2;
-      const panel = mesh(side, new THREE.BoxGeometry(0.14, top - bottom, length), this.wallMaterial, wallX, (bottom + top) / 2, z);
-      panel.userData.selection = { kind: 'finish' }; this.walls.push(panel); panels.push(panel);
+      const faces = Array(6).fill(this.wallMaterial); faces[0] = this.sideMaterials.outside;
+      const panel = mesh(side, new THREE.BoxGeometry(0.14, top - bottom, length), faces, wallX, (bottom + top) / 2, z);
+      panel.userData.selection = { kind: 'finish' }; panel.userData.wallRooms = { rooms: ['parlor', 'outside'], axis: 'x' }; this.walls.push(panel); panels.push(panel);
       for (let y = 0.4; y < top - 0.02; y += 0.5) {
         if (y > bottom + 0.02) box(casing, 0.15, 0.02, length, '#735238', wallX, y, z);
       }
@@ -1072,8 +1124,9 @@ export class RoomScene {
     // The kitchen steps back from the porch; its partition meets this return wall.
     const corner = new THREE.Group(); corner.name = 'Parlor corner beside kitchen'; root.add(corner);
     const returnWidth = wallX - 3.20, returnX = wallX - returnWidth / 2;
-    const returnPanel = mesh(corner, new THREE.BoxGeometry(returnWidth, ROOM_WALL_HEIGHT, 0.14), this.wallMaterial, returnX, ROOM_WALL_HEIGHT / 2, 3.35);
-    returnPanel.userData.selection = { kind: 'finish' }; this.walls.push(returnPanel);
+    const returnFaces = Array(6).fill(this.wallMaterial); returnFaces[4] = this.sideMaterials.outside;
+    const returnPanel = mesh(corner, new THREE.BoxGeometry(returnWidth, ROOM_WALL_HEIGHT, 0.14), returnFaces, returnX, ROOM_WALL_HEIGHT / 2, 3.35);
+    returnPanel.userData.selection = { kind: 'finish' }; returnPanel.userData.wallRooms = { rooms: ['parlor', 'outside'], axis: 'z' }; this.walls.push(returnPanel);
     box(corner, returnWidth + 0.09, 0.15, 0.18, dark, returnX, ROOM_WALL_HEIGHT + 0.02, 3.35);
     for (let y = 0.4; y < ROOM_WALL_HEIGHT; y += 0.5) box(corner, returnWidth, 0.02, 0.15, '#735238', returnX, y, 3.35);
     this.wallCutaways.push(makeWallCutaway('front', corner, [returnPanel]));
@@ -1215,7 +1268,9 @@ export class RoomScene {
     this.shelves = roomShelves(view.shelves);
     this.wallDisplays = roomWallDisplays(view.wallDisplays, this.shelves);
     const furniture = this.furniture = roomFurniture(view.furniture), turn = id => furniture[id].r * Math.PI / 2;
-    this.homestead?.update(view.homestead, furniture);
+    const finishes = roomFinishes(view.finishes);
+    this.homestead?.update(view.homestead, furniture, { parlor: PAINT[view.themeId] || PAINT['bunkhouse-timber'],
+      finishes: Object.fromEntries(['kitchenWalls', 'bedroomWalls', 'bathroomWalls', 'outside'].map(kind => [kind, finishes[kind]])) });
     for (const [id, group] of Object.entries(this.movable())) {
       if (!group) continue;
       group.position.set(furniture[id].x, id === 'rug' ? ROOM_FIXTURES.rug[1] : 0, furniture[id].z);
@@ -1223,8 +1278,9 @@ export class RoomScene {
     }
     const couchScale = roomCouchScale(furniture, this.shelves, this.wallDisplays);
     this.couch?.scale.fromArray(couchScale);
-    this.furnishings(roomFinishes(view.finishes));
+    this.furnishings(finishes);
     this.wallMaterial.color.set(PAINT[view.themeId] || PAINT['bunkhouse-timber']);
+    for (const [kind, paint] of Object.entries(this.sideMaterials || {})) paint.color.set(finishColor(kind, finishes[kind]));
     const shelfGroups = new Map();
     for (const [anchorId, position] of Object.entries(roomPositions(this.shelves, furniture, this.wallDisplays))) {
       const shelf = shelfForAnchor(this.shelves, anchorId);

@@ -145,7 +145,7 @@ test('custom furnishings and surfaces update in place for the GLB and offline mo
     home.update(next); // The saved room can arrive before its models.
     await home.ready;
     assert.deepEqual(actions(home), expected);
-    assert.deepEqual(new Set(home.editPicks.map(mesh => mesh.userData.editSelection.id)), new Set(Object.keys(ROOM_HOMESTEAD)));
+    assert.deepEqual(new Set(home.editPicks.filter(mesh => mesh.userData.editSelection.kind === 'homestead').map(mesh => mesh.userData.editSelection.id)), new Set(Object.keys(ROOM_HOMESTEAD)));
     const find = name => root.getObjectByName(name);
     const bed = find('bedSingle'), tub = find('bathtub'), chair = find('chair'), cabinet = find('kitchenCabinet');
     assert.equal(bed.getObjectByName('Surface pattern').geometry.attributes.position.count, 28);
