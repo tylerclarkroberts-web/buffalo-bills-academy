@@ -216,6 +216,14 @@ const pieces = {
     'I mark where the tree is before bed. Just to see how far Christmas travels.',
     'You ever tried packing up a tree while it’s rolling?',
   ],
+  'odd-ribbonrack': [
+    'First place. In bugs. I don’t lead with it.',
+    'Nobody sanctions that ribbon. I checked. I like it more now.',
+  ],
+  'odd-bugposter': [
+    'I was there for that picture. The star tried to write a word over me.',
+    'That poster says one night only. It’s been six weeks.',
+  ],
   'odd-medal': [
     'That medal’s for golf. I let people finish guessing first.',
     'I put my medal away. I only wear it for formal golf.',

@@ -409,7 +409,7 @@ const TYPES = {
   rock: 'shelf', telegraph: 'desk', snakeoil: 'shelf', piano: 'shelf', horseshoe: 'wall', sheriffbadge: 'wall',
   bigrock: 'floor', railroad: 'wall', charter: 'wall', skull: 'wall', pickaxe: 'floor',
   jackolantern: 'shelf', ghost: 'floor', cornucopia: 'shelf', turkey: 'floor', stocking: 'wall', tumbletree: 'floor',
-  medal: 'wall', flipflop: 'shelf', drone: 'shelf', abalone: 'shelf', boardingpass: 'wall',
+  medal: 'wall', ribbonrack: 'wall', bugposter: 'wall', flipflop: 'shelf', drone: 'shelf', abalone: 'shelf', boardingpass: 'wall',
 };
 // Anything small enough for a shelf also sits on the desk.
 const SURFACES = { telegraph: ['desk', 'shelf'], turkey: ['floor', 'desk'], tumbletree: ['floor', 'desk'] };

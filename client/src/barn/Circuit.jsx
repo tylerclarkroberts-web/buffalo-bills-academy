@@ -33,11 +33,12 @@ const Cross = () => <svg viewBox="0 0 12 12" width="24" height="24" aria-hidden=
 
 function Icon({ stop }) {
   if (stop.kind === 'talk') return <Clipboard />;
+  if (stop.kind === 'quest') return <span className="cc-errand" aria-hidden="true">!</span>;
   if (stop.kind === 'center') return <Cross />;
   const lead = stop.bugs[0];
   return <Thumb species={lead.species} level={lead.level} w={40} h={32} />;
 }
-const stateOf = (stop, run, tolls) => stop.done ? (stop.kind === 'leader' ? 'Ribbon won' : stop.kind === 'boss' ? 'Card won' : stop.kind === 'wild' ? 'Caught' : stop.kind === 'talk' ? 'Registered' : tolls?.[stop.id] === 'paid' ? 'Paid' : 'Beaten')
+const stateOf = (stop, run, tolls) => stop.done ? (stop.kind === 'leader' ? 'Ribbon won' : stop.kind === 'boss' ? 'Card won' : stop.kind === 'wild' ? 'Caught' : stop.kind === 'quest' ? 'Done' : stop.kind === 'talk' ? 'Registered' : tolls?.[stop.id] === 'paid' ? 'Paid' : 'Beaten')
   : !stop.open ? 'Not yet' : run?.stop === stop.id ? `Round ${run.foe + 1} of ${stop.bugs.length}` : stop.kind === 'center' ? 'Open' : 'Up next';
 
 function Say({ who, lines }) {
@@ -75,6 +76,14 @@ function Stop({ stop, c, b, busy, act: run0, setC, pin, next, onArea, afterName 
   if (stop.kind === 'center') return <div className="cc-stop" data-test="circuit-stop">
     <h3>{stop.who}</h3><Say who={stop.who} lines={stop.lines} />
     <button className="btn" onClick={() => navigate('/barn/center')} data-test="circuit-center">Go in</button>
+  </div>;
+  if (stop.kind === 'quest') return <div className="cc-stop" data-test="circuit-stop">
+    <h3>{stop.who}<small> · {stop.title}</small></h3>
+    <Say who={stop.who} lines={stop.done ? [reply || 'Much obliged. That is all I needed.'] : stop.intro} />
+    {stop.done ? <p className="small cc-done">Errand run.</p> : <>
+      <p className="small cc-need" data-test="circuit-need"><b>Wanted:</b> {stop.need} <span className="muted">Pays ${stop.reward}.</span></p>
+      <div className="barn-row"><button className="btn primary" disabled={busy || !stop.open} onClick={() => act(async () => { const r = await api('POST', '/circuit/quest', { stop: stop.id }); setReply(r.reply); setC(r); })} data-test="circuit-quest">{stop.open ? 'I have that' : 'Not yet'}</button></div>
+    </>}
   </div>;
   if (stop.kind === 'talk') return <div className="cc-stop" data-test="circuit-stop">
     <h3>{stop.who}</h3>
@@ -120,10 +129,10 @@ export default function Circuit({ b, busy, act, boutOpen }) {
   useEffect(() => { if (!boutOpen) load(); }, [b.live, boutOpen]); // a round just finished: the trail has moved on
   if (!c) return <div className="cc-wrap barn-none">{err ? <><p role="alert">{err}</p><button className="btn" onClick={load}>Try again</button></> : <p className="muted">Unrolling the map…</p>}</div>;
   // The area on show: the one you picked, otherwise the furthest one that is open.
-  const reached = c.areas.filter((a) => a.open), area = reached.find((a) => a.id === areaId) || reached.find((a) => a.stops.some((s) => !s.done && !['center', 'boss', 'wild'].includes(s.kind))) || reached.at(-1) || c.areas[0];
+  const reached = c.areas.filter((a) => a.open), area = reached.find((a) => a.id === areaId) || reached.find((a) => a.stops.some((s) => !s.done && !['center', 'boss', 'wild', 'quest'].includes(s.kind))) || reached.at(-1) || c.areas[0];
   const after = c.areas[c.areas.indexOf(area) + 1];
   // what to do next: the first stop the area is waiting on, then anything optional left (a rare, the boss)
-  const todo = area.stops.filter((s) => s.open && !s.done && s.kind !== 'center'), next = todo.find((s) => s.kind !== 'wild' && s.kind !== 'boss') || todo[0] || area.stops.at(-1);
+  const todo = area.stops.filter((s) => s.open && !s.done && s.kind !== 'center'), next = todo.find((s) => !['wild', 'boss', 'quest'].includes(s.kind)) || todo[0] || area.stops.at(-1);
   const stop = area.stops.find((s) => s.id === sel) || next;
   return <div className="cc-wrap" data-test="circuit">
     <div className="cc-top">
@@ -141,7 +150,7 @@ export default function Circuit({ b, busy, act, boutOpen }) {
         {area.stops.map((s) => <li key={s.id}>
           <button className={`cc-node${s.id === stop.id ? ' on' : ''}${s.done ? ' done' : ''}${!s.open ? ' locked' : ''}${s.kind === 'leader' ? ' leader' : ''}${s.kind === 'boss' ? ' boss' : ''}`} aria-current={s.id === stop.id ? 'step' : undefined} onClick={() => pick(s.id)} data-test="circuit-node">
             <span className="cc-icon"><Icon stop={s} /></span>
-            <span className="cc-label"><b>{s.who}</b><small>{s.title || (s.bugs ? `${s.bugs[0].name} · Lv ${s.bugs[0].level}` : '')}{s.kind === 'wild' && !s.done ? ' · ★ rare' : s.purse && !s.done ? ` · $${s.purse}` : ''}</small></span>
+            <span className="cc-label"><b>{s.who}</b><small>{s.title || (s.bugs ? `${s.bugs[0].name} · Lv ${s.bugs[0].level}` : '')}{s.kind === 'quest' ? (s.done ? '' : ` · errand · $${s.reward}`) : s.kind === 'wild' && !s.done ? ' · ★ rare' : s.purse && !s.done ? ` · $${s.purse}` : ''}</small></span>
             <span className={`cc-state${s.done ? ' done' : ''}`}>{s.done ? '✓ ' : ''}{stateOf(s, c.run, c.tolls)}</span>
           </button>
         </li>)}
