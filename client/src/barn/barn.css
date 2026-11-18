@@ -283,3 +283,78 @@
 .bout { grid-template-columns: minmax(0, 1fr); }
 .bout-acts { flex-wrap: wrap; gap: 6px; align-items: center; }
 @media (max-width: 760px) { .bout-center { flex: 1 1 auto; min-width: 0; white-space: normal; } }
+
+/* The Barn's rooms (stalls, ring, circuit) and the Tri-County Bug Circuit (Circuit.jsx): a trail of stops through a mown field, the picked stop beside it. */
+.barn-rooms { display: flex; gap: 4px; }
+.barn-rooms .btn.waiting { border-color: var(--gold); color: var(--gold); }
+.cc-wrap { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; min-height: 0; overflow: hidden; }
+.cc-top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 6px 16px; }
+.cc-top h2 { margin: 0; font-family: var(--display); color: var(--gold); font-size: clamp(20px, 2.6vw, 28px); line-height: 1.05; }
+.cc-top p { margin: 2px 0 0; }
+.cc-org { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--paper-2); }
+.cc-rack { display: flex; gap: 3px; }
+.cc-rosette .tails { fill: rgba(255,255,255,.12); }
+.cc-rosette .petals { fill: none; stroke: rgba(255,255,255,.3); stroke-dasharray: 3 2; }
+.cc-rosette .eye { fill: none; }
+.cc-rosette text { fill: rgba(255,255,255,.45); font: 700 10px var(--mono); }
+.cc-rosette.on .tails, .cc-rosette.on .petals { fill: #2f5fc0; stroke: #f2c65a; stroke-dasharray: none; }
+.cc-rosette.on .eye { fill: #f2c65a; }
+.cc-rosette.on text { fill: #2a1300; }
+.cc-body { display: grid; grid-template-columns: minmax(230px, .85fr) minmax(0, 1.15fr); gap: 14px; min-height: 0; }
+.cc-trail { position: relative; list-style: none; margin: 0; padding: 10px; display: grid; gap: 8px; align-content: start; border-radius: 12px; overflow-y: auto;
+  background: repeating-linear-gradient(100deg, #4b6a28 0 18px, #43601f 18px 36px); box-shadow: inset 0 0 30px rgba(0,0,0,.45); }
+.cc-trail::before { content: ''; position: absolute; top: 24px; bottom: 24px; left: 31px; border-left: 3px dashed rgba(230, 200, 106, .55); }
+.cc-node { position: relative; width: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 52px; padding: 5px 8px;
+  text-align: left; color: var(--paper); background: rgba(20, 10, 4, .55); border: 1px solid transparent; border-radius: 10px; cursor: pointer; font: inherit; }
+.cc-node:hover { background: rgba(20, 10, 4, .7); }
+.cc-node.on { border-color: var(--gold); background: rgba(20, 10, 4, .78); }
+.cc-node.locked { opacity: .6; }
+.cc-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #2a160c; border: 2px solid #7a4a2a; overflow: hidden; }
+.cc-node.done .cc-icon { border-color: #6ac040; }
+.cc-node.leader .cc-icon { border-color: var(--gold); box-shadow: 0 0 0 2px #2f5fc0; }
+.cc-label { min-width: 0; }
+.cc-label b, .cc-label small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-label small { color: var(--paper-2); }
+.cc-state { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--paper-2); text-align: right; }
+.cc-state.done { color: #b6ff7a; }
+.cc-stop { display: grid; gap: 10px; align-content: start; min-height: 0; overflow-y: auto; padding: 2px 4px 2px 0; }
+.cc-stop h3 { margin: 0; font-family: var(--display); color: var(--gold); font-size: clamp(18px, 2.2vw, 24px); line-height: 1.1; }
+.cc-stop h3 small { font: 600 13px var(--mono); color: var(--paper-2); }
+.cc-stop p { margin: 0; }
+.cc-say { display: grid; gap: 6px; }
+.cc-say p { background: #f3ecd2; color: #2a1300; border-radius: 10px; padding: 8px 11px; font-size: 14px; line-height: 1.35; }
+.cc-say p b { display: block; margin-bottom: 1px; font: 700 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #9a3a14; }
+.cc-answers { display: flex; flex-wrap: wrap; gap: 8px; }
+.cc-lineup { display: flex; flex-wrap: wrap; gap: 8px; }
+.cc-foe, .cc-bug { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 9px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15); }
+.cc-foe.up { border-color: var(--gold); }
+.cc-foe.beaten { opacity: .5; }
+.cc-foe.beaten b { text-decoration: line-through; }
+.cc-foe > span, .cc-bug > span { display: grid; gap: 1px; min-width: 0; }
+.cc-foe small, .cc-bug small { color: var(--paper-2); font-size: 12px; }
+.cc-thumb { flex-shrink: 0; image-rendering: pixelated; }
+.cc-send { margin-top: 2px; }
+.cc-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.cc-bug { text-align: left; color: inherit; font: inherit; background: rgba(0,0,0,.3); cursor: pointer; min-height: 54px; }
+.cc-bug.on { border-color: var(--gold); background: rgba(242, 198, 90, .14); }
+.cc-bug:disabled { opacity: .45; cursor: not-allowed; }
+.cc-bug small.cc-good { color: #b6ff7a; } .cc-bug small.cc-bad { color: #ff9a8a; }
+.cc-done { color: #b6ff7a; }
+.bout-tell { margin: 0; text-align: center; font: 700 13px var(--mono); letter-spacing: .04em; color: #2a1300; background: var(--gold); border-radius: 8px; padding: 6px 10px; animation: cc-tell 1s ease-in-out infinite alternate; }
+@keyframes cc-tell { from { box-shadow: 0 0 0 rgba(242, 198, 90, 0); } to { box-shadow: 0 0 18px rgba(242, 198, 90, .7); } }
+@media (prefers-reduced-motion: reduce) { .bout-tell { animation: none; } }
+@media (max-width: 760px) {
+  .barn-head { flex-wrap: wrap; gap: 6px; }
+  .cc-wrap { overflow-y: auto; }
+  .cc-body { grid-template-columns: minmax(0, 1fr); }
+  .cc-trail, .cc-stop { overflow: visible; }
+  .cc-pick { grid-template-columns: minmax(0, 1fr); }
+}
+.cc-go { position: sticky; bottom: 0; padding: 8px 0 2px; background: linear-gradient(180deg, rgba(48, 22, 14, 0), rgba(48, 22, 14, .96) 30%); }
+@media (max-width: 760px) {
+  .barn-head-acts { display: contents; }
+  .barn-head h1 { flex: 1 1 auto; }
+  .barn-rooms { order: 3; flex-basis: 100%; }
+  .barn-rooms .btn { flex: 1 1 0; }
+}
+.cc-detail { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }

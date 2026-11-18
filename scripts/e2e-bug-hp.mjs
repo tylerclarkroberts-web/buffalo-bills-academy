@@ -76,7 +76,7 @@ try {
     assert.equal(after.pen.hp, after.pen.maxHp);
     assert.equal(await guest.locator('[data-test=bout]').getByRole('button', { name: /Bug Center/i }).count(), 0);
     await guest.click('[data-test=bout-close]');
-    await guest.click('[data-test=ring-toggle]');
+    await guest.click('[data-test=room-stalls]');
     await fullHealth(guest);
     await guest.reload();
     await fullHealth(guest);
