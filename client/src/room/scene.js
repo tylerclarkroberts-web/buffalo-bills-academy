@@ -22,7 +22,7 @@ const PAINT = { 'bunkhouse-timber': '#d3b88c', 'bunkhouse-sage': '#a7b59a', 'bun
 const BEHIND_WALL = { back: ['bunk', 'bathroom'], front: ['kitchen'], right: ['porch', 'yard'] };
 /** What picking each side of a wall edits. */
 const WALL_SELECTION = { outside: { kind: 'surface', surface: 'outside' }, parlor: { kind: 'finish' },
-  kitchen: { kind: 'homestead', id: 'kitchen' }, bedroom: { kind: 'homestead', id: 'bedroom' }, bathroom: { kind: 'homestead', id: 'bathroom' } };
+  kitchen: { kind: 'homestead', id: 'kitchen', wall: true }, bedroom: { kind: 'homestead', id: 'bedroom', wall: true }, bathroom: { kind: 'homestead', id: 'bathroom', wall: true } };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 const mesh = (parent, geometry, mat, x = 0, y = 0, z = 0) => {
   const m = new THREE.Mesh(geometry, mat); m.position.set(x, y, z); parent.add(m); return m;
@@ -865,6 +865,11 @@ export class RoomScene {
     disposeObjects(this.highlights); this.highlights.clear();
     this.wallMaterial.emissive.set(this.editing ? '#8b6529' : '#000000');
     this.wallMaterial.emissiveIntensity = this.editing ? (selection?.kind === 'finish' ? 0.35 : 0.12) : 0;
+    const lit = { outside: selection?.surface === 'outside', bathroomWalls: selection?.id === 'bathroom', bedroomWalls: selection?.id === 'bedroom', roof: selection?.surface === 'outside' };
+    for (const [kind, paint] of [...Object.entries(this.sideMaterials || {}), ['roof', this.roofing]]) {
+      if (!paint) continue;
+      paint.emissive.set(this.editing ? '#8b6529' : '#000000'); paint.emissiveIntensity = this.editing ? (lit[kind] ? 0.35 : kind === 'roof' ? 0 : 0.12) : 0;
+    }
     if (this.editing) for (const target of this.picks) {
       const chosen = target.userData.selection;
       if (!['anchor', 'wardrobe', 'pet', 'wealth', 'surface', 'couch', 'poker'].includes(chosen.kind)) continue;
@@ -1052,7 +1057,7 @@ export class RoomScene {
       for (let x = 0; x < 64; x += 8) { ctx.fillStyle = '#c4c0b8'; ctx.fillRect(x, 0, 3, 64); ctx.fillStyle = '#e9e6e0'; ctx.fillRect(x + 3, 0, 1, 64); }
     });
     tin.wrapS = tin.wrapT = THREE.RepeatWrapping;
-    const roofing = material('#9a6a4a', { map: tin, side: THREE.DoubleSide });
+    const roofing = this.roofing = material('#9a6a4a', { map: tin, side: THREE.DoubleSide });
     this.roof = new THREE.Group(); this.roof.name = 'Roof'; this.roof.visible = false; this.static.add(this.roof); this.roofParts = [];
     const sheet = (points, uvs, paint) => {
       const geometry = new THREE.BufferGeometry();

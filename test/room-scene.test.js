@@ -92,7 +92,7 @@ test('each side of a shared wall belongs to its own room, and from outside the h
   };
   // From the bathroom, the back wall of the living room is the bathroom's wall; from the living room it is the living room's.
   scene.backWall.visible = true;
-  assert.deepEqual(look([-2 * S, 2, -5 * S], [-2 * S, 2, -3 * S]), { kind: 'homestead', id: 'bathroom' });
+  assert.deepEqual(look([-2 * S, 2, -5 * S], [-2 * S, 2, -3 * S]), { kind: 'homestead', id: 'bathroom', wall: true }, 'clicked from its wall, the bathroom opens on its walls');
   assert.deepEqual(look([-2 * S, 2, -1 * S], [-2 * S, 2, -3 * S]), { kind: 'finish' });
   assert.equal(scene.sideMaterials.bathroomWalls.color.getHexString(), 'cddde0');
   assert.equal(scene.sideMaterials.outside.color.getHexString(), '9a4a3c');

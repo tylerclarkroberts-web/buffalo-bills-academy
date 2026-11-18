@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_WALLS, wallPoint, spotAlong, ROOM_FLOOR_SCALE, ROOM_FURNITURE, ROOM_YARD, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect, roomCouchScale } from '../../../server/catalog/room.js';
+import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_WALLS, pieceArea, wallPoint, spotAlong, ROOM_FLOOR_SCALE, ROOM_FURNITURE, ROOM_YARD, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect, roomCouchScale } from '../../../server/catalog/room.js';
 
 export { ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
@@ -165,7 +165,7 @@ const WALKABLE = [
 /** Routes from the rug round every standing piece of furniture, through the doorways to the other rooms. */
 function walker(furniture, shelves, wallDisplays) {
   const home = furniture.rug, standing = id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off;
-  const live = Object.keys(ROOM_FURNITURE).filter(id => standing(id) && !ROOM_FURNITURE[id].area);
+  const live = Object.keys(ROOM_FURNITURE).filter(id => standing(id) && pieceArea(furniture, id) === 'parlor');
   const couchScale = roomCouchScale(furniture, shelves, wallDisplays);
   const solid = Object.keys(ROOM_FURNITURE).filter(standing).map(id => furnitureRect(id, furniture[id], couchScale));
   for (const shelf of shelves) {
