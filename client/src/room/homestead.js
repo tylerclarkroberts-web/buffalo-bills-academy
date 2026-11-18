@@ -6,32 +6,33 @@ import { ROOM_WALL_HEIGHT } from './scene-model.js';
 import { buildWings } from './wings.js';
 
 const INCH = ROOM_WALL_HEIGHT / 102, FLOOR = 0.016, DECK = 0.025;
-const kitchenBack = -6.96, counterZ = kitchenBack + 25 * INCH / (2 * S), worktop = 36 * INCH;
+const kitchenWall = 7.05, counterZ = kitchenWall - 25 * INCH / (2 * S), worktop = 36 * INCH;
 
 function furnishingPlan(style) {
   const alt = id => style[id].layoutId === 'alternate';
-  const counterX = alt('kitchen') ? -0.65 : 1.61;
-  const bed = alt('bed') ? [2.46, -5.10, -Math.PI / 2] : [-2.90, -5.65, Math.PI / 2];
-  const tub = alt('tub') ? [-1.84, 4.53, Math.PI / 2] : [-0.85, 6.64, Math.PI];
+  const counterX = alt('kitchen') ? -1.31 : 1.17;
+  const bed = alt('bed') ? [2.50, -5.15, -Math.PI / 2] : [1.15, -5.92, 0];
+  const tub = alt('tub') ? [-3.48, -5.46, Math.PI / 2] : [-2.24, -6.54, 0];
   const chair = alt('porchChair') ? [5.55, 3.80, Math.PI / 2] : [7.55, 3.70, -Math.PI / 2];
   const plant = alt('porch') ? [8.04, 4.25] : [4.69, 3.93];
   const items = [
     // Model, style target, floor-plan x/z, size in inches, heading, support height, action.
     ['bathtub', 'tub', tub[0], tub[1], [72, 24, 36], tub[2]],
-    ['toilet', 'bathroom', 0.85, 6.73, [19, 31, 29], Math.PI, FLOOR, 'flush'],
-    ['bathroomSink', 'bathroom', -2.06, 5.70, [22, 38.8, 18], Math.PI / 2],
+    ['toilet', 'bathroom', -0.96, -6.62, [19, 31, 29], 0, FLOOR, 'flush'],
+    ['bathroomSink', 'bathroom', -3.69, -3.98, [22, 38.8, 18], Math.PI / 2],
     // An 80-inch queen mattress fills 89% of the timber frame.
     ['bedSingle', 'bed', bed[0], bed[1], [61, 34, 90], bed[2]],
     // The backsplash is the upper fifteenth of the range and cabinet.
-    ['kitchenStove', 'kitchen', counterX - 30 * INCH / S, kitchenBack + 28 * INCH / (2 * S), [30, 36 * 15 / 14, 28], 0],
-    ['kitchenCabinet', 'kitchen', counterX, counterZ, [30, 36 * 15 / 14, 25], 0],
-    ['kitchenCoffeeMachine', 'kitchen', counterX, counterZ, [10, 13, 13], 0, FLOOR + worktop, 'coffee'],
+    ['kitchenStove', 'kitchen', counterX + 30 * INCH / S, kitchenWall - 28 * INCH / (2 * S), [30, 36 * 15 / 14, 28], Math.PI],
+    ['kitchenCabinet', 'kitchen', counterX, counterZ, [30, 36 * 15 / 14, 25], Math.PI],
+    ['kitchenCoffeeMachine', 'kitchen', counterX, counterZ, [10, 13, 13], Math.PI, FLOOR + worktop, 'coffee'],
     ['pottedPlant', 'porch', ...plant, [14, 42, 16], 0.33, DECK],
     ['chair', 'porchChair', chair[0], chair[1], [19.5, 35.25, 21], chair[2], DECK, 'coffee'],
   ];
-  const bedSide = Math.sign(bed[2]);
-  return { items, bed, tub, chair, counterX, nightX: bed[0] - bedSide * 0.70,
-    nightZ: bed[1] + bedSide * (alt('bedroom') ? -1.02 : 1.02) };
+  const side = alt('bedroom') ? 1.02 : -1.02, heading = bed[2];
+  return { items, tub, chair, counterX,
+    nightX: bed[0] + side * Math.cos(heading) - 0.70 * Math.sin(heading),
+    nightZ: bed[1] - side * Math.sin(heading) - 0.70 * Math.cos(heading) };
 }
 
 // A timber windpump and stock tank beyond the fence. Local dimensions are in world units.
@@ -141,7 +142,7 @@ function architecture(parent, style, plan) {
     return (w, h, d, color, dx, y, dz) => box(w * INCH / S, h * INCH, d * INCH / S, color,
       x + (dx * cos + dz * sin) * INCH / S, FLOOR + y * INCH, z + (dz * cos - dx * sin) * INCH / S, turn);
   }
-  const linen = style.bathroom.layoutId === 'alternate' ? cabinetAt(0.2, 3.77, Math.PI) : cabinetAt(2.22, 6.05, -Math.PI / 2);
+  const linen = style.bathroom.layoutId === 'alternate' ? cabinetAt(-2.01, -3.32, Math.PI) : cabinetAt(-0.79, -5.42, -Math.PI / 2);
   const sage = style.bathroom.paint, cream = '#e5d2b4', rust = '#ad715c';
   linen(42, 1.5, 19, plank, 0, 33.25, 0);
   linen(39, 28.5, 0.8, '#667661', 0, 18.25, 8.6);
@@ -178,7 +179,7 @@ function architecture(parent, style, plan) {
 
   const table = addPiece('Kitchen worktable', 'kitchen');
   const turned = style.kitchen.layoutId === 'alternate';
-  table.position.set((turned ? 0.33 : 0.13) * S, 0, (turned ? -4.04 : -4.74) * S);
+  table.position.set((turned ? 1.32 : -0.61) * S, 0, (turned ? 5.22 : 5.00) * S);
   if (turned) table.rotation.y = Math.PI / 2;
 
   // One continuous deck from the side-door sill to the wide step onto the dirt track.

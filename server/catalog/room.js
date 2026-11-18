@@ -182,11 +182,11 @@ function homesteadChoices(label, area, materials, colors, classic, alternate) {
     default: { typeId: types[0].id, colorId: colors[0], layoutId: 'classic' } };
 }
 export const ROOM_HOMESTEAD = {
-  bathroom: homesteadChoices('Bathroom', 'bathroom', { checker: 'Checker tile', stone: 'Stone tile' }, ['sage', 'clay', 'blue'], 'Cupboard by the porch window', 'Cupboard by the parlor wall'),
+  bathroom: homesteadChoices('Bathroom', 'bathroom', { checker: 'Checker tile', stone: 'Stone tile' }, ['sage', 'clay', 'blue'], 'Cupboard by the bedroom wall', 'Cupboard by the parlor wall'),
   bedroom: homesteadChoices('Bedroom', 'bunk', { planks: 'Floorboards', parquet: 'Parquet' }, ['rust', 'sage', 'indigo'], 'Nightstand left of bed', 'Nightstand right of bed'),
-  kitchen: homesteadChoices('Kitchen', 'bunk', { timber: 'Timber', enamel: 'Enamel' }, ['honey', 'sage', 'slate'], 'Range at the front', 'Range at the rear'),
+  kitchen: homesteadChoices('Kitchen', 'kitchen', { timber: 'Timber', enamel: 'Enamel' }, ['honey', 'sage', 'slate'], 'Range at the front', 'Range at the rear'),
   porch: homesteadChoices('Porch', 'porch', { pine: 'Pine', cedar: 'Cedar' }, ['honey', 'walnut', 'sage'], 'Plant by the house', 'Plant by the steps'),
-  bed: homesteadChoices('Bed', 'bunk', { quilt: 'Patchwork quilt', striped: 'Striped blanket' }, ['rust', 'sage', 'indigo'], 'Rear window', 'Porch window'),
+  bed: homesteadChoices('Bed', 'bunk', { quilt: 'Patchwork quilt', striped: 'Striped blanket' }, ['rust', 'sage', 'indigo'], 'Side window', 'Porch window'),
   tub: homesteadChoices('Bathtub', 'bathroom', { enamel: 'Enamel', copper: 'Copper' }, ['ivory', 'sage', 'slate'], 'Under the side window', 'Along the rear wall'),
   porchChair: homesteadChoices('Porch chair', 'porch', { wood: 'Wood', painted: 'Painted wood' }, ['sage', 'honey', 'indigo'], 'By the steps', 'By the house'),
 };

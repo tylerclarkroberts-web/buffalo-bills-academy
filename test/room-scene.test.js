@@ -96,7 +96,7 @@ test('all wall caps share the 8.5-foot proportion and the yard door stays an ord
   const doorway = new THREE.Raycaster(new THREE.Vector3(3.6 * S, ROOM_DOOR_HEIGHT - 0.15, 1.525 * S), new THREE.Vector3(1, 0, 0), 0, S);
   assert.equal(doorway.intersectObject(side, true).length, 0, 'the opening stays clear even above the resident’s head');
   const toBedroom = (x, y) => new THREE.Raycaster(new THREE.Vector3(x * S, y, -2.6 * S), new THREE.Vector3(0, 0, -1), 0, S);
-  const divider = scene.wallCutaways.find(wall => wall.reverseFor === 'bunk');
+  const divider = scene.wallCutaways.find(wall => wall.reverseFor?.includes('bunk'));
   for (const face of [divider.solid, divider.ghost]) {
     const panels = [];
     face.traverse(object => { if (object.isMesh) panels.push(object); });
@@ -110,9 +110,11 @@ test('all wall caps share the 8.5-foot proportion and the yard door stays an ord
     scene.camera = makeRoomCamera(1, { rotation });
     scene.view = { area: 'parlor' }; scene.applyCutaway();
     const parlorSide = divider.solid.visible;
-    scene.view = { area: 'bunk' }; scene.applyCutaway();
-    assert.equal(divider.solid.visible, !parlorSide, 'shared wall is judged from inside the selected room');
-    assert.equal(divider.ghost.visible, parlorSide);
+    for (const area of ['bunk', 'bathroom']) {
+      scene.view = { area }; scene.applyCutaway();
+      assert.equal(divider.solid.visible, !parlorSide, 'shared wall is judged from inside the selected room');
+      assert.equal(divider.ghost.visible, parlorSide);
+    }
   }
   scene.static.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
 });
@@ -136,10 +138,10 @@ test('yard partition leaves an open doorway and its glazing does not intercept r
   }
   const through = (y, z) => new THREE.Raycaster(new THREE.Vector3(3.65 * S, y, z * S), new THREE.Vector3(1, 0, 0), 0, S).intersectObject(partition, true);
   assert.ok(through(2.5, -2).some(hit => hit.object.material === scene.wallMaterial), 'the upper side wall is solid');
-  assert.ok(through(1.0, 3.25).some(hit => hit.object.material === scene.wallMaterial), 'the porch wall reaches the bathroom corner');
-  const corner = scene.static.getObjectByName('Parlor corner beside bathroom');
+  assert.ok(through(1.0, 3.25).some(hit => hit.object.material === scene.wallMaterial), 'the porch wall reaches the kitchen corner');
+  const corner = scene.static.getObjectByName('Parlor corner beside kitchen');
   const turn = new THREE.Raycaster(new THREE.Vector3(3.64 * S, 1, 3 * S), new THREE.Vector3(0, 0, 1), 0, S);
-  assert.ok(turn.intersectObject(corner, true).length, 'the return wall closes the short gap to the bath partition');
+  assert.ok(turn.intersectObject(corner, true).length, 'the return wall closes the short gap to the kitchen partition');
   const windowHits = through(2.3, -1.23);
   assert.ok(windowHits.length && windowHits.every(hit => hit.object.material.transparent), 'the side window looks through actual glass');
   const glass = [];
@@ -261,12 +263,14 @@ test('shelves drag immediately after movement, retain click selection and move o
 });
 
 test('room view has finite limits and resets to a high cutaway of the whole house', () => {
-  assert.deepEqual(roomView(), { zoom: 1, rotation: 0 });
-  assert.deepEqual(roomView(null), { zoom: 1, rotation: 0 });
-  assert.deepEqual(roomView({ zoom: NaN, rotation: Infinity }), { zoom: 1, rotation: 0 });
-  assert.deepEqual(roomView({ zoom: '2', rotation: '-15' }), { zoom: 1, rotation: 0 });
-  assert.deepEqual(roomView({ zoom: -100, rotation: 999 }), { zoom: ROOM_VIEW_LIMITS.minZoom, rotation: -81 });
-  assert.deepEqual(roomView({ zoom: 100, rotation: -999 }), { zoom: ROOM_VIEW_LIMITS.maxZoom, rotation: 81 });
+  const home = { zoom: 1, rotation: 0, tilt: 0, panX: 0, panY: 0 };
+  assert.deepEqual(roomView(), home);
+  assert.deepEqual(roomView(null), home);
+  assert.deepEqual(roomView({ zoom: NaN, rotation: Infinity, tilt: Infinity, panX: NaN, panY: -Infinity }), home);
+  assert.deepEqual(roomView({ zoom: '2', rotation: '-15', tilt: '4', panX: '1', panY: null }), home);
+  const { minZoom, maxZoom, minTilt, maxTilt, maxPan } = ROOM_VIEW_LIMITS;
+  assert.deepEqual(roomView({ zoom: -100, rotation: 999, tilt: -90, panX: -4, panY: 4 }), { zoom: minZoom, rotation: -81, tilt: minTilt, panX: -maxPan, panY: maxPan });
+  assert.deepEqual(roomView({ zoom: 100, rotation: -999, tilt: 90, panX: 4, panY: -4 }), { zoom: maxZoom, rotation: 81, tilt: maxTilt, panX: maxPan, panY: -maxPan });
   for (const [rotation, expected] of [[180, -180], [-180, -180], [360, 0], [-360, 0], [450, 90], [-450, -90]]) {
     assert.equal(roomView({ rotation }).rotation, expected, 'rotation wraps continuously through a full turn');
   }
@@ -276,10 +280,32 @@ test('room view has finite limits and resets to a high cutaway of the whole hous
   assert.deepEqual(camera.projectionMatrix.toArray(), makeRoomCamera(846 / 380, roomView()).projectionMatrix.toArray());
 });
 
+test('tilt changes elevation and pan moves the same screen distance at every zoom', () => {
+  for (const area of [undefined, 'bathroom']) {
+    for (const aspect of [0.75, 2.2]) {
+      const view = { area, rotation: 85 };
+      const direction = camera => camera.getWorldDirection(new THREE.Vector3());
+      const home = makeRoomCamera(aspect, view);
+      const elevation = camera => THREE.MathUtils.radToDeg(Math.asin(-direction(camera).y));
+      for (const tilt of [ROOM_VIEW_LIMITS.minTilt, ROOM_VIEW_LIMITS.maxTilt]) {
+        const tilted = makeRoomCamera(aspect, { ...view, tilt });
+        assert.ok(Math.abs(elevation(tilted) - elevation(home) - tilt) < 1e-9);
+        assert.deepEqual(roomWallVisibility(tilted.position), roomWallVisibility(home.position));
+        for (const zoom of [0.75, 1, 2, 4]) {
+          const fixed = makeRoomCamera(aspect, { ...view, tilt, zoom });
+          const panned = makeRoomCamera(aspect, { ...view, tilt, zoom, panX: 0.16 / zoom, panY: -0.12 / zoom });
+          const delta = new THREE.Vector3().project(panned).sub(new THREE.Vector3().project(fixed));
+          assert.ok(Math.abs(delta.x + 0.16) < 1e-9 && Math.abs(delta.y - 0.12) < 1e-9);
+        }
+      }
+    }
+  }
+});
+
 test('room close-ups frame each destination on a phone and reset unknown destinations', () => {
   const aspect = 360 / 280;
   const wide = makeRoomCamera(aspect);
-  for (const [area, x, z] of [['bathroom', 0.45, 5.2], ['bunk', -0.23, -5.03], ['porch', 6.25, 3.1], ['yard', 6.4, -0.78], ['parlor', 0, 0]]) {
+  for (const [area, x, z] of [['kitchen', 0.45, 5.2], ['bunk', 1.55, -5.05], ['bathroom', -2.22, -5.05], ['porch', 6.25, 3.1], ['yard', 6.4, -0.78], ['parlor', 0, 0]]) {
     const view = roomView({ area }), focused = makeRoomCamera(aspect, view);
     const middle = new THREE.Vector3(x * S, 1.8, z * S).project(focused);
     assert.ok(Math.abs(middle.x) < 0.12 && Math.abs(middle.y) < 0.2, area);
@@ -288,7 +314,7 @@ test('room close-ups frame each destination on a phone and reset unknown destina
   assert.deepEqual(roomView({ area: 'mine' }), roomView());
 });
 
-test('camera zoom and rotation survive resize and room refresh while edit highlights remain usable', t => {
+test('the chosen camera view survives resize and room refresh while edit highlights remain usable', t => {
   const previousWindow = globalThis.window;
   globalThis.window = { devicePixelRatio: 2 };
   t.after(() => { if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow; });
@@ -300,7 +326,7 @@ test('camera zoom and rotation survive resize and room refresh while edit highli
     generation: 0, pet() {}, resident() {}, wealth() {}, hovered: true,
     onWealthHover(value) { clearedHover = value === false; },
   });
-  const view = { zoom: 1.75, rotation: -15 };
+  const view = roomView({ zoom: 1.75, rotation: -15, tilt: 12, panX: 0.2, panY: -0.1 });
   scene.setView(view);
   assert.deepEqual(scene.view, view);
   assert.equal(scene.camera.zoom, 1.75);
@@ -316,7 +342,7 @@ test('camera zoom and rotation survive resize and room refresh while edit highli
   assert.equal(scene.camera.zoom, 1.75);
   assert.ok(scene.highlights.children.some(glow => glow.userData.selection.anchorId === 'desk'));
   scene.setView();
-  assert.deepEqual(scene.view, { zoom: 1, rotation: 0 });
+  assert.deepEqual(scene.view, roomView());
   assert.deepEqual(scene.camera.projectionMatrix.toArray(), makeRoomCamera(353 / 278).projectionMatrix.toArray());
   scene.setEditing(false);
   scene.dynamic.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
@@ -377,7 +403,7 @@ test('walls open finish choices only in edit mode without intercepting displayed
 
 test('the money hover and click target follows the visible pile after camera resizing, zooming and rotation', () => {
   for (const [width, height] of [[846, 380], [353, 278], [283, 278]]) {
-    for (const view of [{ zoom: 0.75, rotation: -30 }, { zoom: 1, rotation: 0 }, { zoom: 2.5, rotation: 30 }]) {
+    for (const view of [{ zoom: 0.75, rotation: -30, tilt: 30, panX: -0.1 }, { zoom: 1, rotation: 0 }, { zoom: 2.5, rotation: 30, tilt: -15, panY: 0.18 }]) {
       const camera = makeRoomCamera(width / height, view);
       const pick = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1, 1.25));
       pick.position.set(ROOM_FIXTURES.wealth[0], 1.4, ROOM_FIXTURES.wealth[2]); pick.userData.selection = { kind: 'wealth' }; pick.updateMatrixWorld();
@@ -582,7 +608,7 @@ test('touch drags preserve the grab point after rotating the camera and restore 
 
 test('zoomed furniture drags when its visible top is onscreen but its floor origin is cropped', () => {
   const scene = furnitureScene(), home = defaultFurniture(), moves = [];
-  scene.camera = makeRoomCamera(846 / 380, { area: 'parlor', rotation: 78, zoom: 1.75 }, [0, 0.25]);
+  scene.camera = makeRoomCamera(846 / 380, { area: 'parlor', rotation: 78, zoom: 1.75, panY: 0.11 });
   scene.raycaster = new THREE.Raycaster(); scene.onMoveFurniture = (...move) => moves.push(move);
   scene.update({ placements: [], finishes: roomFinishes() }); scene.dynamic.updateMatrixWorld(true); scene.setEditing(true);
   const at = (x, z, height = 2) => ({ button: 0, pointerId: 16, pointerType: 'mouse', ...screenPoint(scene.camera, [x, height, z]) });
