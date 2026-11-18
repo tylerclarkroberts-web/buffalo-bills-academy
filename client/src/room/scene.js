@@ -474,16 +474,16 @@ const COFFEE_WALK = 5500, PIPE_DELAY = 650, SPRINKLER_END = 3600;
 
 /** A clickable cutaway. React owns the controls; room activity is cosmetic. */
 export class RoomScene {
-  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onZoom, onError } = {}) {
+  constructor(canvas, { onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onZoom, onViewChange, onError } = {}) {
     this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onMoveFurniture = onMoveFurniture; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
-    this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition; this.onZoom = onZoom; this.pan = [0, 0];
+    this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition; this.onZoom = onZoom; this.onViewChange = onViewChange;
     this.onSpeech = onSpeech; this.onHouseState = onHouseState; this.activity = new RoomActivity();
     this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
     this.scene = new THREE.Scene();
     this.lighting = setupRoomLighting(this.scene, this.renderer);
-    this.view = roomView(); this.camera = makeRoomCamera(1, this.view);
+    this.view = roomView();
     this.static = new THREE.Group(); this.dynamic = new THREE.Group(); this.highlights = new THREE.Group(); this.dragPreview = new THREE.Group(); this.scene.add(this.static, this.dynamic, this.highlights, this.dragPreview);
     this.picks = []; this.raycaster = new THREE.Raycaster();
     this.buildRoom();
@@ -499,8 +499,10 @@ export class RoomScene {
     this.resize = this.resize.bind(this);
     this.down = this.pointerDown.bind(this); this.up = this.pointerUp.bind(this); this.move = this.pointerMove.bind(this);
     this.cancel = e => { if (e?.pointerId === undefined || this.pointerId === undefined || e.pointerId === this.pointerId) this.cancelPointer(); };
+    this.contextMenu = e => { if (e.button === 2 && !this.failed) e.preventDefault(); };
     this.keys = e => {
       if (e.key === 'Escape') this.cancelPointer();
+      else if (e.target === this.canvas && this.stepCamera(e.key)) e.preventDefault();
       else if (e.target === this.canvas && this.editing && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
         && (furnitureOf(this.selection) || this.wallDisplays?.[this.selection?.anchorId] || shelfForAnchor(this.shelves || [], this.selection?.anchorId))) {
         e.preventDefault(); this.moveSelected(e.key);
@@ -513,7 +515,7 @@ export class RoomScene {
       if (this.failed || e.ctrlKey || zoom < 1 || zoom > ROOM_VIEW_LIMITS.maxZoom || (this.view.zoom <= 1 && page && page.scrollHeight > page.clientHeight + 1)) return;
       e.preventDefault();
       this.wheelSum = (this.wheelSum || 0) + e.deltaY;
-      if (Math.abs(this.wheelSum) >= 60) { this.wheelSum = 0; this.onZoom?.(step); }
+      if (Math.abs(this.wheelSum) >= 60) { this.wheelSum = 0; this.cancelPointer(); this.onZoom?.(step); }
     };
     canvas.addEventListener('wheel', this.wheel, { passive: false });
     this.visible = () => this.visibilityChanged();
@@ -521,6 +523,7 @@ export class RoomScene {
     this.motion.addEventListener('change', this.motionChange);
     canvas.addEventListener('pointerdown', this.down); canvas.addEventListener('pointerup', this.up); canvas.addEventListener('pointercancel', this.cancel);
     canvas.addEventListener('pointermove', this.move); canvas.addEventListener('pointerleave', this.cancel);
+    canvas.addEventListener('contextmenu', this.contextMenu); canvas.addEventListener('lostpointercapture', this.cancel);
     canvas.addEventListener('webglcontextlost', this.lost); document.addEventListener('visibilitychange', this.visible);
     window.addEventListener('blur', this.cancel); document.addEventListener('keydown', this.keys);
     if (typeof IntersectionObserver === 'function') {
@@ -538,25 +541,47 @@ export class RoomScene {
     const w = Math.max(1, this.canvas.clientWidth), h = Math.max(1, this.canvas.clientHeight);
     const size = roomRenderSize(w, h, window.devicePixelRatio);
     this.renderer.setSize(size.width, size.height, false);
-    this.camera = makeRoomCamera(w / h, this.view, this.pan); this.applyCutaway(); this.render();
+    this.updateCamera();
+  }
+  updateCamera() {
+    const previous = this.camera, area = this.framedArea;
+    this.camera = makeRoomCamera(Math.max(1, this.canvas.clientWidth) / Math.max(1, this.canvas.clientHeight), this.view);
+    const before = previous && roomWallVisibility(previous.position), after = roomWallVisibility(this.camera.position);
+    if (!before || before.back !== after.back || before.left !== after.left || area !== this.view?.area) this.applyCutaway();
+    this.framedArea = this.view?.area;
+    this.render();
   }
   setView(view) {
-    if (this.disposed) return;
+    if (this.disposed || (view && view === this.view)) return;
+    this.cancelPointer(false);
     this.view = roomView(view);
-    if (this.view.zoom <= 1) this.pan = [0, 0];
     this.touchMode();
-    this.hovered = false; this.onWealthHover?.(false);
-    this.resize();
+    this.updateCamera();
   }
-  /** Dragging pans a zoomed view and moves furniture while editing; otherwise touches scroll the page. */
-  touchMode() { if (this.canvas?.style) this.canvas.style.touchAction = this.editing || this.view?.zoom > 1 ? 'none' : 'pan-y'; }
+  setCameraMode(mode) {
+    if (this.cameraMode === mode || this.disposed) return;
+    this.cancelPointer(); this.cameraMode = mode; this.touchMode();
+  }
+  stepCamera(key) {
+    if (!this.cameraMode || this.failed || this.disposed || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) return false;
+    const x = Number(key === 'ArrowRight') - Number(key === 'ArrowLeft'), y = Number(key === 'ArrowUp') - Number(key === 'ArrowDown');
+    this.cancelPointer(false);
+    const view = this.view, step = 0.24 / view.zoom;
+    this.view = roomView(this.cameraMode === 'pan'
+      ? { ...view, panX: view.panX + x * step, panY: view.panY + y * step }
+      : { ...view, rotation: view.rotation + x * 15, tilt: view.tilt + y * 5 });
+    this.updateCamera(); this.onViewChange?.(this.view);
+    return true;
+  }
+  touchMode() { if (this.canvas?.style) this.canvas.style.touchAction = this.cameraMode || this.editing || this.view?.zoom > 1 ? 'none' : 'pan-y'; }
   movable() { return { ...this.fixtures, wardrobe: this.wardrobe, rug: this.rug, couch: this.couch }; }
   pointerDown(e) {
-    if (e.isPrimary === false || e.button !== 0 || this.disposed || this.failed) return;
+    if (e.isPrimary === false || (e.button !== 0 && e.button !== 2) || this.disposed || this.failed) return;
     this.cancelPointer();
-    if (this.editing) this.canvas.focus?.({ preventScroll: true });
+    if (this.editing || this.cameraMode) this.canvas.focus?.({ preventScroll: true });
     this.pointerStart = [e.clientX, e.clientY]; this.pointerId = e.pointerId;
-    const target = this.targetAt(e.clientX, e.clientY);
+    const forceMode = e.button === 2 || e.shiftKey ? 'pan' : this.cameraMode;
+    const target = !forceMode && this.editing && this.targetAt(e.clientX, e.clientY);
     const shelf = this.editing && this.onMoveShelf && target?.kind === 'anchor' && shelfForAnchor(this.shelves || [], target.anchorId);
     const piece = !shelf && this.editing && this.onMoveFurniture && furnitureOf(target);
     const wall = this.editing && this.onMoveWall && target?.kind === 'anchor' && this.wallDisplays?.[target.anchorId];
@@ -575,7 +600,10 @@ export class RoomScene {
       const rect = this.canvas.getBoundingClientRect();
       this.dragCandidate.grab = { x: e.clientX - rect.left - (point.x + 1) * rect.width / 2, y: e.clientY - rect.top - (1 - point.y) * rect.height / 2 };
     }
-    if (!this.dragCandidate && this.view?.zoom > 1) this.panFrom = [e.clientX, e.clientY];
+    if (!this.dragCandidate) {
+      const mode = forceMode || (this.view?.zoom > 1 ? 'pan' : e.pointerType === 'touch' ? null : 'orbit');
+      if (mode) this.cameraDrag = { mode, x: e.clientX, y: e.clientY, moved: false };
+    }
   }
   /** Keep the grabbed point under the pointer, even when picking the top of tall furniture. */
   dragPlace(e) {
@@ -612,12 +640,20 @@ export class RoomScene {
   }
   pointerMove(e) {
     if (this.pointerId !== undefined && e.pointerId !== this.pointerId) return;
-    if (this.panFrom && (this.panning || Math.hypot(e.clientX - this.pointerStart[0], e.clientY - this.pointerStart[1]) > 6)) {
-      const rect = this.canvas.getBoundingClientRect(), slack = this.view.zoom - 1, side = value => Math.max(-1, Math.min(1, value));
-      if (!this.panning) { this.panning = true; try { this.canvas.setPointerCapture?.(e.pointerId); } catch { /* panning works without capture */ } this.canvas.style.cursor = 'grabbing'; }
-      this.pan = [side(this.pan[0] - (e.clientX - this.panFrom[0]) * 2 / (slack * rect.width)), side(this.pan[1] + (e.clientY - this.panFrom[1]) * 2 / (slack * rect.height))];
-      this.panFrom = [e.clientX, e.clientY];
-      this.camera = makeRoomCamera(rect.width / rect.height, this.view, this.pan); this.render();
+    const drag = this.cameraDrag;
+    if (drag && (drag.moved || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6)) {
+      if (!drag.moved) {
+        try { this.canvas.setPointerCapture?.(e.pointerId); } catch { this.cancelPointer(); return; }
+        drag.moved = true; this.canvas.style.cursor = 'grabbing'; this.hovered = false; this.onWealthHover?.(false);
+      }
+      const { width, height } = this.canvas.getBoundingClientRect(), view = this.view || roomView();
+      if (!width || !height) return;
+      const dx = (e.clientX - drag.x) / width, dy = (e.clientY - drag.y) / height;
+      this.view = roomView(drag.mode === 'pan'
+        ? { ...view, panX: view.panX - 2 * dx / view.zoom, panY: view.panY + 2 * dy / view.zoom }
+        : { ...view, rotation: view.rotation - 180 * dx, tilt: view.tilt + 60 * dy });
+      drag.x = e.clientX; drag.y = e.clientY;
+      this.updateCamera();
       return;
     }
     if (this.dragCandidate && this.pointerStart && Math.hypot(e.clientX - this.pointerStart[0], e.clientY - this.pointerStart[1]) > 6) {
@@ -640,12 +676,12 @@ export class RoomScene {
     if (e.pointerType === 'touch') return;
     const target = this.targetAt(e.clientX, e.clientY), hovered = target?.kind === 'wealth' || target?.kind === 'poker';
     const movable = this.editing && (furnitureOf(target) || this.wallDisplays?.[target?.anchorId] || shelfForAnchor(this.shelves || [], target?.anchorId));
-    this.canvas.style.cursor = movable ? 'grab' : target ? 'pointer' : '';
+    this.canvas.style.cursor = movable || this.cameraMode ? 'grab' : target ? 'pointer' : '';
     if (this.hovered !== hovered) { this.hovered = hovered; this.onWealthHover?.(hovered); }
   }
   pointerUp(e) {
     if (this.pointerId !== undefined && e.pointerId !== this.pointerId) return;
-    if (this.panning) { this.cancelPointer(); return; }
+    if (this.cameraDrag?.moved || e.button === 2) { this.cancelPointer(); return; }
     const start = this.pointerStart, dragging = this.dragging;
     const live = dragging && this.editing && !this.failed && !this.disposed;
     if (live && dragging.furniture) {
@@ -665,15 +701,18 @@ export class RoomScene {
     if (selection?.kind === 'houseAction') this.onHouseAction?.(selection.action);
     else if (selection) this.onSelect?.(selection);
   }
-  cancelPointer() {
+  cancelPointer(publishView = true) {
+    const movedCamera = this.cameraDrag?.moved;
+    this.cameraDrag = null;
     this.moveDragObjects();
     if (this.dragging?.furniture === 'couch') this.couch?.scale.fromArray(roomCouchScale(this.furniture, this.shelves, this.wallDisplays));
     if (this.highlights) this.highlights.visible = true;
     if (this.pointerId !== undefined && this.canvas?.hasPointerCapture?.(this.pointerId)) this.canvas.releasePointerCapture(this.pointerId);
-    this.pointerStart = null; this.pointerId = undefined; this.dragging = null; this.dragCandidate = null; this.panFrom = null; this.panning = false;
+    this.pointerStart = null; this.pointerId = undefined; this.dragging = null; this.dragCandidate = null;
     if (this.canvas?.style) this.canvas.style.cursor = '';
     if (this.dragPreview?.children.length) { disposeObjects(this.dragPreview); this.dragPreview.clear(); this.render(); }
     this.hovered = false; this.onWealthHover?.(false);
+    if (publishView && movedCamera) this.onViewChange?.(this.view);
   }
   dragSpot(e) {
     const rect = this.canvas.getBoundingClientRect(), { id, wall, grab } = this.dragging;
@@ -751,13 +790,14 @@ export class RoomScene {
   applyCutaway() {
     if (!this.camera) return;
     const visible = roomWallVisibility(this.camera.position);
+    const area = this.view?.area;
     for (const { side, solid, ghost, reverseFor } of [...(this.wallCutaways || []), ...(this.homestead?.walls || [])]) {
-      solid.visible = reverseFor && this.view?.area === reverseFor ? !visible[side] : visible[side];
+      solid.visible = reverseFor?.includes(area) ? !visible[side] : visible[side];
       ghost.visible = !solid.visible;
     }
     if (this.cornerPost) this.cornerPost.visible = visible.back || visible.left;
     for (const group of [this.dynamic, this.highlights]) for (const object of group?.children || []) {
-      if (object.userData.wallSide) object.visible = visible[object.userData.wallSide] && !(object.userData.wallSide === 'back' && this.view?.area === 'bunk');
+      if (object.userData.wallSide) object.visible = visible[object.userData.wallSide] && !(object.userData.wallSide === 'back' && (area === 'bunk' || area === 'bathroom'));
     }
     this.lighting?.invalidate();
   }
@@ -849,7 +889,7 @@ export class RoomScene {
     leftPanel(sashStart, sashEnd, 0, sashBottom);
     leftPanel(sashStart, sashEnd, sashTop, ROOM_WALL_HEIGHT);
     const bunkDivider = makeWallCutaway('back', this.backWall, this.backWall.children);
-    bunkDivider.reverseFor = 'bunk';
+    bunkDivider.reverseFor = ['bunk', 'bathroom'];
     this.wallCutaways.push(bunkDivider, makeWallCutaway('left', this.leftWall, this.leftWall.children));
 
     this.cornerPost = box(p, 0.11, ROOM_WALL_HEIGHT + 0.1, 0.25, '#664730', -4, ROOM_WALL_HEIGHT / 2 + 0.02, -2.9);
@@ -980,8 +1020,8 @@ export class RoomScene {
     this.wallCutaways ??= [];
     this.wallCutaways.push(makeWallCutaway('right', side, panels));
 
-    // The shorter bath wing steps back from the porch; its partition meets this return wall.
-    const corner = new THREE.Group(); corner.name = 'Parlor corner beside bathroom'; root.add(corner);
+    // The kitchen steps back from the porch; its partition meets this return wall.
+    const corner = new THREE.Group(); corner.name = 'Parlor corner beside kitchen'; root.add(corner);
     const returnWidth = wallX - 3.20, returnX = wallX - returnWidth / 2;
     const returnPanel = mesh(corner, new THREE.BoxGeometry(returnWidth, ROOM_WALL_HEIGHT, 0.14), this.wallMaterial, returnX, ROOM_WALL_HEIGHT / 2, 3.35);
     returnPanel.userData.selection = { kind: 'finish' }; this.walls.push(returnPanel);
@@ -1568,6 +1608,7 @@ export class RoomScene {
     cancelAnimationFrame(this.raf); this.observer.disconnect(); this.intersectionObserver?.disconnect();
     this.canvas.removeEventListener('pointerdown', this.down); this.canvas.removeEventListener('pointerup', this.up); this.canvas.removeEventListener('pointercancel', this.cancel);
     this.canvas.removeEventListener('pointermove', this.move); this.canvas.removeEventListener('pointerleave', this.cancel);
+    this.canvas.removeEventListener('contextmenu', this.contextMenu); this.canvas.removeEventListener('lostpointercapture', this.cancel);
     this.canvas.removeEventListener('wheel', this.wheel); this.canvas.removeEventListener('webglcontextlost', this.lost); document.removeEventListener('visibilitychange', this.visible);
     window.removeEventListener('blur', this.cancel); document.removeEventListener('keydown', this.keys);
     for (const map of Object.values(this.floorMaps || {})) if (map !== this.floor?.material.map) map.dispose();
