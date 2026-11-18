@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, faceWrap, CHIP_VALUES, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes, ROOM_GRADE } from '../client/src/room/scene-model.js';
 import { roomAnchors, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, shelfSlots, defaultShelves, defaultWallDisplays, roomFinishes, defaultFurniture, furnitureFits, wallMountsFit } from '../server/catalog/room.js';
-import { wallDisplayPosition, residentStep } from '../client/src/room/scene-model.js';
+import { wallDisplayPosition, residentStep, STOCK_TROUGH } from '../client/src/room/scene-model.js';
 import { makeWallCutaway } from '../client/src/room/cutaway.js';
 import { RoomScene } from '../client/src/room/scene.js';
 const S = ROOM_FLOOR_SCALE;
@@ -351,12 +351,15 @@ test('tilt changes elevation and pan moves the same screen distance at every zoo
 test('room close-ups frame each destination on a phone and reset unknown destinations', () => {
   const aspect = 360 / 280;
   const wide = makeRoomCamera(aspect);
-  for (const [area, x, z] of [['kitchen', 0.45, 5.2], ['bunk', 1.55, -5.05], ['bathroom', -2.22, -5.05], ['porch', 5.35, 0.08], ['yard', 7.75, 0.5], ['parlor', 0, 0]]) {
+  for (const [area, x, z] of [['kitchen', 0.45, 5.2], ['bunk', 1.55, -5.05], ['bathroom', -2.22, -5.05], ['porch', 5.35, 0.08], ['yard', 7.4, -0.8], ['parlor', 0, 0]]) {
     const view = roomView({ area }), focused = makeRoomCamera(aspect, view);
     const middle = new THREE.Vector3(x * S, 1.8, z * S).project(focused);
     assert.ok(Math.abs(middle.x) < 0.12 && Math.abs(middle.y) < 0.2, area);
     assert.ok(focused.right - focused.left < (wide.right - wide.left) * .8, area);
   }
+  const [troughX, troughZ] = STOCK_TROUGH;
+  const trough = new THREE.Vector3(troughX, ROOM_GRADE + 0.4, troughZ).project(makeRoomCamera(aspect, { area: 'yard' }));
+  assert.ok(Math.abs(trough.x) < 0.9 && Math.abs(trough.y) < 0.9, 'the yard view includes the trough');
   assert.deepEqual(roomView({ area: 'mine' }), roomView());
 });
 

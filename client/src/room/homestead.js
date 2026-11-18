@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ROOM_FLOOR_SCALE as S, ROOM_FURNITURE, ROOM_HOMESTEAD, roomHomestead } from '../../../server/catalog/room.js';
-import { ROOM_WALL_HEIGHT, ROOM_GRADE } from './scene-model.js';
+import { ROOM_WALL_HEIGHT, ROOM_GRADE, STOCK_TROUGH } from './scene-model.js';
 import { groundLevel } from './landscape.js';
 import { buildWings } from './wings.js';
 
@@ -70,7 +70,7 @@ function ranchWindpump(paint) {
   add(new THREE.TorusGeometry(0.88, 0.027, 5, 28).translate(0, 3.33, 0.48), iron);
   add(new THREE.CylinderGeometry(0.22, 0.18, 0.27, 12).rotateX(Math.PI / 2).translate(0, 3.33, 0.62), '#88654a');
 
-  const tankX = 6.05 * S, tankZ = -4.57 * S;
+  const [tankX, tankZ] = STOCK_TROUGH;
   function tankRing(width, depth, y, height, color) {
     paint(new THREE.CylinderGeometry(1, 1, height, 22).scale(width, 1, depth).translate(tankX, ROOM_GRADE + y, tankZ), color);
   }

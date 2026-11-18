@@ -48,6 +48,33 @@ export const CLICK_LINES = [
   'Yes, I live here. Sometimes they even let me pick the spot.',
 ];
 
+export const GUNNAR_LINES = [
+  'Sheriff caught Gunnar in my bed. Wrote him up for hogging the quilt.',
+  'Gunnar had the good pillow. I had the side with the spring.',
+  'Bought a queen mattress for the horse. The clerk asked me to stop saying it like that.',
+  'The inn said no guests after ten. Gunnar signed for the room at nine forty-five.',
+  'Found a horseshoe under my pillow. Gunnar was subtle when he wanted something.',
+  'The barn’s quiet these days. You can hear a man open a bag of carrots for nobody.',
+  'The barn bugs want me to come watch a fight. Gunnar could clear the room just by sneezing.',
+  'I told the barn I was over it. The barn has agreed to keep that to itself.',
+  'Gunnar used to lean on the fence until it took his side.',
+  'I bought oats in bulk. Hard to explain a savings like that to an empty stall.',
+  'Gunnar ate my hat once. Looked better in it than I ever did.',
+  'The new horse is perfectly nice. We’re still very formal with each other.',
+  'I heard a hoof on the porch. Turned out to be my own boot. Made me mad at the boot.',
+  'I still leave the stall door on the second latch. Gunnar knew how to open the first.',
+  'I miss him most around feeding time. And the other times.',
+  'I tried talking to the barn cat about it. He sent me a bill.',
+];
+
+export const TROUGH_LINES = [
+  'Water’s fresh, Gunnar. I still do that.',
+  'I miss you, bud. Even the dent you put in the door.',
+  'Trough’s holding water again. One of us should.',
+  'We had a good run, Gunnar. Even the part where you ran without me.',
+  'I put it in the shade for you. Force of habit.',
+];
+
 export const REPEAT_CLICK_LINES = [
   'Still me. Check again if you get a different answer.',
   'Have I got a loose bit? You can tell me.',

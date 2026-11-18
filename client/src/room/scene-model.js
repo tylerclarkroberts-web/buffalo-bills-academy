@@ -27,7 +27,7 @@ const AREAS = {
   bathroom: lotBounds(-4.1, -7.15, -0.35, -2.95),
   bunk: lotBounds(-0.55, -7.15, 3.65, -2.95),
   porch: lotBounds(3.9, -3.45, 6.8, 3.6, ROOM_GRADE - 0.2),
-  yard: lotBounds(5.9, -3.2, 9.6, 4.2, ROOM_GRADE - 0.2),
+  yard: lotBounds(5.2, -5.8, 9.6, 4.2, ROOM_GRADE - 0.2),
 };
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
@@ -116,8 +116,8 @@ export function residentStep(furniture = defaultFurniture(), shelves = [], wallD
  * Places the resident can stroll to from the rug, including the porch through the open side door.
  * Each has a `path` of floor points ending at the spot where they stand, found on a quarter-unit grid around the furniture.
  */
-export function residentErrands(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays(undefined, shelves)) {
-  const { home, live, couchScale, route } = walker(furniture, shelves, wallDisplays);
+export function residentErrands(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays(undefined, shelves), gunnar = false) {
+  const { home, live, couchScale, route } = walker(furniture, shelves, wallDisplays, gunnar);
   const errands = [];
   for (const [id, kind] of [['couch', 'sit'], ['pet', 'inspect'], ['wealth', 'cash'], ['desk', 'inspect'], ['floor', 'inspect'], ['floor-2', 'inspect'], ['floor-3', 'inspect'], ['case', 'inspect'], ['poker', 'inspect'], ['wardrobe', 'inspect']]) {
     if (!live.includes(id)) continue;
@@ -135,17 +135,33 @@ export function residentErrands(furniture = defaultFurniture(), shelves = [], wa
       : { kind, id, path: spot.path, facing: Math.atan2(-spot.dx, -spot.dz) });
   }
   // He takes his coffee along the porch to the first chair, wherever it has been put, turns round and sits down in it.
-  const coffee = porchSeat(route([home.x, home.z], PORCH_DOOR), furniture.porchChair);
+  const door = route([home.x, home.z], PORCH_DOOR);
+  const coffee = porchSeat(door, furniture.porchChair);
   if (coffee) errands.splice(1, 0, { kind: 'coffee', ...coffee });
+  const steps = gunnar && route([home.x, home.z], PORCH_STEP_HEAD);
+  if (steps) {
+    const trough = troughErrand(steps, furniture.window);
+    return errands.length ? errands.flatMap((errand, i) => i % 2 ? [errand] : [trough, errand]) : [trough];
+  }
   return errands;
 }
 
 // Just inside the yard door, then out onto the porch boards.
 const PORCH_DOOR = [4 * S - 0.55, 1.75 * S], PORCH_WALK = [[4.3 * S, 1.75 * S], [5.3 * S, 1.75 * S]];
+const PORCH_STEP_HEAD = [5.9 * S, 2.83 * S], PORCH_STEP_FOOT = [6.75 * S, 2.83 * S];
+export const STOCK_TROUGH = [6.05 * S, -4.57 * S];
 /** A seated resident's hips drop to an 18-inch chair seat. */
 export const CHAIR_DROP = -0.27;
 /** The signpost stands outside the gate, beside the footpath. Floor-plan units. */
 export const ROOM_SIGNPOST = [9.25, 4.2];
+function troughErrand(steps, wagon) {
+  // Take the wider passage around the movable wagon, then turn in beyond the end of the porch.
+  const [left, , right] = furnitureRect('window', wagon), porch = 6.1 * S, fence = 8.7 * S;
+  const lane = left - porch >= fence - right ? (left + porch) / 2 : (right + fence) / 2;
+  const x = 5.48 * S, z = -3.9 * S;
+  return { kind: 'trough', path: [...steps, PORCH_STEP_FOOT, [lane, PORCH_STEP_FOOT[1]], [lane, z], [x, z]],
+    facing: Math.atan2(STOCK_TROUGH[0] - x, STOCK_TROUGH[1] - z) };
+}
 function porchSeat(door, chair) {
   if (!door || !chair || chair.off) return null;
   const facing = (chair.r + 1) * Math.PI / 2, front = [Math.sin(facing), Math.cos(facing)];
@@ -162,8 +178,13 @@ const WALKABLE = [
   [2.3 * S + 0.4, -3 * S - 0.5, 3.45 * S - 0.4, -3 * S + 0.5],
   [-0.45 * S - 0.55, -4.69 * S + 0.4, -0.45 * S + 0.55, -3.51 * S - 0.4],
 ];
+const PORCH_WALKABLE = [
+  [PORCH_DOOR[0], 1.35 * S, 4.65 * S, 2.15 * S],
+  [4.13 * S + 0.35, -3.17 * S + 0.3, 6.02 * S - 0.35, 3.34 * S - 0.3],
+  [5.5 * S, 2.38 * S + 0.3, 6.02 * S, 3.28 * S - 0.3],
+];
 /** Routes from the rug round every standing piece of furniture, through the doorways to the other rooms. */
-function walker(furniture, shelves, wallDisplays) {
+function walker(furniture, shelves, wallDisplays, porch = false) {
   const home = furniture.rug, standing = id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off;
   const live = Object.keys(ROOM_FURNITURE).filter(id => standing(id) && pieceArea(furniture, id) === 'parlor');
   const couchScale = roomCouchScale(furniture, shelves, wallDisplays);
@@ -174,7 +195,8 @@ function walker(furniture, shelves, wallDisplays) {
     const [x, , z] = roomShelfPosition(spot), half = shelf.sizeId === 'wide' ? 1.25 : 0.45;
     solid.push(alongWall(spot.wallSide, x, z, half, 0.65));
   }
-  const clear = (x, z) => WALKABLE.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3])
+  const walkable = porch ? [...WALKABLE, ...PORCH_WALKABLE] : WALKABLE;
+  const clear = (x, z) => walkable.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3])
     && !solid.some(r => x + 0.35 > r[0] && x - 0.35 < r[2] && z + 0.3 > r[1] && z - 0.3 < r[3]);
   const walk = (from, to) => {
     const steps = Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / 0.2);
@@ -224,7 +246,7 @@ export function residentTasks(furniture = defaultFurniture(), shelves = [], wall
   if (rocker) tasks.rock = { kind: 'rock', pose: 'rock', ...rocker };
   // Down the steps, out of the gate and round to the lettered side of the signpost.
   const [signX, signZ] = ROOM_SIGNPOST;
-  if (door) tasks.sign = { kind: 'sign', pose: 'read', facing: -Math.PI / 2, path: [...door, ...PORCH_WALK, [5.9 * S, 2.83 * S], [6.75 * S, 2.83 * S], [8.75 * S, 2.83 * S],
+  if (door) tasks.sign = { kind: 'sign', pose: 'read', facing: -Math.PI / 2, path: [...door, ...PORCH_WALK, PORCH_STEP_HEAD, PORCH_STEP_FOOT, [8.75 * S, 2.83 * S],
     [signX * S + 1.15, 3.55 * S], [signX * S + 1.15, signZ * S]] };
 
   // He stands at the stove half of the counter, which is on its right as he faces it.

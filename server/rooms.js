@@ -37,8 +37,9 @@ const maxPlacements = ROOM_ANCHORS.length - ROOM_SHELF_IDS.length
   + ROOM_SHELF_IDS.length * Math.max(...Object.values(ROOM_SHELF_SIZES).map(size => size.capacity));
 
 export class Rooms {
-  constructor({ store, shop, barn, avatars, netWorth }) {
+  constructor({ store, shop, barn, avatars, netWorth, gunnarPlayerId }) {
     this.store = store; this.shop = shop; this.barn = barn; this.avatars = avatars; this.netWorth = netWorth;
+    this.gunnarPlayerId = gunnarPlayerId;
     this.doc = store.loadDoc('rooms', { schemaVersion: 1, rooms: {} });
     if (this.doc?.schemaVersion !== 1 || !record(this.doc.rooms)) throw new Error('Unsupported rooms document');
   }
@@ -107,6 +108,7 @@ export class Rooms {
       layoutRevision: saved.layoutRevision, themeId: saved.themeId,
       placements: saved.placements, shelves: saved.shelves, wallDisplays: saved.wallDisplays, finishes: saved.finishes, furniture: saved.furniture, homestead: saved.homestead, pet: this.pet(player.id), worth,
     };
+    if (player.id === this.gunnarPlayerId) out.gunnar = true;
     const stage = wealthStage(worth.total);
     if (stage !== null) out.wealthStage = stage;
     if (own) out.owned = this.owned(player.id);

@@ -1,4 +1,4 @@
-import { ROOM_LINES, CLICK_LINES, REPEAT_CLICK_LINES, VISITOR_LINES, REARRANGE_LINES, roomContextLines } from './dialogue.js';
+import { ROOM_LINES, CLICK_LINES, GUNNAR_LINES, REPEAT_CLICK_LINES, VISITOR_LINES, REARRANGE_LINES, roomContextLines } from './dialogue.js';
 import { FAUN_EXCHANGES } from './faun-dialogue.js';
 
 /** Peek around cover, hesitate, then slip back out of sight. */
@@ -14,16 +14,18 @@ export function faunPose(seconds) {
 }
 
 /** A stroll to something in the room (`errand` counts them), a while there (`act`), then back home. */
-export function residentPose(seconds) {
+export function residentPose(seconds, walk = 4) {
   const phase = seconds % 34;
-  const outward = Math.min(1, Math.max(0, (phase - 7) / 4));
-  const homeward = Math.min(1, Math.max(0, (phase - 19) / 4));
+  const outward = Math.min(1, Math.max(0, (phase - 11 + walk) / walk));
+  const homeward = Math.min(1, Math.max(0, (phase - 19) / walk));
   const ease = value => value * value * (3 - 2 * value);
-  const walking = phase > 7 && phase < 11 || phase > 19 && phase < 23;
+  const walkingOut = phase > 11 - walk && phase < 11, walkingBack = phase > 19 && phase < 19 + walk;
+  const walking = walkingOut || walkingBack;
   const stride = walking ? Math.sin(seconds * 5.5) * 0.24 * Math.sin(Math.PI * (phase < 19 ? outward : homeward)) : 0;
   return { offset: ease(outward) - ease(homeward), stride, facing: walking ? Math.sin(Math.PI * (phase < 19 ? outward : homeward)) * (phase < 19 ? 1 : -1) : 0,
-    phase, errand: Math.floor(seconds / 34), act: ease(Math.min(1, Math.max(0, phase - 11), Math.max(0, 19 - phase))),
-    glance: Math.sin(seconds * 0.37) * 0.22, wave: phase > 26 && phase < 30 ? Math.sin((phase - 26) / 4 * Math.PI) : 0 };
+    phase: walkingOut ? 7 + 4 * outward : walkingBack ? 19 + 4 * homeward : phase,
+    errand: Math.floor(seconds / 34), act: ease(Math.min(1, Math.max(0, phase - 11), Math.max(0, 19 - phase))),
+    glance: Math.sin(seconds * 0.37) * 0.22, wave: !walking && phase > 26 && phase < 30 ? Math.sin((phase - 26) / 4 * Math.PI) : 0 };
 }
 
 /** Only active viewing time advances these cosmetic events; nothing is saved or awarded. */
@@ -45,9 +47,10 @@ export class RoomActivity {
   }
   setContext(view, visitor) {
     const context = roomContextLines(view, visitor);
-    if (visitor !== this.visitor) this.quiet();
+    const gunnar = view?.gunnar === true;
+    if (visitor !== this.visitor || gunnar !== !!this.gunnar) this.quiet();
     else if (this.context.includes(this.line) && !context.includes(this.line)) this.speechUntil = 0;
-    this.context = context; this.visitor = visitor;
+    this.context = context; this.visitor = visitor; this.gunnar = gunnar;
   }
   say(lines) {
     this.line = this.pick(lines); this.lastRemark = this.time;
@@ -62,7 +65,7 @@ export class RoomActivity {
     this.lastTap = now;
     // Let the player get a word in; the faun can stay for the rest of his visit.
     this.exchange = null;
-    return this.say(elapsed < 30000 ? REPEAT_CLICK_LINES : this.visitor ? VISITOR_LINES : CLICK_LINES);
+    return this.say(elapsed < 30000 ? REPEAT_CLICK_LINES : this.gunnar ? GUNNAR_LINES : this.visitor ? VISITOR_LINES : CLICK_LINES);
   }
   rearranged() {
     this.remarkOnLayout = true;
@@ -79,6 +82,7 @@ export class RoomActivity {
     }
     if (this.time >= this.nextSpeech) {
       if (this.remarkOnLayout) this.say(REARRANGE_LINES);
+      else if (this.gunnar && this.random() < 0.75) this.say(GUNNAR_LINES);
       else if (this.visitor && this.random() < 0.2) this.say(VISITOR_LINES);
       else this.say(this.context.length && this.random() < 0.6 ? this.context : ROOM_LINES);
       this.remarkOnLayout = false;
