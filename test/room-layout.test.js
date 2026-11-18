@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, defaultFurniture, furnitureFits, residentRect, defaultWallDisplays, wallMountsFit, shelfSlots, shelfForAnchor, roomAnchors } from '../server/catalog/room.js';
+import { ROOM_WALLS, defaultShelves, roomFinishes, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, defaultFurniture, furnitureFits, residentRect, defaultWallDisplays, wallMountsFit, shelfSlots, shelfForAnchor, roomAnchors } from '../server/catalog/room.js';
 import { layoutOf, layoutKey, addShelf, moveShelf, resizeShelf, removeShelf, changeStyle, placeFurniture, furnitureOf, moveWallDisplay } from '../client/src/room/layout.js';
 
 // The couch is put away so these mount tests keep the open back wall they were written for.
@@ -105,9 +105,10 @@ test('dense wall mounts include low window space and front wall positions while 
   assert.ok(wallMountsFit([{ ...shelf, sizeId: 'standard', spotId: front.id }], {}));
   const available = ROOM_SHELF_SPOTS.filter(spot => wallMountsFit([{ ...shelf, spotId: spot.id }], {}));
   assert.ok(available.length > 30);
+  for (const wallSide of ['left', 'back', 'right', 'front']) assert.ok(available.some(spot => spot.wallSide === wallSide), `${wallSide} wall takes shelves`);
   for (const spot of available) {
-    const along = spot.position[spot.wallSide === 'left' ? 2 : 0] * S;
-    const lowBound = (spot.wallSide === 'left' ? -3 : -4) * S + 0.08, highBound = (spot.wallSide === 'left' ? 3 : 4) * S - 0.08;
+    const alongZ = ROOM_WALLS[spot.wallSide].alongZ, along = spot.position[alongZ ? 2 : 0] * S;
+    const lowBound = (alongZ ? -3 : -4) * S + 0.08, highBound = (alongZ ? 3 : 4) * S - 0.08;
     assert.ok(along - 1.25 >= lowBound && along + 1.25 <= highBound);
   }
   assert.ok(ROOM_WALL_SPOTS.filter(spot => wallMountsFit([], { 'wall-left': spot.id })).length > 40);
@@ -139,9 +140,12 @@ test('furniture moves, turns and is stored only where it fits; a stored desk ret
   assert.notEqual(layoutKey(moved), layoutKey(saved));
   assert.deepEqual(moved.furniture.wardrobe, { x: 1.5, z: 0, r: 0 });
   assert.equal(placeFurniture(placeFurniture(moved, 'wardrobe', { r: 1 }), 'wardrobe', { r: 2 }).furniture.wardrobe.r, 2);
-  for (const [id, change] of [['wardrobe', { x: 99 }], ['wardrobe', { x: home.pet.x, z: home.pet.z }], ['wardrobe', { r: 1 }], ['pet', { off: true }], ['sofa', { x: 0 }], ['window', { x: 0, z: 0 }]]) {
+  for (const [id, change] of [['wardrobe', { x: 99 }], ['wardrobe', { x: home.pet.x, z: home.pet.z }], ['pet', { off: true }], ['sofa', { x: 0 }], ['window', { x: 0, z: 0 }]]) {
     assert.equal(placeFurniture(saved, id, change), saved, `${id} ${JSON.stringify(change)}`);
   }
+  const cornered = placeFurniture(saved, 'wardrobe', { r: 1 }).furniture.wardrobe;
+  assert.equal(cornered.r, 1, 'turning in the corner shuffles the wardrobe out until it fits');
+  assert.ok(Math.hypot(cornered.x - home.wardrobe.x, cornered.z - home.wardrobe.z) < 1);
   const under = placeFurniture(saved, 'rug', { x: home.pet.x + 1.6, z: home.pet.z });
   assert.notEqual(under, saved, 'a rug may lie partly under furniture');
   assert.deepEqual(residentRect(under.furniture).slice(0, 2), [under.furniture.rug.x - 0.45, under.furniture.rug.z - 0.35], 'the resident follows the rug');

@@ -7,6 +7,8 @@ const record = value => !!value && typeof value === 'object' && !Array.isArray(v
 const signedIn = player => !!(player?.google || player?.login);
 const knownTheme = id => ROOM_THEMES.some(theme => theme.id === id);
 const allowedBody = (body, fields) => record(body) && Object.keys(body).every(key => fields.includes(key));
+/** A displayed oddity may be turned a quarter at a time; facing front is left unsaid. */
+const turned = place => [1, 2, 3].includes(place.r) ? { r: place.r } : {};
 const defaults = () => ({ layoutRevision: 0, themeId: ROOM_THEMES[0].id, placements: [], shelves: defaultShelves(), wallDisplays: defaultWallDisplays(), finishes: roomFinishes(), furniture: defaultFurniture(), homestead: roomHomestead() });
 const validFinish = (kind, value) => allowedBody(value, ['typeId', 'colorId'])
   && ROOM_FINISHES[kind].types.some(type => type.id === value.typeId)
@@ -58,7 +60,7 @@ export class Rooms {
     for (const place of Array.isArray(value.placements) ? value.placements : []) {
       if (!record(place) || anchors.has(place.anchorId) || items.has(place.itemId)
         || !owned.has(place.itemId) || !roomItemFits(ROOM_ITEM[place.itemId], availableAnchors.find(anchor => anchor.id === place.anchorId))) continue;
-      placements.push({ anchorId: place.anchorId, itemId: place.itemId });
+      placements.push({ anchorId: place.anchorId, itemId: place.itemId, ...turned(place) });
       anchors.add(place.anchorId); items.add(place.itemId);
       if (placements.length === availableAnchors.length) break;
     }
@@ -147,14 +149,14 @@ export class Rooms {
     const availableAnchors = roomAnchors(shelves, furniture, wallDisplays);
     const owned = new Set(this.owned(player.id)), anchors = new Set(), items = new Set();
     for (const place of body.placements) {
-      if (!allowedBody(place, ['anchorId', 'itemId']) || !owned.has(place.itemId)
+      if (!allowedBody(place, ['anchorId', 'itemId', 'r']) || ('r' in place && ![0, 1, 2, 3].includes(place.r)) || !owned.has(place.itemId)
         || !roomItemFits(ROOM_ITEM[place.itemId], availableAnchors.find(anchor => anchor.id === place.anchorId)) || anchors.has(place.anchorId) || items.has(place.itemId)) {
         throw new GameError('Display each owned oddity once, in a compatible spot.', 400);
       }
       anchors.add(place.anchorId); items.add(place.itemId);
     }
     this.commit(player.id, { ...current, plan: ROOM_PLAN, layoutRevision: current.layoutRevision + 1, themeId: body.themeId,
-      placements: body.placements.map(place => ({ anchorId: place.anchorId, itemId: place.itemId })), shelves, wallDisplays, finishes, furniture, homestead });
+      placements: body.placements.map(place => ({ anchorId: place.anchorId, itemId: place.itemId, ...turned(place) })), shelves, wallDisplays, finishes, furniture, homestead });
     return this.owner(player);
   }
   forget(pid) {

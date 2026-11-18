@@ -75,7 +75,9 @@ export function placeFurniture(layout, id, change) {
   let furniture = { ...layout.furniture, [id]: off ? { ...place, off: true } : place };
   const wallDisplays = roomWallDisplays(layout.wallDisplays, layout.shelves);
   if (!furnitureFits(furniture, id) || !wallMountsFit(layout.shelves, wallDisplays, furniture)) {
-    const spot = change.off === false && freeSpot(furniture, id, layout.shelves, wallDisplays);
+    // Brought out of storage: the nearest clear floor. Turned against a wall or a neighbour: shuffled the least distance that clears.
+    const turnOnly = 'r' in change && !('x' in change) && change.r !== layout.furniture[id].r;
+    const spot = (change.off === false || turnOnly) && freeSpot(furniture, id, layout.shelves, wallDisplays, change.off === false ? undefined : [place.x, place.z]);
     if (!spot) return layout;
     furniture = { ...furniture, [id]: { ...place, ...spot } };
   }

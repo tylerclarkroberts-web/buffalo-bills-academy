@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_FLOOR_SCALE, ROOM_FURNITURE, ROOM_YARD, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect, roomCouchScale } from '../../../server/catalog/room.js';
+import { ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, ROOM_WALLS, wallPoint, spotAlong, ROOM_FLOOR_SCALE, ROOM_FURNITURE, ROOM_YARD, anchorHost, roomShelves, shelfSlots, roomWallDisplays, wallMountsFit, wallSpotAvailable, defaultFurniture, furnitureFits, furnitureRect, residentRect, roomCouchScale } from '../../../server/catalog/room.js';
 
 export { ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
@@ -31,8 +31,12 @@ const AREAS = {
 };
 
 /** Keep shelf mounts against the wall without changing persisted catalog spots. */
-export const roomShelfPosition = spot => spot.wallSide === 'back' ? [spot.position[0] * S, spot.position[1], -3 * S + 0.78] : [-4 * S + 0.78, spot.position[1], spot.position[2] * S];
-export const wallDisplayPosition = spot => spot.wallSide === 'left' ? [-4 * S + 0.19, spot.position[1], spot.position[2] * S] : [spot.position[0] * S, spot.position[1], -3 * S + 0.19];
+export const roomShelfPosition = spot => wallPoint(spot.wallSide, spotAlong(spot), spot.position[1], 0.78);
+export const wallDisplayPosition = spot => wallPoint(spot.wallSide, spotAlong(spot), spot.position[1], 0.19);
+/** Turn for a shelf (built facing +x) on each wall; wall displays and their oddities face +z, a quarter further round. */
+export const wallTurn = side => ({ left: 0, back: -Math.PI / 2, right: Math.PI, front: Math.PI / 2 })[side] ?? 0;
+/** A footprint `half` along a wall and `out` either side of a point on it. */
+const alongWall = (side, x, z, half, out) => ROOM_WALLS[side].alongZ ? [x - out, z - half, x + out, z + half] : [x - half, z - out, x + half, z + out];
 
 /** Where a spot riding on furniture sits, wherever that piece has been moved and turned. */
 function spotOn(id, place) {
@@ -61,7 +65,7 @@ export function roomPositions(shelves, furniture = defaultFurniture(), wallDispl
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
     if (spot) for (const slot of shelfSlots(shelf)) {
       const point = roomShelfPosition(spot);
-      if (spot.wallSide === 'back') point[0] -= slot.offset; else point[2] += slot.offset;
+      const turn = wallTurn(spot.wallSide); point[0] += Math.round(Math.sin(turn)) * slot.offset; point[2] += Math.round(Math.cos(turn)) * slot.offset;
       positions[slot.id] = point;
     }
   }
@@ -73,8 +77,9 @@ export function nearestShelfSpot(camera, rect, x, y, shelves, shelfId, wallDispl
   if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width || y < rect.top || y > rect.top + rect.height) return null;
   const occupied = new Set(shelves.filter(shelf => shelf.id !== shelfId).map(shelf => shelf.spotId));
   let closest = null, distance = Math.max(28, Math.min(80, rect.width * 0.12));
+  const visible = roomWallVisibility(camera.position);
   for (const spot of ROOM_SHELF_SPOTS) {
-    if (occupied.has(spot.id) || !wallMountsFit(shelves.map(shelf => shelf.id === shelfId ? { ...shelf, spotId: spot.id } : shelf), roomWallDisplays(wallDisplays, shelves), furniture)) continue;
+    if (!visible[spot.wallSide] || occupied.has(spot.id) || !wallMountsFit(shelves.map(shelf => shelf.id === shelfId ? { ...shelf, spotId: spot.id } : shelf), roomWallDisplays(wallDisplays, shelves), furniture)) continue;
     const point = new THREE.Vector3(...roomShelfPosition(spot)).project(camera);
     const d = Math.hypot(rect.left + (point.x + 1) * rect.width / 2 - x + grab.x, rect.top + (1 - point.y) * rect.height / 2 - y + grab.y);
     if (d < distance) { closest = spot; distance = d; }
@@ -85,8 +90,9 @@ export function nearestShelfSpot(camera, rect, x, y, shelves, shelfId, wallDispl
 export function nearestWallSpot(camera, rect, x, y, shelves, wallDisplays, id, furniture, grab = { x: 0, y: 0 }) {
   if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width || y < rect.top || y > rect.top + rect.height) return null;
   let closest = null, distance = Math.max(28, Math.min(80, rect.width * 0.12));
+  const visible = roomWallVisibility(camera.position);
   for (const spot of ROOM_WALL_SPOTS) {
-    if (!wallSpotAvailable(shelves, wallDisplays, id, spot.id, furniture)) continue;
+    if (!visible[spot.wallSide] || !wallSpotAvailable(shelves, wallDisplays, id, spot.id, furniture)) continue;
     const point = new THREE.Vector3(...wallDisplayPosition(spot)); point.y += 0.4; point.project(camera);
     const d = Math.hypot(rect.left + (point.x + 1) * rect.width / 2 - x + grab.x, rect.top + (1 - point.y) * rect.height / 2 - y + grab.y);
     if (d < distance) { closest = spot; distance = d; }
@@ -166,7 +172,7 @@ function walker(furniture, shelves, wallDisplays) {
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
     if (!spot) continue;
     const [x, , z] = roomShelfPosition(spot), half = shelf.sizeId === 'wide' ? 1.25 : 0.45;
-    solid.push(spot.wallSide === 'left' ? [x - 0.65, z - half, x + 0.65, z + half] : [x - half, z - 0.65, x + half, z + 0.65]);
+    solid.push(alongWall(spot.wallSide, x, z, half, 0.65));
   }
   const clear = (x, z) => WALKABLE.some(r => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3])
     && !solid.some(r => x + 0.35 > r[0] && x - 0.35 < r[2] && z + 0.3 > r[1] && z - 0.3 < r[3]);
@@ -428,13 +434,13 @@ export function faunVisitRoute(furniture = defaultFurniture(), shelves = [], wal
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
     if (!spot) continue;
     const [x, , z] = roomShelfPosition(spot), along = shelf.sizeId === 'wide' ? 1.25 : 0.45;
-    roomObstacles.push(spot.wallSide === 'left' ? [x - 0.65, z - along, x + 0.65, z + along] : [x - along, z - 0.65, x + along, z + 0.65]);
+    roomObstacles.push(alongWall(spot.wallSide, x, z, along, 0.65));
   }
   for (const spotId of Object.values(wallDisplays)) {
     const spot = ROOM_WALL_SPOTS.find(spot => spot.id === spotId);
     if (!spot) continue;
     const [x, , z] = wallDisplayPosition(spot);
-    roomObstacles.push(spot.wallSide === 'left' ? [x - 0.11, z - 0.6, x + 0.11, z + 0.6] : [x - 0.6, z - 0.11, x + 0.6, z + 0.11]);
+    roomObstacles.push(alongWall(spot.wallSide, x, z, 0.6, 0.11));
   }
   const route = (x, z, dx, dz, facing, location) => ({ from: { x, z }, to: { x: x + dx, z: z + dz }, facing, location });
   const wardrobe = furnitureRect('wardrobe', furniture.wardrobe), wagon = furnitureRect('window', furniture.window);

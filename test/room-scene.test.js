@@ -680,9 +680,9 @@ test('shelves rotate across walls and restore the shelf and displayed object tog
   scene.targetAt = () => ({ kind: 'anchor', anchorId: id });
   const at = spotId => ({ button: 0, pointerId: 4, ...screenPoint(scene.camera, roomShelfPosition(ROOM_SHELF_SPOTS.find(spot => spot.id === spotId))) });
   const shelf = scene.dynamic.children.find(object => object.userData.dragId === id), home = shelf.position.clone();
-  scene.pointerDown(at('left-low-back')); scene.pointerMove(at('back-low-left'));
-  assert.equal(shelf.rotation.y, -Math.PI / 2); assert.notDeepEqual(shelf.position.toArray(), home.toArray());
-  scene.pointerUp(at('back-low-left')); assert.deepEqual(moves, [[id, 'back-low-left']]);
+  scene.pointerDown(at('left-low-back')); scene.pointerMove(at('front-shelf-2-3'));
+  assert.equal(shelf.rotation.y, Math.PI / 2); assert.notDeepEqual(shelf.position.toArray(), home.toArray());
+  scene.pointerUp(at('front-shelf-2-3')); assert.deepEqual(moves, [[id, 'front-shelf-2-3']]);
   assert.ok(shelf.position.equals(home)); assert.equal(shelf.rotation.y, 0);
   scene.setEditing(false); scene.dynamic.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
 });
@@ -716,12 +716,12 @@ test('a large shelf has three separate item targets and drags all three from an 
   const from = { button: 0, pointerId: 31, ...screenPoint(scene.camera, [positions[slots[2].id][0], positions[slots[2].id][1] + 0.3, positions[slots[2].id][2]]) };
   assert.deepEqual(scene.targetAt(from.clientX, from.clientY), { kind: 'anchor', anchorId: slots[2].id });
   scene.pointerDown(from);
-  const point = screenPoint(scene.camera, roomShelfPosition(ROOM_SHELF_SPOTS.find(spot => spot.id === 'back-low-left')));
+  const point = screenPoint(scene.camera, roomShelfPosition(ROOM_SHELF_SPOTS.find(spot => spot.id === 'front-shelf-2-3')));
   const to = { ...from, clientX: point.clientX + scene.dragCandidate.grab.x, clientY: point.clientY + scene.dragCandidate.grab.y };
   scene.pointerMove(to);
-  assert.equal(scene.dragging.id, shelf.id); assert.equal(holder.rotation.y, -Math.PI / 2);
+  assert.equal(scene.dragging.id, shelf.id); assert.equal(holder.rotation.y, Math.PI / 2);
   assert.equal(scene.dragPreview.children.length, 2, 'only the current drop footprint is shown');
-  scene.pointerUp(to); assert.deepEqual(moves, [[shelf.id, 'back-low-left']]);
+  scene.pointerUp(to); assert.deepEqual(moves, [[shelf.id, 'front-shelf-2-3']]);
   assert.ok(holder.position.equals(home)); assert.equal(holder.rotation.y, 0);
   scene.update({ ...view, shelves: [{ ...shelf, spotId: 'back-low-left' }] });
   const backHolder = scene.dynamic.children.find(object => object.userData.dragId === shelf.id);
