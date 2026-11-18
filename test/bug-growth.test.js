@@ -43,17 +43,19 @@ test('bug growth increases at every level, stops at ten, and missing legacy leve
 test('all species use their appropriate young form and switch cached art at level three only when needed', t => {
   mockCanvas(t);
   const larvae = {
-    grub: ['ceroplophana', 'lamprima', 'sagra', 'polyphylla', 'phanaeus'],
-    'legless-grub': ['trachelophorus', 'eupholus', 'pachyrhynchus'],
-    borer: ['chrysochroa', 'macrodontia'], crawler: ['onymacris', 'brachinus', 'manticora'],
+    grub: ['ceroplophana', 'lamprima', 'sagra', 'polyphylla', 'phanaeus', 'bertholdia'],
+    'legless-grub': ['trachelophorus', 'eupholus', 'pachyrhynchus', 'solenopsis', 'odontomachus', 'colobopsis', 'dasymutilla', 'ampulex'],
+    borer: ['chrysochroa', 'macrodontia', 'melanophila', 'phloeodes'], crawler: ['onymacris', 'brachinus', 'manticora', 'pheropsophus', 'dytiscus', 'gyrinus', 'photuris'],
     'jawed-larva': ['mantispa', 'nemoptera'], caddis: ['helicopsyche'],
   };
   const expected = Object.fromEntries(Object.entries(larvae).flatMap(([form, ids]) => ids.map(id => [id, form])));
-  const nymphs = ['bocydium', 'phrictus', 'pyrops', 'graphocephala', 'umbonia', 'platymeris', 'acanthaspis', 'heteropteryx', 'pseudocreobotra', 'deroplatys', 'empusa', 'lethocerus', 'sphaerocoris'];
-  assert.equal(Object.keys(expected).length, 16);
-  assert.equal(ROSTER.length, Object.keys(expected).length + nymphs.length + 1);
+  const nymphs = ['bocydium', 'phrictus', 'pyrops', 'graphocephala', 'umbonia', 'platymeris', 'acanthaspis', 'heteropteryx', 'pseudocreobotra', 'deroplatys', 'empusa', 'lethocerus', 'sphaerocoris',
+    'pyrrhocoris', 'brevisana', 'micronecta', 'gromphadorhina', 'gryllotalpa', 'notonecta', 'halobates', 'peruphasma'];
+  const larvaeForLife = ['phrixothrix', 'arachnocampa', 'myrmeleon']; // drawn as the larva at every level
+  assert.equal(Object.keys(expected).length, 28);
+  assert.equal(ROSTER.length, Object.keys(expected).length + nymphs.length + larvaeForLife.length);
   for (const bug of ROSTER) {
-    if (!expected[bug.id]) assert.ok(nymphs.includes(bug.id) || bug.id === 'phrixothrix');
+    if (!expected[bug.id]) assert.ok(nymphs.includes(bug.id) || larvaeForLife.includes(bug.id));
     assert.equal(youngForm(bug, 1), expected[bug.id], bug.id);
     assert.equal(youngForm(bug, 2), expected[bug.id], bug.id);
     for (const level of [3, 10, undefined]) assert.equal(youngForm(bug, level), undefined, bug.id);

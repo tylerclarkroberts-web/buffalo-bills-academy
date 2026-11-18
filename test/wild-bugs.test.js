@@ -9,9 +9,11 @@ import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, BATTLE_XP, WIN_BONUS_XP } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
-import { Mines } from '../server/mines.js';
+import { Mines, WILDS_A_DAY } from '../server/mines.js';
+import { wildAt, ROAM_STEP_MS } from '../server/engine/wild-roam.js';
 import { Pvp, WILD, jarChance } from '../server/pvp.js';
-import { BY_ID } from '../server/engine/creatures.js';
+import { BY_ID, ROSTER } from '../server/engine/creatures.js';
+import { rarityOf, RARE_TIER } from '../server/engine/bug-types.js';
 import { distFrom } from '../server/engine/maze.js';
 import { ITEM } from '../server/catalog/index.js';
 import { upsetXp } from '../server/engine/bug-combat.js';
@@ -40,7 +42,7 @@ function fixture(t) {
   f.walkUp = (player = f.ann) => {
     const s = f.mines.start(player, V); f.pvp.tick(player, { ...V, shiftId: s.shiftId });
     const [wild] = s.wilds;
-    Object.assign(f.pvp.presence.get(player.id), { x: wild.x, y: wild.y });
+    Object.assign(f.pvp.presence.get(player.id), wildAt(wild, clock.now)); // wherever it has roamed to
     return s;
   };
   f.fight = () => f.pvp.battles.get(f.pvp.inBattle.get('ann'));
@@ -54,12 +56,27 @@ test('a Denver mine day has a shared roster even for a miner with no bug, and th
   f.mines.owned = id => id === bob.id ? { 'mine-permit8': true } : {};
   assert.deepEqual(f.mines.start(bob, { ...V, shaft: '8' }).wilds, shift.wilds);
   const maze = f.pvp.maze(active), distance = distFrom(maze.grid, maze.start.x, maze.start.y);
-  assert.ok(shift.wilds.length >= 1 && shift.wilds.length <= 3);
+  assert.ok(shift.wilds.length >= WILDS_A_DAY[0] && shift.wilds.length <= WILDS_A_DAY[1]);
+  assert.deepEqual(WILDS_A_DAY, [4, 6]);
   assert.equal(new Set(shift.wilds.map(w => w.x + ',' + w.y)).size, shift.wilds.length);
   for (const w of shift.wilds) {
     assert.ok(w.level >= 1 && w.level <= 10 && BY_ID[w.species]);
     assert.ok(distance[w.y][w.x] >= 6 && !shift.pools.some(p => p.x === w.x && p.y === w.y));
+    // it roams: a route of neighbouring tunnel tiles from its spot, out of the acid and away from the lift
+    assert.deepEqual(w.path[0], [w.x, w.y]);
+    assert.ok(w.path.length > 1 && w.path.length <= 13);
+    w.path.forEach(([x, y], i) => {
+      assert.ok(distance[y][x] >= 3 && !shift.pools.some(p => p.x === x && p.y === y));
+      if (i) assert.equal(Math.abs(x - w.path[i - 1][0]) + Math.abs(y - w.path[i - 1][1]), 1);
+    });
   }
+  // where it is depends only on the route and the clock: out along it and back, the same for everyone
+  const [roamer] = shift.wilds, span = roamer.path.length - 1, lap = 2 * span * ROAM_STEP_MS, [endX, endY] = roamer.path[span];
+  assert.deepEqual(wildAt(roamer, 0), { x: roamer.x, y: roamer.y });
+  assert.deepEqual(wildAt(roamer, span * ROAM_STEP_MS), { x: endX, y: endY });
+  assert.deepEqual(wildAt(roamer, lap * 7), { x: roamer.x, y: roamer.y });
+  assert.deepEqual(wildAt(roamer, ROAM_STEP_MS / 2), { x: (roamer.x + roamer.path[1][0]) / 2, y: (roamer.y + roamer.path[1][1]) / 2 });
+  assert.deepEqual(wildAt({ x: 3, y: 4 }, 12345), { x: 3, y: 4 }, 'no route: it stays put');
   assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: shift.shiftId, wildId: shift.wilds[0].id }), /wants a bug/);
   const tick = () => f.pvp.tick(f.ann, { ...V, shiftId: shift.shiftId });
   f.barn.layEgg(f.ann.id);
@@ -76,11 +93,26 @@ test('a Denver mine day has a shared roster even for a miner with no bug, and th
   assert.ok(tomorrow.wilds.length >= 1 && tomorrow.wilds.every(w => !shift.wilds.some(old => old.id === w.id)));
 });
 
+test('rarity: a rare wild bug only turns up on a day rough enough, commons most often, and an egg is always a common', t => {
+  const f = fixture(t), seen = { 1: 0, 2: 0, 3: 0 };
+  for (let day = 0; day < 60; day++) {
+    f.clock.now += 86400e3;
+    const shift = f.mines.start(f.miner(`day${day}`), V);
+    assert.equal(new Set(shift.wilds.map((w) => w.species)).size, shift.wilds.length, 'no species twice in a day');
+    for (const w of shift.wilds) { seen[rarityOf(w.species)]++; if (rarityOf(w.species) === 3) assert.ok(shift.tier >= RARE_TIER, `a rare on a tier ${shift.tier} day`); }
+  }
+  assert.ok(seen[1] > seen[2] && seen[2] > seen[3] && seen[3] > 0, `commons ${seen[1]}, uncommons ${seen[2]}, rares ${seen[3]}`);
+  for (let k = 0; k < ROSTER.length; k++) {
+    f.miner(`egg${k}`); f.barn.eggInt = (n) => k % n; f.barn.layEgg(`egg${k}`);
+    assert.equal(rarityOf(f.barn.doc.pens[`egg${k}`].species), 1);
+  }
+});
+
 test('walking into it starts the fight; beating it pays the partner, robs nobody and clears it from the shift', t => {
   const f = fixture(t); f.partner(10);
   const s = f.mines.start(f.ann, V); f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId });
   assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId }), /further off/, 'not from the lift');
-  Object.assign(f.pvp.presence.get('ann'), { x: s.wilds[0].x, y: s.wilds[0].y });
+  Object.assign(f.pvp.presence.get('ann'), wildAt(s.wilds[0], f.clock.now));
   const view = f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
   assert.equal(view.battle.wild, true);
   assert.deepEqual([view.battle.them.wild, view.battle.them.level, view.battle.kind], [true, s.wilds[0].level, 'mine']);
@@ -96,6 +128,32 @@ test('walking into it starts the fight; beating it pays the partner, robs nobody
   assert.deepEqual([after.battle.over.won, after.battle.over.bug.xp, after.battle.over.raid], [true, BATTLE_XP + bonus, null]);
   assert.deepEqual(f.mines.stateFor(f.ann).wilds, s.wilds.slice(1), 'gone from the shift');
   assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: s.wilds[0].id }), /nothing wild/);
+});
+
+test('the miner chooses which bug goes in, and the wild bug waits where they met while they choose', t => {
+  const f = fixture(t); f.partner(10);
+  f.barn.adopt('ann', { wildId: 'earlier', battleId: 'earlier', species: 'onymacris', level: 3 });
+  const [partner, stalled] = f.barn.bugs('ann'), s = f.mines.start(f.ann, V), met = f.clock.now;
+  // a bug that will have roamed out of reach while its miner is still choosing, well inside the half minute it waits
+  let wild, choosing;
+  for (const w of s.wilds) for (let ms = 2000; ms < WILD.holdMs - 2000 && !wild; ms += 500) {
+    const then = wildAt(w, met), later = wildAt(w, met + ms);
+    if (Math.hypot(then.x - later.x, then.y - later.y) > WILD.reach + 0.5) { wild = w; choosing = ms; }
+  }
+  assert.ok(wild, 'one of the day\'s bugs roams far enough to tell');
+  f.clock.now += choosing; f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }); Object.assign(f.pvp.presence.get('ann'), wildAt(wild, met));
+  assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: wild.id }), /further off/, 'not without saying when they met');
+  assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: wild.id, at: met, bug: 12345 }), /no state to fight/, 'not a bug of theirs');
+  stalled.faintedAt = f.clock.now;
+  assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: wild.id, at: met, bug: stalled.bornAt }), /no state to fight/, 'not a fainted one');
+  delete stalled.faintedAt;
+  const view = f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: wild.id, at: met, bug: stalled.bornAt });
+  assert.deepEqual([view.battle.you.name, view.battle.you.level, view.battle.them.wild], [stalled.name, 3, true], 'the stalled bug is in the ring, not the partner');
+  // whatever happens is its own: the XP, and the faint if it is knocked out
+  const battle = f.fight(), before = [partner.xp, stalled.xp];
+  battle.fight.S.hp[0] = 0; f.pvp.fights.finish(battle.fight, 1);
+  const [after, benched] = f.barn.bugs('ann');
+  assert.deepEqual([after.xp, benched.xp, !!after.faintedAt, !!benched.faintedAt], [before[0], before[1] + BATTLE_XP, false, true]);
 });
 
 test('losing to a wild bug needs the nurse only if the partner was knocked out', t => {
@@ -224,9 +282,10 @@ test('a packed lunch eaten against a wild bug is gone; one the partner never nee
     const s = f.walkUp(); f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
     const battle = f.fight();
     if (health) battle.fight.S.hp[0] = Math.floor(battle.fight.S.maxHp[0] * health / 100);
+    else battle.fight.S.hp[1] = 1; // the wild bug on its last legs: whichever species the day drew, the partner is not troubled
     for (let i = 0; i < 200 && !battle.over; i++) { f.clock.now += 5000; f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }); }
     return [battle.fight.S.rounds.filter(r => r.type === 'snack').length, f.barn.doc.pens.ann.lunch || null];
   };
   assert.deepEqual(run(45), [1, null], 'already below half: it eats, and the lunch is used up');
-  assert.deepEqual(run(), [0, lunch], 'a level 10 at full health never gets that low against the least grown');
+  assert.deepEqual(run(), [0, lunch], 'at full health against one that is nearly done, it never gets that low');
 });

@@ -12,6 +12,8 @@ import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
+import BugCard, { TypeChip, matchups } from './BugCard.jsx';
+import { TYPES, EDGE, typeOf, edge, perkFor } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
 import { navigate } from '../App.jsx';
 import './barn.css';
@@ -24,7 +26,11 @@ const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); const d = Ma
 const chance = (name, p) => (Math.round(p * 100) === 50 ? 'even fight' : `${name} ${Math.round(p * 100)}% to win`);
 const NEED = { hunger: 'Fed', mood: 'Mood', clean: 'Clean' };
 const ACT = { feed: ['Feed', 'free'], play: ['Play', 'free'], clean: ['Mist', 'free'] };
-const TABS = ['care', 'combat', 'notes'];
+const TABS = ['care', 'combat', 'card', 'notes'];
+const TAB_NAME = { care: 'Care', combat: 'Combat', card: 'Card', notes: 'Field notes' };
+const both = (types) => types.map((t) => TYPES[t].name).join(' and ');
+/** One bug's type against another's, as the board says it: nothing when neither has the edge. The line already counts it. */
+const matchup = (mine, theirs) => { const e = edge(typeOf(mine), typeOf(theirs)); return e ? ` · ${e > 0 ? 'your' : 'its'} type has the edge` : ''; };
 const WARN = ['', 'is hungry. It has not been fed in a week.', 'is getting weak from hunger. Feed it soon.', 'is close to starving. Feed it today.'];
 const SHEET = [['range', 'Where'], ['size', 'Size'], ['diet', 'Eats'], ['life', 'Life cycle'], ['conservation', 'Status']];
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -158,7 +164,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
       : mine.fainted ? <>{mine.name} fainted. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> has a bed for it.</>
       : unsaved ? 'Save or discard your Combat changes before fighting.'
       : <span className="num">Available: {money(b.bankroll)} · play money</span>}
-      {fighters.length > 1 && <label className="barn-with"> Fight with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}</p>
+      {fighters.length > 1 && <label className="barn-with"> Fight with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · {TYPES[typeOf(bug.species)]?.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}</p>
     <section className="barn-board">
       {challenges.incoming.length > 0 && <>
         <h3>Challenges for you</h3>
@@ -178,7 +184,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         <BugThumb bug={bug} />
         <div>
           <div className="barn-listing-title"><b>{bug.name}</b><span className="small">{bug.owner}</span></div>
-          <p className="small">Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : bug.fainted ? ' · fainted' : ''}{mine && bug.line?.[mine.id] ? <span data-test="roster-line"> · {chance(mine.name, bug.line[mine.id])}</span> : null}</p>
+          <p className="small"><TypeChip type={typeOf(bug.species)} small /> Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : bug.fainted ? ' · fainted' : ''}{mine && bug.line?.[mine.id] ? <span data-test="roster-line"> · {chance(mine.name, bug.line[mine.id])}{matchup(mine.species, bug.species)}</span> : null}</p>
         </div>
         {out ? <div className="barn-row"><span className="small">Called out{out.stake ? stakeLabel(out.stake) : ''} · {left(out.expiresAt - now)} left</span><button className="btn ghost" onClick={() => drop(out.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
           : calling === key ? <form className="barn-post" onSubmit={(event) => { event.preventDefault(); call(bug.ownerId, bug.id, Number(callStake), mine?.id); setCalling(null); }}>
@@ -204,7 +210,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
       </form>}
       {listings.length ? <ul className="barn-open-bouts">{listings.map((entry) => { const t = mine && entry.terms?.[mine.id], risk = t ? t.risk : entry.stake; return <li key={entry.id} data-test="bout-listing">
         <div className="barn-listing-title"><b>{entry.fighter.name}</b><span className="small">Level {entry.fighter.level} · {entry.hostName}</span></div>
-        <p className="small" data-test="bout-terms">{BY_ID[entry.fighter.species].name}{t ? ` · ${chance(mine.name, t.win)}` : ''} · {!entry.stake ? 'no money on it' : t ? `risk ${money(risk)} to win ${money(entry.stake)}` : `${money(entry.stake)} posted`}</p>
+        <p className="small" data-test="bout-terms"><TypeChip type={typeOf(entry.fighter.species)} small /> {BY_ID[entry.fighter.species].name}{t ? ` · ${chance(mine.name, t.win)}${matchup(mine.species, entry.fighter.species)}` : ''} · {!entry.stake ? 'no money on it' : t ? `risk ${money(risk)} to win ${money(entry.stake)}` : `${money(entry.stake)} posted`}</p>
         {setup(entry.fighter)}
         {mine && <button className="btn" onClick={() => join(entry.id, mine.id, t?.risk)} disabled={locked || !!openBout || entry.expiresAt <= now || risk > b.bankroll} data-test="bout-join">{risk > b.bankroll ? `Need ${money(risk)}` : `Join${stakeLabel(risk)}`}</button>}
       </li>; })}</ul> : <p className="small muted" data-test="bouts-empty">Nobody waiting. The hay has refused to fight.</p>}
@@ -406,7 +412,7 @@ function BarnHome({ me }) {
             <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
               <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
               {pen.title && <span className="small barn-title">{pen.title}</span>}
-              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b></p>
+              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b> <TypeChip type={typeOf(pen.species)} small /></p>
               {(pen.feederUntil > b.serverNow || pen.lunch) && <p className="small barn-kind barn-supplies">
                 {pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed, Mood and Clean full and adds 12 XP a day while it runs">🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
                 {pen.lunch && <span className="barn-feeder" data-test="barn-lunch" title="Eaten in its next fight, the first time it drops below half health">🍱 Packed lunch: {pen.lunch.name}, +{pen.lunch.heal} HP</span>}
@@ -423,9 +429,9 @@ function BarnHome({ me }) {
                 const index = e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
                 setTab(TABS[index]); e.currentTarget.querySelectorAll('[role="tab"]')[index].focus();
               }}>
-                {TABS.map((name) => <button key={name} id={`barn-tab-${name}`} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`barn-panel-${name}`} className={tab === name ? 'on' : ''} onClick={() => setTab(name)} data-test={`tab-${name}`}>{name === 'notes' ? 'Field notes' : name === 'combat' ? 'Combat' : 'Care'}</button>)}
+                {TABS.map((name) => <button key={name} id={`barn-tab-${name}`} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`barn-panel-${name}`} className={tab === name ? 'on' : ''} onClick={() => setTab(name)} data-test={`tab-${name}`}>{TAB_NAME[name]}</button>)}
               </div>
-              {tab === 'notes' ? <Notes key={pen.species} bug={BY_ID[pen.species]} /> : (<>
+              {tab === 'notes' ? <Notes key={pen.species} bug={BY_ID[pen.species]} /> : tab === 'card' ? <div className="barn-tab-content barn-card-tab" id="barn-panel-card" role="tabpanel" aria-labelledby="barn-tab-card"><BugCard species={pen.species} bug={pen} /></div> : (<>
                 <div className="barn-progress" data-test="barn-progress">
                   <span className="small num">{pen.xp.toLocaleString()} XP · {pen.xpNext ? `${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : 'Maximum level 10'}</span>
                   <div className="barn-bar xp" role="progressbar" aria-label={`Level ${pen.level} progress`} aria-valuemin={0} aria-valuemax={pen.xpNext ? pen.xpNext - pen.xpThis : 1} aria-valuenow={pen.xpNext ? pen.xp - pen.xpThis : 1}><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div>
@@ -449,6 +455,7 @@ function BarnHome({ me }) {
                   </dl>
                   <p className="small muted">Attack increases damage; defense softens hits; speed helps with initiative and dodging. Each level from 3 to 10 adds health and damage.</p>
                   {pen.trait && <p className="small" data-test="barn-trait"><b>{pen.trait.name}.</b> {pen.trait.description}</p>}
+                  {typeOf(pen.species) && <p className="small" data-test="barn-type"><TypeChip type={typeOf(pen.species)} small /> Beats {both(matchups(typeOf(pen.species)).beats)}; loses to {both(matchups(typeOf(pen.species)).weak)}. Its hits land {Math.round((EDGE.strong - 1) * 100)}% harder on a type it beats and {Math.round((1 - EDGE.weak) * 100)}% softer on one that beats it. <b>{perkFor(typeOf(pen.species))?.name}.</b> {perkFor(typeOf(pen.species))?.description}</p>}
                   {b.openBout && <p className="small barn-warn">Cancel your waiting bout in the ring to change your setup.</p>}
                   <fieldset className="barn-setup" disabled={busy || !!b.openBout}>
                     <legend>Combat setup</legend>

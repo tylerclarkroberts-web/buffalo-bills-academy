@@ -21,7 +21,7 @@ export function revealExploration(explored, grid, x, y, pools, currentPoolId) {
 export function markWild(explored, wild) {
   if (!wild || explored.wilds.has(wild.id)) return false;
   explored.wilds.add(wild.id);
-  explored.tiles.add(`${wild.x},${wild.y}`);
+  explored.tiles.add(`${Math.round(wild.x)},${Math.round(wild.y)}`); // it roams: the tile it was on when you saw it
   return true;
 }
 
@@ -38,7 +38,7 @@ export function readExploration(playerId, shiftId, grid, pools, storage, wilds =
       return tile === `${x},${y}` && grid[y]?.[x] != null;
     };
     if (!saved.tiles.every(validTile) || !saved.pools.every(id => pools.some(p => p.id === id && saved.tiles.includes(`${p.x},${p.y}`)))) return empty;
-    const known = wilds.filter(w => Array.isArray(saved.wilds) && saved.wilds.includes(w.id) && saved.tiles.includes(`${w.x},${w.y}`));
+    const known = wilds.filter(w => Array.isArray(saved.wilds) && saved.wilds.includes(w.id));
     return { tiles: new Set(saved.tiles), pools: new Set(saved.pools), wilds: new Set(known.map(w => w.id)) };
   } catch { return empty; }
 }

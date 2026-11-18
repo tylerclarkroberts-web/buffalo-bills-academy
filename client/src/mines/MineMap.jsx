@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { RUBBLE } from '../../../server/engine/maze.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { entranceLayout } from './entrance.js';
+import { TYPES, typeOf } from '../../../server/engine/bug-types.js';
 
 export default function MineMap({ maze, explored, pools, wilds = [], pose, onClose, returnFocus }) {
   const dialog = useRef(null);
@@ -11,7 +12,7 @@ export default function MineMap({ maze, explored, pools, wilds = [], pose, onClo
   }, []);
   const knownPools = pools.filter(p => explored.pools.has(p.id));
   const wet = knownPools.filter(p => p.remaining > 0).length;
-  const bugs = wilds.map(w => ({ ...w, label: `Wild ${BY_ID[w.species]?.name || 'bug'} · Lv ${w.level}` }));
+  const bugs = wilds.map(w => ({ ...w, label: `Wild ${BY_ID[w.species]?.name || 'bug'} · ${TYPES[typeOf(w.species)]?.name || 'bug'} · Lv ${w.level}` }));
   const entranceKnown = explored.tiles.has(`${maze.start.x},${maze.start.y}`);
   const { lift, door } = entranceLayout(maze);
   return (

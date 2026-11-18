@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Barn, CARE, BOUT_LEVEL, BOUT_XP, BOUT_WIN_XP, MAX_BOUT_STAKE, BENCH_SLOW } from '../server/barn.js';
-import { Shop, USE_COOLDOWN_MS } from '../server/shop.js';
+import { Barn, CARE, BOUT_LEVEL, BOUT_XP, BOUT_WIN_XP, MAX_BOUT_STAKE, BENCH_SLOW, idOf } from '../server/barn.js';
+import { Shop, USE_COOLDOWN_MS, BUG_COPIES } from '../server/shop.js';
 import { BUG_ITEMS } from '../server/catalog/bug.js';
 import { LUNCH_CAP } from '../server/engine/bout.js';
 
@@ -15,7 +15,7 @@ function setup() {
   const barn = new Barn({ store, now: () => clock.now, incubateMs: 1, eggInt: () => 0 });
   const shop = new Shop({ store, accounts: { ensure() {} }, barn, now: () => clock.now });
   const player = { id: 'rancher', name: 'Rancher', bankroll: 10000 };
-  barn.styleOf = (id) => shop.bugStyle(id); barn.looksOf = () => null;
+  barn.styleOf = (id, bug) => shop.bugStyle(id, bug); barn.looksOf = () => null;
   barn.layEgg(player.id); clock.now += 1; barn.view(player.id);
   const pen = barn.doc.pens[player.id];
   const setNeeds = (n) => { for (const stat of ['hunger', 'mood', 'clean']) pen.stats[stat] = { v: n, at: clock.now }; };
@@ -223,19 +223,54 @@ test('toys are reusable Play bonuses; equipment slots replace rather than stack'
   assert.equal(shop.bugStyle(player.id).bugacc.id, 'bugwear-bow');
 });
 
-test('gear equipped before attack and defense split moves to its own slot once, and keeps its bonus', () => {
+test('looks and gear worn before stalls go on the partner, each in the slot it is sold for, once', () => {
   const docs = new Map([['shop', { inv: {
-    helmet: { own: { 'gear-helmet': 1 }, eq: { gear: 'gear-helmet', bughat: 'bugwear-crown' } }, // defense gear in the old shared slot
-    claws: { own: { 'gear-claws': 1 }, eq: { gear: 'gear-claws' } },                             // attack gear stays where it is
+    helmet: { own: { 'gear-helmet': 1 }, eq: { gear: 'gear-helmet', bughat: 'bugwear-crown', toy: 'toy-twig' } }, // defense gear in the old shared slot
+    claws: { own: { 'gear-claws': 1 }, eq: { gear: 'gear-claws' } },
     both: { own: { 'gear-armor': 1, 'gear-shield': 1 }, eq: { gear: 'gear-armor', defense: 'gear-shield' } }, // never overwrites a filled slot
+    nobug: { own: { 'gear-claws': 1 }, eq: { gear: 'gear-claws' } },                                            // nobody to wear it: still owned
   } }]]);
+  const pens = { helmet: { stage: 'creature', eggAt: 11 }, claws: { stage: 'creature', eggAt: 12 }, both: { stage: 'creature', eggAt: 13 } };
   const store = { loadDoc: (id, fallback) => docs.get(id) || fallback, saveDoc: (id, doc) => docs.set(id, structuredClone(doc)) };
-  const boot = () => new Shop({ store, accounts: { ensure() {} }, barn: { view: () => ({}) }, now: () => 0 });
+  const boot = () => new Shop({ store, accounts: { ensure() {} }, barn: { view: () => ({}), doc: { pens }, bugs: (id) => (pens[id] ? [pens[id]] : []) }, now: () => 0 });
   const shop = boot();
-  assert.deepEqual(shop.doc.inv.helmet.eq, { bughat: 'bugwear-crown', defense: 'gear-helmet' });
+  assert.deepEqual(shop.doc.inv.helmet.bugEq, { 11: { bughat: 'bugwear-crown', defense: 'gear-helmet' } });
+  assert.deepEqual(shop.doc.inv.helmet.eq, { toy: 'toy-twig' }, 'the toy stays in the terrarium');
   assert.equal(shop.bugStyle('helmet').defenseBonus, 0.03); assert.equal(shop.bugStyle('helmet').gearBonus, 0);
-  assert.deepEqual(shop.doc.inv.claws.eq, { gear: 'gear-claws' });
-  assert.deepEqual(shop.doc.inv.both.eq, { defense: 'gear-shield' });
-  assert.deepEqual(docs.get('shop').inv.helmet.eq, shop.doc.inv.helmet.eq, 'saved');
+  assert.deepEqual(shop.doc.inv.claws.bugEq, { 12: { gear: 'gear-claws' } });
+  assert.deepEqual(shop.doc.inv.both.bugEq, { 13: { defense: 'gear-shield' } });
+  assert.deepEqual([shop.doc.inv.nobug.eq, shop.doc.inv.nobug.own], [{}, { 'gear-claws': 1 }]);
+  assert.deepEqual(docs.get('shop').inv.helmet.bugEq, shop.doc.inv.helmet.bugEq, 'saved');
   assert.deepEqual(boot().doc.inv, shop.doc.inv, 'a second boot changes nothing');
+});
+
+test('looks and battle gear belong to one bug: a second bug needs its own, or the first one\'s is moved across', () => {
+  const { barn, shop, player, own } = setup();
+  delete barn.looksOf; // the real one: each bug is drawn in its own things
+  shop.accounts = { ensure() {}, requireFunds() {}, change() {} };
+  barn.adopt(player.id, { wildId: 'wild-1', battleId: 'catch-1', species: 'onymacris', level: 1 });
+  const [partner, stalled] = barn.bugs(player.id), [a, b] = [partner, stalled].map(idOf);
+  const defense = () => [partner, stalled].map((pen) => barn.fighter(player.id, pen).defense);
+  own('gear-shield'); own('bugwear-tophat');
+  shop.equip(player, { id: 'gear-shield' }); shop.equip(player, { id: 'bugwear-tophat' }); // no bug named: the partner
+  assert.deepEqual(defense(), [0.04, 0], 'the stalled bug has no shield');
+  assert.equal(barn.fighter(player.id, stalled).style, undefined);
+  // one shield: putting it on the other bug takes it off the first
+  assert.deepEqual(shop.equip(player, { id: 'gear-shield', bug: b }).bugEq, { [a]: { bughat: 'bugwear-tophat' }, [b]: { defense: 'gear-shield' } });
+  assert.deepEqual(defense(), [0, 0.04]);
+  // or buy another, which goes straight on the bug it was bought for
+  shop.buy(player, 'gear-shield', { confirm: true, bug: a });
+  assert.equal(shop.inv(player.id).own['gear-shield'], 2);
+  assert.deepEqual(defense(), [0.04, 0.04]);
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((bug) => Object.keys(bug.style).sort()), [['bughat', 'defense'], ['defense']]);
+  shop.equip(player, { id: null, slot: 'defense', bug: b });
+  assert.deepEqual(defense(), [0.04, 0], 'taking off names the bug too');
+  shop.equip(player, { id: 'gear-shield', bug: b });
+  assert.deepEqual(defense(), [0.04, 0.04], 'the spare goes on without disturbing the other');
+  assert.throws(() => shop.equip(player, { id: 'gear-shield', bug: 12345 }), (e) => e.status === 409, 'not one of your bugs');
+  shop.inv(player.id).own['gear-shield'] = BUG_COPIES;
+  assert.throws(() => shop.buy(player, 'gear-shield', { confirm: true }), (e) => e.status === 409, 'one for every stall is the most');
+  // a bug that dies wears nothing: its things are back in the bag for the next one
+  shop.inv(player.id).own['gear-shield'] = 1; stalled.stage = 'dead';
+  assert.deepEqual(shop.view(player).bugEq, { [a]: { bughat: 'bugwear-tophat', defense: 'gear-shield' } });
 });

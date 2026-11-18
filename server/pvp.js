@@ -13,6 +13,7 @@ import { mineDay } from './engine/daily-maze.js';
 import { MAX_SHIFT_MS } from './mines.js';
 import { RUN_SPEED } from './engine/mine-movement.js';
 import { sees, touching, behind, onTunnel, lineOfSight } from './engine/pvp-geometry.js';
+import { wildAt } from './engine/wild-roam.js';
 import { BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
 import { ITEM } from './catalog/index.js';
 import { danceId } from './engine/dances.js';
@@ -40,6 +41,7 @@ export const PVP = {
 // Wild bugs share the day's tunnels. A miner's own standing partner can fight one.
 export const WILD = {
   reach: 1.6,   // tiles, by the server's copy of where the miner is: this close and it goes for your bug (the page asks at about one)
+  holdMs: 30e3, // it stands its ground while a miner decides: the fight can start from where it was up to this long ago
   jarAt: 0.25,  // a jar only works on a wild bug at or under a quarter of its health
   jarBase: 0.35, jarBest: 0.85, // the chance at exactly a quarter, and the most it can be; it climbs as the bug weakens
 };
@@ -192,7 +194,7 @@ export class Pvp {
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
     const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id, have) : null;
     const shift = this.shiftOf(player.id), wilds = this.wildsFor(shift);
-    const canFightWild = wilds.length > 0 && !this.fights.fightOf(player.id) && !!this.bugOf(player.id, false);
+    const canFightWild = wilds.length > 0 && !this.fights.fightOf(player.id) && (!!this.bugOf(player.id, false) || (this.barn?.bugs?.(player.id) || []).some((pen) => this.fit(pen))); // the partner (an egg due to hatch counts), or any other bug of theirs
     return { serverNow: this.now(), others, wilds, canFightWild, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
       ...(shift?.egg ? { egg: this.mines.eggAvailable(shift, player.id) } : {}),
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
@@ -227,9 +229,12 @@ export class Pvp {
    * The bug a miner fights with. A fainted bug (v75) stays home until the Bug Center heals it, so its miner borrows
    * the Foreman's beetle like anyone without a bug: being fainted is never a shield. `benched` names the fainted one.
    */
-  bugOf(id, full = true) {
-    let pen = this.barn?.doc?.pens?.[id];
-    if (pen?.stage === 'egg' && this.now() >= pen.hatchAt) pen = this.barn.refresh(id);
+  /** Hatched, alive and standing. */
+  fit(pen) { return pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen)) && !pen.faintedAt; }
+  /** The bug a miner fights with: the partner, or one of their others by id (`bug`). The Foreman's loaner when that one cannot. */
+  bugOf(id, full = true, bug = null) {
+    let pen = bug == null ? this.barn?.doc?.pens?.[id] : this.barn?.penOf?.(id, bug);
+    if (pen?.stage === 'egg' && this.now() >= pen.hatchAt) pen = this.barn.refresh(id, bug ?? undefined);
     const alive = pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen));
     const fit = alive && !pen.faintedAt;
     const p = this.store.players[id];
@@ -261,32 +266,35 @@ export class Pvp {
     return battle;
   }
   /**
-   * The miner has walked into the shift's wild bug and it goes for their partner: the same ring fight, with nobody in
-   * the other corner. It only fights a bug that is the miner's own and standing; the Foreman's loaner it ignores.
+   * The miner has walked up to one of the day's wild bugs and chosen to fight it: the same ring fight, with nobody in
+   * the other corner. `bug` names which of their bugs goes in (the partner if left out); it has to be their own and
+   * standing, and the Foreman's loaner the wild bug ignores. `at` is when they met: it waits while they choose.
    */
   meetWild(player, body = {}) {
     this.touch(player.id); this.sweep();
     const shift = this.shiftOf(player.id), pr = this.fresh(player.id);
     if (this.inBattle.has(player.id)) return this.view(player);
     const wilds = shift?.id === body.shiftId ? this.wildsFor(shift) : [];
-    const distance = (bug) => pr ? Math.hypot(pr.x - bug.x, pr.y - bug.y) : Infinity;
+    const now = this.now(), met = Math.min(now, Math.max(now - WILD.holdMs, Number(body.at) || now));
+    const distance = (bug) => { const at = wildAt(bug, met); return pr ? Math.hypot(pr.x - at.x, pr.y - at.y) : Infinity; }; // where it had roamed to when they met
     const wild = body.wildId == null ? wilds.toSorted((a, b) => distance(a) - distance(b))[0] : wilds.find(bug => bug.id === body.wildId);
     if (!wild) throw new GameError('There is nothing wild here.', 409);
     if (distance(wild) > WILD.reach) throw new GameError('It is further off than that.', 409);
     for (const battle of this.battles.values()) {
       if (!battle.over && battle.wild?.id === wild.id) throw new GameError('Another miner is fighting this bug.', 409);
     }
-    if (!this.startWild(player.id, shift, wild)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
+    if (body.bug != null && this.bugOf(player.id, true, body.bug).loaner) throw new GameError('That one is in no state to fight.', 409);
+    if (!this.startWild(player.id, shift, wild, body.bug ?? null)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
     return this.view(player);
   }
-  startWild(a, shift, wild) {
-    const mine = this.bugOf(a);
+  startWild(a, shift, wild, bug = null) {
+    const mine = this.bugOf(a, true, bug);
     if (mine.loaner || this.fights.fightOf(a)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
     const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: BY_ID[species].name }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
       bugs: { a: { bornAt: mine.bornAt, xp: mine.xp }, b: null }, benched: { a: null, b: null } };
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
-      fighters: [{ ...this.barn.fighter(a, this.barn.doc.pens[a]), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true }],
+      fighters: [{ ...this.barn.fighter(a, this.barn.penOf(a, bug)), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true }],
       onFinish: (fight) => this.fought(battle, fight) });
     this.battles.set(id, battle); this.inBattle.set(a, id);
     this.mines.holds.delete(a); const pr = this.presence.get(a); if (pr) pr.lastBattle = id;

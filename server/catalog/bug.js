@@ -51,7 +51,7 @@ const SKINS = [
   ['camo', 'Desert Camo', ['#1a1408', '#5a4a2a', '#8a7a4a', '#c0a870', '#e8dcb0'], 150], ['rainbow', 'Prism', ['#100818', '#3040c0', '#20b080', '#f0c020', '#ff5050'], 20000],
   ['lava', 'Lava Shell', ['#100400', '#3a0a04', '#8a1a08', '#ff5a10', '#ffd040'], 8000],
 ];
-for (const [id, name, pal, price] of SKINS) add({ id: `bugskin-${id}`, name, price, desc: 'Permanent cosmetic: change your bug\'s colour until you swap it or take it off. One shell colour at a time, alongside a hat and accessory. No change to species, needs, XP or battle strength.', cat: 'bugstyle', slot: 'bugskin', pal });
+for (const [id, name, pal, price] of SKINS) add({ id: `bugskin-${id}`, name, price, desc: 'Permanent cosmetic for one bug: it changes that bug\'s colour until you swap it or take it off. One shell colour at a time, alongside a hat and accessory. A second bug needs its own, or move this one across. No change to species, needs, XP or battle strength.', cat: 'bugstyle', slot: 'bugskin', pal });
 
 // clothes and accessories: tiny pixel overlays (cosmetic)
 const WEAR = [
@@ -60,7 +60,7 @@ const WEAR = [
   ['cape', 'Superhero Cape', 600, 'bugacc'], ['scarf', 'Scarf', 90, 'bugacc'], ['dapper', 'Monocle & Moustache Set', 5000, 'bugacc'],
 ];
 for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, price,
-  desc: `Permanent cosmetic: equip one ${slot === 'bughat' ? 'hat' : 'accessory'} at a time, alongside a shell colour and ${slot === 'bughat' ? 'accessory' : 'hat'}. Stays on until swapped or taken off. No change to needs, XP or battle strength.`,
+  desc: `Permanent cosmetic for one bug: it wears one ${slot === 'bughat' ? 'hat' : 'accessory'} at a time, alongside a shell colour and ${slot === 'bughat' ? 'accessory' : 'hat'}. A second bug needs its own, or move this one across. No change to needs, XP or battle strength.`,
   cat: 'bugstyle', slot, shape: id });
 
 // the automatic feeder: consumable. Each one fills Fed, Mood and Clean, keeps all three full and pauses the starvation
@@ -73,7 +73,8 @@ add({ id: 'jar', name: 'Specimen Jar', price: 150, emoji: '🫙', cat: 'bugcare'
 add({ id: 'mister', name: 'Auto-Mister', price: 150, emoji: '💧', cat: 'bugcare', slot: null, use: 'clean', retired: true, desc: 'The shopkeeper pulled these after someone noticed the hose is free. Yours still works: +40 Clean and 6 XP.' });
 add({ id: 'heatlamp', name: 'Cosy Heat Lamp', price: 90, emoji: '💡', cat: 'bugcare', slot: null, use: 'mood', retired: true, desc: 'The shopkeeper pulled these after someone noticed Play is free and better. Yours still works: +40 Mood and 6 XP.' });
 
-// battle gear: two slots, one attack item ('gear') and one defense item ('defense'), each worth 1% to 6% (GEAR_CAP).
+// battle gear: two slots on each bug, one attack item ('gear') and one defense item ('defense'), each worth 1% to 6%
+// (GEAR_CAP). An item is on one bug at a time (server/shop.js): buy another for a second bug, or move it across.
 // Attack gear raises the damage of the bug's hits; defense gear lowers the damage of the hits it takes. The bonus is
 // stored under the slot's own name. Gear is never wagered; a bout's stake is money (server/barn.js).
 const GEAR = [
@@ -81,7 +82,7 @@ const GEAR = [
   ['bandage', 'Lucky Bandage', 60, 'defense', 0.01], ['shell', 'Polished Shell Wax', 300, 'defense', 0.015], ['helmet', 'Acorn Helmet', 1500, 'defense', 0.03],
   ['shield', 'Leaf Shield', 2500, 'defense', 0.04], ['armor', 'Beetle Plate Armour', 20000, 'defense', 0.06],
 ];
-const BOUT_COPY = 'Equip one attack item and one defense item at a time; each stays on until swapped or taken off. Any hatched bug can fight. A bout awards 30 XP for a win and 20 for a loss or draw, and is fought for free or for a matched stake of up to $10,000. No effect on poker.';
+const BOUT_COPY = 'It goes on one bug, which wears one attack item and one defense item at a time. A second bug needs its own, or move this one across. Any hatched bug can fight. A bout awards 30 XP for a win and 20 for a loss or draw, and is fought for free or for a matched stake of up to $10,000. No effect on poker.';
 for (const [id, name, price, slot, bonus] of GEAR) {
   const pct = +(bonus * 100).toFixed(1);
   add({ id: `gear-${id}`, name, price, emoji: slot === 'gear' ? '⚔️' : '🛡️', cat: 'gear', slot, [slot]: bonus,

@@ -19,6 +19,11 @@
 .store-subcategories { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; }
 .store-subcategories button { font-size: 11.5px; }
 .store-category-title { margin: 0; font: 600 15px var(--mono); color: #ffe9a0; }
+/* which of your bugs is being dressed: only when you keep more than one */
+.store-bugpick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px; font: 600 11.5px var(--mono); color: var(--paper-2); }
+.store-bugpick button { display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,.25); color: var(--paper-2); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: 4px 10px 4px 6px; font: inherit; cursor: pointer; min-height: 44px; }
+.store-bugpick button.on { background: rgba(242, 198, 90, .18); color: #ffe9a0; border-color: #e6b85a; }
+.store-bugpick button:focus-visible { outline: 2px solid #ffe9a0; outline-offset: 2px; }
 .store-grid { display: grid; flex: 1; gap: 8px; min-height: 0; min-width: 0; overflow: hidden; align-content: start; }
 .store-no-items { grid-column: 1 / -1; grid-row: 1 / -1; align-self: center; margin: 0; padding: 12px; text-align: center; color: var(--mute); }
 .store-card { display: grid; grid-template-rows: 1fr auto auto; align-items: center; justify-items: center; gap: 2px; min-width: 0; min-height: 0; overflow: hidden; cursor: pointer;
@@ -58,7 +63,8 @@
   .store-pickers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .store-pickers label { display: grid; gap: 3px; min-width: 0; font-size: 11px; color: var(--paper-2); }
   .store-pickers select { min-width: 0; min-height: 44px; font-size: 14px; color: var(--paper); }
-  .store-subcategories, .store-category-title, .store-browse:not(:has(.store-notice)) { display: none; }
+  .store-subcategories, .store-category-title, .store-browse:not(:has(.store-notice, .store-bugpick)) { display: none; }
+  .store-bugpick { flex-wrap: nowrap; overflow-x: auto; } .store-bugpick button { flex: none; } /* one row to swipe, so the shelf keeps its height */
 }
 /* phones upright: the counter becomes a sheet over the shelf when something is picked */
 @media (max-width: 600px) {

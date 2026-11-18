@@ -21,6 +21,7 @@ const ONCE = (x) => !!x.once; // gags (and tobacco): one at a time, used up when
 const FITTABLE = (x) => x?.kind === 'avatar' && x.slot !== 'skin';
 const BUG_LOOK = ['bugskin', 'bughat', 'bugacc'];
 const BATTLE_GEAR = ['gear', 'defense']; // one attack item and one defense item, both drawn on the bug
+const WORN = [...BUG_LOOK, ...BATTLE_GEAR]; // worn by one bug: each of yours has its own
 const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 'long' });
 
 function BugThumb({ species, style, size, level }) {
@@ -47,7 +48,10 @@ function Thumb({ x, me, eqWear, pen, size, fit }) {
 export default function Store() {
   const { me } = useSession();
   const [v, setV] = useState(null);
-  const [pen, setPen] = useState(null);
+  const [bugs, setBugs] = useState([]); // your living bugs, partner first
+  const [bugId, setBugId] = useState(null);
+  const pen = bugs.find((b) => b.id === bugId) || bugs[0] || null; // the one being dressed
+  const readBugs = (b) => setBugs((b?.stable?.bugs || []).filter((bug) => bug.stage === 'creature'));
   const [departmentId, setDepartmentId] = useState('appearance');
   const [tab, setTab] = useState('hats');
   const [pg, setPg] = useState(0);
@@ -61,7 +65,7 @@ export default function Store() {
   const [fits, setFitOf, resetFit, fitStatus] = useFitSaver(v?.fit, (r) => setV(r));
   const load = async () => {
     const [s, b] = await Promise.all([api('GET', '/shop'), api('GET', '/barn').catch(() => null)]);
-    setV(s); setPen(b?.pen?.stage === 'creature' ? b.pen : null);
+    setV(s); readBugs(b);
   };
   useEffect(() => { document.title = "General Store · Buffalo Bill's Academy"; if (me) load().catch((e) => setErr(e.message)); }, [me?.id]);
   // how many cards fit: measured, so the page never scrolls at any size
@@ -86,13 +90,19 @@ export default function Store() {
   const eqWear = Object.fromEntries(Object.entries(v.eq).map(([slot, id]) => [slot, { ...lookOf(v.items.find((i) => i.id === id) || { id }), fit: fits[id] }]).filter(([s]) => !BUG_LOOK.includes(s)));
   const cur = sel && v.items.find((x) => x.id === sel);
   const shown = items.slice(pg * per, pg * per + per);
-  const run = async (fn, ok) => { setErr(''); setMsg(''); try { const r = await fn(); setV(r); if (ok) setMsg(ok); refreshSession(); if (BUG_LOOK.includes(cur?.slot) || cur?.use || cur?.slot === 'toy' || BATTLE_GEAR.includes(cur?.slot)) { const b = await api('GET', '/barn').catch(() => null); setPen(b?.pen?.stage === 'creature' ? b.pen : null); } } catch (e) { setErr(e.message); } };
+  const run = async (fn, ok) => { setErr(''); setMsg(''); try { const r = await fn(); setV(r); if (ok) setMsg(ok); refreshSession(); if (BUG_LOOK.includes(cur?.slot) || cur?.use || cur?.slot === 'toy' || BATTLE_GEAR.includes(cur?.slot)) readBugs(await api('GET', '/barn').catch(() => null)); } catch (e) { setErr(e.message); } };
   const buy = (x, confirm = false) => {
     if (x.price > v.confirmOver && !confirm) { setAsk(x); return; }
-    setAsk(null); run(() => api('POST', '/shop/buy', { id: x.id, confirm }), `Bought: ${x.name}.${x.slot && !v.eq[x.slot] ? ' Wearing it now.' : ''}`);
+    const forBug = WORN.includes(x.slot) && pen, on = forBug ? !v.bugEq?.[pen.id]?.[x.slot] && ` ${pen.name} is wearing it now.` : x.slot && !v.eq[x.slot] && ' Wearing it now.';
+    setAsk(null); run(() => api('POST', '/shop/buy', { id: x.id, confirm, ...(forBug ? { bug: pen.id } : {}) }), `Bought: ${x.name}.${on || ''}`);
   };
   const owned = cur ? v.own[cur.id] || 0 : 0;
-  const wearing = cur && cur.slot && v.eq[cur.slot] === cur.id;
+  // looks and battle gear are per bug: `wears` is about the bug picked; `others` are your bugs with a copy of this on
+  const wears = (x) => (WORN.includes(x.slot) ? !!pen && v.bugEq?.[pen.id]?.[x.slot] === x.id : v.eq[x.slot] === x.id);
+  const perBug = !!cur && WORN.includes(cur.slot), wearing = !!cur && !!cur.slot && wears(cur);
+  const others = perBug ? bugs.filter((b) => b.id !== pen?.id && v.bugEq?.[b.id]?.[cur.slot] === cur.id) : [];
+  const spare = owned - others.length - (wearing ? 1 : 0) > 0;
+  const bugArg = perBug && pen ? { bug: pen.id } : {};
   const takenBy = cur && !owned ? v.taken?.[cur.id] : null; // one of a kind, and somebody else got there first
   const changeCategory = (id) => { setTab(id); setSel(null); setPg(0); setMsg(''); setErr(''); setFitOpen(false); };
   const changeDepartment = (id) => { setDepartmentId(id); changeCategory(null); };
@@ -117,6 +127,9 @@ export default function Store() {
             <nav className="store-subcategories" aria-label={`${department.label} categories`}>
               {categories.length > 1 ? categories.map((t) => <button key={t.id} aria-pressed={category.id === t.id} className={category.id === t.id ? 'on' : ''} onClick={() => changeCategory(t.id)} data-test={`stab-${t.id}`}>{t.label}</button>) : <h2 className="store-category-title">{category?.label || department.label}</h2>}
             </nav>
+            {bugs.length > 1 && ['bugstyle', 'gear'].includes(category?.id) && <div className="store-bugpick" role="group" aria-label="Which bug" data-test="store-bugpick">For
+              {bugs.map((b) => <button key={b.id} aria-pressed={pen.id === b.id} className={pen.id === b.id ? 'on' : ''} onClick={() => { setBugId(b.id); setMsg(''); setErr(''); }} data-test="store-bug"><BugThumb species={b.species} style={b.style} size={30} level={b.level} />{b.name}</button>)}
+            </div>}
             {category?.id === 'tobacco' && <p className="store-notice" role="note" data-test="store-tobacco-notice"><b>18+</b> {v.tobaccoNotice} Cartoon only; play money only.</p>}
           </div>
           <div className="store-grid" ref={gridRef} style={{ gridTemplateColumns: `repeat(${fit.cols}, 1fr)`, gridTemplateRows: `repeat(${fit.rows}, 1fr)` }} data-test="store-grid">
@@ -126,7 +139,7 @@ export default function Store() {
                 <span className="sc-pic"><Thumb x={x} me={me} eqWear={eqWear} pen={pen} size={64} fit={fits} /></span>
                 <span className="sc-name">{x.name}</span>
                 {x.adult && <span className="sc-adult" title={v.tobaccoNotice}>18+</span>}
-                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (v.eq[x.slot] === x.id ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : x.retired ? 'Not sold' : money(x.price)}</span>
+                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (wears(x) ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : x.retired ? 'Not sold' : money(x.price)}</span>
               </button>
             ))}
           </div>
@@ -143,16 +156,16 @@ export default function Store() {
               <div className="sd-pic"><Thumb x={cur} me={me} eqWear={eqWear} pen={pen} size={120} fit={fits} /></div>
               <div className="sd-text">
                 <h2>{cur.name}</h2>
-                <p className="sd-price">{cur.retired ? <b>No longer sold</b> : <><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span></>}{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
+                <p className="sd-price">{cur.retired ? <b>No longer sold</b> : <><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span></>}{owned ? <span className="muted"> · you have {(CONSUMABLE(cur) && !ONCE(cur)) || owned > 1 ? owned : 'it'}{others.length ? ` · on ${others.map((b) => b.name).join(', ')}` : ''}</span> : null}</p>
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
                 {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}House decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
                   {owned > 0 && cur.kind === 'furniture' && <button className="btn ghost" onClick={() => navigate('/room')}>Put it in My House</button>}
                   {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My House</button>}
-                  {!takenBy && !cur.retired && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
-                  {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
-                  {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
+                  {!takenBy && !cur.retired && (!owned || (CONSUMABLE(cur) && !ONCE(cur)) || (perBug && bugs.length > 1 && owned < v.bugCopies)) && <button className={`btn ${owned && perBug ? 'ghost' : ''}`} onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy ${owned && perBug ? 'another ' : ''}· ${money(cur.price)}`}</button>}
+                  {owned && cur.slot && !wearing && (!perBug || pen) ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id, ...bugArg }), 'On it goes.')} data-test="store-equip">{!perBug || bugs.length < 2 ? 'Wear' : spare ? `Put on ${pen.name}` : `Move from ${others[0].name}`}</button> : null}
+                  {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot, ...bugArg }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
                   {owned && FITTABLE(cur) ? <button className={`btn ${fitOpen ? '' : 'ghost'}`} onClick={() => setFitOpen(!fitOpen)} aria-pressed={fitOpen} data-test="store-fit">{fitOpen ? 'Done' : 'Adjust fit'}</button> : null}
                   {owned && cur.use && cur.use !== 'jar' ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/use', { id: cur.id }), cur.use === 'feeder' ? 'Feeder stocked. Fed, Mood and Clean stay full for a while.' : cur.use === 'food' ? 'Fed. A lunch is packed for its next fight.' : 'Your bug appreciates that.')} data-test="store-use">Use</button> : null}
                 </div>

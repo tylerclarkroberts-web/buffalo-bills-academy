@@ -13,6 +13,7 @@ import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
 import MineMap from './MineMap.jsx';
 import { markWild, readExploration, rememberExploration, revealExploration } from './exploration.js';
+import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
 
 // The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
 const BUG_ORDERS = [
@@ -430,6 +431,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (order && guide?.order(id)) { setBugOrder(id); setLine(order.line((shift.bug?.name || 'Your bug').toUpperCase())); }
   };
   const canFightWild = useRef(!!shift.bug);
+  // A wild bug within reach: the miner is asked before anything starts, and picks which bug goes in. It waits meanwhile.
+  const [wildAsk, setWildAsk] = useState(null);
+  const wildAskRef = useRef(null), wildActs = useRef(null), wildBugs = useRef([]);
   function stopDance() {
     if (!danceRef.current) return;
     danceRef.current = null; setDance(null); sceneRef.current?.stopDance(); audio?.danceBeat(false);
@@ -572,6 +576,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   };
   const showBattle = (b) => {
     if (!b || dismissed.current.has(b.id)) return;
+    if (wildAskRef.current) { wildAskRef.current = null; setWildAsk(null); if (sceneRef.current) sceneRef.current.heldWild = null; } // a fight has started, this one or another miner's: the question is moot
     if (b.wildId && markWild(explored.current, sceneRef.current?.wilds.get(b.wildId))) saveChart();
     if (mapRef.current) showMap(false);
     if (!battleRef.current) { freeze(); audio?.dread(false); }
@@ -754,19 +759,32 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (bucketShift) scene.setDeposits(shift.pools, shift.currentPoolId);
     if (eggRef.current) { if (eggLocation && Date.now() - shift.localStart < EGG_MS) scene.addEgg(eggLocation); else eggRef.current = null; }
     scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
+    scene.clockSkew = shift.startedAt - shift.localStart; // the server's clock from this one, for where the wild bugs have roamed to
     scene.setWilds(shift.wilds || []);
     const wildRetryAt = new Map();
     let askingWild = false;
-    const meetWild = async (id) => {
+    const askWild = (wild) => {
+      showPicker(false); showBugMenu(false); scene.heldWild = wild.id;
+      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
+    };
+    const leaveWild = (retryMs) => {
+      const ask = wildAskRef.current; if (!ask) return;
+      wildRetryAt.set(ask.id, Date.now() + retryMs); wildAskRef.current = null; setWildAsk(null); if (scene.heldWild === ask.id) scene.heldWild = null;
+    };
+    const meetWild = async (id, bug, at) => {
       askingWild = true;
       try {
-        const view = await pvpWild(pvpSend, id);
+        const view = await pvpWild(pvpSend, id, bug, at);
         if (sceneRef.current === scene) onPvp(view);
       } catch (e) {
         if (sceneRef.current !== scene || done.current) return;
         if (!wildRetryAt.has(id)) setLine(String(e.message).toUpperCase());
         wildRetryAt.set(id, Date.now() + (/another miner is fighting/i.test(e.message) ? 5000 : 1500));
-      } finally { askingWild = false; }
+      } finally { askingWild = false; if (scene.heldWild === id) scene.heldWild = null; }
+    };
+    wildActs.current = {
+      fight: (bug) => { const ask = wildAskRef.current; if (!ask) return; wildAskRef.current = null; setWildAsk(null); meetWild(ask.id, bug, ask.at); },
+      leave: () => leaveWild(10000), // long enough to walk on past it
     };
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
@@ -829,6 +847,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
+      if (wildAskRef.current && (k === 'escape' || /^[1-9]$/.test(k))) { // the wild bug's question: a number sends that bug in, Escape leaves it
+        if (k === 'escape') wildActs.current?.leave(); else if (!e.repeat && wildBugs.current[Number(k) - 1]) wildActs.current?.fight(wildBugs.current[Number(k) - 1].id);
+        return;
+      }
       if (k === 'b' && !e.repeat) { showPicker(!pickerRef.current); return; }
       if (k === 'v' && !e.repeat && guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
       if (k === 'escape' && bugMenuRef.current) { showBugMenu(false); return; }
@@ -891,9 +913,12 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         }
         if (sighting) {
           saveChart();
-          setLine(`A WILD ${(BY_ID[sighting.species]?.name || 'BUG').toUpperCase()}, LEVEL ${sighting.level}, IS IN THE TUNNEL.`);
+          const lean = shift.bug ? edge(typeOf(shift.bug.species), typeOf(sighting.species)) : 0; // your partner's type against its
+          setLine(`A WILD ${BY_ID[sighting.species]?.name || 'BUG'} (${TYPES[typeOf(sighting.species)]?.name || 'BUG'}), LEVEL ${sighting.level}, IS IN THE TUNNEL.${lean > 0 ? ' YOUR BUG\'S TYPE BEATS IT.' : lean < 0 ? ' ITS TYPE BEATS YOUR BUG\'S.' : ''}`.toUpperCase());
         }
-        if (tiles <= 1 && canFightWild.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) meetWild(wild.id);
+        const asked = wildAskRef.current && scene.wilds.get(wildAskRef.current.id);
+        if (wildAskRef.current) { if (!asked || Math.hypot(scene.pos.x / TILE - asked.x, scene.pos.y / TILE - asked.y) > 2.2) leaveWild(3000); } // walked off: that is a no
+        else if (tiles <= 1 && canFightWild.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) askWild(wild);
       }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
@@ -1079,7 +1104,31 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         {!tiltActive && <MovePad apply={move} />}
       </div>
     </div>
-    {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}</>
+    {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}
+    {wildAsk && !doom && !battle && <WildPrompt wild={wildAsk} bugsRef={wildBugs} onFight={(bug) => wildActs.current?.fight(bug)} onLeave={() => wildActs.current?.leave()} />}</>
+  );
+}
+
+/** A wild bug within reach: fight it, and with which of your bugs, or leave it. Numbers pick while it is open; Escape leaves. */
+function WildPrompt({ wild, bugsRef, onFight, onLeave }) {
+  const [bugs, setBugs] = useState(null);
+  useEffect(() => {
+    let on = true;
+    const show = (list) => { if (on) { bugsRef.current = list; setBugs(list); } };
+    api('GET', '/barn').then((b) => show((b.stable?.bugs || []).filter((bug) => bug.stage === 'creature' && !bug.fainted))).catch(() => show([]));
+    return () => { on = false; bugsRef.current = []; };
+  }, [wild.id]);
+  const type = typeOf(wild.species);
+  return (
+    <div className="m-dances m-orders m-wild" role="dialog" aria-label="A wild bug" data-test="wild-prompt">
+      <p className="m-wild-what">A WILD {(BY_ID[wild.species]?.name || 'BUG').toUpperCase()} · {(TYPES[type]?.name || 'BUG').toUpperCase()} · LEVEL {wild.level}. {bugs === null ? 'IT WAITS.' : bugs.length ? 'SEND IN:' : 'NONE OF YOUR BUGS CAN FIGHT.'}</p>
+      {(bugs || []).map((bug, i) => { const lean = edge(typeOf(bug.species), type); return (
+        <button key={bug.id} type="button" className="m-dance" data-test="wild-send" onClick={() => onFight(bug.id)}>
+          <span className="m-dance-icon" aria-hidden="true">{lean > 0 ? '▲' : lean < 0 ? '▼' : '◆'}</span>
+          <span className="m-dance-name">{bug.name.toUpperCase()} · {(TYPES[typeOf(bug.species)]?.name || '').toUpperCase()} · LV {bug.level}{lean > 0 ? ` · BEATS ${(TYPES[type]?.name || '').toUpperCase()}` : lean < 0 ? ` · LOSES TO ${(TYPES[type]?.name || '').toUpperCase()}` : ''}</span><span className="m-key">{i + 1}</span>
+        </button>); })}
+      <button type="button" className="m-dance" data-test="wild-leave" onClick={onLeave}><span className="m-dance-icon" aria-hidden="true">✕</span><span className="m-dance-name">LEAVE IT</span><span className="m-key">ESC</span></button>
+    </div>
   );
 }
 

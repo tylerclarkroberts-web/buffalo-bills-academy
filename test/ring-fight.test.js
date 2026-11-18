@@ -97,7 +97,7 @@ async function fixture(t) {
     return { id, api };
   };
   const host = await login('RingHost'), guest = await login('RingGuest');
-  const hatch = (id, level) => { const barn = running.service.barn; barn.layEgg(id); clock.now += 1; barn.view(id); barn.doc.pens[id].xp = xpFor(level); barn.save(); };
+  const hatch = (id, level, species) => { const barn = running.service.barn; barn.layEgg(id); clock.now += 1; barn.view(id); barn.doc.pens[id].xp = xpFor(level); if (species) barn.doc.pens[id].species = species; barn.save(); };
   const cash = player => running.service.getPlayer(player.id).bankroll;
   return { clock, host, guest, hatch, cash, get barn() { return running.service.barn; }, restart: async () => { await stop(); await boot(); } };
 }
@@ -121,7 +121,7 @@ test('the line: a mirror match is even, the two corners sum to one, level and he
 
 test('joining a bout holds both stakes, plays live and pays the pot when it ends', async t => {
   const f = await fixture(t), { host, guest, hatch, cash, clock } = f;
-  hatch(host.id, 1); hatch(guest.id, 4); // a level 1 bug may bout now
+  hatch(host.id, 1, 'onymacris'); hatch(guest.id, 4, 'onymacris'); // a level 1 bug may bout now; the same species, so only the levels separate them
   const start = [cash(host), cash(guest)];
   const posted = await host.api('POST', '/api/barn/bouts', { stake: 50 });
   assert.equal(posted.status, 200);
@@ -168,11 +168,11 @@ test('a packed lunch goes into the ring with the bug, is eaten there, and is gon
   const { S } = f.barn.fights.get(id);
   S.hp[0] = Math.floor(S.maxHp[0] * 0.45);
   clock.now += 10_000; f.barn.fights.sweep();
-  const mine = (await host.api('GET', '/api/barn')).body.pen, meals = mine.lastBout.rounds.filter(r => r.type === 'snack');
+  const mine = (await host.api('GET', '/api/barn')).body.pen, meals = mine.lastBout.rounds.filter(r => r.moveId === 'lunch'); // by the move: a firebug's moult is a snack round too
   assert.equal(meals.length, 1); assert.equal(meals[0].by, 0); assert.equal(meals[0].healed, 10);
   assert.equal(mine.lunch, null, 'eaten');
   const theirs = (await guest.api('GET', '/api/barn')).body.pen;
-  assert.equal(theirs.lastBout.rounds.find(r => r.type === 'snack').by, 1, 'the other corner saw it too');
+  assert.equal(theirs.lastBout.rounds.find(r => r.moveId === 'lunch').by, 1, 'the other corner saw it too');
   assert.equal(theirs.lunch, null, 'and packed nothing');
 });
 
