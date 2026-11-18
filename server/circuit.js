@@ -14,7 +14,7 @@ import { MAX_LEVEL, LEVEL_CAP, ROSTER, levelFor } from './engine/creatures.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
 
 export const RIBBON_XP = 100;
-export const RIBBONS = 8; // the leaders still to come show as empty hooks
+export const RIBBONS = 8;
 // One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
 export const PURSE = { trainer: 75, ribbon: 750, boss: 300 };
@@ -38,6 +38,8 @@ export const PRIZES = {
   ruperto: { id: 'mitt', name: 'The Oven Mitt', does: 'Fire bugs\' hits on your bug do 10% less.' },
   voss: { id: 'antidote', name: 'The Antidote', does: 'Poison does half damage to your bug, and always wears off.' },
   dwayne: { id: 'nighteyes', name: 'Night Eyes', does: 'An Ambush bug\'s first strike can miss your bug.' },
+  ray: { id: 'popcorn', name: 'Bottomless Popcorn', does: 'Your bug gets 2 HP back at the start of each of its turns.' },
+  jack: { id: 'retake', name: 'The Retake', does: 'Once a fight, your bug takes a missed attack again.' },
 };
 /** The prizes a player holds: one for every leader they have beaten. */
 export const prizesOf = (me) => Object.entries(PRIZES).filter(([leader]) => me.done[leader]).map(([, prize]) => prize);
@@ -57,6 +59,8 @@ export const rivalSpecies = (partnerSpecies) => {
 // Circuit bugs are drilled: in top condition, with the best gear, and TRAINED more health and damage than a barn bug
 // of their level. With both left to themselves, a barn bug of the same level wins about one fight in eight.
 export const TRAINED = 0.1;
+/** An area is open with the ribbon it follows (`needs`), or, past the any-order four, with enough ribbons of any kind (`held`). */
+export const areaOpen = (me, area) => (!area.needs || !!me.ribbons[area.needs]) && Object.keys(me.ribbons).length >= (area.held || 0);
 /** The top level a player's bugs can reach: one more for every ribbon. */
 export const capFor = (ribbons) => Math.min(LEVEL_CAP, MAX_LEVEL + ribbons);
 
@@ -224,6 +228,54 @@ export const AREAS = [{
       next: 'He was expendable. He knew. We discussed it in group.', sub: 'Hold the line!',
       won: 'The colony will remember this. The colony remembers everything. It is exhausting.', lost: 'For the colony!' },
   ],
+}, {
+  id: 'starlite', short: 'Drive-In', name: 'The Starlite Drive-In', ribbon: 7, held: 6, blurb: 'One screen, forty speaker posts, a gravel lot. It closed in 1987. It is showing something tonight.',
+  stops: [
+    { id: 'concessions', kind: 'trainer', who: 'Concessions Kid', bugs: [{ species: 'pyrrhocoris', name: 'Large Combo', level: 14 }, { species: 'sagra', name: 'Free Refill', level: 15 }],
+      intro: ['Popcorn is nine dollars. The butter is a separate conversation.', 'I can\'t sell you anything during the feature. I can fight you during the feature.'],
+      next: 'That was the small.', sub: 'Large Combo!',
+      won: 'I\'m not supposed to leave the window. I haven\'t. Technically.', lost: 'Nine dollars.' },
+    { id: 'parked', kind: 'trainer', who: 'A Couple, Not Watching the Movie', bugs: [{ species: 'mantispa', name: 'Honk Twice', level: 15 }, { species: 'pseudocreobotra', name: 'Fogged Up', level: 15 }],
+      intro: ['Do you mind?', 'We\'ve seen it. We come for the parking.'],
+      next: 'He started it. No, you started it.', sub: 'Go on, Honk Twice.',
+      won: 'Fine. We\'ll watch the movie. Happy?', lost: 'Roll the window back up.' },
+    { id: 'wild7', kind: 'wild', who: 'Something in the Speaker Post', bugs: [{ species: 'macrodontia', name: 'Sabertooth Longhorn', level: 15 }],
+      intro: ['Post 31 has not worked since 1987. Something is chewing inside it.', 'It is rare. Knock it out and you get three throws of a jar.'] },
+    { id: 'center7', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['I set up in the snack bar. Please do not eat the bandages ♡'] },
+    { id: 'ray', kind: 'leader', who: 'Reel Ray', title: 'Ribbon 7', rule: 'rewind', tell: 'Ray\'s hand is on the rewind.',
+      bugs: [{ species: 'phanaeus', name: 'Coming Attraction', level: 15 }, { species: 'photuris', name: 'Feature Presentation', level: 15 }, { species: 'trachelophorus', name: 'The Late Show', level: 16 }],
+      intro: ['Up here. Projection booth. Mind the cans.', 'I have run every picture ever shown at the Starlite. Both of them.', 'When a scene goes badly for my bug, I run it back. Once a bug. Union rules.'],
+      next: 'Reel change. Stay in your vehicle.', sub: 'Reel change.',
+      won: 'That\'s the end of the picture. Nobody has stayed for the end before. Here. Ribbon. And the popcorn, it\'s from 1987, it\'s fine.', lost: 'We run it again at nine. And at eleven.' },
+    { id: 'mothera', kind: 'boss', who: 'MOTHERA', poster: 'MOTHERA vs. the Porch Light', rule: 'flicker', tell: 'The projector bulb dims.', trained: 0.3,
+      bugs: [{ species: 'nemoptera', name: 'MOTHERA', level: 17, stance: 'aggressive' }],
+      intro: ['The screen bulges. Something forty feet tall steps down off it.', 'It is the size of a lacewing by the time it reaches the gravel.', 'It has not noticed. Do not tell it.'],
+      won: 'MOTHERA returns to the screen. The screen is a bedsheet. It was always a bedsheet.', lost: 'MOTHERA has found the projector bulb. This could take all night.' },
+  ],
+}, {
+  id: 'spur', short: 'Rail Spur', name: 'The Old Rail Spur', ribbon: 8, held: 7, blurb: 'A siding the railroad forgot, past the tailings. There is a ring light on a tripod and nobody else for a mile.',
+  stops: [
+    { id: 'follower', kind: 'trainer', who: 'The Follower', bugs: [{ species: 'bocydium', name: 'Notifications On', level: 16 }, { species: 'eupholus', name: 'First', level: 16 }],
+      intro: ['I\'m his follower.', 'Not a follower. The follower. I\'ve seen the numbers.'],
+      next: 'First.', sub: 'First!',
+      won: 'I\'m going to follow you too. That doubles my workload.', lost: 'Like and subscribe. To him. I\'ll know.' },
+    { id: 'ambassador', kind: 'trainer', who: 'Brand Ambassador (Unpaid)', bugs: [{ species: 'pachyrhynchus', name: 'Promo Code', level: 16 }, { species: 'onymacris', name: 'Exposure', level: 17 }],
+      intro: ['Use code OFFTRACK for nothing off.', 'I get paid in exposure. I have had a lot of exposure. Mostly sun.'],
+      next: 'That one was a free sample.', sub: 'Exposure, you\'re up.',
+      won: 'Can you tell him I did well? He asks.', lost: 'Code OFFTRACK. At checkout. There\'s no checkout.' },
+    { id: 'wild8', kind: 'wild', who: 'A Light on the Tracks', bugs: [{ species: 'phrixothrix', name: 'Railroad Worm', level: 16 }],
+      intro: ['There is a train coming down the spur. It is an inch and a half long.', 'It is rare. Knock it out and you get three throws of a jar.'] },
+    { id: 'center8', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['He asked me to say this Bug Center is sponsored. It is not ♡'] },
+    { id: 'jack', kind: 'leader', who: 'Off Track Jack', friend: true, title: 'Ribbon 8', rule: 'retake', tell: 'Jack checks the footage.',
+      bugs: [{ species: 'heteropteryx', name: 'Run Over (Steeze\'s)', level: 16 }, { species: 'bertholdia', name: 'The Best Bug', level: 17 }, { species: 'lethocerus', name: 'The Brand', level: 18 }],
+      intro: ['Off Track Jack. It\'s a brand. It\'s going to be a brand. People are saying it.', 'These are the best bugs. Nobody has bugs like these. Steeze\'s goes first. He volunteered. He didn\'t.', 'If my bug misses, we go again. That\'s not cheating. That\'s a retake.'],
+      next: 'That was Steeze\'s. Steeze says run over his head. Mine are much better.', sub: 'Retake. From the top.',
+      won: 'I let you win. Very generous. It\'s great content. Take the ribbon, and you can have a retake. One. They\'re mine.', lost: 'Big win. Maybe the biggest. We\'re posting it.' },
+    { id: 'barry', kind: 'boss', who: 'Barry B. Bensonhurst', poster: 'Bee Litigation', rule: 'web', tell: 'Barry is filing something.',
+      bugs: [{ species: 'megachile', name: 'Barry B. Bensonhurst, Esq.', level: 18 }],
+      intro: ['You have been served.', 'My client is every bee. The defendant is, broadly, you.', 'According to all known laws of this county, you should not have been able to get this far.'],
+      won: 'We will settle. The settlement is this card. Do not discuss the card.', lost: 'Court is adjourned. I am also the court.' },
+  ],
 }];
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
 
@@ -240,7 +292,7 @@ export class Circuit {
   /** An area opens with the ribbon before it. Inside it, a stop is open once every stop before it is done (the Bug Center never blocks anything). */
   open(me, stop) {
     const { area, i } = STOPS.get(stop.id);
-    if (area.needs && !me.ribbons[area.needs]) return false;
+    if (!areaOpen(me, area)) return false;
     return stop.kind === 'center' || area.stops.slice(0, i).every((s) => OPTIONAL.includes(s.kind) || me.done[s.id]);
   }
   /** The bugs a stop fields against this player. The rival's is whatever beats their partner, fixed the first time they look. */
@@ -266,7 +318,7 @@ export class Circuit {
     return {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
-      areas: AREAS.map((area) => ({ id: area.id, name: area.name, short: area.short, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: !area.needs || !!me.ribbons[area.needs],
+      areas: AREAS.map((area) => ({ id: area.id, name: area.name, short: area.short, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: areaOpen(me, area),
         stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
       cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED, tolls: me.tolls || {},
       prizes: prizesOf(me), jars: this.shop?.jars(pid) || 0,

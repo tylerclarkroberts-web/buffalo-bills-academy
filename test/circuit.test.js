@@ -197,10 +197,10 @@ test('areas 3 to 6 open together with ribbon 2, and what is left for later train
   hatch(10); const me = circuit.me(pid);
   const areas = () => circuit.view(pid).areas;
   me.ribbons[1] = 1;
-  assert.deepEqual(areas().map((a) => a.open), [true, true, false, false, false, false]);
+  assert.deepEqual(areas().map((a) => a.open), [true, true, false, false, false, false, false, false]);
   me.ribbons[2] = 1;
-  assert.deepEqual(areas().map((a) => a.open), [true, true, true, true, true, true]);
-  assert.deepEqual(areas().slice(2).map((a) => a.anyOrder), [true, true, true, true]);
+  assert.deepEqual(areas().map((a) => a.open), [true, true, true, true, true, true, false, false]);
+  assert.deepEqual(areas().slice(2).map((a) => a.anyOrder), [true, true, true, true, false, false]);
   const leader = (area) => area.stops.find((s) => s.kind === 'leader');
   const dale = () => leader(areas()[2]), ruperto = () => leader(areas()[3]);
   assert.deepEqual([dale().bugs.map((b) => b.level), dale().purse, areas()[2].stops[0].bugs[0].level], [[8, 9], PURSE.ribbon * 3, 7]);
@@ -255,7 +255,7 @@ test('each area has one feature presentation, open only after its ribbon, and be
   const a = hatch(10), me = circuit.me(pid);
   assert.equal(BOSSES().length, AREAS.length);
   for (const area of AREAS) assert.equal(area.stops.at(-1).kind, 'boss', `${area.name} ends on its boss`);
-  assert.deepEqual(circuit.view(pid).cards.map((card) => card.at), [null, null, null, null, null, null]);
+  assert.deepEqual(circuit.view(pid).cards.map((card) => card.at), Array(8).fill(null));
   for (const id of ['foff', 'salad', 'landon', 'notacop']) me.done[id] = 1;
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'charlene' }), /Not yet/, 'not before Coach Pugh');
   me.done.pugh = me.ribbons[1] = 1;
@@ -347,7 +347,7 @@ test('three misses and the rare comes to: the stop is still there to try again',
 test('every leader hands over a prize, carried into circuit fights, and each does what it says', (t) => {
   const { barn, circuit, pid, hatch } = setup(t);
   hatch(10); const me = circuit.me(pid);
-  assert.deepEqual(Object.keys(PRIZES), ['pugh', 'gil', 'dale', 'ruperto', 'voss', 'dwayne']);
+  assert.deepEqual(Object.keys(PRIZES), ['pugh', 'gil', 'dale', 'ruperto', 'voss', 'dwayne', 'ray', 'jack']);
   assert.deepEqual(prizesOf(me), []);
   me.ribbons[1] = me.ribbons[2] = 1; for (const id of ['foff', 'salad', 'landon', 'notacop', 'pugh', 'dale', 'newguy', 'kashely']) me.done[id] = 1;
   assert.deepEqual(circuit.view(pid).prizes.map((p) => p.id), ['whistle', 'nightlight']);
@@ -397,4 +397,30 @@ test('errands wait on nobody, pay once when you bring what is wanted, and the fi
   assert.deepEqual([shop.inv(pid).own['odd-ribbonrack'], shop.inv(pid).own['odd-bugposter']], [1, undefined]);
   me.cards = { a: 1, b: 1, c: 1 }; circuit.view(pid);
   assert.equal(shop.inv(pid).own['odd-bugposter'], 1);
+});
+
+test('the drive-in opens with six ribbons and the rail spur with seven; Ray rewinds once, Jack retakes twice, and their prizes work', (t) => {
+  const { circuit, pid, hatch } = setup(t);
+  hatch(10); const me = circuit.me(pid);
+  const open = () => circuit.view(pid).areas.slice(6).map((a) => a.open);
+  for (const n of [1, 2, 3, 4, 5]) me.ribbons[n] = 1;
+  assert.deepEqual(open(), [false, false]);
+  me.ribbons[6] = 1; assert.deepEqual(open(), [true, false]);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'follower' }), /Not yet/);
+  me.ribbons[7] = 1; assert.deepEqual(open(), [true, true]);
+  const ray = circuit.view(pid).areas[6].stops.find((x) => x.id === 'ray'), jack = circuit.view(pid).areas[7].stops.find((x) => x.id === 'jack');
+  assert.deepEqual([ray.purse, jack.purse, ray.bugs.length, jack.bugs.length, circuit.view(pid).cap], [PURSE.ribbon * 7, PURSE.ribbon * 8, 3, 3, 17]);
+  const mine = (prizes) => ({ species: 'lamprima', name: 'Mine', level: 16, prizes });
+  // the rewind: once a fight, and only once
+  let most = 0, any = 0;
+  for (let k = 0; k < 20; k++) { let n = 0; const S = startBout(mine([]), { species: 'photuris', name: 'Feature Presentation', level: 16, rule: 'rewind' }, `r:${k}`); while (!S.over) for (const e of stepBout(S)) if (e.ability === 'Rewind') { n++; assert.ok(e.healed > 0); } most = Math.max(most, n); any += n; }
+  assert.equal(most, 1); assert.ok(any >= 5, 'it usually comes up');
+  // the retake: two a fight for Jack, one for whoever holds the prize, none otherwise
+  const retakes = (a, b, by) => { let most = 0; for (let k = 0; k < 30; k++) { let n = 0; const S = startBout(a, b, `t:${k}`); while (!S.over) for (const e of stepBout(S)) if (e.by === by && /retakes/.test(e.line || '')) n++; most = Math.max(most, n); } return most; };
+  const best = { species: 'bertholdia', name: 'The Best Bug', level: 16 };
+  assert.equal(retakes(mine([]), { ...best, rule: 'retake' }, 1), 2);
+  assert.deepEqual([retakes(mine(['retake']), best, 0), retakes(mine([]), best, 0)], [1, 0]);
+  // bottomless popcorn: health back on its own turns
+  const left = (prizes) => { let sum = 0; for (let k = 0; k < 30; k++) { const S = startBout(mine(prizes), best, `p:${k}`); while (!S.over) stepBout(S); sum += S.hp[0]; } return sum; };
+  assert.ok(left(['popcorn']) > left([]));
 });

@@ -19,8 +19,10 @@ export const LUNCH_CAP = 10;
 // to miss. Grill: its bug's Fire flare-up is always on, and every fourth own turn is an order up, which hits harder.
 // Linger: poison its bug puts on never wears off. Dark: nothing in the fight itself; the page hides its bug's health.
 // Rage: below half health its bug hits harder. Mulligan: its bug takes up to `tries` missed attacks again.
+// Rewind: once, the first time its bug is left standing under `at` of its health, the reel goes back and it is at `to`.
+// Retake: a mulligan by another name, `tries` a fight; the Retake prize gives the player's bug one.
 export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.12 }, flood: { from: 9, hp: 3 },
-  flicker: { every: 3, aim: 0.22 }, grill: { every: 4, power: 0.3 }, rage: { power: 0.25 }, mulligan: { tries: 3 },
+  flicker: { every: 3, aim: 0.22 }, grill: { every: 4, power: 0.3 }, rage: { power: 0.25 }, mulligan: { tries: 3 }, rewind: { at: 0.25, to: 0.45 }, retake: { tries: 2 },
   // Feature-presentation bosses. Web: a word written over the other bug, whose hits do less and land less often.
   // Conscience: it heals whenever the other bug uses a dirty move (poison or a pierce). Sing: it heals a little at the
   // start of every turn of its own. Telepod: once, when it drops under `at` of its health, the two bugs swap how hurt they are.
@@ -29,7 +31,7 @@ const ruled = (S, rule) => S.side.some((q) => q.c.rule === rule);
 // Circuit prizes ride on the player's bug (`c.prizes`), in circuit fights only. Whistle: its first attack cannot miss.
 // Floaties: the flood and the porch light do nothing to it. Mitt: Fire bugs' hits on it do less. Antidote: poison does
 // half damage to it and always wears off. Night eyes: an Ambush bug's first strike can miss it. (Night light is the page's.)
-export const PRIZE = { mitt: 0.1 };
+export const PRIZE = { mitt: 0.1, popcorn: 2 };
 const has = (q, prize) => !!q.c.prizes?.includes(prize);
 /** A circuit trainer's bug is drilled (`c.trained`): that share more health and damage than a barn bug of its level. */
 const trainedOf = (c) => Math.max(0, Math.min(0.5, Number(c.trained) || 0));
@@ -38,7 +40,7 @@ const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball
 export const tellDue = (S, i) => { const q = S.side[i], rule = q.c.rule;
   return ball(q, q.turn + 1) || (rule === 'flood' && S.turn + 1 >= RULES.flood.from - 2 && S.turn + 1 <= RULES.flood.from)
     || (rule === 'flicker' && (S.turn + 1) % RULES.flicker.every === 0) || (rule === 'grill' && (q.turn + 1) % RULES.grill.every === 0)
-    || (rule === 'linger' && !S.side[1 - i].venom) || (rule === 'telepod' && !q.podded && S.hp[i] / S.maxHp[i] < RULES.telepod.at + 0.15) || (rule === 'dark' && S.by === i && nextMove(S, i).effect === 'pierce'); };
+    || (rule === 'linger' && !S.side[1 - i].venom) || (rule === 'telepod' && !q.podded && S.hp[i] / S.maxHp[i] < RULES.telepod.at + 0.15) || (rule === 'rewind' && !q.rewound && S.hp[i] / S.maxHp[i] < RULES.rewind.at + 0.15) || (rule === 'dark' && S.by === i && nextMove(S, i).effect === 'pierce'); };
 
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -249,7 +251,16 @@ export function stepBout(S, choice) {
     rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'rule', ability: 'Telepod', tier: 0, hit: true, dmg: 0, healed: Math.max(0, hp[i] - before), hp: [...hp], turn,
       line: `${q.c.name} steps into the telepod with ${side[1 - i].c.name}. They come out having traded how hurt they are.` });
   };
-  const rest = () => { for (const i of [by, foe]) { snack(i); moult(i); telepod(i); } };
+  // Reel Ray's rewind: once, the first time his bug is left standing under a share of its health, the last few minutes did not happen.
+  const rewind = (i) => {
+    const q = side[i];
+    if (q.c.rule !== 'rewind' || q.rewound || hp[i] <= 0 || hp[1 - i] <= 0 || hp[i] / maxHp[i] >= RULES.rewind.at) return;
+    q.rewound = true;
+    const before = hp[i]; hp[i] = Math.round(maxHp[i] * RULES.rewind.to);
+    rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'rule', ability: 'Rewind', tier: 0, hit: true, dmg: 0, healed: hp[i] - before, hp: [...hp], turn,
+      line: `The reel runs backwards. ${q.c.name} is back where it was a few minutes ago.` });
+  };
+  const rest = () => { for (const i of [by, foe]) { snack(i); moult(i); telepod(i); rewind(i); } };
   const done = () => {
     rest();
     S.by = foe;
@@ -278,6 +289,7 @@ export function stepBout(S, choice) {
     return done();
   }
   if (s.c.rule === 'sing') hp[by] = Math.min(maxHp[by], hp[by] + RULES.sing.heal); // the chorus picks it back up
+  if (has(s, 'popcorn')) hp[by] = Math.min(maxHp[by], hp[by] + PRIZE.popcorn); // it never runs out
   if (s.t === 'onymacris') { s.regen += TRAIT.regen; const n = Math.floor(s.regen); s.regen -= n; hp[by] = Math.min(maxHp[by], hp[by] + n); }
   if (s.skip) {
     const why = s.skip === 'din' ? 'cannot hear a thing' : 'is still climbing back onto the leaf'; s.skip = false;
@@ -298,7 +310,7 @@ export function stepBout(S, choice) {
   } else {
     s.attacks++;
     hit = R() < aim(S, by, move, s.attacks);
-    if (!hit && s.c.rule === 'mulligan' && (s.taken || 0) < RULES.mulligan.tries) { s.taken = (s.taken || 0) + 1; hit = R() < aim(S, by, move, s.attacks); mulligan = true; }
+    if (!hit && (s.taken || 0) < (s.c.rule === 'mulligan' ? RULES.mulligan.tries : s.c.rule === 'retake' ? RULES.retake.tries : has(s, 'retake') ? 1 : 0)) { s.taken = (s.taken || 0) + 1; hit = R() < aim(S, by, move, s.attacks); mulligan = true; }
     s.blind = false; target.met = true; s.grip = hit;
     if (target.ty === 'water') target.under = hit;
     if (hit) {
@@ -337,7 +349,7 @@ export function stepBout(S, choice) {
     detail = hit ? `deals ${dmg} damage${detail}` : `misses${move.effect === 'guard' ? ' but raises a guard' : ''}`;
   }
   rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
-    line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : mulligan ? 'takes a mulligan and uses' : 'uses'} ${move.name}: ${detail}.${spots()}` });
+    line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : mulligan ? (s.c.rule === 'mulligan' ? 'takes a mulligan and uses' : 'says that one did not count, and retakes') : 'uses'} ${move.name}: ${detail}.${spots()}` });
   pop(foe); bursts();
   return done();
 }
