@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { RANTS, CLOSERS, ESCALATION, JABS, PRAISE, makeProblem, makeScene, sceneLength, GENERATORS, BONUS, BONUS_PER_HOUR } from '../server/foreman.js';
+import { RANTS, CLOSERS, ESCALATION, JABS, PRAISE, makeProblem, makeScene, boxed, sceneLength, GENERATORS, BONUS, BONUS_PER_HOUR } from '../server/foreman.js';
 import { PAID_RANTS, paidFarewell } from '../client/src/mines/paidFarewell.js';
 async function boot(opts = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-foreman-'));
@@ -78,6 +78,7 @@ test('scenes (v48): 4..20 lines, weighted spread, no repeats, closer last, 60+ d
     assert.ok(L.length >= 4 && L.length <= 20); assert.equal(new Set(L).size, L.length, 'no line twice');
     assert.ok(CLOSERS.includes(L.at(-1)), 'last line leads into the math');
     h[L.length <= 6 ? 's' : L.length <= 12 ? 'm' : 'l']++;
+    const B = boxed(L); assert.ok(B.length >= 2 && B.length <= 10, 'at most ten clicks'); assert.equal(B.join(' '), L.join(' '), 'nothing cut');
   }
   assert.equal(lens.size, 17, 'every length 4..20 happens');
   assert.ok(h.s > 2000 && h.s < 2800 && h.m > 1700 && h.m < 2500 && h.l > 1100 && h.l < 1900, JSON.stringify(h));
@@ -91,7 +92,7 @@ test('quit: no pay, the foreman blocks clock-in until a right answer; wrong answ
     const sh = (await u.post('/api/mines/start')).body;
     assert.equal((await u.post('/api/mines/quit', { shiftId: 'nope' })).status, 409);
     const q = await u.post('/api/mines/quit', { shiftId: sh.shiftId }); assert.equal(q.status, 200);
-    const pend = q.body.pending; assert.equal(pend.reason, 'quit'); assert.ok(pend.lines.length >= 4 && pend.lines.length <= 20); assert.ok(!('answer' in pend.problem));
+    const pend = q.body.pending; assert.equal(pend.reason, 'quit'); assert.ok(pend.lines.length >= 2 && pend.lines.length <= 10); assert.ok(!('answer' in pend.problem));
     assert.equal((await u.get('/api/me')).body.bankroll, bank0, 'quitting pays nothing');
     const st = await u.post('/api/mines/start'); assert.equal(st.status, 409); assert.equal(st.body.code, 'foreman');
     const retry = await u.post('/api/mines/finish', { shiftId: sh.shiftId });
