@@ -5,7 +5,7 @@ import { faunVisitRoute, roomShelfPosition } from '../client/src/room/scene-mode
 import { roomFaun } from '../client/src/room/faun.js';
 import { faunPose } from '../client/src/room/activity.js';
 import { coveredWagon } from '../client/src/room/wagon.js';
-import { defaultFurniture, defaultShelves, defaultWallDisplays, furnitureRect, residentRect, furnitureValid, wallMountsFit, ROOM_FLOOR_SCALE as S, ROOM_FURNITURE, ROOM_SHELF_SPOTS } from '../server/catalog/room.js';
+import { defaultFurniture, defaultShelves, defaultWallDisplays, furnitureRect, residentRect, furnitureValid, wallMountsFit, ROOM_FLOOR_SCALE as S, ROOM_FURNITURE, ROOM_SHELF_SPOTS, ROOM_YARD } from '../server/catalog/room.js';
 
 const box = ([x1, z1, x2, z2]) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 4, z2));
 function dispose(root) {
@@ -27,7 +27,7 @@ function checkAnimatedRoute(route, furniture, shelves = []) {
       obstacles.push(box(spot.wallSide === 'left' ? [x - 0.65, z - along, x + 0.65, z + along] : [x - along, z - 0.65, x + along, z + 0.65]));
     }
   }
-  const area = route.location === 'room' ? [-4 * S, -3 * S, 4 * S, 3 * S] : [4.3 * S, -2.8 * S, 8.4 * S, 3 * S];
+  const area = route.location === 'room' ? [-4 * S, -3 * S, 4 * S, 3 * S] : ROOM_YARD;
   for (let seconds = 0; seconds <= 18; seconds += 0.25) {
     const pose = faunPose(seconds);
     faun.position.set(route.from.x + (route.to.x - route.from.x) * pose.peek, 0.02, route.from.z + (route.to.z - route.from.z) * pose.peek);
@@ -61,10 +61,9 @@ test('faun visits alternate room and wagon areas deterministically without chang
 
 test('animated visits follow moved and rotated wagons and avoid newly occupied indoor routes', () => {
   const furniture = defaultFurniture();
-  // Wagon spots first written for the 2.1x yard, spread to the current one.
-  const k = S / Math.sqrt(2.1);
-  for (const place of [{ x: 7.95, z: -2.75, r: 0 }, { x: 10.4, z: -1.65, r: 1 }, { x: 9, z: 0.55, r: 2 }, { x: 7.65, z: -1.1, r: 3 }]) {
-    const moved = { ...furniture, window: { ...place, x: place.x * k, z: place.z * k } };
+  // The wagon at each end and in the middle of the lawn in front of the porch, turned each way.
+  for (const place of [{ x: 12.9, z: -3.9, r: 0 }, { x: 13.85, z: -1.65, r: 1 }, { x: 13.5, z: 1.75, r: 2 }, { x: 12.5, z: 0.4, r: 3 }]) {
+    const moved = { ...furniture, window: place };
     assert.ok(furnitureValid(moved));
     const route = faunVisitRoute(moved, defaultShelves(), defaultWallDisplays(), 1);
     assert.equal(route.location, 'yard'); checkAnimatedRoute(route, moved);
@@ -82,8 +81,8 @@ test('animated visits follow moved and rotated wagons and avoid newly occupied i
 });
 
 test('a crowded room sends the visit to the yard without moving through blocked routes', () => {
-  // Furniture across every indoor route. The yard is now too big for a wagon to block, so the path fallback is only a backstop.
-  const furniture = { ...defaultFurniture(), wardrobe: { x: 5.6, z: 0.6, r: 0 }, pet: { x: 2.8, z: -1.1, r: 0 }, window: { x: 11.3, z: -1.2, r: 1 } };
+  // Furniture across every indoor route. The lawn is too long for a wagon to block, so the path fallback is only a backstop.
+  const furniture = { ...defaultFurniture(), wardrobe: { x: 5.6, z: 0.6, r: 0 }, pet: { x: 2.8, z: -1.1, r: 0 }, window: { x: 13.2, z: -1.2, r: 1 } };
   assert.ok(furnitureValid(furniture));
   const route = faunVisitRoute(furniture, defaultShelves(), defaultWallDisplays(), 0);
   assert.equal(route.location, 'yard');

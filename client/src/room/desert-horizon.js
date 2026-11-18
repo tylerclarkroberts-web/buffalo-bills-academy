@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ROOM_FLOOR_SCALE } from '../../../server/catalog/room.js';
+import { ROOM_GRADE } from './scene-model.js';
 
 // A panorama behind the far edge of the yard gives an overhead orthographic view a horizon.
 export function desertHorizon(soilMaterial) {
@@ -65,14 +66,14 @@ export function desertHorizon(soilMaterial) {
   const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
   backdrop.name = 'ranch-horizon'; backdrop.frustumCulled = false; backdrop.renderOrder = -10;
   const S = ROOM_FLOOR_SCALE, forward = new THREE.Vector3(), point = new THREE.Vector3();
-  // Ground outline includes both wings, the windpump, front steps and garden.
-  const yard = [[-4.3, -7.3], [3.8, -7.3], [8.3, -5.3], [8.6, -3.15], [8.98, 3.26], [8.65, 4.95], [5.55, 7.55], [3.5, 7.4], [-3.1, 7.4], [-4.3, 3.6]];
+  // Ground outline includes both wings, the fenced yard and the signpost at the road.
+  const yard = [[-4.3, -7.3], [3.8, -7.45], [8.9, -7.45], [9.6, 3.9], [8.9, 7.45], [3.5, 7.45], [-3.1, 7.4], [-4.3, 3.6]], earth = ROOM_GRADE - 0.13;
   backdrop.onBeforeRender = (renderer, scene, camera) => {
     camera.getWorldDirection(forward);
     let skyline = 0.50;
-    for (const [x,z] of yard) skyline = Math.max(skyline, point.set(x * S,-0.13,z * S).project(camera).y + 0.07);
+    for (const [x,z] of yard) skyline = Math.max(skyline, point.set(x * S, earth, z * S).project(camera).y + 0.07);
     point.set(0, skyline, 0).unproject(camera);
-    point.addScaledVector(forward, (-0.13 - point.y) / forward.y);
+    point.addScaledVector(forward, (earth - point.y) / forward.y);
     const top = point.clone(); top.y += 1; top.project(camera);
     const depth = point.project(camera).z;
     // An upright backdrop clips distant rocks at their bases; a camera-facing plane cuts their tops loose.

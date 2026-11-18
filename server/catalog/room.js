@@ -205,9 +205,12 @@ export const roomHomestead = value => Object.fromEntries(Object.entries(ROOM_HOM
 
 /** Saved furniture coordinates use the expanded parlor and yard floor plan. */
 export const ROOM_FLOOR_SCALE = Math.sqrt(3.15);
-/** Saved rooms carry this marker. Plan 2 was the 2.1x floor; records without one were arranged on the 1.75x floor. */
-export const ROOM_PLAN = 3;
-const PLAN_SCALE = { 2: Math.sqrt(2.1) };
+/**
+ * Saved rooms carry this marker. Plan 2 was the 2.1x floor; records without one were arranged on the 1.75x floor.
+ * Plan 3 had today's floor with a square deck and a paddock where the front porch and its yard are now.
+ */
+export const ROOM_PLAN = 4;
+const PLAN_SCALE = { 2: Math.sqrt(2.1), 3: ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, cm = n => Math.round(n * 100) / 100;
 /** One inch in scene units: the 5 ft 11 in resident is 1.94 x 1.4 units tall. */
 const INCH = 1.94 * 1.4 / 71;
@@ -225,7 +228,7 @@ export const ROOM_FURNITURE = {
   // `stored` pieces start put away; Add brings them out.
   'floor-2': { label: 'Floor display 2', size: [1.3, 0.9], home: [cm(1.6 * S), cm(-0.3 * S)], removable: true, stored: true },
   'floor-3': { label: 'Floor display 3', size: [1.3, 0.9], home: [cm(-2.6 * S), cm(-0.4 * S)], removable: true, stored: true },
-  window: { label: 'Yard display', size: [2.8, 2.05], home: [cm(6.2 * S), cm(-0.3 * S)], yard: true },
+  window: { label: 'Yard display', size: [2.8, 2.05], home: [cm(7.4 * S), cm(-0.6 * S)], yard: true },
   couch: { label: 'Couch', size: [2.4, 1], home: [cm(-1.5 * S), cm(-3 * S + 0.75)], removable: true },
   // `item` pieces are sold at the General Store and stay stored until their owner has bought one.
   case: { label: 'Display case', size: [1.96, 0.86], home: [cm(-2.4 * S), cm(-0.9 * S)], removable: true, stored: true, item: 'furn-case' },
@@ -242,12 +245,15 @@ export const ROOM_FURNITURE = {
   sink: { label: 'Washstand', size: [18 * INCH, 22 * INCH], home: [cm(-3.69 * S), cm(-3.98 * S)], area: 'bathroom', style: 'bathroom' },
   linen: { label: 'Linen cupboard', size: [19 * INCH, 42 * INCH], home: [cm(-0.79 * S), cm(-5.42 * S)], area: 'bathroom', style: 'bathroom', removable: true },
   'floor-bath': { label: 'Bathroom floor display', size: [1.3, 0.9], home: [-5, -6.6], area: 'bathroom', removable: true, stored: true },
-  porchChair: { label: 'Porch chair', size: [21 * INCH, 19.5 * INCH], home: [cm(7.55 * S), cm(3.7 * S)], area: 'porch', style: 'porchChair' },
-  plant: { label: 'Potted plant', size: [14 * INCH, 16 * INCH], home: [cm(4.69 * S), cm(3.93 * S)], area: 'porch', style: 'porch', removable: true },
-  'floor-porch': { label: 'Porch floor display', size: [1.3, 0.9], home: [11, 4], area: 'porch', removable: true, stored: true },
+  // Both chairs face out over the yard. The resident takes his coffee in the first; the second stands on rockers, which make it longer.
+  porchChair: { label: 'Porch chair', size: [21 * INCH, 19.5 * INCH], home: [cm(4.8 * S), cm(-0.3 * S)], area: 'porch', style: 'porchChair' },
+  porchChair2: { label: 'Rocking chair', size: [28 * INCH, 19.5 * INCH], home: [cm(4.8 * S), cm(-1.5 * S)], area: 'porch', style: 'porchChair', removable: true },
+  plant: { label: 'Potted plant', size: [14 * INCH, 16 * INCH], home: [cm(4.45 * S), cm(3 * S)], area: 'porch', style: 'porch', removable: true },
+  'floor-porch': { label: 'Porch floor display', size: [1.3, 0.9], home: [cm(4.8 * S), cm(-2.55 * S)], area: 'porch', removable: true, stored: true },
 };
-// Rectangles are [minX, minZ, maxX, maxZ]. The wagon stays in its paddock, clear of the deck.
-const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = [4.3 * S, -2.8 * S, 8.4 * S, 1.4 * S];
+// Rectangles are [minX, minZ, maxX, maxZ]. The wagon stays on the lawn between the porch and the front fence, clear of the footpath.
+export const ROOM_YARD = [6.4 * S, -2.8 * S, 8.4 * S, 1.6 * S];
+const INDOORS = [-4 * S + 0.1, -3 * S + 0.06, 4 * S, 3.25 * S], YARD = ROOM_YARD;
 const KEEP_CLEAR = [
   [-4 * S, -1.7 * S - 0.45, -4 * S + 1.4, -0.4 * S + 0.45], // under the shelf mounts
   [4 * S - 0.8, 0.8 * S, 4 * S, 2.25 * S], // the yard doorway
@@ -257,7 +263,8 @@ const AREAS = {
   kitchen: { floor: [-2.35 * S + 0.15, 3.35 * S + 0.15, 3.25 * S - 0.15, 7.15 * S - 0.15], clear: [[1.41 * S, 3.35 * S, 2.59 * S, 3.35 * S + 1]] },
   bathroom: { floor: [-4 * S + 0.15, -7.05 * S + 0.15, -0.45 * S - 0.12, -3 * S - 0.12], clear: [[-0.45 * S - 1, -4.69 * S, -0.45 * S, -3.51 * S]] },
   bunk: { floor: [-0.45 * S + 0.12, -7.05 * S + 0.15, 3.55 * S - 0.15, -3 * S - 0.12], clear: [[-0.45 * S, -4.69 * S, -0.45 * S + 1, -3.51 * S]] },
-  porch: { floor: [4.25 * S, 1.55 * S, 8.35 * S, 4.65 * S], clear: [[4.13 * S, 1.47 * S, 4.13 * S + 1, 2.25 * S], [8.42 * S - 1, 1.9 * S, 8.42 * S, 3.3 * S]] },
+  // Inside the porch rails; the swing of the yard door and the head of the steps stay clear.
+  porch: { floor: [4.25 * S, -3.08 * S, 5.95 * S, 3.25 * S], clear: [[4.13 * S, 1.35 * S, 4.95 * S, 2.35 * S], [6.1 * S - 1.2, 2.38 * S, 6.1 * S, 3.28 * S]] },
 };
 const SLACK = 0.011;
 /** The resident stands at the centre of the rug spot, wherever that is moved (even with no rug laid). */
@@ -321,7 +328,12 @@ export function freeSpot(furniture, id, shelves, wallDisplays, near = ROOM_FURNI
 /** A room arranged on the earlier floor: spread its furniture over the larger one and find the new couch a clear spot. */
 export function upgradeFurniture(value, shelves, wallDisplays, plan) {
   const k = S / (PLAN_SCALE[plan] || Math.sqrt(1.75)), spread = {};
-  for (const [id, place] of Object.entries(value && typeof value === 'object' ? value : {})) spread[id] = place && typeof place === 'object' ? { ...place, x: place.x * k, z: place.z * k } : place;
+  for (const [id, place] of Object.entries(value && typeof value === 'object' ? value : {})) {
+    const piece = ROOM_FURNITURE[id], outdoors = piece?.yard || piece?.area === 'porch';
+    // The porch and yard were rebuilt: whatever stood on the old deck or in the paddock goes to its new home, still out or put away.
+    if (outdoors && place && typeof place === 'object') spread[id] = { ...place, x: piece.home[0], z: piece.home[1], r: piece.yard ? place.r : 0 };
+    else spread[id] = place && typeof place === 'object' ? { ...place, x: place.x * k, z: place.z * k } : place;
+  }
   const [x, z] = ROOM_FURNITURE.couch.home, furniture = furnitureValid(spread);
   if (furniture && wallMountsFit(shelves, wallDisplays, furniture)) return furniture;
   let stored = furnitureValid({ ...spread, couch: { x, z, r: 0, off: true } });

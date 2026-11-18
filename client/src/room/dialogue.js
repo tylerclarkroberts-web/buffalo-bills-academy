@@ -31,6 +31,8 @@ export const ROOM_LINES = [
   'I can tell north by the moss on my lunch.',
   'If I stand here long enough I’ll remember why I stood up.',
   'I could go down to the barn. Then again, I might get put on a list to fight.',
+  'The signpost says three miles to the mines. It has never once made the walk.',
+  'I sit on the porch to keep an eye on the road. So far it has stayed where it is.',
 ];
 
 export const CLICK_LINES = [
@@ -78,6 +80,20 @@ export const REARRANGE_LINES = [
   'If you find a little patch of dust shaped like me, that was where I was happy.',
   'I liked it two rooms ago.',
 ];
+
+// What he says on getting to something he was sent to do.
+export const TASK_LINES = {
+  coffee: ['Coffee’s better out here. All it has to compete with is the road.', 'I take it black. The cow lives eleven miles away.'],
+  rock: ['I rock forward to think and back to reconsider. Net progress is nil.', 'This chair has gone further than I have today.'],
+  sign: ['Eleven miles to lose it, three miles to earn it. I’ll just stand here in between.', 'It says “then down”. I respect a sign that finishes the thought.'],
+  bath: ['I got in with my clothes on. It saves a step on laundry day.', 'The hat stays dry. That’s the system.'],
+  cook: ['I’m making an egg. The egg has had no say in this.', 'I cook by ear. It’s done when it stops arguing.'],
+  eat: ['Table for one. I had to buy the chair specially.', 'I compliment the chef every night. He never knows what to say.'],
+  sit: ['I’m sitting down. If anyone asks, it was planned.', 'From here I can see everything I own. It doesn’t take long.'],
+  nap: ['I’m not asleep. I’m reviewing the ceiling.', 'Wake me if anything happens. Use your judgement on what counts.'],
+  tidy: ['I pick things up so they know who’s in charge. Then I put them back so they don’t.', 'Just checking it still weighs the same.'],
+  corner: ['I’m giving the corner some company. It’s had a quiet year.', 'Nobody’s in trouble. I just like to know where the walls meet.'],
+};
 
 // Each pair describes the piece on display, then the same piece still put away.
 const pieces = {

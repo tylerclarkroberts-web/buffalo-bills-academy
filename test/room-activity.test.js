@@ -5,7 +5,7 @@ import { ROOM_LINES } from '../client/src/room/dialogue.js';
 import { FAUN_EXCHANGES } from '../client/src/room/faun-dialogue.js';
 import * as THREE from 'three';
 import { RoomScene } from '../client/src/room/scene.js';
-import { makeRoomCamera, RESIDENT_HEIGHT_SCALE } from '../client/src/room/scene-model.js';
+import { makeRoomCamera, RESIDENT_HEIGHT_SCALE, ROOM_GRADE } from '../client/src/room/scene-model.js';
 import { setupRoomLighting } from '../client/src/room/lighting.js';
 
 test('room comments are brief, spaced apart and never repeat consecutively', () => {
@@ -123,8 +123,9 @@ test('pausing stops scheduled animation, clears bubbles and leaves furniture pos
 test('requested coffee walks out and back while ambient activity stays paused', t => {
   const { scene, frames } = sceneFixture(t), states = [];
   scene.residentHome = new THREE.Vector3(0, 0.05, 0);
-  scene.errands = [{ kind: 'coffee', path: [[3, 0], [3, 4]], facing: 0 }];
+  scene.errands = [{ kind: 'coffee', path: [[3, 0], [3, 4]], facing: 0, seat: [3, 4.6] }];
   scene.residentArms = [new THREE.Group(), new THREE.Group()]; scene.residentMug = new THREE.Group();
+  scene.residentLegs = [new THREE.Group(), new THREE.Group()];
   scene.activityPaused = true; scene.onHouseState = state => states.push(state);
   assert.equal(scene.houseAction('coffee', 0), 'ok'); frames.shift()(0);
   assert.equal(scene.houseAction('coffee', 0), 'busy');
@@ -132,17 +133,23 @@ test('requested coffee walks out and back while ambient activity stays paused', 
   assert.equal(scene.residentGroup.position.x, 3);
   assert.ok(scene.residentGroup.position.z > 0 && scene.residentGroup.position.z < 4);
   scene.animateActivity(5500);
-  assert.deepEqual(scene.residentGroup.position.toArray(), [3, 0.05, 4]);
+  assert.deepEqual(scene.residentGroup.position.toArray(), [3, 0.05, 4], 'he arrives standing in front of the chair');
+  assert.equal(scene.residentMug.visible, true);
+  scene.animateActivity(6500);
+  assert.equal(scene.residentGroup.position.z, 4.6, 'then sits back into it');
+  assert.ok(scene.residentGroup.position.y < 0 && scene.residentLegs[0].rotation.x < -1, 'hips at seat height, knees bent');
   assert.equal(scene.residentMug.visible, true);
   assert.equal(scene.animateActivity(60000), false, 'a paused porch pose needs no animation loop');
   assert.equal(scene.houseAction('inside', 60000), 'ok'); frames.shift()(60000);
-  scene.animateActivity(65500);
+  scene.animateActivity(61000);
+  assert.deepEqual(scene.residentGroup.position.toArray(), [3, 0.05, 4], 'he stands up before walking in');
+  scene.animateActivity(66500);
   assert.ok(scene.residentGroup.position.equals(scene.residentHome));
   assert.equal(scene.residentMug.visible, false);
-  assert.deepEqual(states, ['walking', 'porch', 'returning', 'home']);
+  assert.deepEqual(states, ['walking', 'there', 'returning', 'home']);
   assert.equal(scene.activity.time, 0);
   scene.errands = [];
-  assert.equal(scene.houseAction('coffee', 65500), 'blocked');
+  assert.equal(scene.houseAction('coffee', 66500), 'blocked');
 });
 
 test('reduced-motion coffee uses still endpoints and the flush gag keeps visible time', t => {
@@ -184,7 +191,7 @@ test('coffee can interrupt a seat without jumping, or keep an ambient visitor on
   scene.activity.time = scene.residentRestart + 49000; scene.lastFrame = null; scene.animateActivity(6000);
   assert.equal(scene.residentGroup.position.z, 4);
   scene.houseAction('coffee', 6000); scene.animateActivity(6000);
-  assert.equal(scene.houseState, 'porch'); assert.equal(scene.residentGroup.position.z, 4);
+  assert.equal(scene.houseState, 'there'); assert.equal(scene.residentGroup.position.z, 4);
 });
 
 test('reduced motion keeps a still resident and renders only at activity boundaries', t => {
@@ -223,9 +230,11 @@ test('the faun peeks from cover, speaks above his own model, then retreats and l
   scene.faunHead = new THREE.Group(); scene.faunLegs = [new THREE.Group(), new THREE.Group()];
   scene.activity.nextFaun = 20000; scene.activity.advance(20000);
   scene.faunVisitKey = scene.activity.faunUntil;
-  scene.faunRoute = { from: { x: 2, z: 0 }, to: { x: 3, z: 0.5 }, facing: -0.4 };
+  scene.faunRoute = { from: { x: 2, z: 0 }, to: { x: 3, z: 0.5 }, facing: -0.4, location: 'yard' };
   scene.animateActivity(0);
   assert.equal(scene.faun.visible, true);
+  assert.deepEqual(scene.faun.position.toArray(), [2, ROOM_GRADE + 0.01, 0], 'out in the yard he stands on the lawn, below the floors');
+  scene.faunRoute.location = 'room'; scene.animateActivity(0);
   assert.deepEqual(scene.faun.position.toArray(), [2, 0.02, 0]);
   scene.animateActivity(1500);
   assert.deepEqual(scene.faun.position.toArray(), [2.5, 0.02, 0.25]);
@@ -337,4 +346,37 @@ test('resident takes bounded steps and gestures, while speech position updates d
   scene.activityPaused = true; scene.animateActivity(2000);
   assert.ok(scene.residentGroup.position.equals(scene.residentHome));
   assert.equal(Math.abs(scene.residentLegs[0].rotation.x), 0);
+});
+
+test('asked for a bath he lets the tub fill before getting in, and something picked up goes back by itself', t => {
+  const { scene, frames } = sceneFixture(t), props = [], states = [];
+  scene.residentHome = new THREE.Vector3(0, 0.05, 0); scene.activityPaused = true; scene.errands = [];
+  scene.residentArms = [new THREE.Group(), new THREE.Group()]; scene.residentLegs = [new THREE.Group(), new THREE.Group()];
+  scene.homestead = { setSprinkler() {}, setProps: value => props.push(value) };
+  scene.onHouseState = (state, kind) => states.push(state + ':' + kind);
+  const oddity = new THREE.Group(); oddity.position.set(1.6, 0.08, 0);
+  scene.tasks = { bath: { kind: 'bath', path: [[2, 0]], facing: 0, seat: [2, 1], pose: 'soak', rise: -0.62, settle: 3500 },
+    tidy: { kind: 'tidy', path: [[1, 0]], facing: 0, pose: 'hold', hold: 3200, prop: oddity } };
+  assert.equal(scene.houseAction('nonsense', 0), 'unavailable');
+  assert.equal(scene.houseAction('cook', 0), 'blocked', 'a known task he cannot reach');
+  assert.equal(scene.houseAction('bath', 0), 'ok'); frames.shift()(0);
+  scene.animateActivity(5500 + 1225);
+  assert.ok(Math.abs(props.at(-1).bath - 0.5) < 1e-9, 'the tub is half full');
+  assert.deepEqual(scene.residentGroup.position.toArray(), [2, 0.05, 0], 'and he is still standing beside it');
+  scene.animateActivity(9000);
+  assert.equal(props.at(-1).bath, 1);
+  assert.equal(scene.residentGroup.position.z, 1); assert.ok(Math.abs(scene.residentGroup.position.y + 0.57) < 1e-9, 'then he is sitting in it');
+  assert.ok(Math.abs(scene.residentLegs[0].userData.knee?.rotation.x ?? 0) < 0.2, 'legs out straight');
+  assert.equal(scene.houseAction('tidy', 9000), 'busy');
+  scene.houseAction('inside', 9000); scene.animateActivity(9000); scene.animateActivity(20000);
+  assert.equal(props.at(-1).bath, 0, 'the water goes when he does');
+  assert.deepEqual(states, ['walking:bath', 'there:bath', 'returning:bath', 'home:undefined']);
+
+  assert.equal(scene.houseAction('tidy', 20000), 'ok'); scene.animateActivity(20000);
+  scene.animateActivity(26500);
+  assert.equal(scene.houseState, 'there'); assert.ok(Math.abs(oddity.position.y - 1.3) < 1e-9, 'it is up in his hands');
+  scene.animateActivity(29800);
+  assert.equal(scene.houseState, 'returning', 'nobody had to tell him to put it down');
+  scene.animateActivity(40000);
+  assert.equal(scene.houseState, 'home'); assert.deepEqual(oddity.position.toArray(), [1.6, 0.08, 0]);
 });

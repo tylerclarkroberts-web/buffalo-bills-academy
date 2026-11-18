@@ -7,14 +7,15 @@ import { coveredWagon } from './wagon.js';
 import { roomFaun } from './faun.js';
 import { buildHomestead } from './homestead.js';
 import { makeWallCutaway } from './cutaway.js';
-import { homesteadLandscape } from './landscape.js';
+import { homesteadLandscape, groundLevel } from './landscape.js';
 import { RoomActivity, residentPose, faunPose } from './activity.js';
+import { TASK_LINES } from './dialogue.js';
 import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from './lighting.js';
 import { pixGrid } from '../store/pixart.js';
 import { bugTexture, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks, shade as tint } from '../avatar/genbust.js';
-import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_DESK_TOP, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, faunVisitRoute } from './scene-model.js';
+import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_GRADE, ROOM_DESK_TOP, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, residentStep, residentErrands, residentTasks, ROOM_SIGNPOST, faunVisitRoute } from './scene-model.js';
 
 const PAINT = { 'bunkhouse-timber': '#d3b88c', 'bunkhouse-sage': '#a7b59a', 'bunkhouse-clay': '#c79883' };
 const material = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
@@ -187,10 +188,13 @@ function bake(group) {
   mesh(group, merged, material('#ffffff', { vertexColors: true }));
   return group;
 }
-/** Delivered with the deed: tied to a yard fence post so it does not wander off again. */
+// The yard fence runs out from the kitchen corner, along the road with a gap where the footpath leaves, and back to the bedroom corner.
+const FENCE = [[[3.4, 7.25], [8.7, 7.25]], [[8.7, 7.25], [8.7, 3.33]], [[8.7, 2.33], [8.7, -7.25]], [[8.7, -7.25], [3.7, -7.25]]];
+const FENCE_POST = 0.78, MOON_POST = [8.7, -7.25];
+/** Delivered with the deed: tied to the far corner post of the yard fence so it does not wander off again. */
 function moon() {
   const group = new THREE.Group(); group.name = 'the-moon';
-  const S = ROOM_FLOOR_SCALE, post = new THREE.Vector3(6.35 * S, 0.78, -2.9 * S), centre = new THREE.Vector3(6.35 * S + 0.5, 3.1, -2.9 * S - 0.7);
+  const S = ROOM_FLOOR_SCALE, [x, z] = MOON_POST, post = new THREE.Vector3(x * S, groundLevel(x, z) + FENCE_POST, z * S), centre = post.clone().add(new THREE.Vector3(0.5, 2.32, -0.7));
   const geometry = new THREE.IcosahedronGeometry(1.15, 1).toNonIndexed(), colors = [];
   for (let i = 0; i < geometry.attributes.position.count; i++) {
     const face = Math.floor(i / 3), color = new THREE.Color(face % 7 === 3 || face % 11 === 5 ? '#b9b39f' : '#ece7d2').multiplyScalar(0.92 + (face % 4) * 0.027);
@@ -202,6 +206,33 @@ function moon() {
   const line = cylinder(group, 0.018, 0.018, length, '#b99a62', 0, 0, 0, 5);
   line.position.copy(post).addScaledVector(rope.clone().normalize(), length / 2);
   line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rope.normalize());
+  return group;
+}
+/** Outside the gate where the footpath leaves for the road: an arm each way, with the distances as far as anyone has checked. */
+function signpost() {
+  const group = new THREE.Group(); group.name = 'road-signpost';
+  const [x, z] = ROOM_SIGNPOST, length = 1.9, height = 0.44, tip = 0.3, wood = '#6f553c', paint = '#e3d5b4';
+  group.position.set(x * ROOM_FLOOR_SCALE, groundLevel(x, z), z * ROOM_FLOOR_SCALE);
+  box(group, 0.16, 3.85, 0.16, wood, 0, 1.775, 0);
+  cylinder(group, 0, 0.13, 0.15, shade(wood, 0.8), 0, 3.775, 0, 4).rotation.y = Math.PI / 4;
+  const outline = new THREE.Shape([[-0.25, -height / 2], [length - tip - 0.25, -height / 2], [length - 0.25, 0], [length - tip - 0.25, height / 2], [-0.25, height / 2]].map(point => new THREE.Vector2(...point)));
+  // `toward` is +1 for an arm pointing up the road (+z) and -1 for one pointing down it.
+  for (const [y, toward, place, miles] of [[3.32, 1, 'BUFFALO BILL’S', '11 MILES'], [2.82, -1, 'THE MINES', '3 MILES, THEN DOWN']]) {
+    const arm = new THREE.Group(); arm.position.set(toward > 0 ? 0.14 : 0.08, y, 0); arm.rotation.y = -toward * Math.PI / 2; group.add(arm);
+    mesh(arm, new THREE.ExtrudeGeometry(outline, { depth: 0.06, bevelEnabled: false }), material(paint));
+    const map = paintedTexture(384, 96, (ctx, w, h) => {
+      ctx.fillStyle = paint; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#3b2a1c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 40px Georgia'; ctx.fillText(place, w / 2, 34, w - 16);
+      ctx.font = 'bold 22px Georgia'; ctx.fillText(miles, w / 2, 74, w - 16);
+    });
+    // The lettering is painted on both faces, so it reads from the road and from the porch.
+    for (const [depth, turn] of [[0.062, 0], [-0.002, Math.PI]]) {
+      mesh(arm, new THREE.PlaneGeometry(length - tip - 0.1, height - 0.06), material('#ffffff', { map }), (length - tip) / 2 - 0.25, 0, depth).rotation.y = turn;
+    }
+  }
+  // Clicking any of it sends the resident out to read it.
+  group.traverse(part => { if (part.isMesh) part.userData.selection = { kind: 'houseAction', action: 'sign' }; });
   return group;
 }
 function oddity(id) {
@@ -470,14 +501,18 @@ function oddity(id) {
   return bake(group);
 }
 
-const COFFEE_WALK = 5500, PIPE_DELAY = 650, SPRINKLER_END = 3600;
+// The shortest walk to anything he is asked to do, his pace on a longer one, then a moment to settle into it.
+const COFFEE_WALK = 5500, WALK_SPEED = 2.6, COFFEE_SIT = 1000, PIPE_DELAY = 650, SPRINKLER_END = 3600;
+const TASK_KINDS = Object.keys(TASK_LINES), PORCH_EDGE = 6.1 * ROOM_FLOOR_SCALE;
+/** How far below the floors his feet are: nothing indoors or on the porch, then down the two steps to the lawn. */
+const stepDown = (x, z) => x <= PORCH_EDGE ? 0 : Math.min(1, (x - PORCH_EDGE) / (0.48 * ROOM_FLOOR_SCALE)) * groundLevel(x / ROOM_FLOOR_SCALE, z / ROOM_FLOOR_SCALE);
 
 /** A clickable cutaway. React owns the controls; room activity is cosmetic. */
 export class RoomScene {
-  constructor(canvas, { activity = new RoomActivity(), onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onZoom, onViewChange, onError } = {}) {
+  constructor(canvas, { activity = new RoomActivity(), onSelect, onMoveShelf, onMoveWall, onMoveFurniture, onWealthHover, onSpeech, onSpeechPosition, onHouseState, onHouseTasks, onZoom, onViewChange, onError } = {}) {
     this.canvas = canvas; this.onSelect = onSelect; this.onMoveShelf = onMoveShelf; this.onMoveFurniture = onMoveFurniture; this.onWealthHover = onWealthHover; this.onError = onError; this.generation = 0;
     this.onMoveWall = onMoveWall; this.onSpeechPosition = onSpeechPosition; this.onZoom = onZoom; this.onViewChange = onViewChange;
-    this.onSpeech = onSpeech; this.onHouseState = onHouseState; this.activity = activity;
+    this.onSpeech = onSpeech; this.onHouseState = onHouseState; this.onHouseTasks = onHouseTasks; this.activity = activity;
     this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
@@ -492,7 +527,7 @@ export class RoomScene {
       if (this.editing) this.setEditing(true, this.selection);
       else { this.lighting.invalidate(); this.render(); }
     } });
-    this.faun = roomFaun(); this.faun.position.set(6.65 * ROOM_FLOOR_SCALE, 0.02, 2.25 * ROOM_FLOOR_SCALE); this.faun.rotation.y = -0.45;
+    this.faun = roomFaun(); this.faun.position.set(7.6 * ROOM_FLOOR_SCALE, ROOM_GRADE + 0.01, 2.83 * ROOM_FLOOR_SCALE); this.faun.rotation.y = -0.45;
     this.faun.scale.y = 1.25; this.faunHead = this.faun.getObjectByName('faun-head'); this.faunLegs = this.faun.children.filter(part => part.name === 'faun-goat-leg');
     this.faun.visible = false; this.scene.add(this.faun);
     configureShadowObjects(this.static); configureShadowObjects(this.faun);
@@ -633,7 +668,7 @@ export class RoomScene {
     if (place) {
       const [w, d] = ROOM_FURNITURE[id].size;
       const geometry = new THREE.BoxGeometry(w * scale[0], 0.1, d * scale[2]);
-      const marker = mesh(this.dragPreview, geometry, new THREE.MeshBasicMaterial({ color: fits ? '#b9df83' : '#d8604f', transparent: true, opacity: 0.4, depthWrite: false }), place.x, 0.08, place.z);
+      const marker = mesh(this.dragPreview, geometry, new THREE.MeshBasicMaterial({ color: fits ? '#b9df83' : '#d8604f', transparent: true, opacity: 0.4, depthWrite: false }), place.x, (ROOM_FURNITURE[id].yard ? ROOM_GRADE : 0) + 0.08, place.z);
       marker.rotation.y = this.furniture[id].r * Math.PI / 2; marker.renderOrder = 5;
       const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: fits ? '#ffdc83' : '#d8604f', transparent: true, opacity: 0.75 }));
       outline.position.copy(marker.position); outline.rotation.copy(marker.rotation); this.dragPreview.add(outline);
@@ -784,7 +819,7 @@ export class RoomScene {
       if (this.yardFence) picks.push(this.yardFence);
     } else {
       if (this.residentPick && !this.activityPaused) picks.push(this.residentPick);
-      if (this.onHouseAction) picks.push(...(this.homestead?.picks || []));
+      if (this.onHouseAction) picks.push(...(this.homestead?.picks || []), ...(this.signPicks || []));
     }
     const targets = this.editing ? [...picks, ...this.walls] : picks.filter(target => !['surface', 'couch'].includes(target.userData.selection.kind));
     const hit = this.raycaster.intersectObjects(targets.filter(target => shown(target) && !(this.wagon && target.userData.selection?.anchorId === 'window')), false)[0];
@@ -836,7 +871,7 @@ export class RoomScene {
       const bounds = new THREE.Box3();
       for (const target of targets) if (target && shown(target)) bounds.expandByObject(target);
       if (!bounds.isEmpty()) {
-        bounds.min.y = 0.07; bounds.max.y = 0.08;
+        bounds.min.y = (selection.surface === 'fence' ? ROOM_GRADE : 0) + 0.07; bounds.max.y = bounds.min.y + 0.01;
         this.highlights.add(new THREE.Box3Helper(bounds, '#ffdc83'));
       }
     }
@@ -926,6 +961,8 @@ export class RoomScene {
     windowFrame(this.backWall, openingWidth, opening.bottom, opening.top, windowX, -3, 0);
     windowFrame(this.leftWall, sashEnd - sashStart, sashBottom, sashTop, -4, (sashStart + sashEnd) / 2, Math.PI / 2);
     this.buildYardFence(roomFinishes().fence);
+    const sign = signpost(); this.static.add(sign);
+    this.signPicks = []; sign.traverse(part => { if (part.userData.selection) this.signPicks.push(part); });
     this.buildSideDoor();
     // Furnishings keep their original size while their origins spread across the larger floor.
     const desk = this.fixture();
@@ -1062,13 +1099,15 @@ export class RoomScene {
     const key = finish.typeId + '/' + finish.colorId;
     if (this.yardFence?.userData.finishKey === key) return;
     if (this.yardFence) { disposeObjects(this.yardFence); this.yardFence.removeFromParent(); }
-    const fence = new THREE.Group(), wood = finishColor('fence', finish);
-    // The Moon's tether and the saved wagon pad share the original paddock footprint.
-    for (const [x, z] of [[4.4, -2.9], [6.35, -2.9], [8.35, -2.9], [8.35, -1.45]]) {
-      box(fence, 0.12, 0.78, 0.12, shade(wood, 0.7), x, 0.39, z);
-    }
-    for (const [x, length, turn] of [[4.4, 1.95, 0], [6.35, 2, 0], [8.35, 1.45, -Math.PI / 2]]) {
-      const run = new THREE.Group(); run.position.set(x, 0, -2.9); run.rotation.y = turn; fence.add(run);
+    const fence = new THREE.Group(), wood = finishColor('fence', finish), posts = new Set();
+    for (const [from, to] of FENCE) for (let dx = to[0] - from[0], dz = to[1] - from[1], bays = Math.ceil(Math.hypot(dx, dz) / 2), i = 0; i <= bays; i++) {
+      const x = from[0] + dx * i / bays, z = from[1] + dz * i / bays, y = groundLevel(x, z), spot = `${Math.round(x * 100)},${Math.round(z * 100)}`;
+      // Two stretches share each corner post. Every post goes a little way into the ground.
+      if (!posts.has(spot)) { posts.add(spot); box(fence, 0.12, FENCE_POST + 0.2, 0.12, shade(wood, 0.7), x, y + FENCE_POST / 2 - 0.1, z); }
+      if (i === bays) break;
+      // Rails follow the fall of the ground to the next post, with their faces to the outside.
+      const length = Math.hypot(dx, dz) / bays, run = new THREE.Group(); run.position.set(x, y, z); fence.add(run);
+      run.rotation.set(0, Math.atan2(-dz, dx), Math.atan2(groundLevel(x + dx / bays, z + dz / bays) - y, length));
       if (finish.typeId === 'wire') {
         for (const y of [0.20, 0.43, 0.66]) box(run, length, 0.027, 0.027, '#716f65', length / 2, y, 0.023);
       } else if (finish.typeId === 'picket') {
@@ -1169,7 +1208,7 @@ export class RoomScene {
     if (this.disposed) return;
     this.cancelPointer();
     const generation = ++this.generation;
-    disposeObjects(this.dynamic); this.dynamic.clear(); this.picks = []; this.shelfItemPicks = []; this.wagon = null;
+    disposeObjects(this.dynamic); this.dynamic.clear(); this.picks = []; this.shelfItemPicks = []; this.wagon = null; this.spotProps = {};
     this.shelves = roomShelves(view.shelves);
     this.wallDisplays = roomWallDisplays(view.wallDisplays, this.shelves);
     const furniture = this.furniture = roomFurniture(view.furniture), turn = id => furniture[id].r * Math.PI / 2;
@@ -1198,6 +1237,7 @@ export class RoomScene {
         if (!holder && (furniture[host] || wallSpot)) prop.userData.dragId = wallSpot ? anchorId : host;
         if (!holder && wallSide) prop.userData.wallSide = wallSide;
         if (anchorId === 'window') { prop.scale.setScalar(1.65); prop.rotation.y -= 0.16; this.wagon = prop; }
+        else if (!holder && furniture[host]) this.spotProps[host] ??= prop;
         if (holder) prop.traverse(part => { if (part.isMesh) { part.userData.selection = { kind: 'anchor', anchorId }; this.shelfItemPicks.push(part); } });
         (holder || this.dynamic).add(prop);
       }
@@ -1288,7 +1328,13 @@ export class RoomScene {
     this.residentPick.userData.selection = { kind: 'resident' };
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
     this.errands = residentErrands(this.furniture, this.shelves, this.wallDisplays); this.residentYaw = 0.35;
-    if (this.coffee && !this.errands.some(errand => errand.kind === 'coffee')) this.coffee = null;
+    this.tasks = residentTasks(this.furniture, this.shelves, this.wallDisplays, this.errands);
+    // Anything on a display he can walk up to is something he can pick up and put back.
+    const handy = this.errands.find(errand => errand.kind === 'inspect' && this.spotProps?.[errand.id]);
+    if (handy) this.tasks.tidy = { ...handy, kind: 'tidy', pose: 'hold', hold: 3200, prop: this.spotProps[handy.id] };
+    if (this.coffee && !(this.coffee.task = this.tasks[this.coffee.kind])) this.coffee = null;
+    this.homestead?.setProps?.({ chairSide: this.tasks.eat?.side || 0 });
+    this.onHouseTasks?.(Object.keys(this.tasks));
     const avatar = owner?.avatar, skinTone = avatar?.skinTone, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed, skinTone);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
     this.residentLegs = [-0.14, 0.14].map(x => {
@@ -1434,18 +1480,22 @@ export class RoomScene {
     if (kind === 'flush') {
       if (this.flushAge != null) return 'busy';
       this.flushAge = 0;
-    } else if (kind === 'coffee') {
+    } else if (TASK_KINDS.includes(kind)) {
+      // Coffee was the first thing he could be sent to do; the rest go the same way.
       if (this.coffee) return 'busy';
-      if (!this.errands?.some(errand => errand.kind === 'coffee')) return 'blocked';
-      const { phase, errand } = residentPose(this.residentTime()), prior = errand % this.errands.length;
+      const task = this.tasks?.[kind] || this.errands?.find(errand => errand.kind === kind);
+      if (!task) return 'blocked';
+      const { phase, errand } = residentPose(this.residentTime()), prior = errand % (this.errands?.length || 1);
+      const start = this.residentHome, length = task.path.reduce((sum, point, i) => sum + Math.hypot(point[0] - (i ? task.path[i - 1][0] : start?.x ?? 0), point[1] - (i ? task.path[i - 1][1] : start?.z ?? 0)), 0);
+      const walk = Math.max(COFFEE_WALK, length / WALK_SPEED * 1000), settle = task.settle || COFFEE_SIT;
       let elapsed = 0;
-      if (this.motion.matches) elapsed = COFFEE_WALK;
+      if (this.motion.matches) elapsed = walk + settle;
       else if (phase > 7 && phase < 23) {
         // Reverse the current errand from its exact position, including standing up from the couch.
         const back = phase < 12 ? 30 - phase : Math.max(18, phase);
-        elapsed = this.errands[prior].kind === 'coffee' ? Math.min(1, (23 - back) / 4) * COFFEE_WALK : (back - 23) * 1000;
+        elapsed = this.errands?.[prior] === task ? Math.min(1, (23 - back) / 4) * walk : (back - 23) * 1000;
       }
-      this.coffee = { elapsed, prior, returning: false };
+      this.coffee = { kind, task, elapsed, prior, returning: false, walk, settle, held: 0 };
     } else if (kind === 'inside' && this.coffee) {
       if (this.coffee.returning) return 'busy';
       this.coffee.returning = true;
@@ -1455,10 +1505,17 @@ export class RoomScene {
     return 'ok';
   }
   residentTime() { return this.activityPaused || this.motion.matches ? 0 : (this.activity.time - (this.residentRestart || 0)) / 1000; }
-  finishCoffee() { this.coffee = null; this.residentRestart = this.activity.time; }
+  finishCoffee() {
+    const prop = this.coffee?.task?.prop;
+    if (prop?.userData.rest) prop.position.copy(prop.userData.rest);
+    this.coffee = null; this.residentRestart = this.activity.time;
+  }
   notifyHouseState() {
-    const state = !this.coffee ? 'home' : this.coffee.returning ? 'returning' : this.coffee.elapsed >= COFFEE_WALK ? 'porch' : 'walking';
-    if (this.houseState !== state) { this.houseState = state; this.onHouseState?.(state); }
+    const state = !this.coffee ? 'home' : this.coffee.returning ? 'returning' : this.coffee.elapsed >= this.coffee.walk ? 'there' : 'walking';
+    if (this.houseState === state) return;
+    this.houseState = state; this.onHouseState?.(state, this.coffee?.kind);
+    // He has a word to say about wherever he has been sent.
+    if (state === 'there' && !this.activityPaused) this.activity.say?.(TASK_LINES[this.coffee.kind]);
   }
   advanceActivity(ms) {
     const delta = Math.max(0, ms);
@@ -1471,7 +1528,12 @@ export class RoomScene {
       } else if (this.coffee.returning) {
         this.coffee.elapsed -= step;
         if (this.coffee.elapsed <= 0) this.finishCoffee();
-      } else this.coffee.elapsed = Math.min(COFFEE_WALK, this.coffee.elapsed + step);
+      } else {
+        const { walk, settle, task } = this.coffee, over = this.coffee.elapsed + step - walk - settle;
+        this.coffee.elapsed = Math.min(walk + settle, this.coffee.elapsed + step);
+        // Something picked up is held for a moment, then put back without being asked.
+        if (task.hold && over > 0 && (this.coffee.held += Math.min(over, delta)) >= task.hold) this.coffee.returning = true;
+      }
     }
     if (this.flushAge != null) {
       this.flushAge += delta;
@@ -1505,7 +1567,7 @@ export class RoomScene {
     const visible = this.isVisible() && !this.editing && !!this.residentGroup;
     if (visible && this.lastFrame != null) this.advanceActivity(now - this.lastFrame);
     const ambient = visible && !this.activityPaused;
-    const coffeeMoving = this.coffee && (this.coffee.elapsed < COFFEE_WALK || this.coffee.returning);
+    const coffeeMoving = this.coffee && (this.coffee.elapsed < this.coffee.walk + this.coffee.settle || this.coffee.returning || !!this.coffee.task.hold);
     const active = visible && !!(ambient || coffeeMoving || this.flushAge != null);
     this.lastFrame = active ? now : null; this.notifyHouseState();
     this.homestead?.setSprinkler(this.flushAge != null && this.flushAge >= PIPE_DELAY);
@@ -1515,52 +1577,79 @@ export class RoomScene {
       const home = this.residentHome, route = this.residentRoute || { x: 0, z: 0 };
       const errands = this.errands?.length ? this.errands : home && (route.x || route.z) ? [{ kind: 'stroll', path: [[home.x + route.x, home.z + route.z]], facing: 0.35 }] : [];
       let pose = residentPose(ambient ? this.residentTime() : 0), errand = errands[pose.errand % errands.length];
+      // 'asked' is the pose he holds once he gets where he was sent; 'settled' is how far into it he is.
+      let asked, settled = 0;
       if (this.coffee) {
         if (this.coffee.elapsed < 0) {
           pose = residentPose(23 + this.coffee.elapsed / 1000); errand = errands[this.coffee.prior];
         } else {
-          const fraction = this.coffee.elapsed / COFFEE_WALK;
-          pose = residentPose(this.coffee.returning ? 23 - fraction * 4 : fraction < 1 ? 7 + fraction * 4 : 15);
-          errand = errands.find(errand => errand.kind === 'coffee');
+          // Past the walk, the remaining time is spent settling in, or getting back up before heading home.
+          const { walk, settle, task } = this.coffee, fraction = Math.min(1, this.coffee.elapsed / walk);
+          settled = Math.max(0, this.coffee.elapsed - walk) / settle;
+          pose = residentPose(settled ? (this.coffee.returning ? 19 - settled : 11 + settled) : this.coffee.returning ? 23 - fraction * 4 : 7 + fraction * 4);
+          errand = task; asked = task.pose;
         }
       }
       const walking = !!errand && pose.facing !== 0, coffee = errand?.kind === 'coffee' && pose.phase >= 7 && pose.phase < 23;
-      const sit = errand?.kind === 'sit' ? pose.act : 0, look = errand?.kind === 'inspect' ? pose.act : 0, cash = errand?.kind === 'cash', grab = cash ? pose.act : 0;
+      // In the bath the tub fills first, then he gets in.
+      const soaking = Math.min(1, Math.max(0, (settled - 0.7) / 0.3)), sit = asked === 'soak' ? soaking * soaking * (3 - 2 * soaking) : errand?.seat ? pose.act : 0;
+      const lie = asked === 'lie' ? sit : 0, held = asked === 'hold' ? pose.act : 0, rock = asked === 'rock' ? Math.sin(t * 2.2) * 0.1 * sit : 0;
+      const look = errand?.kind === 'inspect' || asked === 'read' || asked === 'corner' ? pose.act : 0, cash = errand?.kind === 'cash', grab = cash ? pose.act : 0;
       let aim = 0.35;
       if (home && errand) {
         const points = [[home.x, home.z], ...errand.path], lengths = points.slice(1).map((point, i) => Math.hypot(point[0] - points[i][0], point[1] - points[i][1]));
-        let along = pose.offset * lengths.reduce((sum, length) => sum + length, 0), leg = 0;
+        const total = lengths.reduce((sum, length) => sum + length, 0);
+        let along = pose.offset * total, leg = 0;
+        // Sent somewhere, he takes a step for every stride of ground rather than a fixed few.
+        if (this.coffee && pose.stride) pose.stride = Math.sin(along * 2.3) * 0.24;
         while (leg < lengths.length - 1 && along > lengths[leg]) along -= lengths[leg++];
         const from = points[leg], to = points[leg + 1], part = lengths[leg] ? along / lengths[leg] : 0;
         const x = from[0] + (to[0] - from[0]) * part, z = from[1] + (to[1] - from[1]) * part, heading = Math.atan2(to[0] - from[0], to[1] - from[1]);
-        if (!this.dragging) this.residentGroup.position.set(sit ? x + (errand.seat[0] - x) * sit : x, home.y + (0.6 * ((this.couch?.scale.y || 1) - 1) - 0.4) * sit, sit ? z + (errand.seat[1] - z) * sit : z);
+        const drop = errand.rise ?? 0.6 * ((this.couch?.scale.y || 1) - 1) - 0.4;
+        const px = sit ? x + (errand.seat[0] - x) * sit : x, pz = sit ? z + (errand.seat[1] - z) * sit : z;
+        if (!this.dragging) this.residentGroup.position.set(px, home.y + stepDown(px, pz) + drop * sit, pz);
         aim = pose.facing > 0 ? heading : pose.facing < 0 ? heading + Math.PI : pose.offset > 0.5 ? errand.facing : 0.35;
       } else if (home && !this.dragging) this.residentGroup.position.copy(home);
       // Turn toward where they are going rather than snapping round.
       const yaw = this.residentYaw ?? 0.35;
-      this.residentYaw = this.motion.matches ? aim : t || coffee ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
+      this.residentYaw = this.motion.matches ? aim : t || this.coffee ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
       this.residentGroup.scale.y = RESIDENT_HEIGHT_SCALE * (1 + Math.sin(t * 1.5) * 0.008);
-      this.residentGroup.rotation.set(look * 0.06 + grab * 0.12, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
+      this.residentGroup.rotation.set(look * 0.06 + grab * 0.12 - lie * Math.PI / 2 - rock, this.residentYaw + Math.sin(t * 0.35) * 0.06 * (1 - lie), Math.sin(t * 0.7) * 0.008);
       // Like an actor, he cheats his face a little toward the audience unless he has his back to it.
       const view = this.camera?.getWorldDirection(new THREE.Vector3());
       const toCamera = view ? Math.atan2(-view.x, -view.z) - this.residentGroup.rotation.y : 0, turn = Math.atan2(Math.sin(toCamera), Math.cos(toCamera));
       const cheat = Math.abs(turn) < 2 ? THREE.MathUtils.clamp(turn, -0.5, 0.5) : 0;
       this.residentHead.rotation.y = (pose.glance + cheat) * (1 - look);
-      this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * 0.32;
+      // He looks up at the signpost and down at everything else.
+      this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * (asked === 'read' ? -0.3 : 0.32);
+      // Seated knees bend; in the tub his legs lie along it, and on the couch he is laid out straight.
+      const bend = 1.45 * sit * (1 - lie);
       this.residentLegs?.forEach((leg, i) => {
-        leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : -1.45 * sit;
-        if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : 1.45 * sit;
+        leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : -bend;
+        if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : bend * (asked === 'soak' ? 0.12 : 1);
       });
+      // His right arm stirs the pan or brings supper up from the plate; both arms carry whatever he has picked up.
+      const busy = asked === 'cook' ? -0.95 + Math.sin(t * 7) * 0.3 : asked === 'eat' ? -0.45 - Math.max(0, Math.sin(t * 2.4)) * 0.95 : 0;
       // Hands behind the back to inspect, a reach for the cash table, and a wave with whatever was found there.
       // Sideways, an arm only ever swings away from the body (positive for the right arm, negative for the left):
       // the wave used to turn the right arm inward, straight through the torso.
       this.residentArms?.forEach((arm, i) => {
-        arm.rotation.x = coffee && i ? -0.65 - pose.act * 0.22 : (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035 + look * 0.45 - sit * 0.3 - (i ? grab * 1.2 : 0);
+        arm.rotation.x = held ? -1.15 * held : busy && i ? busy * pose.act : coffee && i ? -0.65 - pose.act * 0.22
+          : (walking ? pose.stride * (i ? -1 : 1) : 0) + Math.sin(t * 1.1) * 0.035 + look * 0.45 - sit * 0.3 - (i ? grab * 1.2 : 0);
         arm.rotation.z = i ? pose.wave * 1.1 : -0.02 - 0.02 * Math.sin(t * 0.8);
       });
       if (this.residentNote) this.residentNote.visible = cash && pose.phase > 13 && pose.phase < 30;
       if (this.residentMug) { this.residentMug.visible = coffee; this.residentMug.rotation.x = -this.residentArms[1].rotation.x; }
-      if (this.activityPaused && (coffeeMoving || this.houseState === 'porch')) this.lighting?.invalidate();
+      // What he is using comes out with him: the rocker rocks, the tub fills, the skillet and his supper appear.
+      const rocker = this.homestead?.pieces?.porchChair2;
+      if (rocker) rocker.rotation.z = rock;
+      this.homestead?.setProps?.({ bath: asked === 'soak' ? Math.min(1, settled / 0.7) : 0, cook: asked === 'cook' && settled > 0, eat: asked === 'eat' && sit > 0.5 });
+      const prop = errand?.prop;
+      if (prop) {
+        const rest = prop.userData.rest ??= prop.position.clone(), me = this.residentGroup.position, reach = [Math.sin(this.residentYaw) * 0.7, Math.cos(this.residentYaw) * 0.7];
+        prop.position.set(rest.x + (me.x + reach[0] - rest.x) * held, rest.y + (1.3 - rest.y) * held, rest.z + (me.z + reach[1] - rest.z) * held);
+      }
+      if (this.activityPaused && (coffeeMoving || this.houseState === 'there')) this.lighting?.invalidate();
     }
     if (this.petSprite && !this.dragging) {
       const { sprite, size, grumpy, home, mark } = this.petSprite, turn = (this.furniture.pet.r || 0) * Math.PI / 2, pace = grumpy ? 2.2 : 1;
@@ -1580,7 +1669,7 @@ export class RoomScene {
         this.faunVisits = (this.faunVisits || 0) + 1;
       }
       const pose = faunPose(this.motion.matches ? 6 : state.faunAge / 1000), { from, to, facing } = this.faunRoute;
-      this.faun.position.set(from.x + (to.x - from.x) * pose.peek, 0.02, from.z + (to.z - from.z) * pose.peek);
+      this.faun.position.set(from.x + (to.x - from.x) * pose.peek, this.faunRoute.location === 'room' ? 0.02 : ROOM_GRADE + 0.01, from.z + (to.z - from.z) * pose.peek);
       this.faun.rotation.set(0, facing + pose.turn, pose.lean);
       if (this.faunHead) this.faunHead.rotation.y = pose.glance;
       this.faunLegs?.forEach((leg, i) => { leg.rotation.x = pose.stride * (i ? 1 : -1); });

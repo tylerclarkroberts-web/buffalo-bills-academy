@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultFurniture } from '../server/catalog/room.js';
-import { ROOM_LINES, CLICK_LINES, REPEAT_CLICK_LINES, VISITOR_LINES, REARRANGE_LINES, roomContextLines } from '../client/src/room/dialogue.js';
+import { ROOM_LINES, CLICK_LINES, REPEAT_CLICK_LINES, VISITOR_LINES, REARRANGE_LINES, TASK_LINES, roomContextLines } from '../client/src/room/dialogue.js';
 import { FAUN_EXCHANGES } from '../client/src/room/faun-dialogue.js';
 
 test('a displayed item and a stored purchase prompt different lines, and only the owner hears about storage', () => {
@@ -54,7 +54,7 @@ test('each faun exchange has two brief turns and room speech fits a bubble', () 
     assert.equal(pair.length, 2);
     assert.ok(pair.every(line => typeof line === 'string' && line.trim() && line.length <= 80));
   }
-  for (const line of [...ROOM_LINES, ...CLICK_LINES, ...REPEAT_CLICK_LINES, ...VISITOR_LINES, ...REARRANGE_LINES]) {
+  for (const line of [...ROOM_LINES, ...CLICK_LINES, ...REPEAT_CLICK_LINES, ...VISITOR_LINES, ...REARRANGE_LINES, ...Object.values(TASK_LINES).flat()]) {
     assert.ok(line.trim() && line.length <= 110, line);
   }
 });

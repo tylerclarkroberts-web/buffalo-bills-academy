@@ -27,7 +27,7 @@ Furniture stays within its approved room/yard bounds and clear of other furnitur
 
 Resident errands (sitting on the couch, inspecting furniture, taking a note from the cash table), chatter and faun visits are local cosmetic events. The resident routes around floor furniture and shelf footprints. They change no balances, pet care, inventory or daily-faun gifts. Editing and Pause activity dismiss current bubbles/visits; hidden or offscreen scenes pause the activity clock. Reduced motion stops character animation while permitting static bubbles and visits. Camera angle, zoom, pan and activity choices are local to the current page, not persisted or shared with visitors.
 
-The resident can take coffee outside through the side door when the saved layout leaves a clear route. An owner-directed trip lasts until the owner calls the resident back or interrupts the activity. Coffee breaks and the toilet-operated sprinkler change only the local scene.
+The owner can send the resident to do things from the **Do something…** menu or by clicking the thing itself: coffee or the rocking chair on the porch, the signpost, the stove, the kitchen table, the bath, the couch, something on display, or a corner. Each is offered only when the saved layout leaves a clear route to it. A trip lasts until the owner calls the resident back or interrupts the activity, except picking something up, which he puts back himself. At the signpost two buttons offer the lobby or the mines. These trips and the toilet-operated sprinkler change only the local scene.
 
 ## API and persistence
 
@@ -53,7 +53,7 @@ Visitor JSON contains `owner`, layout fields, curated `pet`, `worth` (`bankroll`
 
 Room metadata lives in `<DATA_DIR>/rooms.json` as schema version 1. Old records retain default shelves, wall mounts, finishes, furniture and their placements without a destructive migration. An explicit empty shelf list remains empty. Invalid saved furniture arrangements fall back to default positions; invalid finishes and wall mounts use valid catalog defaults. Old `visibility` and `showWealthPile` flags are ignored and dropped on the next save.
 
-Saved records carry `plan: 3`. A record with `plan: 2`, or with none, was arranged on an earlier, smaller floor: when read, its furniture coordinates are scaled up proportionally, and a record older than the couch has one placed in the nearest clear spot, or put away if none is free. Nothing is written until the owner next saves.
+Saved records carry `plan: 4`. A record with `plan: 2`, or with none, was arranged on an earlier, smaller floor: when read, its furniture coordinates are scaled up proportionally, and a record older than the couch has one placed in the nearest clear spot, or put away if none is free. A record with any earlier plan, including `plan: 3`, predates the front porch: when read, its porch fittings and yard display go to their default spots on the new porch and lawn, keeping whether each was out or put away, and its indoor arrangement is left alone. Nothing is written until the owner next saves.
 
 Reading defaults creates no room file. Writes validate against current ownership and persist before replacing the in-memory room document; failed writes preserve the last committed room. Unsupported schema versions stop initialization instead of being overwritten. Older servers may drop newer layout fields, so back up before rolling back.
 

@@ -1,34 +1,39 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ROOM_FLOOR_SCALE as S, ROOM_HOMESTEAD, roomHomestead } from '../../../server/catalog/room.js';
-import { ROOM_WALL_HEIGHT } from './scene-model.js';
+import { ROOM_FLOOR_SCALE as S, ROOM_FURNITURE, ROOM_HOMESTEAD, roomHomestead } from '../../../server/catalog/room.js';
+import { ROOM_WALL_HEIGHT, ROOM_GRADE } from './scene-model.js';
+import { groundLevel } from './landscape.js';
 import { buildWings } from './wings.js';
 
 const INCH = ROOM_WALL_HEIGHT / 102, FLOOR = 0.016, DECK = 0.025;
+// The sprinkler stands on the lawn between the porch and the wagon's pad, within reach of the chairs.
+const SPRINKLER = [6.26, 0.7];
 const worktop = 36 * INCH, half = inches => inches * INCH / (2 * S);
 
 /** The movable fittings, each a group the room scene places from the saved furniture. */
-export const HOMESTEAD_PIECES = ['range', 'worktable', 'bed', 'nightstand', 'tub', 'toilet', 'sink', 'linen', 'porchChair', 'plant'];
+export const HOMESTEAD_PIECES = ['range', 'worktable', 'bed', 'nightstand', 'tub', 'toilet', 'sink', 'linen', 'porchChair', 'porchChair2', 'plant'];
 // Model, style target, floor-plan offset from the piece's centre, size in inches, heading, support height, action.
 const MODELS = [
-  ['bathtub', 'tub', 'tub', 0, 0, [72, 24, 36], 0],
+  ['bathtub', 'tub', 'tub', 0, 0, [72, 24, 36], 0, FLOOR, 'bath'],
   ['toilet', 'toilet', 'bathroom', 0, 0, [19, 31, 29], 0, FLOOR, 'flush'],
   ['bathroomSink', 'sink', 'bathroom', 0, 0, [22, 38.8, 18], Math.PI / 2],
   // An 80-inch queen mattress fills 89% of the timber frame.
   ['bedSingle', 'bed', 'bed', 0, 0, [61, 34, 90], 0],
   // The range and cabinet stand side by side against the wall; the backsplash is the upper fifteenth of each.
-  ['kitchenStove', 'range', 'kitchen', half(30), 0, [30, 36 * 15 / 14, 28], Math.PI],
+  ['kitchenStove', 'range', 'kitchen', half(30), 0, [30, 36 * 15 / 14, 28], Math.PI, FLOOR, 'cook'],
   ['kitchenCabinet', 'range', 'kitchen', -half(30), half(3), [30, 36 * 15 / 14, 25], Math.PI],
   ['kitchenCoffeeMachine', 'range', 'kitchen', -half(30), half(3), [10, 13, 13], Math.PI, FLOOR + worktop, 'coffee'],
   ['pottedPlant', 'plant', 'porch', 0, 0, [14, 42, 16], 0.33, DECK],
-  ['chair', 'porchChair', 'porchChair', 0, 0, [19.5, 35.25, 21], -Math.PI / 2, DECK, 'coffee'],
+  // Unturned, the chairs look out from the porch. A model named twice is copied; the copy stands on rockers.
+  ['chair', 'porchChair', 'porchChair', 0, 0, [19.5, 35.25, 21], Math.PI / 2, DECK, 'coffee'],
+  ['chair', 'porchChair2', 'porchChair', 0, 0, [19.5, 35.25, 21], Math.PI / 2, DECK, 'rock'],
 ];
 
-// A timber windpump and stock tank beyond the fence. Local dimensions are in world units.
+// A timber windpump and stock tank in the corner of the yard. Local dimensions are in world units.
 function ranchWindpump(paint) {
   function add(geometry, color) {
-    paint(geometry.rotateY(Math.PI / 2 + 0.12).translate(7.7 * S, -0.13, -4.75 * S), color);
+    paint(geometry.rotateY(Math.PI / 2 + 0.12).translate(7.7 * S, ROOM_GRADE - 0.13, -4.75 * S), color);
   }
   function beam(from, to, width, color) {
     const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
@@ -67,7 +72,7 @@ function ranchWindpump(paint) {
 
   const tankX = 6.05 * S, tankZ = -4.57 * S;
   function tankRing(width, depth, y, height, color) {
-    paint(new THREE.CylinderGeometry(1, 1, height, 22).scale(width, 1, depth).translate(tankX, y, tankZ), color);
+    paint(new THREE.CylinderGeometry(1, 1, height, 22).scale(width, 1, depth).translate(tankX, ROOM_GRADE + y, tankZ), color);
   }
   tankRing(1.27, 0.55, 0.12, 0.49, '#818a7c');
   for (const y of [-0.025, 0.25, 0.38]) tankRing(1.31, 0.57, y, 0.048, '#a9ae98');
@@ -101,6 +106,11 @@ function architecture(parent, style, pieces) {
   const { paint, box, batch } = joinery();
   const plank = '#966a46', trim = '#6b4834', pale = '#ccad82';
   const boards = [0.94, 1.03, 0.89, 1.07].map(factor => style.porch.paint.clone().multiplyScalar(factor));
+  // Fieldstone footings carry every floor down to the ground, which lies lower behind the house than on the lawn.
+  for (const [x0, x1, z0, z1] of [[-4.08, 4.25, -3.25, 3.25], [-4, 3.55, -7.05, -3], [-2.35, 3.25, 3.25, 7.15]]) {
+    box(x1 - x0, 0.02 - ROOM_GRADE, z1 - z0, '#8d8271', (x0 + x1) / 2, (ROOM_GRADE - 0.38) / 2, (z0 + z1) / 2);
+  }
+  parent.add(batch('Footings'));
   // Movable fittings are built round their own centre and added to the piece the scene places.
   function addPiece(name, id, piece) {
     const mesh = batch(name);
@@ -157,6 +167,26 @@ function architecture(parent, style, pieces) {
   box(1.48, 0.020, 0.55, bathColor, 0, 0.026, 0.77);
   for (const dx of [-0.61, 0.61]) box(0.056, 0.007, 0.53, '#c0c9a6', dx, 0.039, 0.77);
   addPiece('Bath mat', 'tub', 'tub');
+  // Bath water, out of sight until he runs one; the scene raises it as the tub fills.
+  paint(new THREE.PlaneGeometry(58 * INCH, 24 * INCH).rotateX(-Math.PI / 2), '#7fb9c9');
+  addPiece('Bath water', 'tub', 'tub').visible = false;
+
+  // A chair for the worktable and a fried egg for supper. The scene puts both on whichever side he can reach.
+  const chair = cabinetAt(0, 0);
+  chair(16, 1.5, 16, plank, 0, 17.25, 0);
+  chair(15.5, 5, 1, plank, 0, 31.5, -7.2);
+  for (const dx of [-7, 7]) {
+    for (const dz of [-7, 7]) chair(1.6, 16.5, 1.6, trim, dx, 8.25, dz);
+    chair(1.6, 17, 1.6, trim, dx, 26.5, -7.2);
+  }
+  addPiece('Kitchen chair', 'kitchen', 'worktable');
+  const egg = (plate, lift, x = 0, z = 0) => {
+    paint(new THREE.CylinderGeometry(3 * INCH, 3 * INCH, 0.3 * INCH, 10).translate(x, plate + lift, z), '#f6f1e2');
+    paint(new THREE.SphereGeometry(INCH, 8, 5).scale(1, 0.5, 1).translate(x + 0.5 * INCH, plate + lift + 0.25 * INCH, z), '#e2a93b');
+  };
+  paint(new THREE.CylinderGeometry(4.6 * INCH, 3.6 * INCH, 0.6 * INCH, 12).translate(0, FLOOR + worktop + 0.3 * INCH, 0), '#d9d2bd');
+  egg(FLOOR + worktop, 0.75 * INCH);
+  addPiece('Supper', 'kitchen', 'worktable').visible = false;
 
   // Build the island around the origin so the worktop, bowl and rolling pin move as one.
   const prepX = 0, prepZ = 0, prep = cabinetAt(prepX, prepZ);
@@ -182,26 +212,41 @@ function architecture(parent, style, pieces) {
   box(1.95, 0.020, 0.68, kitchenColor.clone().multiplyScalar(0.68), runnerX, 0.026, runnerZ);
   for (const dx of [-0.84, -0.76, 0.76, 0.84]) box(0.034, 0.007, 0.66, '#cfaf82', runnerX + dx, 0.039, runnerZ);
   addPiece('Kitchen runner', 'kitchen', 'range');
-
-  // One continuous deck from the side-door sill to the wide step onto the dirt track.
-  const deckLeft = 4.13, deckRight = 8.50, deckBack = 1.47, deckFront = 4.80;
-  box(deckRight - deckLeft, 0.19, deckFront - deckBack, trim,
-    (deckLeft + deckRight) / 2, -0.100, (deckBack + deckFront) / 2);
-  box(0.17, 0.06, 0.07, plank, 4.215, DECK - 0.03, 1.45);
-  const cedar = style.porch.typeId === 'cedar', plankCount = cedar ? 17 : 24;
-  const boardDepth = (deckFront - deckBack) / plankCount;
-  for (let i = 0; i < plankCount; i++) {
-    const z = deckBack + (i + 0.5) * boardDepth, joint = 5.4 + (i % 4) * 0.47;
-    box(joint - deckLeft - 0.006, 0.049, boardDepth - 0.006, boards[(i + 1) % 4], (deckLeft + joint) / 2, DECK - 0.0245, z);
-    box(deckRight - joint - 0.006, 0.049, boardDepth - 0.006, boards[i % 4], (joint + deckRight) / 2, DECK - 0.0245, z);
+  // A skillet with the same egg in it, on the stove only while he cooks.
+  const hob = 15 * INCH, stoveTop = FLOOR + worktop;
+  paint(new THREE.CylinderGeometry(5 * INCH, 4.4 * INCH, 1.4 * INCH, 14).translate(hob, stoveTop + 0.7 * INCH, 0), '#3a3d3b');
+  paint(new THREE.BoxGeometry(7 * INCH, 0.8 * INCH, 1.2 * INCH).translate(hob - 8 * INCH, stoveTop + 1.1 * INCH, 0), '#3a3d3b');
+  egg(stoveTop, 1.5 * INCH, hob);
+  addPiece('Skillet', 'kitchen', 'range').visible = false;
+  // Runners under the second porch chair make it a rocker.
+  for (const dz of [-8.8, 8.8]) for (const [dx, lift, tilt, length] of [[0, 0.8, 0, 13], [-9.8, 2, -0.3, 7.6], [9.8, 2, 0.3, 7.6]]) {
+    paint(new THREE.BoxGeometry(length * INCH, 1.6 * INCH, 1.7 * INCH).rotateZ(tilt).translate(dx * INCH, DECK + lift * INCH, dz * INCH), trim);
   }
-  const opening = 56 * INCH / S, postWidth = 5.5 * INCH / S;
-  const gateLeft = 2.60 - (opening + postWidth) / 2, gateRight = 2.60 + (opening + postWidth) / 2;
-  const outerX = 8.42, southZ = 4.71, northZ = 1.49;
-  box(13 * INCH / S, 0.16, opening, plank, deckRight + 6.5 * INCH / S, DECK - 0.08, 2.60);
-  const north = [[5.22, northZ], [6.80, northZ], [outerX, northZ], [outerX, gateLeft]];
-  const south = [[outerX, gateRight], [outerX, southZ], [6.28, southZ], [4.22, southZ], [4.22, 3.38]];
-  for (const line of [north,south]) {
+  addPiece('Rockers', 'porchChair', 'porchChair2');
+
+  // A long front porch on a raised frame, from the bedroom corner to the kitchen corner. Boards run out from the wall.
+  const wallX = 4.13, edgeX = 6.10, bedEnd = -3.25, kitchenEnd = 3.42, midX = (wallX + edgeX) / 2, midZ = (bedEnd + kitchenEnd) / 2;
+  // Steps at the kitchen end go down to the lawn in line with the gate.
+  const stepA = 2.38, stepB = 3.28, stepZ = (stepA + stepB) / 2, lawn = groundLevel(edgeX + 0.5, stepZ);
+  box(edgeX - wallX, 0.19, kitchenEnd - bedEnd, trim, midX, -0.100, midZ);
+  // Dark boards close in the space underneath.
+  box(edgeX - wallX - 0.07, -0.04 - lawn, kitchenEnd - bedEnd - 0.07, '#4d3a2c', midX, (lawn - 0.34) / 2, midZ);
+  const cedar = style.porch.typeId === 'cedar', plankCount = cedar ? 34 : 48;
+  const boardDepth = (kitchenEnd - bedEnd) / plankCount;
+  for (let i = 0; i < plankCount; i++) {
+    box(edgeX - wallX - 0.006, 0.049, boardDepth - 0.006, boards[(i + (i >> 2)) % 4], midX, DECK - 0.0245, bedEnd + (i + 0.5) * boardDepth);
+  }
+  const rise = (DECK - lawn) / 3, tread = 11 * INCH / S;
+  for (const step of [1, 2]) {
+    const top = DECK - step * rise, x = edgeX + (step - 0.5) * tread;
+    box(tread, top - lawn + 0.1, stepB - stepA - 0.05, trim, x, (top + lawn - 0.19) / 2, stepZ);
+    box(tread + 0.02, 0.045, stepB - stepA, boards[step], x + 0.01, top - 0.0225, stepZ);
+  }
+  // Rails run round both ends and along the front as far as the steps; the kitchen corner post stands at their head.
+  const postWidth = 5.5 * INCH / S, railX = edgeX - 0.08, railA = bedEnd + 0.08, railB = kitchenEnd - 0.08;
+  const bedRun = [[4.22, railA], [railX, railA], [railX, -1.35], [railX, 0.5], [railX, stepA - postWidth / 2]];
+  const kitchenRun = [[railX, railB], [4.22, railB]];
+  for (const line of [bedRun, kitchenRun]) {
     for (const [x, z] of line) {
       box(postWidth, 37 * INCH, postWidth, trim, x, DECK + 18.5 * INCH, z);
       box(postWidth + 0.036, 0.085, postWidth + 0.036, pale, x, DECK + 37 * INCH, z);
@@ -219,22 +264,24 @@ function architecture(parent, style, pieces) {
       }
     }
   }
-  // The silent sprinkler and its hose stay in the scene between flushes.
-  box(0.23, 0.115, 0.18, '#567563', 6.98, 0.083, 4.35);
-  box(0.078, 0.16, 0.078, '#8d8669', 6.98, 0.167, 4.35);
-  box(0.30, 0.079, 0.065, '#54806a', 6.98, 0.256, 4.35, 0.26);
-  box(0.047, 0.049, 0.39, '#54664a', 6.98, 0.052, 4.57);
+  // The silent sprinkler and its hose wait on the lawn between flushes.
+  const [sprayX, sprayZ] = SPRINKLER, turf = groundLevel(sprayX, sprayZ);
+  box(0.23, 0.115, 0.18, '#567563', sprayX, turf + 0.058, sprayZ);
+  box(0.078, 0.16, 0.078, '#8d8669', sprayX, turf + 0.142, sprayZ);
+  box(0.30, 0.079, 0.065, '#54806a', sprayX, turf + 0.231, sprayZ, 0.26);
+  box(0.047, 0.049, 0.39, '#54664a', sprayX, turf + 0.027, sprayZ + 0.22);
   addPiece('Porch and rails', 'porch');
   return buildWings(parent, box, batch, style);
 
 }
 
 function waterSpray([chairX, chairZ]) {
-  const points = [];
+  const points = [], [fromX, fromZ] = SPRINKLER, nozzle = groundLevel(fromX, fromZ) + 0.275, seat = DECK + 18 * INCH;
+  // Seven jets arc up over the porch rail and come down on the seat.
   for (let jet = 0; jet < 7; jet++) for (let step = 0; step < 19; step++) {
     for (const t of [step / 19, (step + 0.79) / 19]) {
-      points.push((6.98 + t * (chairX - 6.98 + (jet - 3) * 0.054)) * S, 0.3 + 3.4 * t * (1 - t) + (DECK + 18 * INCH - 0.3) * t,
-        (4.35 + t * (chairZ - 4.35 - (jet - 3) * 0.061)) * S);
+      points.push((fromX + t * (chairX - fromX + (jet - 3) * 0.054)) * S, nozzle + 7 * t * (1 - t) + (seat - nozzle) * t,
+        (fromZ + t * (chairZ - fromZ - (jet - 3) * 0.061)) * S);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -341,9 +388,10 @@ export function buildHomestead(parent, { onReady } = {}) {
   group.name = 'Homestead extension'; parent.add(group);
   // The scene positions, turns and hides these from the saved furniture; they keep their contents across restyles.
   const pieces = Object.fromEntries(HOMESTEAD_PIECES.map(id => {
-    const piece = new THREE.Group(); piece.name = `Movable ${id}`; group.add(piece); return [id, piece];
+    // Turned first and tipped second, so the rocker can rock whichever way it faces.
+    const piece = new THREE.Group(); piece.name = `Movable ${id}`; piece.rotation.order = 'YXZ'; group.add(piece); return [id, piece];
   }));
-  let disposed = false, structure, models, spray, state, savedKey, shapeKey, chairKey;
+  let disposed = false, structure, models, spray, state, savedKey, shapeKey, chairKey, seatSide = 0;
 
   function collectPicks() {
     picks.length = editPicks.length = 0;
@@ -354,8 +402,8 @@ export function buildHomestead(parent, { onReady } = {}) {
   }
   function applyModels() {
     if (!models) return;
-    for (const [name, piece, id, x, z, inches, heading, y = FLOOR, action] of MODELS) {
-      const mesh = models[name];
+    for (const [row, [, piece, id, x, z, inches, heading, y = FLOOR, action]] of MODELS.entries()) {
+      const mesh = models[row];
       mesh.geometry.computeBoundingBox();
       const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
       mesh.scale.fromArray(inches).multiplyScalar(INCH).divide(size);
@@ -389,7 +437,8 @@ export function buildHomestead(parent, { onReady } = {}) {
       collectPicks();
     }
     // The flush gag aims the sprinkler at wherever the lawn chair is.
-    const chair = furniture?.porchChair, at = chair ? [chair.x / S, chair.z / S] : [7.55, 3.7], nextChair = at.join();
+    const [homeX, homeZ] = ROOM_FURNITURE.porchChair.home, chair = furniture?.porchChair || { x: homeX, z: homeZ };
+    const at = [chair.x / S, chair.z / S], nextChair = at.join();
     if (nextChair !== chairKey) {
       chairKey = nextChair;
       const visible = spray?.visible || false;
@@ -403,12 +452,28 @@ export function buildHomestead(parent, { onReady } = {}) {
   const ready = new GLTFLoader().loadAsync(url).then(({ scene }) => scene, () => disposed ? null : fallbackModels()).then(loaded => {
     if (!loaded) return;
     if (disposed) { releaseModels(loaded); return; }
-    models = Object.fromEntries(MODELS.map(([name]) => [name, loaded.getObjectByName(name)]));
+    models = MODELS.map(([name], row) => {
+      const found = loaded.getObjectByName(name);
+      if (MODELS.findIndex(([first]) => first === name) === row) return found;
+      const copy = found.clone(); copy.geometry = found.geometry.clone();
+      return copy;
+    });
     applyModels(); collectPicks(); group.updateWorldMatrix(true, true); onReady?.();
   });
   return {
     pieces, picks, editPicks, walls, ready, update,
     setSprinkler(visible) { spray.visible = visible; },
+    /** What only appears while he uses it, and the kitchen chair on whichever long side of the worktable he can reach (0 hides it). */
+    setProps({ bath = 0, cook = false, eat = false, chairSide } = {}) {
+      if (disposed) return;
+      if (chairSide !== undefined) seatSide = chairSide;
+      const water = pieces.tub.getObjectByName('Bath water'), skillet = pieces.range.getObjectByName('Skillet');
+      const chair = pieces.worktable.getObjectByName('Kitchen chair'), supper = pieces.worktable.getObjectByName('Supper');
+      if (water) { water.visible = bath > 0.02; water.position.y = 0.3 + 0.42 * bath; }
+      if (skillet) skillet.visible = cook;
+      if (chair) { chair.visible = !!seatSide; chair.position.z = seatSide * (12 * INCH + 0.5); chair.rotation.y = seatSide > 0 ? Math.PI : 0; }
+      if (supper) { supper.visible = eat; supper.position.z = seatSide * 6 * INCH; }
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

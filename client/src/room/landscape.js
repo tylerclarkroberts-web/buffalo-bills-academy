@@ -1,33 +1,34 @@
 import * as THREE from 'three';
 import { desertHorizon } from './desert-horizon.js';
 import { ROOM_FLOOR_SCALE } from '../../../server/catalog/room.js';
+import { ROOM_GRADE } from './scene-model.js';
 
 const EARTH = -0.13;
 const color = hex => new THREE.Color(hex);
+const smooth = THREE.MathUtils.smoothstep;
+function yardEdge(x, z) {
+  const waviness = .13 * Math.cos(2.6 * x + z * 1.5) + .10 * Math.sin(x * .6 - 3.3 * z);
+  return Math.min(x - 1.6, 9.58 - .021 * (z - 1.2) ** 2 - x,
+    z + 7.65 - .055 * (x - 3.9) ** 2, 8.0 - .057 * (x - 4.7) ** 2 - z) + waviness;
+}
+// The lawn is a low rise in the desert, level under the wagon's wheels. The verge slopes down to the fence and the footpath beyond it.
+const turfLevel = (x, z) => EARTH + 0.119 * smooth(yardEdge(x, z), -.42, .62) * (1 - smooth(x, 8.34, 8.62));
+/** How high the ground lies at a floor-plan point, for whatever stands on it outside this group. */
+export const groundLevel = (x, z) => ROOM_GRADE + turfLevel(x, z);
 
 /** All positions use the bunkhouse floor plan. Only the soil receives shadows, keeping the canyon out of the house shadow map. */
 export function homesteadLandscape() {
   const group = new THREE.Group();
   group.name = 'homestead-landscape';
-  group.scale.set(ROOM_FLOOR_SCALE, 1, ROOM_FLOOR_SCALE);
+  group.scale.set(ROOM_FLOOR_SCALE, 1, ROOM_FLOOR_SCALE); group.position.y = ROOM_GRADE;
   let seed = 43536;
   const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 0x100000000; };
   const soil = new THREE.PlaneGeometry(78, 78, 72, 72);
   soil.rotateX(-Math.PI / 2);
   const soilColors = [], near = color('#a99676'), far = color('#c29e80');
   const sage = color('#708761'), hay = color('#a59a72'), patch = new THREE.Color(), shade = new THREE.Color();
-  const smooth = THREE.MathUtils.smoothstep;
   // Spend the ground mesh's vertices on the lawn; the far desert only needs a few large quads.
   const axis = value => Math.sign(value) * (Math.abs(value) < 32 ? Math.abs(value) * 0.35 : 11.2 + (Math.abs(value) - 32) * 27.8 / 7);
-  function yardEdge(x, z) {
-    const waviness = .13 * Math.cos(2.6 * x + z * 1.5) + .10 * Math.sin(x * .6 - 3.3 * z);
-    return Math.min(x - 1.6, 9.58 - .021 * (z - 1.2) ** 2 - x,
-      z + 7.65 - .055 * (x - 3.9) ** 2, 8.0 - .057 * (x - 4.7) ** 2 - z) + waviness;
-  }
-  function turfLevel(x, z) {
-    // Wheels on the saved wagon pad sit just below floor level. The verge slopes down to the footpath.
-    return EARTH + 0.119 * smooth(yardEdge(x, z), -.42, .62) * (1 - smooth(x, 8.34, 8.62));
-  }
   const points = soil.getAttribute('position'), uv = soil.getAttribute('uv');
   for (let i = 0; i < points.count; i++) {
     const x = axis(points.getX(i)), z = axis(points.getZ(i));
@@ -37,8 +38,8 @@ export function homesteadLandscape() {
     const mottling = .08 * Math.sin(2.4 * x + 1.3 * z) + .07 * Math.sin(1.65 * z - x * .36);
     const dry = .16 + .43 * (1 - smooth(z, -5, 1)) + .15 * smooth(x, 6.5, 9.6) + mottling;
     patch.copy(sage).lerp(hay, dry);
-    // The lawn wears away along the footpath and beside the stock trough.
-    const footpath = smooth(x, 8.15, 8.70) * (1 - smooth(Math.abs(z - 2.65), .37, .77));
+    // The lawn wears away from the foot of the porch steps to the gate, and beside the stock trough.
+    const footpath = smooth(x, 6.45, 6.85) * (1 - smooth(Math.abs(z - 2.83), .37, .77));
     const trough = (1 - smooth(Math.hypot((x - 6.9) * .65, z + 4.50), .46, 1.36)) * .54;
     shade.lerp(patch, green * (1 - Math.max(footpath, trough))).toArray(soilColors, i * 3);
     points.setXYZ(i, x, turfLevel(x, z) - EARTH, z);
@@ -70,7 +71,7 @@ export function homesteadLandscape() {
   };
   const quad = (a, b, c, d, left, right = left) => { triangle(a, b, c, left, left, right); triangle(a, c, d, left, right, right); };
 
-  // A short footpath joins the front steps to the winding wagon road.
+  // A short footpath joins the yard gate to the winding wagon road.
   function trail(knots, width, wheelTracks) {
     const curve = new THREE.CatmullRomCurve3(knots.map(([x, z]) => new THREE.Vector3(x, 0, z)));
     const edge = color('#c29563'), worn = color('#cfa877'), rut = color('#c39767');
@@ -94,7 +95,7 @@ export function homesteadLandscape() {
     }
   }
   trail([[15.1,10.9],[13.5,7.4],[11.5,5.8],[10.6,3.6],[10.8,2.0],[11.65,0],[11.25,-1.8],[9.55,-3.65],[9.4,-5.15],[11,-6.9],[13.4,-7.5],[14.4,-9.3],[13,-12.25],[14.4,-16.5]], 0.46, true);
-  trail([[8.70,2.60],[9.17,2.60],[9.85,2.72],[10.7,2.83]], 0.40, false);
+  trail([[8.70,2.83],[9.17,2.83],[9.85,2.85],[10.7,2.83]], 0.40, false);
 
   // A soft apron under cut vertical cliffs, pale sediment seams, and a resistant cap.
   const strata = [[0,1.05,0.8],[0.16,0.88,0.96],[0.25,0.70,0.78],[0.53,0.66,0.96],[0.57,0.65,1.2],[0.78,0.62,0.91],[0.82,0.67,0.78],[0.96,0.66,1.01],[1,0.61,1.16]];
@@ -146,9 +147,9 @@ export function homesteadLandscape() {
       triangle(left, fold, tip, paint); triangle(fold, right, tip, paint.clone().multiplyScalar(0.71));
     }
   }
-  // Authored clumps leave space around the doors, the turning chair, both trails and the wagon.
-  for (const [x, z, size] of [[-5.15,3.72,0.57],[-2.85,8.14,0.56],[1.5,8.21,0.44],[4.55,6.64,0.61],[8.55,7.15,0.55],
-    [9.45,4.95,0.75],[8.9,-0.68,0.66],[8.3,-3.76,0.43],[5.85,-3.9,0.73],[4.9,-3.7,0.47],[-3.55,-8.35,0.56],
+  // Authored clumps leave space around the doors, the porch, the fence line, both trails and the wagon.
+  for (const [x, z, size] of [[-5.15,3.72,0.57],[-2.85,8.14,0.56],[1.5,8.21,0.44],[4.55,6.64,0.61],[9.15,7.75,0.55],
+    [9.55,4.95,0.75],[9.45,-0.68,0.66],[8.2,-3.76,0.43],[5.85,-3.9,0.73],[4.9,-3.7,0.47],[-3.55,-8.35,0.56],
     [-5.35,-2.67,0.85],[-6.55,0.55,0.49],[-4.85,5.85,0.39],[-8.6,5.5,0.8],[4.2,9.45,0.65],[13.0,2.4,0.64],
     [4.8,-6.55,0.57],[11.7,-2.6,0.69],[3.1,-8.1,0.49],[-1.25,-8.9,0.71]]) {
     yucca(x, z, size, color(random() > 0.52 ? '#7d8962' : '#918f63'));

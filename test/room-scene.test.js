@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, faceWrap, CHIP_VALUES, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes } from '../client/src/room/scene-model.js';
+import { makeRoomCamera, ROOM_BOUNDS, ROOM_POSITIONS, wealthLayout, faceWrap, CHIP_VALUES, roomRenderSize, ROOM_VIEW_LIMITS, roomView, roomWallVisibility, roomPositions, nearestShelfSpot, ROOM_FLOOR_SCALE, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, roomShelfPosition, floorPoint, nudgeAxes, ROOM_GRADE } from '../client/src/room/scene-model.js';
 import { roomAnchors, ROOM_SHELF_SPOTS, ROOM_WALL_SPOTS, shelfSlots, defaultShelves, defaultWallDisplays, roomFinishes, defaultFurniture, furnitureFits, wallMountsFit } from '../server/catalog/room.js';
 import { wallDisplayPosition, residentStep } from '../client/src/room/scene-model.js';
 import { makeWallCutaway } from '../client/src/room/cutaway.js';
@@ -27,7 +27,7 @@ const screenPoint = (camera, position) => {
 
 test('the expanded floor preserves the scale and placement of furniture, shelves and the yard display', t => {
   const previousDocument = globalThis.document;
-  const context = { fillRect() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
+  const context = { fillRect() {}, fillText() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
   t.after(() => { if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument; });
   const scene = furnitureScene(); scene.static = new THREE.Group(); scene.scene = new THREE.Scene();
@@ -60,12 +60,24 @@ test('the expanded floor preserves the scale and placement of furniture, shelves
     assert.equal(roomWallVisibility({ x: 0, z: -0.4 * S + offset }).back, offset > 0);
   }
   scene.setEditing(false);
+  // The signpost outside the gate: the owner can send the resident out to read it, and a visitor only looks.
+  const sign = scene.static.getObjectByName('road-signpost');
+  assert.ok(sign.position.x > 8.7 * S && sign.position.y < ROOM_GRADE, 'it stands on the low ground beyond the fence');
+  assert.deepEqual([...new Set(scene.signPicks.map(part => part.userData.selection.action))], ['sign']);
+  scene.raycaster = new THREE.Raycaster();
+  for (const arm of sign.children.filter(part => part.isGroup)) {
+    const at = screenPoint(scene.camera, arm.localToWorld(new THREE.Vector3(0.6, 0, 0.03)).toArray());
+    scene.onHouseAction = () => {};
+    assert.deepEqual(scene.targetAt(at.clientX, at.clientY), { kind: 'houseAction', action: 'sign' });
+    scene.onHouseAction = null;
+    assert.notEqual(scene.targetAt(at.clientX, at.clientY)?.kind, 'houseAction');
+  }
   scene.scene.traverse(object => { object.geometry?.dispose(); object.material?.map?.dispose(); object.material?.dispose(); });
 });
 
 test('all wall caps share the 8.5-foot proportion and the yard door stays an ordinary height', t => {
   const previousDocument = globalThis.document;
-  const context = { fillRect() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
+  const context = { fillRect() {}, fillText() {}, beginPath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() {}, stroke() {}, createLinearGradient: () => ({ addColorStop() {} }) };
   globalThis.document = { createElement: () => ({ getContext: () => context }) };
   t.after(() => { if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument; });
   const scene = furnitureScene(); scene.static = new THREE.Group(); scene.buildRoom(); scene.static.updateMatrixWorld(true);
@@ -305,7 +317,7 @@ test('tilt changes elevation and pan moves the same screen distance at every zoo
 test('room close-ups frame each destination on a phone and reset unknown destinations', () => {
   const aspect = 360 / 280;
   const wide = makeRoomCamera(aspect);
-  for (const [area, x, z] of [['kitchen', 0.45, 5.2], ['bunk', 1.55, -5.05], ['bathroom', -2.22, -5.05], ['porch', 6.25, 3.1], ['yard', 6.4, -0.78], ['parlor', 0, 0]]) {
+  for (const [area, x, z] of [['kitchen', 0.45, 5.2], ['bunk', 1.55, -5.05], ['bathroom', -2.22, -5.05], ['porch', 5.35, 0.08], ['yard', 7.75, 0.5], ['parlor', 0, 0]]) {
     const view = roomView({ area }), focused = makeRoomCamera(aspect, view);
     const middle = new THREE.Vector3(x * S, 1.8, z * S).project(focused);
     assert.ok(Math.abs(middle.x) < 0.12 && Math.abs(middle.y) < 0.2, area);
@@ -529,8 +541,8 @@ test('a head cutout is boxed, sampled for hair and skin, and surrounded by them 
 test('the wagon footprint stays outside the cabin and desk props sit above the indoor floor', () => {
   assert.deepEqual(Object.keys(ROOM_POSITIONS).sort(), roomAnchors().map(anchor => anchor.id).sort());
   const [x, y, z] = ROOM_POSITIONS.window;
-  assert.ok(x - 1.3 > 4.25 * S, 'the full wagon belongs beyond the cabin floor edge');
-  assert.ok(y >= 0 && y < 0.1, 'the wagon sits at yard ground level');
+  assert.ok(x - 1.4 > 6.1 * S, 'the full wagon belongs on the lawn beyond the porch');
+  assert.ok(y >= ROOM_GRADE && y < ROOM_GRADE + 0.1, 'the wagon sits at yard ground level, below the floors');
   const [deskX, deskY, deskZ] = ROOM_POSITIONS.desk;
   assert.ok(Math.abs(deskX) < 4 * S && Math.abs(deskZ) < 3 * S && deskY > 0.8 && deskY < 1.2, 'writing surface is inside at desk height');
   for (const aspect of [320 / 280, 390 / 280, 736 / 440, 844 / 300]) {
