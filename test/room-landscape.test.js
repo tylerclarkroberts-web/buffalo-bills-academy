@@ -89,7 +89,7 @@ test('no rock formation screens the bedroom, bathroom or porch on a full turn', 
   }
 });
 
-test('one graded lawn supports saved wagon placements and continues across the bathroom frontage', () => {
+test('one graded lawn supports saved wagon placements and continues across the kitchen frontage', () => {
   const landscape = homesteadLandscape(), ground = landscape.getObjectByName('ranch-ground');
   landscape.updateMatrixWorld(true);
   const S = ROOM_FLOOR_SCALE, down = new Vector3(0, -1, 0), colors = ground.geometry.getAttribute('color');

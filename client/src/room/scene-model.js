@@ -18,8 +18,9 @@ function lotBounds(left, back, right, front) {
 export const ROOM_BOUNDS = lotBounds(-4.55, -7.4, 9.2, 7.55);
 const AREAS = {
   parlor: lotBounds(-4.1, -3.1, 4.2, 3.25),
-  bathroom: lotBounds(-2.45, 3.2, 3.35, 7.25),
-  bunk: lotBounds(-4.1, -7.15, 3.65, -3),
+  kitchen: lotBounds(-2.45, 3.2, 3.35, 7.25),
+  bathroom: lotBounds(-4.1, -7.15, -0.35, -2.95),
+  bunk: lotBounds(-0.55, -7.15, 3.65, -2.95),
   porch: lotBounds(4, 1.1, 9, 5.05),
   yard: lotBounds(4, -3.2, 8.8, 1.65),
 };
@@ -174,13 +175,18 @@ export function nudgeAxes(rotation = 0) {
     : { right: [0, Math.sign(direction.x)], away: [Math.sign(direction.x), 0] };
 }
 
-export const ROOM_VIEW_LIMITS = { minZoom: 0.75, maxZoom: 4, minRotation: -180, maxRotation: 180 };
+export const ROOM_VIEW_LIMITS = { minZoom: 0.75, maxZoom: 4, minRotation: -180, maxRotation: 180, minTilt: -15, maxTilt: 30, maxPan: 0.7 };
 
 export function roomView(value = {}) {
+  const { minZoom, maxZoom, minTilt, maxTilt, maxPan } = ROOM_VIEW_LIMITS;
+  const bounded = (n, min, max, fallback = 0) => Number.isFinite(n) ? THREE.MathUtils.clamp(n, min, max) : fallback;
   return {
     ...(Object.hasOwn(AREAS, value?.area) ? { area: value.area } : {}),
-    zoom: Number.isFinite(value?.zoom) ? Math.min(ROOM_VIEW_LIMITS.maxZoom, Math.max(ROOM_VIEW_LIMITS.minZoom, value.zoom)) : 1,
+    zoom: bounded(value?.zoom, minZoom, maxZoom, 1),
     rotation: Number.isFinite(value?.rotation) ? ((value.rotation % 360 + 540) % 360) - 180 : 0,
+    tilt: bounded(value?.tilt, minTilt, maxTilt),
+    panX: bounded(value?.panX, -maxPan, maxPan),
+    panY: bounded(value?.panY, -maxPan, maxPan),
   };
 }
 
@@ -193,22 +199,22 @@ export function roomRenderSize(width, height, pixelRatio = 1) {
   return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
 }
 
-const ROOM_LOOK = [0, 1.1, -0.4 * S];
+const ROOM_LOOK = new THREE.Vector3(0, 1.1, -0.4 * S);
+const HOME_ORBIT = new THREE.Spherical().setFromVector3(new THREE.Vector3(17, 14, -6).multiplyScalar(S));
 // The camera has no perspective, so a wall shows its inside only while the camera is on the room's side of the point
 // it looks at. Judged by the wall's own line instead, a near wall was drawn from behind, leaning across the room.
 export function roomWallVisibility(position) {
-  const back = position.z >= ROOM_LOOK[2], left = position.x >= ROOM_LOOK[0];
+  const back = position.z >= ROOM_LOOK.z, left = position.x >= ROOM_LOOK.x;
   return { back, front: !back, left, right: !left };
 }
 
 /** Fit the selected part of the homestead at any angle before applying zoom. */
-export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
-  const { rotation, zoom, area } = roomView(view);
+export function makeRoomCamera(aspect, view = {}) {
+  const { rotation, tilt, zoom, area, panX, panY } = roomView(view);
   const bounds = AREAS[area] || ROOM_BOUNDS;
-  const turn = rotation * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 140);
-  camera.position.set((17 * cos - 6 * sin) * S, 1.1 + 14 * S, (-6 * cos - 17 * sin - 0.4) * S);
-  camera.lookAt(...ROOM_LOOK);
+  camera.position.setFromSphericalCoords(HOME_ORBIT.radius, HOME_ORBIT.phi - THREE.MathUtils.degToRad(tilt), HOME_ORBIT.theta + THREE.MathUtils.degToRad(rotation)).add(ROOM_LOOK);
+  camera.lookAt(ROOM_LOOK);
   camera.updateMatrixWorld();
   const points = [];
   for (const x of [bounds.min[0], bounds.max[0]]) {
@@ -221,9 +227,9 @@ export function makeRoomCamera(aspect, view = {}, pan = [0, 0]) {
   const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   const halfH = Math.max((maxY - minY) / 2, (maxX - minX) / (2 * a)) * 1.06;
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-  // Zooming in leaves room to slide the frame; pan is -1..1 of that slack, so 100% always shows everything.
-  const slack = 1 - 1 / Math.max(1, zoom), side = value => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
-  const px = cx + side(pan?.[0]) * halfH * a * slack, py = cy + side(pan?.[1]) * halfH * slack;
+  // Keep the center over the selected lot even if an ultrawide or tall viewport has space on either side.
+  const px = THREE.MathUtils.clamp(cx + panX * halfH * a, minX, maxX);
+  const py = THREE.MathUtils.clamp(cy + panY * halfH, minY, maxY);
   camera.left = px - halfH * a; camera.right = px + halfH * a;
   camera.top = py + halfH; camera.bottom = py - halfH;
   camera.zoom = zoom;

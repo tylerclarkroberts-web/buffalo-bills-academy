@@ -44,26 +44,33 @@ export class Avatars {
   }
   setAvatar(p, { kind, png, seed, skinTone }) {
     if (skinTone !== undefined) checkSkinTone(skinTone);
+    const file = this.file(p.id);
     if (kind === 'photo') {
-      const buf = parsePng(png);
-      const file = this.file(p.id), tmp = `${file}.tmp`;
+      const buf = parsePng(png), tmp = `${file}.tmp`;
       fs.writeFileSync(tmp, buf); fs.renameSync(tmp, file);
-      p.avatar = { kind, v: this.now() };
-    } else if (kind === 'gen') {
-      const s = String(seed ?? '').slice(0, 40) || p.id;
-      try { fs.unlinkSync(this.file(p.id)); } catch { /* none */ }
-      p.avatar = { kind, seed: s, v: this.now() };
-    } else throw new GameError('Choose a photo avatar or a generated one.');
-    return this.save(p, skinTone);
+      return this.save(p, skinTone, { kind, v: this.now() });
+    }
+    if (kind !== 'gen') throw new GameError('Choose a photo avatar or a generated one.');
+    const s = String(seed ?? '').slice(0, 40) || p.id;
+    const info = this.save(p, skinTone, { kind, seed: s, v: this.now() });
+    try { fs.unlinkSync(file); } catch { /* none */ }
+    return info;
   }
   setSkinTone(p, skinTone) {
     checkSkinTone(skinTone);
     return this.save(p, skinTone);
   }
-  save(p, skinTone) {
+  save(p, skinTone, avatar) {
+    const oldTone = p.skinTone, oldAvatar = p.avatar;
+    if (avatar) p.avatar = avatar;
     if (skinTone === null) delete p.skinTone;
     else if (skinTone !== undefined) p.skinTone = skinTone;
-    this.store.savePlayers();
+    try { this.store.savePlayers(); }
+    catch (error) {
+      if (oldTone === undefined) delete p.skinTone; else p.skinTone = oldTone;
+      if (oldAvatar === undefined) delete p.avatar; else p.avatar = oldAvatar;
+      throw error;
+    }
     return this.info(p);
   }
   remove(p) {

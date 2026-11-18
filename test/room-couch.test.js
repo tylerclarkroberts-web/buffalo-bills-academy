@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { residentErrands, makeRoomCamera } from '../client/src/room/scene-model.js';
+import { residentErrands } from '../client/src/room/scene-model.js';
 import { residentPose } from '../client/src/room/activity.js';
 import { defaultFurniture, defaultShelves, defaultWallDisplays, furnitureValid, furnitureRect, roomCouchScale, upgradeFurniture, wallMountsFit, roomFinishes, ROOM_FURNITURE, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
 
@@ -80,12 +80,7 @@ test('rooms arranged on the earlier floor spread out and gain a couch only where
   assert.ok(wallMountsFit(shelves, defaultWallDisplays(), upgradeFurniture(undefined, shelves, defaultWallDisplays())), 'an old shelf keeps its place; the couch goes elsewhere');
 });
 
-test('each stroll is a new errand with time to act, and panning only moves a zoomed view', () => {
+test('each stroll is a new errand with time to act', () => {
   assert.equal(residentPose(5).errand, 0); assert.equal(residentPose(40).errand, 1);
   assert.equal(residentPose(9).act, 0); assert.equal(residentPose(15).act, 1); assert.equal(residentPose(22).act, 0);
-  const fit = makeRoomCamera(2), same = makeRoomCamera(2, {}, [1, -1]);
-  assert.equal(same.left, fit.left); assert.equal(same.top, fit.top);
-  const zoomed = makeRoomCamera(2, { zoom: 2 }), panned = makeRoomCamera(2, { zoom: 2 }, [1, 9]);
-  assert.ok(panned.left > zoomed.left && panned.top > zoomed.top);
-  assert.ok(Math.abs((panned.left + panned.right) / 2 + (panned.right - panned.left) / 4 - fit.right) < 1e-9, 'the view stops at the edge of the fitted frame');
 });

@@ -31,7 +31,7 @@ test('local GLB supplies the nine furnishings and pickable actions in the expand
     assert.ok(part?.isMesh && part.geometry.attributes.color, name);
     const bounds = new Box3().setFromObject(part);
     if (name === 'chair' || name === 'pottedPlant') assert.ok(bounds.min.z >= 1.47 * S && bounds.max.z <= 4.8 * S, name);
-    else if (['bathtub', 'toilet', 'bathroomSink'].includes(name)) assert.ok(bounds.min.z >= 3.25 * S && bounds.max.z <= 7.15 * S, name);
+    else if (name.startsWith('kitchen')) assert.ok(bounds.min.z >= 3.25 * S && bounds.max.z <= 7.15 * S, name);
     else assert.ok(bounds.min.z >= -7.05 * S && bounds.max.z <= -3 * S, name);
   }
   const spray = root.getObjectByName('Watering the lawn chair');
@@ -70,26 +70,26 @@ test('furniture fits the resident and usable surfaces meet at their finished hei
   close(tub.x, 72); close(tub.z, 36);
   const toilet = item('toilet');
   close((topAt(toilet) - toilet.position.y) / inch, 17);
-  close((topAt(toilet, toilet.position.x, toilet.position.z + 12 * inch) - toilet.position.y) / inch, 31);
-  assert.ok(bounds('toilet').max.z < (7.15 - 0.075) * S, 'tank clears the outer wall cap');
+  close((topAt(toilet, toilet.position.x, toilet.position.z - 12 * inch) - toilet.position.y) / inch, 31);
+  assert.ok(bounds('toilet').min.z > (-7.05 + 0.075) * S, 'tank clears the outer wall cap');
   const camera = makeRoomCamera(2), view = new Raycaster();
-  const seat = new Vector3(toilet.position.x, toilet.position.y + 17 * inch, toilet.position.z - 4 * inch);
+  const seat = new Vector3(toilet.position.x, toilet.position.y + 17 * inch, toilet.position.z + 4 * inch);
   view.setFromCamera(seat.project(camera), camera);
-  assert.equal(view.intersectObjects([toilet, item('Bathroom doorway'), item('Linen cupboard')], true)[0]?.object,
+  assert.equal(view.intersectObjects([toilet, item('Linen cupboard'), item('bedSingle')], true)[0]?.object,
     toilet, 'the bathroom divider and linen cupboard leave the seat visible in the whole-house view');
   close((topAt(item('chair')) - item('chair').position.y) / inch, 18);
-  close((bounds('bedSingle').max.x - bounds('bedSingle').min.x) / inch, 90);
-  close((bounds('bedSingle').max.z - bounds('bedSingle').min.z) / inch, 61);
+  close((bounds('bedSingle').max.x - bounds('bedSingle').min.x) / inch, 61);
+  close((bounds('bedSingle').max.z - bounds('bedSingle').min.z) / inch, 90);
   close((topAt(item('bedSingle')) - item('bedSingle').position.y) / inch, 22.67);
   const cabinet = bounds('kitchenCabinet'), range = bounds('kitchenStove');
-  close((cabinet.min.x - range.max.x) / inch, 0);
-  close((cabinet.min.z - range.min.z) / inch, 0);
+  close((range.min.x - cabinet.max.x) / inch, 0);
+  close((cabinet.max.z - range.max.z) / inch, 0);
   const counterTop = topAt(item('kitchenCabinet'));
   close((counterTop - cabinet.min.y) / inch, 36);
   close((bounds('kitchenCoffeeMachine').min.y - counterTop) / inch, 0);
   const porch = item('Porch and rails');
-  close((topAt(item('Linen cupboard'), 2.22 * S, 6.05 * S + 17 * inch) - cabinet.min.y) / inch, 34);
-  close((topAt(item('Kitchen worktable'), 0.13 * S - 15 * inch, -4.74 * S + 9 * inch) - cabinet.min.y) / inch, 36);
+  close((topAt(item('Linen cupboard'), -0.79 * S, -5.42 * S + 17 * inch) - cabinet.min.y) / inch, 34);
+  close((topAt(item('Kitchen worktable'), -0.61 * S - 15 * inch, 5 * S + 9 * inch) - cabinet.min.y) / inch, 36);
   for (const [x,z] of [[4.23,1.72],[5.10,1.82],[6.55,1.85],[6.55,3.50],[8.67,2.60]]) {
     assert.ok(Math.abs(topAt(porch, x * S, z * S) - 0.025) < 0.001, 'deck supports sill, walking route and tread');
   }
@@ -140,7 +140,7 @@ test('custom furnishings and surfaces update in place for the GLB and offline mo
   }
 });
 
-test('curated fixture arrangements clear each other and the smaller bathroom walls', async t => {
+test('every arrangement stays in its own room and leaves both sides of the bathroom and bedroom doors clear', async t => {
   t.mock.method(globalThis, 'fetch', readAsset);
   const root = new Group(), home = buildHomestead(root);
   await home.ready; t.after(() => home.dispose());
@@ -151,12 +151,21 @@ test('curated fixture arrangements clear each other and the smaller bathroom wal
     }
     home.update(choices);
     const bounds = name => new Box3().setFromObject(root.getObjectByName(name));
-    const bath = ['bathtub', 'toilet', 'bathroomSink', 'Linen cupboard'];
-    for (const id of bath) {
-      const box = bounds(id);
-      assert.ok(box.min.x > -2.35 * S && box.max.x < 3.25 * S && box.min.z > 3.35 * S && box.max.z < 7.15 * S, id);
-    }
-    for (const names of [bath, ['bedSingle', 'Nightstand and lamp', 'Kitchen worktable', 'kitchenCabinet', 'kitchenStove'], ['chair', 'pottedPlant']]) {
+    const rooms = [
+      [[-4, -0.45, -7.05, -3], ['bathtub', 'toilet', 'bathroomSink', 'Linen cupboard']],
+      [[-0.45, 3.55, -7.05, -3], ['bedSingle', 'Nightstand and lamp']],
+      [[-2.35, 3.25, 3.35, 7.15], ['Kitchen worktable', 'kitchenCabinet', 'kitchenStove']],
+      [[4.13, 8.5, 1.47, 4.8], ['chair', 'pottedPlant']],
+    ];
+    for (const [[left, right, back, front], names] of rooms) {
+      for (const name of names) {
+        const box = bounds(name);
+        assert.ok(box.min.x > left * S && box.max.x < right * S && box.min.z > back * S && box.max.z < front * S, name);
+        for (const [x, z, w, d] of [[-0.45, -4.10, 1.50, 0.86], [2.85, -3, 0.85, 1.28], [2, 3.35, 0.85, 1.28]]) {
+          const threshold = new Box3(new Vector3((x - w/2) * S, 0, (z - d/2) * S), new Vector3((x + w/2) * S, 3, (z + d/2) * S));
+          assert.equal(box.intersectsBox(threshold), false, name + ' clears door threshold');
+        }
+      }
       for (let i = 0; i < names.length; i++) for (const other of names.slice(i + 1)) {
         assert.equal(bounds(names[i]).expandByScalar(-0.005).intersectsBox(bounds(other)), false, names[i] + ' clears ' + other);
       }
