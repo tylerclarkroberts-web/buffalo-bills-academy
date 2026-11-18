@@ -358,7 +358,7 @@ export class Mines {
     const day = shift.day || mineDay(shift.startedAt);
     const key = `${day}:${shift.seed}:${shift.cells}:${shift.tier || 0}`;
     if (!this.wildRosters.has(key)) {
-      this.wildRosters.set(key, dailyWilds(day, shift));
+      this.wildRosters.set(key, dailyWilds(day, shift, this.barn?.strays?.() || []));
       if (this.wildRosters.size > 2) this.wildRosters.delete(this.wildRosters.keys().next().value);
     }
     return this.wildRosters.get(key).filter(({ id }) => !shift.wildsGone?.includes(id) && !this.barn?.wildCaught?.(id));
@@ -487,7 +487,10 @@ export class Mines {
 }
 
 export const WILDS_A_DAY = [4, 6]; // fewest and most
-function dailyWilds(day, shift) {
+// A released bug (a stray, Barn.release) is down here about one day in STRAY_DAYS, the same day for every miner, at most
+// STRAYS_A_DAY of them at once. It keeps its name and level and says whose it was; jarring it ends it for everyone.
+export const STRAY_DAYS = 3, STRAYS_A_DAY = 3;
+function dailyWilds(day, shift, strays = []) {
   const maze = shiftMaze(shift), spots = [], pool = (p) => shift.pools.some((q) => q.x === p.x && q.y === p.y);
   for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
     if (maze.dist[y][x] >= 6 && !pool({ x, y })) spots.push({ x, y });
@@ -502,10 +505,18 @@ function dailyWilds(day, shift) {
     const rarity = open.find((r) => (roll -= WILD_ODDS[r]) < 0) ?? open.at(-1);
     return left[rarity].splice(pick(left[rarity].length), 1)[0].id;
   };
-  return Array.from({ length: count }, (_, i) => {
+  const route = (wild) => ({ ...wild, path: roamRoute(wild, 6 + pick(7), (p) => maze.dist[p.y]?.[p.x] >= 3 && !pool(p), pick) });
+  const out = Array.from({ length: count }, (_, i) => {
     const wild = { id: `${day}:${i + 1}`, species: species(),
       level: Math.min(MAX_LEVEL, tier + pick(tier + 1)), ...spots.splice(pick(spots.length), 1)[0] };
     // it starts on its spot and roams from there: 6 to 12 tiles, keeping out of the acid and away from the lift
-    return { ...wild, path: roamRoute(wild, 6 + pick(7), (p) => maze.dist[p.y]?.[p.x] >= 3 && !pool(p), pick) };
+    return route(wild);
   });
+  // Strays roll from their own seed, so letting one go never reshuffles the day's wild bugs.
+  const today = strays.filter((stray) => Math.floor(rng(daySeed(`${stray.id}:${day}`))() * STRAY_DAYS) === 0).slice(0, STRAYS_A_DAY);
+  for (const stray of today) {
+    if (!spots.length) break;
+    out.push(route({ id: stray.id, species: stray.species, level: stray.level, stray: { name: stray.name, owner: stray.owner }, ...spots.splice(pick(spots.length), 1)[0] }));
+  }
+  return out;
 }

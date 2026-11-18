@@ -144,7 +144,7 @@ function Stalls({ stable, sel, onPick }) {
 
 /** What the ? button says in each room: the rules the screens themselves no longer spell out. */
 const HELP = {
-  stalls: ['Feed, Play and Mist are free, each on its own cooldown, and give 12 XP.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
+  stalls: ['Feed, Play and Mist are free, each on its own cooldown, and give 12 XP.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Release lets a bug go. It wanders into the mines as a stray, where anyone can catch it, you included.','Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
   ring: ['Challenge any bug, or post a bout for whoever joins first.', 'You name your stake; the other corner puts up fair odds by the line, each bug\'s chance from 400 practice fights.', 'The winner takes the pot. A draw refunds both stakes.', 'Both bugs earn 20 XP and the winner more for an upset. Bugs still standing recover fully; a knockout means the Bug Center.'],
   circuit: ['Beat the stops in order. A win pays XP; a loss pays nothing.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
 };
@@ -274,8 +274,9 @@ function CombatPane({ pen, battle, draft, setDraft, save, busy, locked }) {
 }
 
 /** One living bug: what it is and its record up top; the bug, its card (or combat, or field notes) and its care side by side. */
-function Creature({ pen, b, stable, now, busy, care, makePartner, poke, setPoke, reduced, tab, setTab, battle, draft, setDraft, save, toRing, replayLast, replayButton }) {
+function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke, setPoke, reduced, tab, setTab, battle, draft, setDraft, save, toRing, replayLast, replayButton }) {
   const type = typeOf(pen.species), next = pen.abilities?.find((a) => !a.unlocked);
+  const [letGo, setLetGo] = useState(false); // Release asks once, in place
   const keys = (e) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
     e.preventDefault();
@@ -316,10 +317,14 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, poke, setPoke,
           {pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder">🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
           {pen.lunch && <span className="barn-feeder" data-test="barn-lunch">🍱 {pen.lunch.name}, +{pen.lunch.heal} HP</span>}
         </p>}
-        <div className="barn-row bs-more">
+        {letGo ? <div className="bs-letgo" role="group" aria-label={`Release ${pen.name}`}>
+          <p className="small">Let {pen.name} go? It wanders off into the mines, where anyone can jar it. You included.</p>
+          <div className="barn-row"><button className="btn small" onClick={release} disabled={busy || !!b.live} data-test="release-confirm">Release {pen.name}</button><button className="btn small ghost" onClick={() => setLetGo(false)}>Keep it</button></div>
+        </div> : <div className="barn-row bs-more">
           <button className="btn small" onClick={toRing}>Find a bout</button>
           {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
-        </div>
+          <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>
+        </div>}
       </div>
       <div className="bs-info">
         <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={keys}>
@@ -448,6 +453,7 @@ function BarnHome({ me }) {
   const saveBattle = () => act(async () => {
     take(await api('PATCH', '/barn/battle', { stance: battleDraft.stance, bug: pen.id })); setBattleDraft(null); setMsg('Stance saved.');
   });
+  const release = () => act(async () => { const name = pen.name; take(await api('POST', '/barn/release', { bug: pen.id })); setSel(null); setMsg(`${name} scuttles off toward the mines. Somebody might jar it someday.`); });
   const makePartner = () => act(async () => { take(await api('POST', '/barn/partner', { bug: pen.id })); setMsg(`${pen.name} is coming with you now.`); });
   const build = () => act(async () => { take(await api('POST', '/barn/stalls')); await refreshSession(); setSel(null); setMsg('One new stall. It smells of sawdust and ambition.'); });
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
@@ -520,7 +526,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {stalls && pen?.stage === 'creature' && <Creature pen={pen} b={b} stable={stable} now={now} busy={busy} care={care} makePartner={makePartner} poke={poke} setPoke={setPoke} reduced={reduced}
+        {stalls && pen?.stage === 'creature' && <Creature key={pen.id} pen={pen} b={b} stable={stable} now={now} busy={busy} care={care} makePartner={makePartner} release={release} poke={poke} setPoke={setPoke} reduced={reduced}
           tab={tab} setTab={setTab} battle={battle} draft={battleDraft} setDraft={setBattleDraft} save={saveBattle} toRing={() => setRing(true)}
           replayLast={() => { setReplay(true); setBout(pen.lastBout); }} replayButton={replayButton} />}
         {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} closeLabel={bout.kind === 'circuit' ? 'Back to the circuit' : undefined} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}

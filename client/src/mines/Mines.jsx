@@ -11,7 +11,7 @@ import { WormSwarm } from './worms.js';
 import Worms from './Worms.jsx';
 import { stickTurn } from './controls.js';
 import { createMiningClient, readMineReceipt, rememberMineReceipt } from './miningClient.js';
-import MineMap from './MineMap.jsx';
+import MineMap, { wildWhat } from './MineMap.jsx';
 import { markWild, readExploration, rememberExploration, revealExploration } from './exploration.js';
 import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
 
@@ -765,7 +765,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     let askingWild = false;
     const askWild = (wild) => {
       showPicker(false); showBugMenu(false); scene.heldWild = wild.id;
-      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
+      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, stray: wild.stray, at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
     };
     const leaveWild = (retryMs) => {
       const ask = wildAskRef.current; if (!ask) return;
@@ -914,7 +914,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         if (sighting) {
           saveChart();
           const lean = shift.bug ? edge(typeOf(shift.bug.species), typeOf(sighting.species)) : 0; // your partner's type against its
-          setLine(`A WILD ${BY_ID[sighting.species]?.name || 'BUG'} (${TYPES[typeOf(sighting.species)]?.name || 'BUG'}), LEVEL ${sighting.level}, IS IN THE TUNNEL.${lean > 0 ? ' YOUR BUG\'S TYPE BEATS IT.' : lean < 0 ? ' ITS TYPE BEATS YOUR BUG\'S.' : ''}`.toUpperCase());
+          setLine(`${sighting.stray ? '' : 'A '}${wildWhat(sighting)} (${TYPES[typeOf(sighting.species)]?.name || 'BUG'}), LEVEL ${sighting.level}, IS IN THE TUNNEL.${lean > 0 ? ' YOUR BUG\'S TYPE BEATS IT.' : lean < 0 ? ' ITS TYPE BEATS YOUR BUG\'S.' : ''}`.toUpperCase());
         }
         const asked = wildAskRef.current && scene.wilds.get(wildAskRef.current.id);
         if (wildAskRef.current) { if (!asked || Math.hypot(scene.pos.x / TILE - asked.x, scene.pos.y / TILE - asked.y) > 2.2) leaveWild(3000); } // walked off: that is a no
@@ -1121,7 +1121,7 @@ function WildPrompt({ wild, bugsRef, onFight, onLeave }) {
   const type = typeOf(wild.species);
   return (
     <div className="m-dances m-orders m-wild" role="dialog" aria-label="A wild bug" data-test="wild-prompt">
-      <p className="m-wild-what">A WILD {(BY_ID[wild.species]?.name || 'BUG').toUpperCase()} · {(TYPES[type]?.name || 'BUG').toUpperCase()} · LEVEL {wild.level}. {bugs === null ? 'IT WAITS.' : bugs.length ? 'SEND IN:' : 'NONE OF YOUR BUGS CAN FIGHT.'}</p>
+      <p className="m-wild-what">{(wild.stray ? '' : 'A ') + wildWhat(wild).toUpperCase()} · {(TYPES[type]?.name || 'BUG').toUpperCase()} · LEVEL {wild.level}. {bugs === null ? 'IT WAITS.' : bugs.length ? 'SEND IN:' : 'NONE OF YOUR BUGS CAN FIGHT.'}</p>
       {(bugs || []).map((bug, i) => { const lean = edge(typeOf(bug.species), type); return (
         <button key={bug.id} type="button" className="m-dance" data-test="wild-send" onClick={() => onFight(bug.id)}>
           <span className="m-dance-icon" aria-hidden="true">{lean > 0 ? '▲' : lean < 0 ? '▼' : '◆'}</span>

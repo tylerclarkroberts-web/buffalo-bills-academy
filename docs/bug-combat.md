@@ -19,7 +19,8 @@ A Barn starts with three stalls. Each holds an egg, a living bug or an unburied 
 - **Eggs.** An empty Barn gives you a 15% chance to find an egg each new shift. Any occupied stall takes you out of the roll, including an unhatched egg or an unburied memorial. An egg is always one of the common species. Catch wild bugs to fill additional stalls.
 - **The partner.** The first bug is the partner; **Make partner** on any other hatched, living bug swaps them, except while one of your bugs is in a fight. The mine guide, mine battles, My House and store items (food, feeders, misters, toys) all act on the partner.
 - **A stalled bug lives five times slower** (`BENCH_SLOW`). Its needs decay at a fifth of the rate, it starves after 105 days instead of 21, and its 24-hour XP checkpoint comes every five days. It still needs looking after: care works on any bug, on the usual cooldowns, and gives the usual 12 XP. Swapping partners carries each bug's needs over as they are. A feeder's dates stay on the wall clock, so one bought for a bug that is later stalled covers fewer of its slow days.
-- **No empty partner's place.** When the partner is laid to rest, the first living stalled bug becomes the partner.
+- **No empty partner's place.** When the partner is laid to rest or released, the first living stalled bug becomes the partner.
+- **Releasing.** Release lets a living bug go (not while one of your bugs is fighting). It leaves the Barn at once and becomes a stray in the mines, with its name, level and owner's name: see [Acid Mines](acid-mines.md). Its gear and packed lunch stay behind. `barn.json` keeps up to 50 uncaught strays in `strays`; the oldest wander off for good.
 - **Fights.** Any standing bug can post, join or be called out; the ring's roster lists every living bug, and a challenge names both. An owner has one fight at a time.
 - **The Bug Center** treats knocked-out bugs from any stall. The nurse charges $50 for immediate treatment and treats the bug for free an hour after the knockout.
 
@@ -132,6 +133,7 @@ Barn routes require the existing session or supported legacy bearer token and op
 | `POST /api/barn/partner` | `{ "bug": id }` makes that bug the partner. An egg or a memorial, or while one of your bugs is fighting: 409. Naming the partner is harmless. |
 | `POST /api/barn/stalls` | Buys the next stall. Not enough money: 402; all six built: 409. |
 | `POST /api/barn/heal`, `POST /api/barn/bury` | Take an optional `bug`. |
+| `POST /api/barn/release` | Takes an optional `bug`. Lets a hatched, living bug go into the mines as a stray. An egg, a dead bug, or while one of your bugs is fighting: 409. |
 | `PATCH /api/barn/battle` | Save the `stance` (optional `bug`); reject anything else, including the retired `specials` (400), and missing/unhatched/dead pets (409). |
 | `POST /api/barn/bouts` | `{ "stake": 30, "bug"? }` posts an open bout. Invalid amount/extra fields: 400; insufficient funds: 402; empty Barn: 404; egg/dead/below-level-3 a fainted bug or another open stake: 409. Reposting the same open stake returns the existing listing. |
 | `POST /api/barn/bouts/:id/join` | Empty body, or `{ "bug": id, "risk": 12 }`: `bug` to send one other than the partner, `risk` the stake the page showed (409 if the line has moved since). Put up what the line asks against the posted stake and start the fight; the response's `live` is its id. Unavailable/self/own open bout, or a bug already in a fight: 409; insufficient funds: 402. A participant retry returns the Barn as it stands, without another stake, payout or XP award. |

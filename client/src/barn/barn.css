@@ -454,3 +454,5 @@
   .ring-thumbs .barn-thumb { width: 32px; height: 27px; }
 }
 .barn-ring .barn-post label { flex: 0 1 260px; }
+.bs-letgo { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid #c8782a; border-radius: 10px; background: rgba(200,120,40,.12); }
+.bs-letgo p { margin: 0; }
