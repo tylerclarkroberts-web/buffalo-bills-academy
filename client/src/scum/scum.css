@@ -348,82 +348,153 @@
   color: #fff8e4; background: rgba(12, 18, 10, .86); border: 1px solid #e0a528;
   box-shadow: 0 4px 14px rgba(0,0,0,.4); pointer-events: none; text-wrap: pretty;
 }
+.sc-felt:has(.sc-royal-play[data-phase=song]) { overflow: visible; }
 .sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing {
   z-index: 11;
-  transform: translate(calc(clamp(-36px, (var(--sx, 50) - 50) * 1px, 36px)), calc(clamp(-32px, (var(--sy, 50) - 50) * 1px, 32px)));
+  transform: translate(calc(clamp(-44px, (var(--sx, 50) - 50) * 1.35px, 44px)), calc(clamp(-36px, (var(--sy, 50) - 50) * 1.35px, 36px)));
   transition: transform .85s ease-out;
 }
 .sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing .bust {
-  animation: sc-royal-sway 3.6s ease-in-out infinite; transform-origin: 50% 100%;
+  animation: sc-royal-sing 2.4s ease-in-out infinite; transform-origin: 50% 100%;
+}
+.sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing .bust .b-head::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 63%;
+  width: 30%;
+  height: 18%;
+  margin-left: -15%;
+  background: radial-gradient(ellipse at 50% 30%, #4a1818 0%, #140606 75%);
+  border: 2px solid #d17a6c;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(40, 10, 10, .55);
+  z-index: 5;
+  pointer-events: none;
+  animation: sc-royal-sing-mouth .52s ease-in-out infinite;
+  transform-origin: 50% 20%;
 }
 .sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-king-sing .bust {
-  animation: sc-royal-chomp 1.15s ease-in-out infinite; transform-origin: 50% 80%;
+  animation: sc-royal-chomp 0.95s ease-in-out infinite; transform-origin: 50% 80%;
 }
 .sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-king-sing .bust::after {
-  content: ''; position: absolute; left: 28%; top: 58%; width: 44%; height: 28%;
-  background: radial-gradient(ellipse at 40% 30%, rgba(170, 20, 20, .75), rgba(120, 0, 0, .15) 70%, transparent 80%);
+  content: ''; position: absolute; left: 22%; top: 52%; width: 58%; height: 40%;
+  background: radial-gradient(ellipse at 40% 30%, rgba(170, 20, 20, .9), rgba(140, 8, 8, .45) 45%, rgba(120, 0, 0, .12) 75%, transparent 85%);
   pointer-events: none; z-index: 2;
 }
 .sc-royal-tomatoes {
   position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 12;
-  width: calc(var(--bust, 48px) * 2.2); height: calc(var(--bust, 48px) * 2.4);
+  width: calc(var(--bust, 48px) * 2.6); height: calc(var(--bust, 48px) * 2.8);
 }
 .sc-tomato.hand {
-  position: absolute; left: 55%; top: 35%; font-size: calc(var(--bust, 48px) * 0.42);
+  position: absolute; left: 55%; top: 32%; font-size: calc(var(--bust, 48px) * 0.5);
   line-height: 1; filter: drop-shadow(0 2px 1px rgba(0,0,0,.4));
-  animation: sc-tomato-eat 1.15s ease-in-out infinite;
+  animation: sc-tomato-eat 0.95s ease-in-out infinite;
 }
 .sc-tomato-stain {
-  position: absolute; left: 38%; top: 58%; width: 28%; height: 22%; border-radius: 50%;
-  background: radial-gradient(circle, rgba(160, 12, 12, .7), transparent 70%);
-  animation: sc-stain-grow 4s ease-out both;
+  position: absolute; left: 30%; top: 52%; width: 42%; height: 32%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(170, 12, 12, .85), rgba(120, 0, 0, .4) 55%, transparent 75%);
+  animation: sc-stain-grow 3s ease-out both;
+}
+.sc-tomato-puddle {
+  position: absolute; left: 36%; top: 86%; width: 48%; height: 16%; border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(150, 10, 10, .7), rgba(110, 0, 0, .25) 60%, transparent 75%);
+  animation: sc-stain-grow 4.5s .4s ease-out both;
 }
 .sc-splat {
-  position: absolute; width: 7px; height: 7px; border-radius: 50%;
-  background: radial-gradient(circle, #c41818, #7a0a0a 70%, transparent 80%);
-  animation: sc-splat-fly 1.4s ease-out infinite;
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  background: radial-gradient(circle, #e02222, #8a0a0a 70%, transparent 80%);
+  animation: sc-splat-fly 1.15s ease-out infinite;
 }
 .sc-splat.s1 { left: 58%; top: 30%; animation-delay: 0s; }
-.sc-splat.s2 { left: 70%; top: 42%; width: 5px; height: 5px; animation-delay: .25s; }
-.sc-splat.s3 { left: 48%; top: 22%; width: 6px; height: 8px; animation-delay: .5s; }
-.sc-splat.s4 { left: 62%; top: 52%; width: 4px; height: 4px; animation-delay: .8s; }
-.sc-tomato.roll {
-  position: absolute; font-size: calc(var(--bust, 48px) * 0.28); line-height: 1;
-  animation: sc-tomato-roll 2.6s ease-in both infinite;
+.sc-splat.s2 { left: 70%; top: 42%; width: 7px; height: 6px; animation-delay: .18s; }
+.sc-splat.s3 { left: 48%; top: 22%; width: 8px; height: 10px; animation-delay: .36s; }
+.sc-splat.s4 { left: 62%; top: 52%; width: 6px; height: 6px; animation-delay: .54s; }
+.sc-splat.s5 { left: 40%; top: 36%; width: 8px; height: 7px; animation-delay: .72s; }
+.sc-splat.s6 { left: 76%; top: 28%; width: 5px; height: 8px; animation-delay: .9s; }
+.sc-splat.s7 { left: 52%; top: 48%; width: 10px; height: 6px; animation-delay: .12s; }
+.sc-splat.s8 { left: 66%; top: 18%; width: 6px; height: 6px; animation-delay: .48s; }
+.sc-juice {
+  position: absolute; width: 4px; border-radius: 2px;
+  background: linear-gradient(180deg, rgba(200, 30, 30, .95), rgba(140, 0, 0, .15));
+  animation: sc-juice-drip 1.3s ease-in infinite;
+  transform-origin: 50% 0;
 }
-.sc-tomato.roll.r1 { left: 60%; top: 70%; animation-delay: .2s; }
-.sc-tomato.roll.r2 { left: 48%; top: 74%; animation-delay: 1s; font-size: calc(var(--bust, 48px) * 0.22); }
-.sc-tomato.roll.r3 { left: 72%; top: 68%; animation-delay: 1.7s; }
+.sc-juice.j1 { left: 54%; top: 46%; height: 16px; animation-delay: 0s; }
+.sc-juice.j2 { left: 62%; top: 52%; height: 12px; width: 3px; animation-delay: .4s; }
+.sc-juice.j3 { left: 47%; top: 50%; height: 18px; animation-delay: .8s; }
+.sc-bit {
+  position: absolute; width: 5px; height: 4px; border-radius: 40%;
+  background: #b41414; animation: sc-bit-fly 1.6s ease-out infinite;
+}
+.sc-bit.b1 { left: 60%; top: 40%; animation-delay: 0s; }
+.sc-bit.b2 { left: 48%; top: 36%; width: 4px; height: 5px; animation-delay: .3s; }
+.sc-bit.b3 { left: 70%; top: 46%; animation-delay: .6s; }
+.sc-bit.b4 { left: 42%; top: 50%; width: 6px; height: 3px; animation-delay: .9s; }
+.sc-tomato.roll {
+  position: absolute; font-size: calc(var(--bust, 48px) * 0.32); line-height: 1;
+  animation: sc-tomato-roll 2.2s ease-in infinite;
+}
+.sc-tomato.roll.r1 { left: 58%; top: 68%; animation-delay: .15s; }
+.sc-tomato.roll.r2 { left: 46%; top: 72%; animation-delay: .7s; font-size: calc(var(--bust, 48px) * 0.24); }
+.sc-tomato.roll.r3 { left: 70%; top: 66%; animation-delay: 1.2s; }
+.sc-tomato.roll.r4 { left: 52%; top: 76%; animation-delay: 1.7s; font-size: calc(var(--bust, 48px) * 0.2); }
 
+@keyframes sc-royal-sing {
+  0%, 100% { transform: rotate(-7deg) translateY(0); }
+  20% { transform: rotate(8deg) translateY(-7%) scaleY(1.05); }
+  40% { transform: rotate(-3deg) translateY(-2%); }
+  60% { transform: rotate(10deg) translateY(-9%) scaleY(1.06); }
+  80% { transform: rotate(-8deg) translateY(-1%); }
+}
+@keyframes sc-royal-sing-mouth {
+  0%, 100% { transform: scaleX(1) scaleY(.4); }
+  18% { transform: scaleX(1.2) scaleY(1.55); }
+  36% { transform: scaleX(.85) scaleY(.55); }
+  55% { transform: scaleX(1.25) scaleY(1.8); }
+  74% { transform: scaleX(1.05) scaleY(.7); }
+  88% { transform: scaleX(1.15) scaleY(1.3); }
+}
 @keyframes sc-royal-chomp {
   0%, 100% { transform: none; }
-  35% { transform: rotate(-8deg) translateY(3px); }
-  55% { transform: rotate(-4deg) scaleY(.96); }
+  30% { transform: rotate(-14deg) translateY(5px) scaleY(.94); }
+  55% { transform: rotate(-6deg) scaleY(.97); }
 }
 @keyframes sc-tomato-eat {
-  0%, 100% { transform: translate(8%, 18%) rotate(-25deg); }
-  42%, 58% { transform: translate(-18%, -42%) rotate(12deg) scale(.8); }
+  0%, 100% { transform: translate(10%, 22%) rotate(-30deg); }
+  40%, 55% { transform: translate(-22%, -48%) rotate(16deg) scale(.75); }
 }
 @keyframes sc-stain-grow {
   from { opacity: 0; transform: scale(.3); }
-  to { opacity: 1; transform: scale(1.15); }
+  to { opacity: 1; transform: scale(1.2); }
 }
 @keyframes sc-splat-fly {
-  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
-  25% { opacity: 1; }
-  100% { opacity: 0; transform: translate(18px, -28px) scale(1.2); }
+  0% { opacity: 0; transform: translate(0, 0) scale(.35); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translate(26px, -36px) scale(1.35); }
+}
+@keyframes sc-juice-drip {
+  0% { opacity: 0; transform: scaleY(.2); }
+  25% { opacity: 1; transform: scaleY(1); }
+  100% { opacity: 0; transform: scaleY(1.6) translateY(14px); }
+}
+@keyframes sc-bit-fly {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(.6); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(28px, -32px) rotate(160deg) scale(1.1); }
 }
 @keyframes sc-tomato-roll {
   0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
-  12% { opacity: 1; }
-  100% { opacity: .85; transform: translate(42px, 56px) rotate(280deg); }
+  10% { opacity: 1; }
+  100% { opacity: .9; transform: translate(56px, 68px) rotate(320deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sc-seat.royal-sing .bust, .sc-seat.royal-king-sing .bust,
-  .sc-tomato.hand, .sc-splat, .sc-tomato.roll, .sc-tomato-stain { animation: none !important; }
+  .sc-tomato.hand, .sc-splat, .sc-tomato.roll, .sc-tomato-stain, .sc-tomato-puddle,
+  .sc-juice, .sc-bit, .sc-seat.royal-sing .bust .b-head::after { animation: none !important; }
   .sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing { transition: none; }
-  .sc-tomato.hand, .sc-tomato.roll, .sc-tomato-stain { opacity: 1; }
+  .sc-tomato.hand, .sc-tomato.roll, .sc-tomato-stain, .sc-seat.royal-sing .bust .b-head::after { opacity: 1; }
 }
 @media (max-width: 520px) {
   .sc-royal-bubble { max-width: min(200px, 62vw); padding: 5px 8px 6px; font-size: 11px; }

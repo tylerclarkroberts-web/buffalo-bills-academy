@@ -1,12 +1,12 @@
-// Sing me a song: dialogue bubbles, karaoke lyrics, tomato-eating King, skip/rewatch.
-//   PLAYWRIGHT_DIR=/workspace/pw CHROME=/usr/bin/google-chrome OUT=/workspace/bba-scum-song-shots node scripts/e2e-scum-song.mjs
+// Sing me a song: spoken bubbles before the song, then audio + tomatoes and no lyric bubbles.
+//   PLAYWRIGHT_DIR=/workspace/pw CHROME=/usr/bin/google-chrome OUT=/workspace/bba-scum-song-nobubbles-shots node scripts/e2e-scum-song.mjs
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { parseScript } from '../client/src/scum/songScript.js';
 const script = parseScript(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../client/public/scum/song/script.txt'), 'utf8'));
-const SONG_DIALOG = script.dialogue, SONG_LYRICS = script.lyrics, SONG_START = script.songStart;
+const SONG_DIALOG = script.dialogue, SONG_START = script.songStart;
 
 const req = createRequire(process.env.PLAYWRIGHT_DIR ? path.join(process.env.PLAYWRIGHT_DIR, 'x.js') : import.meta.url);
 const { chromium } = req('playwright-core');
@@ -76,6 +76,45 @@ async function page(browser, who, view, extra = {}) {
   const p = await ctx.newPage(); p.on('pageerror', (e) => { console.log('pageerror', e.message); fails.push(`pageerror ${e.message}`); });
   return p;
 }
+async function assertSongActing(p, label) {
+  check(await p.locator('[data-test=scum-royal-tomatoes]').count() === 1, `${label}: tomato mess is on the King`);
+  check(await p.locator('.sc-splat').count() >= 8, `${label}: juice splatters`);
+  check(await p.locator('.sc-juice').count() >= 3, `${label}: juice drips`);
+  check(await p.locator('.sc-bit').count() >= 4, `${label}: tomato bits flying`);
+  check(await p.locator('.sc-tomato.roll').count() >= 4, `${label}: rolling tomato bits`);
+  const acting = await p.evaluate(() => {
+    const cs = (el) => el && getComputedStyle(el);
+    const scum = document.querySelector('.sc-seat.royal-sing');
+    const king = document.querySelector('.sc-seat.royal-king-sing');
+    const head = scum && scum.querySelector('.bust .b-head');
+    const mouth = head && getComputedStyle(head, '::after');
+    const bust = scum && scum.querySelector('.bust');
+    const bustBox = bust && bust.getBoundingClientRect();
+    const m = {
+      scumT: scum && cs(scum).transform,
+      scumA: scum && cs(scum.querySelector('.bust')).animationName,
+      kingA: king && cs(king.querySelector('.bust')).animationName,
+      mouthA: mouth?.animationName,
+      mouthContent: mouth?.content,
+      bustOnScreen: !!(bustBox && bustBox.width > 20 && bustBox.height > 20 && bustBox.right > 8 && bustBox.left < innerWidth - 8 && bustBox.bottom > 8 && bustBox.top < innerHeight - 8),
+      splatA: cs(document.querySelector('.sc-splat.s1'))?.animationName,
+      handA: cs(document.querySelector('.sc-tomato.hand'))?.animationName,
+      juiceA: cs(document.querySelector('.sc-juice.j1'))?.animationName,
+      bitA: cs(document.querySelector('.sc-bit.b1'))?.animationName,
+    };
+    return m;
+  });
+  check(!!(acting.scumT && acting.scumT !== 'none'), `${label}: Scum stepped aside from the table`);
+  check(!!acting.bustOnScreen, `${label}: Scum stays visible after stepping aside`);
+  check((acting.scumA || '').includes('sc-royal-sing'), `${label}: Scum sway/sing animation`);
+  check((acting.kingA || '').includes('sc-royal-chomp'), `${label}: King chomp animation`);
+  check((acting.mouthA || '').includes('sc-royal-sing-mouth'), `${label}: lip-sync mouth animation`);
+  check(!!(acting.mouthContent && acting.mouthContent !== 'none' && acting.mouthContent !== 'normal'), `${label}: lip-sync mouth is painted on the Scum`);
+  check((acting.splatA || '').includes('sc-splat-fly'), `${label}: continuous splatters`);
+  check((acting.handA || '').includes('sc-tomato-eat'), `${label}: King eating tomatoes`);
+  check((acting.juiceA || '').includes('sc-juice-drip'), `${label}: juice dripping`);
+  check((acting.bitA || '').includes('sc-bit-fly'), `${label}: bits flying`);
+}
 const shot = (p, n) => p.screenshot({ path: path.join(OUT, `${n}.png`) });
 const noScroll = async (p, label) => { const s = await p.evaluate(() => ({ h: document.documentElement.scrollHeight, v: innerHeight, w: document.documentElement.scrollWidth, vw: innerWidth })); check(s.h <= s.v + 1 && s.w <= s.vw + 1, `${label}: no scroll (${s.w}x${s.h} in ${s.vw}x${s.v})`); };
 
@@ -136,6 +175,7 @@ try {
   check(first === SONG_DIALOG[0].text, `first bubble: "${first}"`);
   check(await ann.locator('[data-test=scum-royal-play]').getAttribute('data-phase') === 'talk', 'phase is talk during dialogue');
   check(await ann.locator('[data-test=scum-royal-skip]').count() === 1, 'skip is on the song replay');
+  await shot(ann, 'desktop-song-talk');
   await shot(ann, 'desktop-song-king-1');
   await noScroll(ann, 'desktop first bubble');
 
@@ -153,16 +193,16 @@ try {
   check((await ann.locator('[data-test=scum-royal-bubble]').innerText()).includes(SONG_DIALOG[2].text.slice(0, 20)), 'king insists');
   await shot(ann, 'desktop-song-king-2');
 
-  // 3. Song phase: karaoke, tomatoes, Scum steps aside
+  // 3. Song phase: no lyric/speech bubbles, tomatoes, Scum steps aside, audio still plays
   await ann.waitForSelector('[data-test=scum-royal-play][data-phase=song]', { timeout: SONG_START + 2000 });
-  await ann.waitForSelector('[data-test=scum-royal-karaoke]', { timeout: 2000 });
-  const line0 = (await ann.locator('[data-test=scum-royal-karaoke]').innerText()).trim();
-  check(line0 === SONG_LYRICS[0].text, `first lyric: "${line0}"`);
-  check(await ann.locator('[data-test=scum-royal-tomatoes]').count() === 1, 'tomato mess is on the King');
+  check(await ann.locator('[data-test=scum-royal-karaoke]').count() === 0, 'desktop song: no lyric karaoke bubble');
+  check(await ann.locator('[data-test=scum-royal-bubble]').count() === 0, 'desktop song: no speech bubbles during the song');
   check(await ann.locator('.sc-seat.royal-sing, .sc-seat.royal-scum').count() >= 1, 'Scum has royal-sing class');
   check(await ann.locator('.sc-seat.royal-king-sing').count() === 1, 'King has tomato-eating class');
-  await shot(ann, 'desktop-song-karaoke');
-  const songDir = await frames(ann, 'song', 16, 400);
+  await wait(1000);
+  await assertSongActing(ann, 'desktop song');
+  await shot(ann, 'desktop-song-no-bubble');
+  const songDir = await frames(ann, 'song', 20, 200);
   await ann.locator('[data-test=scum-royal-skip]').click({ timeout: 5000 });
   await ann.waitForSelector('[data-test=scum-royal-play]', { state: 'detached', timeout: 4000 });
   try { gif(songDir, 'song.gif', 5); } catch (e) { console.log('     (no song gif: ' + e.message + ')'); }
@@ -170,7 +210,7 @@ try {
   await shot(ann, 'desktop-song-rewatch-icon');
   await ann.locator('[data-test=scum-royal-rewatch]').click();
   await ann.waitForSelector('[data-test=scum-royal-play][data-cmd=sing]');
-  check(await ann.locator('[data-test=scum-royal-bubble], [data-test=scum-royal-karaoke]').count() >= 1, 'rewatch starts the song scene again');
+  check(await ann.locator('[data-test=scum-royal-play][data-cmd=sing]').count() === 1, 'rewatch starts the song scene again');
   await shot(ann, 'desktop-song-rewatch');
   await ann.locator('[data-test=scum-royal-skip]').click();
   await ann.context().close();
@@ -183,10 +223,13 @@ try {
   await shot(bob, 'phone-song-talk');
   await noScroll(bob, 'phone song talk');
   await bob.waitForSelector('[data-test=scum-royal-play][data-phase=song]', { timeout: SONG_START + 2000 });
-  await bob.waitForSelector('[data-test=scum-royal-karaoke]', { timeout: 2000 });
-  await shot(bob, 'phone-song-karaoke');
-  await noScroll(bob, 'phone song karaoke');
-  const phoneDir = await frames(bob, 'song-phone', 8, 450);
+  check(await bob.locator('[data-test=scum-royal-karaoke]').count() === 0, 'phone song: no lyric karaoke bubble');
+  check(await bob.locator('[data-test=scum-royal-bubble]').count() === 0, 'phone song: no speech bubbles during the song');
+  await wait(1000);
+  await assertSongActing(bob, 'phone song');
+  await shot(bob, 'phone-song-no-bubble');
+  await noScroll(bob, 'phone song no bubble');
+  const phoneDir = await frames(bob, 'song-phone', 16, 200);
   try { gif(phoneDir, 'song-phone.gif', 5); } catch (e) { console.log('     (no phone gif: ' + e.message + ')'); }
   await bob.locator('[data-test=scum-royal-skip]').click({ timeout: 5000 });
   await bob.waitForSelector('[data-test=scum-royal-play]', { state: 'detached', timeout: 4000 });
