@@ -54,7 +54,7 @@ function AccountMenu({ me }) {
           <button role="menuitem" onClick={() => go('/?tab=tables')}><Ico k="tables" />Your tables</button>
           <button role="menuitem" onClick={() => go('/profile')}><Ico k="profile" />Profile</button>
           <button role="menuitem" onClick={() => go('/profile/face')}><Ico k="profile" />Change avatar</button>
-          <button role="menuitem" onClick={() => go('/room')}><Ico k="barn" />My Room</button>
+          <button role="menuitem" onClick={() => go('/room')}><Ico k="barn" />My House</button>
           <button role="menuitem" onClick={() => go('/leaderboard')}><Ico k="board" />Leaderboard</button>
           <button role="menuitem" onClick={() => go('/invest')}><Ico k="invest" />Invest</button>
           <button role="menuitem" onClick={() => go('/conquest')}><Ico k="board" />Risk bets</button>

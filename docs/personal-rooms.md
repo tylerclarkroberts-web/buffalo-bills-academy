@@ -1,6 +1,6 @@
-# Personal rooms
+# Personal houses
 
-My Room displays the owner's existing pet, outfit, oddities and in-game wealth in a furnished 3D bunkhouse. The owner can arrange the parlor furniture and choose finishes and placements for the bathroom, bedroom, kitchen and porch. Existing parlor furniture and displays keep their saved coordinates. The couch uses the largest size that clears the walls, furniture and mounted displays at its saved position.
+My House (the page at `/room`; the code, API and saved data still call it a room) displays the owner's existing pet, outfit, oddities and in-game wealth in a furnished 3D bunkhouse. The owner can arrange the parlor furniture and choose finishes and placements for the bathroom, bedroom, kitchen and porch. Existing parlor furniture and displays keep their saved coordinates. The couch uses the largest size that clears the walls, furniture and mounted displays at its saved position.
 
 ## Visits and privacy
 
@@ -13,7 +13,7 @@ My Room displays the owner's existing pet, outfit, oddities and in-game wealth i
 
 ## Editing boundaries
 
-**Save room** commits layout choices together; **Cancel** restores them. Failed saves retain the draft, revision conflicts require reloading, and leaving with unsaved changes offers to continue or discard. **Visitor view** shows the saved layout.
+**Save house** commits layout choices together; **Cancel** restores them. Failed saves retain the draft, revision conflicts require reloading, and leaving with unsaved changes offers to continue or discard. **Visitor view** shows the saved layout.
 
 Pet care and clothing changes save immediately, even during layout editing, and are not undone by Cancel. They use the existing [Barn care rules](bug-combat.md#xp-and-care). Visiting never feeds the pet, pauses neglect or awards care XP.
 

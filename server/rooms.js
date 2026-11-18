@@ -113,8 +113,8 @@ export class Rooms {
   owner(player) { this.requirePlayer(player); return this.view(player, true); }
   visit(viewer, player) {
     this.requirePlayer(viewer);
-    if (!signedIn(viewer)) throw new GameError('Sign in to an account to visit rooms.', 403);
-    if (!player || !this.isOpen(player.id)) throw new GameError('This room is unavailable.', 404);
+    if (!signedIn(viewer)) throw new GameError('Sign in to an account to visit houses.', 403);
+    if (!player || !this.isOpen(player.id)) throw new GameError('This house is unavailable.', 404);
     return this.view(player, false);
   }
   commit(pid, room) {

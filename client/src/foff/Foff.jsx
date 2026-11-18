@@ -58,16 +58,16 @@ function FoffGame() {
   const [ui, setUi] = useState(null); // null: the title screen
   const [muted, setMuted] = useState(() => store('bba.foff.muted') === '1');
   useEffect(() => { setSound(!muted); store('bba.foff.muted', muted ? '1' : '0'); }, [muted]);
-  // Winning the last nine pays out once, on the server: $2,000 and a medal for the wall of My Room. A win while
+  // Winning the last nine pays out once, on the server: $2,000 and a medal for the wall of My House. A win while
   // signed out keeps: the claim is tried again whenever this page opens, until it lands.
   const [prize, setPrize] = useState(null), won = ui?.screen === 'end' && ui.result === 'win' && ui.finale;
   useEffect(() => {
     const save = loadSave(), last = MATCHES.at(-1).id;
     if (save.paid || !save.best?.[last]) return;
-    api('POST', '/foff/claim').then((r) => { patchSave((s) => { s.paid = true; }); setPrize(r.already ? 'The medal is already on your wall. The $2,000 only came once.' : `$${r.prize.toLocaleString('en-US')} is in your pocket and the medal is in My Room, with the oddities.`); })
+    api('POST', '/foff/claim').then((r) => { patchSave((s) => { s.paid = true; }); setPrize(r.already ? 'The medal is already on your wall. The $2,000 only came once.' : `$${r.prize.toLocaleString('en-US')} is in your pocket and the medal is in My House, with the oddities.`); })
       .catch(() => setPrize('Sign in to collect the medal and the $2,000. They will keep.'));
   }, [won]);
-  // Side quests pay pocket money, and four leave a keepsake for My Room. Same rule: once each, collected when it can be.
+  // Side quests pay pocket money, and four leave a keepsake for My House. Same rule: once each, collected when it can be.
   const [loot, setLoot] = useState(null), qwon = ui?.screen === 'qend' && ui.result === 'win' ? ui.id : null;
   const [board, setBoard] = useState(null);
   const signed = ui?.screen === 'end';
@@ -96,7 +96,7 @@ function FoffGame() {
         try {
           const r = await api('POST', '/foff/quest', { id });
           patchSave((s) => { s.paidQuests = { ...s.paidQuests, [id]: true }; });
-          if (id === qwon && !r.already) setLoot(`$${r.cash} for your trouble${r.item ? `, and one ${r.item} for a shelf in My Room` : ''}.`);
+          if (id === qwon && !r.already) setLoot(`$${r.cash} for your trouble${r.item ? `, and one ${r.item} for a shelf in My House` : ''}.`);
         } catch { if (id === qwon) setLoot('Sign in to collect what this one pays. It will keep.'); return; }
       }
     })();
