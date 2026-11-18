@@ -20,7 +20,11 @@ export const LUNCH_CAP = 10;
 // Linger: poison its bug puts on never wears off. Dark: nothing in the fight itself; the page hides its bug's health.
 // Rage: below half health its bug hits harder. Mulligan: its bug takes up to `tries` missed attacks again.
 export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.12 }, flood: { from: 9, hp: 3 },
-  flicker: { every: 3, aim: 0.22 }, grill: { every: 4, power: 0.3 }, rage: { power: 0.25 }, mulligan: { tries: 3 } };
+  flicker: { every: 3, aim: 0.22 }, grill: { every: 4, power: 0.3 }, rage: { power: 0.25 }, mulligan: { tries: 3 },
+  // Feature-presentation bosses. Web: a word written over the other bug, whose hits do less and land less often.
+  // Conscience: it heals whenever the other bug uses a dirty move (poison or a pierce). Sing: it heals a little at the
+  // start of every turn of its own. Telepod: once, when it drops under `at` of its health, the two bugs swap how hurt they are.
+  web: { power: 0.12, aim: 0.05 }, conscience: { heal: 7 }, sing: { heal: 3 }, telepod: { at: 0.35 } };
 const ruled = (S, rule) => S.side.some((q) => q.c.rule === rule);
 /** A circuit trainer's bug is drilled (`c.trained`): that share more health and damage than a barn bug of its level. */
 const trainedOf = (c) => Math.max(0, Math.min(0.5, Number(c.trained) || 0));
@@ -29,7 +33,7 @@ const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball
 export const tellDue = (S, i) => { const q = S.side[i], rule = q.c.rule;
   return ball(q, q.turn + 1) || (rule === 'flood' && S.turn + 1 >= RULES.flood.from - 2 && S.turn + 1 <= RULES.flood.from)
     || (rule === 'flicker' && (S.turn + 1) % RULES.flicker.every === 0) || (rule === 'grill' && (q.turn + 1) % RULES.grill.every === 0)
-    || (rule === 'linger' && !S.side[1 - i].venom) || (rule === 'dark' && S.by === i && nextMove(S, i).effect === 'pierce'); };
+    || (rule === 'linger' && !S.side[1 - i].venom) || (rule === 'telepod' && !q.podded && S.hp[i] / S.maxHp[i] < RULES.telepod.at + 0.15) || (rule === 'dark' && S.by === i && nextMove(S, i).effect === 'pierce'); };
 
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -96,6 +100,7 @@ function aim(S, by, move, attacks, turnNo = S.turn) {
   if (target.ty === 'flier') acc -= PERK.quick;
   if (target.under) acc -= PERK.dive; // a Water bug that was just hit has gone under
   if (target.t === 'micronecta') acc -= TRAIT.tiny;
+  if (target.c.rule === 'web') acc -= RULES.web.aim; // hard to concentrate with that written over you
   if (target.t === 'meganeura') acc -= TRAIT.griffinDodge;
   if (target.t === 'halobates' && S.hp[foe] > S.maxHp[foe] / 2) acc -= TRAIT.skate;
   if (target.t === 'notonecta' && !target.met) acc -= TRAIT.upside;
@@ -125,6 +130,7 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.kick) mult *= 1 + TRAIT.kick;
   if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
   if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
+  if (target.c.rule === 'web') mult *= 1 - RULES.web.power;
   if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
   if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
   if (shell && pierce) mult *= 1 - TRAIT.shell;
@@ -227,7 +233,17 @@ export function stepBout(S, choice) {
     rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'trait', ability: 'Extra Moult', tier: 0, hit: true, dmg: 0, healed, hp: [...hp], turn,
       line: `${q.c.name} is below a third and moults: ${healed} HP back.` });
   };
-  const rest = () => { for (const i of [by, foe]) { snack(i); moult(i); } };
+  // Dr. Brindle's telepod: once, the first time his bug is left standing under a share of its health, the two bugs trade how hurt they are.
+  const telepod = (i) => {
+    const q = side[i];
+    if (q.c.rule !== 'telepod' || q.podded || hp[i] <= 0 || hp[1 - i] <= 0 || hp[i] / maxHp[i] >= RULES.telepod.at) return;
+    q.podded = true;
+    const mine = hp[i] / maxHp[i], theirs = hp[1 - i] / maxHp[1 - i], before = hp[i];
+    hp[i] = Math.max(1, Math.round(maxHp[i] * theirs)); hp[1 - i] = Math.max(1, Math.round(maxHp[1 - i] * mine));
+    rounds.push({ by: i, type: 'snack', effect: 'heal', moveId: 'rule', ability: 'Telepod', tier: 0, hit: true, dmg: 0, healed: Math.max(0, hp[i] - before), hp: [...hp], turn,
+      line: `${q.c.name} steps into the telepod with ${side[1 - i].c.name}. They come out having traded how hurt they are.` });
+  };
+  const rest = () => { for (const i of [by, foe]) { snack(i); moult(i); telepod(i); } };
   const done = () => {
     rest();
     S.by = foe;
@@ -255,6 +271,7 @@ export function stepBout(S, choice) {
       line: `${s.c.name} *coughs* and loses the turn.` });
     return done();
   }
+  if (s.c.rule === 'sing') hp[by] = Math.min(maxHp[by], hp[by] + RULES.sing.heal); // the chorus picks it back up
   if (s.t === 'onymacris') { s.regen += TRAIT.regen; const n = Math.floor(s.regen); s.regen -= n; hp[by] = Math.min(maxHp[by], hp[by] + n); }
   if (s.skip) {
     const why = s.skip === 'din' ? 'cannot hear a thing' : 'is still climbing back onto the leaf'; s.skip = false;
@@ -302,6 +319,7 @@ export function stepBout(S, choice) {
       if (s.t === 'trachelophorus' && hp[foe] > 0 && R() < TRAIT.stun) { target.skip = true; detail += `; ${target.c.name} is knocked off the leaf`; }
       if (s.t === 'brevisana' && hp[foe] > 0 && R() < TRAIT.din) { target.skip = 'din'; detail += `; ${target.c.name} is deafened`; }
       if (s.t === 'pseudocreobotra') hp[by] = Math.min(maxHp[by], hp[by] + TRAIT.lure);
+      if (target.c.rule === 'conscience' && (move.effect === 'venom' || move.effect === 'pierce') && hp[foe] > 0) { hp[foe] = Math.min(maxHp[foe], hp[foe] + RULES.conscience.heal); detail += `; ${target.c.name} tuts, and feels better about itself`; }
     } else { s.streak = 0; if (target.t === 'sagra') target.kick = true; }
     if (flash !== foe) s.spots = 0; // the spots clear with this attack, hit or miss, unless this is the blow that set the flash off
     if (move.id !== 'basic') s.sung = true; // a mole cricket's tuned burrow carries its first special only

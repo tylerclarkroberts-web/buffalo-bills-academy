@@ -16,10 +16,12 @@ export const RIBBON_XP = 100;
 export const RIBBONS = 8; // the leaders still to come show as empty hooks
 // One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
-export const PURSE = { trainer: 75, ribbon: 750 };
-const FIGHTS = ['trainer', 'rival', 'toll', 'leader']; // stops with somebody to beat
+export const PURSE = { trainer: 75, ribbon: 750, boss: 300 };
+const FIGHTS = ['trainer', 'rival', 'toll', 'leader', 'boss']; // stops with somebody to beat
+// A boss is a feature presentation: one of a kind, after its area's ribbon, never needed to go on. Beating one wins its card.
+export const BOSSES = () => AREAS.flatMap((area) => area.stops.filter((stop) => stop.kind === 'boss'));
 /** `held`: the ribbons the player has. An any-order area pays as the next ribbon they would win, whichever slot it fills. */
-export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon);
+export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon);
 // Any-order areas grow with the ribbons held: every bug gains SCALE levels a ribbon past the two it takes to get there,
 // and a leader's last bug (`from`) only turns up once the player holds that many.
 export const SCALE = 1.5;
@@ -36,7 +38,7 @@ export const TRAINED = 0.1;
 export const capFor = (ribbons) => Math.min(LEVEL_CAP, MAX_LEVEL + ribbons);
 
 export const AREAS = [{
-  id: 'back40', name: 'The Back Forty', ribbon: 1, blurb: 'The field behind the Barn. Last mown in 2019.',
+  id: 'back40', short: 'Back Forty', name: 'The Back Forty', ribbon: 1, blurb: 'The field behind the Barn. Last mown in 2019.',
   stops: [
     { id: 'foff', kind: 'talk', who: 'Commissioner Foff', title: 'Registration',
       lines: ['Welcome to the Tri-County Invertebrate Athletic Association. Nobody sanctions us. Sign here.', 'I had a clipboard. I have had several clipboards.'],
@@ -61,9 +63,13 @@ export const AREAS = [{
       intro: ['Alright, listen up! This is gym class. In gym class we HUSTLE.', 'Two bugs. Beat both and the ribbon is yours. Lose and you run laps.', 'When you hear the whistle, that ball is coming. Guard up or get beaned.'],
       next: 'That\'s one. Don\'t get cocky. I\'ve got a sub.', sub: 'Next! Sub in! Somebody sub in!',
       won: 'Hit the showers. …That was good hustle. Don\'t tell anyone I said that.', lost: 'LAPS! Come back when you\'ve stretched.' },
+    { id: 'charlene', kind: 'boss', who: 'Charlene', poster: 'Charlene\'s Web Address', rule: 'web', tell: 'Charlene is writing something over your bug.',
+      bugs: [{ species: 'platymeris', name: 'Charlene', level: 6 }],
+      intro: ['Up here. The hayloft. Mind Wilbert, he\'s eating.', 'I write a word over every bug that comes up. It is usually accurate.', 'Yours says MID. It will hit like it, too.'],
+      won: 'Fine. I\'ll write SOME BUG. Small. Where nobody looks.', lost: 'MID. I\'m leaving it up. Wilbert, stop eating that.' },
   ],
 }, {
-  id: 'culvert', name: 'The Culvert', ribbon: 2, needs: 1, blurb: 'A storm drain behind the feed store. It is not supposed to have a current.',
+  id: 'culvert', short: 'Culvert', name: 'The Culvert', ribbon: 2, needs: 1, blurb: 'A storm drain behind the feed store. It is not supposed to have a current.',
   stops: [
     { id: 'nephew1', kind: 'rival', who: 'The Nephew', level: 5, bugName: 'Bug Two',
       intro: ['My uncle said I had to do something with my summer.', 'This is Bug Two. Don\'t ask about Bug One.', 'I saw what you brought. I brought the other thing.'],
@@ -84,9 +90,13 @@ export const AREAS = [{
       intro: ['Gil. Waterbeds. Thirty-one years. Everything is better as water.', 'Two bugs. In a minute this drain fills, and anything that can\'t swim loses a little every turn.', 'Bring a Water bug. Or don\'t, and learn something about lumbar support.'],
       next: 'That one was a floor model.', sub: 'See? No give. Send in another.',
       won: 'You\'d sleep like a baby on one. Take the ribbon. Take a brochure.', lost: 'Sunk. Come back when you\'ve got something that floats.' },
+    { id: 'those', kind: 'boss', who: 'The Storm Drain', poster: 'THOSE!', trained: 0.4,
+      bugs: [{ species: 'solenopsis', name: 'THOSE!', level: 8, stance: 'aggressive' }],
+      intro: ['Something came down the drain from behind the feed store. The big bags. The ones with the warning.', 'It is an ant. It is not the size an ant is.'],
+      won: 'It goes back down the pipe. The pipe was not built for this.', lost: 'It keeps the drain. It was keeping it anyway.' },
   ],
 }, {
-  id: 'porch', name: 'The Front Porch', ribbon: 3, needs: 2, scale: true, blurb: 'Next door, after dark. The light has a mind of its own.',
+  id: 'porch', short: 'Porch', name: 'The Front Porch', ribbon: 3, needs: 2, scale: true, blurb: 'Next door, after dark. The light has a mind of its own.',
   stops: [
     { id: 'ladder', kind: 'trainer', who: 'Man Returning a Ladder', bugs: [{ species: 'gromphadorhina', name: 'Rung', level: 7 }],
       intro: ['I borrowed this in 2019.', 'I\'m not here about the bug. But I did bring the bug.'],
@@ -100,9 +110,13 @@ export const AREAS = [{
       intro: ['Dale. Next door. Eleven years on the HOA board, and I have notes.', 'Your bugs were out past nine. Section four.', 'When this light goes off, nothing can see to hit. My Dazzle bugs manage.'],
       next: 'That\'s going in the minutes.', sub: 'Noted. All of it. Noted.',
       won: 'I\'ll be raising this at the next meeting. Take the ribbon off my porch.', lost: 'Section four. Read it.' },
+    { id: 'jimmy', kind: 'boss', who: 'Jimmy Conscience', poster: 'Wish Upon a Bug', rule: 'conscience', tell: 'Jimmy Conscience clears his throat.',
+      bugs: [{ species: 'gryllotalpa', name: 'Jimmy Conscience', level: 10 }],
+      intro: ['Evening! Top hat, umbrella, opinions. Jimmy Conscience.', 'Now, I don\'t like to tell a fella how to fight.', 'But every dirty trick, every poison, every poke through the armour? Does me a power of good.'],
+      won: 'Well. Always let your conscience be your… ow.', lost: 'And what did we learn? Take your time. I\'ve got all night.' },
   ],
 }, {
-  id: 'kitchen', name: 'Buffalo Bill\'s Back Kitchen', ribbon: 4, needs: 2, scale: true, blurb: 'Through the swinging door. Nobody is supposed to be back here.',
+  id: 'kitchen', short: 'Kitchen', name: 'Buffalo Bill\'s Back Kitchen', ribbon: 4, needs: 2, scale: true, blurb: 'Through the swinging door. Nobody is supposed to be back here.',
   stops: [
     { id: 'inspector', kind: 'trainer', who: 'Health Inspector, Off Duty', bugs: [{ species: 'melanophila', name: 'Violation', level: 7 }],
       intro: ['I\'m not here in an official capacity.', 'If I were, this would be a very different conversation.'],
@@ -116,9 +130,14 @@ export const AREAS = [{
       intro: ['FORTY-ONE!', 'FIFTY-TWO!', 'The grill is never off. Every fourth one comes out HOT.'],
       next: 'FIFTY-TWO! FIFTY-TWO IS UP!', sub: 'NEXT!',
       won: 'EIGHTY-SIX the ribbon. It\'s yours. NEXT!', lost: 'SEND IT BACK!' },
+    { id: 'choir', kind: 'boss', who: 'The Roach Choir', poster: 'Apartment 4B: The Musical', rule: 'sing', tell: 'The Roach Choir takes a breath.',
+      bugs: [{ species: 'gromphadorhina', name: 'Tenor', level: 9 }, { species: 'gromphadorhina', name: 'Baritone', level: 10 }, { species: 'gromphadorhina', name: 'Bass', level: 11, stance: 'defensive' }],
+      intro: ['♪ Behind the fryer, where the mop won\'t go ♪', '♪ There\'s three of us, in case you didn\'t know ♪', '♪ And every verse we sing, we feel a little better ♪'],
+      next: '♪ That was the tenor. He was the weak one ♪', sub: '♪ Second verse, same as the first ♪',
+      won: '♪ …and scene ♪', lost: '♪ Encore ♪' },
   ],
 }, {
-  id: 'van', name: 'The Van at the Mine Entrance', ribbon: 5, needs: 2, scale: true, blurb: 'A white van, lettering scraped off. It has been parked here since she retired.',
+  id: 'van', short: 'Van', name: 'The Van at the Mine Entrance', ribbon: 5, needs: 2, scale: true, blurb: 'A white van, lettering scraped off. It has been parked here since she retired.',
   stops: [
     { id: 'oils', kind: 'trainer', who: 'Woman Selling Essential Oils', bugs: [{ species: 'dasymutilla', name: 'Lavender', level: 7 }],
       intro: ['Have you thought about what you\'re putting ON your bug?', 'It\'s not a pyramid. It\'s a wellness triangle.'],
@@ -132,9 +151,13 @@ export const AREAS = [{
       intro: ['Forty years I did the other thing. To bugs. I\'m sorry.', 'I\'m sorry to yours in particular. In advance.', 'What I put on them doesn\'t wear off. It never did. That was the selling point.'],
       next: 'I\'m sorry. I have another.', sub: 'Oh, I\'m sorry. I\'m so sorry.',
       won: 'Thank you. I needed to lose one. Take the ribbon. I\'m sorry it\'s damp.', lost: 'I\'m sorry. I really am. I did warn you.' },
+    { id: 'brindle', kind: 'boss', who: 'Dr. Brindle', poster: 'The Wasp', rule: 'telepod', tell: 'Dr. Brindle backs toward the telepod…',
+      bugs: [{ species: 'ampulex', name: 'Brindlewasp', level: 10 }],
+      intro: ['The shed. Behind the van. Don\'t touch the pods.', 'I went in one alone. I did not come out alone.', 'When this goes badly for me, and it will, we both step in. You\'ll see.'],
+      won: 'Be afraid. Be moderately afraid.', lost: 'It worked! It has never worked before.' },
   ],
 }, {
-  id: 'shaft12', name: 'Shaft 12, Night Shift', ribbon: 6, needs: 2, scale: true, blurb: 'Nineteen years of nights. Bring a lamp. It will not help.',
+  id: 'shaft12', short: 'Shaft 12', name: 'Shaft 12, Night Shift', ribbon: 6, needs: 2, scale: true, blurb: 'Nineteen years of nights. Bring a lamp. It will not help.',
   stops: [
     { id: 'newguy', kind: 'trainer', who: 'New Guy, First Night', bugs: [{ species: 'umbonia', name: 'Lunchbox', level: 7 }],
       intro: ['Is it always this dark?', 'Nobody told me to bring a bug. I found one.'],
@@ -148,6 +171,11 @@ export const AREAS = [{
       intro: ['…', '…you can\'t see it. that\'s the idea.', '…you won\'t know how hurt it is. i do. i\'m used to the dark.'],
       next: '…there\'s another. there\'s always another.', sub: '…next.',
       won: '…take it. what\'s it look like? the ribbon. i never saw it.', lost: '…clock out.' },
+    { id: 'mandibull', kind: 'boss', who: 'General Mandibull', poster: 'Ants in Formation',
+      bugs: [{ species: 'solenopsis', name: 'Private Zee', level: 9 }, { species: 'odontomachus', name: 'The Colonel', level: 10 }, { species: 'colobopsis', name: 'General Mandibull', level: 11, stance: 'aggressive' }],
+      intro: ['The colony under Shaft 12 does not negotiate.', 'Private Zee will go first. He has been talking to someone about it.', 'Then the Colonel. Then me. I explode. It is a whole thing.'],
+      next: 'He was expendable. He knew. We discussed it in group.', sub: 'Hold the line!',
+      won: 'The colony will remember this. The colony remembers everything. It is exhausting.', lost: 'For the colony!' },
   ],
 }];
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
@@ -189,9 +217,10 @@ export class Circuit {
     return {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
-      areas: AREAS.map((area) => ({ id: area.id, name: area.name, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: !area.needs || !!me.ribbons[area.needs],
+      areas: AREAS.map((area) => ({ id: area.id, name: area.name, short: area.short, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: !area.needs || !!me.ribbons[area.needs],
         stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
       cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED, tolls: me.tolls || {},
+      cards: BOSSES().map((stop) => ({ id: stop.id, who: stop.who, poster: stop.poster, species: stop.bugs.at(-1).species, at: me.cards?.[stop.id] || null })),
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
       live: this.fights.fightOf(pid)?.id || null,
       ribbonXp: RIBBON_XP,
@@ -214,11 +243,11 @@ export class Circuit {
     const stop = this.stopOf(body.stop), me = this.me(pid);
     if (!FIGHTS.includes(stop.kind)) throw new GameError('There is nobody to fight here.', 409);
     if (!this.open(me, stop)) throw new GameError('Not yet. Finish the stops before it.', 409);
-    if (me.done[stop.id]) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : `${stop.who} has had enough for one lifetime.`, 409);
+    if (me.done[stop.id]) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : stop.kind === 'boss' ? 'You hold that card already. It will not fight you twice.' : `${stop.who} has had enough for one lifetime.`, 409);
     if (this.fights.fightOf(pid)) throw new GameError('One of your bugs is in the ring right now.', 409);
     const pen = this.barn.ready(pid, body.bug ?? undefined), id = idOf(pen);
     let run = me.run?.stop === stop.id ? me.run : null;
-    if (stop.kind === 'leader' && !run) run = { stop: stop.id, foe: 0, foeHp: null, out: [], hp: {}, won: [], live: null, lineup: this.bugsOf(pid, me, stop) };
+    if ((stop.kind === 'leader' || stop.bugs?.length > 1) && !run) run = { stop: stop.id, foe: 0, foeHp: null, out: [], hp: {}, won: [], live: null, lineup: this.bugsOf(pid, me, stop) };
     if (run?.out.includes(id)) throw new GameError(`${pen.name} is out of this one. Send in someone else.`, 409);
     if (me.run && me.run !== run) me.run = null; // walked off another leader's gauntlet: it starts again next time
     const k = run ? run.foe : 0, foe = this.bugsOf(pid, me, stop)[k], health = run?.hp[id];
@@ -227,7 +256,7 @@ export class Circuit {
     if (lunch) this.barn.lunchEaten(pid, pen.bornAt);
     const fightId = crypto.randomBytes(9).toString('base64url');
     const fighters = [{ ...this.barn.fighter(pid, pen), owner: ownerName, ...(health != null ? { health } : {}), ...(stop.rule === 'tribute' ? { lunch: null } : {}) },
-      { species: foe.species, name: foe.name, level: foe.level, mood: 100, gear: 0.06, defense: 0.06, trained: TRAINED, battle: { stance: foe.stance || 'balanced' }, owner: stop.who,
+      { species: foe.species, name: foe.name, level: foe.level, mood: 100, gear: 0.06, defense: 0.06, trained: stop.trained ?? TRAINED, battle: { stance: foe.stance || 'balanced' }, owner: stop.who,
         ...(run?.foeHp != null ? { health: run.foeHp } : {}), ...(lunch ? { lunch } : {}), ...(stop.rule ? { rule: stop.rule, tell: stop.tell } : {}) }];
     this.fights.start({ id: fightId, kind: 'circuit', players: [pid, null], fighters, seed: `${this.now()}:${fightId}`, watching: [pid],
       onFinish: (fight) => this.settle(pid, stop, { id, bornAt: pen.bornAt }, foe, fight) });
@@ -245,10 +274,12 @@ export class Circuit {
     const say = (line) => `${stop.who}: “${line}”`;
     const run = me.run?.stop === stop.id ? me.run : null;
     const area = STOPS.get(stop.id).area;
-    if (stop.kind !== 'leader') {
-      if (won) { me.done[stop.id] = this.now(); extra.spoils = [this.pay(pid, stop, area)]; }
+    // a boss beaten: its card, and its purse
+    const card = () => { (me.cards ||= {})[stop.id] = this.now(); return [`Feature presentation card · “${stop.poster}”`, this.pay(pid, stop, area)]; };
+    if (!run) {
+      if (won) { me.done[stop.id] = this.now(); extra.spoils = stop.kind === 'boss' ? card() : [this.pay(pid, stop, area)]; }
       extra.verdict = say(won ? stop.won : stop.lost);
-    } else if (run) {
+    } else {
       run.live = null;
       const pct = (i) => Math.max(1, Math.round((S.hp[i] / S.maxHp[i]) * 100));
       if (won) {
@@ -258,7 +289,10 @@ export class Circuit {
         run.out.push(bug.id); run.foeHp = fight.over.winner === 1 ? pct(1) : run.foeHp;
       }
       const standing = this.barn.bugs(pid).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && !run.out.includes(idOf(pen)));
-      if (run.foe >= (run.lineup || stop.bugs).length) {
+      if (run.foe >= (run.lineup || stop.bugs).length && stop.kind === 'boss') {
+        me.done[stop.id] = this.now(); me.run = null;
+        extra.verdict = say(stop.won); extra.spoils = card();
+      } else if (run.foe >= (run.lineup || stop.bugs).length) {
         me.done[stop.id] = me.ribbons[area.ribbon] = this.now(); me.run = null;
         for (const bornAt of run.won) {
           const got = this.barn.grantXp(pid, bornAt, RIBBON_XP);

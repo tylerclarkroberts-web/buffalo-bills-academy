@@ -312,6 +312,13 @@
 .cc-org { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--paper-2); }
 .cc-rack { display: flex; gap: 3px; }
 .cc-areas { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+/* Feature presentations: a marquee-lit stop on the trail, its poster line, and the row of cards won beside the ribbons. */
+.cc-won { display: grid; gap: 6px; justify-items: end; }
+.cc-cards { display: flex; gap: 4px; }
+.cc-card { width: 30px; height: 38px; display: grid; place-items: center; border-radius: 4px; border: 1px dashed rgba(255,255,255,.3); color: rgba(255,255,255,.4); font: 700 13px var(--mono); }
+.cc-card.on { border: 2px solid #d6c2ff; background: linear-gradient(135deg, rgba(255,106,213,.25), rgba(106,208,255,.25)); box-shadow: 0 0 8px rgba(180,140,255,.6); }
+.cc-node.boss .cc-icon { border-color: #d6c2ff; box-shadow: 0 0 0 2px #7a3ad0; }
+.cc-poster { margin: 0; font: 600 12px var(--mono); letter-spacing: .04em; color: #d6c2ff; }
 .barn-bar.hp.dark i, .barn-bar.hp.dark .ghost { background: repeating-linear-gradient(90deg, #2a2a30 0 8px, #1a1a1e 8px 16px); }
 .cc-rosette .tails { fill: rgba(255,255,255,.12); }
 .cc-rosette .petals { fill: none; stroke: rgba(255,255,255,.3); stroke-dasharray: 3 2; }
