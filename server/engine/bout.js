@@ -26,6 +26,11 @@ export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.
   // start of every turn of its own. Telepod: once, when it drops under `at` of its health, the two bugs swap how hurt they are.
   web: { power: 0.12, aim: 0.05 }, conscience: { heal: 7 }, sing: { heal: 3 }, telepod: { at: 0.35 } };
 const ruled = (S, rule) => S.side.some((q) => q.c.rule === rule);
+// Circuit prizes ride on the player's bug (`c.prizes`), in circuit fights only. Whistle: its first attack cannot miss.
+// Floaties: the flood and the porch light do nothing to it. Mitt: Fire bugs' hits on it do less. Antidote: poison does
+// half damage to it and always wears off. Night eyes: an Ambush bug's first strike can miss it. (Night light is the page's.)
+export const PRIZE = { mitt: 0.1 };
+const has = (q, prize) => !!q.c.prizes?.includes(prize);
 /** A circuit trainer's bug is drilled (`c.trained`): that share more health and damage than a barn bug of its level. */
 const trainedOf = (c) => Math.max(0, Math.min(0.5, Number(c.trained) || 0));
 const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball.every === 0;
@@ -96,7 +101,7 @@ function aim(S, by, move, attacks, turnNo = S.turn) {
   let acc = move.accuracy - spd;
   if (target.t === 'nemoptera' && !target.damaged) acc -= TRAIT.calm;
   if (s.blind) acc -= TRAIT.blind;
-  if (ruled(S, 'flicker') && turnNo % RULES.flicker.every === 0 && s.ty !== 'dazzle') acc -= RULES.flicker.aim; // the porch light is off
+  if (ruled(S, 'flicker') && turnNo % RULES.flicker.every === 0 && s.ty !== 'dazzle' && !has(s, 'floaties')) acc -= RULES.flicker.aim; // the porch light is off
   if (target.ty === 'flier') acc -= PERK.quick;
   if (target.under) acc -= PERK.dive; // a Water bug that was just hit has gone under
   if (target.t === 'micronecta') acc -= TRAIT.tiny;
@@ -110,7 +115,7 @@ function aim(S, by, move, attacks, turnNo = S.turn) {
   if (s.t === 'dytiscus' && s.grip) acc += TRAIT.grip;
   if (s.t === 'myrmeleon' && target.attacks >= 3) acc += TRAIT.pit; // three attacks in, the opponent has slid into the pit
   if (target.t === 'ceroplophana' && S.hp[foe] < S.maxHp[foe] / 4) acc *= 1 - TRAIT.vanish;
-  return (s.ty === 'ambush' && attacks === 1) || ball(s, s.turn) ? 1 : acc; // an Ambush bug's first strike cannot miss; nor can a dodgeball
+  return (s.ty === 'ambush' && attacks === 1 && !has(target, 'nighteyes')) || (attacks === 1 && has(s, 'whistle')) || ball(s, s.turn) ? 1 : acc; // an Ambush bug's first strike cannot miss; nor can a dodgeball
 }
 /** What side `by`'s attack does at a given roll (0.8 up to 1.25), on its `attacks`-th attack and `turnNo`-th turn. */
 function blow(S, by, move, roll, attacks, turnNo) {
@@ -131,6 +136,7 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
   if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
   if (target.c.rule === 'web') mult *= 1 - RULES.web.power;
+  if (s.ty === 'fire' && has(target, 'mitt')) mult *= 1 - PRIZE.mitt;
   if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
   if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
   if (shell && pierce) mult *= 1 - TRAIT.shell;
@@ -252,14 +258,14 @@ export function stepBout(S, choice) {
   };
 
   if (s.venom) {
-    const dmg = hurt(by, s.venom.damage);
+    const dmg = hurt(by, has(s, 'antidote') ? Math.ceil(s.venom.damage / 2) : s.venom.damage);
     rounds.push({ by: foe, type: 'venom', effect: 'venom', moveId: s.venom.moveId, ability: s.venom.name, tier: s.venom.tier, hit: true, dmg, hp: [...hp], turn,
       line: `${s.c.name} takes ${dmg} venom damage${stood ? ` and ${stood} at 1 HP` : ''}.${spots()}` });
-    if (target.c.rule !== 'linger' && --s.venom.left === 0) s.venom = null; // a retired exterminator's poison does not wear off
+    if ((target.c.rule !== 'linger' || has(s, 'antidote')) && --s.venom.left === 0) s.venom = null; // a retired exterminator's poison does not wear off
     pop(by); bursts(); rest();
     if (hp[0] <= 0 || hp[1] <= 0) return done();
   }
-  if (ruled(S, 'flood') && S.turn >= RULES.flood.from && s.ty !== 'water') { // the water is up: anything that cannot swim is struggling
+  if (ruled(S, 'flood') && S.turn >= RULES.flood.from && s.ty !== 'water' && !has(s, 'floaties')) { // the water is up: anything that cannot swim is struggling
     const dmg = hurt(by, RULES.flood.hp);
     rounds.push({ by: foe, type: 'venom', effect: 'weaken', moveId: 'rule', ability: 'Rising Water', tier: 0, hit: true, dmg, hp: [...hp], turn,
       line: `The water is up to ${s.c.name}'s knees: ${dmg} damage.${spots()}` });
@@ -345,7 +351,7 @@ export function simulateBout(a, b, seed) {
 
 export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
 const lines = new Map();
-const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null, c.trained || 0]);
+const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null, c.trained || 0, (c.prizes || []).join()]);
 /**
  * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, attack and
  * defense gear, packed lunch, stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is

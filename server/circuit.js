@@ -9,6 +9,7 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { idOf } from './barn.js';
+import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
 import { MAX_LEVEL, LEVEL_CAP, ROSTER } from './engine/creatures.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
 
@@ -17,11 +18,23 @@ export const RIBBONS = 8; // the leaders still to come show as empty hooks
 // One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
 export const PURSE = { trainer: 75, ribbon: 750, boss: 300 };
-const FIGHTS = ['trainer', 'rival', 'toll', 'leader', 'boss']; // stops with somebody to beat
+const FIGHTS = ['trainer', 'rival', 'toll', 'leader', 'boss', 'wild']; // stops with somebody to beat
+const OPTIONAL = ['center', 'wild', 'boss']; // stops nothing later waits on
+// What each leader hands over with the ribbon. A prize works in circuit fights only (server/engine/bout.js has what each does).
+export const PRIZES = {
+  pugh: { id: 'whistle', name: 'The Whistle', does: 'Your bug\'s first attack in a circuit fight cannot miss.' },
+  gil: { id: 'floaties', name: 'Floaties', does: 'Rising water and a dark porch do nothing to your bug.' },
+  dale: { id: 'nightlight', name: 'The Night Light', does: 'You can see how hurt a bug is, however dark the shaft.' },
+  ruperto: { id: 'mitt', name: 'The Oven Mitt', does: 'Fire bugs\' hits on your bug do 10% less.' },
+  voss: { id: 'antidote', name: 'The Antidote', does: 'Poison does half damage to your bug, and always wears off.' },
+  dwayne: { id: 'nighteyes', name: 'Night Eyes', does: 'An Ambush bug\'s first strike can miss your bug.' },
+};
+/** The prizes a player holds: one for every leader they have beaten. */
+export const prizesOf = (me) => Object.entries(PRIZES).filter(([leader]) => me.done[leader]).map(([, prize]) => prize);
 // A boss is a feature presentation: one of a kind, after its area's ribbon, never needed to go on. Beating one wins its card.
 export const BOSSES = () => AREAS.flatMap((area) => area.stops.filter((stop) => stop.kind === 'boss'));
 /** `held`: the ribbons the player has. An any-order area pays as the next ribbon they would win, whichever slot it fills. */
-export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon);
+export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : stop.kind === 'wild' ? 0 : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon);
 // Any-order areas grow with the ribbons held: every bug gains SCALE levels a ribbon past the two it takes to get there,
 // and a leader's last bug (`from`) only turns up once the player holds that many.
 export const SCALE = 1.5;
@@ -57,6 +70,8 @@ export const AREAS = [{
     { id: 'notacop', kind: 'trainer', who: 'Man Who Insists He\'s Not a Cop', bugs: [{ species: 'trachelophorus', name: 'Plainclothes', level: 3, stance: 'defensive' }],
       intro: ['Just a regular guy with a regular bug. Totally normal.', 'Do you have any… bugs… on you? Asking as a civilian.'],
       won: 'I\'m going to need you to… congratulations. As a civilian.', lost: 'Have a nice day, citizen. Citizen is a normal word.' },
+    { id: 'wild1', kind: 'wild', who: 'Something Under the Old Tractor', bugs: [{ species: 'phloeodes', name: 'Diabolical Ironclad Beetle', level: 5 }],
+      intro: ['The tractor has not moved since 2019. Something under it has.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Anything that faints out here, I can fix. Free after an hour\'s rest ♡'] },
     { id: 'pugh', kind: 'leader', who: 'Coach Deb Pugh', title: 'Ribbon 1', rule: 'dodgeball', tell: 'Coach Pugh puts the whistle to her lips…',
       bugs: [{ species: 'manticora', name: 'Dodgeball', level: 4, stance: 'aggressive' }, { species: 'nemoptera', name: 'Hall Pass', level: 5 }],
@@ -84,6 +99,8 @@ export const AREAS = [{
     { id: 'bent', kind: 'trainer', who: 'Bent', friend: true, rule: 'cough', bugs: [{ species: 'notonecta', name: 'Lozenge', level: 6 }],
       intro: ['*cough* Morning.', '*cough* It\'s going round. The bugs have it too.'],
       won: '*cough* Good game.', lost: '*cough* Sorry. *cough* Not sorry.' },
+    { id: 'wild2', kind: 'wild', who: 'Something on the Water', bugs: [{ species: 'halobates', name: 'Sea Skater', level: 7 }],
+      intro: ['It is standing on the water. It should be at sea.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center2', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['You are all a little damp. I have towels ♡'] },
     { id: 'gil', kind: 'leader', who: 'Gil', title: 'Ribbon 2', rule: 'flood', tell: 'Gil pats the water. “Feel that? That\'s give.”',
       bugs: [{ species: 'dytiscus', name: 'Queen Size', level: 6 }, { species: 'lethocerus', name: 'California King', level: 7, stance: 'aggressive' }],
@@ -104,6 +121,8 @@ export const AREAS = [{
     { id: 'tcut', kind: 'trainer', who: 'Tcut', friend: true, rule: 'rage', bugs: [{ species: 'phanaeus', name: 'Seven Iron', level: 8 }],
       intro: ['Hey man. Just out here to have fun.', 'Nice and easy. Nothing to get upset about.'],
       won: 'Good game. Really. I SAID GOOD GAME.', lost: 'See? Calm wins.' },
+    { id: 'wild3', kind: 'wild', who: 'A Light Under the Eaves', bugs: [{ species: 'arachnocampa', name: 'New Zealand Glowworm', level: 9 }],
+      intro: ['That is not the porch light.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center3', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Mind the step. And the other step ♡'] },
     { id: 'dale', kind: 'leader', who: 'Dale', title: 'Ribbon 3', rule: 'flicker', tell: 'Dale reaches for the porch light switch…',
       bugs: [{ species: 'photuris', name: 'Porchlight', level: 8 }, { species: 'bertholdia', name: 'Bylaw', level: 9 }, { species: 'chrysochroa', name: 'Covenant', level: 10, from: 4 }],
@@ -124,6 +143,8 @@ export const AREAS = [{
     { id: 'bmehl', kind: 'trainer', who: 'BMehl', friend: true, bugs: [{ species: 'brachinus', name: 'F***ing Carl', level: 8, stance: 'aggressive' }],
       intro: ['How f***ing hard can it be.'],
       won: 'What the f***.', lost: 'F*** yes.' },
+    { id: 'wild4', kind: 'wild', who: 'Something Behind the Fryer', bugs: [{ species: 'pheropsophus', name: 'Asian Bombardier Beetle', level: 9 }],
+      intro: ['Every so often there is a pop back here. It is not the fryer.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center4', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Please do not touch the fryer ♡'] },
     { id: 'ruperto', kind: 'leader', who: 'Ruperto', title: 'Ribbon 4', rule: 'grill', tell: 'Ruperto slams the bell. “ORDER UP!”',
       bugs: [{ species: 'solenopsis', name: 'Order 41', level: 8 }, { species: 'pyrrhocoris', name: 'Order 52', level: 9 }, { species: 'brachinus', name: 'Order 86', level: 10, from: 4 }],
@@ -145,6 +166,8 @@ export const AREAS = [{
     { id: 'article', kind: 'trainer', who: 'Guy Who Read One Article', bugs: [{ species: 'graphocephala', name: 'Actually', level: 8 }],
       intro: ['Actually, most people get bug fighting completely wrong.', 'I read a thing.'],
       won: 'That\'s not what the article said would happen.', lost: 'Like I said. One article.' },
+    { id: 'wild5', kind: 'wild', who: 'Something on the Wing Mirror', bugs: [{ species: 'peruphasma', name: 'Black Beauty Stick Insect', level: 9 }],
+      intro: ['Black, red wings, yellow eyes, perfectly still. It has been watching the van.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center5', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Please stay upwind of the van ♡'] },
     { id: 'voss', kind: 'leader', who: 'Aldine Voss', title: 'Ribbon 5', rule: 'linger', tell: 'Aldine Voss looks away. “I\'m so sorry about this next part.”',
       bugs: [{ species: 'sphaerocoris', name: 'Apology', level: 8 }, { species: 'platymeris', name: 'Regret', level: 9 }, { species: 'graphocephala', name: 'Remorse', level: 10, from: 4 }],
@@ -165,6 +188,8 @@ export const AREAS = [{
     { id: 'kashely', kind: 'trainer', who: 'Kashely', friend: true, rule: 'mulligan', bugs: [{ species: 'empusa', name: 'Ranch Rules', level: 8 }],
       intro: ['Howdy. Out here a bug gets a few mulligans.', 'That\'s not a mine thing. It is on my ranch.'],
       won: 'Three mulligans and I still lost. I\'ll pencil it in as a draw.', lost: 'That\'s how the West was won. Mostly mulligans.' },
+    { id: 'wild6', kind: 'wild', who: 'A Noise in the Dark', bugs: [{ species: 'brevisana', name: 'Shrill Thorntree Cicada', level: 9 }],
+      intro: ['You cannot see it. You can absolutely hear it.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center6', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['I brought a night light. Dwayne asked me to turn it off ♡'] },
     { id: 'dwayne', kind: 'leader', who: 'Dwayne', title: 'Ribbon 6', rule: 'dark', tell: 'Dwayne stops whispering.',
       bugs: [{ species: 'acanthaspis', name: 'Second Shift', level: 8 }, { species: 'deroplatys', name: 'Third Shift', level: 9 }, { species: 'myrmeleon', name: 'Graveyard', level: 10, from: 4 }],
@@ -181,8 +206,8 @@ export const AREAS = [{
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
 
 export class Circuit {
-  constructor({ store, barn, accounts, fights, now }) {
-    this.store = store; this.accounts = accounts; this.barn = barn; this.fights = fights || barn.fights; this.now = now;
+  constructor({ store, barn, accounts, fights, now, randInt }) {
+    this.store = store; this.accounts = accounts; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.barn = barn; this.fights = fights || barn.fights; this.now = now;
     this.doc = store.loadDoc('circuit', { players: {} });
     this.doc.players ||= {};
     barn.capOf = (pid) => capFor(Object.keys(this.doc.players[pid]?.ribbons || {}).length);
@@ -194,7 +219,7 @@ export class Circuit {
   open(me, stop) {
     const { area, i } = STOPS.get(stop.id);
     if (area.needs && !me.ribbons[area.needs]) return false;
-    return stop.kind === 'center' || area.stops.slice(0, i).every((s) => s.kind === 'center' || me.done[s.id]);
+    return stop.kind === 'center' || area.stops.slice(0, i).every((s) => OPTIONAL.includes(s.kind) || me.done[s.id]);
   }
   /** The bugs a stop fields against this player. The rival's is whatever beats their partner, fixed the first time they look. */
   bugsOf(pid, me, stop) {
@@ -220,6 +245,7 @@ export class Circuit {
       areas: AREAS.map((area) => ({ id: area.id, name: area.name, short: area.short, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: !area.needs || !!me.ribbons[area.needs],
         stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
       cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED, tolls: me.tolls || {},
+      prizes: prizesOf(me), jars: this.shop?.jars(pid) || 0,
       cards: BOSSES().map((stop) => ({ id: stop.id, who: stop.who, poster: stop.poster, species: stop.bugs.at(-1).species, at: me.cards?.[stop.id] || null })),
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
       live: this.fights.fightOf(pid)?.id || null,
@@ -243,7 +269,7 @@ export class Circuit {
     const stop = this.stopOf(body.stop), me = this.me(pid);
     if (!FIGHTS.includes(stop.kind)) throw new GameError('There is nobody to fight here.', 409);
     if (!this.open(me, stop)) throw new GameError('Not yet. Finish the stops before it.', 409);
-    if (me.done[stop.id]) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : stop.kind === 'boss' ? 'You hold that card already. It will not fight you twice.' : `${stop.who} has had enough for one lifetime.`, 409);
+    if (me.done[stop.id]) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : stop.kind === 'boss' ? 'You hold that card already. It will not fight you twice.' : stop.kind === 'wild' ? 'You caught it. There was only the one.' : `${stop.who} has had enough for one lifetime.`, 409);
     if (this.fights.fightOf(pid)) throw new GameError('One of your bugs is in the ring right now.', 409);
     const pen = this.barn.ready(pid, body.bug ?? undefined), id = idOf(pen);
     let run = me.run?.stop === stop.id ? me.run : null;
@@ -255,7 +281,10 @@ export class Circuit {
     const lunch = stop.rule === 'tribute' ? pen.lunch || null : null;
     if (lunch) this.barn.lunchEaten(pid, pen.bornAt);
     const fightId = crypto.randomBytes(9).toString('base64url');
-    const fighters = [{ ...this.barn.fighter(pid, pen), owner: ownerName, ...(health != null ? { health } : {}), ...(stop.rule === 'tribute' ? { lunch: null } : {}) },
+    const wild = stop.kind === 'wild', prizes = prizesOf(me).map((prize) => prize.id);
+    if (wild) me.catch = null; // a new fight: whatever was lying there has gone
+    const fighters = [{ ...this.barn.fighter(pid, pen), owner: ownerName, ...(prizes.length ? { prizes } : {}), ...(health != null ? { health } : {}), ...(stop.rule === 'tribute' ? { lunch: null } : {}) },
+      wild ? { species: foe.species, name: foe.name, level: foe.level, wild: true } : // nobody's bug: no drilling, no gear
       { species: foe.species, name: foe.name, level: foe.level, mood: 100, gear: 0.06, defense: 0.06, trained: stop.trained ?? TRAINED, battle: { stance: foe.stance || 'balanced' }, owner: stop.who,
         ...(run?.foeHp != null ? { health: run.foeHp } : {}), ...(lunch ? { lunch } : {}), ...(stop.rule ? { rule: stop.rule, tell: stop.tell } : {}) }];
     this.fights.start({ id: fightId, kind: 'circuit', players: [pid, null], fighters, seed: `${this.now()}:${fightId}`, watching: [pid],
@@ -269,14 +298,19 @@ export class Circuit {
   settle(pid, stop, bug, foe, fight) {
     const me = this.me(pid), S = fight.S, won = fight.over.winner === 0, fainted = S.hp[0] === 0;
     const res = this.barn.battleResult(pid, { battleId: fight.id, bornAt: bug.bornAt, won, fought: false, fainted,
-      foeLevel: foe.level, foeName: `${stop.who}'s ${foe.name}`, odds: this.fights.lineOf(fight, 0), place: 'circuit' });
+      foeLevel: foe.level, foeName: stop.kind === 'wild' ? `a wild ${foe.name}` : `${stop.who}'s ${foe.name}`, odds: this.fights.lineOf(fight, 0), place: 'circuit' });
     const extra = { ...(res.xp ? { xpEarned: res.xp } : {}), levelBefore: res.levelBefore, levelAfter: res.levelAfter, ...(fainted ? { healthAfter: 0 } : {}) }; // a loss says nothing about XP: there is none
     const say = (line) => `${stop.who}: “${line}”`;
     const run = me.run?.stop === stop.id ? me.run : null;
     const area = STOPS.get(stop.id).area;
     // a boss beaten: its card, and its purse
     const card = () => { (me.cards ||= {})[stop.id] = this.now(); return [`Feature presentation card · “${stop.poster}”`, this.pay(pid, stop, area)]; };
-    if (!run) {
+    if (stop.kind === 'wild') { // knocked out, it lies there for the jar; anything else and it is back in the grass until next time
+      if (won && S.hp[1] === 0) {
+        me.catch = { stop: stop.id, fight: fight.id, species: foe.species, name: foe.name, level: foe.level, by: fight.fighters[0].level, jars: JAR.throws };
+        extra.jar = this.jarOf(pid, me.catch); extra.verdict = `${foe.name} is out cold. Jar it before it comes to.`;
+      } else extra.verdict = won ? `${foe.name} is beaten on points and slips away. It will be back.` : `${foe.name} keeps its spot.`;
+    } else if (!run) {
       if (won) { me.done[stop.id] = this.now(); extra.spoils = stop.kind === 'boss' ? card() : [this.pay(pid, stop, area)]; }
       extra.verdict = say(won ? stop.won : stop.lost);
     } else {
@@ -300,7 +334,7 @@ export class Circuit {
         }
         extra.verdict = say(stop.won);
         const cap = capFor(Object.keys(me.ribbons).length);
-        extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, this.pay(pid, stop, area), `Your bugs can now reach level ${cap}`, `+${RIBBON_XP} XP to every bug that won a round`];
+        extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, ...(PRIZES[stop.id] ? [`Prize: ${PRIZES[stop.id].name}`] : []), this.pay(pid, stop, area), `Your bugs can now reach level ${cap}`, `+${RIBBON_XP} XP to every bug that won a round`];
       } else if (!won && !standing.length) {
         me.run = null;
         extra.verdict = say(stop.lost);
@@ -314,6 +348,33 @@ export class Circuit {
     this.save();
   }
 
+  /** What a throw at the bug lying there is worth, for the ring. */
+  jarOf(pid, c) {
+    return { have: this.shop?.jars(pid) || 0, room: this.barn.room(pid), left: c.jars, chance: jarChance(rarityOf(c.species), c.level - c.by), keeps: caughtLevel(c.level, c.by) };
+  }
+  /**
+   * Throw a jar at the wild bug your bug has just knocked out on the circuit: the mine's rules (server/pvp.js), three
+   * throws while the fight is still on the books. Caught, it takes a stall and its stop is done for good.
+   */
+  jar(pid, body = {}) {
+    const me = this.me(pid), c = me.catch, fight = c && this.fights.get(c.fight);
+    if (!c || String(body.fight || '') !== c.fight) throw new GameError('It is gone.', 409);
+    if (!fight) { me.catch = null; this.save(); throw new GameError('It came to and left. It will be back.', 409); }
+    if (!this.barn.room(pid)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
+    const held = this.randInt(1000) < Math.round(jarChance(rarityOf(c.species), c.level - c.by) * 1000);
+    const wildId = `circuit:${c.stop}:${pid}:${c.fight}`;
+    if (!this.shop.takeJar(pid, held ? { wildId, battleId: c.fight } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
+    if (held) {
+      const caught = this.barn.adopt(pid, { wildId, battleId: c.fight, species: c.species, level: caughtLevel(c.level, c.by) });
+      me.done[c.stop] = this.now(); me.catch = null;
+      Object.assign(fight.extra, { jar: undefined, over: { reason: 'jarred', caught: caught.name }, verdict: `In the jar. ${caught.name} has a stall waiting.` });
+    } else if (--c.jars <= 0) {
+      me.catch = null;
+      Object.assign(fight.extra, { jar: undefined, verdict: `${c.name} comes to and is gone. It will be back.` });
+    } else fight.extra.jar = this.jarOf(pid, c);
+    this.save();
+    return { held, fight: this.fights.view(fight, pid, body.have) };
+  }
   /** Pay a toll stop's tribute instead of fighting: it lets you past, with no purse and no XP. */
   payToll(pid, body = {}) {
     const stop = this.stopOf(body.stop), me = this.me(pid);
