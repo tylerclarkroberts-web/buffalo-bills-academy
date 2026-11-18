@@ -134,7 +134,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const barnEscrow = barn.escrow(p);
     return { bankroll: p.bankroll, holdings, chips, riskEscrow, barnEscrow, total: cents(p.bankroll + holdings + chips + riskEscrow + barnEscrow) };
   };
-  const rooms = new Rooms({ store: service.store, shop, barn, avatars, netWorth });
+  const rooms = new Rooms({ store: service.store, shop, barn, avatars, netWorth, gunnarPlayerId: env.GUNNAR_ROOM_PLAYER_ID?.trim() });
   service.rooms = rooms;
   const meView = (p) => {
     accounts.ensure(p);

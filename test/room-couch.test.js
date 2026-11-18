@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { residentErrands, residentTasks } from '../client/src/room/scene-model.js';
+import { residentErrands, residentTasks, STOCK_TROUGH } from '../client/src/room/scene-model.js';
 import { residentPose } from '../client/src/room/activity.js';
 import { defaultFurniture, defaultShelves, defaultWallDisplays, furnitureValid, furnitureRect, roomCouchScale, upgradeFurniture, wallMountsFit, roomFinishes, ROOM_FURNITURE, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
 
@@ -37,6 +37,35 @@ test('the couch starts somewhere valid and the resident can walk to it, the cash
   assert.equal(residentErrands({ ...furniture, couch: { ...furniture.couch, off: true } }).some(errand => errand.kind === 'sit'), false);
   const boxedIn = { ...furniture, rug: { x: 0, z: 0, r: 0 }, desk: { x: 0, z: -0.9, r: 0 }, floor: { x: 0, z: 0.9, r: 0 }, wardrobe: { x: -1.3, z: 0, r: 0 }, pet: { x: 1.45, z: 0, r: 0 } };
   assert.deepEqual(residentErrands(boxedIn), []);
+  assert.deepEqual(residentErrands(boxedIn, [], undefined, true), []);
+});
+
+test('the trough errand uses the porch steps and either side of the wagon', () => {
+  const furniture = defaultFurniture();
+  furniture.porchChair = { x: 5.3 * S, z: 1.75 * S, r: 0 };
+  assert.ok(furnitureValid(furniture));
+  const chair = furnitureRect('porchChair', furniture.porchChair);
+  for (const wagonX of [6.4 * S + 1.4, 8.4 * S - 1.4]) {
+    furniture.window = { ...furniture.window, x: wagonX };
+    const errands = residentErrands(furniture, defaultShelves(), undefined, true);
+    const [{ kind, path, facing }] = errands;
+    assert.equal(kind, 'trough');
+    assert.deepEqual(errands.filter(errand => errand.kind !== 'trough'), residentErrands(furniture, defaultShelves()));
+    assert.ok(path.some(([x, z]) => x === 6.75 * S && z === 2.83 * S), 'exits down the porch steps');
+    const [x, z] = path.at(-1);
+    assert.equal(facing, Math.atan2(STOCK_TROUGH[0] - x, STOCK_TROUGH[1] - z));
+    const [left, , right] = furnitureRect('window', furniture.window);
+    const [lane] = path.at(-2);
+    assert.ok(lane + 0.35 <= left || lane - 0.35 >= right, 'passes the wagon on the wider side');
+    let from = [furniture.rug.x, furniture.rug.z];
+    for (const to of path) {
+      for (let part = 0; part <= 1; part += 0.05) {
+        const x = from[0] + (to[0] - from[0]) * part, z = from[1] + (to[1] - from[1]) * part;
+        assert.ok(x + 0.35 <= chair[0] || x - 0.35 >= chair[2] || z + 0.3 <= chair[1] || z - 0.3 >= chair[3], 'goes around the moved porch chair');
+      }
+      from = to;
+    }
+  }
 });
 
 test('coffee crosses the open door to a seat in the porch chair, clear of a wagon parked at the near edge of its yard', () => {

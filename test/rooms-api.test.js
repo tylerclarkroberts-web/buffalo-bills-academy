@@ -4,16 +4,24 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
+import { Store } from '../server/store.js';
 import { xpFor } from '../server/engine/creatures.js';
 import { defaultShelves, roomFinishes, defaultWallDisplays, defaultFurniture, ROOM_FLOOR_SCALE as S } from '../server/catalog/room.js';
 // The couch is put away where a test needs the open back-left wall.
 const visitorWorth = ({ barnEscrow: _privateStake, ...worth }) => worth;
 const noCouch = () => ({ ...defaultFurniture(), couch: { ...defaultFurniture().couch, off: true } });
 
-async function fixture(t) {
+async function fixture(t, gunnarPlayerId) {
   const prefix = path.join(os.tmpdir(), 'bba-room-api-');
   const dataDir = fs.mkdtempSync(prefix);
-  const { app, service, shutdown } = createApp({ dataDir, devLogin: true, env: {} });
+  const env = {};
+  if (gunnarPlayerId) {
+    const store = new Store(dataDir);
+    store.players[gunnarPlayerId] = { id: gunnarPlayerId, name: 'RoomOwner', google: { sub: 'dev:roomowner@example.test' } };
+    store.savePlayers();
+    env.GUNNAR_ROOM_PLAYER_ID = ` ${gunnarPlayerId} `;
+  }
+  const { app, service, shutdown } = createApp({ dataDir, devLogin: true, env });
   const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   t.after(async () => {
     shutdown(); server.closeAllConnections?.();
@@ -63,6 +71,20 @@ test('room endpoints allow signed-in visits immediately and distinguish legacy g
   assert.equal(guestVisit.headers.get('cache-control'), 'no-store');
   assert.equal((await anon('GET', `/api/players/${owner.id}/room`)).status, 401);
   assert.equal((await visitor.api('GET', `/api/players/${owner.id}/room`)).status, 200);
+});
+
+test('the Gunnar activity follows the configured room owner for residents and visitors', async t => {
+  const { owner, visitor } = await fixture(t, 'gunnar-fixture-player');
+  const sameName = await visitor.api('PATCH', '/api/me', { name: 'RoomOwner' });
+  assert.equal(sameName.body.name, 'RoomOwner');
+  assert.equal((await owner.api('GET', '/api/room')).body.gunnar, true);
+  assert.equal((await visitor.api('GET', `/api/players/${owner.id}/room`)).body.gunnar, true);
+  const otherRoom = await visitor.api('GET', '/api/room');
+  const otherVisit = await owner.api('GET', `/api/players/${visitor.id}/room`);
+  for (const room of [otherRoom, otherVisit]) {
+    assert.equal(room.status, 200);
+    assert.equal(room.body.gunnar, undefined);
+  }
 });
 
 test('visitors receive displayed possessions and exact worth without unrelated private identity data', async t => {

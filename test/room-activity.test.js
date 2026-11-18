@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RoomActivity, residentPose, faunPose } from '../client/src/room/activity.js';
-import { ROOM_LINES } from '../client/src/room/dialogue.js';
+import { CLICK_LINES, GUNNAR_LINES, ROOM_LINES, TROUGH_LINES, VISITOR_LINES } from '../client/src/room/dialogue.js';
 import { FAUN_EXCHANGES } from '../client/src/room/faun-dialogue.js';
 import * as THREE from 'three';
 import { RoomScene } from '../client/src/room/scene.js';
@@ -18,6 +18,19 @@ test('room comments are brief, spaced apart and never repeat consecutively', () 
   assert.equal(activity.advance(1).text, null);
   assert.equal(activity.advance(44999).text, null);
   assert.equal(activity.advance(1).text, ROOM_LINES[1]);
+});
+
+test('only the marked house gets Gunnar chatter, whether at home or visiting', () => {
+  for (const visitor of [false, true]) {
+    const activity = new RoomActivity(() => 0);
+    activity.setContext({ gunnar: true }, visitor);
+    activity.nextFaun = Infinity;
+    assert.equal(activity.talk(), GUNNAR_LINES[0]);
+    assert.equal(activity.advance(54000).text, GUNNAR_LINES[1]);
+    activity.setContext({ owner: { name: 'Kash' } }, visitor);
+    assert.equal(activity.state().text, null);
+    assert.equal(activity.talk(), (visitor ? VISITOR_LINES : CLICK_LINES)[0]);
+  }
 });
 
 test('the first faun visit is discoverable, trades a line with the resident, then leaves a long quiet gap', () => {
@@ -101,6 +114,34 @@ function sceneFixture(t, reduced = false) {
   scene.activity.nextFaun = Infinity;
   return { scene, frames, bubbles, renders };
 }
+
+test('the recurring trough visit shows falling tears only while the resident is there', t => {
+  const { scene } = sceneFixture(t);
+  scene.residentHome = new THREE.Vector3(0, 0.05, 0);
+  scene.errands = [{ kind: 'trough', path: [[10, -7]], facing: Math.PI }, { kind: 'inspect', path: [[0, 2]], facing: 0 }];
+  scene.residentTears = [new THREE.Mesh(), new THREE.Mesh()];
+  for (const drop of scene.residentTears) drop.visible = false;
+  scene.animateActivity(0);
+  scene.animateActivity(6000);
+  assert.ok(scene.residentGroup.position.x > 0 && scene.residentGroup.position.x < 10);
+  assert.ok(scene.residentTears.every(drop => !drop.visible));
+  scene.animateActivity(12000);
+  assert.deepEqual(scene.residentGroup.position.toArray().filter((_, i) => i !== 1), [10, -7]);
+  assert.equal(scene.activity.state().text, TROUGH_LINES[0]);
+  assert.ok(scene.residentTears.every(drop => drop.visible));
+  const first = scene.residentTears[0].position.y;
+  scene.animateActivity(12200);
+  assert.notEqual(scene.residentTears[0].position.y, first);
+  scene.animateActivity(28000);
+  assert.ok(scene.residentGroup.position.equals(scene.residentHome));
+  assert.ok(scene.residentTears.every(drop => !drop.visible));
+  scene.animateActivity(80000);
+  assert.ok(scene.residentTears.every(drop => drop.visible), 'he goes back on a later round');
+  scene.motion.matches = true;
+  scene.animateActivity(80100);
+  assert.ok(scene.residentGroup.position.equals(scene.residentHome));
+  assert.ok(scene.residentTears.every(drop => !drop.visible));
+});
 
 test('pausing stops scheduled animation, clears bubbles and leaves furniture positions alone', t => {
   const { scene, frames, bubbles } = sceneFixture(t);
