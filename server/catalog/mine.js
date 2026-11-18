@@ -1,34 +1,30 @@
 // Mine gear and shaft permits. Sold in the General Store; the Acid Mines read ownership at clock-in (server/mines.js).
-// Deliberately expensive: the mines are the only faucet, so everything that raises a haul is priced in weeks.
-//   cap    bucket size in units (the biggest one you own counts)
+// Deliberately expensive: the mines are the only faucet, so what raises a cheque (a permit to a shaft with better acid)
+// is priced in weeks. Everyone carries the same 100-unit bucket; the tools only save time.
 //   rate   fill-speed multiplier (the fastest one you own counts)
 //   lamp   see farther; deeper shafts are darker
 //   rod    points along the shortest walk to the current pool (it does not change what the pool holds)
 //   nephew works one small shift a day on his own (Mines.sendNephew)
 const item = (x) => ({ ...x, kind: 'mine', cat: 'mine' });
 export const MINE_ITEMS = [
-  { id: 'mine-bucket2', name: 'Second Bucket', price: 5000, emoji: '🪣', cap: 200, desc: 'A second bucket. You carry two now. That is the whole invention. Holds 200 in Shaft 8 or deeper. Shaft 7 stops you at 100. Permit sold separately.' },
-  { id: 'mine-yoke', name: 'Bucket Yoke', price: 30000, emoji: '⚖️', cap: 400, desc: 'Four buckets on a stick across your shoulders. Granny had one. Granny had opinions. Holds 400 in Shaft 8 or deeper.' },
-  { id: 'mine-cooler', name: 'Picnic Cooler', price: 45000, emoji: '🧊', cap: 600, desc: 'Keeps acid crisp. Still smells faintly of potato salad. Holds 600 in Shaft 12 or deeper.' },
-  { id: 'mine-kiddiepool', name: 'Kiddie Pool on a Rope', price: 75000, emoji: '🛟', cap: 800, desc: 'Inflatable. Dinosaur print. Dragged behind you with a dignity only you can see. Holds 800 in Shaft 12 or deeper.' },
-  { id: 'mine-goldbucket', name: 'Golden Bucket', price: 200000, emoji: '🏆', cap: 1600, desc: 'The same size as a normal bucket. Bigger on the inside. Payroll has stopped asking. Holds 1,600 on Earl\'s Level.' },
-  { id: 'mine-straw', name: 'Bendy Straw', price: 10000, emoji: '🥤', rate: 2, desc: 'Fills the bucket twice as fast. Directly violates the safety notice. Again.' },
-  { id: 'mine-shopvac', name: 'Shop-Vac', price: 50000, emoji: '🌪️', rate: 10, desc: 'Fills the bucket ten times as fast. Dale says it is cheating. Dale also owns one.' },
+  { id: 'mine-straw', name: 'Bendy Straw', price: 2500, emoji: '🥤', rate: 2, desc: 'Fills the bucket twice as fast. Directly violates the safety notice. Again.' },
+  { id: 'mine-shopvac', name: 'Shop-Vac', price: 10000, emoji: '🌪️', rate: 10, desc: 'Fills the bucket ten times as fast. Dale says it is cheating. Dale also owns one.' },
   { id: 'mine-headlamp', name: 'Headlamp Helmet', price: 8000, emoji: '⛑️', lamp: true, desc: 'A helmet with a real flashlight taped to it. You can see down the tunnel. The tunnel can see you.' },
   { id: 'mine-rod', name: 'Dowsing Rod', price: 15000, emoji: '🪄', rod: true, desc: 'A forked stick that points down the shortest tunnel to the next pool. It knows the way. It will not say how much is there.' },
   { id: 'mine-nephew', name: 'The Foreman\'s Nephew', price: 5000, emoji: '🧒', pix: 'nephew', nephew: true, desc: 'Works one shift a day for you, on his own. He is twelve. He is not good at it. The Foreman keeps the hiring fee.' },
-  { id: 'mine-permit8', name: 'Shaft 8 Permit', price: 15000, emoji: '🎫', desc: 'Laminated. Lets you ride the elevator to Shaft 8: same as 7, but damper, with room to haul up 400 a trip. $20 a ride. Bigger bucket sold separately; without one it is Shaft 7 with a fare.' },
-  { id: 'mine-permit12', name: 'Shaft 12 Permit', price: 50000, emoji: '🎟️', desc: 'Shafts 9 through 11 are not discussed. Shaft 12 has room to haul up 800 a trip and very little light. $80 a ride. Bring a bucket that holds more than 400.' },
-  { id: 'mine-permitearl', name: 'Earl\'s Level Permit', price: 100000, emoji: '🗝️', desc: 'Nobody has met Earl. This is his level. Room to haul up 1,600 a trip. $160 a ride. Bring the Golden Bucket. Wipe your feet.' },
+  { id: 'mine-permit8', name: 'Shaft 8 Permit', price: 15000, emoji: '🎫', desc: 'Laminated. Lets you ride the elevator to Shaft 8: bigger than 7 and damper, with acid payroll rates at ×4, and richer still the farther in you go. $20 a ride. The roof is not included in the warranty.' },
+  { id: 'mine-permit12', name: 'Shaft 12 Permit', price: 50000, emoji: '🎟️', desc: 'Shafts 9 through 11 are not discussed. Shaft 12 goes on a long way, has very little light, and its acid pays ×8. $80 a ride.' },
+  { id: 'mine-permitearl', name: 'Earl\'s Level Permit', price: 100000, emoji: '🗝️', desc: 'Nobody has met Earl. This is his level, and nobody has found the end of it. The acid down there pays ×16. $160 a ride. Wipe your feet.' },
 ].map(item);
 
-/** Shafts in elevator order. `scale` only sets what the browser calls a puddle (a deposit is a share of the bucket,
- *  whatever the shaft), `max` is the most a bucket can bring up from there,
+/** Shafts in elevator order. `quality` is what its acid is worth next to Shaft 7's (it multiplies every pool's richness,
+ *  see richAt in server/mines.js; the bucket is 100 units everywhere),
  *  `fare` is charged at clock-in and never refunded, `caveIn` is the percent chance that reaching a pool brings the
- *  roof down, `twin` the percent chance that the other faun is waiting at the elevator (see Mines.settle). Shaft 7 is free, safe, and stays exactly what it always was. */
+ *  roof down (the shaft's average: see Mines.start for how it grows with distance from the lift), `cells` how many cells a side its
+ *  tunnels are bigger than the day's tier size, `pools` how many acid spots it has, `twin` the percent chance that the other faun is waiting at the elevator (see Mines.settle). Shaft 7 is free and safe. Every shaft digs its own tunnels each day (engine/daily-maze.js). */
 export const SHAFTS = [
-  { id: '7', name: 'SHAFT 7', scale: 1, max: 100, fare: 0, dark: 0 },
-  { id: '8', name: 'SHAFT 8', scale: 4, max: 400, fare: 20, dark: 1, caveIn: 4, twin: 10, permit: 'mine-permit8' },
-  { id: '12', name: 'SHAFT 12', scale: 8, max: 800, fare: 80, dark: 2, caveIn: 7, twin: 20, permit: 'mine-permit12' },
-  { id: 'earl', name: 'EARL\'S LEVEL', scale: 10, max: 1600, fare: 160, dark: 3, caveIn: 10, twin: 30, permit: 'mine-permitearl' },
+  { id: '7', name: 'SHAFT 7', quality: 1, fare: 0, dark: 0, cells: 2, pools: 8 },
+  { id: '8', name: 'SHAFT 8', quality: 4, fare: 20, dark: 1, caveIn: 4, twin: 10, cells: 6, pools: 10, permit: 'mine-permit8' },
+  { id: '12', name: 'SHAFT 12', quality: 8, fare: 80, dark: 2, caveIn: 7, twin: 20, cells: 10, pools: 12, permit: 'mine-permit12' },
+  { id: 'earl', name: 'EARL\'S LEVEL', quality: 16, fare: 160, dark: 3, caveIn: 10, twin: 30, cells: 16, pools: 14, permit: 'mine-permitearl' },
 ];

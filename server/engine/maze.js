@@ -153,6 +153,13 @@ export function geigerBars(steps, far = 48, facing = 0) {
 export const FIRST_POOL_STEPS = { 6: 20, 7: 26, 8: 34, 9: 42, 10: 50, 11: 60, 13: 76, 16: 96 };
 /** How far apart later pools sit, by maze size. */
 export const NEXT_POOL_STEPS = { 6: 22, 7: 26, 8: 30, 9: 34, 10: 38, 11: 42, 13: 50, 16: 60 };
+/** Maze sizes (cells a side) a shift may have. The deeper shafts go well past the tables above, which then carry on in a straight line. */
+export const MAX_CELLS = 32;
+export const validCells = (cells) => Number.isInteger(cells) && cells >= 6 && cells <= MAX_CELLS;
+export const firstPoolSteps = (cells) => FIRST_POOL_STEPS[cells] ?? Math.round(6 * cells);
+export const nextPoolSteps = (cells) => NEXT_POOL_STEPS[cells] ?? Math.round(3.75 * cells);
+/** The longest walk from the lift to anywhere in a maze, in tiles. */
+export const farthest = (maze) => (maze.far ??= Math.max(...maze.dist.flat()));
 /**
  * The vein: a seeded chain of pools, the first one where makeMaze put it, each next one a far dead end from the
  * last. The server alone knows which one actually has acid in it when you get there (it's about time, not place):
@@ -163,14 +170,14 @@ export function veinChain(maze, seed, k = 8) {
 }
 
 /** Finite deposits: keep each walk useful without sending miners to the farthest corner every time. */
-export function bucketChain(maze, seed) {
-  return poolChain(maze, seed, 8, true);
+export function bucketChain(maze, seed, k = 8) {
+  return poolChain(maze, seed, k, true);
 }
 
 function poolChain(maze, seed, k, bucket) {
   const r = rng((seed ^ 0xac1d) >>> 0);
   const { grid, size } = maze;
-  const target = NEXT_POOL_STEPS[(size - 1) / 2] ?? 42;
+  const target = nextPoolSteps((size - 1) / 2);
   const ends = [];
   for (let y = 1; y < size; y += 2) for (let x = 1; x < size; x += 2) {
     if (grid[y][x]) continue;
@@ -181,7 +188,10 @@ function poolChain(maze, seed, k, bucket) {
   const used = new Set([`${maze.pool.x},${maze.pool.y}`, '1,1']);
   while (chain.length < k) {
     const at = chain[chain.length - 1]; const d = distFrom(grid, at.x, at.y);
-    const left = ends.filter((e) => !used.has(`${e.x},${e.y}`) && d[e.y][e.x] > 0).sort((a, b) => bucket
+    const free = ends.filter((e) => !used.has(`${e.x},${e.y}`) && d[e.y][e.x] > 0);
+    // Finite deposits lead outward: the next one is farther from the lift than this one while any such dead end is left.
+    const deeper = bucket ? free.filter((e) => maze.dist[e.y][e.x] > maze.dist[at.y][at.x]) : [];
+    const left = (deeper.length ? deeper : free).sort((a, b) => bucket
       ? Math.abs(d[a.y][a.x] - target) - Math.abs(d[b.y][b.x] - target)
       : d[b.y][b.x] - d[a.y][a.x]);
     if (!left.length) break;

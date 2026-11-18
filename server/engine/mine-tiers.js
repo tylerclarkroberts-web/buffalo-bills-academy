@@ -1,7 +1,7 @@
 // How rough the day's dig is (v79). One of five tiers per Mountain-time day, 20% each, rolled from the day's seed so
 // every miner gets the same one. Shared with the browser: the server sizes the maze, drops the cave-ins and pays the
 // hazard rate; the browser draws the lantern, the dark and the acid worms from the same row.
-import { rng, makeMaze, FIRST_POOL_STEPS } from './maze.js';
+import { rng, makeMaze, validCells, firstPoolSteps } from './maze.js';
 
 // cells: maze size (cells a side). loops/caves: extra openings, then cave-ins that block hallways (never a way out).
 // lamp/fog/ambient: multiples of the shaft's own lamp reach, fog distance and ambient light. flicker: 0 steady .. 1
@@ -30,8 +30,10 @@ export function dayTier(seed) {
 
 /** The one maze builder for a shift (server, PvP and browser): seed, size and tier in, the same tunnels out. */
 export function shiftMaze({ seed, cells, tier }) {
-  const c = FIRST_POOL_STEPS[cells] ? cells : 7, t = tierInfo(tier);
-  return makeMaze(seed, c, FIRST_POOL_STEPS[c], t ? { loops: t.loops, caves: t.caves } : null);
+  const c = validCells(cells) ? cells : 7, t = tierInfo(tier);
+  // A shaft bigger than the tier's own size gets its loops and cave-ins by area, so a deep shaft is as tangled as a shallow one.
+  const area = t && c > t.cells ? (c / t.cells) ** 2 : 1;
+  return makeMaze(seed, c, firstPoolSteps(c), t ? { loops: Math.round(t.loops * area), caves: Math.round(t.caves * area) } : null);
 }
 
 /** Never so dark that a pool in reach is lost in the fog (reach is 1.9 m; the fog starts at 2.5 m). */

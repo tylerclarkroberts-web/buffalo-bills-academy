@@ -55,7 +55,8 @@ test('a Denver mine day has a shared roster even for a miner with no bug, and th
   const shift = f.walkUp(), active = f.mines.doc.active.ann;
   f.mines.owned = id => id === bob.id ? { 'mine-permit8': true } : {};
   const deeper = f.mines.start(bob, { ...V, shaft: '8' }).wilds;
-  assert.deepEqual(deeper.slice(0, shift.wilds.length), shift.wilds, 'Shaft 8 has every bug Shaft 7 has');
+  const who = (wilds) => wilds.map(({ id, species, level }) => ({ id, species, level })); // the same bugs, in tunnels of its own
+  assert.deepEqual(who(deeper.slice(0, shift.wilds.length)), who(shift.wilds), 'Shaft 8 has every bug Shaft 7 has');
   assert.equal(deeper.length, shift.wilds.length + 1, 'and one more of its own');
   const maze = f.pvp.maze(active), distance = distFrom(maze.grid, maze.start.x, maze.start.y);
   assert.ok(shift.wilds.length >= WILDS_A_DAY[0] && shift.wilds.length <= WILDS_A_DAY[1], 'all of the day\'s bugs are out at once');
