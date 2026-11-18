@@ -9,7 +9,7 @@ import { dayKey } from './fawn.js';
 import { mineDay, daySeed, dailyLayout } from './engine/daily-maze.js';
 import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
 import { roamRoute } from './engine/wild-roam.js';
-import { rarityOf, WILD_ODDS, RARE_TIER } from './engine/bug-types.js';
+import { rarityOf, WILD_ODDS, RARE_TIER, LEGENDARY } from './engine/bug-types.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -356,14 +356,13 @@ export class Mines {
   wildsFor(shift) {
     if (shift?.rulesVersion !== 2) return [];
     const day = shift.day || mineDay(shift.startedAt);
-    const key = `${day}:${shift.seed}:${shift.cells}:${shift.tier || 0}`;
+    const key = `${day}:${shift.seed}:${shift.cells}:${shift.tier || 0}:${shift.shaft || '7'}`;
     if (!this.wildRosters.has(key)) {
-      this.wildRosters.set(key, dailyWilds(day, shift, this.barn?.strays?.() || []));
-      if (this.wildRosters.size > 2) this.wildRosters.delete(this.wildRosters.keys().next().value);
+      this.wildRosters.set(key, dailyWilds(day, shift, this.barn?.strays?.() || [], (species) => !!this.barn?.holds?.(species)));
+      if (this.wildRosters.size > 8) this.wildRosters.delete(this.wildRosters.keys().next().value);
     }
-    // Only WILDS_AT_ONCE are down here at a time; a catch lets the next one in. Walking off from one only hides it from you.
-    return this.wildRosters.get(key).filter(({ id }) => !this.barn?.wildCaught?.(id)).slice(0, WILDS_AT_ONCE)
-      .filter(({ id }) => !shift.wildsGone?.includes(id));
+    // Every one of the day's bugs is down here at once. A catch retires one for everyone; a fight that ends any other way ends it for this shift.
+    return this.wildRosters.get(key).filter(({ id }) => !this.barn?.wildCaught?.(id) && !shift.wildsGone?.includes(id));
   }
   wildGone(playerId, shiftId, wildId) {
     const cur = this.doc.active[playerId];
@@ -488,11 +487,24 @@ export class Mines {
   }
 }
 
-export const WILDS_A_DAY = [4, 6], WILDS_AT_ONCE = 2; // fewest and most in a day, and how many are out at once
+export const WILDS_A_DAY = [5, 8]; // fewest and most in a day, all of them out at once
 // A released bug (a stray, Barn.release) is down here about one day in STRAY_DAYS, the same day for every miner, at most
 // STRAYS_A_DAY of them at once. It keeps its name and level and says whose it was; jarring it ends it for everyone.
 export const STRAY_DAYS = 3, STRAYS_A_DAY = 3;
-function dailyWilds(day, shift, strays = []) {
+// A legendary is down the mine on one day in LEGEND_DAYS at its easiest: Shaft 7 on a tier 1 day. Every tier the day is
+// rougher and every permit shaft deeper multiplies that by LEGEND_GROWTH, so Earl's Level on a tier 5 day has one
+// about one day in seven. One roll decides the day for everybody, so a legendary in an upper shaft is in every deeper
+// one too. It is at level LEGEND_LEVEL, and only a species nobody in the Academy holds: jarred, it is gone until its
+// holder parts with it.
+export const LEGEND_DAYS = 120, LEGEND_GROWTH = 1.5, LEGEND_LEVEL = 10;
+const SHAFT_DEPTH = ['7', '8', '12', 'earl']; // each permit shaft below Shaft 7 holds one more bug than the one above, and a better one
+export const depthOf = (shaft) => Math.max(0, SHAFT_DEPTH.indexOf(String(shaft || '7')));
+export const legendChance = (tier = 1, depth = 0) => Math.min(1, LEGEND_GROWTH ** (Math.max(1, tier) - 1 + depth) / LEGEND_DAYS);
+export const legendToday = (day, tier = 1, depth = 0) => rng(daySeed(`legend:${day}`))() < legendChance(tier, depth);
+// How rare a wild bug is, by how rough its day or shaft is (`tier`): commons hold steady, uncommons gain a share every
+// tier, and rares start at RARE_TIER and gain one every tier after.
+export const wildOdds = (tier) => ({ 1: WILD_ODDS[1], 2: WILD_ODDS[2] + tier - 1, 3: tier >= RARE_TIER ? WILD_ODDS[3] * (tier - RARE_TIER + 1) : 0 });
+function dailyWilds(day, shift, strays = [], held = () => false) {
   const maze = shiftMaze(shift), spots = [], pool = (p) => shift.pools.some((q) => q.x === p.x && q.y === p.y);
   const depth = (p) => maze.dist[p.y]?.[p.x] ?? -1;
   for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
@@ -503,11 +515,11 @@ function dailyWilds(day, shift, strays = []) {
   const count = Math.min(WILDS_A_DAY[0] + pick(WILDS_A_DAY[1] - WILDS_A_DAY[0] + 1), spots.length), tier = shift.tier || 1;
   // First how rare (WILD_ODDS; a rare only on a day rough enough), then a species of that rarity not yet out today.
   const left = Object.fromEntries([1, 2, 3].map((rarity) => [rarity, ROSTER.filter((bug) => rarityOf(bug.id) === rarity)]));
-  const species = () => {
-    const open = [1, 2, 3].filter((rarity) => left[rarity].length && (rarity < 3 || tier >= RARE_TIER));
-    let roll = random() * open.reduce((sum, rarity) => sum + WILD_ODDS[rarity], 0);
-    const rarity = open.find((r) => (roll -= WILD_ODDS[r]) < 0) ?? open.at(-1);
-    return left[rarity].splice(pick(left[rarity].length), 1)[0].id;
+  const species = (at = tier, roll01 = random, choose = pick) => {
+    const odds = wildOdds(at), open = [1, 2, 3].filter((rarity) => left[rarity].length && odds[rarity] > 0);
+    let roll = roll01() * open.reduce((sum, rarity) => sum + odds[rarity], 0);
+    const rarity = open.find((r) => (roll -= odds[r]) < 0) ?? open.at(-1);
+    return left[rarity].splice(choose(left[rarity].length), 1)[0].id;
   };
   // Its level sets how far in it lives: level 1 in the tunnels nearest the lift, level 6 and up in the deepest fifth.
   const spotFor = (level) => {
@@ -517,7 +529,7 @@ function dailyWilds(day, shift, strays = []) {
   // it starts on its spot and roams 6 to 12 tiles from there, out of the acid and never more than 3 tiles nearer the lift
   const route = (wild) => ({ ...wild, path: roamRoute(wild, 6 + pick(7), (p) => depth(p) >= Math.max(3, depth(wild) - 3) && !pool(p), pick) });
   const out = Array.from({ length: count }, (_, i) => {
-    const level = Math.min(MAX_LEVEL, tier + pick(tier + 1));
+    const level = Math.min(MAX_LEVEL, tier + Math.min(pick(tier + 1), pick(tier + 1))); // the lower of two rolls: the day's strongest are the hardest to find
     return route({ id: `${day}:${i + 1}`, species: species(), level, ...spotFor(level) });
   });
   // Strays roll from their own seed, so letting one go never reshuffles the day's wild bugs.
@@ -527,5 +539,19 @@ function dailyWilds(day, shift, strays = []) {
     if (!spots.length) break;
     loose.push(route({ id: stray.id, species: stray.species, level: stray.level, stray: { name: stray.name, owner: stray.owner }, ...spotFor(stray.level) }));
   }
-  return [...loose, ...out]; // someone's let-go bug gets the first places in line
+  // The deeper shafts: one more bug for each permit shaft down to this one, rolled as if the day were that many tiers
+  // rougher. Each has its own seed, so the bugs every shaft shares are the same whoever looks.
+  const deep = [];
+  for (let k = 1; k <= depthOf(shift.shaft) && spots.length; k++) {
+    const roll = rng(daySeed(`wild:${day}:deep:${k}`)), choose = (n) => Math.floor(roll() * n), at = tier + k;
+    const level = Math.min(MAX_LEVEL, at + choose(2));
+    deep.push(route({ id: `${day}:deep${k}`, species: species(at, roll, choose), level, ...spotFor(level) }));
+  }
+  // Which legendary: one of those nobody holds, picked by the day.
+  const free = ROSTER.filter((bug) => rarityOf(bug.id) === LEGENDARY && !held(bug.id)), legends = [];
+  if (free.length && spots.length && legendToday(day, tier, depthOf(shift.shaft))) {
+    const bug = free[Math.floor(rng(daySeed(`legend:which:${day}`))() * free.length)];
+    legends.push(route({ id: `legend:${bug.id}:${day}`, species: bug.id, level: LEGEND_LEVEL, ...spotFor(LEGEND_LEVEL) }));
+  }
+  return [...loose, ...out, ...deep, ...legends];
 }

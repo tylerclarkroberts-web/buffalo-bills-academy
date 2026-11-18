@@ -340,7 +340,12 @@ body.in-mines { background: #020402; }
 /* Commands need their full names, even beside the icons and keyboard shortcuts. */
 .m-orders { position: fixed; grid-template-columns: repeat(2, minmax(0, 1fr)); z-index: 60; background: #020402; }
 /* the wild bug's question: one bug to a row, so its name, type and level fit */
-.m-wild { grid-template-columns: 1fr; }
+/* Meeting a wild bug: its card beside the choice (above it on a narrow screen), so you know what you are picking a fight with. */
+.m-wild { grid-template-columns: auto minmax(220px, 300px); align-items: start; column-gap: 14px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+.m-wild > * { grid-column: 2; }
+.m-wild > .m-wild-card { grid-column: 1; grid-row: 1 / span 12; }
+.m-wild-card .bugcard { zoom: .82; }
+@media (max-width: 700px) { .m-wild { grid-template-columns: 1fr; } .m-wild > *, .m-wild > .m-wild-card { grid-column: 1; grid-row: auto; } .m-wild-card { justify-self: center; } .m-wild-card .bugcard { zoom: .62; } }
 .m-wild-what { margin: 0; color: var(--y); font: 700 15px/1.25 var(--mono); }
 .m-wild .m-dance-name { white-space: normal; }
 .m-orders .m-dance { min-width: 0; min-height: 52px; font-size: 16px; line-height: 1.35; text-shadow: none; }
