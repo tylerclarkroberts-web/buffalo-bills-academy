@@ -5,22 +5,20 @@ import { buildMineHands, resizeMineHands, stepMineHands } from '../client/src/mi
 import { MineScene } from '../client/src/mines/scene.js';
 import { looks } from '../client/src/avatar/genbust.js';
 
-const pose = h => [h.left, h.right].flatMap(arm => [...arm.position.toArray(), arm.rotation.x, arm.rotation.y, arm.rotation.z]);
+const pose = h => [...h.grip.position.toArray(), h.grip.rotation.x, h.grip.rotation.y, h.grip.rotation.z];
 
-test('first-person hands use the saved avatar colors, including a chosen tone on a photo avatar', () => {
-  for (const avatar of [{ kind: 'gen', seed: 'saved-avatar-79' }, { kind: 'photo', skinTone: '#f6dccb' }]) {
-    const mine = Object.assign(Object.create(MineScene.prototype), { scene: new THREE.Scene(), camera: { aspect: 1.6 } });
-    mine.setSelf({ id: 'player-account', avatar });
-    const seeded = looks(avatar.seed || 'player-account'), colors = new Set();
-    mine.hands.group.traverse(part => { if (part.material?.color) colors.add(`#${part.material.color.getHexString()}`); });
-    assert.ok(colors.has(avatar.skinTone || seeded.skin)); assert.ok(colors.has(seeded.shirt));
-    assert.equal(mine.self.group.visible, false, 'full body stays hidden in first person');
-  }
+test('first person shows the pickaxe alone: no arms, no skin, and the body stays hidden', () => {
+  const mine = Object.assign(Object.create(MineScene.prototype), { scene: new THREE.Scene(), camera: { aspect: 1.6 } });
+  mine.setSelf({ id: 'player-account', avatar: { kind: 'gen', seed: 'saved-avatar-79' } });
+  const skin = looks('saved-avatar-79').skin, meshes = [];
+  mine.hands.group.traverse(part => { if (part.isMesh) meshes.push(part); });
+  assert.ok(meshes.length && meshes.every(m => m.parent === mine.hands.pickaxe), 'every mesh belongs to the pick');
+  assert.ok(meshes.every(m => `#${m.material.color.getHexString()}` !== skin));
+  assert.equal(mine.self.group.visible, false, 'full body stays hidden in first person');
 });
 
-test('walking follows travelled distance, settles at rest, and mining moves the right-hand pickaxe', () => {
+test('walking follows travelled distance, settles at rest, and mining swings the pickaxe', () => {
   const hands = buildMineHands('miner'), rest = pose(hands);
-  assert.equal(hands.pickaxe.parent, hands.right);
   for (let i = 0; i < 10; i++) stepMineHands(hands, .05);
   assert.deepEqual(pose(hands), rest, 'waiting or pushing against a wall never starts a walking cycle');
   for (let i = 0; i < 10; i++) stepMineHands(hands, .05, { distance: .18 });
@@ -28,16 +26,16 @@ test('walking follows travelled distance, settles at rest, and mining moves the 
   const walked = hands.walk;
   for (let i = 0; i < 80; i++) stepMineHands(hands, .05);
   assert.equal(hands.walk, walked, 'stopped feet stop advancing the arm swing');
-  pose(hands).forEach((v, i) => assert.ok(Math.abs(v - rest[i]) < 1e-8, 'arms ease back to their resting pose'));
-  stepMineHands(hands, .05, { mining: true }); const first = hands.right.rotation.z;
+  pose(hands).forEach((v, i) => assert.ok(Math.abs(v - rest[i]) < 1e-8, 'the pick eases back to its resting pose'));
+  stepMineHands(hands, .05, { mining: true }); const first = hands.grip.rotation.z;
   stepMineHands(hands, .05, { mining: true });
-  assert.notEqual(hands.right.rotation.z, first);
+  assert.notEqual(hands.grip.rotation.z, first);
   assert.equal(hands.walk, walked, 'mining is independent of walking');
   stepMineHands(hands, .05);
-  assert.equal(hands.right.rotation.z, .2, 'release ends the pick swing');
+  assert.equal(hands.grip.rotation.z, .45, 'release ends the pick swing');
 });
 
-test('reduced motion holds the resting pose, and dancing hides the foreground arms', () => {
+test('reduced motion holds the resting pose, and dancing hides the pick', () => {
   const hands = buildMineHands('miner'), rest = pose(hands);
   for (let i = 0; i < 20; i++) stepMineHands(hands, .05, { distance: .18, mining: true, reduce: true });
   assert.deepEqual(pose(hands), rest);
@@ -58,19 +56,19 @@ test('the pick stays in view from its resting grip through a forward stroke on d
     const rest = blade.localToWorld(new THREE.Vector3().fromBufferAttribute(vertices, 0));
     for (let frame = 0; frame <= 5; frame++) {
       hands.scene.updateMatrixWorld(true);
-      for (let i = 0; i < vertices.count; i++) {
+      const inView = Array.from({ length: vertices.count }, (_, i) => {
         const point = new THREE.Vector3().fromBufferAttribute(vertices, i).applyMatrix4(blade.matrixWorld).project(hands.camera);
-        assert.ok(Math.abs(point.x) < 1 && point.y > -1 && point.y < .5, `pick head fits at ${w}×${h}`);
-        assert.ok(point.x > 0 || (frame > 0 && point.y < -.3), 'only the downstroke can cross into the lower center');
-      }
+        return Math.abs(point.x) < 1 && point.y > -1 && point.y < .5;
+      });
+      if (frame === 0) assert.ok(inView.every(Boolean), `the whole head shows at rest at ${w}×${h}`);
+      else assert.ok(inView.some(Boolean), `the downstroke may dip off the bottom but never loses the head at ${w}×${h}`);
       if (frame < 5) stepMineHands(hands, .05, { mining: true });
     }
     const struck = blade.localToWorld(new THREE.Vector3().fromBufferAttribute(vertices, 0));
     assert.ok(struck.z < rest.z && struck.y < rest.y, 'the point strikes forward and down');
-    for (const arm of [hands.left, hands.right]) {
-      const wrist = arm.position.clone().project(hands.camera);
-      assert.ok(Math.abs(wrist.x) < 1 && wrist.y > -1 && wrist.y < 0, 'both hands sit in the lower view');
-    }
+    stepMineHands(hands, 0);
+    const grip = hands.grip.position.clone().project(hands.camera);
+    assert.ok(grip.x > 0 && grip.y < -1, 'the grip, where a hand would be, sits below the right of the screen');
   }
 });
 
@@ -84,6 +82,8 @@ test('scene disposal releases the foreground geometry and shared materials once'
       counts.set(resource, 0); resource.addEventListener('dispose', () => counts.set(resource, counts.get(resource) + 1));
     }
   });
+  hands.blit.traverse(o => { if (o.isMesh) { counts.set(o.geometry, 0); o.geometry.addEventListener('dispose', () => counts.set(o.geometry, counts.get(o.geometry) + 1)); } });
+  counts.set(hands.target, 0); hands.target.addEventListener('dispose', () => counts.set(hands.target, counts.get(hands.target) + 1));
   const mine = Object.assign(Object.create(MineScene.prototype), { scene: new THREE.Scene(), hands, renderer: { dispose() {} } });
   mine.dispose();
   assert.equal(mine.hands, null);
