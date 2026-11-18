@@ -76,6 +76,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   service.avatars = avatars;
   // v34: the General Store. Avatars carry what you wear; the barn reads bug looks, toy and gear bonuses from it.
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
+  circuit.shop = shop; // jars for the circuit's wild bugs
   mines.owned = (id) => shop.doc.inv[id]?.own;
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
@@ -346,6 +347,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/circuit', needPlayer, wrap((req) => circuit.view(req.player.id)));
   api.post('/circuit/talk', needPlayer, wrap((req) => circuit.talk(req.player.id, req.body || {})));
   api.post('/circuit/fight', needPlayer, wrap((req) => circuit.fight(req.player.id, req.player.name, req.body || {})));
+  api.post('/circuit/jar', needPlayer, wrap((req) => circuit.jar(req.player.id, req.body || {})));
   api.post('/circuit/toll', needPlayer, wrap((req) => circuit.payToll(req.player.id, req.body || {})));
   api.post('/circuit/give-up', needPlayer, wrap((req) => circuit.giveUp(req.player.id)));
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count

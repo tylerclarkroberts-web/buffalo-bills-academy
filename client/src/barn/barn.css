@@ -318,6 +318,10 @@
 .cc-card { width: 30px; height: 38px; display: grid; place-items: center; border-radius: 4px; border: 1px dashed rgba(255,255,255,.3); color: rgba(255,255,255,.4); font: 700 13px var(--mono); }
 .cc-card.on { border: 2px solid #d6c2ff; background: linear-gradient(135deg, rgba(255,106,213,.25), rgba(106,208,255,.25)); box-shadow: 0 0 8px rgba(180,140,255,.6); }
 .cc-node.boss .cc-icon { border-color: #d6c2ff; box-shadow: 0 0 0 2px #7a3ad0; }
+.cc-rare { color: var(--gold); }
+.cc-prizes { position: relative; font-size: 13px; }
+.cc-prizes summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--gold); font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.cc-prizes ul { position: absolute; z-index: 5; right: 0; top: 100%; width: min(340px, 80vw); margin: 0; padding: 10px 12px 10px 26px; display: grid; gap: 6px; background: #2a160c; border: 1px solid var(--gold); border-radius: 10px; box-shadow: 0 10px 24px rgba(0,0,0,.6); }
 .cc-poster { margin: 0; font: 600 12px var(--mono); letter-spacing: .04em; color: #d6c2ff; }
 .barn-bar.hp.dark i, .barn-bar.hp.dark .ghost { background: repeating-linear-gradient(90deg, #2a2a30 0 8px, #1a1a1e 8px 16px); }
 .cc-rosette .tails { fill: rgba(255,255,255,.12); }

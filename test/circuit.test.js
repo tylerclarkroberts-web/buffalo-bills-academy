@@ -6,7 +6,9 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies, scaled, AREAS, BOSSES } from '../server/circuit.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies, scaled, AREAS, BOSSES, PRIZES, prizesOf } from '../server/circuit.js';
+import { Shop } from '../server/shop.js';
+import { WILD } from '../server/pvp.js';
 import { typeOf, edge } from '../server/engine/bug-types.js';
 import { RULES } from '../server/engine/bout.js';
 import { simulateBout } from '../server/engine/bout.js';
@@ -78,7 +80,7 @@ test('a leader gauntlet: health carries, a lost round benches that bug, two wins
   assert.equal(me.run, null);
   assert.ok(me.ribbons[1] && me.done.pugh);
   assert.match(win.extra.spoils[0], /Ribbon 1/);
-  assert.deepEqual(win.extra.spoils.slice(1, 3), [`$${PURSE.ribbon} purse`, 'Your bugs can now reach level 11']);
+  assert.deepEqual(win.extra.spoils.slice(1, 4), ['Prize: The Whistle', `$${PURSE.ribbon} purse`, 'Your bugs can now reach level 11']);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === b.bornAt).xp >= xpB + RIBBON_XP);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === a.bornAt).xp >= xpFor(6) + RIBBON_XP); // a won a round too
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'pugh' }), /already yours/);
@@ -298,4 +300,74 @@ test('boss powers: the web dulls your hits, the choir heals, a conscience heals 
   const pods = []; while (!T.over) for (const e of stepBout(T)) if (e.ability === 'Telepod') pods.push(e.hp);
   assert.equal(pods.length, 1, 'once a fight');
   assert.ok(pods[0][1] > T.maxHp[1] * 0.6 && pods[0][0] < T.maxHp[0] * 0.4, 'they traded how hurt they were');
+});
+
+test('a rare wild stop waits on nobody; knocked out, it takes three throws of a jar, and a catch is for good', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  const a = hatch(10), me = circuit.me(pid);
+  const shop = circuit.shop = new Shop({ store, accounts: circuit.accounts, barn, now: () => 1_800_000_000_000 });
+  let roll = 999; circuit.randInt = () => roll;
+  for (const id of ['foff', 'salad', 'landon', 'notacop']) me.done[id] = 1;
+  const stops = () => circuit.view(pid).areas[0].stops, wild = circuit.stopOf('wild1');
+  assert.deepEqual(stops().filter((x) => ['wild1', 'pugh'].includes(x.id)).map((x) => [x.kind, x.open, x.purse]), [['wild', true, 0], ['leader', true, PURSE.ribbon]], 'Coach Pugh does not wait for it');
+  const fightFor = (winner, hp) => { const id = circuit.fight(pid, 'Tester', { stop: 'wild1' }).live, fight = barn.fights.get(id); assert.deepEqual([fight.fighters[1].wild, fight.fighters[1].trained], [true, undefined]); fight.S.hp = hp; barn.fights.finish(fight, winner); return fight; };
+  const points = fightFor(0, [50, 20]);
+  assert.match(points.extra.verdict, /on points/); assert.equal(circuit.me(pid).catch, null);
+  const ko = fightFor(0, [50, 0]);
+  assert.deepEqual([ko.extra.jar.left, ko.extra.jar.have, circuit.me(pid).catch.jars], [WILD.throws, 0, WILD.throws]);
+  assert.throws(() => circuit.jar(pid, { fight: ko.id }), /out of jars/);
+  store.players[pid].bankroll = 5000; for (let k = 0; k < 4; k++) shop.buy(store.players[pid], 'jar');
+  const miss = circuit.jar(pid, { fight: ko.id });
+  assert.deepEqual([miss.held, miss.fight.jar.left, miss.fight.jar.have], [false, WILD.throws - 1, 3]);
+  roll = 0;
+  const hit = circuit.jar(pid, { fight: ko.id });
+  assert.deepEqual([hit.held, hit.fight.jar, hit.fight.over.reason], [true, undefined, 'jarred']);
+  const caught = barn.bugs(pid).at(-1);
+  assert.deepEqual([caught.species, barn.view(pid).stable.bugs.at(-1).level, !!circuit.me(pid).done.wild1, shop.jars(pid)], ['phloeodes', wild.bugs[0].level, true, 2]);
+  assert.throws(() => circuit.jar(pid, { fight: ko.id }), /It is gone/);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'wild1' }), /only the one/);
+  assert.ok(a.name);
+});
+
+test('three misses and the rare comes to: the stop is still there to try again', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  hatch(10); const me = circuit.me(pid);
+  const shop = circuit.shop = new Shop({ store, accounts: circuit.accounts, barn, now: () => 1_800_000_000_000 });
+  circuit.randInt = () => 999;
+  for (const id of ['foff', 'salad', 'landon', 'notacop']) me.done[id] = 1;
+  store.players[pid].bankroll = 5000; for (let k = 0; k < 3; k++) shop.buy(store.players[pid], 'jar');
+  const id = circuit.fight(pid, 'Tester', { stop: 'wild1' }).live, fight = barn.fights.get(id);
+  fight.S.hp = [40, 0]; barn.fights.finish(fight, 0);
+  let last; for (let k = 0; k < WILD.throws; k++) last = circuit.jar(pid, { fight: id });
+  assert.deepEqual([last.held, last.fight.jar, circuit.me(pid).catch, circuit.me(pid).done.wild1], [false, undefined, null, undefined]);
+  assert.match(last.fight.verdict, /comes to and is gone/);
+  assert.ok(circuit.fight(pid, 'Tester', { stop: 'wild1' }).live, 'it can be fought again');
+});
+
+test('every leader hands over a prize, carried into circuit fights, and each does what it says', (t) => {
+  const { barn, circuit, pid, hatch } = setup(t);
+  hatch(10); const me = circuit.me(pid);
+  assert.deepEqual(Object.keys(PRIZES), ['pugh', 'gil', 'dale', 'ruperto', 'voss', 'dwayne']);
+  assert.deepEqual(prizesOf(me), []);
+  me.ribbons[1] = me.ribbons[2] = 1; for (const id of ['foff', 'salad', 'landon', 'notacop', 'pugh', 'dale', 'newguy', 'kashely']) me.done[id] = 1;
+  assert.deepEqual(circuit.view(pid).prizes.map((p) => p.id), ['whistle', 'nightlight']);
+  const live = circuit.fight(pid, 'Tester', { stop: 'dwayne' }).live, fight = barn.fights.get(live);
+  assert.deepEqual(fight.fighters[0].prizes, ['whistle', 'nightlight']);
+  assert.equal(barn.fights.view(fight, pid).dark, undefined, 'the night light shows his bug\'s health');
+  const mine = (prizes) => ({ species: 'lamprima', name: 'Mine', level: 8, prizes });
+  // the whistle: a first attack that cannot miss
+  assert.equal(odds(startBout(mine(['whistle']), { species: 'pyrops', name: 'Them', level: 8 }, 'w'), 0).basic.hit, 1);
+  assert.ok(odds(startBout(mine([]), { species: 'pyrops', name: 'Them', level: 8 }, 'w'), 0).basic.hit < 1);
+  // floaties: no flood damage
+  const flooded = (prizes) => { let n = 0; const S = startBout(mine(prizes), { species: 'dytiscus', name: 'Queen Size', level: 8, rule: 'flood' }, 'f'); while (!S.over) for (const e of stepBout(S)) if (e.ability === 'Rising Water') n++; return n; };
+  assert.ok(flooded([]) > 0); assert.equal(flooded(['floaties']), 0);
+  // the oven mitt: a Fire bug's hit does less
+  const burn = (prizes) => odds(startBout({ species: 'solenopsis', name: 'Order 41', level: 8 }, mine(prizes), 'm'), 0).basic.dmg[1];
+  assert.ok(burn(['mitt']) < burn([]));
+  // night eyes: an Ambush bug's opening strike is no longer certain
+  const pounce = (prizes) => odds(startBout({ species: 'deroplatys', name: 'Third Shift', level: 8 }, mine(prizes), 'n'), 0).basic.hit;
+  assert.equal(pounce([]), 1); assert.ok(pounce(['nighteyes']) < 1);
+  // the antidote: poison does half damage
+  const poison = (prizes) => { let sum = 0; for (let k = 0; k < 8; k++) { const S = startBout(mine(prizes), { species: 'platymeris', name: 'Regret', level: 8, rule: 'linger' }, `a:${k}`); while (!S.over) for (const e of stepBout(S)) if (e.type === 'venom' && e.by === 1 && !e.pop) sum += e.dmg; } return sum; };
+  assert.ok(poison(['antidote']) < poison([]) * 0.8);
 });

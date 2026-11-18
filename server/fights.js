@@ -84,7 +84,7 @@ export class Fights {
       result: !fight.over ? null : winner === null ? 'draw' : winner === i ? 'won' : 'lost',
       ...(fight.over && fight.extra ? fight.extra : {}), // what the starter's settling added: a circuit fight's XP, verdict and spoils
       ...(mine && !fight.over && tellDue(S, 1 - i) ? { tell: fight.fighters[1 - i].tell } : {}), // a circuit leader's big move is next
-      ...(mine && fight.fighters[1 - i].rule === 'dark' ? { dark: true } : {}), // the page keeps the other bug's health to itself
+      ...(mine && fight.fighters[1 - i].rule === 'dark' && !fight.fighters[i].prizes?.includes('nightlight') ? { dark: true } : {}), // the page keeps the other bug's health to itself
       ...(mine && !fight.over ? { queue: fight.queue[i], next: nextMove(S, i, fight.queue[i][0]).id, yourTurn: S.by === i, msLeft: Math.max(0, fight.nextAt - now),
         trait: traitFor(fight.fighters[i].species),
         moves: S.side[i].moves.filter(m => m.unlocked).map(m => ({ id: m.id, name: m.name, effect: m.effect, description: m.description, cooldown: m.cooldown, readyIn: ready[m.id], ...chance[m.id] })) } : {}) };
