@@ -31,7 +31,7 @@ test('La Bufadora sits in the creek just before Fortín Sur, near the south mout
   assert.ok(BUFADORA.z > 40 && BUFADORA.z < 50, 'just before the south fort (z 48–58)');
   assert.ok(BUFADORA.r > 1.5 && BUFADORA.r < 3);
   assert.ok(BUFADORA.x > BOUNDS.x0 && BUFADORA.x < BOUNDS.x1);
-  assert.equal(BF.period, 300);
+  assert.equal(BF.period, 60);
   assert.ok(BF.warn >= 2 && BF.warn <= 6);
   assert.ok(BF.launchVy >= 20, 'high enough to feel like a launch');
   const world = src('client/src/mines/elhalo/world.js');
@@ -50,7 +50,7 @@ test('La Bufadora sits in the creek just before Fortín Sur, near the south mout
   assert.match(game, /sfx\('blow'\)/);
 });
 
-test('the first blow is five minutes after the match leaves the lobby, with a rumble a few seconds before', () => {
+test('the first blow is one minute after the match leaves the lobby, with a rumble a few seconds before', () => {
   const m = setup();
   m.snapshot(); // drop 'go' / countdown events
   assert.equal(m.bfPh, 'idle');
@@ -74,7 +74,7 @@ test('the first blow is five minutes after the match leaves the lobby, with a ru
   run(m, BF.blast + 0.2);
   assert.equal(m.bfPh, 'idle');
   assert.equal(m.snapshot().bf, 0);
-  // next one is another five minutes out
+  // next one is another minute out
   assert.ok(Math.abs(m.bufNext - 2 * BF.period) < 0.5);
 });
 

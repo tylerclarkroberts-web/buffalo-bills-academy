@@ -15,6 +15,9 @@ const C = {
   grass: [0.62, 0.6, 0.3], grass2: [0.55, 0.55, 0.27], dry: [0.78, 0.64, 0.4], sand: [0.86, 0.7, 0.48], mud: [0.5, 0.36, 0.26],
   rock: [0.62, 0.38, 0.3], rock2: [0.72, 0.46, 0.34], rock3: [0.52, 0.3, 0.26], tile: [0.78, 0.42, 0.28], tile2: [0.7, 0.36, 0.24],
   wood: [0.42, 0.26, 0.15], dark: [0.16, 0.09, 0.07], roof: [0.72, 0.3, 0.2], cactus: [0.32, 0.55, 0.3], agave: [0.45, 0.62, 0.55],
+  // sandstone strata and talus: warm, sunlit, never a dark foot band
+  scree: [0.80, 0.62, 0.40], dirt: [0.68, 0.52, 0.32],
+  stoneA: [0.78, 0.50, 0.34], stoneB: [0.86, 0.62, 0.44], stoneC: [0.70, 0.40, 0.26], stoneD: [0.90, 0.72, 0.50],
 };
 const MPINK = [0.98, 0.52, 0.72], MWHITE = [0.99, 0.97, 0.95];
 const WALL = { mision: [0.96, 0.91, 0.82], michoacana: MPINK, mansion: [0.98, 0.7, 0.68], norte: [0.84, 0.64, 0.44], sur: [0.84, 0.64, 0.44] };
@@ -29,12 +32,14 @@ function paint(g, c) {
 }
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
-// beyond the playable bounds the ground climbs into cliffs
+// beyond the playable bounds the ground climbs into tall, uneven sandstone cliffs
 function cliff(x, z, R) {
   const ox = Math.max(0, BOUNDS.x0 - x, x - BOUNDS.x1), oz = Math.max(0, BOUNDS.z0 - z, z - BOUNDS.z1);
   const o = Math.max(ox, oz);
   if (o <= 0) return 0;
-  return smooth(o / 4) * (13 + 5 * Math.sin(z * 0.21 + x * 0.1) + 3 * Math.sin(z * 0.53)) + o * 0.8 + R() * 0.9;
+  const ridge = 15 + 5.5 * Math.sin(z * 0.10 + x * 0.08) + 3.2 * Math.sin(z * 0.27 + x * 0.19 + 1.1) + 2.2 * Math.sin(x * 0.41 - z * 0.17 + 0.4);
+  const knob = Math.max(0, 4.2 * Math.sin(z * 0.07 + 0.8) * Math.sin(x * 0.11 + 1.7));
+  return smooth(Math.min(1, o / 5.5)) * (ridge + knob) + o * 0.45 + R() * 0.7;
 }
 
 export function buildWorld(scene, { lowEnd = false } = {}) {
@@ -182,9 +187,14 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
     const flat = nn.getY(t);
     const cd = Math.abs(cx - creekX(cz));
     let c;
-    if (out || flat < 0.72) c = cy > 9 ? C.rock2 : R() < 0.5 ? C.rock : C.rock3;
-    else if (nearWall < 1.15) c = nearWall < 0.45 ? [C.rock3[0] * 0.72, C.rock3[1] * 0.72, C.rock3[2] * 0.72] : C.rock;
-    else if (cd < 1.9) c = C.mud;
+    if (out || flat < 0.68) {
+      c = cy > 16 ? C.stoneD : cy > 10 ? C.stoneB : cy > 5 ? C.stoneA : (R() < 0.5 ? C.scree : C.stoneC);
+    } else if (nearWall < 6.5) {
+      const u = 1 - smooth(nearWall / 6.5);
+      if (u > 0.62) c = R() < 0.55 ? C.scree : C.stoneA;
+      else if (u > 0.28) c = R() < 0.5 ? C.dirt : C.dry;
+      else c = (Math.sin(cx * 0.4) + Math.sin(cz * 0.33) > 0.9) ? C.dry : R() < 0.5 ? C.grass : C.grass2;
+    } else if (cd < 1.9) c = C.mud;
     else if (cd < 3.6) c = C.sand;
     else if (fortRects.some((f) => cx > f.x0 - 2 && cx < f.x1 + 2 && cz > f.z0 - 1 && cz < f.z1 + 1)) c = C.dry;
     else c = (Math.sin(cx * 0.4) + Math.sin(cz * 0.33) > 0.9) ? C.dry : R() < 0.5 ? C.grass : C.grass2;
@@ -194,39 +204,117 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
   ng.setAttribute('color', new THREE.BufferAttribute(gc, 3));
   scene.add(new THREE.Mesh(ng, mat));
 
-  // ---- a solid, obvious canyon wall. The vertical face sits on BOUNDS (the same plane
-  // collide() and canyonCollide() use), with a darker band and a rocky ledge at the foot,
-  // and a thick backing so there are no see-through gaps in the displaced cliff mesh.
+  // ---- canyon cliffs. The inner face sits on BOUNDS (the same plane collide()
+  // and canyonCollide() use) so players hit rock that looks like rock: layered
+  // sandstone strata, a varied ridgeline, sloped scree/talus at the foot, a few
+  // overhangs and boulders, and a thick backing so there are no see-through gaps
+  // in the displaced cliff mesh. Nothing juts into the playable floor at walking
+  // height, so there is no invisible wall in open air and no sinking into the rock.
   const wallParts = [];
-  const wbox = (x0, x1, y0, y1, z0, z1, col) => { const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0); g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); wallParts.push(paint(g, col)); };
-  const faceH = 16, thick = 8, ledgeIn = 0.2, ledgeOut = 0.9, ledgeH = 0.55, bandH = 1.4;
+  const wbox = (x0, x1, y0, y1, z0, z1, col) => {
+    const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+    g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    wallParts.push(paint(g, col));
+  };
+  const thick = 8, faceDepth = 0.55;
+  const strata = [C.scree, C.stoneA, C.stoneC, C.stoneB, C.stoneD];
+  const ridgeOf = (x, z) => 14.5 + 5.2 * Math.sin(z * 0.10 + x * 0.08) + 3.1 * Math.sin(z * 0.27 + x * 0.19 + 1.1) + 2 * Math.sin(x * 0.41 - z * 0.17 + 0.4)
+    + Math.max(0, 3.6 * Math.sin(z * 0.07 + 0.8) * Math.sin(x * 0.11 + 1.7));
+  const caveZ = ENEMY_SPAWNS.filter(([x]) => Math.abs(x) >= 20).map(([, z]) => z);
+  const nearCave = (z) => caveZ.some((cz) => Math.abs(z - cz) < 3.6);
+  const nearPad = (x, z) => BUILDINGS.some((b) => x > b.x0 - 1.2 && x < b.x1 + 1.2 && z > b.z0 - 1.2 && z < b.z1 + 1.2)
+    || fortRects.some((b) => x > b.x0 - 1.6 && x < b.x1 + 1.6 && z > b.z0 - 1.6 && z < b.z1 + 1.6);
   const sides = [
     { along: 'z', face: BOUNDS.x0, a0: BOUNDS.z0, a1: BOUNDS.z1, nx: -1, nz: 0 },
     { along: 'z', face: BOUNDS.x1, a0: BOUNDS.z0, a1: BOUNDS.z1, nx: 1, nz: 0 },
     { along: 'x', face: BOUNDS.z0, a0: BOUNDS.x0, a1: BOUNDS.x1, nx: 0, nz: -1 },
     { along: 'x', face: BOUNDS.z1, a0: BOUNDS.x0, a1: BOUNDS.x1, nx: 0, nz: 1 },
   ];
+  const slab = (s, a0, a1, y0, y1, intoRock, intoPlay, col) => {
+    const lo = s.face + (s.along === 'z' ? s.nx : s.nz) * intoRock;
+    const hi = s.face - (s.along === 'z' ? s.nx : s.nz) * intoPlay;
+    const u0 = Math.min(lo, hi), u1 = Math.max(lo, hi);
+    if (s.along === 'z') wbox(u0, u1, y0, y1, a0, a1, col);
+    else wbox(a0, a1, y0, y1, u0, u1, col);
+  };
+  const seg = lowEnd ? 6 : 4;
   for (const s of sides) {
-    for (let a = s.a0; a < s.a1; a += 4) {
-      const a2 = Math.min(a + 4, s.a1), mid = (a + a2) / 2;
+    for (let a = s.a0; a < s.a1; a += seg) {
+      const a2 = Math.min(a + seg, s.a1), mid = (a + a2) / 2;
       const mx = s.along === 'z' ? s.face : mid, mz = s.along === 'z' ? mid : s.face;
-      const yb = terrain(Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, mx + (s.along === 'z' ? 0.2 * -s.nx : 0))), Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, mz + (s.along === 'x' ? 0.2 * -s.nz : 0))));
-      const col = tint(R() < 0.5 ? C.rock : C.rock2, 0.9 + R() * 0.12);
-      const dark = tint(C.rock3, 0.7 + R() * 0.08);
-      if (s.along === 'z') {
-        const x0 = s.nx < 0 ? s.face - thick : s.face, x1 = s.nx < 0 ? s.face : s.face + thick;
-        wbox(x0, x1, yb - 2, yb + faceH, a, a2, col);
-        wbox(s.face - 0.1, s.face + 0.1, yb - 0.2, yb + bandH, a, a2, dark);
-        const li = s.nx < 0 ? ledgeIn : -ledgeIn, lo = s.nx < 0 ? -ledgeOut : ledgeOut;
-        wbox(s.face + Math.min(li, lo), s.face + Math.max(li, lo), yb - 0.08, yb + ledgeH, a, a2, tint(C.rock3, 0.78));
-      } else {
-        const z0 = s.nz < 0 ? s.face - thick : s.face, z1 = s.nz < 0 ? s.face : s.face + thick;
-        wbox(a, a2, yb - 2, yb + faceH, z0, z1, col);
-        wbox(a, a2, yb - 0.2, yb + bandH, s.face - 0.1, s.face + 0.1, dark);
-        const li = s.nz < 0 ? ledgeIn : -ledgeIn, lo = s.nz < 0 ? -ledgeOut : ledgeOut;
-        wbox(a, a2, yb - 0.08, yb + ledgeH, s.face + Math.min(li, lo), s.face + Math.max(li, lo), tint(C.rock3, 0.78));
+      const ix = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, mx + (s.along === 'z' ? 0.25 * -s.nx : 0)));
+      const iz = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, mz + (s.along === 'x' ? 0.25 * -s.nz : 0)));
+      const yb = terrain(ix, iz);
+      const h = ridgeOf(mx, mz) + (R() - 0.5) * 1.8;
+      const fill = tint(R() < 0.5 ? C.stoneA : C.rock2, 0.98 + R() * 0.08);
+      // solid backing up to the face; a short set-back cap hides the lid. The
+      // displaced cliff mesh carries the ridgeline, so we don't stack boxes above it.
+      slab(s, a, a2, yb - 2.2, yb + h, thick, 0, fill);
+      const setback = 2.4 + R() * 2.2;
+      slab(s, a, a2, yb + h - 0.15, yb + h + 0.8 + R() * 1.4, thick, -setback, tint(C.stoneC, 0.97 + R() * 0.08));
+      // layered sandstone on the inner face; splits jitter so the beds are not a flat stripe
+      const nLay = lowEnd ? 3 : 5;
+      let t0 = 0;
+      for (let i = 0; i < nLay; i++) {
+        const t1 = i === nLay - 1 ? 1 : Math.min(0.95, t0 + (1 / nLay) + (R() - 0.5) * 0.08);
+        const y0 = yb - 0.15 + t0 * h, y1 = yb + t1 * h;
+        const col = tint(strata[i % strata.length], 0.96 + R() * 0.1);
+        slab(s, a, a2, y0, y1, faceDepth + R() * 0.25, 0, col);
+        t0 = t1;
       }
     }
+  }
+  // a few mid-height overhangs and shallow arches (above walking height, into the arena)
+  const dress = lowEnd
+    ? [{ along: 'z', face: BOUNDS.x1, mid: -36, nx: 1, nz: 0, kind: 'over' }, { along: 'z', face: BOUNDS.x0, mid: 10, nx: -1, nz: 0, kind: 'arch' }]
+    : [
+      { along: 'z', face: BOUNDS.x1, mid: -36, nx: 1, nz: 0, kind: 'over' },
+      { along: 'z', face: BOUNDS.x1, mid: 28, nx: 1, nz: 0, kind: 'arch' },
+      { along: 'z', face: BOUNDS.x0, mid: -8, nx: -1, nz: 0, kind: 'over' },
+      { along: 'z', face: BOUNDS.x0, mid: 10, nx: -1, nz: 0, kind: 'arch' },
+      { along: 'z', face: BOUNDS.x0, mid: 44, nx: -1, nz: 0, kind: 'over' },
+      { along: 'x', face: BOUNDS.z0, mid: 16, nx: 0, nz: -1, kind: 'over' },
+    ];
+  for (const d of dress) {
+    const s = d;
+    const half = d.kind === 'arch' ? 3.2 : 2.6;
+    const a0 = d.mid - half, a1 = d.mid + half;
+    const mx = s.along === 'z' ? s.face : d.mid, mz = s.along === 'z' ? d.mid : s.face;
+    if (s.along === 'z' && nearCave(mz)) continue;
+    const ix = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, mx - (s.along === 'z' ? s.nx : 0) * 0.3));
+    const iz = Math.max(BOUNDS.z0, Math.min(BOUNDS.z1, mz - (s.along === 'x' ? s.nz : 0) * 0.3));
+    const yb = terrain(ix, iz);
+    const col = tint(C.stoneC, 0.98);
+    if (d.kind === 'over') {
+      const y0 = yb + 4.6, y1 = yb + 6.8;
+      slab(s, a0, a1, y0, y1, 0.3, 1.8, col);
+    } else {
+      // a shallow arch: the span hangs into the arena above head height; no legs on the floor
+      const y0 = yb + 3.9, y1 = yb + 6.4;
+      slab(s, a0, a1, y0 + 0.7, y1, 0.3, 2.0, tint(C.stoneA, 1.02));
+      slab(s, a0, a0 + 1.1, y0, y1, 0.25, 1.15, col);
+      slab(s, a1 - 1.1, a1, y0, y1, 0.25, 1.15, col);
+    }
+  }
+  // talus: loose rocks piled at the foot, sitting on the rising ground
+  const nTalus = lowEnd ? 26 : 54;
+  for (let i = 0, tries = 0; i < nTalus && tries < 220; tries++) {
+    const s = sides[Math.floor(R() * 4)];
+    const a = s.a0 + 1 + R() * (s.a1 - s.a0 - 2);
+    const into = 0.45 + R() * 1.35;
+    const x = s.along === 'z' ? s.face - s.nx * into : a;
+    const z = s.along === 'z' ? a : s.face - s.nz * into;
+    if (s.along === 'z' && nearCave(z)) continue;
+    if (nearPad(x, z)) continue;
+    if (x <= BOUNDS.x0 + 0.2 || x >= BOUNDS.x1 - 0.2 || z <= BOUNDS.z0 + 0.2 || z >= BOUNDS.z1 - 0.2) continue;
+    const y = terrain(x, z);
+    const r = 0.22 + R() * (i % 7 === 0 ? 0.7 : 0.45);
+    const g = new THREE.DodecahedronGeometry(r, 0);
+    g.scale(1 + R() * 0.4, 0.45 + R() * 0.4, 1 + R() * 0.35);
+    g.rotateY(R() * 6);
+    g.translate(x, y + r * 0.28, z);
+    wallParts.push(paint(g, tint(R() < 0.5 ? C.scree : C.stoneA, 0.92 + R() * 0.14)));
+    i++;
   }
   scene.add(new THREE.Mesh(mergeGeometries(wallParts), mat));
 

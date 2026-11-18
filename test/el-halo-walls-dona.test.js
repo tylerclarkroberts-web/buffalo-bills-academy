@@ -141,13 +141,16 @@ test('enemies (including a leaping volador and La Doña) stay inside the rock fa
   }
 });
 
-test('the visible rock face, ledge and darker foot band match the collider', () => {
+test('the visible canyon cliffs match the collider and read as natural rock, not a flat band', () => {
   const world = src('client/src/mines/elhalo/world.js');
-  assert.match(world, /solid, obvious canyon wall/);
-  assert.match(world, /darker band/);
-  assert.match(world, /ledge/);
+  assert.match(world, /layered sandstone|strata/);
+  assert.match(world, /scree|talus/);
+  assert.match(world, /ridgeline|ridge/);
   assert.match(world, /BOUNDS/, 'drawn on the same rectangle the server uses');
   assert.match(world, /no see-through gaps|thick backing/);
+  assert.doesNotMatch(world, /darker band/);
+  assert.doesNotMatch(world, /bandH/);
+  assert.doesNotMatch(world, /ledgeIn/);
 });
 
 test('La Doña keeps the heavyweight stats, is named in the HUD, and shouts ¡TORTA! on the slam', () => {
