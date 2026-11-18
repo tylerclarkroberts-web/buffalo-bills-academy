@@ -103,7 +103,7 @@ test('all twenty-eight oddities have compatible positions; placement never consu
   assert.equal(owner.bankroll, 142.87);
 });
 
-test('nine contextual positions accept a desk item but keep the wagon outdoors', t => {
+test('contextual positions accept a desk item but keep the wagon outdoors', t => {
   const { rooms, owner, shop } = fixture(t);
   const inventory = structuredClone(shop.doc);
   const placements = [
@@ -112,8 +112,9 @@ test('nine contextual positions accept a desk item but keep the wagon outdoors',
     { anchorId: 'desk', itemId: 'odd-telegraph' }, { anchorId: 'floor', itemId: 'odd-anvil' },
     { anchorId: 'window', itemId: 'odd-wagon' },
   ];
-  assert.equal(roomAnchors().length, 9);
-  assert.equal(ROOM_ANCHORS.length, 22);
+  // Nine in the parlor and yard, six on the other rooms' fittings; floor displays elsewhere start stored.
+  assert.equal(roomAnchors().length, 15);
+  assert.equal(ROOM_ANCHORS.length, 32);
   assert.deepEqual(rooms.saveLayout(owner, layout(0, placements)).placements, placements);
   for (const anchorId of ['wall-left', 'shelf-left', 'desk', 'floor']) {
     assert.throws(() => rooms.saveLayout(owner, layout(1, [{ anchorId, itemId: 'odd-wagon' }])), status(400));
@@ -168,7 +169,7 @@ test('shelf moves preserve contents and styles across restart without changing p
 test('homestead choices survive older and partial edits and the visitor sees the saved arrangement', t => {
   const { rooms, owner, visitor, store, options } = fixture(t);
   const homestead = Object.fromEntries(Object.entries(ROOM_HOMESTEAD).map(([id, choices]) =>
-    [id, { typeId: choices.types[1].id, colorId: choices.colors[1].id, layoutId: choices.layouts[1].id }]));
+    [id, { typeId: choices.types[1].id, colorId: choices.colors[1].id }]));
   const fence = { typeId: 'wire', colorId: 'whitewash' };
   const finishes = { ...roomFinishes(), fence };
   rooms.saveLayout(owner, { ...layout(0), finishes, homestead });

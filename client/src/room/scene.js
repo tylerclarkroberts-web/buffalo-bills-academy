@@ -576,7 +576,7 @@ export class RoomScene {
     return true;
   }
   touchMode() { if (this.canvas?.style) this.canvas.style.touchAction = this.cameraMode || this.editing || this.view?.zoom > 1 ? 'none' : 'pan-y'; }
-  movable() { return { ...this.fixtures, wardrobe: this.wardrobe, rug: this.rug, couch: this.couch }; }
+  movable() { return { ...this.fixtures, ...this.homestead?.pieces, wardrobe: this.wardrobe, rug: this.rug, couch: this.couch }; }
   pointerDown(e) {
     if (e.isPrimary === false || (e.button !== 0 && e.button !== 2) || this.disposed || this.failed) return;
     this.cancelPointer();
@@ -828,8 +828,11 @@ export class RoomScene {
       this.highlights.add(glow);
     }
     if (this.editing && (selection?.kind === 'homestead' || selection?.surface === 'fence')) {
-      const targets = selection.surface === 'fence' ? [this.yardFence] : (this.homestead?.editPicks || []).filter(object =>
-        (object.userData.editSelection || object.userData.selection)?.id === selection.id);
+      // A picked fitting outlines just itself; a room's finish outlines everything in that style.
+      const targets = selection.surface === 'fence' ? [this.yardFence] : (this.homestead?.editPicks || []).filter(object => {
+        const picked = object.userData.editSelection || object.userData.selection;
+        return selection.piece ? picked?.piece === selection.piece : picked?.id === selection.id;
+      });
       const bounds = new THREE.Box3();
       for (const target of targets) if (target && shown(target)) bounds.expandByObject(target);
       if (!bounds.isEmpty()) {
@@ -1170,13 +1173,12 @@ export class RoomScene {
     this.shelves = roomShelves(view.shelves);
     this.wallDisplays = roomWallDisplays(view.wallDisplays, this.shelves);
     const furniture = this.furniture = roomFurniture(view.furniture), turn = id => furniture[id].r * Math.PI / 2;
+    this.homestead?.update(view.homestead, furniture);
     for (const [id, group] of Object.entries(this.movable())) {
       if (!group) continue;
       group.position.set(furniture[id].x, id === 'rug' ? ROOM_FIXTURES.rug[1] : 0, furniture[id].z);
       group.rotation.y = turn(id); group.visible = !furniture[id].off;
     }
-    this.homestead?.update(view.homestead);
-    this.chairLayout = view.homestead?.porchChair?.layoutId;
     const couchScale = roomCouchScale(furniture, this.shelves, this.wallDisplays);
     this.couch?.scale.fromArray(couchScale);
     this.furnishings(roomFinishes(view.finishes));
@@ -1281,11 +1283,11 @@ export class RoomScene {
   }
   resident(owner, generation) {
     const group = new THREE.Group(); group.position.set(this.furniture?.rug.x ?? ROOM_FIXTURES.resident[0], ROOM_FIXTURES.resident[1], this.furniture?.rug.z ?? ROOM_FIXTURES.resident[2]); group.rotation.order = 'YXZ'; group.rotation.y = 0.35; this.dynamic.add(group);
-    group.userData.dragId = 'rug'; this.residentFace = null;
+    group.userData.dragId = 'rug';
     this.residentPick = mesh(group, new THREE.BoxGeometry(0.95, 2.15, 0.75), new THREE.MeshBasicMaterial({ visible: false }), 0, 1.07, 0);
     this.residentPick.userData.selection = { kind: 'resident' };
     this.residentGroup = group; this.residentHome = group.position.clone(); this.residentRoute = residentStep(this.furniture, this.shelves, this.wallDisplays);
-    this.errands = residentErrands(this.furniture, this.shelves, this.wallDisplays, this.chairLayout); this.residentYaw = 0.35;
+    this.errands = residentErrands(this.furniture, this.shelves, this.wallDisplays); this.residentYaw = 0.35;
     if (this.coffee && !this.errands.some(errand => errand.kind === 'coffee')) this.coffee = null;
     const avatar = owner?.avatar, skinTone = avatar?.skinTone, seed = avatar?.seed || owner?.id || 'room-resident', look = looks(seed, skinTone);
     const shirt = avatar?.wear?.body?.c || avatar?.wear?.skin?.c || look.shirt;
@@ -1355,8 +1357,9 @@ export class RoomScene {
         if (this.disposed || generation !== this.generation) return;
         const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
         const ctx = canvas.getContext('2d', { willReadFrequently: true }); ctx.drawImage(image, 0, 0);
-        // A photo head is the same flat cutout as at the table, held toward whoever is looking. Wrapped round a ball, a
-        // real selfie's lighting and edges never survived. Seen from behind it is the same cutout in the hair's colour.
+        // A photo head is the table's cutout bent round the front of the head like a mask, so it turns with him instead of
+        // staring at the camera while he walks sideways. Wrapped round the ball itself, a real selfie's lighting and edges
+        // never survived. From behind, the inside of the mask is the same cutout in the hair's colour.
         const wrap = faceWrap(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
         if (!wrap) return;
         const rgb = colour => `rgb(${colour.join(',')})`;
@@ -1365,14 +1368,15 @@ export class RoomScene {
         const ink = behind.getContext('2d'); ink.drawImage(image, 0, 0); ink.globalCompositeOperation = 'source-in'; ink.fillStyle = rgb(wrap.hair); ink.fillRect(0, 0, behind.width, behind.height);
         // Sized and placed by the box the head fills, so a cutout with spare room round it is no smaller.
         const high = 0.68 * canvas.height / wrap.h, across = high * canvas.width / canvas.height;
-        this.residentFace = [canvas, behind].map((source, i) => {
+        const radius = Math.max(0.27, across / 2.4), arc = across / radius, shift = (0.5 - (wrap.x + wrap.w / 2) / canvas.width) * across / radius;
+        const mask = new THREE.CylinderGeometry(radius, radius, high, 24, 1, true, shift - arc / 2, arc);
+        [canvas, behind].forEach((source, i) => {
           const map = canvasTexture(source); map.magFilter = map.minFilter = THREE.LinearFilter;
-          const cutout = new THREE.Sprite(new THREE.SpriteMaterial({ map, alphaTest: 0.5 }));
-          cutout.scale.set(across, high, 1); cutout.visible = !i;
-          cutout.position.set((0.5 - (wrap.x + wrap.w / 2) / canvas.width) * across, 0.25 + ((wrap.y + wrap.h / 2) / canvas.height - 0.5) * high, 0);
-          headGroup.add(cutout); return cutout;
+          const cutout = new THREE.Mesh(mask, new THREE.MeshBasicMaterial({ map, alphaTest: 0.5, side: i ? THREE.BackSide : THREE.FrontSide }));
+          cutout.position.set(0, 0.25 + ((wrap.y + wrap.h / 2) / canvas.height - 0.5) * high, 0);
+          headGroup.add(cutout);
         });
-        head.visible = face.visible = false;
+        head.material.color.set(rgb(wrap.hair)); face.material.map = null; face.material.color.set(rgb(wrap.skin)); face.material.needsUpdate = true;
         this.render();
       });
     }
@@ -1537,13 +1541,12 @@ export class RoomScene {
       this.residentYaw = this.motion.matches ? aim : t || coffee ? yaw + Math.atan2(Math.sin(aim - yaw), Math.cos(aim - yaw)) * 0.3 : 0.35;
       this.residentGroup.scale.y = RESIDENT_HEIGHT_SCALE * (1 + Math.sin(t * 1.5) * 0.008);
       this.residentGroup.rotation.set(look * 0.06 + grab * 0.12, this.residentYaw + Math.sin(t * 0.35) * 0.06, Math.sin(t * 0.7) * 0.008);
-      this.residentHead.rotation.y = pose.glance * (1 - look);
+      // Like an actor, he cheats his face a little toward the audience unless he has his back to it.
+      const view = this.camera?.getWorldDirection(new THREE.Vector3());
+      const toCamera = view ? Math.atan2(-view.x, -view.z) - this.residentGroup.rotation.y : 0, turn = Math.atan2(Math.sin(toCamera), Math.cos(toCamera));
+      const cheat = Math.abs(turn) < 2 ? THREE.MathUtils.clamp(turn, -0.5, 0.5) : 0;
+      this.residentHead.rotation.y = (pose.glance + cheat) * (1 - look);
       this.residentHead.rotation.x = Math.sin(t * 0.6) * 0.025 + look * 0.32;
-      if (this.residentFace) {
-        const view = this.camera.getWorldDirection(new THREE.Vector3()), yaw = this.residentGroup.rotation.y + this.residentHead.rotation.y;
-        const front = Math.sin(yaw) * view.x + Math.cos(yaw) * view.z < 0.2;
-        this.residentFace[0].visible = front; this.residentFace[1].visible = !front;
-      }
       this.residentLegs?.forEach((leg, i) => {
         leg.rotation.x = walking ? pose.stride * (i ? 1 : -1) : -1.45 * sit;
         if (leg.userData.knee) leg.userData.knee.rotation.x = walking ? Math.max(0, pose.stride * (i ? -1 : 1)) * 1.6 : 1.45 * sit;

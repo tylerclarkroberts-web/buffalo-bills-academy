@@ -22,12 +22,15 @@ test('changing a wing finish or moving one fixture stays in the draft until save
   const saved = room(), draft = layoutOf(saved);
   assert.equal(layoutKey(draft), layoutKey(saved), 'a legacy room opens without unsaved changes');
   const painted = changeStyle(draft, 'bedroom', 'colorId', 'indigo');
-  const moved = changeStyle(painted, 'bed', 'layoutId', 'alternate');
+  assert.notEqual(layoutKey(painted), layoutKey(draft));
+  assert.equal(painted.homestead.bedroom.colorId, 'indigo');
+  assert.equal(changeStyle(painted, 'bed', 'layoutId', 'alternate'), painted, 'placement presets are gone; the bed moves like furniture');
+  const moved = placeFurniture(painted, 'bed', { x: painted.furniture.bed.x + 1 });
   assert.notEqual(layoutKey(moved), layoutKey(painted));
   assert.equal(moved.homestead.bedroom.colorId, 'indigo');
-  assert.equal(draft.homestead.bed.layoutId, 'classic');
-  assert.deepEqual(moved.furniture, draft.furniture);
-  assert.equal(changeStyle(moved, 'bed', 'layoutId', 'in-the-trough'), moved);
+  assert.equal(draft.furniture.bed.x, saved.furniture.bed.x);
+  assert.equal(placeFurniture(moved, 'bed', { x: 0 }), moved, 'the bed cannot leave the bedroom for the parlor');
+  assert.equal(placeFurniture(moved, 'toilet', { off: true }), moved, 'the toilet is not optional');
 });
 test('moving a filled shelf retains its item; removing it returns that display to storage without mutating the saved layout', () => {
   const saved = room(), open = ROOM_SHELF_SPOTS.find(spot => !saved.shelves.some(shelf => shelf.spotId === spot.id));

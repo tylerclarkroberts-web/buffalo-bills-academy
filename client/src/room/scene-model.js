@@ -5,9 +5,11 @@ export { ROOM_FLOOR_SCALE };
 const S = ROOM_FLOOR_SCALE, home = (id, y = 0) => [ROOM_FURNITURE[id].home[0], y, ROOM_FURNITURE[id].home[1]];
 export const ROOM_DESK_TOP = 1.13;
 /** Heights of the display spots that ride on movable furniture. */
-const SPOT_HEIGHT = { desk: ROOM_DESK_TOP, floor: 0.08, 'floor-2': 0.08, 'floor-3': 0.08, window: 0.02, 'wardrobe-top': 2.58, case: 0.775, 'case-2': 0.775, 'case-3': 0.775 };
-/** Where a spot sits along its furniture's width, for pieces that hold several. */
-const SPOT_OFFSET = { case: -0.62, 'case-3': 0.62 };
+const SPOT_HEIGHT = { desk: ROOM_DESK_TOP, floor: 0.08, 'floor-2': 0.08, 'floor-3': 0.08, window: 0.02, 'wardrobe-top': 2.58, case: 0.775, 'case-2': 0.775, 'case-3': 0.775,
+  range: 1.39, worktable: 1.43, nightstand: 0.97, bed: 0.86, toilet: 1.2, linen: 1.32,
+  'floor-kitchen': 0.08, 'floor-bedroom': 0.08, 'floor-bath': 0.08, 'floor-porch': 0.1 };
+/** Where a spot sits along its furniture's width (and front to back), clear of the case's neighbours, the coffee machine, lamp or cistern. */
+const SPOT_OFFSET = { case: -0.62, 'case-3': 0.62, range: -0.95, nightstand: 0.2, bed: [0, 1.1], toilet: [0, -0.36] };
 export const RESIDENT_HEIGHT_SCALE = 1.4;
 // The stylized, un-hatted 1.94-unit resident represents 5 ft 11 in; walls are 8 ft 6 in.
 export const ROOM_WALL_HEIGHT = 1.94 * RESIDENT_HEIGHT_SCALE * 102 / 71;
@@ -29,11 +31,17 @@ const AREAS = {
 export const roomShelfPosition = spot => spot.wallSide === 'back' ? [spot.position[0] * S, spot.position[1], -3 * S + 0.78] : [-4 * S + 0.78, spot.position[1], spot.position[2] * S];
 export const wallDisplayPosition = spot => spot.wallSide === 'left' ? [-4 * S + 0.19, spot.position[1], spot.position[2] * S] : [spot.position[0] * S, spot.position[1], -3 * S + 0.19];
 
+/** Where a spot riding on furniture sits, wherever that piece has been moved and turned. */
+function spotOn(id, place) {
+  const [along, across = 0] = [SPOT_OFFSET[id] || 0].flat(), turn = place.r * Math.PI / 2;
+  return [place.x + Math.cos(turn) * along + Math.sin(turn) * across, SPOT_HEIGHT[id], place.z - Math.sin(turn) * along + Math.cos(turn) * across];
+}
 export const ROOM_POSITIONS = {
   'wall-left': [-2.9 * S, 2.55, -3 * S + 0.19], 'wall-right': [-1.25 * S, 2.55, -3 * S + 0.19],
   'shelf-left': [-4 * S + 0.78, 1.22, -1.7 * S], 'shelf-right': [-4 * S + 0.78, 1.22, -0.4 * S],
   floor: home('floor', SPOT_HEIGHT.floor), desk: home('desk', SPOT_HEIGHT.desk), window: home('window', SPOT_HEIGHT.window),
   sill: [0.75 * S, 1.42, -3 * S + 0.4], 'wardrobe-top': home('wardrobe', SPOT_HEIGHT['wardrobe-top']),
+  ...Object.fromEntries(['range', 'worktable', 'nightstand', 'bed', 'toilet', 'linen'].map(id => [id, spotOn(id, defaultFurniture()[id])])),
 };
 
 export const ROOM_FIXTURES = {
@@ -42,10 +50,9 @@ export const ROOM_FIXTURES = {
 
 export function roomPositions(shelves, furniture = defaultFurniture(), wallDisplays) {
   const positions = { sill: ROOM_POSITIONS.sill };
-  for (const [id, y] of Object.entries(SPOT_HEIGHT)) {
+  for (const id of Object.keys(SPOT_HEIGHT)) {
     const place = furniture[anchorHost(id)];
-    const along = SPOT_OFFSET[id] || 0, turn = place.r * Math.PI / 2;
-    if (!place.off) positions[id] = [place.x + Math.cos(turn) * along, y, place.z - Math.sin(turn) * along];
+    if (!place.off) positions[id] = spotOn(id, place);
   }
   for (const shelf of roomShelves(shelves)) {
     const spot = ROOM_SHELF_SPOTS.find(spot => spot.id === shelf.spotId);
@@ -100,8 +107,8 @@ export function residentStep(furniture = defaultFurniture(), shelves = [], wallD
  * Places the resident can stroll to from the rug, including the porch through the open side door.
  * Each has a `path` of floor points ending at the spot where they stand, found on a quarter-unit grid around the furniture.
  */
-export function residentErrands(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays(undefined, shelves), chairLayout = 'classic') {
-  const home = furniture.rug, live = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !furniture[id].off);
+export function residentErrands(furniture = defaultFurniture(), shelves = [], wallDisplays = roomWallDisplays(undefined, shelves)) {
+  const home = furniture.rug, live = Object.keys(ROOM_FURNITURE).filter(id => !ROOM_FURNITURE[id].flat && !ROOM_FURNITURE[id].yard && !ROOM_FURNITURE[id].area && !furniture[id].off);
   const couchScale = roomCouchScale(furniture, shelves, wallDisplays);
   const solid = live.map(id => furnitureRect(id, furniture[id], couchScale));
   for (const shelf of shelves) {
@@ -151,8 +158,10 @@ export function residentErrands(furniture = defaultFurniture(), shelves = [], wa
   }
   const gate = route([home.x, home.z], [4 * S - 0.55, 1.75 * S]);
   if (gate) {
-    const path = [...gate, [4.3 * S, 1.75 * S], [6.55 * S, 1.85 * S], [6.55 * S, 3.5 * S]];
-    errands.splice(1, 0, { kind: 'coffee', path, facing: chairLayout === 'alternate' ? -Math.PI / 2 : Math.PI / 2 });
+    // He takes his coffee to wherever the porch chair is, standing a stride in front of it.
+    const chair = furniture.porchChair, facing = (chair.r - 1) * Math.PI / 2, front = [Math.sin(facing), Math.cos(facing)];
+    const path = [...gate, [4.3 * S, 1.75 * S], [6.55 * S, 1.85 * S], [chair.x + front[0] * S, chair.z + front[1] * S]];
+    errands.splice(1, 0, { kind: 'coffee', path, facing: Math.atan2(-front[0], -front[1]) });
   }
   return errands;
 }
