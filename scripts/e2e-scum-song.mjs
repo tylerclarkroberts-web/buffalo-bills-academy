@@ -3,13 +3,14 @@
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { parseScript } from '../client/src/scum/songScript.js';
-const script = parseScript(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../client/public/scum/song/script.txt'), 'utf8'));
+const script = parseScript(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../client/public/scum/song/script.txt'), 'utf8'));
 const SONG_DIALOG = script.dialogue, SONG_LYRICS = script.lyrics, SONG_START = script.songStart;
 
 const req = createRequire(process.env.PLAYWRIGHT_DIR ? path.join(process.env.PLAYWRIGHT_DIR, 'x.js') : import.meta.url);
 const { chromium } = req('playwright-core');
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = process.env.OUT || path.join(os.tmpdir(), 'scum-song-shots');
 const PORT = 3000 + Math.floor(Math.random() * 900) + 50;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -103,7 +104,8 @@ try {
   check(scriptRes.ok && /KING:/.test(await scriptRes.text()), 'public script.txt is served at /scum/song/script.txt');
   const mp3 = await fetch(BASE + '/scum/song/song.mp3', { method: 'GET', headers: { Range: 'bytes=0-2' } });
   const mp3Type = mp3.headers.get('content-type') || '';
-  check(!/audio|mpeg|mp3/i.test(mp3Type), `song.mp3 is optional and currently absent (got ${mp3.status} ${mp3Type})`);
+  const hasMp3 = fs.existsSync(path.join(ROOT, 'client/public/scum/song/song.mp3'));
+  check(hasMp3 === /audio|mpeg|mp3/i.test(mp3Type), `song.mp3 ${hasMp3 ? 'is served' : 'is optional and absent'} (got ${mp3.status} ${mp3Type})`);
 
   const browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox', '--hide-scrollbars'] });
 
@@ -141,14 +143,14 @@ try {
     const el = document.querySelector('[data-test=scum-royal-bubble][data-who=scum]');
     return el && el.textContent.includes(txt);
   }, SONG_DIALOG[1].text.slice(0, 20), { timeout: SONG_DIALOG[1].at + 2000 });
-  check((await ann.locator('[data-test=scum-royal-bubble]').innerText()).includes('already heard enough'), 'scum reply bubble');
+  check((await ann.locator('[data-test=scum-royal-bubble]').innerText()).includes(SONG_DIALOG[1].text.slice(0, 20)), 'scum reply bubble');
   await shot(ann, 'desktop-song-scum-reply');
 
   await ann.waitForFunction((txt) => {
     const el = document.querySelector('[data-test=scum-royal-bubble][data-who=king]');
     return el && el.textContent.includes(txt);
-  }, "didn't ask", { timeout: SONG_START });
-  check((await ann.locator('[data-test=scum-royal-bubble]').innerText()).includes("didn't ask"), 'king insists');
+  }, SONG_DIALOG[2].text.slice(0, 20), { timeout: SONG_START });
+  check((await ann.locator('[data-test=scum-royal-bubble]').innerText()).includes(SONG_DIALOG[2].text.slice(0, 20)), 'king insists');
   await shot(ann, 'desktop-song-king-2');
 
   // 3. Song phase: karaoke, tomatoes, Scum steps aside

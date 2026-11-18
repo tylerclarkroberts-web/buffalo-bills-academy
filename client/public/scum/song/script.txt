@@ -13,19 +13,17 @@
 #   SONG <seconds from scene start when the singing begins>
 #   <seconds from start of song / song.mp3>  <lyric text>
 # Times may use decimals (2.8, 9.4). Speaker must be KING or SCUM.
-# These placeholder lines are original; replace them with your own.
 
-0.0  KING: Sing me a song.
-2.8  SCUM: This table already heard enough of me for one night.
-6.2  KING: I didn't ask if you wanted to. Sing.
+0.0   KING: Can you sing, Scum?
+3.5   SCUM: Only at funerals and when I lose. So, constantly.
+10.5  KING: Then this is both. Come, sing me a song.
 
-SONG 9.4
+SONG 15.5
 
-0.0  The lamps burn low on the last long hand
-2.4  The road is a ribbon of dust and sand
-4.8  Through the canyon and over the rise
-7.2  Until morning opens the eastern skies
-9.6  Smoke and whiskey
-11.4  Wind and rain
-13.2  The night rolls on
-15.2  The night rolls on
+0.95  My cards are bad and my chair is low
+7.1   The King has tomatoes and nowhere to go
+12.9  Through deuces and threes to the end of the round
+16.6  Until my last card is face-down on the ground
+27.05 Pass and shuffle, deal and cut
+40.5  Scum again
+51.3  Scuuum... agaaain...
