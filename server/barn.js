@@ -13,7 +13,7 @@ import { ROSTER, BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { line } from './engine/bout.js';
-import { rarityOf } from './engine/bug-types.js';
+import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { cents } from './accounts.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
@@ -781,6 +781,7 @@ export class Barn {
     const pen = this.refresh(playerId, bug);
     if (!pen || pen.stage !== 'creature') throw new GameError('Only a hatched, living bug can be let go.', 409);
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
+    if (rarityOf(pen.species) === LEGENDARY) throw new GameError('A legendary cannot be let go. There is only the one.', 409);
     const stray = { id: `stray:${playerId}:${pen.bornAt}`, species: pen.species, name: pen.name, level: levelFor(pen.xp, pen.cap), owner: this.store.players[playerId]?.name || 'Somebody', at: this.now() };
     const changes = { strays: [...(this.doc.strays || []), stray].slice(-STRAYS_KEPT) };
     if (pen === this.doc.pens[playerId]) { changes.pens = { ...this.doc.pens }; delete changes.pens[playerId]; }
@@ -788,6 +789,11 @@ export class Barn {
     this.commitDoc(changes); // gone from the barn and loose in the mines in one write
     this.promote(playerId);
     return this.view(playerId);
+  }
+  /** Whether any living bug of this species is in somebody's barn, or loose as a stray: a legendary is one of a kind. */
+  holds(species) {
+    const kept = (pen) => pen?.species === species && pen.stage !== 'dead';
+    return Object.values(this.doc.pens).some(kept) || Object.values(this.doc.bench || {}).some((bench) => bench.some(kept)) || this.strays().some((stray) => stray.species === species);
   }
   /** Released bugs nobody has caught yet. */
   strays() { return (this.doc.strays || []).filter((stray) => !this.wildCaught(stray.id)); }

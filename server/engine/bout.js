@@ -84,6 +84,7 @@ function aim(S, by, move, attacks) {
   if (target.ty === 'flier') acc -= PERK.quick;
   if (target.under) acc -= PERK.dive; // a Water bug that was just hit has gone under
   if (target.t === 'micronecta') acc -= TRAIT.tiny;
+  if (target.t === 'meganeura') acc -= TRAIT.griffinDodge;
   if (target.t === 'halobates' && S.hp[foe] > S.maxHp[foe] / 2) acc -= TRAIT.skate;
   if (target.t === 'notonecta' && !target.met) acc -= TRAIT.upside;
   if (target.t === 'bertholdia' && attacks % 2 === 0) acc -= TRAIT.jam; // it clicks in bursts: every other attack
@@ -125,6 +126,9 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.t === 'colobopsis') mult *= 1 - TRAIT.minor; // a minor worker: built to burst, not to bite
   if (target.t === 'ampulex' && target.landed >= 2) mult *= 1 - TRAIT.sting * (s.t === 'gromphadorhina' ? 2 : 1); // stung twice, it stops trying; a cockroach more so
   if (s.ty === 'brawler') mult *= 1 + PERK.heavy;
+  if (s.t === 'megachile') mult *= 1 + TRAIT.giant;
+  if (s.t === 'meganeura') mult *= 1 + TRAIT.griffin;
+  if (target.t === 'dryococelus') mult *= 1 - TRAIT.lobster; // a tree lobster: hard to finish off
   if (ball(s, turnNo)) mult *= 1 + RULES.dodgeball.power;
   if (s.ty === 'ambush' && attacks === 1) mult *= 1 + PERK.strike;
   if (target.ty === 'shell' && !pierce) mult *= 1 - PERK.armour;

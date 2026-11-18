@@ -1,5 +1,6 @@
 // Barn combat is deterministic; player-joined wager flows are covered in barn-combat-api.test.js.
 import { test } from 'node:test';
+import { rarityOf } from '../server/engine/bug-types.js';
 import assert from 'node:assert/strict';
 import { simulateBout, line, MAX_ROUNDS, LUNCH_CAP } from '../server/engine/bout.js';
 import { ROSTER } from '../server/engine/creatures.js';
@@ -62,7 +63,7 @@ test('level 3 bouts use only what a level 3 bug has learned, and no species runs
       for (const r of o.rounds) if (r.type === 'move') assert.ok(r.moveId === 'basic' || r.moveId === 'technique', 'level 3 has its strike and its technique');
       w += o.winner === 0 ? 1 : o.winner === null ? 0.5 : 0; n++;
     }
-    assert.ok(w / n > 0.3 && w / n < 0.7, `${mine.id} wins ${Math.round((100 * w) / n)}% of level 3 bouts`);
+    assert.ok(w / n > 0.3 && w / n < (rarityOf(mine.id) === 4 ? 0.8 : 0.7), `${mine.id} wins ${Math.round((100 * w) / n)}% of level 3 bouts`);
   }
 });
 

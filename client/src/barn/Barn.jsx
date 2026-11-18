@@ -13,7 +13,7 @@ import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip } from './BugCard.jsx';
-import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
+import { TYPES, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
 import { navigate } from '../App.jsx';
@@ -146,7 +146,7 @@ function Stalls({ stable, sel, onPick }) {
 const HELP = {
   stalls: ['Feed, Play and Mist are free, each on its own cooldown. Each gives 12 XP up to level 5, then less every level, down to 2 XP from level 10.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Release lets a bug go. It wanders into the mines as a stray, where anyone can catch it, you included.','Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
   ring: ['Challenge any bug, or post a bout for whoever joins first.', 'You name your stake; the other corner puts up fair odds by the line, each bug\'s chance from 400 practice fights.', 'The winner takes the pot. A draw refunds both stakes.', 'A win pays more XP the higher the level you beat, and very little for beating a lower one. Losing pays less the higher your own level.', 'Bugs still standing recover fully; a knockout means the Bug Center.'],
-  circuit: ['Beat the stops in order. A win pays XP and a one-time purse; a loss pays nothing.', 'Circuit bugs are drilled: tougher than a barn bug of the same level. Bring a type edge or a level or two.', 'Every ribbon raises the top level your bugs can reach by one.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
+  circuit: ['Beat the stops in order. A win pays XP and a one-time purse; a loss pays nothing.', 'Legendary bugs turn up in the mine a few times a year, one of each in the whole Academy.', 'Circuit bugs are drilled: tougher than a barn bug of the same level. Bring a type edge or a level or two.', 'Every ribbon raises the top level your bugs can reach by one.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
 };
 
 /** The ring: other players and their bugs, bouts open to anyone, and recent fights. Anyone can look; fighting needs a bug. */
@@ -323,7 +323,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
         </div> : <div className="barn-row bs-more">
           <button className="btn small" onClick={toRing}>Find a bout</button>
           {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
-          <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>
+          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span> : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
         </div>}
       </div>
       <div className="bs-info">

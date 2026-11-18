@@ -1,3 +1,15 @@
+/* Legendary: a gold card. A heavy gold frame with a glow, a gold wash that drifts over the art, a gold name and a stamped footer. */
+.bugcard.r4 { border-image: linear-gradient(135deg, #fff3b0, #d4a017 22%, #fff8d0 45%, #b8860b 68%, #ffe27a) 1; border-radius: 0;
+  box-shadow: 0 0 0 2px #1a0e06, 0 0 0 4px #ffd84a, 0 0 26px rgba(255, 216, 74, .8), 0 0 60px rgba(255, 170, 30, .4), 0 8px 22px rgba(0,0,0,.5);
+  background: radial-gradient(120% 70% at 20% 0%, rgba(255,255,255,.7), transparent 60%), linear-gradient(160deg, #fff4c8, #f2d98a 55%, #e0b84a); }
+.bugcard.r4 .bc-window { position: relative; overflow: hidden; border-color: #ffd84a; box-shadow: inset 0 0 16px rgba(255, 230, 140, .9); }
+.bugcard.r4 .bc-foil { display: block; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+  background: linear-gradient(115deg, transparent 20%, rgba(255, 236, 150, .75) 38%, rgba(255,255,255,.9) 50%, rgba(255, 200, 80, .7) 62%, transparent 80%); background-size: 280% 100%; animation: bc-gold 3.6s ease-in-out infinite; }
+.bugcard.r4 h3 { background: linear-gradient(90deg, #7a4a00, #c98a00, #7a4a00); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bugcard.r4 .bc-strip { background: linear-gradient(90deg, #b8860b, #ffe27a 30%, #fff8d0 50%, #ffe27a 70%, #b8860b); }
+.bugcard.r4 footer span:first-child { color: #7a4a00; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+@keyframes bc-gold { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }
+@media (prefers-reduced-motion: reduce) { .bugcard.r4 .bc-foil { animation: none; background-position: 50% 0; } }
 /* A bug's trading card. The frame takes its type's colour (--tc); the paper and ink stay the same on every card. */
 .bugcard { --ink: #2a1a10; width: 300px; min-height: 468px; box-sizing: border-box; display: grid; grid-template-rows: auto auto auto 1fr auto auto auto auto; gap: 5px; padding: 12px 12px 8px;
   border-radius: 14px; border: 7px solid var(--tc); color: var(--ink); font: 400 11px/1.3 var(--sans);

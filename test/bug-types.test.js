@@ -25,7 +25,7 @@ test('the chart: nothing beats itself or its own beater, every pairing has its r
   for (const type of keys) assert.ok(ROSTER.filter((bug) => typeOf(bug.id) === type).length >= 3, `${type} has at least three species`);
   for (const bug of ROSTER) {
     assert.ok(TYPES[typeOf(bug.id)] && RARITY[rarityOf(bug.id)], `${bug.id} has a type and a rarity`);
-    assert.equal(bug.stats.atk + bug.stats.def + bug.stats.spd, rarityOf(bug.id) === 3 ? 10 : 9, `${bug.id}: a rare has one more stat point than the rest`);
+    assert.equal(bug.stats.atk + bug.stats.def + bug.stats.spd, { 3: 10, 4: 11 }[rarityOf(bug.id)] || 9, `${bug.id}: a rare has one more stat point than the rest, a legendary two`);
     assert.ok(bug.facts.length >= 5 && bug.sources.length >= 1, `${bug.id} has its facts and where they came from`);
   }
   assert.deepEqual(ROSTER.filter((bug) => rarityOf(bug.id) === 3).map((bug) => bug.id), ['pheropsophus', 'brevisana', 'halobates', 'phloeodes', 'arachnocampa', 'peruphasma', 'ampulex', 'colobopsis']);
@@ -45,7 +45,7 @@ test('in the ring the type that beats the other wins about four fights in five, 
       if (edge(typeOf(mine.id), typeOf(theirs.id)) > 0) { favoured[0] += w; favoured[1] += SEEDS; }
     }
     byType[typeOf(mine.id)][0] += won; byType[typeOf(mine.id)][1] += fought;
-    assert.ok(won / fought > 0.35 && won / fought < 0.65, `${mine.id} wins ${Math.round((100 * won) / fought)}% of its level 5 bouts`);
+    assert.ok(won / fought > 0.35 && won / fought < (rarityOf(mine.id) === 4 ? 0.8 : 0.65), `${mine.id} wins ${Math.round((100 * won) / fought)}% of its level 5 bouts`);
   }
   const edgeRate = favoured[0] / favoured[1];
   assert.ok(edgeRate > 0.74 && edgeRate < 0.86, `the favoured type wins ${Math.round(100 * edgeRate)}%`);
