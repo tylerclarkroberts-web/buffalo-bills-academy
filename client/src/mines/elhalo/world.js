@@ -247,20 +247,23 @@ export function buildWorld(scene, { lowEnd = false } = {}) {
       const yb = terrain(ix, iz);
       const h = ridgeOf(mx, mz) + (R() - 0.5) * 1.8;
       const fill = tint(R() < 0.5 ? C.stoneA : C.rock2, 0.98 + R() * 0.08);
-      // solid backing up to the face; a short set-back cap hides the lid. The
-      // displaced cliff mesh carries the ridgeline, so we don't stack boxes above it.
-      slab(s, a, a2, yb - 2.2, yb + h, thick, 0, fill);
+      // Recess the backing so its inner face sits behind the strata. The
+      // beds then sit on the bound, abutting (they do not overlap), so no two
+      // camera-facing planes share a depth — that coplanar stack is what made
+      // the walls shimmer. Geometry is built once; the cliff mesh is static.
+      slab(s, a, a2, yb - 2.2, yb + h, thick, -(faceDepth - 0.04), fill);
       const setback = 2.4 + R() * 2.2;
       slab(s, a, a2, yb + h - 0.15, yb + h + 0.8 + R() * 1.4, thick, -setback, tint(C.stoneC, 0.97 + R() * 0.08));
-      // layered sandstone on the inner face; splits jitter so the beds are not a flat stripe
-      const nLay = lowEnd ? 3 : 5;
-      let t0 = 0;
+      // layered sandstone on the inner face; wider beds, no Y overlap
+      const nLay = lowEnd ? 3 : 4;
+      let y0 = yb - 0.2;
+      const yTop = yb + h;
       for (let i = 0; i < nLay; i++) {
-        const t1 = i === nLay - 1 ? 1 : Math.min(0.95, t0 + (1 / nLay) + (R() - 0.5) * 0.08);
-        const y0 = yb - 0.15 + t0 * h, y1 = yb + t1 * h;
+        const remain = nLay - i;
+        const y1 = i === nLay - 1 ? yTop : y0 + Math.max(1.8, (yTop - y0) / remain + (R() - 0.5) * 0.4);
         const col = tint(strata[i % strata.length], 0.96 + R() * 0.1);
-        slab(s, a, a2, y0, y1, faceDepth + R() * 0.25, 0, col);
-        t0 = t1;
+        slab(s, a, a2, y0, y1, faceDepth, 0, col);
+        y0 = y1;
       }
     }
   }

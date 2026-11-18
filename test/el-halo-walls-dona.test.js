@@ -148,9 +148,14 @@ test('the visible canyon cliffs match the collider and read as natural rock, not
   assert.match(world, /ridgeline|ridge/);
   assert.match(world, /BOUNDS/, 'drawn on the same rectangle the server uses');
   assert.match(world, /no see-through gaps|thick backing/);
+  assert.match(world, /Recess the backing|behind the strata/);
+  assert.match(world, /do not overlap|abutting/);
   assert.doesNotMatch(world, /darker band/);
   assert.doesNotMatch(world, /bandH/);
   assert.doesNotMatch(world, /ledgeIn/);
+  const game = src('client/src/mines/elhalo/game.js');
+  assert.match(game, /CAM_NEAR = 0\.15/);
+  assert.doesNotMatch(game, /PerspectiveCamera\(PAD \? 74 : 70, 1, 0\.05,/);
 });
 
 test('La Doña keeps the heavyweight stats, is named in the HUD, and shouts ¡TORTA! on the slam', () => {

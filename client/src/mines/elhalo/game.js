@@ -43,7 +43,9 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfx0.dpr));
   renderer.autoClear = false;
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(PAD ? 74 : 70, 1, 0.05, gfx0.far); camera.rotation.order = 'YXZ'; scene.add(camera);
+  // 0.15 (was 0.05) keeps depth precision on the far canyon walls; the viewmodel has its own camera.
+  const CAM_NEAR = 0.15;
+  const camera = new THREE.PerspectiveCamera(PAD ? 74 : 70, 1, CAM_NEAR, gfx0.far); camera.rotation.order = 'YXZ'; scene.add(camera);
   const world = buildWorld(scene, { lowEnd: gfx0.phoneDogs });
 
   // first-person guns in their own scene so they never clip into walls
@@ -1012,7 +1014,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     gfxTier = pickTier(w, h);
     const gfx = graphicsOpts(gfxTier);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfx.dpr));
-    camera.far = gfx.far;
+    camera.near = CAM_NEAR; camera.far = gfx.far;
     const a = w / h, deg = Math.PI / 180, base = PAD ? 74 : 70;
     camera.aspect = a; camera.userData.base = a >= 1 ? base : Math.min(82, 2 * Math.atan(Math.tan(36 * deg) / a) / deg); camera.fov = camera.userData.base; camera.updateProjectionMatrix();
     vmCam.aspect = a; vmCam.fov = a >= 1 ? 55 : 2 * Math.atan(Math.tan(31 * deg) / a) / deg; vmCam.updateProjectionMatrix();
