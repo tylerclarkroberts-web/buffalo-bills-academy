@@ -361,7 +361,9 @@ export class Mines {
       this.wildRosters.set(key, dailyWilds(day, shift, this.barn?.strays?.() || []));
       if (this.wildRosters.size > 2) this.wildRosters.delete(this.wildRosters.keys().next().value);
     }
-    return this.wildRosters.get(key).filter(({ id }) => !shift.wildsGone?.includes(id) && !this.barn?.wildCaught?.(id));
+    // Only WILDS_AT_ONCE are down here at a time; a catch lets the next one in. Walking off from one only hides it from you.
+    return this.wildRosters.get(key).filter(({ id }) => !this.barn?.wildCaught?.(id)).slice(0, WILDS_AT_ONCE)
+      .filter(({ id }) => !shift.wildsGone?.includes(id));
   }
   wildGone(playerId, shiftId, wildId) {
     const cur = this.doc.active[playerId];
@@ -486,15 +488,17 @@ export class Mines {
   }
 }
 
-export const WILDS_A_DAY = [4, 6]; // fewest and most
+export const WILDS_A_DAY = [4, 6], WILDS_AT_ONCE = 2; // fewest and most in a day, and how many are out at once
 // A released bug (a stray, Barn.release) is down here about one day in STRAY_DAYS, the same day for every miner, at most
 // STRAYS_A_DAY of them at once. It keeps its name and level and says whose it was; jarring it ends it for everyone.
 export const STRAY_DAYS = 3, STRAYS_A_DAY = 3;
 function dailyWilds(day, shift, strays = []) {
   const maze = shiftMaze(shift), spots = [], pool = (p) => shift.pools.some((q) => q.x === p.x && q.y === p.y);
+  const depth = (p) => maze.dist[p.y]?.[p.x] ?? -1;
   for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
     if (maze.dist[y][x] >= 6 && !pool({ x, y })) spots.push({ x, y });
   }
+  spots.sort((a, b) => depth(a) - depth(b));
   const random = rng(daySeed(`wild:${day}`)), pick = (n) => Math.floor(random() * n);
   const count = Math.min(WILDS_A_DAY[0] + pick(WILDS_A_DAY[1] - WILDS_A_DAY[0] + 1), spots.length), tier = shift.tier || 1;
   // First how rare (WILD_ODDS; a rare only on a day rough enough), then a species of that rarity not yet out today.
@@ -505,18 +509,23 @@ function dailyWilds(day, shift, strays = []) {
     const rarity = open.find((r) => (roll -= WILD_ODDS[r]) < 0) ?? open.at(-1);
     return left[rarity].splice(pick(left[rarity].length), 1)[0].id;
   };
-  const route = (wild) => ({ ...wild, path: roamRoute(wild, 6 + pick(7), (p) => maze.dist[p.y]?.[p.x] >= 3 && !pool(p), pick) });
+  // Its level sets how far in it lives: level 1 in the tunnels nearest the lift, level 6 and up in the deepest fifth.
+  const spotFor = (level) => {
+    const n = spots.length, lo = Math.floor(Math.min(1, (level - 1) / 5) * 0.8 * n), band = Math.min(n - lo, Math.ceil(n / 5));
+    return spots.splice(lo + pick(band), 1)[0];
+  };
+  // it starts on its spot and roams 6 to 12 tiles from there, out of the acid and never more than 3 tiles nearer the lift
+  const route = (wild) => ({ ...wild, path: roamRoute(wild, 6 + pick(7), (p) => depth(p) >= Math.max(3, depth(wild) - 3) && !pool(p), pick) });
   const out = Array.from({ length: count }, (_, i) => {
-    const wild = { id: `${day}:${i + 1}`, species: species(),
-      level: Math.min(MAX_LEVEL, tier + pick(tier + 1)), ...spots.splice(pick(spots.length), 1)[0] };
-    // it starts on its spot and roams from there: 6 to 12 tiles, keeping out of the acid and away from the lift
-    return route(wild);
+    const level = Math.min(MAX_LEVEL, tier + pick(tier + 1));
+    return route({ id: `${day}:${i + 1}`, species: species(), level, ...spotFor(level) });
   });
   // Strays roll from their own seed, so letting one go never reshuffles the day's wild bugs.
   const today = strays.filter((stray) => Math.floor(rng(daySeed(`${stray.id}:${day}`))() * STRAY_DAYS) === 0).slice(0, STRAYS_A_DAY);
+  const loose = [];
   for (const stray of today) {
     if (!spots.length) break;
-    out.push(route({ id: stray.id, species: stray.species, level: stray.level, stray: { name: stray.name, owner: stray.owner }, ...spots.splice(pick(spots.length), 1)[0] }));
+    loose.push(route({ id: stray.id, species: stray.species, level: stray.level, stray: { name: stray.name, owner: stray.owner }, ...spotFor(stray.level) }));
   }
-  return out;
+  return [...loose, ...out]; // someone's let-go bug gets the first places in line
 }
