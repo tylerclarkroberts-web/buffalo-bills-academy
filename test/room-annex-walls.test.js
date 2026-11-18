@@ -21,12 +21,13 @@ test('both wings have open back, front and side windows at full wall height', as
   await home.ready;
   root.updateMatrixWorld(true);
   const windows = [
-    ['Bathroom rear window', 'left', -2.65, 4.05, 1, 0],
-    ['Bunk rear window', 'left', -4.3, -5.35, 1, 0],
-    ['Bathroom porch window', 'right', 3.55, 5.0, -1, 0],
-    ['Bunk porch window', 'right', 3.85, -5.1, -1, 0],
-    ['Bathroom outer window', 'front', -0.7, 7.45, 0, -1],
-    ['Kitchen counter window', 'back', 1.30, -7.35, 0, 1],
+    ['Kitchen rear window', 'left', -2.65, 4.05, 1, 0],
+    ['Kitchen porch window', 'right', 3.55, 5.0, -1, 0],
+    ['Kitchen counter window', 'front', 1.12, 7.45, 0, -1],
+    ['Bedroom porch window', 'right', 3.85, -5.1, -1, 0],
+    ['Bedroom side window', 'back', 0.85, -7.35, 0, 1],
+    ['Bathroom rear window', 'left', -4.3, -5.35, 1, 0],
+    ['Bathroom side window', 'back', -2.64, -7.35, 0, 1],
   ];
   for (const [name, side, x, z, dx, dz] of windows) {
     const wall = home.walls.find(wall => wall.solid.name === name);
@@ -42,14 +43,20 @@ test('both wings have open back, front and side windows at full wall height', as
       assert.equal(hits(face, x, 1.2, z, dx, dz), true, name + ' section below the sill');
     }
   }
-  const divider = home.walls.find(wall => wall.solid.name === 'Bathroom doorway');
-  assert.equal(divider.reverseFor, 'bathroom');
   const base = root.getObjectByName('Wing floors and capped cutaway bases');
-  assert.ok(hits(base, 0, 0.8, 3.1, 0, 1), 'bathroom divider stays legible in the near cutaway');
-  assert.equal(hits(base, 2, 0.05, 3.1, 0, 1), false, 'door is clear at the threshold');
-  for (const face of [divider.solid, divider.ghost]) {
-    assert.equal(hits(face, 2, ROOM_DOOR_HEIGHT - 0.05, 3.1, 0, 1), false, 'door is clear at head height');
-    assert.ok(hits(face, 2, ROOM_DOOR_HEIGHT + 0.16, 3.1, 0, 1), 'door header');
-    assert.ok(hits(face, 0, 1.3, 3.1, 0, 1), 'upper wall beside the doorway');
+  for (const [name, reverse, door, jamb, dx, dz] of [
+    ['Kitchen doorway', 'kitchen', [2, 3.1], [0, 3.1], 0, 1],
+    ['Bathroom doorway', 'bunk', [-0.18, -4.10], [-0.18, -5.5], -1, 0],
+  ]) {
+    const divider = home.walls.find(wall => wall.solid.name === name);
+    assert.deepEqual(divider.reverseFor, [reverse]);
+    const crosses = (face, [x, z], y) => hits(face, x, y, z, dx, dz);
+    assert.ok(crosses(base, jamb, 0.5), name + ' keeps its base in the cutaway');
+    assert.equal(crosses(base, door, 0.05), false, name + ' has a clear threshold');
+    for (const face of [divider.solid, divider.ghost]) {
+      assert.equal(crosses(face, door, ROOM_DOOR_HEIGHT - 0.05), false, name + ' has headroom');
+      assert.ok(crosses(face, door, ROOM_DOOR_HEIGHT + 0.16), name + ' has a header');
+      assert.ok(crosses(face, jamb, 1.3), name + ' has a wall beside the doorway');
+    }
   }
 });

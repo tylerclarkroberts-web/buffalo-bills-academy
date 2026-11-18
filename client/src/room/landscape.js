@@ -158,7 +158,7 @@ export function homesteadLandscape() {
     if (random() > .6) pebble(x + size * .81, z - size * .28, size * .19, color('#c39b76'));
   }
 
-  // A small stone-edged herb bed fills the patch beside the bathroom window.
+  // A small stone-edged herb bed fills the patch beside the kitchen window.
   const bed = [[3.63,5.45],[4.36,5.36],[5.18,5.57],[5.55,5.96],[5.36,6.46],[4.78,6.85],[3.86,6.73],[3.56,6.21]];
   const bedCentre = [4.57, .024, 6.06], loam = color('#897451');
   bed.forEach(([x,z], i) => {
