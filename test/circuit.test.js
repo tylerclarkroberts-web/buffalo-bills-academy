@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies, scaled, AREAS } from '../server/circuit.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies, scaled, AREAS, BOSSES } from '../server/circuit.js';
 import { typeOf, edge } from '../server/engine/bug-types.js';
 import { RULES } from '../server/engine/bout.js';
 import { simulateBout } from '../server/engine/bout.js';
@@ -199,11 +199,12 @@ test('areas 3 to 6 open together with ribbon 2, and what is left for later train
   me.ribbons[2] = 1;
   assert.deepEqual(areas().map((a) => a.open), [true, true, true, true, true, true]);
   assert.deepEqual(areas().slice(2).map((a) => a.anyOrder), [true, true, true, true]);
-  const dale = () => areas()[2].stops.at(-1), ruperto = () => areas()[3].stops.at(-1);
+  const leader = (area) => area.stops.find((s) => s.kind === 'leader');
+  const dale = () => leader(areas()[2]), ruperto = () => leader(areas()[3]);
   assert.deepEqual([dale().bugs.map((b) => b.level), dale().purse, areas()[2].stops[0].bugs[0].level], [[8, 9], PURSE.ribbon * 3, 7]);
   me.ribbons[4] = 1; me.ribbons[5] = 1; // two more ribbons won elsewhere first
   assert.deepEqual([dale().bugs.map((b) => b.level), dale().purse, areas()[2].stops[0].bugs[0].level], [[11, 12, 13], PURSE.ribbon * 5, 10], 'three bugs, three levels up, and the fifth ribbon\'s purse');
-  assert.deepEqual(scaled(AREAS[3].stops.at(-1).bugs, 2).length, 2);
+  assert.deepEqual(scaled(leader(AREAS[3]).bugs, 2).length, 2);
   // a gauntlet under way keeps the lineup it began with
   for (const id of ['inspector', 'bmehl']) me.done[id] = 1;
   const live = circuit.fight(pid, 'Tester', { stop: 'ruperto' }).live, began = circuit.me(pid).run.lineup.map((b) => b.level);
@@ -245,4 +246,56 @@ test('the grill is always lit and every fourth order comes out hot; Dwayne\'s sh
   hatch(10); const me = circuit.me(pid); me.ribbons[1] = me.ribbons[2] = 1; for (const id of ['newguy', 'kashely']) me.done[id] = 1;
   const live = circuit.fight(pid, 'Tester', { stop: 'dwayne' }).live;
   assert.equal(barn.fights.view(barn.fights.get(live), pid).dark, true);
+});
+
+test('each area has one feature presentation, open only after its ribbon, and beating it wins its card once', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  const a = hatch(10), me = circuit.me(pid);
+  assert.equal(BOSSES().length, AREAS.length);
+  for (const area of AREAS) assert.equal(area.stops.at(-1).kind, 'boss', `${area.name} ends on its boss`);
+  assert.deepEqual(circuit.view(pid).cards.map((card) => card.at), [null, null, null, null, null, null]);
+  for (const id of ['foff', 'salad', 'landon', 'notacop']) me.done[id] = 1;
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'charlene' }), /Not yet/, 'not before Coach Pugh');
+  me.done.pugh = me.ribbons[1] = 1;
+  assert.equal(circuit.view(pid).areas[1].open, true, 'the next area does not wait for the boss');
+  const charlene = circuit.stopOf('charlene'), bank = store.players[pid].bankroll;
+  const live = circuit.fight(pid, 'Tester', { stop: 'charlene' }).live;
+  assert.equal(barn.fights.get(live).fighters[1].rule, 'web');
+  barn.fights.finish(barn.fights.get(live), 1);
+  assert.equal(circuit.me(pid).cards, undefined, 'a loss wins nothing');
+  const won = fake('c1', 0, [40, 0]);
+  circuit.settle(pid, charlene, { id: idOf(a), bornAt: a.bornAt }, charlene.bugs[0], won);
+  assert.deepEqual(won.extra.spoils, ['Feature presentation card · “Charlene\'s Web Address”', `\$${PURSE.boss} purse`]);
+  assert.equal(store.players[pid].bankroll, bank + PURSE.boss);
+  assert.ok(circuit.view(pid).cards[0].at && circuit.me(pid).done.charlene);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'charlene' }), /hold that card already/);
+});
+
+test('a boss with three bugs is a gauntlet that ends in its card, not a ribbon', (t) => {
+  const { circuit, pid, hatch } = setup(t);
+  const a = hatch(12), me = circuit.me(pid), choir = circuit.stopOf('choir');
+  me.ribbons[1] = me.ribbons[2] = me.ribbons[4] = 1;
+  me.run = { stop: 'choir', foe: 2, foeHp: null, out: [], hp: {}, won: [], live: null, lineup: scaled(choir.bugs, 3) };
+  const last = fake('ch', 0, [10, 0]);
+  circuit.settle(pid, choir, { id: idOf(a), bornAt: a.bornAt }, me.run.lineup[2], last);
+  assert.deepEqual([circuit.me(pid).run, Object.keys(circuit.me(pid).ribbons).length, !!circuit.me(pid).cards.choir], [null, 3, true]);
+  assert.match(last.extra.spoils[0], /Apartment 4B/);
+});
+
+test('boss powers: the web dulls your hits, the choir heals, a conscience heals on dirty moves, the telepod trades health once', () => {
+  const dmg = (rule) => odds(startBout({ species: 'lamprima', name: 'Mine', level: 8 }, { species: 'platymeris', name: 'Charlene', level: 8, rule }, 'web'), 0).basic;
+  assert.ok(dmg('web').dmg[1] < dmg().dmg[1] && dmg('web').hit < dmg().hit);
+  const S = startBout({ species: 'lamprima', name: 'Mine', level: 8 }, { species: 'gromphadorhina', name: 'Tenor', level: 8, rule: 'sing' }, 'sing');
+  S.hp[1] = 50; S.by = 1; stepBout(S);
+  assert.ok(S.hp[1] >= 50 + RULES.sing.heal - 0, 'it sang before it acted');
+  let healed = 0;
+  for (let k = 0; k < 20; k++) { const C = startBout({ species: 'platymeris', name: 'Mine', level: 10 }, { species: 'gryllotalpa', name: 'Jimmy Conscience', level: 10, rule: 'conscience' }, `con:${k}`);
+    while (!C.over) for (const e of stepBout(C)) if (/tuts/.test(e.line)) { healed++; assert.ok(e.by === 0 && (e.effect === 'venom' || e.effect === 'pierce')); } }
+  assert.ok(healed > 10);
+  const T = startBout({ species: 'lamprima', name: 'Mine', level: 10 }, { species: 'ampulex', name: 'Brindlewasp', level: 10, rule: 'telepod' }, 'pod');
+  T.hp[0] = T.maxHp[0]; T.hp[1] = Math.floor(T.maxHp[1] * 0.2); T.by = 1;
+  assert.ok(tellDue(T, 1));
+  const pods = []; while (!T.over) for (const e of stepBout(T)) if (e.ability === 'Telepod') pods.push(e.hp);
+  assert.equal(pods.length, 1, 'once a fight');
+  assert.ok(pods[0][1] > T.maxHp[1] * 0.6 && pods[0][0] < T.maxHp[0] * 0.4, 'they traded how hurt they were');
 });
