@@ -32,7 +32,7 @@ function StyleChoices({ kind, label, value, onChange, disabled }) {
     {options.layouts && <><h3>Placement</h3><div className="room-choices room-shelf-sizes" role="group" aria-label={label + ' placement'}>
       {options.layouts.map(option => <button key={option.id} className="btn room-choice" aria-pressed={selected.layoutId === option.id} disabled={disabled} onClick={() => onChange('layoutId', option.id)}>{option.name}</button>)}
     </div></>}
-    <h3>{title}</h3><div className="room-choices" role="group" aria-label={label + ' style'}>{options.types.map(option => <button key={option.id} className="btn room-choice" aria-label={label + ' style ' + option.name} aria-pressed={selected.typeId === option.id} disabled={disabled} onClick={() => onChange('typeId', option.id)}>{option.name}</button>)}</div>
+    {options.types.length > 1 && <><h3>{title}</h3><div className="room-choices" role="group" aria-label={label + ' style'}>{options.types.map(option => <button key={option.id} className="btn room-choice" aria-label={label + ' style ' + option.name} aria-pressed={selected.typeId === option.id} disabled={disabled} onClick={() => onChange('typeId', option.id)}>{option.name}</button>)}</div></>}
     {selected.typeId !== 'none' && <><h3>{options.layouts ? 'Color' : label + ' color'}</h3><div className="room-colors" role="group" aria-label={`${label} color`}>{options.colors.map(option => <button key={option.id} className="btn ghost room-color" aria-label={`${label} color ${option.name}`} aria-pressed={selected.colorId === option.id} disabled={disabled} onClick={() => onChange('colorId', option.id)}><span aria-hidden="true" style={{ backgroundColor: option.color }} />{option.name}</button>)}</div></>}
   </div>;
 }
@@ -386,7 +386,7 @@ export default function Room({ id }) {
   const selectedItem = draft?.placements.find((p) => p.anchorId === selection.anchorId)?.itemId || '';
   const privatePet = editing ? barn?.pen : null;
   const elapsed = barn ? Math.max(0, clock - barn.receivedAt) : 0;
-  const surfaceLabel = { floor: 'Floor', rug: 'Rug', fence: 'Yard fence' }[selection.surface];
+  const surfaceLabel = { floor: 'Floor', rug: 'Rug', fence: 'Yard fence', outside: 'Outside walls' }[selection.surface];
   const selectedHome = selection.kind === 'homestead' ? ROOM_HOMESTEAD[selection.id] : null;
   const pieceId = editing && draft ? furnitureOf(selection) : null, piece = ROOM_FURNITURE[pieceId], piecePlace = draft?.furniture[pieceId];
   const canNudge = editing && draft && (pieceId || selectedShelf || display.wallDisplays?.[selection.anchorId]);
@@ -399,7 +399,7 @@ export default function Room({ id }) {
     || selectedShelfLabel || selectedAnchor?.label || 'Display spot';
   const parlorTargets = [{ label: 'Walls', target: { kind: 'finish' } }, { label: 'Floor finish', target: { kind: 'surface', surface: 'floor' } }, { label: 'Rug', target: { kind: 'surface', surface: 'rug' } }, ...anchors.filter(anchor => !anchor.shelfId || anchor.id === anchor.shelfId).map(anchor => ({ label: ROOM_ANCHORS.find(base => base.id === anchor.id)?.label || anchor.label, target: { kind: 'anchor', anchorId: anchor.id } })), { label: 'Wardrobe', target: { kind: 'wardrobe' } }, ...(!draft || draft.furniture.couch.off ? [] : [{ label: 'Couch', target: { kind: 'couch' } }]), { label: 'Terrarium', target: { kind: 'pet' } }, { label: 'Cash table', target: { kind: 'wealth' } }, ...(!draft || draft.furniture.poker.off ? [] : [{ label: 'Poker table', target: { kind: 'poker' } }])];
   const homeTargets = Object.entries(ROOM_HOMESTEAD).map(([id, option]) => ({ label: option.label, target: { kind: 'homestead', id } }));
-  homeTargets.push({ label: 'Yard fence', target: { kind: 'surface', surface: 'fence' } });
+  homeTargets.push({ label: 'Yard fence', target: { kind: 'surface', surface: 'fence' } }, { label: 'Outside walls', target: { kind: 'surface', surface: 'outside' } });
   const editTargets = [...homeTargets, ...parlorTargets];
   const picked = editTargets.findIndex(({ target }) => selection.kind === target.kind && selection.id === target.id
     && (selection.anchorId === target.anchorId || selectedShelf?.id === target.anchorId) && selection.surface === target.surface);
@@ -407,6 +407,8 @@ export default function Room({ id }) {
     const target = index === '' ? { kind: 'none' } : editTargets[index].target;
     setSelection(target); setMsg(''); setCameraMode(null);
     if (target.kind === 'none') return;
+    // The outside shows with the house zoomed all the way out.
+    if (target.surface === 'outside') { setCameraView(roomView({ zoom: ROOM_VIEW_LIMITS.minZoom })); return; }
     const area = ROOM_HOMESTEAD[target.id]?.area || ROOM_FURNITURE[furnitureOf(target)]?.area || (target.surface === 'fence' || target.anchorId === 'window' ? 'yard' : 'parlor');
     if (area !== cameraView.area) setCameraView(roomView({ area, rotation: area === 'parlor' ? -45 : 0 }));
   }
@@ -507,6 +509,7 @@ export default function Room({ id }) {
         {selection.kind === 'door' && <><p>Sign in with an account so friends can visit.</p><SignIn compact next="/room" /></>}
         {selection.kind === 'couch' && editing && draft && <StyleChoices kind="couch" label="Couch" value={draft.finishes.couch} disabled={busy} onChange={(field, value) => style('couch', field, value)} />}
         {selectedHome && editing && draft && <StyleChoices kind={selection.id} label={selectedHome.label} value={draft.homestead[selection.id]} disabled={busy} onChange={(field, value) => style(selection.id, field, value)} />}
+        {selectedHome && editing && draft && ROOM_FINISHES[selection.id + 'Walls'] && <StyleChoices kind={selection.id + 'Walls'} label={selectedHome.label + ' walls'} value={draft.finishes[selection.id + 'Walls']} disabled={busy} onChange={(field, value) => style(selection.id + 'Walls', field, value)} />}
         {selection.kind === 'surface' && editing && draft && <StyleChoices kind={selection.surface} label={surfaceLabel} value={draft.finishes[selection.surface]} disabled={busy} onChange={(field, value) => style(selection.surface, field, value)} />}
         {selection.kind === 'finish' && editing && draft && <div className="room-choices">{ROOM_THEMES.map((theme) => <button key={theme.id} className="btn room-choice" aria-pressed={draft.themeId === theme.id} disabled={busy} onClick={() => setDraft({ ...draft, themeId: theme.id })}>{theme.name}</button>)}</div>}
         {selection.kind === 'pet' && <>

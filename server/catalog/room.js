@@ -177,6 +177,19 @@ export const ROOM_FINISHES = {
     colors: [{ id: 'weathered', name: 'Weathered wood', color: '#ae956b' }, { id: 'walnut', name: 'Walnut', color: '#77563d' }, { id: 'whitewash', name: 'Whitewash', color: '#dfd9b9' }],
     default: { typeId: 'splitrail', colorId: 'weathered' },
   },
+  // The parlor's own walls are the room theme. Each other room paints its side of every wall it shares.
+  ...Object.fromEntries([['kitchenWalls', 'butter'], ['bedroomWalls', 'rose'], ['bathroomWalls', 'sage']].map(([kind, colorId]) => [kind, {
+    types: [{ id: 'wainscot', name: 'Wainscot' }, { id: 'plain', name: 'Plain plaster' }],
+    colors: [{ id: 'cream', name: 'Cream', color: '#eee5cd' }, { id: 'butter', name: 'Butter', color: '#ead6ae' }, { id: 'rose', name: 'Rose', color: '#e8c9b4' },
+      { id: 'sage', name: 'Sage', color: '#d6dcc1' }, { id: 'sky', name: 'Sky', color: '#cddde0' }, { id: 'clay', name: 'Clay', color: '#cf9f86' }],
+    default: { typeId: 'wainscot', colorId },
+  }])),
+  outside: {
+    types: [{ id: 'boards', name: 'Painted boards' }],
+    colors: [{ id: 'weathered', name: 'Weathered pine', color: '#c4a47a' }, { id: 'barn', name: 'Barn red', color: '#9a4a3c' }, { id: 'whitewash', name: 'Whitewash', color: '#e4dcc6' },
+      { id: 'sage', name: 'Sage', color: '#8d9a78' }, { id: 'sky', name: 'Faded blue', color: '#8ea6b0' }, { id: 'adobe', name: 'Adobe', color: '#c58b62' }],
+    default: { typeId: 'boards', colorId: 'weathered' },
+  },
   shelf: {
     types: [{ id: 'plank', name: 'Plain shelf' }, { id: 'braced', name: 'Braced shelf' }],
     colors: [{ id: 'honey', name: 'Honey pine', color: '#c39b58' }, { id: 'walnut', name: 'Walnut', color: '#805637' }, { id: 'sage', name: 'Sage', color: '#6d785b' }, { id: 'clay', name: 'Clay', color: '#9a6650' }],
@@ -201,7 +214,9 @@ export function roomShelves(value) {
     return [{ id: shelf.id, spotId: shelf.spotId, ...finishOf('shelf', shelf), ...(typeof shelf.sizeId === 'string' && Object.hasOwn(ROOM_SHELF_SIZES, shelf.sizeId) ? { sizeId: shelf.sizeId } : {}) }];
   });
 }
-export const roomFinishes = value => Object.fromEntries(['floor', 'rug', 'wardrobe', 'couch', 'fence'].map(kind => [kind, finishOf(kind, value?.[kind])]));
+/** Every finish saved with the room; shelves carry their own. */
+export const ROOM_FINISH_KINDS = Object.keys(ROOM_FINISHES).filter(kind => kind !== 'shelf');
+export const roomFinishes = value => Object.fromEntries(ROOM_FINISH_KINDS.map(kind => [kind, finishOf(kind, value?.[kind])]));
 
 const swatches = {
   sage: ['Sage', '#81977d'], clay: ['Clay', '#b98168'], blue: ['Sky blue', '#8aabba'],
