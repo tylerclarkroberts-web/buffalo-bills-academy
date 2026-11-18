@@ -10,7 +10,7 @@ import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
-import { buildMineHands, resizeMineHands, stepMineHands } from './hands.js';
+import { buildMineHands, drawMineHands, resizeMineHands, stepMineHands } from './hands.js';
 import { buildMineEntrance } from './entrance.js';
 import { WALK_SPEED, RUN_SPEED } from './controls.js';
 
@@ -314,7 +314,7 @@ export class MineScene {
     this.self = buildMiner({ id: who.id, name: who.name, avatar: who.avatar, bug: null });
     if (this.self.tag) this.self.tag.visible = false;
     this.self.group.visible = false; this.scene.add(this.self.group);
-    this.hands = buildMineHands(who.avatar?.seed || who.id, who.avatar?.skinTone); resizeMineHands(this.hands, this.camera.aspect);
+    this.hands = buildMineHands(); resizeMineHands(this.hands, this.camera.aspect);
   }
   startDance(id) {
     const d = danceId(id); if (!d) return false;
@@ -708,8 +708,7 @@ export class MineScene {
     if (this.hands) {
       stepMineHands(this.hands, dt, { distance: Math.hypot(this.pos.x - startX, this.pos.y - startY), mining: this.mining, hidden: !!this.dance || this.danceBlend > .001, reduce: this.reduce });
       if (this.hands.group.visible) {
-        this.renderer.autoClear = false; this.renderer.clearDepth();
-        this.renderer.render(this.hands.scene, this.hands.camera); this.renderer.autoClear = true;
+        drawMineHands(this.hands, this.renderer);
       }
     }
     this.raf = requestAnimationFrame(this.loop);
@@ -756,7 +755,7 @@ export class MineScene {
     cancelAnimationFrame(this.raf);
     this.miners?.dispose();
     if (this.self) { this.scene.remove(this.self.group); disposeMeshes(this.self.group); this.self = null; }
-    if (this.hands) { disposeMeshes(this.hands.scene); this.hands = null; }
+    if (this.hands) { disposeMeshes(this.hands.scene); disposeMeshes(this.hands.blit, false); this.hands.target.dispose(); this.hands = null; }
     if (this.horror) for (const m of this.horror.meshes.values()) { this.scene.remove(m.group); disposeCrewMember(m); }
     disposeMeshes(this.scene);
     this.renderer.dispose();
