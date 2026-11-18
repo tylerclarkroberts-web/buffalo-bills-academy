@@ -16,6 +16,7 @@ import { NextTablePill } from '../turns/TurnsPill.jsx';
 import '../bj/bj.css';
 import './scum.css';
 import { canDealNow, canStartDeal } from './setup.js';
+import { publicTitle } from '../../../server/pageMeta.js';
 import { RoyalPicker, RoyalPlay, RoyalRewatch, seatRoyalClass } from './Royal.jsx';
 
 const RK = '23456789TJQKA';
@@ -65,7 +66,7 @@ const PAY_RULES = [
 
 export default function ScumPage({ code }) {
   const { me } = useSession();
-  useEffect(() => { document.title = "SCUM · Buffalo Bill's Academy"; }, []);
+  useEffect(() => { if (!code) document.title = publicTitle('SCUM'); }, [code]);
   if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">SCUM</h2><SignIn compact next={code ? `/scum/${code}` : '/scum'} /></div></div>;
   return code ? <ScumTable code={code} me={me} /> : <ScumLobby me={me} />;
 }
@@ -262,7 +263,7 @@ function ScumTable({ code, me }) {
     handRect.current = next;
   });
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
-  useEffect(() => { document.title = v ? `${v.round?.myTurn ? '● ' : ''}${v.name} · SCUM` : 'SCUM'; }, [v?.name, v?.round?.myTurn]);
+  useEffect(() => { document.title = publicTitle(v?.code ? `SCUM table ${v.code}` : 'SCUM', { myTurn: !!v?.round?.myTurn }); }, [v?.code, v?.round?.myTurn]);
   const r = v?.round;
   const handKey = (r?.hand || []).join(',');
   useEffect(() => { setSel((s) => s.filter((c) => r?.hand?.includes(c))); }, [handKey, r?.phase]);

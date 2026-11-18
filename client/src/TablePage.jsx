@@ -9,6 +9,7 @@ import { navigate, goToMines, rememberTable } from './App.jsx';
 import { Card, cardText, EmptyCard } from './Card.jsx';
 import { chips, formatDuration, formatLeft, signed, money } from './util.js';
 import { ChipStack, VENUE } from './theme.jsx';
+import { publicTitle, holdemShareText, holdemNotifyTitle } from '../../server/pageMeta.js';
 import { SignIn } from './Home.jsx';
 import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
@@ -137,22 +138,23 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     else clearBrokeSeen(`t.${code}`);
   }, [bustBroke, code, !!view]);
 
-  // tab title + notification when it becomes your turn
+  // tab title + notification when it becomes your turn (code only — never the custom table name)
   useEffect(() => {
     if (!view || pane) return undefined;
     let flip = false;
-    const base = `${view.name} · ${VENUE.name}`;
+    const label = `Hold'em table ${code}`;
+    const base = publicTitle(label);
     if (!myTurn) { document.title = base; wasMyTurn.current = false; return undefined; }
     if (!wasMyTurn.current) {
       wasMyTurn.current = true;
       if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-        try { new Notification('Your turn at ' + view.name, { body: 'Tap to make your move.', tag: `poker-${code}` }); } catch { /* ignore */ }
+        try { new Notification(holdemNotifyTitle(code), { body: 'Tap to make your move.', tag: `poker-${code}` }); } catch { /* ignore */ }
       }
     }
-    document.title = `● Your turn · ${base}`;
-    const id = setInterval(() => { flip = !flip; document.title = flip ? `● Your turn · ${base}` : `○ ${base}`; }, 1200);
+    document.title = publicTitle(label, { myTurn: true });
+    const id = setInterval(() => { flip = !flip; document.title = publicTitle(label, { myTurn: true, blink: flip }); }, 1200);
     return () => clearInterval(id);
-  }, [myTurn, view?.name, view?.hand?.number, code]);
+  }, [myTurn, view?.hand?.number, code]);
 
   async function post(path, body) {
     if (rp.pending) rp.skip();
@@ -173,7 +175,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   }
   const inviteUrl = `${window.location.origin}/t/${code}`;
   async function copyInvite() {
-    const text = `Pull up a chair at "${view?.name}" at ${VENUE.name}: ${inviteUrl} (room code ${code})`;
+    const text = holdemShareText(code, inviteUrl);
     try {
       if (navigator.share && /Mobi/i.test(navigator.userAgent)) await navigator.share({ title: `${VENUE.name} card room`, text, url: inviteUrl });
       else { await navigator.clipboard.writeText(inviteUrl); setToast('Invite link copied!'); setTimeout(() => setToast(''), 2500); }

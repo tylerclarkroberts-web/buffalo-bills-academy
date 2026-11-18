@@ -6,6 +6,7 @@ import { api, useSession, currentSession, signInUrl, guestSignIn, devSignIn, pas
 import { navigate, rememberTable } from './App.jsx';
 import { formatLeft, money } from './util.js';
 import { Marquee, TABLE_NAMES, VENUE } from './theme.jsx';
+import { holdemShareText } from '../../server/pageMeta.js';
 import { FoffCard, FoffPromo } from './foff/FoffCard.jsx';
 import { ScumCard, ScumPromo } from './scum/ScumCard.jsx';
 import { ElHaloCard, ElHaloPromo } from './mines/elhalo/ElHaloCard.jsx';
@@ -515,7 +516,7 @@ function HostBanner({ tables, setErr }) {
   async function copy() {
     const url = `${window.location.origin}/t/${t.code}`;
     try {
-      if (navigator.share && /Mobi/i.test(navigator.userAgent)) await navigator.share({ title: `${VENUE.name} card room`, text: `Pull up a chair at "${t.name}": ${url}`, url });
+      if (navigator.share && /Mobi/i.test(navigator.userAgent)) await navigator.share({ title: `${VENUE.name} card room`, text: holdemShareText(t.code, url), url });
       else { await navigator.clipboard.writeText(url); setCopied(t.code); setTimeout(() => setCopied(''), 2500); }
     } catch { /* cancelled */ }
   }
