@@ -321,3 +321,111 @@
   .sc-royal-cmd { padding: 3px 5px; font-size: 9.5px; }
   .sc-royal-caption { font-size: 10px; padding: 2px 8px; }
 }
+
+/* ---- Sing me a song: bubbles, karaoke, step-aside, messy tomatoes ---- */
+.sc-royal-bubble {
+  position: absolute; z-index: 15;
+  transform: translate(-50%, -110%);
+  width: max-content; max-width: min(260px, 58vw); padding: 6px 10px 7px;
+  border-radius: 12px; font: 700 12px/1.3 var(--sans, inherit); color: #1a0b02;
+  background: #fff8e4; border: 1px solid #8a5a10; box-shadow: 0 3px 10px rgba(0,0,0,.35);
+  pointer-events: none; text-wrap: pretty; text-align: left;
+}
+.sc-royal-bubble[data-side=east] { transform: translate(-108%, -110%); }
+.sc-royal-bubble[data-side=west] { transform: translate(8%, -110%); }
+.sc-royal-bubble.who-king { background: #ffe08a; }
+.sc-royal-bubble::after {
+  content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px;
+  border: 7px solid transparent; border-top-color: #fff8e4; border-bottom-width: 0;
+}
+.sc-royal-bubble[data-side=east]::after { left: auto; right: 14px; margin-left: 0; }
+.sc-royal-bubble[data-side=west]::after { left: 18px; margin-left: 0; }
+.sc-royal-bubble.who-king::after { border-top-color: #ffe08a; }
+.sc-royal-karaoke {
+  position: absolute; left: 50%; top: auto; bottom: 38%; transform: translateX(-50%); z-index: 15;
+  width: min(440px, 62%); padding: 6px 12px; border-radius: 10px;
+  font: 800 14px/1.3 var(--sans, inherit); letter-spacing: .01em; text-align: center;
+  color: #fff8e4; background: rgba(12, 18, 10, .86); border: 1px solid #e0a528;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4); pointer-events: none; text-wrap: pretty;
+}
+.sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing {
+  z-index: 11;
+  transform: translate(calc(clamp(-36px, (var(--sx, 50) - 50) * 1px, 36px)), calc(clamp(-32px, (var(--sy, 50) - 50) * 1px, 32px)));
+  transition: transform .85s ease-out;
+}
+.sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing .bust {
+  animation: sc-royal-sway 3.6s ease-in-out infinite; transform-origin: 50% 100%;
+}
+.sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-king-sing .bust {
+  animation: sc-royal-chomp 1.15s ease-in-out infinite; transform-origin: 50% 80%;
+}
+.sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-king-sing .bust::after {
+  content: ''; position: absolute; left: 28%; top: 58%; width: 44%; height: 28%;
+  background: radial-gradient(ellipse at 40% 30%, rgba(170, 20, 20, .75), rgba(120, 0, 0, .15) 70%, transparent 80%);
+  pointer-events: none; z-index: 2;
+}
+.sc-royal-tomatoes {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 12;
+  width: calc(var(--bust, 48px) * 2.2); height: calc(var(--bust, 48px) * 2.4);
+}
+.sc-tomato.hand {
+  position: absolute; left: 55%; top: 35%; font-size: calc(var(--bust, 48px) * 0.42);
+  line-height: 1; filter: drop-shadow(0 2px 1px rgba(0,0,0,.4));
+  animation: sc-tomato-eat 1.15s ease-in-out infinite;
+}
+.sc-tomato-stain {
+  position: absolute; left: 38%; top: 58%; width: 28%; height: 22%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(160, 12, 12, .7), transparent 70%);
+  animation: sc-stain-grow 4s ease-out both;
+}
+.sc-splat {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle, #c41818, #7a0a0a 70%, transparent 80%);
+  animation: sc-splat-fly 1.4s ease-out infinite;
+}
+.sc-splat.s1 { left: 58%; top: 30%; animation-delay: 0s; }
+.sc-splat.s2 { left: 70%; top: 42%; width: 5px; height: 5px; animation-delay: .25s; }
+.sc-splat.s3 { left: 48%; top: 22%; width: 6px; height: 8px; animation-delay: .5s; }
+.sc-splat.s4 { left: 62%; top: 52%; width: 4px; height: 4px; animation-delay: .8s; }
+.sc-tomato.roll {
+  position: absolute; font-size: calc(var(--bust, 48px) * 0.28); line-height: 1;
+  animation: sc-tomato-roll 2.6s ease-in both infinite;
+}
+.sc-tomato.roll.r1 { left: 60%; top: 70%; animation-delay: .2s; }
+.sc-tomato.roll.r2 { left: 48%; top: 74%; animation-delay: 1s; font-size: calc(var(--bust, 48px) * 0.22); }
+.sc-tomato.roll.r3 { left: 72%; top: 68%; animation-delay: 1.7s; }
+
+@keyframes sc-royal-chomp {
+  0%, 100% { transform: none; }
+  35% { transform: rotate(-8deg) translateY(3px); }
+  55% { transform: rotate(-4deg) scaleY(.96); }
+}
+@keyframes sc-tomato-eat {
+  0%, 100% { transform: translate(8%, 18%) rotate(-25deg); }
+  42%, 58% { transform: translate(-18%, -42%) rotate(12deg) scale(.8); }
+}
+@keyframes sc-stain-grow {
+  from { opacity: 0; transform: scale(.3); }
+  to { opacity: 1; transform: scale(1.15); }
+}
+@keyframes sc-splat-fly {
+  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(18px, -28px) scale(1.2); }
+}
+@keyframes sc-tomato-roll {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  12% { opacity: 1; }
+  100% { opacity: .85; transform: translate(42px, 56px) rotate(280deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-seat.royal-sing .bust, .sc-seat.royal-king-sing .bust,
+  .sc-tomato.hand, .sc-splat, .sc-tomato.roll, .sc-tomato-stain { animation: none !important; }
+  .sc-arena:has(.sc-royal-play[data-phase=song]) .sc-seat.royal-sing { transition: none; }
+  .sc-tomato.hand, .sc-tomato.roll, .sc-tomato-stain { opacity: 1; }
+}
+@media (max-width: 520px) {
+  .sc-royal-bubble { max-width: min(200px, 62vw); padding: 5px 8px 6px; font-size: 11px; }
+  .sc-royal-karaoke { font-size: 12px; padding: 5px 8px; width: min(340px, 70%); bottom: 30%; transform: translateX(-50%); }
+}

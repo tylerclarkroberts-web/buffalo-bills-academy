@@ -436,7 +436,7 @@ function ScumTable({ code, me }) {
             {disp.map((i) => {
               const s = v.seats[i]; const p = pos[i]; const isTurn = i === turnSeat;
               return (
-                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%` }} data-test={`scum-seat-${i}`}>
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`}>
                   {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${s.name}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
