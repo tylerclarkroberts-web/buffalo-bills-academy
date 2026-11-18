@@ -58,6 +58,7 @@ export function healthOf(pen) {
 }
 export const CHALLENGE_OPEN_MS = 24 * 3600e3; // a challenge waits a day: nothing is held, so it can afford to
 export const FIGHT_LOG = 20;                  // recent fights anyone can watch
+const RING_KINDS = ['barn', 'circuit'];        // fights the Barn page follows live (the circuit's are played from its tab)
 const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
@@ -628,14 +629,14 @@ export class Barn {
   liveFight(playerId, id, have) {
     this.fights.sweep();
     const fight = this.fights.get(String(id || '')) || this.fights.fightOf(playerId);
-    if (!fight || fight.kind !== 'barn' || this.fights.sideOf(fight, playerId) < 0) return { fight: null };
+    if (!fight || !RING_KINDS.includes(fight.kind) || this.fights.sideOf(fight, playerId) < 0) return { fight: null };
     return { fight: this.fights.view(fight, playerId, have) };
   }
   /** Line up your bug's next moves (up to three). It picks for itself whenever the list is empty or a move is not ready. */
   lineUp(playerId, id, body) {
     this.fights.sweep();
     const fight = this.fights.get(String(id || ''));
-    if (!fight || fight.over || fight.kind !== 'barn' || this.fights.sideOf(fight, playerId) < 0) throw new GameError('That fight is over.', 409);
+    if (!fight || fight.over || !RING_KINDS.includes(fight.kind) || this.fights.sideOf(fight, playerId) < 0) throw new GameError('That fight is over.', 409);
     if (!body || typeof body !== 'object' || !this.fights.line(fight, playerId, body.moves)) throw new GameError('Line up to three of your bug\'s own moves.', 400);
     return { fight: this.fights.view(fight, playerId, body.have) };
   }
@@ -704,7 +705,7 @@ export class Barn {
    * only for the same bug that fought (`bornAt`): a bug laid to rest and replaced since gets nothing. The winner gains
    * a win bonus; a loser that fought to the end gains BATTLE_XP even if it was knocked out.
    */
-  battleResult(playerId, { battleId, bornAt, won, fought = true, fainted = false, foeName = null, odds = 0.5 }) {
+  battleResult(playerId, { battleId, bornAt, won, fought = true, fainted = false, foeName = null, odds = 0.5, place = 'mines' }) {
     const pen = this.bugs(playerId).find((kept) => kept.stage === 'creature' && kept.bornAt === bornAt); // the partner, or the stalled bug its owner sent in
     if (!pen) return { xp: 0, fainted: false, skipped: true };
     if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
@@ -712,12 +713,20 @@ export class Barn {
     const bonus = won ? upsetXp(WIN_BONUS_XP, odds) : 0, xp = won ? BATTLE_XP + bonus : fought ? BATTLE_XP : 0; // `odds`: this bug's chance by the line
     const levelBefore = levelFor(next.xp || 0);
     next.xp = (next.xp || 0) + xp;
-    next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
-    if (fainted) { next.faintedAt = this.now(); next.faintedBy = foeName; next.faintedIn = 'mines'; }
+    if (place === 'mines') next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
+    if (fainted) { next.faintedAt = this.now(); next.faintedBy = foeName; next.faintedIn = place; }
     next.mineBattles = [...(next.mineBattles || []), battleId].slice(-20);
     next.lastMineBattle = { id: battleId, won, xp, levelBefore, levelAfter: levelFor(next.xp), at: this.now() };
     this.commitPen(playerId, next);
     return { xp, bonus, fainted, levelBefore, levelAfter: levelFor(next.xp) };
+  }
+  /** XP for one living bug (`bornAt`), outside a fight: a circuit ribbon. Returns the levels it went between. */
+  grantXp(playerId, bornAt, xp) {
+    const pen = this.bugs(playerId).find((kept) => kept.stage === 'creature' && kept.bornAt === bornAt);
+    if (!pen) return null;
+    const levelBefore = levelFor(pen.xp || 0);
+    this.commitPen(playerId, { ...structuredClone(pen), xp: (pen.xp || 0) + xp });
+    return { levelBefore, levelAfter: levelFor((pen.xp || 0) + xp) };
   }
   /** The nurse treats a knockout for free after RECOVER_MS or immediately for FAST_HEAL_COST. */
   heal(playerId, { pay = false, bug } = {}) {

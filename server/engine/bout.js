@@ -11,6 +11,12 @@ export const GEAR_CAP = 0.06;
 // HP: the most a packed lunch (store food) gives back, once a fight. Measured over every species pair, 10 HP moves an
 // even fight to about 65% (60% at level 10), level with the best armour; 15 HP made it 72%, more than any gear.
 export const LUNCH_CAP = 10;
+// A circuit leader's house rule, carried on their bug (`c.rule`). Dodgeball: every third own turn its attack cannot
+// miss and lands harder, and the leader's tell (Fights.view) warns the owner a turn ahead so they can line up a guard.
+export const RULES = { dodgeball: { every: 3, power: 0.25 } };
+const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball.every === 0;
+/** Whether side `i`'s next own turn is its leader's big one: what the tell is for. */
+export const tellDue = (S, i) => ball(S.side[i], S.side[i].turn + 1);
 
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -84,7 +90,7 @@ function aim(S, by, move, attacks) {
   if (s.t === 'dytiscus' && s.grip) acc += TRAIT.grip;
   if (s.t === 'myrmeleon' && target.attacks >= 3) acc += TRAIT.pit; // three attacks in, the opponent has slid into the pit
   if (target.t === 'ceroplophana' && S.hp[foe] < S.maxHp[foe] / 4) acc *= 1 - TRAIT.vanish;
-  return s.ty === 'ambush' && attacks === 1 ? 1 : acc; // an Ambush bug's first strike cannot miss
+  return (s.ty === 'ambush' && attacks === 1) || ball(s, s.turn) ? 1 : acc; // an Ambush bug's first strike cannot miss; nor can a dodgeball
 }
 /** What side `by`'s attack does at a given roll (0.8 up to 1.25), on its `attacks`-th attack and `turnNo`-th turn. */
 function blow(S, by, move, roll, attacks, turnNo) {
@@ -117,6 +123,7 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.t === 'colobopsis') mult *= 1 - TRAIT.minor; // a minor worker: built to burst, not to bite
   if (target.t === 'ampulex' && target.landed >= 2) mult *= 1 - TRAIT.sting * (s.t === 'gromphadorhina' ? 2 : 1); // stung twice, it stops trying; a cockroach more so
   if (s.ty === 'brawler') mult *= 1 + PERK.heavy;
+  if (ball(s, turnNo)) mult *= 1 + RULES.dodgeball.power;
   if (s.ty === 'ambush' && attacks === 1) mult *= 1 + PERK.strike;
   if (target.ty === 'shell' && !pierce) mult *= 1 - PERK.armour;
   mult *= 1 - s.spots; // a Dazzle bug flashed at it: its next attack is off
@@ -224,7 +231,9 @@ export function stepBout(S, choice) {
     return done();
   }
 
-  const move = (choice && s.moves.find(m => m.id === choice && usable(s, m, s.turn))) || pickFor(S, by, s.turn);
+  let move = (choice && s.moves.find(m => m.id === choice && usable(s, m, s.turn))) || pickFor(S, by, s.turn);
+  const thrown = ball(s, s.turn);
+  if (thrown && move.effect === 'heal') move = s.moves[0]; // the tell promised a ball: it throws one
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
   let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false;
   if (move.effect === 'heal') {
@@ -270,7 +279,7 @@ export function stepBout(S, choice) {
     detail = hit ? `deals ${dmg} damage${detail}` : `misses${move.effect === 'guard' ? ' but raises a guard' : ''}`;
   }
   rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
-    line: `${s.c.name} uses ${move.name}: ${detail}.${spots()}` });
+    line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : 'uses'} ${move.name}: ${detail}.${spots()}` });
   pop(foe); bursts();
   return done();
 }
@@ -284,7 +293,7 @@ export function simulateBout(a, b, seed) {
 
 export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
 const lines = new Map();
-const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain]);
+const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null]);
 /**
  * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, attack and
  * defense gear, packed lunch, stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is

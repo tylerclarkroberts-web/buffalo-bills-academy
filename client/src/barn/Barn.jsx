@@ -15,6 +15,7 @@ import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip, matchups } from './BugCard.jsx';
 import { TYPES, EDGE, typeOf, edge, perkFor } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
+import Circuit from './Circuit.jsx';
 import { navigate } from '../App.jsx';
 import './barn.css';
 
@@ -252,7 +253,10 @@ function BarnHome({ me }) {
   const pending = useRef(false);
   const mutation = useRef(0);
   const [tab, setTab] = useState('care');
-  const [ring, setRing] = useState(false);
+  // The Barn's three rooms: your stalls, the ring, the circuit. /barn?room=circuit opens on the circuit.
+  const [view, setView] = useState(() => (new URLSearchParams(window.location.search).get('room') === 'circuit' ? 'circuit' : 'stalls'));
+  const ring = view === 'ring', stalls = view === 'stalls';
+  const setRing = (on) => setView(on ? 'ring' : 'stalls');
   const ringOpened = useRef(false);
   const [sound, setSnd] = useState(() => { try { return localStorage.getItem(SOUND_KEY) === '1'; } catch { return false; } });
   const [, tick] = useState(0);
@@ -352,7 +356,9 @@ function BarnHome({ me }) {
           <h1 className="western">The Barn</h1>
           <div className="barn-head-acts">
             {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted)} />}
-            <button className={`btn small${!ring && waiting ? ' primary' : ''}`} onClick={() => setRing(!ring)} data-test="ring-toggle">{ring ? 'Back to the stall' : waiting ? `The ring · ${waiting} waiting` : 'The ring'}</button>
+            <div className="barn-rooms" role="group" aria-label="Barn">
+              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
+            </div>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
         </header>
@@ -364,22 +370,23 @@ function BarnHome({ me }) {
           accept={(id, risk) => wager('POST', `/barn/challenges/${id}/accept`, { risk })}
           drop={(id) => act(async () => { take(await api('DELETE', `/barn/challenges/${id}`)); await refreshSession(); })}
           watch={watch} />}
-        {!ring && stable?.bugs.length > 0 && <Stalls stable={stable} sel={sel === 'build' ? sel : pen?.id} onPick={pick} />}
-        {!ring && sel === 'build' && stable?.nextStall != null && (
+        {view === 'circuit' && <Circuit b={b} busy={busy} act={act} boutOpen={!!bout} />}
+        {stalls && stable?.bugs.length > 0 && <Stalls stable={stable} sel={sel === 'build' ? sel : pen?.id} onPick={pick} />}
+        {stalls && sel === 'build' && stable?.nextStall != null && (
           <div className="barn-none" data-test="barn-build">
             <div className="barn-stall" aria-hidden="true"><span>STALL {stable.stalls + 1}</span></div>
             <p>Room for one more bug. The carpenter wants {money(stable.nextStall)} and will not discuss it.</p>
             <button className="btn" onClick={build} disabled={busy || stable.nextStall > b.bankroll} data-test="stall-build">{stable.nextStall > b.bankroll ? `Need ${money(stable.nextStall)}` : `Build it · ${money(stable.nextStall)}`}</button>
           </div>
         )}
-        {!ring && !pen && sel !== 'build' && (
+        {stalls && !pen && sel !== 'build' && (
           <div className="barn-none" data-test="barn-empty">
             <div className="barn-stall" aria-hidden="true"><span>EMPTY STALL</span></div>
             <p>Nothing lives here yet. Old miners say the tunnels sometimes leave something behind.</p>
             <button className="mines-btn" onClick={goToMines}>Acid Mines</button>
           </div>
         )}
-        {!ring && pen?.stage === 'egg' && (
+        {stalls && pen?.stage === 'egg' && (
           <div className="barn-body" data-test="barn-egg">
             <div className="barn-stage"><Stage pen={pen} poke={poke} reduced={reduced} /></div>
             <div className="barn-side">
@@ -394,7 +401,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {!ring && pen?.stage === 'dead' && (
+        {stalls && pen?.stage === 'dead' && (
           <div className="barn-body" data-test="barn-dead">
             <div className="barn-stage grave"><Stage pen={pen} poke={0} reduced={reduced} /></div>
             <div className="barn-side barn-rip">
@@ -406,7 +413,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {!ring && pen?.stage === 'creature' && (
+        {stalls && pen?.stage === 'creature' && (
           <div className="barn-body" data-test="barn-creature" data-species={pen.species}>
             <div className={`barn-stage${pen.fainted ? ' fainted' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}><Stage pen={pen} poke={poke} reduced={reduced} />{pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">fainted</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}{pen.maxHp > 0 && <HpTag pen={pen} />}</div>
             <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
@@ -420,7 +427,7 @@ function BarnHome({ me }) {
               {stable.bugs.length > 1 && (pen.partner
                 ? <p className="small muted" data-test="barn-partner">★ Your partner: with you in the mine and the terrarium.</p>
                 : <p className="small barn-stalled" data-test="barn-stalled"><span className="muted">In its stall, where needs drop {stable.slow}× slower.</span> <button className="btn small" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button></p>)}
-              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it: free after an hour's rest, or ${pen.healCost} now.</p>}
+              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : pen.faintedIn === 'circuit' ? 'on the circuit' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it: free after an hour's rest, or ${pen.healCost} now.</p>}
               {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
               {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
               <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={(e) => {
@@ -481,7 +488,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
+        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} closeLabel={bout.kind === 'circuit' ? 'Back to the circuit' : undefined} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>

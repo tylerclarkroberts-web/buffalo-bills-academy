@@ -94,6 +94,22 @@ A bug's type is on its card (the Barn's Card tab, with its moves, trait and what
 - Held stakes remain part of net worth. Cancel an open bout before deleting the account.
 - Signed-in players can see, for every bug in the ring, its name, species, level, looks, record and whether it has fainted; and for each recent fight, the bugs, their owners, the blows, the result and the pot. Wallets, payout receipts, combat setups, condition, needs, XP and care history remain private.
 
+## The circuit
+
+The Barn's Circuit room is the single-player campaign (`server/circuit.js`, `client/src/barn/Circuit.jsx`). Each area is a fixed path of stops; a stop opens once every stop before it is done, except the Bug Center, which is always open. Only the Back Forty (ribbon 1) exists so far.
+
+- **Fights** are ordinary ring fights (`kind: 'circuit'`, followed with `GET /api/barn/fight` like a Barn bout) against bugs nobody owns. No stake. A win pays the mine's battle XP (20 plus the upset bonus); a loss pays nothing; a knockout sends the bug to the Bug Center as usual (`faintedIn: 'circuit'`). A beaten trainer stays beaten. A draw counts as a loss.
+- **Leaders** field their bugs one after another. Each round you send in any standing bug that has not lost a round of this gauntlet; its health carries into its next round, and so does the leader's bug's. Beat them all for the area's ribbon and `RIBBON_XP` (100) for every bug that won a round. Fighting another stop, or Walk away, drops the gauntlet, and it starts from the first bug next time.
+- **House rules** ride on the leader's bugs (`rule` in `server/engine/bout.js`). Coach Pugh's dodgeball: every third own turn her bug's attack cannot miss and hits 25% harder, and the ring shows her tell (`tell` in the fight view) the turn before.
+- **Persistence:** `circuit.json` holds each player's finished stops, ribbons, the Commissioner's answer and any gauntlet in progress. The fight itself is memory only: a restart mid-round calls that round off.
+
+| Route | Contract |
+| --- | --- |
+| `GET /api/circuit` | Areas and stops (with `done`, `open`), the eight ribbons, the gauntlet in progress (`run`) and the live fight, if any. |
+| `POST /api/circuit/talk` | `{ "stop", "answer" }` answers a talking stop. Not open yet: 409. |
+| `POST /api/circuit/fight` | `{ "stop", "bug"? }` starts a trainer fight or the leader's next round with that bug (the partner if left out). Not open, already done, a bug in a fight, a fainted bug or one already out of this gauntlet: 409. |
+| `POST /api/circuit/give-up` | Drops the gauntlet in progress between rounds. Mid-round: 409. |
+
 ## Sound
 
 A fight's effects and music follow the Barn's one sound switch, which is off until a player turns it on, and stop at once when it is turned off. Both are made in the browser; there are no audio files. The music plays from the first blow to the finish. Each blow is followed by a short pause so its line can be read before the next one lands.

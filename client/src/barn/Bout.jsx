@@ -203,10 +203,11 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
         {bout.stake !== undefined && <p className="bout-payment" data-test="bout-payment">{payment}</p>}
         {bout.spoils?.length > 0 && <p className="bout-payment" data-test="bout-spoils">{bout.spoils.join(' · ')}</p>}
         {bout.xpEarned !== undefined && <p className="bout-xp">{replay ? `This bout awarded ${bout.xpEarned} XP.` : `+${bout.xpEarned} battle XP`}{bout.levelAfter > bout.levelBefore && <> · {replay ? 'Reached' : 'Level up!'} level {bout.levelAfter}</>}</p>}
-        {!replay && !fainted && hp[0] > 0 && hp[0] < maxHp[0] && <p className="small muted">{bout.you.name} is back to full HP.</p>}
+        {!replay && !fainted && hp[0] > 0 && hp[0] < maxHp[0] && <p className="small muted">{bout.carry != null ? `${bout.you.name} takes ${bout.carry}% health into the next round.` : `${bout.you.name} is back to full HP.`}</p>}
         {bout.pot > 0 && <p className="bout-payment">{money(bout.pot)} pot</p>}
         {replay && <p className="small muted">{bout.you.owner ? 'Seen from the rafters. No XP, no money.' : 'Replay only. No extra XP or money.'}</p>}
       </> : quit ? (bout.wild ? 'Run, and it keeps the tunnel.' : 'There is no running from a bug fight. Giving up counts as a loss.') : line}</div>
+      {live && bout.tell && !quit && <p className="bout-tell" role="status" data-test="bout-tell">{bout.tell}</p>}
       {live && bout.moves && !quit && <Moves bout={bout} onLine={onLine} />}
       <div className="bout-acts">
         {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Fight sounds" title="Fight sounds">{sound ? '🔊' : '🔈'}</button>}

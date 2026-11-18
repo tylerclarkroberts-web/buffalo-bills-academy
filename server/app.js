@@ -12,6 +12,7 @@ import { Mines } from './mines.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
 import { Barn } from './barn.js';
+import { Circuit } from './circuit.js';
 import { Shop, SMOKE } from './shop.js';
 import { ITEM } from './catalog/index.js';
 import { Fawn } from './fawn.js';
@@ -64,6 +65,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
+  const circuit = new Circuit({ store: service.store, barn, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
@@ -96,7 +98,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const unregisterScumTurns = registerTurnSource(scumSource(scum));
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
-  service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.sessions = sessions;
+  service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.circuit = circuit; service.sessions = sessions;
   const guestAllowed = config.allowGuest;
   const slack = new SlackAlerts({ service, publicUrl: env.PUBLIC_URL || 'https://buffalobillsacademy.com',
     client: new SlackClient({ token: env.SLACK_BOT_TOKEN, baseUrl: env.SLACK_API_URL || undefined, fetchImpl: slackFetch || fetchImpl || globalThis.fetch, retryDelayMs: slackRetryMs ?? 1500 }), ...(slackSendRetryMs ? { retryMs: slackSendRetryMs } : {}) });
@@ -339,6 +341,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/barn/fight', needPlayer, wrap((req) => barn.liveFight(req.player.id, req.query.id, req.query.have)));
   api.post('/barn/fight/:id/moves', needPlayer, wrap((req) => barn.lineUp(req.player.id, req.params.id, req.body)));
   api.get('/barn/fights/:id', needPlayer, wrap((req) => barn.fight(req.params.id)));
+  // The Tri-County Bug Circuit: the Barn's single-player campaign. Its fights are followed with /barn/fight like any other.
+  api.get('/circuit', needPlayer, wrap((req) => circuit.view(req.player.id)));
+  api.post('/circuit/talk', needPlayer, wrap((req) => circuit.talk(req.player.id, req.body || {})));
+  api.post('/circuit/fight', needPlayer, wrap((req) => circuit.fight(req.player.id, req.player.name, req.body || {})));
+  api.post('/circuit/give-up', needPlayer, wrap((req) => circuit.giveUp(req.player.id)));
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
   api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug }))); // the Bug Center nurse: free after an hour's rest, or paid now
