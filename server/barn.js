@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { ROSTER, BY_ID, levelFor, xpFor } from './engine/creatures.js';
 import { Fights } from './fights.js';
-import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, upsetXp } from './engine/bug-combat.js';
+import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { line } from './engine/bout.js';
 import { rarityOf } from './engine/bug-types.js';
 import { cents } from './accounts.js';
@@ -241,9 +241,10 @@ export class Barn {
     while (now - pen.dayXpAt >= 24 * 3600e3) {
       pen.dayXpAt += 24 * 3600e3;
       const n = this.needsAt(pen, pen.dayXpAt);
-      if ((n.hunger + n.mood + n.clean) / 3 >= 25) pen.xp += DAY_XP;
-      pen.xp += toyXp;
-      if ((pen.feederUntil || 0) >= pen.dayXpAt && (pen.feederFrom || 0) < pen.dayXpAt) pen.xp += FEEDER_DAY_XP;
+      const level = levelFor(pen.xp); // each day's XP fades by the level it had that day
+      if ((n.hunger + n.mood + n.clean) / 3 >= 25) pen.xp += fadedXp(DAY_XP, level);
+      pen.xp += fadedXp(toyXp, level);
+      if ((pen.feederUntil || 0) >= pen.dayXpAt && (pen.feederFrom || 0) < pen.dayXpAt) pen.xp += fadedXp(FEEDER_DAY_XP, level);
     }
   }
   /** Bring one bug up to date (the partner, or the one named) and hand it back. */
@@ -341,7 +342,7 @@ export class Barn {
       abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
       battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
       combat: { ...combatStats(level), stats: c.stats },
-      arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, boutXp: BOUT_XP, boutWinXp: BOUT_XP + BOUT_WIN_XP, mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
+      arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, careXp: fadedXp(CARE_XP, level), mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
       title: pen.record?.w >= 5 ? 'Barn Menace' : null,
       fainted: !!pen.faintedAt, ...(pen.faintedAt ? { recoverMs: Math.max(0, pen.faintedAt + RECOVER_MS - now), healCost: FAST_HEAL_COST, faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null, faintedIn: pen.faintedIn || 'mines' } : {}),
       ...this.hpOf(pen, level),
@@ -377,7 +378,7 @@ export class Barn {
     pen.stats[a.stat].v = Math.min(100, n[a.stat] + a.gain + toy);
     pen.cool[action] = now;
     if (action === 'feed') pen.fedAt = own;
-    pen.xp += CARE_XP;
+    pen.xp += fadedXp(CARE_XP, levelFor(pen.xp));
     this.save();
     return this.view(playerId);
   }
@@ -599,7 +600,7 @@ export class Barn {
       if (!p) return []; // the account was deleted mid-fight
       const xp = this.bugs(e.id).find((kept) => kept.bornAt === e.bornAt)?.xp || 0;
       const stake = stakes[side], against = stakes[1 - side], odds = this.fights.lineOf(fight, side); // this bug's chance as it walked in
-      const xpEarned = BOUT_XP + (winner === side ? upsetXp(BOUT_WIN_XP, odds) : 0);
+      const xpEarned = fightXp({ won: winner === side, base: BOUT_XP, bonus: BOUT_WIN_XP, odds, level: levelFor(xp), foeLevel: fighters[1 - side].level });
       const payout = winner === null ? stake : winner === side ? cents(stake + against) : 0;
       const healthAfter = endHp[side] > 0 ? 100 : 0;
       const receipt = { version: 5, id, at: now, seed, petBornAt: e.bornAt, healthAfter,
@@ -707,13 +708,14 @@ export class Barn {
    * only for the same bug that fought (`bornAt`): a bug laid to rest and replaced since gets nothing. The winner gains
    * a win bonus; a loser that fought to the end gains BATTLE_XP even if it was knocked out.
    */
-  battleResult(playerId, { battleId, bornAt, won, fought = true, fainted = false, foeName = null, odds = 0.5, place = 'mines' }) {
+  battleResult(playerId, { battleId, bornAt, won, fought = true, fainted = false, foeName = null, odds = 0.5, place = 'mines', foeLevel }) {
     const pen = this.bugs(playerId).find((kept) => kept.stage === 'creature' && kept.bornAt === bornAt); // the partner, or the stalled bug its owner sent in
     if (!pen) return { xp: 0, fainted: false, skipped: true };
     if ((pen.mineBattles || []).includes(battleId)) return { xp: pen.lastMineBattle?.xp || 0, fainted, levelBefore: pen.lastMineBattle?.levelBefore, levelAfter: pen.lastMineBattle?.levelAfter, repeat: true };
     const next = structuredClone(pen);
-    const bonus = won ? upsetXp(WIN_BONUS_XP, odds) : 0, xp = won ? BATTLE_XP + bonus : fought ? BATTLE_XP : 0; // `odds`: this bug's chance by the line
     const levelBefore = levelFor(next.xp || 0);
+    // a win pays by the line (`odds`: this bug's chance) and the level it beat; a loss fought to the end pays less the higher its own level
+    const xp = won || fought ? fightXp({ won, base: BATTLE_XP, bonus: WIN_BONUS_XP, odds, level: levelBefore, foeLevel: foeLevel ?? levelBefore }) : 0, bonus = won ? Math.max(0, xp - BATTLE_XP) : 0;
     next.xp = (next.xp || 0) + xp;
     if (place === 'mines') next.mineRecord = { w: (next.mineRecord?.w || 0) + (won ? 1 : 0), l: (next.mineRecord?.l || 0) + (won ? 0 : 1) };
     if (fainted) { next.faintedAt = this.now(); next.faintedBy = foeName; next.faintedIn = place; }
@@ -805,7 +807,7 @@ export class Barn {
     for (const st of STATS) pen.stats[st] = { v: n[st], at: now };
     pen.stats[stat].v = Math.min(100, n[stat] + Math.max(0, Math.min(100, gain)));
     if (fed) pen.fedAt = now;
-    if (xp > 0) pen.xp += xp;
+    if (xp > 0) pen.xp += fadedXp(xp, levelFor(pen.xp));
     if (lunch?.heal > 0 && lunch.heal >= (pen.lunch?.heal || 0)) pen.lunch = { name: lunch.name, heal: lunch.heal };
     this.save();
     return this.view(playerId);

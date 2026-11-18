@@ -7,9 +7,9 @@ import { createApp } from '../server/app.js';
 import { Barn, BOUT_WIN_XP, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG } from '../server/barn.js';
 import { Store } from '../server/store.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
-import { riskFor, upsetXp } from '../server/engine/bug-combat.js';
-// every fighter gets BOUT_XP; a winner gets a bonus on top, bigger the less the line gave it
-const earned = (pen) => BOUT_XP + (pen.lastBout.result === 'won' ? upsetXp(BOUT_WIN_XP, pen.lastBout.line) : 0);
+import { riskFor, fightXp } from '../server/engine/bug-combat.js';
+// a winner gets BOUT_XP and a bonus by the line, scaled by the level it beat; anyone else gets BOUT_XP, less the higher its own level
+const earned = ({ lastBout: b }) => fightXp({ won: b.result === 'won', base: BOUT_XP, bonus: BOUT_WIN_XP, odds: b.line, level: b.levelBefore, foeLevel: b.them.level });
 /** What the line asks `player` to put up to join the only open bout. */
 const cents = (x) => Math.round(x * 100) / 100;
 const asked = async (player) => Object.values((await player.api('GET', '/api/barn')).body.bouts[0].terms)[0].risk;
@@ -152,7 +152,7 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   // a level 10 against a level 3 is as lopsided as the line goes: the favourite puts up nine times the stake for a sliver of bonus XP
   assert.deepEqual([hostResult.line, guestResult.line], [0.1, 0.9]);
   assert.deepEqual([hostResult.stake, guestResult.stake, guestResult.against], [100, riskFor(100, 0.1), 100]);
-  assert.equal(guestResult.xpEarned, BOUT_XP + (guestResult.result === 'won' ? 2 : 0));
+  assert.equal(guestResult.xpEarned, earned({ lastBout: guestResult })); assert.ok(guestResult.xpEarned <= 3, 'a level 10 learns next to nothing from a level 3, win or lose');
   assert.equal(joined.body.pen.xpNext, null);
   for (const [player, result] of [[owner, host], [other, joined.body]]) {
     assert.equal(result.pen.lastBout.xpEarned, earned(result.pen));

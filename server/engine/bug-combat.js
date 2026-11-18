@@ -166,6 +166,17 @@ const TRAITS = {
 export const riskFor = (stake, p) => Math.round((stake * (1 - p)) / p);
 /** A winner's bonus XP: `bonus` in an even fight, nearly double for the longest shot, a sliver for a sure thing. */
 export const upsetXp = (bonus, p = 0.5) => Math.round(bonus * 2 * (1 - p));
+// XP by level. A grown bug learns little from routine: care, daily and losing XP are whole through level FADE.from and
+// fall in a straight line to FADE.floor of that at level FADE.to and beyond. A win is scaled by the gap to the bug it
+// beat: more for each level above (up to GAP.most), much less for each level below.
+export const FADE = { from: 5, to: 10, floor: 1 / 6 };
+export const GAP = { up: 0.25, most: 2, down: [0.6, 0.3, 0.1] };
+export const xpFade = (level) => Math.max(FADE.floor, Math.min(1, 1 - ((level - FADE.from) * (1 - FADE.floor)) / (FADE.to - FADE.from)));
+/** XP that fades with the level of the bug earning it, never below 1. */
+export const fadedXp = (xp, level) => (xp > 0 ? Math.max(1, Math.round(xp * xpFade(level))) : 0);
+export const gapXp = (mine, theirs) => { const gap = theirs - mine; return gap >= 0 ? Math.min(GAP.most, 1 + GAP.up * gap) : GAP.down[Math.min(GAP.down.length, -gap) - 1]; };
+/** What a fight pays: a win is `base` plus the upset `bonus`, scaled by the level gap; anything else is `base`, faded by the bug's own level. */
+export const fightXp = ({ won, base, bonus, odds = 0.5, level, foeLevel = level }) => (won ? Math.max(1, Math.round((base + upsetXp(bonus, odds)) * gapXp(level, foeLevel))) : fadedXp(base, level));
 export const traitFor = (species) => { const [name, text] = TRAITS[species] || []; return name ? { name, description: text() } : null; };
 
 export function combatStats(level) {

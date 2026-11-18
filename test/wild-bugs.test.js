@@ -11,12 +11,12 @@ import { Barn, BATTLE_XP, WIN_BONUS_XP } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines, WILDS_AT_ONCE } from '../server/mines.js';
 import { wildAt, ROAM_STEP_MS } from '../server/engine/wild-roam.js';
-import { Pvp, WILD, jarChance } from '../server/pvp.js';
+import { Pvp, WILD, jarChance, caughtLevel } from '../server/pvp.js';
 import { BY_ID, ROSTER } from '../server/engine/creatures.js';
 import { rarityOf, RARE_TIER } from '../server/engine/bug-types.js';
 import { distFrom } from '../server/engine/maze.js';
 import { ITEM } from '../server/catalog/index.js';
-import { upsetXp } from '../server/engine/bug-combat.js';
+import { upsetXp, fadedXp, fightXp } from '../server/engine/bug-combat.js';
 
 const V = { rulesVersion: 2 };
 function fixture(t) {
@@ -120,16 +120,16 @@ test('walking into it starts the fight; beating it pays the partner, robs nobody
   const view = f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
   assert.equal(view.battle.wild, true);
   assert.deepEqual([view.battle.them.wild, view.battle.them.level, view.battle.kind], [true, s.wilds[0].level, 'mine']);
-  assert.deepEqual(view.battle.jar, { have: 0, room: true, at: WILD.jarAt, chance: 0 });
+  assert.deepEqual(view.battle.jar, { have: 0, room: true, at: WILD.jarAt, chance: 0, keeps: caughtLevel(s.wilds[0].level, view.battle.you.level) });
   const battle = f.fight(), before = f.barn.doc.pens.ann.xp, cash = f.ann.bankroll;
   for (let i = 0; i < 200 && !battle.over; i++) { f.clock.now += 5000; f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }); }
   assert.deepEqual([battle.over.winner, battle.over.reason, battle.over.raid], ['a', 'fainted', null], 'a level 10 against the least grown');
   const bonus = upsetXp(WIN_BONUS_XP, view.battle.line); // the line had the level 10 at 90%: a sliver of the even-fight bonus
   assert.deepEqual([view.battle.line, bonus], [0.9, 6]);
-  assert.equal(f.barn.doc.pens.ann.xp, before + BATTLE_XP + bonus);
+  assert.equal(f.barn.doc.pens.ann.xp, before + fightXp({ won: true, base: BATTLE_XP, bonus: WIN_BONUS_XP, odds: 0.9, level: 10, foeLevel: s.wilds[0].level })); // and next to nothing for one so far below it
   assert.equal(f.ann.bankroll, cash);
   const after = f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId });
-  assert.deepEqual([after.battle.over.won, after.battle.over.bug.xp, after.battle.over.raid], [true, BATTLE_XP + bonus, null]);
+  assert.deepEqual([after.battle.over.won, after.battle.over.bug.xp, after.battle.over.raid], [true, f.barn.doc.pens.ann.xp - before, null]);
   assert.deepEqual(f.mines.stateFor(f.ann).wilds, s.wilds.slice(1), 'gone from the shift');
   assert.throws(() => f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: s.wilds[0].id }), /nothing wild/);
 });
@@ -171,7 +171,7 @@ test('losing to a wild bug needs the nurse only if the partner was knocked out',
     battle.fight.S.hp[0] = remainingHp;
     f.pvp.fights.finish(battle.fight, 1);
     const pen = f.barn.view('ann').pen;
-    assert.equal(battle.over.bug.xp, BATTLE_XP);
+    assert.equal(battle.over.bug.xp, fadedXp(BATTLE_XP, pen.level)); // a loss pays less the higher its own level
     assert.equal(battle.over.reason, remainingHp ? 'decision' : 'fainted');
     assert.equal(pen.fainted, remainingHp === 0);
     assert.equal(pen.hp, remainingHp ? pen.maxHp : 0);
