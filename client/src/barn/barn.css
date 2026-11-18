@@ -233,9 +233,9 @@
 @keyframes toss-miss { 0% { transform: none; } 25% { transform: rotate(-18deg) scale(1.1); } 100% { transform: translate(90%, 70%) rotate(95deg); opacity: 0; } }
 @keyframes toss-lid { 0% { transform: none; } 100% { transform: translate(-120%, -420%) rotate(-200deg); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bout-toss svg, .bout-toss .lid { animation: none !important; } .bout-toss.miss svg { opacity: .35; transform: rotate(60deg); } }
-/* a legendary in the other corner: a gold tag on its name and a gold edge on the ring */
-.bout-legend { font: 700 10px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .1em; color: #2a1300; background: linear-gradient(90deg, #ffe27a, #fff8d0, #ffd84a); border-radius: 999px; padding: 3px 7px; margin-right: 6px; }
-.bout.legendary { border-color: #ffd84a; box-shadow: 0 0 0 2px rgba(255, 216, 74, .5), 0 0 40px rgba(255, 190, 60, .45); }
+/* a legendary in the other corner: a rainbow tag on its name and a glowing edge on the ring, like its card */
+.bout-legend { font: 700 10px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .1em; color: #2a1300; background: linear-gradient(90deg, #ff9ae0, #ffe9a0, #a8ffd0, #a8e2ff, #d6c2ff); border-radius: 999px; padding: 3px 7px; margin-right: 6px; }
+.bout.legendary { border-color: #d6c2ff; box-shadow: 0 0 0 2px rgba(180, 140, 255, .55), 0 0 40px rgba(106, 208, 255, .45); }
 .bout-chip.guard { color: #ffcf5a; } .bout-chip.poison { color: #8cff5a; } .bout-chip.weak { color: #c58bff; } .bout-chip.edge { color: #ffe27a; }
 .barn-card-tab { justify-items: center; padding: 4px 0 10px; }
 .barn-kind .bc-type, .barn-roster .bc-type, .barn-open-bouts .bc-type, .bout-side .bc-type, .barn-tab-content .bc-type { vertical-align: middle; }
@@ -383,7 +383,7 @@
 .barn-wrap > .bs, .barn-wrap > .barn-ring, .barn-wrap > .cc-wrap, .barn-wrap > .barn-body, .barn-wrap > .barn-none { flex: 1 1 0; min-height: 0; }
 .barn-wrap > .barn-msg { flex: none; }
 @media (min-width: 1100px) {
-  .barn-wrap { width: min(1560px, 100%); max-height: none; padding: 16px 22px; }
+  .barn-wrap { width: min(1560px, 100%); max-height: 1000px; padding: 16px 22px; } /* fills a big screen, but a tall window does not stretch the bug */
   .bout { width: min(1280px, calc(100vw - 48px)); height: min(820px, calc(100dvh - 60px)); }
   .bout.live { height: min(940px, calc(100dvh - 40px)); }
 }
@@ -414,7 +414,9 @@
 .bs-info .barn-tabs button { min-height: 36px; }
 .bs-pane { min-height: 0; overflow-y: auto; }
 .bs-cardpane { display: grid; justify-items: center; align-content: start; padding-bottom: 6px; }
-@media (min-width: 1300px) and (min-height: 860px) { .bs-cardpane .bugcard { zoom: 1.2; } }
+/* The card grows with the room it has. */
+@media (min-width: 1100px) and (min-height: 860px) { .bs-cardpane .bugcard { zoom: 1.2; } }
+@media (min-width: 1500px) and (min-height: 1000px) { .bs-cardpane .bugcard { zoom: 1.4; } }
 .bs-combat { display: grid; gap: 14px; align-content: start; padding-right: 4px; }
 .bs-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; }
 .bs-stats dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--paper-2); }
@@ -475,3 +477,26 @@
 .barn-ring .barn-post label { flex: 0 1 260px; }
 .bs-letgo { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid #c8782a; border-radius: 10px; background: rgba(200,120,40,.12); }
 .bs-letgo p { margin: 0; }
+
+/* Tablet-width and portrait windows: the bug gets a fixed share on top, with its care beside it, and the card the full width below. */
+@media (min-width: 761px) and (max-width: 1099px) {
+  .bs { overflow-y: auto; }
+  .bs-grid { grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr); grid-template-rows: auto auto; gap: 14px 20px; }
+  .bs-stage { grid-column: 1; grid-row: 1; height: clamp(240px, 42vh, 420px); min-height: 0; }
+  .bs-care { grid-column: 2; grid-row: 1; grid-template-columns: minmax(0, 1fr); align-content: start; }
+  .bs-info { grid-column: 1 / -1; grid-row: 2; grid-template-rows: auto auto; }
+  .bs-pane { overflow: visible; }
+  .bs-cardpane .bugcard { zoom: 1.25; }
+  .bs-info .barn-notes { min-height: 320px; }
+}
+@media (max-width: 760px) {
+  .bs-stage { height: clamp(200px, 36vh, 300px); }
+  .bs-top { gap: 2px 10px; }
+  .bs-top .barn-name { flex-basis: 100%; }
+  .bs-care { gap: 12px; }
+  .bs-cardpane .bugcard { zoom: min(1.12, calc((100vw - 56px) / 300px)); }
+}
+@media (min-height: 1100px) { .screen.barn { justify-content: flex-start; } } /* a tall window: the Barn sits at the top, not adrift in the middle */
+@media (min-width: 761px) and (max-width: 1099px) { .barn-wrap { max-height: none; } } /* room for the card under the bug */
+@media (max-width: 1099px) { .bs-info, .bs-pane { min-height: max-content; } .bs-cardpane .bugcard { height: max-content; } } /* stacked: the card keeps its full height and the page scrolls */
+.bs-cardpane { grid-auto-rows: max-content; } .bs-cardpane .bugcard { height: max-content; } /* a card taller than its panel scrolls; it is never squeezed */
