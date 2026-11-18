@@ -233,9 +233,9 @@
 @keyframes toss-miss { 0% { transform: none; } 25% { transform: rotate(-18deg) scale(1.1); } 100% { transform: translate(90%, 70%) rotate(95deg); opacity: 0; } }
 @keyframes toss-lid { 0% { transform: none; } 100% { transform: translate(-120%, -420%) rotate(-200deg); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .bout-toss svg, .bout-toss .lid { animation: none !important; } .bout-toss.miss svg { opacity: .35; transform: rotate(60deg); } }
-/* a legendary in the other corner: a gold tag on its name and a gold edge on the ring */
-.bout-legend { font: 700 10px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .1em; color: #2a1300; background: linear-gradient(90deg, #ffe27a, #fff8d0, #ffd84a); border-radius: 999px; padding: 3px 7px; margin-right: 6px; }
-.bout.legendary { border-color: #ffd84a; box-shadow: 0 0 0 2px rgba(255, 216, 74, .5), 0 0 40px rgba(255, 190, 60, .45); }
+/* a legendary in the other corner: a rainbow tag on its name and a glowing edge on the ring, like its card */
+.bout-legend { font: 700 10px/1 var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .1em; color: #2a1300; background: linear-gradient(90deg, #ff9ae0, #ffe9a0, #a8ffd0, #a8e2ff, #d6c2ff); border-radius: 999px; padding: 3px 7px; margin-right: 6px; }
+.bout.legendary { border-color: #d6c2ff; box-shadow: 0 0 0 2px rgba(180, 140, 255, .55), 0 0 40px rgba(106, 208, 255, .45); }
 .bout-chip.guard { color: #ffcf5a; } .bout-chip.poison { color: #8cff5a; } .bout-chip.weak { color: #c58bff; } .bout-chip.edge { color: #ffe27a; }
 .barn-card-tab { justify-items: center; padding: 4px 0 10px; }
 .barn-kind .bc-type, .barn-roster .bc-type, .barn-open-bouts .bc-type, .bout-side .bc-type, .barn-tab-content .bc-type { vertical-align: middle; }
@@ -499,3 +499,4 @@
 @media (min-height: 1100px) { .screen.barn { justify-content: flex-start; } } /* a tall window: the Barn sits at the top, not adrift in the middle */
 @media (min-width: 761px) and (max-width: 1099px) { .barn-wrap { max-height: none; } } /* room for the card under the bug */
 @media (max-width: 1099px) { .bs-info, .bs-pane { min-height: max-content; } .bs-cardpane .bugcard { height: max-content; } } /* stacked: the card keeps its full height and the page scrolls */
+.bs-cardpane { grid-auto-rows: max-content; } .bs-cardpane .bugcard { height: max-content; } /* a card taller than its panel scrolls; it is never squeezed */

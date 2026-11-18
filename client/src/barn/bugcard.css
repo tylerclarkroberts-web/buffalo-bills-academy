@@ -1,15 +1,3 @@
-/* Legendary: a gold card. A heavy gold frame with a glow, a gold wash that drifts over the art, a gold name and a stamped footer. */
-.bugcard.r4 { border-image: linear-gradient(135deg, #fff3b0, #d4a017 22%, #fff8d0 45%, #b8860b 68%, #ffe27a) 1; border-radius: 0;
-  box-shadow: 0 0 0 2px #1a0e06, 0 0 0 4px #ffd84a, 0 0 26px rgba(255, 216, 74, .8), 0 0 60px rgba(255, 170, 30, .4), 0 8px 22px rgba(0,0,0,.5);
-  background: radial-gradient(120% 70% at 20% 0%, rgba(255,255,255,.7), transparent 60%), linear-gradient(160deg, #fff4c8, #f2d98a 55%, #e0b84a); }
-.bugcard.r4 .bc-window { position: relative; overflow: hidden; border-color: #ffd84a; box-shadow: inset 0 0 16px rgba(255, 230, 140, .9); }
-.bugcard.r4 .bc-foil { display: block; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
-  background: linear-gradient(115deg, transparent 20%, rgba(255, 236, 150, .75) 38%, rgba(255,255,255,.9) 50%, rgba(255, 200, 80, .7) 62%, transparent 80%); background-size: 280% 100%; animation: bc-gold 3.6s ease-in-out infinite; }
-.bugcard.r4 h3 { background: linear-gradient(90deg, #7a4a00, #c98a00, #7a4a00); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.bugcard.r4 .bc-strip { background: linear-gradient(90deg, #b8860b, #ffe27a 30%, #fff8d0 50%, #ffe27a 70%, #b8860b); }
-.bugcard.r4 footer span:first-child { color: #7a4a00; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-@keyframes bc-gold { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }
-@media (prefers-reduced-motion: reduce) { .bugcard.r4 .bc-foil { animation: none; background-position: 50% 0; } }
 /* A bug's trading card. The frame takes its type's colour (--tc); the paper and ink stay the same on every card. */
 .bugcard { --ink: #2a1a10; width: 300px; min-height: 468px; box-sizing: border-box; display: grid; grid-template-rows: auto auto auto 1fr auto auto auto auto; gap: 5px; padding: 12px 12px 8px;
   border-radius: 14px; border: 7px solid var(--tc); color: var(--ink); font: 400 11px/1.3 var(--sans);
@@ -39,23 +27,36 @@
 .bc-fact { margin: 0; padding: 3px 6px; font: italic 500 9px/1.3 Georgia, serif; border: 1px solid #b8964a; border-radius: 2px; color: #3a2a10; }
 .bugcard footer { display: flex; justify-content: space-between; font: 600 8.5px/1 var(--mono); color: #5a4630; }
 
-/* Rarity. Uncommon cards are foil: a brushed silver frame and a slow sheen across the art. Rare cards are holographic:
-   a rainbow frame, a prismatic wash over the art and a gold-stamped footer. Still for anyone who asks for less motion. */
+/* Rarity. Uncommon cards are foil: a brushed silver frame and a slow sheen across the art. Rare cards are gold and legendary
+   cards holographic: see below. Still for anyone who asks for less motion. */
 .bc-window { position: relative; overflow: hidden; }
 .bc-foil { display: none; position: absolute; inset: 0; pointer-events: none; }
 .bugcard.r2 { border-image: linear-gradient(135deg, #f4f6f8, #9aa3ad 22%, #eef1f4 45%, #7f8892 68%, #e6eaee) 1; border-radius: 0; box-shadow: 0 0 0 2px #1a0e06, 0 0 0 4px #c9d0d8, 0 8px 22px rgba(0,0,0,.5); }
 .bugcard.r2 .bc-foil { display: block; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.55) 48%, transparent 60%); background-size: 260% 100%; animation: bc-sheen 5s ease-in-out infinite; }
 .bugcard.r2 footer span:first-child { color: #4a5560; font-weight: 700; }
-.bugcard.r3 { border-image: linear-gradient(135deg, #ff6ad5, #ffd86a 20%, #7dffb0 40%, #6ad0ff 60%, #b48cff 80%, #ff6ad5) 1; border-radius: 0;
-  box-shadow: 0 0 0 2px #1a0e06, 0 0 18px rgba(180, 140, 255, .65), 0 0 34px rgba(106, 208, 255, .35), 0 8px 22px rgba(0,0,0,.5);
-  background: linear-gradient(125deg, rgba(255,106,213,.16), rgba(125,255,176,.14) 35%, rgba(106,208,255,.16) 65%, rgba(255,216,106,.16)), linear-gradient(160deg, #f6ecd6, #efe2c4); }
-.bugcard.r3 .bc-foil { display: block; mix-blend-mode: color-dodge; opacity: .7;
-  background: repeating-linear-gradient(115deg, rgba(255,0,170,.5) 0%, rgba(255,220,0,.5) 8%, rgba(0,255,150,.5) 16%, rgba(0,180,255,.5) 24%, rgba(170,90,255,.5) 32%, rgba(255,0,170,.5) 40%);
-  background-size: 300% 300%; animation: bc-holo 7s linear infinite; }
-.bugcard.r3 .bc-window { border-color: #d8b84a; box-shadow: inset 0 0 12px rgba(255,255,255,.6); }
-.bugcard.r3 h3 { background: linear-gradient(90deg, #8a2be2, #d6336c, #c77700); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.bugcard.r3 footer span:first-child { color: #8a5a00; font-weight: 700; letter-spacing: .08em; }
-.bugcard.r3 .bc-strip { background: linear-gradient(90deg, #ffb3ec, #ffe9a0 25%, #b6ffd6 50%, #a8e2ff 75%, #d6c2ff); }
 @keyframes bc-sheen { 0%, 55% { background-position: 130% 0; } 100% { background-position: -130% 0; } }
 @keyframes bc-holo { from { background-position: 0% 0%; } to { background-position: 150% 150%; } }
 @media (prefers-reduced-motion: reduce) { .bc-foil { animation: none !important; } }
+
+/* Rare: a gold card. A gold frame with a soft glow, a gold shine that drifts over the art, a gold name and strip. */
+.bugcard.r3 { border-image: linear-gradient(135deg, #fff3b0, #d4a017 22%, #fff8d0 45%, #b8860b 68%, #ffe27a) 1; border-radius: 0;
+  box-shadow: 0 0 0 2px #1a0e06, 0 0 16px rgba(255, 216, 74, .55), 0 8px 22px rgba(0,0,0,.5);
+  background: radial-gradient(120% 70% at 20% 0%, rgba(255,255,255,.7), transparent 60%), linear-gradient(160deg, #fff4c8, #f2d98a 55%, #e0b84a); }
+.bugcard.r3 .bc-window { border-color: #ffd84a; box-shadow: inset 0 0 12px rgba(255, 230, 140, .8); }
+.bugcard.r3 .bc-foil { display: block; mix-blend-mode: screen;
+  background: linear-gradient(115deg, transparent 20%, rgba(255, 236, 150, .75) 38%, rgba(255,255,255,.9) 50%, rgba(255, 200, 80, .7) 62%, transparent 80%); background-size: 280% 100%; animation: bc-gold 3.6s ease-in-out infinite; }
+.bugcard.r3 h3 { background: linear-gradient(90deg, #7a4a00, #c98a00, #7a4a00); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bugcard.r3 .bc-strip { background: linear-gradient(90deg, #b8860b, #ffe27a 30%, #fff8d0 50%, #ffe27a 70%, #b8860b); }
+.bugcard.r3 footer span:first-child { color: #7a4a00; font-weight: 700; letter-spacing: .08em; }
+/* Legendary: holographic. A rainbow frame with a strong glow, a prismatic wash that shifts over the art, a rainbow name and strip, and a stamped footer. */
+.bugcard.r4 { border-image: linear-gradient(135deg, #ff6ad5, #ffd86a 20%, #7dffb0 40%, #6ad0ff 60%, #b48cff 80%, #ff6ad5) 1; border-radius: 0;
+  box-shadow: 0 0 0 2px #1a0e06, 0 0 0 4px rgba(255,255,255,.85), 0 0 26px rgba(180, 140, 255, .9), 0 0 60px rgba(106, 208, 255, .55), 0 8px 22px rgba(0,0,0,.5);
+  background: linear-gradient(125deg, rgba(255,106,213,.2), rgba(125,255,176,.18) 35%, rgba(106,208,255,.2) 65%, rgba(255,216,106,.2)), linear-gradient(160deg, #f6ecd6, #efe2c4); }
+.bugcard.r4 .bc-window { border-color: #e8d8ff; box-shadow: inset 0 0 16px rgba(255,255,255,.75); }
+.bugcard.r4 .bc-foil { display: block; mix-blend-mode: color-dodge; opacity: .8;
+  background: repeating-linear-gradient(115deg, rgba(255,0,170,.5) 0%, rgba(255,220,0,.5) 8%, rgba(0,255,150,.5) 16%, rgba(0,180,255,.5) 24%, rgba(170,90,255,.5) 32%, rgba(255,0,170,.5) 40%);
+  background-size: 300% 300%; animation: bc-holo 6s linear infinite; }
+.bugcard.r4 h3 { background: linear-gradient(90deg, #8a2be2, #d6336c, #c77700); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bugcard.r4 .bc-strip { background: linear-gradient(90deg, #ffb3ec, #ffe9a0 25%, #b6ffd6 50%, #a8e2ff 75%, #d6c2ff); }
+.bugcard.r4 footer span:first-child { color: #6a2bb0; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+@keyframes bc-gold { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }
