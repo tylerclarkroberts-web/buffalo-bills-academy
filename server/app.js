@@ -347,6 +347,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/circuit', needPlayer, wrap((req) => circuit.view(req.player.id)));
   api.post('/circuit/talk', needPlayer, wrap((req) => circuit.talk(req.player.id, req.body || {})));
   api.post('/circuit/fight', needPlayer, wrap((req) => circuit.fight(req.player.id, req.player.name, req.body || {})));
+  api.post('/circuit/quest', needPlayer, wrap((req) => circuit.quest(req.player.id, req.body || {})));
   api.post('/circuit/jar', needPlayer, wrap((req) => circuit.jar(req.player.id, req.body || {})));
   api.post('/circuit/toll', needPlayer, wrap((req) => circuit.payToll(req.player.id, req.body || {})));
   api.post('/circuit/give-up', needPlayer, wrap((req) => circuit.giveUp(req.player.id)));

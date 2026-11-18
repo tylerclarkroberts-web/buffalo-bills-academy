@@ -131,13 +131,13 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
       ctx.font = 'bold 15px Georgia'; ctx.fillText('SFO', tear + 16, y0 + ch - 34); ctx.font = '12px Georgia'; ctx.fillText('RUN', tear + 16, y0 + ch - 18);
       return;
     }
-    const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' || pix === 'medal' || pix === 'boardingpass' ? '#345d80' : pix === 'charter' ? '#5a2f2a' : '#76572d';
+    const ink = pix === 'railroad' ? '#385d47' : pix === 'sheriffbadge' || pix === 'medal' || pix === 'boardingpass' || pix === 'ribbonrack' ? '#345d80' : pix === 'bugposter' ? '#5a2a8a' : pix === 'charter' ? '#5a2f2a' : '#76572d';
     ctx.fillStyle = pix === 'railroad' ? '#e5e8ce' : '#efe0b7'; ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = ink; ctx.lineWidth = 5; ctx.strokeRect(14, 14, width - 28, height - 28);
     ctx.lineWidth = 1; ctx.strokeRect(24, 24, width - 48, height - 48);
     ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.font = 'bold 28px Georgia';
-    ctx.fillText({ deed: 'DEED TO THE MOON', sheriffbadge: 'FISHING LICENCE', railroad: 'RAILROAD SHARE', medal: 'MEDAL OF FREEDOM', boardingpass: 'BOARDING PASS', charter: 'FOUNDING CHARTER' }[pix], width / 2, 68);
-    ctx.font = '15px Georgia'; ctx.fillText({ deed: 'LUNAR LAND REGISTRY', sheriffbadge: 'TERRITORY ANGLING OFFICE', railroad: 'GREAT BASIN & PACIFIC', medal: 'THE EIGHTEENTH AT BLACK HORSE', boardingpass: 'SAN FRANCISCO · SUNDAY', charter: 'EST. EVENTUALLY' }[pix], width / 2, 94);
+    ctx.fillText({ deed: 'DEED TO THE MOON', sheriffbadge: 'FISHING LICENCE', railroad: 'RAILROAD SHARE', medal: 'MEDAL OF FREEDOM', ribbonrack: 'FIRST PLACE', bugposter: 'FEATURE PRESENTATION', boardingpass: 'BOARDING PASS', charter: 'FOUNDING CHARTER' }[pix], width / 2, 68);
+    ctx.font = '15px Georgia'; ctx.fillText({ deed: 'LUNAR LAND REGISTRY', sheriffbadge: 'TERRITORY ANGLING OFFICE', railroad: 'GREAT BASIN & PACIFIC', medal: 'THE EIGHTEENTH AT BLACK HORSE', ribbonrack: 'TRI-COUNTY INVERTEBRATE ATHLETIC ASSN.', bugposter: 'ONE NIGHT ONLY · THE STARLITE', boardingpass: 'SAN FRANCISCO · SUNDAY', charter: 'EST. EVENTUALLY' }[pix], width / 2, 94);
     const cy = height * 0.47;
     if (pix === 'deed') {
       ctx.fillStyle = '#cfb96f'; ctx.beginPath(); ctx.arc(256, cy, 55, 0, Math.PI * 2); ctx.fill();
@@ -163,7 +163,7 @@ function frame(parent, pix, w = 0.8, h = 0.8) {
       ctx.fillStyle = '#e5e8ce'; ctx.fillRect(279, cy - 43, 26, 22);
     }
     ctx.fillStyle = ink; ctx.font = '18px Georgia';
-    ctx.fillText({ deed: 'One very impressive acre.', sheriffbadge: 'Valid for the season of 1887.', railroad: 'One share. No railroad.', medal: 'For golf.', boardingpass: 'Twelve seats. One sasquatch.', charter: 'Witnessed by a horse.' }[pix], width / 2, height * 0.72);
+    ctx.fillText({ deed: 'One very impressive acre.', sheriffbadge: 'Valid for the season of 1887.', railroad: 'One share. No railroad.', medal: 'For golf.', ribbonrack: 'Sanctioned by nobody.', bugposter: 'It ran for six weeks.', boardingpass: 'Twelve seats. One sasquatch.', charter: 'Witnessed by a horse.' }[pix], width / 2, height * 0.72);
     ctx.font = 'italic 15px Georgia'; ctx.fillText('Buffalo Bill\'s Academy', width / 2, height * 0.8);
     ctx.fillStyle = '#9d3935'; ctx.beginPath(); ctx.arc(width - 69, height - 66, 25, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#edcf8a'; ctx.font = 'bold 13px Georgia'; ctx.fillText(pix === 'deed' || pix === 'medal' || pix === 'charter' ? 'SEAL' : 'VOID', width - 69, height - 61);
@@ -278,6 +278,8 @@ function oddity(id) {
       break;
     }
     case 'odd-boardingpass': frame(group, 'boardingpass', 0.9, 0.7); break;
+    case 'odd-ribbonrack': frame(group, 'ribbonrack', 0.7, 0.8); break;
+    case 'odd-bugposter': frame(group, 'bugposter', 0.75, 0.95); break;
     case 'odd-flipflop': { // one flip-flop, in the puddle it came with
       const water = material('#7cc4f0', { transparent: true, opacity: 0.8 });
       for (const [r, x, z] of [[0.3, 0, 0.02], [0.18, 0.24, 0.14], [0.14, -0.26, -0.1], [0.05, 0.36, -0.16]]) mesh(group, new THREE.CylinderGeometry(r, r, 0.006, 18), water, x, 0.003, z);

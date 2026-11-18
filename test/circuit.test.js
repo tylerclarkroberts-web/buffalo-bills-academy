@@ -371,3 +371,30 @@ test('every leader hands over a prize, carried into circuit fights, and each doe
   const poison = (prizes) => { let sum = 0; for (let k = 0; k < 8; k++) { const S = startBout(mine(prizes), { species: 'platymeris', name: 'Regret', level: 8, rule: 'linger' }, `a:${k}`); while (!S.over) for (const e of stepBout(S)) if (e.type === 'venom' && e.by === 1 && !e.pop) sum += e.dmg; } return sum; };
   assert.ok(poison(['antidote']) < poison([]) * 0.8);
 });
+
+test('errands wait on nobody, pay once when you bring what is wanted, and the first ribbon and card go on the wall', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  hatch(5); const me = circuit.me(pid);
+  const shop = circuit.shop = new Shop({ store, accounts: circuit.accounts, barn, now: () => 1_800_000_000_000 });
+  me.ribbons[1] = 1; for (const id of ['foff', 'salad', 'landon', 'notacop', 'pugh']) me.done[id] = 1;
+  const culvert = () => circuit.view(pid).areas[1].stops;
+  for (const s of culvert().filter((x) => !['center', 'wild', 'boss', 'quest'].includes(x.kind))) me.done[s.id] = 1;
+  delete me.done.toll1;
+  assert.throws(() => circuit.quest(pid, { stop: 'q-bird' }), /Finish the stops/, 'the Hoppers come first');
+  me.done.toll1 = 1;
+  const bird = culvert().find((x) => x.id === 'q-bird');
+  assert.deepEqual([bird.kind, bird.open, bird.purse], ['quest', true, 450]);
+  assert.ok(culvert().find((x) => x.kind === 'leader').open, 'the leader does not wait for it');
+  assert.throws(() => circuit.quest(pid, { stop: 'q-bird' }), /Not yet/, 'a level 5 beetle is no bird');
+  barn.adopt(pid, { wildId: 'wf', battleId: 'bf', species: 'pyrops', level: 6 });
+  const before = store.players[pid].bankroll;
+  assert.match(circuit.quest(pid, { stop: 'q-bird' }).reply, /One bird/);
+  assert.equal(store.players[pid].bankroll, before + 450);
+  assert.throws(() => circuit.quest(pid, { stop: 'q-bird' }), /done/);
+  assert.throws(() => circuit.quest(pid, { stop: 'pugh' }), /errand/);
+  assert.throws(() => circuit.quest(pid, { stop: 'q-facts' }), /Not yet/);
+  // the wall of My House: anyone already holding a ribbon gets theirs on the next look; the poster waits for a card
+  assert.deepEqual([shop.inv(pid).own['odd-ribbonrack'], shop.inv(pid).own['odd-bugposter']], [1, undefined]);
+  me.cards = { a: 1, b: 1, c: 1 }; circuit.view(pid);
+  assert.equal(shop.inv(pid).own['odd-bugposter'], 1);
+});

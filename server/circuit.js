@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { idOf } from './barn.js';
 import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
-import { MAX_LEVEL, LEVEL_CAP, ROSTER } from './engine/creatures.js';
+import { MAX_LEVEL, LEVEL_CAP, ROSTER, levelFor } from './engine/creatures.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
 
 export const RIBBON_XP = 100;
@@ -19,7 +19,17 @@ export const RIBBONS = 8; // the leaders still to come show as empty hooks
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
 export const PURSE = { trainer: 75, ribbon: 750, boss: 300 };
 const FIGHTS = ['trainer', 'rival', 'toll', 'leader', 'boss', 'wild']; // stops with somebody to beat
-const OPTIONAL = ['center', 'wild', 'boss']; // stops nothing later waits on
+const OPTIONAL = ['center', 'wild', 'boss', 'quest']; // stops nothing later waits on
+// Sidequests: an errand somebody on the trail wants run. Each is done when its check passes, and pays its reward once.
+const GLOWS = ['photuris', 'arachnocampa', 'phrixothrix'];
+const living = (barn, pid) => barn.bugs(pid).filter((pen) => pen.stage === 'creature');
+export const QUESTS = {
+  'q-light': ({ barn, pid }) => living(barn, pid).some((pen) => GLOWS.includes(pen.species)),
+  'q-bird': ({ barn, pid }) => living(barn, pid).some((pen) => typeOf(pen.species) === 'flier' && levelFor(pen.xp || 0, pen.cap) >= 6),
+  'q-facts': ({ me }) => Object.keys(me.cards || {}).length >= 3,
+};
+// For the wall of My House (server/catalog/gags.js): the first ribbon, and the first feature-presentation card.
+export const AWARDS = { ribbon: 'odd-ribbonrack', card: 'odd-bugposter' };
 // What each leader hands over with the ribbon. A prize works in circuit fights only (server/engine/bout.js has what each does).
 export const PRIZES = {
   pugh: { id: 'whistle', name: 'The Whistle', does: 'Your bug\'s first attack in a circuit fight cannot miss.' },
@@ -34,7 +44,7 @@ export const prizesOf = (me) => Object.entries(PRIZES).filter(([leader]) => me.d
 // A boss is a feature presentation: one of a kind, after its area's ribbon, never needed to go on. Beating one wins its card.
 export const BOSSES = () => AREAS.flatMap((area) => area.stops.filter((stop) => stop.kind === 'boss'));
 /** `held`: the ribbons the player has. An any-order area pays as the next ribbon they would win, whichever slot it fills. */
-export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : stop.kind === 'wild' ? 0 : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon);
+export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : stop.kind === 'wild' ? 0 : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon) + (stop.kind === 'quest' ? stop.reward : 0);
 // Any-order areas grow with the ribbons held: every bug gains SCALE levels a ribbon past the two it takes to get there,
 // and a leader's last bug (`from`) only turns up once the player holds that many.
 export const SCALE = 1.5;
@@ -99,6 +109,10 @@ export const AREAS = [{
     { id: 'bent', kind: 'trainer', who: 'Bent', friend: true, rule: 'cough', bugs: [{ species: 'notonecta', name: 'Lozenge', level: 6 }],
       intro: ['*cough* Morning.', '*cough* It\'s going round. The bugs have it too.'],
       won: '*cough* Good game.', lost: '*cough* Sorry. *cough* Not sorry.' },
+    { id: 'q-bird', kind: 'quest', who: 'P.Q. Flea', title: 'The Traveling Flea Circus', reward: 450,
+      intro: ['P.Q. Flea! Proprietor, ringmaster, flea. The Traveling Flea Circus, parked in this pipe until further notice.', 'Those Hoppers shook us down too. I have a plan, and the plan is a bird.', 'A fake one. Twigs and a leaf. But I need a real flier to model for it.'],
+      need: 'Get past Chopper & the Hoppers, then bring a living Flier bug of level 6 or more.',
+      done: 'Hold still… magnificent. One bird! The Hoppers took one look and remembered somewhere else to be. Here is what they took off you, and then some.' },
     { id: 'wild2', kind: 'wild', who: 'Something on the Water', bugs: [{ species: 'halobates', name: 'Sea Skater', level: 7 }],
       intro: ['It is standing on the water. It should be at sea.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center2', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['You are all a little damp. I have towels ♡'] },
@@ -123,6 +137,10 @@ export const AREAS = [{
       won: 'Good game. Really. I SAID GOOD GAME.', lost: 'See? Calm wins.' },
     { id: 'wild3', kind: 'wild', who: 'A Light Under the Eaves', bugs: [{ species: 'arachnocampa', name: 'New Zealand Glowworm', level: 9 }],
       intro: ['That is not the porch light.', 'It is rare. Knock it out and you get three throws of a jar.'] },
+    { id: 'q-light', kind: 'quest', who: 'Nurse Hikari', title: 'The Night Light', reward: 600,
+      intro: ['The Bug Center\'s night light went out. The little ones cannot sleep ♡', 'Could I borrow a bug that glows? Only for a minute. I will give it straight back.'],
+      need: 'Own a living bug that makes its own light: a firefly, a glowworm or a railroad worm.',
+      done: 'There. I traced its glow onto the bulb. It is the same bug you came in with, I promise ♡' },
     { id: 'center3', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Mind the step. And the other step ♡'] },
     { id: 'dale', kind: 'leader', who: 'Dale', title: 'Ribbon 3', rule: 'flicker', tell: 'Dale reaches for the porch light switch…',
       bugs: [{ species: 'photuris', name: 'Porchlight', level: 8 }, { species: 'bertholdia', name: 'Bylaw', level: 9 }, { species: 'chrysochroa', name: 'Covenant', level: 10, from: 4 }],
@@ -188,6 +206,10 @@ export const AREAS = [{
     { id: 'kashely', kind: 'trainer', who: 'Kashely', friend: true, rule: 'mulligan', bugs: [{ species: 'empusa', name: 'Ranch Rules', level: 8 }],
       intro: ['Howdy. Out here a bug gets a few mulligans.', 'That\'s not a mine thing. It is on my ranch.'],
       won: 'Three mulligans and I still lost. I\'ll pencil it in as a draw.', lost: 'That\'s how the West was won. Mostly mulligans.' },
+    { id: 'q-facts', kind: 'quest', who: 'Squanto', title: 'Fun Fact', reward: 900,
+      intro: ['Dude. You went into the dark for a bug. Respect.', 'Fun fact: there are things down here people gave up looking for. I would know.', 'Show me you can handle the weird ones first, dude.'],
+      need: 'Hold three feature presentation cards.',
+      done: 'Dude. Weird as can be. Fun fact: the Lord Howe stick insect was gone for eighty years, then it wasn\'t. Keep going down. Deep as can be.' },
     { id: 'wild6', kind: 'wild', who: 'A Noise in the Dark', bugs: [{ species: 'brevisana', name: 'Shrill Thorntree Cicada', level: 9 }],
       intro: ['You cannot see it. You can absolutely hear it.', 'It is rare. Knock it out and you get three throws of a jar.'] },
     { id: 'center6', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['I brought a night light. Dwayne asked me to turn it off ♡'] },
@@ -239,6 +261,8 @@ export class Circuit {
     this.fights.sweep();
     const me = this.me(pid);
     if (me.run?.live && !this.fights.get(me.run.live)) me.run.live = null; // a restart called that round off
+    if (Object.keys(me.ribbons).length) this.award(pid, AWARDS.ribbon); // ribbons and cards won before the awards existed
+    if (Object.keys(me.cards || {}).length) this.award(pid, AWARDS.card);
     return {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
@@ -304,7 +328,7 @@ export class Circuit {
     const run = me.run?.stop === stop.id ? me.run : null;
     const area = STOPS.get(stop.id).area;
     // a boss beaten: its card, and its purse
-    const card = () => { (me.cards ||= {})[stop.id] = this.now(); return [`Feature presentation card · “${stop.poster}”`, this.pay(pid, stop, area)]; };
+    const card = () => { (me.cards ||= {})[stop.id] = this.now(); this.award(pid, AWARDS.card); return [`Feature presentation card · “${stop.poster}”`, this.pay(pid, stop, area)]; };
     if (stop.kind === 'wild') { // knocked out, it lies there for the jar; anything else and it is back in the grass until next time
       if (won && S.hp[1] === 0) {
         me.catch = { stop: stop.id, fight: fight.id, species: foe.species, name: foe.name, level: foe.level, by: fight.fighters[0].level, jars: JAR.throws };
@@ -333,6 +357,7 @@ export class Circuit {
           if (got && bornAt === bug.bornAt) { extra.xpEarned = (extra.xpEarned || 0) + RIBBON_XP; extra.levelAfter = got.levelAfter; }
         }
         extra.verdict = say(stop.won);
+        this.award(pid, AWARDS.ribbon);
         const cap = capFor(Object.keys(me.ribbons).length);
         extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, ...(PRIZES[stop.id] ? [`Prize: ${PRIZES[stop.id].name}`] : []), this.pay(pid, stop, area), `Your bugs can now reach level ${cap}`, `+${RIBBON_XP} XP to every bug that won a round`];
       } else if (!won && !standing.length) {
@@ -348,6 +373,24 @@ export class Circuit {
     this.save();
   }
 
+  /** Something for the wall of My House, once: the shop holds what a player owns. */
+  award(pid, item) {
+    const own = this.shop?.inv(pid).own;
+    if (own && !own[item]) { own[item] = 1; this.shop.save(); }
+  }
+  /** Hand in a sidequest: done if its check passes, and it pays its reward once. */
+  quest(pid, body = {}) {
+    const stop = this.stopOf(body.stop), me = this.me(pid), check = QUESTS[stop.id];
+    if (stop.kind !== 'quest' || !check) throw new GameError('Nobody here wants an errand run.', 409);
+    if (!this.open(me, stop)) throw new GameError('Not yet. Finish the stops before it.', 409);
+    if (me.done[stop.id]) throw new GameError('That one is done.', 409);
+    if (!check({ barn: this.barn, pid, me })) throw new GameError(`Not yet. ${stop.need}`, 409);
+    me.done[stop.id] = this.now();
+    const player = this.store.players[pid];
+    if (player && this.accounts) this.accounts.change(player, stop.reward, 'circuit', `Bug Circuit: errand for ${stop.who}`);
+    this.save();
+    return { ...this.view(pid), reply: stop.done };
+  }
   /** What a throw at the bug lying there is worth, for the ring. */
   jarOf(pid, c) {
     return { have: this.shop?.jars(pid) || 0, room: this.barn.room(pid), left: c.jars, chance: jarChance(rarityOf(c.species), c.level - c.by), keeps: caughtLevel(c.level, c.by) };

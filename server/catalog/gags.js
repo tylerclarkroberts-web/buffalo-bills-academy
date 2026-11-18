@@ -50,5 +50,8 @@ export const ABSURD_ITEMS = [
   ['flipflop', 'A Single Wet Flip-Flop', 0, '🩴', 'Fished out of a cold plunge in San Francisco. The other one went home with a sasquatch.', false, 0, true],
   ['drone', 'Bagpipe Drone', 0, '🎵', 'Came off a man in a kilt at dawn. It still hums if you leave it alone.', false, 0, true],
   ['abalone', 'Abalone Shell', 0, '🐚', 'Forty dollars of shellfish, eaten. This is the part you keep.', false, 0, true],
+  // Handed out by server/circuit.js: the first ribbon, and the first feature-presentation card.
+  ['ribbonrack', 'Tri-County Ribbon', 0, '🎗️', 'First place. The Association is sanctioned by nobody, which makes this rarer.', false, 0, true],
+  ['bugposter', 'Feature Presentation Poster', 0, '🎬', 'One night only at the Starlite. It ran for six weeks. Nobody has explained that.', false, 0, true],
   ['boardingpass', 'Boarding Pass', 0, '🎫', 'SFO, Sunday. Twelve seats, one sasquatch, a minute to spare.', false, 0, true],
 ].map(([id, name, price, emoji, desc, unique, month, award]) => ({ id: `odd-${id}`, name, price, emoji, pix: id, desc, kind: 'absurd', cat: unique ? 'unique' : month ? 'seasonal' : 'oddities', slot: null, ...(unique ? { unique: true } : {}), ...(month ? { month } : {}), ...(award ? { award: true } : {}) }));
