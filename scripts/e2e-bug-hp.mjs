@@ -63,7 +63,7 @@ try {
     assert.ok(posted.ok());
     await guest.goto('/barn');
     await guest.click('[data-test=ring-toggle]');
-    await guest.click('[data-test=bout-join]');
+    await guest.click('[data-test=ring-pane-bouts]'); await guest.click('[data-test=bout-join]');
     await guest.waitForSelector('[data-test=bout][data-live="1"]');
     // Let the game's unattended-fight clock play the seeded match to its natural conclusion.
     now += FIGHT.watchMs + 1;
@@ -82,7 +82,7 @@ try {
     await fullHealth(guest);
     await shot(guest, `survivor-ready-${size}`);
     await guest.click('[data-test=ring-toggle]');
-    await guest.fill('[data-test=bout-stake]', '0');
+    await guest.click('[data-test=ring-pane-bouts]'); await guest.fill('[data-test=bout-stake]', '0');
     await guest.click('[data-test=bout-post]');
     await guest.click('[data-test=bout-cancel]');
 

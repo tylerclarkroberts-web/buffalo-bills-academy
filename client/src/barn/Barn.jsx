@@ -12,8 +12,8 @@ import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
-import BugCard, { TypeChip, matchups } from './BugCard.jsx';
-import { TYPES, EDGE, typeOf, edge, perkFor } from '../../../server/engine/bug-types.js';
+import BugCard, { TypeChip } from './BugCard.jsx';
+import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
 import { navigate } from '../App.jsx';
@@ -27,9 +27,6 @@ const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); const d = Ma
 const chance = (name, p) => (Math.round(p * 100) === 50 ? 'even fight' : `${name} ${Math.round(p * 100)}% to win`);
 const NEED = { hunger: 'Fed', mood: 'Mood', clean: 'Clean' };
 const ACT = { feed: ['Feed', 'free'], play: ['Play', 'free'], clean: ['Mist', 'free'] };
-const TABS = ['care', 'combat', 'card', 'notes'];
-const TAB_NAME = { care: 'Care', combat: 'Combat', card: 'Card', notes: 'Field notes' };
-const both = (types) => types.map((t) => TYPES[t].name).join(' and ');
 /** One bug's type against another's, as the board says it: nothing when neither has the edge. The line already counts it. */
 const matchup = (mine, theirs) => { const e = edge(typeOf(mine), typeOf(theirs)); return e ? ` · ${e > 0 ? 'your' : 'its'} type has the edge` : ''; };
 const WARN = ['', 'is hungry. It has not been fed in a week.', 'is getting weak from hunger. Feed it soon.', 'is close to starving. Feed it today.'];
@@ -145,7 +142,14 @@ function Stalls({ stable, sel, onPick }) {
   </div>;
 }
 
-/** The ring: every bug in the barn, challenges, bouts open to anyone and the recent fights. Anyone can look; fighting needs a bug. */
+/** What the ? button says in each room: the rules the screens themselves no longer spell out. */
+const HELP = {
+  stalls: ['Feed, Play and Mist are free, each on its own cooldown, and give 12 XP.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
+  ring: ['Challenge any bug, or post a bout for whoever joins first.', 'You name your stake; the other corner puts up fair odds by the line, each bug\'s chance from 400 practice fights.', 'The winner takes the pot. A draw refunds both stakes.', 'Both bugs earn 20 XP and the winner more for an upset. Bugs still standing recover fully; a knockout means the Bug Center.'],
+  circuit: ['Beat the stops in order. A win pays XP; a loss pays nothing.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
+};
+
+/** The ring: other players and their bugs, bouts open to anyone, and recent fights. Anyone can look; fighting needs a bug. */
 function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel, call, accept, drop, watch }) {
   const { openBout, roster, challenges } = b;
   // Any of your hatched bugs can fight: the partner unless you choose another, or the first one standing.
@@ -154,77 +158,178 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   // A stake box opens on $100 (or the most this owner can cover) and moves in tens. Until its owner types, it shows that.
   const step = b.stakeStep || 10, opening = String(Math.max(0, Math.min(100, Math.floor(Math.min(b.maxStake, b.bankroll ?? 0) / step) * step)));
   const [calling, setCalling] = useState(null), [typedCall, setCallStake] = useState(null), callStake = typedCall ?? opening, posting = stake ?? opening;
+  const [pane, setPane] = useState('players'), [opened, setOpened] = useState(null);
   const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
-  const others = roster.filter((bug) => bug.ownerId !== meId);
+  // Other players, each with their bugs: the list opens on a player, the bugs are a tap away.
+  const players = [];
+  for (const bug of roster.filter((entry) => entry.ownerId !== meId)) {
+    let p = players.find((entry) => entry.id === bug.ownerId);
+    if (!p) players.push(p = { id: bug.ownerId, name: bug.owner, bugs: [] });
+    p.bugs.push(bug);
+  }
+  players.sort((x, y) => x.name.localeCompare(y.name));
   const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
-  const setup = (fighter) => <details className="barn-opponent-setup"><summary>View fighting setup</summary><p className="small">{STANCES[fighter.battle.stance].name} · Condition {fighter.mood}/100 · Gear +{+((fighter.gear || 0) * 100).toFixed(1)}% damage, {+((fighter.defense || 0) * 100).toFixed(1)}% less taken</p></details>;
+  const setup = (fighter) => <p className="small muted">{STANCES[fighter.battle.stance].name} · condition {fighter.mood}/100{fighter.gear || fighter.defense ? ` · gear +${+((fighter.gear || 0) * 100).toFixed(1)}% / −${+((fighter.defense || 0) * 100).toFixed(1)}%` : ''}</p>;
   const stakeLabel = (amount) => (Number(amount) > 0 ? ` for ${money(Number(amount))}` : ' for free');
+  const levels = (bugs) => { const lv = bugs.map((bug) => bug.level); const lo = Math.min(...lv), hi = Math.max(...lv); return lo === hi ? `Lv ${lo}` : `Lv ${lo}–${hi}`; };
+  const PANES = [['players', `Players · ${players.length}`], ['bouts', `Open bouts · ${listings.length + (openBout ? 1 : 0)}`], ['fights', 'Recent fights']];
   return <div className="barn-ring" data-test="barn-ring">
-    <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
-      : !grown ? `Bouts unlock at level ${mine.arenaLevel}. Watching is free.`
-      : mine.fainted ? <>{mine.name} fainted. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> has a bed for it.</>
-      : unsaved ? 'Save or discard your Combat changes before fighting.'
-      : <span className="num">Available: {money(b.bankroll)} · play money</span>}
-      {fighters.length > 1 && <label className="barn-with"> Fight with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · {TYPES[typeOf(bug.species)]?.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}</p>
-    <section className="barn-board">
-      {challenges.incoming.length > 0 && <>
-        <h3>Challenges for you</h3>
-        {openBout && <p className="small barn-warn">Cancel your open bout to accept one.</p>}
-        <ul className="barn-open-bouts">{challenges.incoming.map((c) => { const bug = roster.find((entry) => entry.ownerId === c.from && entry.id === c.fromBug), called = fighters.find((entry) => entry.id === c.toBug), risk = c.risk ?? c.stake; return <li key={c.id} data-test="challenge-incoming">
-          <div className="barn-listing-title"><b>{c.fromBugName}</b><span className="small">{bug ? `Level ${bug.level} · ` : ''}{c.fromName}</span></div>
-          <p className="small" data-test="challenge-terms">{fighters.length > 1 ? `Calls out ${c.toBugName} · ` : ''}{c.line ? `${chance(c.toBugName, 1 - c.line)} · ` : ''}{c.stake ? `risk ${money(risk)} to win ${money(c.stake)}` : 'for the grudge'} · lapses in {left(c.expiresAt - now)}</p>
-          <div className="barn-row">
-            <button className="btn" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || !called || called.fainted || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
-            <button className="btn ghost" onClick={() => drop(c.id)} disabled={busy} data-test="challenge-decline">Decline</button>
-          </div>
-        </li>; })}</ul>
-      </>}
-      <h3>Every bug in the barn</h3>
-      {grown && <p className="small muted">Call one out. Nothing is held until its owner accepts.</p>}
-      {others.length ? <ul className="barn-roster">{others.map((bug) => { const key = `${bug.ownerId}:${bug.id}`, out = challenges.outgoing.find((c) => c.to === bug.ownerId && c.toBug === bug.id); return <li key={key} data-test="roster-bug">
+    <div className="ring-bar">
+      {fighters.length > 0 && <label className="barn-with">Fighting with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · {TYPES[typeOf(bug.species)]?.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}
+      <span className="small num muted">{money(b.bankroll)} available</span>
+      <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
+        : !grown ? `Bouts unlock at level ${mine.arenaLevel}.`
+        : mine.fainted ? <>{mine.name} fainted: <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</>
+        : unsaved ? 'Save or discard your Combat changes first.' : ''}</p>
+    </div>
+    {challenges.incoming.length > 0 && <section className="ring-calls" aria-label="Challenges for you">
+      {challenges.incoming.map((c) => { const bug = roster.find((entry) => entry.ownerId === c.from && entry.id === c.fromBug), called = fighters.find((entry) => entry.id === c.toBug), risk = c.risk ?? c.stake; return <div key={c.id} className="ring-call" data-test="challenge-incoming">
+        <p><b>{c.fromName}</b> calls out {c.toBugName} with <b>{c.fromBugName}</b>{bug ? ` (Lv ${bug.level})` : ''}</p>
+        <p className="small" data-test="challenge-terms">{c.line ? `${chance(c.toBugName, 1 - c.line)} · ` : ''}{c.stake ? `risk ${money(risk)} to win ${money(c.stake)}` : 'for the grudge'} · {left(c.expiresAt - now)} left</p>
+        <div className="barn-row">
+          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || !called || called.fainted || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
+          <button className="btn ghost" onClick={() => drop(c.id)} disabled={busy} data-test="challenge-decline">Decline</button>
+          {openBout && <span className="small muted">Cancel your open bout to accept.</span>}
+        </div>
+      </div>; })}
+    </section>}
+    <div className="barn-tabs ring-tabs" role="tablist" aria-label="The ring">
+      {PANES.map(([id, label]) => <button key={id} role="tab" aria-selected={pane === id} className={pane === id ? 'on' : ''} onClick={() => setPane(id)} data-test={`ring-pane-${id}`}>{label}</button>)}
+    </div>
+    {pane === 'players' && (players.length ? <ul className="ring-players" role="tabpanel">{players.map((p) => { const out = challenges.outgoing.filter((c) => c.to === p.id).length, isOpen = opened === p.id; return <li key={p.id} className={isOpen ? 'open' : ''}>
+      <button className="ring-player" aria-expanded={isOpen} onClick={() => setOpened(isOpen ? null : p.id)} data-test="ring-player">
+        <span className="ring-thumbs" aria-hidden="true">{p.bugs.slice(0, 4).map((bug) => <BugThumb key={bug.id} bug={bug} />)}</span>
+        <span className="ring-who"><b>{p.name}</b><small>{p.bugs.length} bug{p.bugs.length === 1 ? '' : 's'} · {levels(p.bugs)}{out ? ` · ${out} challenge${out === 1 ? '' : 's'} sent` : ''}</small></span>
+        <span className="ring-chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+      </button>
+      {isOpen && <ul className="barn-roster">{p.bugs.map((bug) => { const key = `${bug.ownerId}:${bug.id}`, sent = challenges.outgoing.find((c) => c.to === bug.ownerId && c.toBug === bug.id); return <li key={key} data-test="roster-bug">
         <BugThumb bug={bug} />
         <div>
-          <div className="barn-listing-title"><b>{bug.name}</b><span className="small">{bug.owner}</span></div>
-          <p className="small"><TypeChip type={typeOf(bug.species)} small /> Level {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{bug.record.d ? ` ${bug.record.d}D` : ''}{!bug.fights ? ' · too young to fight' : bug.fainted ? ' · fainted' : ''}{mine && bug.line?.[mine.id] ? <span data-test="roster-line"> · {chance(mine.name, bug.line[mine.id])}{matchup(mine.species, bug.species)}</span> : null}</p>
+          <b>{bug.name}</b>
+          <p className="small"><TypeChip type={typeOf(bug.species)} small /> Lv {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{!bug.fights ? ' · too young' : bug.fainted ? ' · fainted' : ''}</p>
+          {mine && bug.line?.[mine.id] ? <p className="small ring-odds" data-test="roster-line">{chance(mine.name, bug.line[mine.id])}{matchup(mine.species, bug.species)}</p> : null}
         </div>
-        {out ? <div className="barn-row"><span className="small">Called out{out.stake ? stakeLabel(out.stake) : ''} · {left(out.expiresAt - now)} left</span><button className="btn ghost" onClick={() => drop(out.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
+        {sent ? <div className="barn-row"><span className="small">Called out{sent.stake ? stakeLabel(sent.stake) : ''} · {left(sent.expiresAt - now)} left</span><button className="btn ghost small" onClick={() => drop(sent.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
           : calling === key ? <form className="barn-post" onSubmit={(event) => { event.preventDefault(); call(bug.ownerId, bug.id, Number(callStake), mine?.id); setCalling(null); }}>
             <label htmlFor="call-stake">Your stake<input id="call-stake" data-test="challenge-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required autoFocus value={callStake} onChange={(event) => setCallStake(event.target.value)} /></label>
-            <button className="btn" type="submit" disabled={busy || callStake === ''} data-test="challenge-send">Send{stakeLabel(callStake)}</button>
+            <button className="btn primary" type="submit" disabled={busy || callStake === ''} data-test="challenge-send">Send{stakeLabel(callStake)}</button>
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
-            {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">By the line, {bug.owner} puts up {money(riskFor(Number(callStake), bug.line[mine.id]))} against it.</p>}
+            {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">{bug.owner} would put up {money(riskFor(Number(callStake), bug.line[mine.id]))}.</p>}
           </form>
-          : grown && bug.fights && <button className="btn" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted} data-test="challenge-open">Challenge</button>}
-      </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>}
-    </section>
-    <section className="barn-board">
-      <h3>Open to anyone</h3>
+          : grown && bug.fights && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted} data-test="challenge-open">Challenge</button>}
+      </li>; })}</ul>}
+    </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>)}
+    {pane === 'bouts' && <div className="ring-pane" role="tabpanel">
       {openBout ? <div className="barn-waiting" data-test="bout-waiting">
-        <p className="small"><b>Waiting for a challenger.</b> {money(openBout.stake)} held · expires in {left(openBout.expiresAt - now)}</p>
-        {setup(openBout.fighter)}
-        <p className="small muted">Your setup is saved for this bout. Cancel to change it.</p>
-        <button className="btn ghost" onClick={() => cancel(openBout.id)} disabled={busy} data-test="bout-cancel">Cancel{openBout.stake > 0 ? ` & reclaim ${money(openBout.stake)}` : ' bout'}</button>
+        <p><b>Your bout is posted.</b> <span className="small">{money(openBout.stake)} held · {left(openBout.expiresAt - now)} left</span></p>
+        <button className="btn ghost" onClick={() => cancel(openBout.id)} disabled={busy} data-test="bout-cancel">Cancel{openBout.stake > 0 ? ` & reclaim ${money(openBout.stake)}` : ''}</button>
       </div> : grown && <form className="barn-post" onSubmit={(event) => { event.preventDefault(); if (!locked) post(mine?.id, Number(posting)); }}>
-        <label htmlFor="bout-stake">Your stake<input id="bout-stake" data-test="bout-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required value={posting} onChange={(event) => setStake(event.target.value)} disabled={locked} /></label>
-        <button className="btn" type="submit" disabled={locked || posting === ''} data-test="bout-post">Post bout{stakeLabel(posting)}</button>
-        <p className="small muted">Your stake is held for whoever joins first. Theirs follows the line, so a favourite puts up more. Refunded if you cancel, or after an hour.</p>
+        <label htmlFor="bout-stake">Post a bout for anyone · your stake<input id="bout-stake" data-test="bout-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required value={posting} onChange={(event) => setStake(event.target.value)} disabled={locked} /></label>
+        <button className="btn primary" type="submit" disabled={locked || posting === ''} data-test="bout-post">Post{stakeLabel(posting)}</button>
       </form>}
       {listings.length ? <ul className="barn-open-bouts">{listings.map((entry) => { const t = mine && entry.terms?.[mine.id], risk = t ? t.risk : entry.stake; return <li key={entry.id} data-test="bout-listing">
-        <div className="barn-listing-title"><b>{entry.fighter.name}</b><span className="small">Level {entry.fighter.level} · {entry.hostName}</span></div>
-        <p className="small" data-test="bout-terms"><TypeChip type={typeOf(entry.fighter.species)} small /> {BY_ID[entry.fighter.species].name}{t ? ` · ${chance(mine.name, t.win)}${matchup(mine.species, entry.fighter.species)}` : ''} · {!entry.stake ? 'no money on it' : t ? `risk ${money(risk)} to win ${money(entry.stake)}` : `${money(entry.stake)} posted`}</p>
-        {setup(entry.fighter)}
+        <BugThumb bug={entry.fighter} />
+        <div>
+          <b>{entry.fighter.name}</b> <span className="small muted">{entry.hostName}</span>
+          <p className="small" data-test="bout-terms"><TypeChip type={typeOf(entry.fighter.species)} small /> Lv {entry.fighter.level} · {BY_ID[entry.fighter.species].name}{t ? ` · ${chance(mine.name, t.win)}${matchup(mine.species, entry.fighter.species)}` : ''} · {!entry.stake ? 'no money on it' : t ? `risk ${money(risk)} to win ${money(entry.stake)}` : `${money(entry.stake)} posted`}</p>
+          {setup(entry.fighter)}
+        </div>
         {mine && <button className="btn" onClick={() => join(entry.id, mine.id, t?.risk)} disabled={locked || !!openBout || entry.expiresAt <= now || risk > b.bankroll} data-test="bout-join">{risk > b.bankroll ? `Need ${money(risk)}` : `Join${stakeLabel(risk)}`}</button>}
       </li>; })}</ul> : <p className="small muted" data-test="bouts-empty">Nobody waiting. The hay has refused to fight.</p>}
-      <h3>Recent fights</h3>
-      {b.fights.length ? <ul className="barn-fights">{b.fights.map((fight) => { const [first, second] = fight.sides; return <li key={fight.id} data-test="fight-row">
-        <div>
-          <b>{fight.winner === null ? `${first.name} and ${second.name} drew` : `${fight.sides[fight.winner].name} beat ${fight.sides[1 - fight.winner].name}`}</b>
-          <p className="small muted">{first.owner} v {second.owner}{fight.pot ? ` · ${money(fight.pot)} pot` : ''} · {ago(now - fight.at)}</p>
+    </div>}
+    {pane === 'fights' && (b.fights.length ? <ul className="barn-fights" role="tabpanel">{b.fights.map((fight) => { const [first, second] = fight.sides; return <li key={fight.id} data-test="fight-row">
+      <div>
+        <b>{fight.winner === null ? `${first.name} and ${second.name} drew` : `${fight.sides[fight.winner].name} beat ${fight.sides[1 - fight.winner].name}`}</b>
+        <p className="small muted">{first.owner} v {second.owner}{fight.pot ? ` · ${money(fight.pot)} pot` : ''} · {ago(now - fight.at)}</p>
+      </div>
+      <button className="btn ghost small" onClick={() => watch(fight.id)} disabled={busy} data-test="fight-watch">Watch</button>
+    </li>; })}</ul> : <p className="small muted" data-test="fights-empty">No fights yet. The bottle caps are gathering dust.</p>)}
+  </div>;
+}
+
+const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Field notes']];
+const WHERE = { ring: 'in the ring', circuit: 'on the circuit', mines: 'in the mines' };
+
+/** Combat: its numbers, the stance it fights with when left to itself, and its moves. Type, trait and perk are on the card. */
+function CombatPane({ pen, battle, draft, setDraft, save, busy, locked }) {
+  const c = pen.combat;
+  return <div className="bs-pane bs-combat" id="barn-panel-combat" role="tabpanel" aria-labelledby="barn-tab-combat">
+    <dl className="bs-stats">
+      {[['HP', c.maxHp], ['Damage', `+${Math.round((c.damageMultiplier - 1) * 100)}%`], ['Attack', `${c.stats.atk}/5`], ['Defense', `${c.stats.def}/5`], ['Speed', `${c.stats.spd}/5`]].map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="num">{v}</dd></div>)}
+    </dl>
+    <fieldset className="bs-stance" disabled={busy || locked}>
+      <label>Left to itself<select value={battle.stance} onChange={(e) => setDraft({ ...battle, stance: e.target.value })} data-test="battle-stance">{Object.values(STANCES).map((stance) => <option key={stance.id} value={stance.id}>{stance.name}</option>)}</select></label>
+      <p className="small muted">{STANCES[battle.stance].description}</p>
+      {draft && <div className="barn-row"><button className="btn small primary" onClick={save} data-test="battle-save">Save</button><button className="btn small ghost" onClick={() => setDraft(null)}>Discard</button></div>}
+      {locked && <p className="small muted">Cancel your posted bout to change this.</p>}
+    </fieldset>
+    <ul className="bs-moves">
+      {pen.abilities.map((a) => <li key={a.id} className={!a.unlocked ? 'locked' : ''}>
+        <b>{a.name}</b>
+        <span className="small num">{!a.unlocked ? `at level ${a.level}` : a.heal ? `heals ${a.heal}` : `${a.power} power · ${Math.round(a.accuracy * 100)}%`}{a.cooldown > 0 ? ` · rests ${a.cooldown}` : ''}</span>
+        <small>{a.description}</small>
+      </li>)}
+    </ul>
+  </div>;
+}
+
+/** One living bug: what it is and its record up top; the bug, its card (or combat, or field notes) and its care side by side. */
+function Creature({ pen, b, stable, now, busy, care, makePartner, poke, setPoke, reduced, tab, setTab, battle, draft, setDraft, save, toRing, replayLast, replayButton }) {
+  const type = typeOf(pen.species), next = pen.abilities?.find((a) => !a.unlocked);
+  const keys = (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const ids = PANES.map(([id]) => id), at = ids.indexOf(tab);
+    const k = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length;
+    setTab(ids[k]); e.currentTarget.querySelectorAll('[role="tab"]')[k].focus();
+  };
+  return <div className="bs" data-test="barn-creature" data-species={pen.species}>
+    <div className="bs-top">
+      <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
+      <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
+      <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
+      {pen.title && <span className="small barn-title">{pen.title}</span>}
+      {stable.bugs.length > 1 && (pen.partner ? <span className="bs-partner small" data-test="barn-partner">★ Partner</span>
+        : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
+    </div>
+    {pen.fainted && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
+    {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
+    <div className="bs-grid">
+      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
+        <Stage pen={pen} poke={poke} reduced={reduced} />
+        {pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">fainted</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
+        {pen.maxHp > 0 && <HpTag pen={pen} />}
+      </div>
+      <div className="bs-care" data-test="barn-progress">
+        <div className="barn-needs">
+          {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
-        <button className="btn ghost" onClick={() => watch(fight.id)} disabled={busy} data-test="fight-watch">Watch</button>
-      </li>; })}</ul> : <p className="small muted" data-test="fights-empty">No fights yet. The bottle caps are gathering dust.</p>}
-      <p className="small muted">Both bugs earn {mine?.boutXp ?? 20} XP, with a bigger win bonus for an upset. Draws refund both stakes. Bugs still standing recover all HP. Knocked out? See the nurse.</p>
-    </section>
+        <div className="barn-acts">
+          {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
+        </div>
+        <div className="bs-xp">
+          <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : ' · top level'}</span>
+          <div className="barn-bar xp" role="progressbar" aria-label={`Level ${pen.level} progress`} aria-valuemin={0} aria-valuemax={pen.xpNext ? pen.xpNext - pen.xpThis : 1} aria-valuenow={pen.xpNext ? pen.xp - pen.xpThis : 1}><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div>
+          {next && <span className="small muted">Learns {next.name} at level {next.level}</span>}
+        </div>
+        {(pen.feederUntil > b.serverNow || pen.lunch) && <p className="small barn-supplies">
+          {pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder">🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+          {pen.lunch && <span className="barn-feeder" data-test="barn-lunch">🍱 {pen.lunch.name}, +{pen.lunch.heal} HP</span>}
+        </p>}
+        <div className="barn-row bs-more">
+          <button className="btn small" onClick={toRing}>Find a bout</button>
+          {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
+        </div>
+      </div>
+      <div className="bs-info">
+        <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={keys}>
+          {PANES.map(([id, name]) => <button key={id} id={`barn-tab-${id}`} role="tab" tabIndex={tab === id ? 0 : -1} aria-selected={tab === id} aria-controls={`barn-panel-${id}`} className={tab === id ? 'on' : ''} onClick={() => setTab(id)} data-test={`tab-${id}`}>{name}</button>)}
+        </div>
+        {tab === 'notes' ? <Notes key={pen.species} bug={BY_ID[pen.species]} />
+          : tab === 'combat' ? <CombatPane pen={pen} battle={battle} draft={draft} setDraft={setDraft} save={save} busy={busy} locked={!!b.openBout} />
+          : <div className="bs-pane bs-cardpane" id="barn-panel-card" role="tabpanel" aria-labelledby="barn-tab-card"><BugCard species={pen.species} bug={pen} /></div>}
+      </div>
+    </div>
   </div>;
 }
 
@@ -252,7 +357,8 @@ function BarnHome({ me }) {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const mutation = useRef(0);
-  const [tab, setTab] = useState('care');
+  const [tab, setTab] = useState('card');
+  const [help, setHelp] = useState(false);
   // The Barn's three rooms: your stalls, the ring, the circuit. /barn?room=circuit opens on the circuit.
   const [view, setView] = useState(() => (new URLSearchParams(window.location.search).get('room') === 'circuit' ? 'circuit' : 'stalls'));
   const ring = view === 'ring', stalls = view === 'stalls';
@@ -347,8 +453,7 @@ function BarnHome({ me }) {
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
   if (!b) return <div className="screen barn"><div className="barn-empty muted">{err ? <><p role="alert">{err}</p><button className="btn" onClick={() => { setErr(''); load(); }}>Try again</button></> : 'Opening the barn doors…'}</div></div>;
   const now = Date.now() + skew.current;
-  const nextAbility = pen?.abilities?.find((a) => !a.unlocked);
-  const waiting = b.challenges.incoming.length + b.bouts.filter((x) => x.hostId !== me.id).length;
+    const waiting = b.challenges.incoming.length + b.bouts.filter((x) => x.hostId !== me.id).length;
   return (
     <div className="screen barn" data-test="barn">
       <div className="barn-wrap panel">
@@ -359,9 +464,11 @@ function BarnHome({ me }) {
             <div className="barn-rooms" role="group" aria-label="Barn">
               {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
             </div>
+            <button className="btn small ghost barn-help-btn" onClick={() => setHelp(!help)} aria-expanded={help} aria-controls="barn-help" title="How the Barn works" data-test="barn-help">?</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
         </header>
+        {help && <aside id="barn-help" className="barn-help" data-test="barn-help-panel"><ul>{HELP[view].map((line) => <li key={line}>{line}</li>)}</ul><button className="btn small ghost" onClick={() => setHelp(false)}>Got it</button></aside>}
         {ring && <Ring b={b} meId={me.id} now={now} busy={busy} unsaved={!!battleDraft} stake={stake} setStake={setStake}
           post={(bug, amount) => wager('POST', '/barn/bouts', { stake: amount, bug })}
           join={(id, bug, risk) => wager('POST', `/barn/bouts/${id}/join`, { bug, risk })}
@@ -413,81 +520,9 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {stalls && pen?.stage === 'creature' && (
-          <div className="barn-body" data-test="barn-creature" data-species={pen.species}>
-            <div className={`barn-stage${pen.fainted ? ' fainted' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}><Stage pen={pen} poke={poke} reduced={reduced} />{pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">fainted</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}{pen.maxHp > 0 && <HpTag pen={pen} />}</div>
-            <div className={`barn-side${tab !== 'notes' ? ' barn-care' : ''}`}>
-              <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
-              {pen.title && <span className="small barn-title">{pen.title}</span>}
-              <p className="small barn-kind">{pen.speciesName} · <b>Level {pen.level}</b> <TypeChip type={typeOf(pen.species)} small /></p>
-              {(pen.feederUntil > b.serverNow || pen.lunch) && <p className="small barn-kind barn-supplies">
-                {pen.feederUntil > b.serverNow && <span className="barn-feeder" data-test="barn-feeder" title="Keeps Fed, Mood and Clean full and adds 12 XP a day while it runs">🥣 Feeder until {new Date(pen.feederUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
-                {pen.lunch && <span className="barn-feeder" data-test="barn-lunch" title="Eaten in its next fight, the first time it drops below half health">🍱 Packed lunch: {pen.lunch.name}, +{pen.lunch.heal} HP</span>}
-              </p>}
-              {stable.bugs.length > 1 && (pen.partner
-                ? <p className="small muted" data-test="barn-partner">★ Your partner: with you in the mine and the terrarium.</p>
-                : <p className="small barn-stalled" data-test="barn-stalled"><span className="muted">In its stall, where needs drop {stable.slow}× slower.</span> <button className="btn small" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button></p>)}
-              {pen.fainted && <p className="barn-warn barn-faint small" role="status" data-test="barn-fainted">{pen.name} fainted {pen.faintedIn === 'ring' ? 'in the ring' : pen.faintedIn === 'circuit' ? 'on the circuit' : 'in the mines'}{pen.faintedBy ? ` (beaten by ${pen.faintedBy})` : ''}. No battles, bouts or guiding until the nurse at the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> heals it: free after an hour's rest, or ${pen.healCost} now.</p>}
-              {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
-              {youngForm(BY_ID[pen.species], pen.level) && <p className="small muted">Larva · adult form at level 3.</p>}
-              <div className="barn-tabs" role="tablist" aria-label="Bug details" onKeyDown={(e) => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-                e.preventDefault();
-                const index = e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
-                setTab(TABS[index]); e.currentTarget.querySelectorAll('[role="tab"]')[index].focus();
-              }}>
-                {TABS.map((name) => <button key={name} id={`barn-tab-${name}`} role="tab" tabIndex={tab === name ? 0 : -1} aria-selected={tab === name} aria-controls={`barn-panel-${name}`} className={tab === name ? 'on' : ''} onClick={() => setTab(name)} data-test={`tab-${name}`}>{TAB_NAME[name]}</button>)}
-              </div>
-              {tab === 'notes' ? <Notes key={pen.species} bug={BY_ID[pen.species]} /> : tab === 'card' ? <div className="barn-tab-content barn-card-tab" id="barn-panel-card" role="tabpanel" aria-labelledby="barn-tab-card"><BugCard species={pen.species} bug={pen} /></div> : (<>
-                <div className="barn-progress" data-test="barn-progress">
-                  <span className="small num">{pen.xp.toLocaleString()} XP · {pen.xpNext ? `${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : 'Maximum level 10'}</span>
-                  <div className="barn-bar xp" role="progressbar" aria-label={`Level ${pen.level} progress`} aria-valuemin={0} aria-valuemax={pen.xpNext ? pen.xpNext - pen.xpThis : 1} aria-valuenow={pen.xpNext ? pen.xp - pen.xpThis : 1}><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div>
-                  {nextAbility && <span className="small muted">Next move: {nextAbility.name} at level {nextAbility.level}.</span>}
-                </div>
-                {tab === 'care' ? <div className="barn-tab-content" id="barn-panel-care" role="tabpanel" aria-labelledby="barn-tab-care">
-                <div className="barn-needs">
-                  {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
-                </div>
-                <div className="barn-acts">
-                  {Object.entries(ACT).map(([k, [label, cost]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : cost}</small></button>; })}
-                </div>
-                <p className="small muted barn-xp-limit">Keep all three needs up for stronger bouts. Visit Combat for its stance, moves and trait.</p>
-                </div> : <div className="barn-tab-content" id="barn-panel-combat" role="tabpanel" aria-labelledby="barn-tab-combat">
-                  <dl className="barn-combat-stats">
-                    <div><dt>Health</dt><dd>{pen.combat.maxHp} HP</dd></div>
-                    <div><dt>Level damage</dt><dd>+{Math.round((pen.combat.damageMultiplier - 1) * 100)}%</dd></div>
-                    <div><dt>Attack</dt><dd>{pen.combat.stats.atk}/5</dd></div>
-                    <div><dt>Defense</dt><dd>{pen.combat.stats.def}/5</dd></div>
-                    <div><dt>Speed</dt><dd>{pen.combat.stats.spd}/5</dd></div>
-                  </dl>
-                  <p className="small muted">Attack increases damage; defense softens hits; speed helps with initiative and dodging. Each level from 3 to 10 adds health and damage.</p>
-                  {pen.trait && <p className="small" data-test="barn-trait"><b>{pen.trait.name}.</b> {pen.trait.description}</p>}
-                  {typeOf(pen.species) && <p className="small" data-test="barn-type"><TypeChip type={typeOf(pen.species)} small /> Beats {both(matchups(typeOf(pen.species)).beats)}; loses to {both(matchups(typeOf(pen.species)).weak)}. Its hits land {Math.round((EDGE.strong - 1) * 100)}% harder on a type it beats and {Math.round((1 - EDGE.weak) * 100)}% softer on one that beats it. <b>{perkFor(typeOf(pen.species))?.name}.</b> {perkFor(typeOf(pen.species))?.description}</p>}
-                  {b.openBout && <p className="small barn-warn">Cancel your waiting bout in the ring to change your setup.</p>}
-                  <fieldset className="barn-setup" disabled={busy || !!b.openBout}>
-                    <legend>Combat setup</legend>
-                    <label className="barn-stance">Stance<select value={battle.stance} onChange={(e) => setBattleDraft({ ...battle, stance: e.target.value })} data-test="battle-stance">{Object.values(STANCES).map((stance) => <option key={stance.id} value={stance.id}>{stance.name}</option>)}</select></label>
-                    <p className="small muted">{STANCES[battle.stance].description}</p>
-                    <p className="small">In the ring you choose its moves. The stance is how it fights when you leave it to it.</p>
-                    <ul className="barn-moves">
-                      {pen.abilities.map((a) => <li key={a.id} className={!a.unlocked ? 'locked' : ''}>
-                        <b>{a.name}</b> <span className="small muted">{!a.unlocked ? `Unlocks at level ${a.level}` : a.id === 'basic' ? 'Plain strike' : 'Special'}</span>
-                        <p className="small muted">{a.heal ? `Base healing: ${a.heal} HP` : `Power ${a.power} · Base accuracy ${Math.round(a.accuracy * 100)}%`}{a.venom ? ` · Venom: ${a.venom} base damage × ${a.duration} turns` : ''}</p>
-                        <p className="small">{a.description}{a.cooldown > 0 ? ` Cooldown: ${a.cooldown} own turns.` : ''}</p>
-                      </li>)}
-                    </ul>
-                    <div className="barn-setup-actions"><button className="btn small" onClick={saveBattle} disabled={!battleDraft} data-test="battle-save">{busy ? 'Please wait…' : 'Save setup'}</button>{battleDraft && <button className="btn small ghost" onClick={() => setBattleDraft(null)}>Discard changes</button>}</div>
-                  </fieldset>
-                </div>}
-                  <div className="barn-bouts">
-                    <span className="small" data-test="bout-record">{pen.record.w}W · {pen.record.l}L{pen.record.d ? ` · ${pen.record.d}D` : ''}</span>
-                    {tab === 'care' && <button className="btn ghost small" onClick={() => setRing(true)}>Find a bout</button>}
-                    {pen.lastBout && <button ref={replayButton} className="btn ghost small" disabled={busy} onClick={() => { setReplay(true); setBout(pen.lastBout); }} data-test="bout-replay">Replay last</button>}
-                  </div>
-              </>)}
-            </div>
-          </div>
-        )}
+        {stalls && pen?.stage === 'creature' && <Creature pen={pen} b={b} stable={stable} now={now} busy={busy} care={care} makePartner={makePartner} poke={poke} setPoke={setPoke} reduced={reduced}
+          tab={tab} setTab={setTab} battle={battle} draft={battleDraft} setDraft={setBattleDraft} save={saveBattle} toRing={() => setRing(true)}
+          replayLast={() => { setReplay(true); setBout(pen.lastBout); }} replayButton={replayButton} />}
         {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} closeLabel={bout.kind === 'circuit' ? 'Back to the circuit' : undefined} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>

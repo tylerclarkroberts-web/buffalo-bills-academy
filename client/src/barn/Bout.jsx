@@ -23,6 +23,7 @@ const STATUS = [['guard', 'Guarded'], ['poison', 'Poisoned'], ['weak', 'Weakened
 const DOES = { strike: 'Strike', guard: 'Hit + guard', venom: 'Hit + poison', pierce: 'Pierce', heal: 'Heal', weaken: 'Hit + weaken' };
 const TAG = { guard: 'guard', venom: 'poison', pierce: 'pierce', weaken: 'weaken' };
 export const QUEUE_MAX = 3;
+const FAST = 3; // a replay's fast-forward: every blow and pause at three times the speed
 const pct = (n) => `${Math.round(n * 100)}%`;
 const span = ([lo, hi]) => (lo === hi ? `${lo}` : `${lo}–${hi}`);
 /** A move's odds as the server last worked them out, short for its button and in full under the buttons. */
@@ -90,7 +91,10 @@ function Moves({ bout, onLine }) {
 export default function Bout({ bout, replay = false, reduced, sound, onSound, onClose, onLine, onForfeit, onJar, closeLabel = 'Back to the stall' }) {
   const plan = useMemo(() => planBout(bout), [bout]);
   const ref = useRef(null), dialog = useRef(null), closeButton = useRef(null);
-  const clock = useRef({ t0: 0, skip: 0 });
+  // The fight's own clock: `vt` advances with the page's frames, `rate` times as fast when fast-forwarding a replay.
+  const clock = useRef({ vt: 0, last: 0, rate: 1 });
+  const [fast, setFast] = useState(false);
+  useEffect(() => { clock.current.rate = fast ? FAST : 1; }, [fast]);
   const now = useRef({ plan, bout }); now.current = { plan, bout };
   const [pos, setPos] = useState(() => (reduced && !plan.open ? { i: plan.beats.length, phase: 'done' } : { i: -1, phase: 'intro' }));
   const [quit, setQuit] = useState(false);
@@ -98,7 +102,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const fighters = [bout.you, bout.them];
   // the line the fight opened at (your chance): named on the favourite's side, on neither when it is even
   const mine = Math.round((bout.line ?? 0.5) * 100), fav = mine === 50 ? -1 : mine > 50 ? 0 : 1;
-  const skip = () => { clock.current.skip = plan.total + 1 - (performance.now() - clock.current.t0); };
+  const skip = () => { clock.current.vt = plan.total + 1; };
   useEffect(() => {
     const el = dialog.current; el.showModal();
     return () => el.close();
@@ -107,14 +111,15 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   useEffect(() => {
     const c = ref.current; if (!c) return undefined;
     const fx = { parts: [], fired: new Set() }; let id = 0, drawn = '';
-    clock.current.t0 = performance.now();
+    const ck = clock.current; ck.vt = 0; ck.last = performance.now();
     const frame = (at) => {
       const { plan: p, bout: b } = now.current; // a live fight grows: always the latest plan, on the same clock
-      let t = reduced ? p.total + 1 : at - clock.current.t0 + clock.current.skip;
+      ck.vt += Math.max(0, at - ck.last) * ck.rate; ck.last = at;
+      let t = reduced ? p.total + 1 : ck.vt;
       if (p.open && !reduced) {
-        if (t > p.end) { clock.current.t0 += t - p.end; t = p.end; } // nothing new yet: hold the clock where the last blow ended
+        if (t > p.end) ck.vt = t = p.end; // nothing new yet: hold the clock where the last blow ended
         const behind = p.beats.length - 2; // opened late or fell behind: jump to the blow before the latest
-        if (behind > 0 && t < p.beats[behind].at) { clock.current.skip += p.beats[behind].at - t; t = p.beats[behind].at; }
+        if (behind > 0 && t < p.beats[behind].at) ck.vt = t = p.beats[behind].at;
       }
       const loc = locate(p, t);
       setPos((q) => (q.i === loc.i && q.phase === loc.phase ? q : { i: loc.i, phase: loc.phase }));
@@ -211,6 +216,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
       {live && bout.moves && !quit && <Moves bout={bout} onLine={onLine} />}
       <div className="bout-acts">
         {onSound && <button className="btn ghost small" onClick={onSound} aria-pressed={!!sound} aria-label="Fight sounds" title="Fight sounds">{sound ? '🔊' : '🔈'}</button>}
+        {!done && !live && <button className={`btn small${fast ? ' on' : ' ghost'}`} onClick={() => setFast(!fast)} aria-pressed={fast} data-test="bout-fast">⏩ {FAST}× speed</button>}
         {!done && !live && <button className="btn ghost small" onClick={skip} data-test="bout-skip">Skip to the end</button>}
         {live && !onForfeit && <button className="btn ghost small" onClick={onClose} data-test="bout-leave">Leave it to {bout.you.name}</button>}
         {live && onForfeit && !quit && <button className="btn ghost small" onClick={() => setQuit(true)} data-test="bout-run">Run</button>}
