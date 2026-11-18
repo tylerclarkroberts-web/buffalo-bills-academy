@@ -12,8 +12,9 @@ import { BOUNDS, ELOTE, BUFADORA, groundAt, collide, wallDist } from '../../../.
 import { dogsAt, DOG_COUNT, DOG_PLANS, ELOTE_LINES } from '../../../../server/elhalo/critters.js';
 import { createAudio } from './audio.js';
 import { connect, join, leave, inputSender, post } from './net.js';
+import { loadSettings, saveSettings, stickValue, lookDelta, bindPad, createPointerMap, applyPadLayout, thumbPockets, graphicsTier, graphicsOpts } from './controls.js';
 
-const EYE = 1.62, RADIUS = 0.38, GRAV = 16, JUMP = 6.2, SPEED = 5.4;
+const EYE = 1.62, CROUCH_EYE = 1.05, CROUCH_SPEED = 0.55, RADIUS = 0.38, GRAV = 16, JUMP = 6.2, SPEED = 5.4;
 const TYPES = L.ENEMY_TYPES, WIDS = L.WEAPON_IDS;
 const NAME = { luchador: 'LUCHADOR', mariachi: 'MARIACHI', granjero: 'GRANJERO', padre: 'PADRE', chupacabra: 'CHUPACABRAS', llorona: 'LA LLORONA', cucuy: 'EL CUCUY', nahual: 'NAHUAL', lechuza: 'LECHUZA', volador: 'VOLADOR', gordo: 'LA DOÑA' };
 const ST = ['walk', 'hit', 'grab', 'tackle', 'shoot', 'bless', 'idle', 'climb', 'swoop', 'wail', 'windup', 'leap', 'slam'];
@@ -34,12 +35,16 @@ const lookArr = (s) => (typeof s === 'string' ? s.split('').map((c) => c.charCod
 
 export function createGame({ canvas, root, touch = false, reduceMotion = false, muted = false, musicLevel = 0, onMode = () => {}, onInfo = () => {} }) {
   const R = (() => { let s = (Date.now() & 0xffff) + 7; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); })();
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touch, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, touch ? 1.25 : 1.5));
+  let PAD = !!touch, controls = loadSettings(), crouched = false, adsHeld = false, gfxTier;
+  const pickTier = (w, h) => graphicsTier({ w, h, coarse: PAD, dpr: window.devicePixelRatio, cores: navigator.hardwareConcurrency, reduceMotion });
+  gfxTier = pickTier(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight);
+  const gfx0 = graphicsOpts(gfxTier);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: gfx0.antialias, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfx0.dpr));
   renderer.autoClear = false;
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(touch ? 74 : 70, 1, 0.05, 460); camera.rotation.order = 'YXZ'; scene.add(camera);
-  const world = buildWorld(scene, { lowEnd: touch });
+  const camera = new THREE.PerspectiveCamera(PAD ? 74 : 70, 1, 0.05, gfx0.far); camera.rotation.order = 'YXZ'; scene.add(camera);
+  const world = buildWorld(scene, { lowEnd: gfx0.phoneDogs });
 
   // first-person guns in their own scene so they never clip into walls
   const vmScene = new THREE.Scene(), vmCam = new THREE.PerspectiveCamera(55, 1, 0.01, 10);
@@ -64,7 +69,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   }
 
   // pooled effects: one Points cloud for confetti/dust/petals/sparks, tracers, beams, blast flashes
-  const PN = touch ? 600 : 1100;
+  const PN = gfx0.particles;
   const pGeo = new THREE.BufferGeometry(), pPos = new Float32Array(PN * 3), pCol = new Float32Array(PN * 3);
   pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3)); pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
   const parts = Array.from({ length: PN }, () => ({ life: 0, vx: 0, vy: 0, vz: 0, drag: 0, g: 0 }));
@@ -383,7 +388,8 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
 
   // ---- world queries for your own movement
   const fwd = () => new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
-  const eye = () => ({ x: pos.x, y: pos.y + EYE, z: pos.z });
+  const eyeH = () => (crouched && me?.st === 'alive' && !me?.seat) ? CROUCH_EYE : EYE;
+  const eye = () => ({ x: pos.x, y: pos.y + eyeH(), z: pos.z });
   function muzzleWorld() { const f = fwd(); const r = { x: Math.cos(yaw), z: -Math.sin(yaw) }; const o = eye(); return { x: o.x + f.x * 0.5 + r.x * 0.16, y: o.y + f.y * 0.5 - 0.14, z: o.z + f.z * 0.5 + r.z * 0.16 }; }
   const enemyCenter = (e, now) => { const c = cur(e, now); return { x: c.x, y: c.y + L.ENEMIES[e.type].height * 0.5, z: c.z }; };
   const enemyHead = (e, now) => { const c = cur(e, now); return L.headOf(e.type, c.x, c.y, c.z, c.yaw); };
@@ -473,7 +479,6 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   }
 
   // ---- input
-  const PAD = touch;
   const onKeyDown = (e) => {
     if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     const k = e.code;
@@ -506,31 +511,108 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   canvas.addEventListener('wheel', onWheel, { passive: true });
   document.addEventListener('pointerlockchange', onLockChange);
 
-  // touch pad: floating move stick on the left, drag anywhere else to look, buttons on the right
+  // touch pad: one pointerId router on the pad so the left-thumb stick, a right-thumb
+  // look and FIRE never steal each other's fingers. Fold/resize only moves the pockets.
   const offs = [];
-  const on = (el, ev, fn, opt) => { if (!el) return; el.addEventListener(ev, fn, opt); offs.push(() => el.removeEventListener(ev, fn, opt)); };
-  const capture = (el, id) => { try { el?.setPointerCapture?.(id); } catch { /* the pointer already went away */ } };
-  if (PAD) {
-    const stickZone = root.querySelector('[data-pad=stick]'), knob = root.querySelector('[data-pad=knob]'), base = root.querySelector('[data-pad=base]');
-    const lookZone = root.querySelector('[data-pad=look]');
-    let sId = null, sx = 0, sy = 0; const lookers = new Map();
-    const setKnob = (dx, dy) => { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; };
-    on(stickZone, 'pointerdown', (e) => { e.preventDefault(); sId = e.pointerId; capture(stickZone, e.pointerId); const r = stickZone.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; if (base) { base.style.left = `${e.clientX - r.left}px`; base.style.top = `${e.clientY - r.top}px`; base.classList.add('on'); } setKnob(0, 0); });
-    on(stickZone, 'pointermove', (e) => { if (e.pointerId !== sId) return; let dx = e.clientX - sx, dy = e.clientY - sy; const d = Math.hypot(dx, dy), M = 46; if (d > M) { dx = dx / d * M; dy = dy / d * M; } setKnob(dx, dy); input.stick = [dx / M, dy / M]; });
-    const sEnd = (e) => { if (e.pointerId !== sId) return; sId = null; input.stick = [0, 0]; setKnob(0, 0); base?.classList.remove('on'); };
-    on(stickZone, 'pointerup', sEnd); on(stickZone, 'pointercancel', sEnd);
-    const lookStart = (e) => { lookers.set(e.pointerId, [e.clientX, e.clientY]); capture(e.currentTarget, e.pointerId); };
-    const lookMove = (e) => { const p = lookers.get(e.pointerId); if (!p) return; input.look[0] += (e.clientX - p[0]) * 1.7; input.look[1] += (e.clientY - p[1]) * 1.7; lookers.set(e.pointerId, [e.clientX, e.clientY]); };
-    const lookEnd = (e) => lookers.delete(e.pointerId);
-    on(lookZone, 'pointerdown', (e) => { e.preventDefault(); lookStart(e); }); on(lookZone, 'pointermove', lookMove); on(lookZone, 'pointerup', lookEnd); on(lookZone, 'pointercancel', lookEnd);
-    for (const b of root.querySelectorAll('[data-pad-btn]')) {
-      const what = b.dataset.padBtn;
-      on(b, 'pointerdown', (e) => { e.preventDefault(); b.classList.add('on'); if (what === 'fire') { input.fire = true; lookStart(e); } else if (what === 'act') { input.act = true; actTap = true; } else input.edges.add(what); });
-      on(b, 'pointermove', (e) => { if (what === 'fire') lookMove(e); });
-      const up = (e) => { b.classList.remove('on'); if (what === 'fire') { input.fire = false; lookEnd(e); } if (what === 'act') input.act = false; };
-      on(b, 'pointerup', up); on(b, 'pointercancel', up); on(b, 'contextmenu', (e) => e.preventDefault());
-    }
+  let unbindPad = null, padLayout = { width: 0, height: 0, lookRight: 0, stick: null };
+  const readSafe = () => {
+    const cs = getComputedStyle(root.closest('.m-elh') || root);
+    const n = (k) => parseFloat(cs.getPropertyValue(k)) || 0;
+    return { l: n('--safe-l'), r: n('--safe-r'), t: n('--safe-t'), b: n('--safe-b') };
+  };
+  function layoutPad() {
+    const pad = root.querySelector('[data-test=elhalo-pad]');
+    if (!pad || pad.hidden) return;
+    const r = pad.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const pockets = thumbPockets(r.width, r.height, readSafe());
+    applyPadLayout(pad, pockets);
+    padLayout = {
+      ...pockets,
+      width: r.width, height: r.height, lookRight: r.width * 0.5,
+      stick: { left: pockets.stick.left, top: r.height - pockets.stick.bottom - pockets.stick.height, width: pockets.stick.width, height: pockets.stick.height },
+    };
   }
+  function buttonRects() {
+    const pad = root.querySelector('[data-test=elhalo-pad]');
+    if (!pad) return [];
+    const pr = pad.getBoundingClientRect(), out = [];
+    for (const b of pad.querySelectorAll('[data-pad-btn]')) {
+      if (!b.getClientRects().length) continue;
+      const what = b.dataset.padBtn;
+      if (what === 'act' && !b.classList.contains('ready')) continue;
+      const r = b.getBoundingClientRect();
+      const role = what === 'fire' ? 'fire' : what === 'act' ? 'act' : what === 'ads' ? 'ads' : 'button';
+      out.push({ role, id: what, x: r.left - pr.left, y: r.top - pr.top, width: r.width, height: r.height });
+    }
+    return out;
+  }
+  function requestFs() {
+    const el = root.closest('.m-elh') || root;
+    if (!el || document.fullscreenElement || document.webkitFullscreenElement) return;
+    try { (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.catch?.(() => {}); } catch { /* not allowed */ }
+  }
+  function detachPad() {
+    if (unbindPad) { unbindPad(); unbindPad = null; }
+    input.stick = [0, 0]; input.fire = false; input.act = false; adsHeld = false;
+  }
+  function attachPad() {
+    const pad = root.querySelector('[data-test=elhalo-pad]');
+    if (!pad || unbindPad) return;
+    const pointers = createPointerMap();
+    unbindPad = bindPad(pad, {
+      pointers,
+      layout: () => padLayout,
+      buttons: buttonRects,
+      onGesture: () => requestFs(),
+      onStickStart(absX, absY) {
+        const zone = root.querySelector('[data-pad=stick]'), base = root.querySelector('[data-pad=base]');
+        const r = zone?.getBoundingClientRect();
+        if (base && r) { base.style.left = `${absX - r.left}px`; base.style.top = `${absY - r.top}px`; base.classList.add('on'); }
+        const knob = root.querySelector('[data-pad=knob]');
+        if (knob) knob.style.transform = '';
+        input.stick = [0, 0];
+      },
+      onStickMove(rec) {
+        const v = stickValue(rec.lastX - rec.sx, rec.lastY - rec.sy);
+        const knob = root.querySelector('[data-pad=knob]');
+        if (knob) knob.style.transform = `translate(${v.knobX}px, ${v.knobY}px)`;
+        input.stick = [v.x, v.y];
+      },
+      onStickEnd() {
+        input.stick = [0, 0];
+        const knob = root.querySelector('[data-pad=knob]'), base = root.querySelector('[data-pad=base]');
+        if (knob) knob.style.transform = '';
+        base?.classList.remove('on');
+      },
+      onLook(dx, dy) {
+        const d = lookDelta(dx, dy, { settings: controls, zoom, aiming: aimingAt() });
+        yaw += d.yaw; pitch = Math.max(-1.45, Math.min(1.45, pitch + d.pitch));
+      },
+      onFire(on) {
+        input.fire = on;
+        root.querySelector('[data-test=pad-fire]')?.classList.toggle('on', on);
+      },
+      onAds(on) {
+        adsHeld = on;
+        root.querySelector('[data-test=pad-ads]')?.classList.toggle('on', on);
+      },
+      onAct(on) {
+        input.act = on; if (on) actTap = true;
+        root.querySelector('[data-test=pad-act]')?.classList.toggle('on', on);
+      },
+      onButton(id) {
+        const el = root.querySelector(`[data-pad-btn="${id}"]`);
+        el?.classList.add('on');
+        setTimeout(() => el?.classList.remove('on'), 180);
+        if (id === 'more') { root.querySelector('.elh-more')?.classList.toggle('open'); return; }
+        input.edges.add(id);
+      },
+    });
+    offs.push(() => detachPad());
+    layoutPad();
+  }
+  if (PAD) attachPad();
 
   // ---- HUD by ref
   const H = {}; for (const el of root.querySelectorAll('[data-h]')) H[el.dataset.h] = el;
@@ -586,6 +668,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const pr = me?.pr, E = PAD ? 'ACCIÓN' : 'E', HOLD = PAD ? 'MANTÉN ACCIÓN' : 'MANTÉN E';
     const ptxt = !pr ? '' : pr.k === 'revive' ? `${HOLD} · LEVANTA A ${pr.label}` : pr.k === 'elote' ? `${pr.ready ? E + ' · ' : ''}${pr.label}` : pr.k === 'truck' ? `${E} · AGARRA ${pr.label}` : pr.k === 'jeep' ? `${E} · ${pr.label}` : pr.k === 'exit' ? `${E} · BAJAR` : `${E} · ${pr.label} ${pr.cost} PTS`;
     set('prompt', 'text', ptxt); set('prompt', '.on', !!pr && st === 'alive'); set('promptbar', 'w', pr && pr.p ? Math.min(1, pr.p).toFixed(2) : '0');
+    set('pbar', '.on', !!(pr && pr.p));
     set('actbtn', '.ready', !!pr && st === 'alive');
     set('down', '.on', st !== 'alive' && joined);
     set('down', 'text', st === 'downed' ? `¡CAÍSTE! QUE TE LEVANTEN · ${me.cd}` : st === 'dead' ? (snap?.ph === 'over' ? '' : 'VUELVES LA PRÓXIMA OLEADA') : '');
@@ -596,8 +679,11 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   // ---- the loop
   function update(dt) {
     const alive = me?.st === 'alive', seat = me?.seat || null;
-    const sens = (PAD ? 0.0042 : 0.0023) / (zoom ? (L.WEAPONS[P.current]?.zoom || 1) : 1);
-    yaw -= input.look[0] * sens; pitch -= input.look[1] * sens; input.look[0] = input.look[1] = 0;
+    if (input.look[0] || input.look[1]) {
+      const ly = controls.invert ? -input.look[1] : input.look[1];
+      const sens = 0.0023 / (zoom ? (L.WEAPONS[P.current]?.zoom || 1) : 1);
+      yaw -= input.look[0] * sens; pitch -= ly * sens; input.look[0] = input.look[1] = 0;
+    }
     if (input.keys.has('ArrowLeft')) yaw += 2.4 * dt; if (input.keys.has('ArrowRight')) yaw -= 2.4 * dt;
     pitch = Math.max(-1.45, Math.min(1.45, pitch));
     let mx = input.stick[0], mz = -input.stick[1];
@@ -617,12 +703,13 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
           const dx = lunge.x - pos.x, dz = lunge.z - pos.z, d = Math.hypot(dx, dz), step = Math.min(Math.max(0, d - lunge.stop), 20 * dt);
           if (d > 0.01) { pos.x += dx / d * step; pos.z += dz / d * step; }
           if (d - step <= lunge.stop + 0.05 || t >= lunge.until) land();
-        } else { pos.x += (fx * mz + rx * mx) * SPEED * dt; pos.z += (fz * mz + rz * mx) * SPEED * dt; }
-        collide(pos, RADIUS, pos.y, 1.8);
+        } else { const spd = SPEED * (crouched ? CROUCH_SPEED : 1); pos.x += (fx * mz + rx * mx) * spd * dt; pos.z += (fz * mz + rz * mx) * spd * dt; }
+        collide(pos, RADIUS, pos.y, crouched ? 1.2 : 1.8);
         const now = performance.now();
         for (const e of ents.en.values()) { const c = cur(e, now), dx = pos.x - c.x, dz = pos.z - c.z, d = Math.hypot(dx, dz), m = RADIUS + L.ENEMIES[e.type].radius * 0.9; if (d < m && d > 1e-4 && Math.abs(c.y - pos.y) < 1.5) { pos.x = c.x + dx / d * m; pos.z = c.z + dz / d * m; } }
         if (jeepObj && !veh) { const j = cur(jeepObj, now), dx = pos.x - j.x, dz = pos.z - j.z, d = Math.hypot(dx, dz); if (d < 2 && d > 1e-4 && Math.abs(j.y - pos.y) < 1.6) { pos.x = j.x + dx / d * 2; pos.z = j.z + dz / d * 2; } }
-        if ((input.edges.has('Space') || input.edges.has('jump')) && onGround) { vy = JUMP; onGround = false; }
+        if (input.edges.has('KeyC') || input.edges.has('crouch')) crouched = !crouched;
+        if ((input.edges.has('Space') || input.edges.has('jump')) && onGround) { vy = JUMP; onGround = false; crouched = false; }
       }
       // gravity. Stepping or jumping off a roof is just a drop: no fall damage, and the server lets you come down.
       vy -= GRAV * dt; pos.y += vy * dt;
@@ -633,7 +720,10 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     // weapons
     L.tickReload(P, t);
     const id = P.current, w = L.WEAPONS[id], s = P.weapons[id];
-    if (zoom && !w?.zoom) zoom = false;
+    if (PAD) {
+      const canAds = !!w?.zoom && !seat;
+      zoom = canAds && (adsHeld || input.fire);
+    } else if (zoom && !w?.zoom) zoom = false;
     if (alive && s && seat !== 'd') {
       if (input.edges.has('KeyR') || input.edges.has('reload')) { if (L.startReload(P, t)) { sfx('reload'); charging = null; burstQ = 0; } }
       if (!seat && (input.edges.has('KeyQ') || input.edges.has('Digit1') || input.edges.has('Digit2') || input.edges.has('Swap') || input.edges.has('swap'))) {
@@ -643,16 +733,17 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       if (!seat && (input.edges.has('KeyT') || input.edges.has('nadekind'))) { nadeKind = nadeKind === 'frag' ? 'sticky' : 'frag'; sfx('swap'); }
       if (!seat && (input.edges.has('KeyG') || input.edges.has('grenade'))) throwNade();
       if (!seat && (input.edges.has('KeyF') || input.edges.has('melee'))) bash();
-      if (PAD && input.edges.has('zoom') && w.zoom) zoom = !zoom;
       const cw = L.WEAPONS[P.current], cs = P.weapons[P.current];
+      const auto = PAD && controls.autoFire && aimingAt();
+      const firing = input.fire || auto;
       if (cw.kind === 'beam') { // hold to charge, it fires itself when full; let go early and it fizzles
-        if (input.fire && charging === null && !input.fireHeld && cs.mag > 0 && !L.reloading(P, t) && t >= cs.nextShot) { charging = t; sfx('charge'); input.fireHeld = true; }
-        if (charging !== null && !input.fire) charging = null;
+        if (firing && charging === null && !input.fireHeld && cs.mag > 0 && !L.reloading(P, t) && t >= cs.nextShot) { charging = t; sfx('charge'); input.fireHeld = true; }
+        if (charging !== null && !firing) charging = null;
         if (charging !== null && t - charging >= cw.charge) { charging = null; if (L.tryFire(P, t)) shoot(); }
-        if (input.fire && cs.mag === 0 && t > emptyT) { if (!L.startReload(P, t)) sfx('empty'); else sfx('reload'); emptyT = t + 0.4; }
+        if (firing && cs.mag === 0 && t > emptyT) { if (!L.startReload(P, t)) sfx('empty'); else sfx('reload'); emptyT = t + 0.4; }
       } else if (cw.kind === 'melee') {
-        if (input.fire && !input.fireHeld && !lunge) { if (L.tryFire(P, t)) weaponSwing(); else if (cs.mag === 0 && t > emptyT) { sfx('empty'); emptyT = t + 0.3; } input.fireHeld = true; }
-      } else if (input.fire && (cw.auto || !input.fireHeld) && swing < 0 && burstQ === 0) {
+        if (firing && !input.fireHeld && !lunge) { if (L.tryFire(P, t)) weaponSwing(); else if (cs.mag === 0 && t > emptyT) { sfx('empty'); emptyT = t + 0.3; } input.fireHeld = true; }
+      } else if (firing && (cw.auto || auto || !input.fireHeld) && swing < 0 && burstQ === 0) {
         const wasReloading = L.reloading(P, t);
         if (L.tryFire(P, t)) { shoot(); if (cw.burst) { burstQ = Math.min(cw.burst - 1, cs.mag); burstT = t + cw.burstGap; } }
         else if (cs.mag === 0 && cs.reserve === 0 && !cw.mounted && t > emptyT) { sfx('empty'); emptyT = t + 0.3; }
@@ -661,7 +752,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       }
       if (burstQ > 0 && t >= burstT) { if (cs.mag > 0 && !L.reloading(P, t)) { cs.mag--; shoot(); burstQ--; burstT = t + cw.burstGap; if (cs.mag === 0) L.startReload(P, t); } else burstQ = 0; }
     }
-    if (!input.fire) input.fireHeld = false;
+    if (!(input.fire || (PAD && controls.autoFire && aimingAt()))) input.fireHeld = false;
     input.edges.clear();
     if (P.shield <= 0.5 && alive && t > alarmT) { sfx('alarm'); alarmT = t + 0.6; }
     hurtFlash = Math.max(0, hurtFlash - dt * 2.5); shieldFlash = Math.max(0, shieldFlash - dt * 3); hitMark = Math.max(0, hitMark - dt); headMark = Math.max(0, headMark - dt);
@@ -860,7 +951,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     }
     const by = Math.sin(bob) * 0.04, bx = Math.cos(bob * 0.5) * 0.03;
     const lift = st === 'downed' ? -1.05 : st === 'dead' ? 2.5 : 0;
-    camera.position.set(pos.x + (R() - 0.5) * sh * 0.2, pos.y + EYE + by + lift + (R() - 0.5) * sh * 0.2, pos.z);
+    camera.position.set(pos.x + (R() - 0.5) * sh * 0.2, pos.y + eyeH() + by + lift + (R() - 0.5) * sh * 0.2, pos.z);
     camera.rotation.set(st === 'dead' ? Math.min(pitch, -0.5) : pitch, yaw, st === 'downed' ? 0.3 : 0);
     if (st !== 'alive' || zoom) return;
     vmRig.visible = true;
@@ -913,14 +1004,20 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   let W = 0, Hh = 0;
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (!w || !h || (w === W && h === Hh)) return;
+    if (!w || !h) return;
+    layoutPad();
+    if (w === W && h === Hh) return;
     renderer.setSize(w, h, false);
     W = w; Hh = h;
-    const a = w / h, deg = Math.PI / 180, base = touch ? 74 : 70;
-    camera.aspect = a; camera.userData.base = a >= 1 ? base : Math.min(98, 2 * Math.atan(Math.tan(36 * deg) / a) / deg); camera.fov = camera.userData.base; camera.updateProjectionMatrix();
+    gfxTier = pickTier(w, h);
+    const gfx = graphicsOpts(gfxTier);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfx.dpr));
+    camera.far = gfx.far;
+    const a = w / h, deg = Math.PI / 180, base = PAD ? 74 : 70;
+    camera.aspect = a; camera.userData.base = a >= 1 ? base : Math.min(82, 2 * Math.atan(Math.tan(36 * deg) / a) / deg); camera.fov = camera.userData.base; camera.updateProjectionMatrix();
     vmCam.aspect = a; vmCam.fov = a >= 1 ? 55 : 2 * Math.atan(Math.tan(31 * deg) / a) / deg; vmCam.updateProjectionMatrix();
   }
-  function pause() { if (mode !== 'playing') return; input.fire = false; input.act = false; input.keys.clear(); zoom = false; setMode('paused'); }
+  function pause() { if (mode !== 'playing') return; input.fire = false; input.act = false; input.keys.clear(); zoom = false; adsHeld = false; setMode('paused'); }
   function disposeTree(o) { if (o.userData?.shared) return; o.traverse((c) => { if (c.geometry) c.geometry.dispose(); if (c.material?.map) c.material.map.dispose(); }); }
 
   const net = connect({ onSnap, onStatus: (s) => { status = s; info(); if (s === 'replaced') { joined = false; setMode('title', { note: 'Opened in another tab.' }); } } });
@@ -974,7 +1071,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       foes: [...ents.en.values()].map((e) => { const c = cur(e, performance.now()); return { id: e.id, type: e.type, st: e.st, hp: e.hp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.z.toFixed(2) }; }), rings: rings.length,
       dogs: dogs.map((d) => ({ i: d.i, x: +d.m.root.position.x.toFixed(2), z: +d.m.root.position.z.toFixed(2), yaw: +d.m.root.rotation.y.toFixed(2), pair: d.pair || null })), dogT: +dogT.toFixed(3), shop: world.shop?.children.length || 0,
       elote: { x: ELOTE.x, z: ELOTE.z, say: eloteSay, line: eloteSay >= 0 ? ELOTE_LINES[eloteSay] : null },
-      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA }),
+      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA, crouched, adsHeld, gfxTier, controls: { ...controls } }),
     aimAt(x, y, z) { const o = eye(); yaw = Math.atan2(-(x - o.x), -(z - o.z)); pitch = Math.atan2(y - o.y, Math.hypot(x - o.x, z - o.z)); },
     aimAtNearest(head = false) { const now = performance.now(); const e = [...ents.en.values()].sort((a, b) => Math.hypot(a.to.x - pos.x, a.to.z - pos.z) - Math.hypot(b.to.x - pos.x, b.to.z - pos.z))[0]; if (!e) return false; const c = head ? enemyHead(e, now) : enemyCenter(e, now); api.aimAt(c.x, c.y, c.z); return true; },
     aimAtPlayer(name, head = false) { const p = [...ents.pl.values()].find((q) => q.name === name); if (!p) return false; const c = cur(p, performance.now()); api.aimAt(c.x, c.y + (head ? 1.62 : 1), c.z); return true; },
@@ -1004,6 +1101,10 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       if (bn) banner = { text: bn, until: t + 2.2 };
       hud();
     },
+    setControls(partial) { controls = saveSettings({ ...controls, ...partial }); return { ...controls }; },
+    getControls: () => ({ ...controls }),
+    setPadMode(v) { const next = !!v; if (next === PAD) { if (next) layoutPad(); return; } PAD = next; if (PAD) attachPad(); else detachPad(); },
+    layoutPad,
     dispose() {
       cancelAnimationFrame(raf);
       if (joined) leave().catch(() => {});

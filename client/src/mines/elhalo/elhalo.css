@@ -1,5 +1,9 @@
 /* EL HALO: sunset palette. Marigold, turquoise, rosa mexicano on dusk purple. */
-.m-elh { --sun: #ffc23a; --tq: #1fc7c0; --rosa: #ff3d8b; --dusk: #1d0f24; background: var(--dusk); }
+.m-elh { --sun: #ffc23a; --tq: #1fc7c0; --rosa: #ff3d8b; --dusk: #1d0f24; background: var(--dusk);
+  --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px);
+  --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px); }
+.m-elh.elh-inmatch { touch-action: none; }
+.m-elh.touch .m-doom-exit { white-space: nowrap; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; }
 .m-elh .m-doom-bar { border-bottom-color: #5a2a4a; background: #160a1a; }
 .m-elh-name { font-family: 'Rye', serif; color: var(--sun); font-size: 20px; letter-spacing: .08em; text-shadow: 0 2px 0 #7a1f3a; white-space: nowrap; }
 @media (max-width: 520px) { .m-elh-name { display: none; } }
@@ -24,7 +28,7 @@
 @keyframes elh-blink { 50% { background: rgba(255,42,74,.45); } }
 .elh-ammo { justify-self: end; display: grid; justify-items: end; gap: 3px; text-align: right; line-height: 1; min-width: 0; }
 .elh-ammo .elh-wmeta { display: flex; align-items: center; gap: 6px; max-width: 100%; }
-.elh-ammo .elh-wname { font-size: 13px; letter-spacing: .1em; color: #ffd9e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+.elh-ammo .elh-wname { font-size: 13px; letter-spacing: .1em; color: #ffd9e8; white-space: nowrap; overflow: visible; max-width: none; }
 .elh-ammo .elh-ammo-read { font-size: clamp(28px, 4.6vw, 42px); font-weight: 400; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 .elh-ammo .elh-ammo-hint { font-size: 15px; letter-spacing: .16em; color: var(--sun); min-height: 1em; font-weight: 400; }
 .elh-ammo .elh-nades { font-size: 18px; color: var(--rosa); letter-spacing: .1em; }
@@ -86,7 +90,8 @@
 .elh-reticle.hit { box-shadow: 0 0 0 3px rgba(255,255,255,.9); }
 .elh-prompt { position: absolute; left: 50%; top: calc(50% + 44px); transform: translateX(-50%); font-size: 20px; letter-spacing: .08em; color: #fff; background: rgba(20,8,24,.55); padding: 2px 10px; white-space: nowrap; opacity: 0; transition: opacity .15s; }
 .elh-prompt.on { opacity: 1; }
-.elh-pbar { position: absolute; left: 50%; top: calc(50% + 72px); width: 140px; margin-left: -70px; height: 5px; background: rgba(255,255,255,.15); }
+.elh-pbar { position: absolute; left: 50%; top: calc(50% + 72px); width: 140px; margin-left: -70px; height: 5px; background: rgba(255,255,255,.15); opacity: 0; pointer-events: none; transition: opacity .15s; }
+.elh-pbar.on { opacity: 1; }
 .elh-pbar i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: var(--sun); }
 .elh-down { position: absolute; left: 0; right: 0; top: 36%; text-align: center; font-family: 'Rye', serif; font-size: clamp(20px, 4.5vw, 32px); color: #ffd9e8; text-shadow: 0 2px 0 #7a1f3a; opacity: 0; }
 .elh-down.on { opacity: 1; }
@@ -101,31 +106,60 @@
 .elh-top3 { margin: 0; padding: 0; list-style: none; font-family: 'VT323', monospace; font-size: 20px; line-height: 1.2; }
 .elh-top3 li:first-child { color: var(--sun); }
 
-/* touch pad: floating stick on the left, drag anywhere else to look, buttons bottom right */
+/* touch pad: left-thumb stick, right-half look, right-thumb cluster. Pockets come from --stick-* / --acts-*. */
 .elh-pad { position: absolute; inset: 0; z-index: 2; touch-action: none; }
 .elh-pad[hidden] { display: none; }
-.elh-look { position: absolute; inset: 0; }
-.elh-stick { position: absolute; left: 0; bottom: 0; width: 42%; height: 55%; }
+.elh-look { position: absolute; inset: 0; pointer-events: none; }
+.elh-stick { position: absolute; left: max(var(--stick-left, 10px), var(--safe-l)); bottom: max(var(--stick-bottom, 10px), var(--safe-b)); width: var(--stick-w, 42%); height: var(--stick-h, 55%); }
 .elh-base { position: absolute; left: 90px; top: calc(100% - 100px); width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.28); pointer-events: none; }
 .elh-base.on { background: rgba(255,255,255,.14); }
 .elh-knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6); }
-.elh-acts { position: absolute; right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: 58px 58px 76px; grid-template-rows: 44px 58px 76px; gap: 8px; }
-.elh-acts button { touch-action: none; font: inherit; font-family: 'VT323', monospace; font-size: 15px; letter-spacing: .04em; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.28); border-radius: 10px; padding: 0; -webkit-tap-highlight-color: transparent; }
+.elh-acts { position: absolute; right: max(var(--acts-right, 10px), var(--safe-r)); bottom: max(var(--acts-bottom, 10px), var(--safe-b)); width: var(--acts-w, 220px); height: 220px; pointer-events: none; }
+.elh-acts button { pointer-events: auto; touch-action: none; font: inherit; font-family: 'VT323', monospace; font-size: 15px; letter-spacing: .04em; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.28); border-radius: 10px; padding: 0; -webkit-tap-highlight-color: transparent; min-width: 48px; min-height: 48px; }
 .elh-acts button.on { background: rgba(255,194,58,.55); }
-.elh-acts .fire { grid-area: 2 / 3 / 4 / 4; background: rgba(255,61,139,.35); font-size: 20px; border-radius: 50%; align-self: end; height: 120px; }
-.elh-acts .nade { grid-area: 3 / 2; } .elh-acts .jump { grid-area: 3 / 1; } .elh-acts .melee { grid-area: 2 / 2; } .elh-acts .reload { grid-area: 1 / 2; font-size: 13px; } .elh-acts .swap { grid-area: 1 / 3; font-size: 13px; }
-.elh-acts .nade { font-size: 13px; }
-.elh-acts .act { grid-area: 1 / 1; font-size: 13px; opacity: .55; } .elh-acts .act.ready { opacity: 1; background: rgba(31,199,192,.45); border-color: #9ffff4; }
+.elh-acts .fire { position: absolute; right: 0; bottom: 0; width: 96px; height: 96px; min-width: 96px; min-height: 96px; background: rgba(255,61,139,.4); font-size: 22px; border-radius: 50%; }
+.elh-acts .jump { position: absolute; right: 108px; bottom: 6px; width: 56px; height: 56px; }
+.elh-acts .crouch { position: absolute; right: 108px; bottom: 70px; width: 56px; height: 56px; font-size: 13px; }
+.elh-acts .reload { position: absolute; right: 48px; bottom: 108px; width: 52px; height: 48px; font-size: 12px; }
+.elh-acts .swap { position: absolute; right: 0; bottom: 108px; width: 52px; height: 48px; font-size: 12px; }
+.elh-acts .ads { position: absolute; right: 0; bottom: 162px; width: 52px; height: 48px; display: none; font-size: 14px; }
+.elh-acts .ads.show { display: block; }
+.elh-acts .act { position: absolute; right: 0; bottom: 214px; width: 100%; height: 52px; min-height: 52px; border-radius: 26px; font-size: 20px; letter-spacing: .1em; opacity: 0; pointer-events: none; }
+.elh-acts .act.ready { opacity: 1; pointer-events: auto; background: rgba(31,199,192,.55); border-color: #9ffff4; }
+.elh-more { position: absolute; right: 108px; bottom: 134px; width: 56px; pointer-events: auto; }
+.elh-more .more { width: 56px; height: 48px; font-size: 13px; }
+.elh-more-pop { display: none; position: absolute; right: 0; bottom: calc(100% + 6px); flex-direction: column; gap: 6px; }
+.elh-more.open .elh-more-pop { display: flex; }
+.elh-more-pop button { width: 86px; height: 48px; font-size: 13px; line-height: 1.05; }
+
 /* phones in landscape: shorter, tighter */
 @media (max-height: 460px) {
-  .elh-top { top: 4px; } .elh-score b { font-size: 24px; } .elh-ammo .elh-ammo-read { font-size: 24px; } .elh-ammo .elh-wname { font-size: 10px; max-width: 16ch; }
-  .elh-acts { grid-template-columns: 52px 52px 68px; grid-template-rows: 36px 52px 68px; gap: 6px; } .elh-acts .fire { height: 110px; }
+  .elh-top { top: 4px; } .elh-score b { font-size: 24px; } .elh-ammo .elh-ammo-read { font-size: 24px; } .elh-ammo .elh-wname { font-size: 11px; }
+  .elh-acts { height: 196px; } .elh-acts .fire { width: 84px; height: 84px; min-width: 84px; min-height: 84px; }
+  .elh-acts .jump { right: 92px; width: 52px; height: 52px; } .elh-acts .crouch { right: 92px; bottom: 62px; width: 52px; height: 52px; }
+  .elh-acts .reload, .elh-acts .swap { height: 48px; bottom: 96px; } .elh-acts .ads { bottom: 148px; }
+  .elh-acts .act { bottom: 196px; height: 48px; font-size: 18px; }
+  .elh-more { right: 92px; bottom: 118px; }
   .elh-base { left: 80px; top: calc(100% - 84px); }
   .elh-title { padding-bottom: 14px; gap: 6px; } .elh-title p { font-size: 17px; } .elh-logo { font-size: 52px; }
   .elh-feed { top: 96px; font-size: 14px; } .elh-count { display: none; } .elh-prompt { top: calc(50% + 30px); font-size: 16px; } .elh-pbar { top: calc(50% + 54px); }
 }
 @media (max-width: 480px) { .elh-feed { top: 108px; font-size: 14px; } .elh-prompt { font-size: 16px; } .elh-top { grid-template-columns: auto 1fr auto; } .elh-bars { width: auto; } .elh-score b { font-size: 24px; } .elh-ammo .elh-ammo-read { font-size: 30px; } .elh-ammo .elh-wname { font-size: 11px; } .elh-ammo .elh-slots { display: none; } }
 @media (prefers-reduced-motion: reduce) { .elh-bars.down .elh-shield, .elh-vig.down, .elh-ammo.reloading b, .elh-ammo.low .elh-ammo-read, .elh-ammo.empty .elh-ammo-read { animation: none; } }
+
+/* in-match pause / rotate / settings; safe-area on the HUD */
+.m-elh.elh-inmatch .elh-top { top: max(8px, var(--safe-t)); padding-left: var(--safe-l); padding-right: max(48px, var(--safe-r)); }
+.elh-pause { position: absolute; top: max(6px, var(--safe-t)); left: max(6px, var(--safe-l)); z-index: 6; width: 44px; height: 44px; border-radius: 10px; border: 1px solid rgba(255,194,58,.5); background: rgba(20,8,24,.72); color: #ffc23a; font: 22px/1 'VT323', monospace; pointer-events: auto; }
+.elh-menu { position: absolute; top: max(54px, calc(var(--safe-t) + 48px)); left: max(8px, var(--safe-l)); z-index: 7; min-width: 220px; max-width: min(360px, 92vw); padding: 10px 12px; background: rgba(20,8,24,.92); border: 1px solid rgba(255,194,58,.5); display: grid; gap: 8px; pointer-events: auto; }
+.elh-menu .m-doom-exit { max-width: none; }
+.elh-settings { display: grid; gap: 6px; font-family: 'VT323', monospace; color: #ffe9d0; font-size: 16px; }
+.elh-settings label { display: grid; grid-template-columns: 1fr; gap: 2px; letter-spacing: .08em; }
+.elh-settings label.check { grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
+.elh-settings input[type=range] { width: 100%; }
+.elh-rotate { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; align-content: center; gap: 14px; background: rgba(20,8,24,.88); color: #ffe9d0; font-family: 'VT323', monospace; text-align: center; padding: 20px; pointer-events: auto; }
+.elh-rotate p { margin: 0; font-size: 22px; letter-spacing: .06em; max-width: 18em; }
+.elh-rotate button { font: inherit; font-size: 18px; letter-spacing: .1em; color: #2a1420; background: var(--sun); border: 0; border-radius: 8px; padding: 8px 16px; }
+.elh-rotate.slim { inset: auto 8px auto 8px; top: max(52px, calc(var(--safe-t) + 46px)); background: rgba(20,8,24,.84); border: 1px solid rgba(255,194,58,.4); border-radius: 10px; padding: 8px 12px; grid-auto-flow: column; justify-content: center; }
 
 /* ---- v2 HUD bits: second gun, grenade type, sniper scope, headshot pop, bleed-out ring, extra pad buttons */
 .elh-ammo .elh-slots { grid-column: 1 / -1; font-size: 13px; letter-spacing: .08em; opacity: .65; }
@@ -145,9 +179,6 @@
 .elh-bleed { position: absolute; left: 50%; top: calc(36% + 48px); width: 64px; height: 64px; margin-left: -32px; border-radius: 50%; opacity: 0;
   background: conic-gradient(#ff3d5a calc(var(--k, 0) * 360deg), rgba(40,8,16,.6) 0); -webkit-mask: radial-gradient(circle, transparent 22px, #000 23px); mask: radial-gradient(circle, transparent 22px, #000 23px); }
 .elh-bleed.on { opacity: 1; }
-.elh-acts .nkind { grid-area: 2 / 1; font-size: 12px; line-height: 1.05; }
-.elh-acts .zoom { position: absolute; right: 0; bottom: calc(100% + 8px); width: 76px; height: 40px; display: none; font-size: 14px; }
-.elh-acts .zoom.show { display: block; }
 
 /* ---- the lobby: preview turntable + looks + roster, no scrolling at any size */
 .elh-lobby { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 420px); grid-template-rows: auto minmax(0, 1fr);

@@ -48,7 +48,10 @@ async function open(browser, sid, s) {
   check(!p.reqs.some((r) => /ElHaloRoom/.test(r.url)), `${s.n}: El Halo chunk not loaded in the hall`);
   p.tIn = Date.now();
   if (s.m) await p.tap('[data-test=hall-door-elhalo]'); else await p.click('[data-test=hall-door-elhalo]');
-  await p.waitForSelector('[data-test=elhalo-lobby]', { timeout: 15000 });
+  const skip = p.getByRole('button', { name: 'Skip for now' });
+  const lobby = p.locator('[data-test=elhalo-lobby]');
+  await skip.or(lobby).first().waitFor({ timeout: 30000 });
+  if (await skip.count()) { await skip.click(); await lobby.waitFor({ timeout: 20000 }); }
   await p.waitForFunction(() => !!window.__elHalo && window.__elHalo.mode === 'title', null, { timeout: 10000 });
   return p;
 }
@@ -63,6 +66,7 @@ async function start(p) {
 }
 async function holdKey(p, key, ms) { await p.keyboard.down(key); await p.waitForTimeout(ms); await p.keyboard.up(key); }
 async function holdPad(p, btn, ms, id = 21) { const b = p.locator(`[data-test=pad-${btn}]`); await b.dispatchEvent('pointerdown', { pointerId: id, pointerType: 'touch' }); await p.waitForTimeout(ms); await b.dispatchEvent('pointerup', { pointerId: id, pointerType: 'touch' }); }
+async function dismissRotate(p) { const b = p.locator('[data-test=elhalo-rotate-dismiss]'); if (await b.count() && await b.isVisible().catch(() => false)) await b.click(); }
 const place = (p, x, z, yaw) => hook(p, { place: { x, z, yaw } });
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z));
 
@@ -149,6 +153,7 @@ async function main() {
   check(await start(K), 'Kash: joins on a phone');
   a = await st(K);
   check(a.dogs.length === 4 && a.dogs.filter((d) => d.pair).length === 2, `phone: 4 dogs (2 roaming + the pair) (${a.dogs.length})`);
+  await dismissRotate(K);
   check(await noScroll(K) && await inView(K, '[data-test^=pad-]'), 'phone: no scroll, pad on screen');
   await place(T, 15, 3, 0); await place(K, 0, -40, Math.PI); await hook(K, { hp: 35, calm: false });
   await hook(K, { spawn: [{ type: 'volador', x: 0, z: -28, lcool: 0.3, yaw: Math.PI }] }); await K.evaluate(() => window.__elHalo.face(Math.PI, 0.2));
