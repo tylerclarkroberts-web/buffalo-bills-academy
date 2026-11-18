@@ -482,3 +482,21 @@ test('furniture saves within the floor plan, rejects impossible spots atomically
   restarted.doc.rooms.owner.furniture.wardrobe.x = 999;
   assert.deepEqual(restarted.owner(owner).furniture, home);
 });
+
+test('a room saved before the front porch opens with its indoor arrangement, its outdoor things rehomed and its displays kept', t => {
+  const { rooms, owner, store, options } = fixture(t);
+  const home = defaultFurniture(), old = { ...home, wardrobe: { x: 1.5, z: 0, r: 1 }, desk: { ...home.desk, off: true },
+    porchChair: { x: 13.4, z: 6.57, r: 1 }, 'floor-porch': { x: 11, z: 4, r: 0 }, window: { x: 11, z: -0.53, r: 0 } };
+  delete old.porchChair2;
+  const placements = [{ anchorId: 'window', itemId: 'odd-wagon' }, { anchorId: 'floor-porch', itemId: 'odd-anvil' }];
+  rooms.commit('owner', { plan: 3, layoutRevision: 7, themeId: 'bunkhouse-clay', furniture: old, placements });
+  const opened = new Rooms({ ...options, store: new Store(store.dir) }).owner(owner);
+  assert.deepEqual(opened.furniture.wardrobe, old.wardrobe); assert.equal(opened.furniture.desk.off, true);
+  for (const id of ['porchChair', 'porchChair2', 'window']) assert.deepEqual(opened.furniture[id], home[id], id);
+  assert.deepEqual(opened.furniture['floor-porch'], { x: home['floor-porch'].x, z: home['floor-porch'].z, r: 0 });
+  assert.deepEqual(opened.placements, placements, 'the wagon and the porch display are still out');
+  assert.equal(opened.themeId, 'bunkhouse-clay'); assert.equal(opened.layoutRevision, 7);
+  const saved = rooms.saveLayout(owner, { expectedRevision: 7, themeId: 'bunkhouse-clay', placements, furniture: opened.furniture });
+  assert.deepEqual(saved.furniture, opened.furniture);
+  assert.equal(rooms.doc.rooms.owner.plan, 4, 'the next save records the new plan, so nothing is moved twice');
+});

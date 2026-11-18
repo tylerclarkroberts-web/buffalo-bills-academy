@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { Box3, Group, Raycaster, Vector3 } from 'three';
 import { buildHomestead, HOMESTEAD_PIECES } from '../client/src/room/homestead.js';
 import { ROOM_FLOOR_SCALE as S, ROOM_HOMESTEAD, defaultFurniture, furnitureRect, furnitureFits } from '../server/catalog/room.js';
-import { makeRoomCamera, ROOM_WALL_HEIGHT } from '../client/src/room/scene-model.js';
+import { makeRoomCamera, ROOM_WALL_HEIGHT, ROOM_GRADE } from '../client/src/room/scene-model.js';
+import { groundLevel } from '../client/src/room/landscape.js';
 
 async function readAsset(request) {
   const bytes = await readFile(new URL(request.url));
@@ -14,7 +15,7 @@ async function readAsset(request) {
 function actions(home) {
   return home.picks.map(mesh => [mesh.name, mesh.userData.selection.kind, mesh.userData.selection.action]);
 }
-const expected = [['kitchenCoffeeMachine', 'houseAction', 'coffee'], ['toilet', 'houseAction', 'flush'], ['chair', 'houseAction', 'coffee']];
+const expected = [['kitchenStove', 'houseAction', 'cook'], ['kitchenCoffeeMachine', 'houseAction', 'coffee'], ['bathtub', 'houseAction', 'bath'], ['toilet', 'houseAction', 'flush'], ['chair', 'houseAction', 'coffee'], ['chair', 'houseAction', 'rock']];
 // What the room scene does with saved furniture: put each fitting where it was left.
 function place(home, root, furniture = defaultFurniture()) {
   for (const id of HOMESTEAD_PIECES) {
@@ -33,12 +34,16 @@ test('local GLB supplies the nine furnishings and pickable actions in the expand
   assert.ok(pump.isMesh);
   const pumpBounds = new Box3().setFromObject(pump);
   assert.ok(pumpBounds.min.x > 4.3 * S && pumpBounds.max.z < -3 * S);
-  assert.ok(pumpBounds.max.y > 4 && pumpBounds.max.y < 4.4);
+  assert.ok(pumpBounds.max.y > 4 + ROOM_GRADE && pumpBounds.max.y < 4.4 + ROOM_GRADE, 'the windpump stands on the lowered ground');
+  assert.ok(pumpBounds.min.y < ROOM_GRADE - 0.1 && pumpBounds.min.y > ROOM_GRADE - 0.2);
+  const chairs = []; root.traverse(part => { if (part.name === 'chair') chairs.push(part); });
+  assert.equal(chairs.length, 2, 'the second porch chair is a copy of the first');
+  assert.notEqual(chairs[0].geometry, chairs[1].geometry);
   for (const name of ['bathtub', 'bathroomSink', 'toilet', 'bedSingle', 'kitchenStove', 'kitchenCabinet', 'kitchenCoffeeMachine', 'chair', 'pottedPlant']) {
     const part = root.getObjectByName(name);
     assert.ok(part?.isMesh && part.geometry.attributes.color, name);
     const bounds = new Box3().setFromObject(part);
-    if (name === 'chair' || name === 'pottedPlant') assert.ok(bounds.min.z >= 1.47 * S && bounds.max.z <= 4.8 * S, name);
+    if (name === 'chair' || name === 'pottedPlant') assert.ok(bounds.min.x >= 4.13 * S && bounds.max.x <= 6.1 * S && bounds.min.z >= -3.25 * S && bounds.max.z <= 3.42 * S, name);
     else if (name.startsWith('kitchen')) assert.ok(bounds.min.z >= 3.25 * S && bounds.max.z <= 7.15 * S, name);
     else assert.ok(bounds.min.z >= -7.05 * S && bounds.max.z <= -3 * S, name);
   }
@@ -98,12 +103,35 @@ test('furniture fits the resident and usable surfaces meet at their finished hei
   const porch = item('Porch and rails');
   close((topAt(item('Linen cupboard'), -0.79 * S, -5.42 * S + 17 * inch) - cabinet.min.y) / inch, 34);
   close((topAt(item('Kitchen worktable'), -0.61 * S - 15 * inch, 5 * S + 9 * inch) - cabinet.min.y) / inch, 36);
-  for (const [x,z] of [[4.23,1.72],[5.10,1.82],[6.55,1.85],[6.55,3.50],[8.67,2.60]]) {
-    assert.ok(Math.abs(topAt(porch, x * S, z * S) - 0.025) < 0.001, 'deck supports sill, walking route and tread');
+  for (const [x,z] of [[4.23,1.72],[5.3,1.72],[5.22,-0.3],[5,-3.05],[5.85,3.2]]) {
+    assert.ok(Math.abs(topAt(porch, x * S, z * S) - 0.025) < 0.001, 'porch boards carry the sill, the walk to the chair and both ends');
   }
-  const throughRail = z => new Raycaster(new Vector3(8.1 * S, 36 * inch, z * S), new Vector3(1, 0, 0), 0, 0.9 * S).intersectObject(porch);
-  assert.equal(throughRail(2.60).length, 0);
-  assert.ok(throughRail(3.9).length > 0);
+  // Two treads share the drop to the lawn evenly with the porch edge.
+  const lawn = groundLevel(6.7, 2.83), rise = (0.025 - lawn) / 3;
+  assert.ok(rise > 5 * inch && rise < 8 * inch, 'each step is an ordinary height');
+  for (const [x, step] of [[6.22, 1], [6.46, 2]]) assert.ok(Math.abs(topAt(porch, x * S, 2.83 * S) - (0.025 - step * rise)) < 0.001, `step ${step}`);
+  assert.ok(new Box3().setFromObject(porch).min.y < lawn, 'the porch skirt reaches the ground');
+  const footings = new Box3().setFromObject(item('Footings'));
+  assert.ok(footings.min.y <= ROOM_GRADE - 0.13 && footings.max.y < 0, 'footings carry the floors down to the lower ground behind the house');
+  assert.ok(footings.min.x < -4 * S && footings.max.x > 4 * S && footings.min.z < -7 * S && footings.max.z > 7 * S);
+  const throughRail = z => new Raycaster(new Vector3(5.6 * S, 36 * inch, z * S), new Vector3(1, 0, 0), 0, 0.9 * S).intersectObject(porch);
+  assert.equal(throughRail(2.83).length, 0, 'the head of the steps is open');
+  assert.ok(throughRail(0).length > 0, 'the rest of the front has a rail');
+  // What he uses only appears while he uses it; the kitchen chair stands on the side he can reach.
+  for (const name of ['Bath water', 'Skillet', 'Supper']) assert.equal(item(name).visible, false, name);
+  home.setProps({ bath: 1, cook: true, eat: true, chairSide: -1 }); root.updateMatrixWorld(true);
+  for (const name of ['Bath water', 'Skillet', 'Supper', 'Kitchen chair']) assert.equal(item(name).visible, true, name);
+  assert.ok(at(item('Bath water')).y > 0.5 && at(item('Bath water')).y < bounds('bathtub').max.y, 'a full tub is full to below the rim');
+  close((bounds('Skillet').min.y - counterTop) / inch, 0);
+  close((bounds('Supper').min.y - topAt(item('Kitchen worktable'), -0.61 * S - 15 * inch, 5 * S + 9 * inch)) / inch, 0);
+  const table = bounds('Kitchen worktable'), stool = bounds('Kitchen chair');
+  assert.ok(stool.max.z < table.min.z + 0.2 && stool.min.z > table.min.z - 1.4, 'the chair is tucked up to the near side');
+  close((topAt(item('Kitchen chair'), at(item('Kitchen chair')).x, (stool.min.z + stool.max.z) / 2 + 2 * inch) - cabinet.min.y) / inch, 18);
+  home.setProps({ chairSide: 0 });
+  assert.equal(item('Kitchen chair').visible, false, 'no chair where he could not sit in it');
+  assert.equal(item('Skillet').visible, false);
+  assert.equal(item('Rockers').parent, home.pieces.porchChair2);
+  assert.equal(home.pieces.porchChair2.rotation.order, 'YXZ', 'the rocker tips in its own frame however it is turned');
   home.dispose();
 });
 
@@ -162,7 +190,7 @@ test('every fitting stays inside the footprint its room checks, at every turn, a
     const box = standing(id), [minX, minZ, maxX, maxZ] = furnitureRect(id, furniture[id]);
     assert.ok(box.min.x > minX - 0.06 && box.max.x < maxX + 0.06 && box.min.z > minZ - 0.06 && box.max.z < maxZ + 0.06, `${id} turned ${r}`);
   }
-  const furniture = defaultFurniture(); furniture.porchChair = { ...furniture.porchChair, x: 10, z: 7, r: 2 };
+  const furniture = defaultFurniture(); furniture.porchChair = { ...furniture.porchChair, x: 9.5, z: -4, r: 2 };
   assert.ok(furnitureFits(furniture, 'porchChair'));
   place(home, root, furniture);
   const chair = new Box3().setFromObject(root.getObjectByName('chair')), jet = root.getObjectByName('Watering the lawn chair').geometry.attributes.position;

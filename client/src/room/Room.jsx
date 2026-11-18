@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, refreshSession, useSession } from '../api.js';
-import { navigate } from '../App.jsx';
+import { navigate, goToMines } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
 import { Link } from '../Shell.jsx';
 import { Bust } from '../avatar/Bust.jsx';
@@ -17,6 +17,9 @@ import './room.css';
 const left = (ms) => ms > 0 ? `${Math.max(1, Math.ceil(ms / 60000))} min` : 'Ready';
 const SHELF_SIZES = [{ id: 'standard', label: 'Small shelf', detail: '1 item' }, { id: 'wide', label: 'Large shelf', detail: '3 items' }];
 const FLUSH_MESSAGE = 'The pipes knock twice.';
+// Things the resident can be sent to do, in menu order. The scene says which of them he can reach.
+const HOUSE_TASKS = { coffee: 'Coffee on the porch', rock: 'Rock on the porch', sign: 'Read the signpost', cook: 'Cook an egg', eat: 'Eat at the table',
+  bath: 'Run a bath', sit: 'Sit on the couch', nap: 'Lie on the couch', tidy: 'Pick something up', corner: 'Stand in the corner' };
 
 function ShelfSizes({ value, disabled, onChange }) {
   return <div className="room-choices room-shelf-sizes" role="group" aria-label="Shelf size">{SHELF_SIZES.map(size => <button key={size.id} className="btn room-choice room-shelf-size" aria-pressed={value ? value === size.id : undefined} disabled={disabled} onClick={() => onChange(size.id)}><span>{size.label}</span><small className="muted">{size.detail}</small></button>)}</div>;
@@ -62,6 +65,9 @@ export default function Room({ id }) {
   const [cameraMode, setCameraMode] = useState(null);
   const [activityPaused, setActivityPaused] = useState(false);
   const [houseState, setHouseState] = useState('home');
+  const [houseTask, setHouseTask] = useState(null);
+  const [houseTasks, setHouseTasks] = useState([]);
+  const trackHouse = useCallback((state, kind) => { setHouseState(state); setHouseTask(kind || null); }, []);
   const [speech, setSpeech] = useState(null);
   const activity = useMemo(() => new RoomActivity(), [room?.owner.id]);
   const speechRef = useRef(null);
@@ -203,11 +209,11 @@ export default function Room({ id }) {
     if (!room || !canvas.current) return undefined;
     let renderer;
     try {
-      renderer = new RoomScene(canvas.current, { activity, onSelect: next => { setSelection(next); setMsg(''); }, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onHouseState: setHouseState, onViewChange: setCameraView, onZoom: moveView, onError: () => { setSceneFailed(true); setCameraMode(null); setMoneyHovered(false); setSpeech(null); } });
+      renderer = new RoomScene(canvas.current, { activity, onSelect: next => { setSelection(next); setMsg(''); }, onMoveShelf: shiftShelf, onMoveWall: shiftWall, onMoveFurniture: arrangeFurniture, onWealthHover: hoverMoney, onSpeech: setSpeech, onSpeechPosition: positionSpeech, onHouseState: trackHouse, onHouseTasks: setHouseTasks, onViewChange: setCameraView, onZoom: moveView, onError: () => { setSceneFailed(true); setCameraMode(null); setMoneyHovered(false); setSpeech(null); } });
       scene.current = renderer; setSceneFailed(false);
     } catch { setSceneFailed(true); }
     return () => { renderer?.dispose(); scene.current = null; };
-  }, [activity, hoverMoney, shiftShelf, shiftWall, arrangeFurniture, positionSpeech]);
+  }, [activity, hoverMoney, shiftShelf, shiftWall, arrangeFurniture, positionSpeech, trackHouse]);
   useEffect(() => { if (sceneView) { try { scene.current?.update(sceneView); } catch { setSceneFailed(true); } } }, [sceneView]);
   useEffect(() => { scene.current?.setEditing(editing && !!draft && !busy && !fitOpen, selection); }, [editing, !!draft, busy, fitOpen, selection, room?.owner.id]);
   useEffect(() => { scene.current?.setView(cameraView); }, [cameraView, room?.owner.id]);
@@ -215,7 +221,7 @@ export default function Room({ id }) {
   useEffect(() => { scene.current?.setActivityPaused(activityPaused || !!draft || fitOpen); }, [activityPaused, !!draft, fitOpen, room?.owner.id]);
   const useHouse = useCallback(action => {
     const result = scene.current?.houseAction(action);
-    if (result === 'blocked') setMsg('The way to the porch is blocked. Move a furnishing to clear a path.');
+    if (result === 'blocked') setMsg('He can’t get there. Move a furnishing to clear a path.');
     else if (result === 'ok') setMsg(action === 'flush' ? FLUSH_MESSAGE : '');
   }, []);
   useEffect(() => {
@@ -434,6 +440,10 @@ export default function Room({ id }) {
           {canUseHouse && msg === FLUSH_MESSAGE && cameraView.area && cameraView.area !== 'porch' && <button className="btn ghost small" onClick={() => {
             setCameraView(roomView({ area: 'porch' })); scene.current?.houseAction('flush'); setMsg('The lawn chair is getting watered.');
           }}>Look outside</button>}
+          {canUseHouse && houseTask === 'sign' && houseState === 'there' && <>
+            <button className="btn ghost small" onClick={() => navigate('/')}>Go to Buffalo Bill’s</button>
+            <button className="btn ghost small" onClick={goToMines}>Go down the mines</button>
+          </>}
           {conflict && draft && <button className="btn ghost small" disabled={busy} onClick={() => { discard(); load(); }}>Load saved house</button>}</div>}
         <div className="room-tools">
           <div className="room-house-tools">
@@ -442,7 +452,10 @@ export default function Room({ id }) {
             </select>
             {!draft && !fitOpen && <button className="btn ghost" disabled={activityPaused} onClick={talk}>{editing ? 'Talk to resident' : 'Say hello'}</button>}
             {canUseHouse && <>
-              <button className="btn ghost" disabled={houseState === 'returning'} onClick={() => useHouse(houseState === 'home' ? 'coffee' : 'inside')}>{houseState === 'home' ? 'Take coffee outside' : houseState === 'returning' ? 'Heading inside…' : 'Head inside'}</button>
+              {houseState === 'home' ? <select className="room-pick" aria-label="Give the resident something to do" value="" onChange={e => { if (e.target.value) useHouse(e.target.value); }}>
+                <option value="">Do something…</option>
+                {Object.entries(HOUSE_TASKS).filter(([kind]) => houseTasks.includes(kind)).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
+              </select> : <button className="btn ghost" disabled={houseState === 'returning'} onClick={() => useHouse('inside')}>{houseState === 'returning' ? 'Heading back…' : 'Head back'}</button>}
               <button className="btn ghost" onClick={() => useHouse('flush')}>Flush toilet</button>
             </>}
           </div>
