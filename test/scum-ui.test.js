@@ -15,7 +15,9 @@ test('house rules spell out pass vs skip: pass locks you out, a skip does not', 
   const block = page.slice(start, page.indexOf('];', start));
   assert.match(block, /skip only costs that one turn/i);
   assert.match(block, /stay in and can still play/i);
+  assert.match(block, /Skips jump over anyone who already passed/);
   assert.match(block, /If you pass, you are out of this pile until it clears/);
+  assert.match(block, /even if play goes all the way around or someone else plays after you/);
   assert.match(block, /Skipped players do not count as passed/);
   assert.match(block, /last player then leads fresh|last player who played/i);
 });
@@ -59,8 +61,10 @@ test('the 1.5s poll diffs on seq so a repeat fetch does not remount the pile', (
   assert.match(page, /prev\.seq !== nv\.seq/);
   assert.doesNotMatch(page, /key=\{frame\.seq\}/);
   assert.match(page, /Same move: keep the same object tree/);
-  assert.match(page, /data-test="scum-passed"/);
+  assert.match(page, /data-test="scum-passed">Out</);
   assert.match(page, /data-test="scum-skipped"/);
+  assert.match(page, /You're out of this pile until it clears/);
+  assert.match(page, /Out of this pile\./);
 });
 
 test('with fewer than 2 bots the primary action is Open lobby, not a disabled Open & deal', () => {

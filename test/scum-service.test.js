@@ -288,7 +288,10 @@ test('play on: the view and log say who can keep playing; their pass clears the 
   assert.equal(after.round.turn, 0); assert.deepEqual(after.round.pile.cards, ['9h']);
   const ann = s.view(P.a, v.code); assert.equal(ann.round.playOn, true); assert.equal(ann.round.myTurn, true); assert.equal(ann.round.leading, false);
   assert.match(t.log.findLast((e) => e.ev?.k === 'playon').text, /Ann can keep playing on it or pass to clear/);
-  s.play(P.a, v.code, ['Jc']); s.pass(P.b, v.code); s.pass(P.c, v.code);
+  s.play(P.a, v.code, ['Jc']);
+  assert.equal(t.round.turn, 0); assert.equal(t.round.playOn, true, 'Bob and Cat stay out after Ann plays on');
+  assert.deepEqual(t.round.passed, [1, 2]);
+  assert.equal(s.view(P.b, v.code).seats[1].passed, true);
   clock.t += 31_000; s.tick(); // Ann's clock runs out while playing on: her bug passes, the pile clears
   const p = t.log.findLast((e) => e.ev?.k === 'pass'); assert.equal(p.ev.own, true); assert.ok(p.ev.bug); assert.match(p.text, /passes and clears the pile/);
   assert.equal(t.round.pile, null); assert.equal(t.round.turn, 0, 'she leads fresh');

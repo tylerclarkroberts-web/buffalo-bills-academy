@@ -106,8 +106,8 @@ test('two left: skip then the skipper passes — the skipped player may still pl
   assert.equal(p.cleared, false); assert.equal(r.turn, 0, 'Ann was skipped, not passed: she gets the live pile');
   assert.deepEqual(r.pile.cards, ['7c']); assert.equal(r.owner, 1);
   const a = S.play(r, 0, ['9c']);
-  assert.equal(a.playOn, false); assert.equal(r.owner, 0); assert.equal(r.turn, 1, 'a new play resets passes: Bob can follow');
-  assert.deepEqual(r.passed, []);
+  assert.equal(a.playOn, true); assert.equal(r.owner, 0); assert.equal(r.turn, 0, 'Bob already passed: he stays out, Ann plays on');
+  assert.ok(r.passed.includes(1) && !r.passed.includes(0));
   // Same setup, but Ann passes instead: pile clears and Bob (last to play) leads.
   const r2 = round({ 0: ['7h', '9c', '2c'], 1: ['7c', '3d', '8s'] });
   S.play(r2, 0, ['7h']); S.play(r2, 1, ['7c']); S.pass(r2, 1);
@@ -134,17 +134,81 @@ test('with 3+ players, a skipped player remains eligible the next time around', 
   assert.equal(c.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'Bob played last and leads');
 });
 
-test('a pass locks you out of this pile until it clears; a new play unlocks everyone', () => {
-  const r = round({ 0: ['9h', 'Qc', '2c'], 1: ['4c', 'Kd'], 2: ['3h', '5h'] });
+test('a pass locks you out of this pile until it clears, even after a later play', () => {
+  const r = round({ 0: ['9h', 'Qc', '2c'], 1: ['4c', 'Kd'], 2: ['3h', 'Th'] });
   S.play(r, 0, ['9h']);
   S.pass(r, 1);
   assert.equal(r.turn, 2); assert.ok(r.passed.includes(1));
-  S.pass(r, 2);
-  assert.equal(r.turn, 0); assert.equal(r.playOn, true);
-  // Bob already passed: he does not get another turn on this same 9.
-  assert.ok(r.passed.includes(1) && r.passed.includes(2));
+  S.play(r, 2, ['Th']);
+  assert.ok(r.passed.includes(1), 'Bob is still out after Cat played a 10');
+  assert.equal(r.turn, 0, 'skip Bob, back to Ann');
+  S.pass(r, 0);
+  assert.equal(r.turn, 2); assert.equal(r.playOn, true, 'only Cat is still in: she plays on');
+  assert.ok(r.passed.includes(1) && r.passed.includes(0));
+  const c = S.pass(r, 2);
+  assert.equal(c.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 2, 'Cat played last and leads the fresh pile');
+  assert.deepEqual(r.passed, []);
+  // After the clear, Bob can play again.
+  S.play(r, 2, ['3h']);
   S.play(r, 0, ['Qc']);
-  assert.deepEqual(r.passed, []); assert.equal(r.turn, 1, 'new play: Bob can follow the Queen');
+  assert.equal(r.turn, 1);
+  assert.ok(!r.passed.includes(1));
+  S.play(r, 1, ['Kd']);
+  assert.equal(r.owner, 1);
+});
+
+test('a skip jumps over players who already passed and lands on the next who can play', () => {
+  const r = round({ 0: ['9h', 'Tc', '2c'], 1: ['4c', 'Kd'], 2: ['9c', '5h'], 3: ['6s', '8d'] });
+  S.play(r, 0, ['9h']);
+  S.pass(r, 1);
+  const res = S.play(r, 2, ['9c']);
+  assert.equal(res.skipped, 3, 'Dee is skipped — Bob already passed, so the skip does not land on him');
+  assert.equal(r.turn, 0);
+  assert.ok(r.passed.includes(1));
+  assert.equal(r.skipped, 3);
+});
+
+test('if you pass and the player before you later skips, the skip lands on the next player who can still play', () => {
+  const r = round({ 0: ['8h', '9h', '2c'], 1: ['4c', 'Kd'], 2: ['9c', '5h'], 3: ['6s', '7d'] });
+  S.play(r, 0, ['8h']);
+  S.pass(r, 1); // Bob is out of this pile
+  S.play(r, 2, ['9c']);
+  S.pass(r, 3);
+  const res = S.play(r, 0, ['9h']); // Ann, the player before Bob, plays a skip
+  assert.equal(res.skipped, 2, 'skip jumps Bob and lands on Cat, the next who can still play');
+  assert.ok(r.passed.includes(1) && r.passed.includes(3));
+  assert.equal(r.turn, 0); assert.equal(r.playOn, true, 'Dee is out and Cat was just skipped: Ann plays on');
+});
+
+test('bots stay out of a pile they have passed on, and a passed seat cannot play', () => {
+  const r = round({ 0: ['9h', 'Qc', '2c'], 1: ['4c', 'Kd'], 2: ['Th', '3c'] });
+  S.play(r, 0, ['9h']);
+  // Bob would play the king if it were still allowed, but he passes (and is then locked out).
+  const botPass = S.autoMove(r, 1, { bot: true });
+  assert.deepEqual(botPass, { play: ['Kd'] }, 'before passing, a bot would play the king');
+  S.pass(r, 1);
+  S.play(r, 2, ['Th']);
+  assert.equal(r.turn, 0, 'Bob does not get another turn after Cat plays');
+  assert.ok(r.passed.includes(1));
+  S.pass(r, 0);
+  assert.equal(r.turn, 2); assert.equal(r.playOn, true);
+  assert.deepEqual(S.autoMove(r, 1, { bot: true }), { pass: true }, 'a bot that already passed will not play');
+  assert.deepEqual(S.bugMove(r, 1), { pass: true });
+  r.turn = 1;
+  assert.throws(() => S.play(r, 1, ['Kd']), /out of this pile/);
+});
+
+test('a finished player is not a skip target and is ignored when the pile clears', () => {
+  const r = round({ 0: ['9h', '2c'], 1: ['9c'], 2: ['4h', '5d'], 3: ['6s', '8d'] });
+  S.play(r, 0, ['9h']);
+  const res = S.play(r, 1, ['9c']); // Bob goes out and skips Cat
+  assert.equal(res.out, 1); assert.equal(r.finished[0], 1);
+  assert.equal(res.skipped, 2); assert.equal(r.turn, 3);
+  S.pass(r, 3); S.pass(r, 0);
+  assert.equal(r.turn, 2, 'Cat was skipped, not passed: she gets the live pile (Bob is already out)');
+  const c = S.pass(r, 2);
+  assert.equal(c.cleared, true); assert.equal(r.pile, null);
+  assert.equal(r.turn, 2, 'owner went out: the next player still in leads');
 });
 
 test('bug and bots: a skipped player who gets the turn follows the live pile (they are not playing on)', () => {
@@ -187,25 +251,26 @@ test('play on: when everyone else passes, the last player keeps the turn with th
   assert.equal(r.turn, 0); assert.deepEqual(r.pile.cards, ['9h']); assert.equal(r.playOn, true);
   assert.match(S.playProblem(r.pile, ['2c']), /9 or higher/);
   const p2 = S.play(r, 0, ['Jc']); // Ann plays on top of her own 9
-  assert.equal(p2.playOn, false); assert.equal(r.turn, 1, 'a new play: everyone gets another chance to follow'); assert.equal(r.playOn, false);
-  S.pass(r, 1); S.pass(r, 2);
-  assert.equal(r.turn, 0); assert.equal(r.playOn, true);
+  assert.equal(p2.playOn, true); assert.equal(r.turn, 0, 'Bob and Cat stay out: Ann plays on again'); assert.equal(r.playOn, true);
+  assert.ok(r.passed.includes(1) && r.passed.includes(2));
   S.play(r, 0, ['Qd']);
-  S.play(r, 1, ['Kh']); // Bob beats it: Bob owns the pile now
-  S.pass(r, 2); S.pass(r, 0);
-  assert.equal(r.turn, 1); assert.equal(r.playOn, true); assert.equal(r.owner, 1);
-  const c = S.pass(r, 1);
-  assert.equal(c.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 1, 'Bob passes on his own set: cleared, he leads');
-  assert.throws(() => S.pass(r, 1), /leading/);
+  assert.equal(r.turn, 0); assert.equal(r.playOn, true); assert.equal(r.owner, 0);
+  const c = S.pass(r, 0);
+  assert.equal(c.cleared, true); assert.equal(r.pile, null); assert.equal(r.turn, 0, 'Ann passes on her own set: cleared, she leads');
+  assert.throws(() => S.pass(r, 0), /leading/);
 });
 
-test('play on: an equal rank on your own set still skips the next player still in', () => {
-  const r = round({ 0: ['9h', '9c', '2c'], 1: ['4c', '4d'], 2: ['3h', '5h'] });
-  S.play(r, 0, ['9h']); S.pass(r, 1); S.pass(r, 2);
-  const res = S.play(r, 0, ['9c']);
-  assert.equal(res.skipped, 1); assert.equal(r.turn, 2);
-  S.pass(r, 2);
-  assert.equal(r.turn, 0); assert.equal(r.playOn, true, 'back to Ann again');
+test('play on: an equal rank on your own set still skips the next player still in, not a passed player', () => {
+  const r = round({ 0: ['9h', '2c'], 1: ['9c', '9d', '3d'], 2: ['4c', '5h'], 3: ['6c', '7d'] });
+  S.play(r, 0, ['9h']);
+  S.play(r, 1, ['9c']); // skips Cat
+  assert.equal(r.skipped, 2); assert.equal(r.turn, 3);
+  S.pass(r, 3); S.pass(r, 0);
+  assert.equal(r.turn, 1); assert.equal(r.playOn, true, 'back to Bob, the owner');
+  const res = S.play(r, 1, ['9d']);
+  assert.equal(res.skipped, 2, 'skip lands on Cat, the next player still in — not Dee or Ann who passed');
+  assert.equal(r.turn, 1); assert.equal(r.playOn, true, 'Dee and Ann are out: Bob plays on');
+  assert.ok(r.passed.includes(3) && r.passed.includes(0) && !r.passed.includes(2));
 });
 
 test('play on: going out on the set hands the lead on as before; the bug and the bots', () => {

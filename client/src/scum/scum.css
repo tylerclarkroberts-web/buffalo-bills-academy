@@ -10,7 +10,8 @@
 .sc-seat.turn { z-index: 5; }
 .sc-seat.out .bust { filter: saturate(.5) brightness(.85); }
 .sc-seat.gone { opacity: .45; }
-.sc-seat.passed { opacity: .82; }
+.sc-seat.passed { opacity: .7; }
+.sc-seat.passed .bust { filter: saturate(.55) brightness(.9); }
 /* Strong current-turn ring: pulse around the avatar, plus a compact "X's turn" / "Your turn" chip. */
 .sc-seat.turn .bust {
   box-shadow: 0 0 0 3px #ffd166, 0 0 22px rgba(255, 209, 102, .75);

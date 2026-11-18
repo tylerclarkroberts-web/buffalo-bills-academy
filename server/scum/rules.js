@@ -13,15 +13,17 @@
 //  - Aces: aces beat any set of the SAME size: one ace clears singles, two aces clear a pair, three a three, four
 //    a four (fewer aces than the set is not a play). Leading, any number of aces clears. Nothing goes on an ace.
 //    Aces clear the pile at once and the same player leads again (or the next player, if that was their last card).
-//  - Pass vs skip: a pass locks you out of this pile until it clears. A skip only costs that one turn: you stay in
-//    and can still play. The pile clears when every player still holding cards except the last player to play has
-//    PASSED (skipped players do not count as passed). After it clears, the last player who played leads fresh.
+//  - Pass vs skip: a pass locks you out of this pile until it clears, even if play goes all the way around or
+//    someone else plays after you. A skip only costs that one turn: you stay in and can still play. Skips jump over
+//    players who already passed and land on the next player who can still play. The pile clears when every player
+//    still holding cards except the last player to play has PASSED (skipped players do not count as passed). After
+//    it clears, the last player who played leads fresh (or the next player still in, if that player already went out).
 //  - Play on: when the turn comes back round to whoever played last (everyone else passed or got skipped this time
 //    around), the pile stays live and it's THEIR turn: they may keep playing on their own set (same count, equal or
-//    higher; an equal rank still skips the next player still in) or pass. If they pass and a skipped player has not
-//    passed, that player gets the turn on the live pile. A new play resets passes: everyone else gets another chance
-//    to follow. If the owner already went out, remaining eligible players still get a turn; if none are left, the
-//    pile clears and the next player still in leads.
+//    higher; an equal rank still skips the next player still in) or pass. A later play does not let passed players
+//    back in. If they pass and a skipped player has not passed, that player gets the turn on the live pile. If the
+//    owner already went out, remaining eligible players still get a turn; if none are left, the pile clears and the
+//    next player still in leads.
 //  - One standard 52-card deck, always: no jokers, no second deck, never more than 7 players (7 x 7 = 49 <= 52).
 //  - Going out: first out is King, then Queen, ..., second to last Baby Scum, last Scum. With 3 players there is no
 //    Queen or Baby Scum: King, Commoner, Scum (only King and Scum swap cards). Everyone in between is a Commoner.
@@ -210,10 +212,11 @@ export function play(r, seat, cards) {
   if (r.turn !== seat) throw new Error('Not your turn.');
   const hand = r.hands[seat];
   if (!Array.isArray(cards) || !cards.every((c) => hand.includes(c))) throw new Error("Those aren't your cards.");
+  if (r.pile && hasPassed(r, seat)) throw new Error("You're out of this pile until it clears.");
   const why = playProblem(r.pile, cards); if (why) throw new Error(why);
   const prev = r.pile;
   r.playOn = false;
-  r.passed = []; // a new play gives everyone another chance to follow
+  // Passed players stay out until this pile clears; a later play does not let them back in.
   r.hands[seat] = hand.filter((c) => !cards.includes(c));
   const k = rank(cards[0]);
   r.lastPlay = { seat, cards: cards.slice() }; r.skipped = null;
@@ -273,6 +276,7 @@ export function nextOrder(finish, newcomers = []) {
 /** What a timed-out or robot player does on their turn. Leading: the lowest set (bots) / lowest single (timeout). */
 export function autoMove(r, seat, { bot = false } = {}) {
   const hand = sortHand(r.hands[seat]);
+  if (r.pile && hasPassed(r, seat)) return { pass: true };
   const groups = []; for (const c of hand) { const g = groups[groups.length - 1]; if (g && rank(g[0]) === rank(c)) g.push(c); else groups.push([c]); }
   const plain = groups.filter((g) => rank(g[0]) !== ACE); const aces = groups.find((g) => rank(g[0]) === ACE) || [];
   if (!r.pile) {
@@ -303,6 +307,7 @@ export function autoMove(r, seat, { bot = false } = {}) {
 export function bugMove(r, seat) {
   const hand = sortHand(r.hands[seat]);
   if (!hand.length) return { pass: true };
+  if (r.pile && hasPassed(r, seat)) return { pass: true };
   if (!r.pile) return { play: [hand[hand.length - 1]] };
   if (r.playOn && r.owner === seat) return { pass: true }; // everyone passed on your set: the bug clears it, then leads your highest
   const byRank = new Map(); for (const c of hand) byRank.set(rank(c), [...(byRank.get(rank(c)) || []), c]);
