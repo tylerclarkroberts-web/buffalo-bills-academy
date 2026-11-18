@@ -30,7 +30,7 @@ export function classify(type, note = '') {
     case 'mine': return { source: 'mines', sub: /elevator fare/.test(n) ? 'Elevator fare' : /nephew/.test(n) ? "Nephew's shift" : /foreman/.test(n) ? "Foreman's bonus" : 'Shift payout' };
     case 'pvp': return { source: 'pvp', sub: /lost a bug battle/.test(n) ? 'Lost bug battle' : /won a bug battle/.test(n) ? 'Won bug battle' : /ambushed by/.test(n) ? 'Was ambushed' : 'Ambushed someone' };
     case 'fawn': return { source: 'fawn', sub: "Faun's wooden box" };
-    case 'circuit': return { source: 'circuit', sub: /ribbon/.test(n) ? 'Ribbon purse' : 'Trainer purse' };
+    case 'circuit': return { source: 'circuit', sub: /tribute/.test(n) ? 'Toll paid' : /ribbon/.test(n) ? 'Ribbon purse' : 'Trainer purse' };
     case 'foff': return { source: 'golf', sub: /Medal/.test(n) ? 'Medal of Freedom' : 'Bachelor party quest' };
     case 'slots': return { source: 'slots', sub: 'Spin result' };
     case 'scum': return { source: 'scum', sub: /from Scum to King/.test(n) ? 'Scum to King haul' : /dethroned/.test(n) ? 'Dethroned King paid out' : /King payout/.test(n) ? 'King payout' : /Queen payout/.test(n) ? 'Queen payout' : /Baby Scum dues/.test(n) ? 'Baby Scum dues' : /Scum dues/.test(n) ? 'Scum dues' : 'Other' };

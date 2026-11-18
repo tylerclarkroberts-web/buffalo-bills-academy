@@ -311,6 +311,7 @@
 .cc-top p { margin: 2px 0 0; }
 .cc-org { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--paper-2); }
 .cc-rack { display: flex; gap: 3px; }
+.cc-areas { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
 .cc-rosette .tails { fill: rgba(255,255,255,.12); }
 .cc-rosette .petals { fill: none; stroke: rgba(255,255,255,.3); stroke-dasharray: 3 2; }
 .cc-rosette .eye { fill: none; }

@@ -6,7 +6,9 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor } from '../server/circuit.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies } from '../server/circuit.js';
+import { typeOf, edge } from '../server/engine/bug-types.js';
+import { RULES } from '../server/engine/bout.js';
 import { simulateBout } from '../server/engine/bout.js';
 import { xpFor, levelFor } from '../server/engine/creatures.js';
 import { startBout, stepBout, tellDue } from '../server/engine/bout.js';
@@ -131,4 +133,59 @@ test('circuit bugs are drilled: a barn bug a level below one seldom wins on its 
     won += simulateBout({ species: mine, level: 4, mood: 75 }, { species: theirs, level: 5, mood: 100, gear: 0.06, defense: 0.06, trained: TRAINED }, `drill:${k}`).winner === 0 ? 1 : 0; n++;
   }
   assert.ok(won / n < 0.2, `a level 4 beat a trained level 5 in ${Math.round((won / n) * 100)}% of fights`);
+});
+
+test('the Culvert opens with ribbon 1; the Nephew brings whatever beats your partner, and keeps it', (t) => {
+  const { barn, circuit, pid, hatch } = setup(t);
+  const a = hatch(8), me = circuit.me(pid);
+  const culvert = () => circuit.view(pid).areas[1];
+  assert.deepEqual([culvert().name, culvert().open, culvert().stops[0].open], ['The Culvert', false, false]);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'nephew1' }), /Not yet/);
+  me.ribbons[1] = 1;
+  const nephew = culvert().stops[0];
+  assert.deepEqual([culvert().open, nephew.open, nephew.bugs[0].name, nephew.bugs[0].level], [true, true, 'Bug Two', 5]);
+  assert.equal(edge(typeOf(nephew.bugs[0].species), typeOf(a.species)), 1, 'its type beats the partner\'s');
+  assert.equal(nephew.bugs[0].species, rivalSpecies(a.species));
+  barn.doc.pens[pid].species = nephew.bugs[0].species; // change partner: he does not re-pick
+  assert.equal(culvert().stops[0].bugs[0].species, nephew.bugs[0].species);
+  const live = circuit.fight(pid, 'Tester', { stop: 'nephew1' }).live;
+  assert.deepEqual([barn.fights.get(live).fighters[1].name, barn.fights.get(live).fighters[1].owner], ['Bug Two', 'The Nephew']);
+});
+
+test('a toll can be paid or fought; paying costs the toll and wins nothing, and the Hoppers eat your packed lunch', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  hatch(8); const me = circuit.me(pid);
+  me.ribbons[1] = 1; for (const id of ['nephew1', 'net']) me.done[id] = 1;
+  store.players[pid].bankroll = 100;
+  assert.throws(() => circuit.payToll(pid, { stop: 'toll1' }), /Not enough money|toll/);
+  store.players[pid].bankroll = 400;
+  barn.doc.pens[pid].lunch = { name: 'Bug Banquet', heal: 10 };
+  const live = circuit.fight(pid, 'Tester', { stop: 'toll1' }).live, fight = barn.fights.get(live);
+  assert.deepEqual([fight.fighters[0].lunch, fight.fighters[1].lunch], [null, { name: 'Bug Banquet', heal: 10 }], 'tribute: Lefty has it now');
+  assert.equal(barn.doc.pens[pid].lunch, undefined);
+  barn.fights.finish(fight, 1); // lost: still there
+  assert.equal(circuit.me(pid).done.toll1, undefined);
+  const paid = circuit.payToll(pid, { stop: 'toll1' });
+  assert.match(paid.reply, /Pleasure doing business/);
+  assert.deepEqual([store.players[pid].bankroll, paid.tolls.toll1, !!circuit.me(pid).done.toll1], [250, 'paid', true]);
+  assert.throws(() => circuit.payToll(pid, { stop: 'toll1' }), /already through/);
+});
+
+test('Gil\'s flood: from turn nine a bug that cannot swim loses health every turn of its own, and a Water bug does not', () => {
+  const gil = { species: 'dytiscus', name: 'Queen Size', level: 6, rule: 'flood', tell: 'give' };
+  const lost = (species) => { let n = 0; for (let k = 0; k < 10; k++) { const S = startBout({ species, name: 'Mine', level: 6 }, gil, `flood:${k}`); while (!S.over) for (const e of stepBout(S)) if (e.ability === 'Rising Water') { n++; assert.ok(e.turn >= RULES.flood.from && e.dmg <= RULES.flood.hp); } } return n; };
+  assert.ok(lost('lamprima') > 20);
+  assert.equal(lost('gyrinus'), 0, 'a Water bug is at home');
+  const S = startBout({ species: 'lamprima', name: 'Mine', level: 6 }, gil, 'tell'); let told = 0;
+  while (!S.over) { if (tellDue(S, 1)) told++; stepBout(S); }
+  assert.ok(told >= 1 && told <= 3, 'the tell shows as the water comes up, not all fight');
+});
+
+test('Bent\'s cough is going round: either bug sometimes loses a turn to it', () => {
+  let coughs = [0, 0], turns = 0;
+  for (let k = 0; k < 30; k++) { const S = startBout({ species: 'lamprima', name: 'Mine', level: 6 }, { species: 'notonecta', name: 'Lozenge', level: 6, rule: 'cough' }, `cough:${k}`);
+    while (!S.over) for (const e of stepBout(S)) { if (e.type === 'move') turns++; if (/coughs/.test(e.line)) coughs[e.by]++; } }
+  assert.ok(coughs[0] > 5 && coughs[1] > 5, 'both corners');
+  const rate = (coughs[0] + coughs[1]) / turns;
+  assert.ok(rate > RULES.cough.chance / 2 && rate < RULES.cough.chance * 2, `${Math.round(rate * 100)}% of turns`);
 });

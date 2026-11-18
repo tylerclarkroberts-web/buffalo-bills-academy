@@ -9,14 +9,21 @@
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { idOf } from './barn.js';
-import { MAX_LEVEL, LEVEL_CAP } from './engine/creatures.js';
+import { MAX_LEVEL, LEVEL_CAP, ROSTER } from './engine/creatures.js';
+import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
 
 export const RIBBON_XP = 100;
 export const RIBBONS = 8; // the leaders still to come show as empty hooks
 // One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
 export const PURSE = { trainer: 75, ribbon: 750 };
-export const purseOf = (stop, area) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'trainer' ? PURSE.trainer : 0) * area.ribbon;
+const FIGHTS = ['trainer', 'rival', 'toll', 'leader']; // stops with somebody to beat
+export const purseOf = (stop, area) => (stop.kind === 'leader' ? PURSE.ribbon : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * area.ribbon;
+/** The rival copies off you: a common bug of a type that beats your partner's. */
+export const rivalSpecies = (partnerSpecies) => {
+  const beats = weakTo(typeOf(partnerSpecies) || 'brawler');
+  return ROSTER.find((bug) => rarityOf(bug.id) === 1 && beats.includes(typeOf(bug.id)))?.id || 'lamprima';
+};
 // Circuit bugs are drilled: in top condition, with the best gear, and TRAINED more health and damage than a barn bug
 // of their level. With both left to themselves, a barn bug of the same level wins about one fight in eight.
 export const TRAINED = 0.1;
@@ -50,6 +57,29 @@ export const AREAS = [{
       next: 'That\'s one. Don\'t get cocky. I\'ve got a sub.', sub: 'Next! Sub in! Somebody sub in!',
       won: 'Hit the showers. …That was good hustle. Don\'t tell anyone I said that.', lost: 'LAPS! Come back when you\'ve stretched.' },
   ],
+}, {
+  id: 'culvert', name: 'The Culvert', ribbon: 2, blurb: 'A storm drain behind the feed store. It is not supposed to have a current.',
+  stops: [
+    { id: 'nephew1', kind: 'rival', who: 'The Nephew', level: 5, bugName: 'Bug Two',
+      intro: ['My uncle said I had to do something with my summer.', 'This is Bug Two. Don\'t ask about Bug One.', 'I saw what you brought. I brought the other thing.'],
+      won: 'I wasn\'t even trying. I\'m writing that down as a nap.', lost: 'Bug Two did that. I mostly watched.' },
+    { id: 'net', kind: 'trainer', who: 'Kid With a Net', bugs: [{ species: 'gyrinus', name: 'Scoop', level: 5 }],
+      intro: ['I\'m not allowed past the second pipe.', 'This one\'s from past the second pipe.'],
+      won: 'I have to be home by five anyway.', lost: 'I\'m telling everyone at school.' },
+    { id: 'toll1', kind: 'toll', who: 'Chopper & the Hoppers', toll: 150, rule: 'tribute', bugs: [{ species: 'gryllotalpa', name: 'Lefty', level: 6, stance: 'aggressive' }],
+      intro: ['This here is a toll culvert. Always has been. Since Tuesday.', 'Tribute is a hundred and fifty. Or your bug can discuss it with Lefty.', 'Lefty eats first. Whatever your bug packed for lunch, that\'s Lefty\'s lunch.'],
+      paid: 'Pleasure doing business. Tell your friends. We\'ll be telling ours.',
+      won: 'This ain\'t over. There\'s a lot of us and a lot of pipes.', lost: 'That\'s the toll AND a lesson. Lesson\'s free.' },
+    { id: 'bent', kind: 'trainer', who: 'Bent', friend: true, rule: 'cough', bugs: [{ species: 'notonecta', name: 'Lozenge', level: 6 }],
+      intro: ['*cough* Morning.', '*cough* It\'s going round. The bugs have it too.'],
+      won: '*cough* Good game.', lost: '*cough* Sorry. *cough* Not sorry.' },
+    { id: 'center2', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['You are all a little damp. I have towels ♡'] },
+    { id: 'gil', kind: 'leader', who: 'Gil', title: 'Ribbon 2', rule: 'flood', tell: 'Gil pats the water. “Feel that? That\'s give.”',
+      bugs: [{ species: 'dytiscus', name: 'Queen Size', level: 6 }, { species: 'lethocerus', name: 'California King', level: 7, stance: 'aggressive' }],
+      intro: ['Gil. Waterbeds. Thirty-one years. Everything is better as water.', 'Two bugs. In a minute this drain fills, and anything that can\'t swim loses a little every turn.', 'Bring a Water bug. Or don\'t, and learn something about lumbar support.'],
+      next: 'That one was a floor model.', sub: 'See? No give. Send in another.',
+      won: 'You\'d sleep like a baby on one. Take the ribbon. Take a brochure.', lost: 'Sunk. Come back when you\'ve got something that floats.' },
+  ],
 }];
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
 
@@ -63,10 +93,17 @@ export class Circuit {
   save() { this.store.saveDoc('circuit', this.doc); }
   me(pid) { return (this.doc.players[pid] ||= { done: {}, ribbons: {}, run: null }); }
 
-  /** Open once every stop before it in its area is done (the Bug Center never blocks anything). */
+  /** An area opens with the ribbon before it. Inside it, a stop is open once every stop before it is done (the Bug Center never blocks anything). */
   open(me, stop) {
     const { area, i } = STOPS.get(stop.id);
+    if (area.ribbon > 1 && !me.ribbons[area.ribbon - 1]) return false;
     return stop.kind === 'center' || area.stops.slice(0, i).every((s) => s.kind === 'center' || me.done[s.id]);
+  }
+  /** The bugs a stop fields against this player. The rival's is whatever beats their partner, fixed the first time they look. */
+  bugsOf(pid, me, stop) {
+    if (stop.kind !== 'rival') return stop.bugs;
+    const chosen = (me.rival ||= {})[stop.id] ||= rivalSpecies(this.barn.doc.pens[pid]?.species);
+    return [{ species: chosen, name: stop.bugName, level: stop.level }];
   }
   stopOf(id) {
     const found = STOPS.get(String(id || ''));
@@ -81,9 +118,9 @@ export class Circuit {
     return {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
-      areas: AREAS.map((area) => ({ id: area.id, name: area.name, ribbon: area.ribbon, blurb: area.blurb,
-        stops: area.stops.map((stop) => ({ ...stop, purse: purseOf(stop, area), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
-      cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED,
+      areas: AREAS.map((area) => ({ id: area.id, name: area.name, ribbon: area.ribbon, blurb: area.blurb, open: area.ribbon === 1 || !!me.ribbons[area.ribbon - 1],
+        stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
+      cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED, tolls: me.tolls || {},
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
       live: this.fights.fightOf(pid)?.id || null,
       ribbonXp: RIBBON_XP,
@@ -104,7 +141,7 @@ export class Circuit {
   /** Send one of your bugs (`bug`, the partner if left out) against a trainer or the leader's next bug. */
   fight(pid, ownerName, body = {}) {
     const stop = this.stopOf(body.stop), me = this.me(pid);
-    if (stop.kind !== 'trainer' && stop.kind !== 'leader') throw new GameError('There is nobody to fight here.', 409);
+    if (!FIGHTS.includes(stop.kind)) throw new GameError('There is nobody to fight here.', 409);
     if (!this.open(me, stop)) throw new GameError('Not yet. Finish the stops before it.', 409);
     if (me.done[stop.id]) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : `${stop.who} has had enough for one lifetime.`, 409);
     if (this.fights.fightOf(pid)) throw new GameError('One of your bugs is in the ring right now.', 409);
@@ -113,11 +150,14 @@ export class Circuit {
     if (stop.kind === 'leader' && !run) run = { stop: stop.id, foe: 0, foeHp: null, out: [], hp: {}, won: [], live: null };
     if (run?.out.includes(id)) throw new GameError(`${pen.name} is out of this one. Send in someone else.`, 409);
     if (me.run && me.run !== run) me.run = null; // walked off another leader's gauntlet: it starts again next time
-    const k = run ? run.foe : 0, foe = stop.bugs[k], health = run?.hp[id];
+    const k = run ? run.foe : 0, foe = this.bugsOf(pid, me, stop)[k], health = run?.hp[id];
+    // Chopper's tribute: whatever lunch your bug packed, his eats instead
+    const lunch = stop.rule === 'tribute' ? pen.lunch || null : null;
+    if (lunch) this.barn.lunchEaten(pid, pen.bornAt);
     const fightId = crypto.randomBytes(9).toString('base64url');
-    const fighters = [{ ...this.barn.fighter(pid, pen), owner: ownerName, ...(health != null ? { health } : {}) },
+    const fighters = [{ ...this.barn.fighter(pid, pen), owner: ownerName, ...(health != null ? { health } : {}), ...(stop.rule === 'tribute' ? { lunch: null } : {}) },
       { species: foe.species, name: foe.name, level: foe.level, mood: 100, gear: 0.06, defense: 0.06, trained: TRAINED, battle: { stance: foe.stance || 'balanced' }, owner: stop.who,
-        ...(run?.foeHp != null ? { health: run.foeHp } : {}), ...(stop.rule ? { rule: stop.rule, tell: stop.tell } : {}) }];
+        ...(run?.foeHp != null ? { health: run.foeHp } : {}), ...(lunch ? { lunch } : {}), ...(stop.rule ? { rule: stop.rule, tell: stop.tell } : {}) }];
     this.fights.start({ id: fightId, kind: 'circuit', players: [pid, null], fighters, seed: `${this.now()}:${fightId}`, watching: [pid],
       onFinish: (fight) => this.settle(pid, stop, { id, bornAt: pen.bornAt }, foe, fight) });
     if (run) { run.live = fightId; me.run = run; }
@@ -134,7 +174,7 @@ export class Circuit {
     const say = (line) => `${stop.who}: “${line}”`;
     const run = me.run?.stop === stop.id ? me.run : null;
     const area = STOPS.get(stop.id).area;
-    if (stop.kind === 'trainer') {
+    if (stop.kind !== 'leader') {
       if (won) { me.done[stop.id] = this.now(); extra.spoils = [this.pay(pid, stop, area)]; }
       extra.verdict = say(won ? stop.won : stop.lost);
     } else if (run) {
@@ -169,6 +209,19 @@ export class Circuit {
     this.save();
   }
 
+  /** Pay a toll stop's tribute instead of fighting: it lets you past, with no purse and no XP. */
+  payToll(pid, body = {}) {
+    const stop = this.stopOf(body.stop), me = this.me(pid);
+    if (stop.kind !== 'toll') throw new GameError('Nobody here is asking for money. For once.', 409);
+    if (!this.open(me, stop)) throw new GameError('Not yet. Finish the stops before it.', 409);
+    if (me.done[stop.id]) throw new GameError('You are already through.', 409);
+    if (this.fights.fightOf(pid)) throw new GameError('One of your bugs is in the ring right now.', 409);
+    const player = this.accounts.ensure(this.store.players[pid]);
+    this.accounts.requireFunds(player, stop.toll, 'the toll');
+    this.accounts.change(player, -stop.toll, 'circuit', `Bug Circuit: tribute to ${stop.who}`);
+    me.done[stop.id] = this.now(); me.tolls = { ...(me.tolls || {}), [stop.id]: 'paid' }; this.save();
+    return { ...this.view(pid), reply: stop.paid };
+  }
   /** The stop's one-time purse, into the bankroll. Returns the line the ring shows. */
   pay(pid, stop, area) {
     const amount = purseOf(stop, area), player = this.store.players[pid];

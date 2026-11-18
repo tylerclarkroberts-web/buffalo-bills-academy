@@ -99,13 +99,15 @@ A bug's type is on its card (the Barn's Card tab, with its moves, trait and what
 
 ## The circuit
 
-The Barn's Circuit room is the single-player campaign (`server/circuit.js`, `client/src/barn/Circuit.jsx`). Each area is a fixed path of stops; a stop opens once every stop before it is done, except the Bug Center, which is always open. Only the Back Forty (ribbon 1) exists so far.
+The Barn's Circuit room is the single-player campaign (`server/circuit.js`, `client/src/barn/Circuit.jsx`). Each area is a fixed path of stops; a stop opens once every stop before it is done, except the Bug Center, which is always open. Two areas exist: the Back Forty (ribbon 1) and the Culvert (ribbon 2). An area opens with the ribbon before it.
 
 - **Circuit bugs are drilled.** They fight in top condition with the best gear, and with 10% more health and damage than a barn bug of their level (`TRAINED`, `trained` on the fighter). Left to itself, a barn bug of the same level wins about one fight in eight, and one a level below about one in twelve.
 - **Purses** are one-time prize money, bigger each area: a trainer pays $75 and a ribbon $750, times the area's ribbon number (`PURSE`). They are `circuit` entries in the transaction log.
 - **Fights** are ordinary ring fights (`kind: 'circuit'`, followed with `GET /api/barn/fight` like a Barn bout) against bugs nobody owns. No stake. A win pays the mine's battle XP (20 plus the upset bonus); a loss pays nothing; a knockout sends the bug to the Bug Center as usual (`faintedIn: 'circuit'`). A beaten trainer stays beaten. A draw counts as a loss.
 - **Leaders** field their bugs one after another. Each round you send in any standing bug that has not lost a round of this gauntlet; its health carries into its next round, and so does the leader's bug's. Beat them all for the area's ribbon and `RIBBON_XP` (100) for every bug that won a round. Fighting another stop, or Walk away, drops the gauntlet, and it starts from the first bug next time.
-- **House rules** ride on the leader's bugs (`rule` in `server/engine/bout.js`). Coach Pugh's dodgeball: every third own turn her bug's attack cannot miss and hits 25% harder, and the ring shows her tell (`tell` in the fight view) the turn before.
+- **The rival.** The Nephew's stop fields one bug, Bug Two: a common species of a type that beats the player's partner, chosen the first time the player looks and kept after that (`rivalSpecies`, saved as `rival` in `circuit.json`).
+- **Tolls.** A toll stop (Chopper & the Hoppers) can be fought like a trainer, for the purse, or paid with `POST /api/circuit/toll { stop }`, which costs the toll and pays nothing. Their rule is tribute: a packed lunch on the player's bug is taken at the start of the fight and their bug eats it instead.
+- **House rules** ride on the leader's bugs (`rule` in `server/engine/bout.js`). Bent's cough: before any action either bug has a 12% chance to lose the turn. Gil's flood: from overall turn 9, every bug that is not a Water type loses 3 HP at the start of each of its own turns, and his tell shows as the water comes up. Coach Pugh's dodgeball: every third own turn her bug's attack cannot miss and hits 25% harder, and the ring shows her tell (`tell` in the fight view) the turn before.
 - **Persistence:** `circuit.json` holds each player's finished stops, ribbons, the Commissioner's answer and any gauntlet in progress. The fight itself is memory only: a restart mid-round calls that round off.
 
 | Route | Contract |
@@ -113,6 +115,7 @@ The Barn's Circuit room is the single-player campaign (`server/circuit.js`, `cli
 | `GET /api/circuit` | Areas and stops (with `done`, `open`), the eight ribbons, the gauntlet in progress (`run`) and the live fight, if any. |
 | `POST /api/circuit/talk` | `{ "stop", "answer" }` answers a talking stop. Not open yet: 409. |
 | `POST /api/circuit/fight` | `{ "stop", "bug"? }` starts a trainer fight or the leader's next round with that bug (the partner if left out). Not open, already done, a bug in a fight, a fainted bug or one already out of this gauntlet: 409. |
+| `POST /api/circuit/toll` | `{ "stop" }` pays a toll stop's tribute and marks it done. Not a toll, not open, already through, or a fight on: 409; not enough money: 402. |
 | `POST /api/circuit/give-up` | Drops the gauntlet in progress between rounds. Mid-round: 409. |
 
 ## Sound

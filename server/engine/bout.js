@@ -13,12 +13,15 @@ export const GEAR_CAP = 0.06;
 export const LUNCH_CAP = 10;
 // A circuit leader's house rule, carried on their bug (`c.rule`). Dodgeball: every third own turn its attack cannot
 // miss and lands harder, and the leader's tell (Fights.view) warns the owner a turn ahead so they can line up a guard.
-export const RULES = { dodgeball: { every: 3, power: 0.25 } };
+// Cough: before any action, either bug may lose its turn to a coughing fit. Flood: from overall turn `from` the water
+// is up, and every bug that is not a Water type loses `hp` at the start of each of its own turns.
+export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.12 }, flood: { from: 9, hp: 3 } };
+const ruled = (S, rule) => S.side.some((q) => q.c.rule === rule);
 /** A circuit trainer's bug is drilled (`c.trained`): that share more health and damage than a barn bug of its level. */
 const trainedOf = (c) => Math.max(0, Math.min(0.5, Number(c.trained) || 0));
 const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball.every === 0;
 /** Whether side `i`'s next own turn is its leader's big one: what the tell is for. */
-export const tellDue = (S, i) => ball(S.side[i], S.side[i].turn + 1);
+export const tellDue = (S, i) => ball(S.side[i], S.side[i].turn + 1) || (S.side[i].c.rule === 'flood' && S.turn + 1 >= RULES.flood.from - 2 && S.turn + 1 <= RULES.flood.from);
 
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -228,6 +231,18 @@ export function stepBout(S, choice) {
     if (--s.venom.left === 0) s.venom = null;
     pop(by); bursts(); rest();
     if (hp[0] <= 0 || hp[1] <= 0) return done();
+  }
+  if (ruled(S, 'flood') && S.turn >= RULES.flood.from && s.ty !== 'water') { // the water is up: anything that cannot swim is struggling
+    const dmg = hurt(by, RULES.flood.hp);
+    rounds.push({ by: foe, type: 'venom', effect: 'weaken', moveId: 'rule', ability: 'Rising Water', tier: 0, hit: true, dmg, hp: [...hp], turn,
+      line: `The water is up to ${s.c.name}'s knees: ${dmg} damage.${spots()}` });
+    pop(by); bursts(); rest();
+    if (hp[0] <= 0 || hp[1] <= 0) return done();
+  }
+  if (ruled(S, 'cough') && R() < RULES.cough.chance) { // it is going round
+    rounds.push({ by, type: 'move', skipped: true, effect: 'strike', moveId: 'basic', ability: s.moves[0].name, tier: 0, hit: false, critical: false, dmg: 0, healed: 0, hp: [...hp], turn, ownTurn: s.turn,
+      line: `${s.c.name} *coughs* and loses the turn.` });
+    return done();
   }
   if (s.t === 'onymacris') { s.regen += TRAIT.regen; const n = Math.floor(s.regen); s.regen -= n; hp[by] = Math.min(maxHp[by], hp[by] + n); }
   if (s.skip) {
