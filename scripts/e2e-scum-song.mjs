@@ -1,5 +1,5 @@
 // Sing me a song: spoken bubbles before the song, then audio + tomatoes and no lyric bubbles.
-//   PLAYWRIGHT_DIR=/workspace/pw CHROME=/usr/bin/google-chrome OUT=/workspace/bba-scum-song-nobubbles-shots node scripts/e2e-scum-song.mjs
+//   PLAYWRIGHT_DIR=/workspace/pw CHROME=/usr/bin/google-chrome OUT=/workspace/bba-scum-song-parody-shots node scripts/e2e-scum-song.mjs
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -219,9 +219,27 @@ try {
   const bob = await page(browser, P.Bob, PHONE);
   await bob.goto(`${BASE}/scum/SONGME`);
   await bob.waitForSelector('[data-test=scum-royal-play][data-cmd=sing]', { timeout: 8000 });
-  await bob.waitForSelector('[data-test=scum-royal-bubble]', { timeout: 3000 });
-  await shot(bob, 'phone-song-talk');
-  await noScroll(bob, 'phone song talk');
+  await bob.waitForSelector('[data-test=scum-royal-bubble][data-who=king]', { timeout: 3000 });
+  check((await bob.locator('[data-test=scum-royal-bubble]').innerText()).trim() === SONG_DIALOG[0].text, 'phone first bubble');
+  await shot(bob, 'phone-song-king-1');
+  await noScroll(bob, 'phone song king 1');
+
+  await bob.waitForFunction((txt) => {
+    const el = document.querySelector('[data-test=scum-royal-bubble][data-who=scum]');
+    return el && el.textContent.includes(txt);
+  }, SONG_DIALOG[1].text.slice(0, 20), { timeout: SONG_DIALOG[1].at + 2000 });
+  check((await bob.locator('[data-test=scum-royal-bubble]').innerText()).includes(SONG_DIALOG[1].text.slice(0, 20)), 'phone scum reply bubble');
+  await shot(bob, 'phone-song-scum-reply');
+  await noScroll(bob, 'phone song scum reply');
+
+  await bob.waitForFunction((txt) => {
+    const el = document.querySelector('[data-test=scum-royal-bubble][data-who=king]');
+    return el && el.textContent.includes(txt);
+  }, SONG_DIALOG[2].text.slice(0, 20), { timeout: SONG_START });
+  check((await bob.locator('[data-test=scum-royal-bubble]').innerText()).includes(SONG_DIALOG[2].text.slice(0, 20)), 'phone king insists');
+  await shot(bob, 'phone-song-king-2');
+  await noScroll(bob, 'phone song king 2');
+
   await bob.waitForSelector('[data-test=scum-royal-play][data-phase=song]', { timeout: SONG_START + 2000 });
   check(await bob.locator('[data-test=scum-royal-karaoke]').count() === 0, 'phone song: no lyric karaoke bubble');
   check(await bob.locator('[data-test=scum-royal-bubble]').count() === 0, 'phone song: no speech bubbles during the song');
