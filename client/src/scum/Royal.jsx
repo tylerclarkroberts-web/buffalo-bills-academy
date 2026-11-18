@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { royalSfx } from './royalSfx.js';
 import { isMuted } from '../bj/sfx.js';
-import { dialogAt, lyricAt, phaseAt, loadSongScript, getScript, songDurationMs } from './songScript.js';
+import { dialogAt, phaseAt, loadSongScript, getScript, songDurationMs } from './songScript.js';
 
 export const ROYAL_MS = {
   jig: 2800, bow: 2500, milk: 4200, toot: 3200, fan: 3000, carpet: 3200,
@@ -143,18 +143,10 @@ function useSongScript(active) {
 }
 
 function SongScene({ ev, pos, at, reduced, elapsed = 0, script }) {
-  const [audioSec, setAudioSec] = useState(null);
-  useEffect(() => {
-    if (reduced) return undefined;
-    let id;
-    const tick = () => { setAudioSec(royalSfx.songTime?.() ?? null); id = requestAnimationFrame(tick); };
-    id = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(id);
-  }, [reduced]);
+  // Lyric cues in script.txt still time the audio; never render them as bubbles or karaoke.
   if (!script) return null;
   const t = reduced ? script.songStart + 800 : elapsed;
   const talk = dialogAt(t, script);
-  const line = lyricAt(t, script, audioSec);
   const king = ev.kingSeat, scum = ev.scumSeat;
   const bubbleAt = (seat) => {
     const p = pos?.[seat];
@@ -169,11 +161,6 @@ function SongScene({ ev, pos, at, reduced, elapsed = 0, script }) {
           {talk.text}
         </div>
       )}
-      {line && (
-        <div className="sc-royal-karaoke" data-test="scum-royal-karaoke" data-line={line.i} role="status">
-          {line.text}
-        </div>
-      )}
       {t >= script.songStart && <TomatoMess style={at(king)} />}
     </>
   );
@@ -184,10 +171,15 @@ function TomatoMess({ style }) {
     <div className="sc-royal-tomatoes" style={style} data-test="scum-royal-tomatoes" aria-hidden="true">
       <span className="sc-tomato hand">🍅</span>
       <span className="sc-tomato-stain" />
+      <span className="sc-tomato-puddle" />
       <span className="sc-splat s1" /><span className="sc-splat s2" /><span className="sc-splat s3" /><span className="sc-splat s4" />
+      <span className="sc-splat s5" /><span className="sc-splat s6" /><span className="sc-splat s7" /><span className="sc-splat s8" />
+      <span className="sc-juice j1" /><span className="sc-juice j2" /><span className="sc-juice j3" />
+      <span className="sc-bit b1" /><span className="sc-bit b2" /><span className="sc-bit b3" /><span className="sc-bit b4" />
       <span className="sc-tomato roll r1">🍅</span>
       <span className="sc-tomato roll r2">🍅</span>
       <span className="sc-tomato roll r3">🍅</span>
+      <span className="sc-tomato roll r4">🍅</span>
     </div>
   );
 }

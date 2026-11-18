@@ -152,9 +152,9 @@ test('the picker is compact, the Scum does not press anything, and there is a sk
 });
 
 
-import { parseScript, songDurationMs, dialogAt, lyricAt, phaseAt, SONG_NOTES, SCRIPT_FILE, AUDIO_FILE, AUDIO_URL, SCRIPT_URL } from '../client/src/scum/songScript.js';
+import { parseScript, songDurationMs, dialogAt, phaseAt, SONG_NOTES, SCRIPT_FILE, AUDIO_FILE, AUDIO_URL, SCRIPT_URL } from '../client/src/scum/songScript.js';
 
-test('Sing me a song is driven by the public script file, with lyrics syncable to audio.currentTime', () => {
+test('Sing me a song is driven by the public script file; lyric cues time the audio only', () => {
   const raw = read(SCRIPT_FILE);
   assert.match(raw, /^# Sing me a song/m);
   assert.match(raw, /client\/public\/scum\/song\/song\.mp3/);
@@ -174,21 +174,16 @@ test('Sing me a song is driven by the public script file, with lyrics syncable t
   assert.equal(dialogAt(SONG_START, script), null);
   assert.equal(phaseAt(100, script), 'talk');
   assert.equal(phaseAt(SONG_START, script), 'song');
-  assert.ok(SONG_LYRICS.length >= 4, `lyrics ${SONG_LYRICS.length}`);
-  assert.ok(SONG_LYRICS.every((l) => l.text.trim().length > 0), 'every lyric comes from the public script');
-  assert.equal(lyricAt(SONG_START + SONG_LYRICS[0].at, script).i, 0);
-  assert.equal(lyricAt(SONG_START + SONG_LYRICS[3].at + 10, script).i, 3);
-  assert.equal(lyricAt(0, script, SONG_LYRICS[0].at / 1000).i, 0, 'audio.currentTime at the first cue shows the first lyric');
-  assert.equal(lyricAt(0, script, (SONG_LYRICS[3].at + 10) / 1000).i, 3, 'lyrics follow audio.currentTime even mid-dialogue clock');
+  // Lyric lines may still be in script.txt for audio duration, but the UI must not depend on their text.
+  const lastCue = SONG_LYRICS.length ? SONG_LYRICS.at(-1).at : 0;
   assert.equal(SONG_MS, songDurationMs(script));
-  assert.ok(SONG_MS > SONG_START + SONG_LYRICS.at(-1).at, `SONG_MS ${SONG_MS}`);
+  assert.ok(SONG_MS > SONG_START + lastCue, `SONG_MS ${SONG_MS}`);
   assert.ok(songDurationMs(script, 20) >= SONG_START + 20000, 'scene lasts at least as long as song.mp3');
   assert.match(read('client/src/scum/Royal.jsx'), /songDurationMs/);
+  assert.doesNotMatch(read('client/src/scum/Royal.jsx'), /scum-royal-karaoke/, 'the client never renders lyric/karaoke bubbles');
   assert.ok(SONG_NOTES.length >= 16, 'flute fallback theme is still present');
   const gaps = SONG_DIALOG.slice(1).map((d, i) => d.at - SONG_DIALOG[i].at);
   assert.ok(gaps.every((g) => g >= 2500), 'each spoken line is held long enough to read');
-  const lyricGaps = SONG_LYRICS.slice(1).map((d, i) => d.at - SONG_LYRICS[i].at);
-  assert.ok(lyricGaps.every((g) => g >= 1600), 'each lyric is held long enough to read');
   assert.equal(AUDIO_FILE, 'client/public/scum/song/song.mp3');
   assert.equal(SCRIPT_URL, '/scum/song/script.txt');
   assert.equal(AUDIO_URL, '/scum/song/song.mp3');
@@ -210,21 +205,30 @@ test('the King can issue Sing me a song; skip and rewatch still go through seen/
   assert.equal(after.royal.history.at(-1).cmd, 'sing');
 });
 
-test('the song scene has bubbles, karaoke, a step-aside, tomatoes, and a mute-aware flute', () => {
+test('the song scene has spoken bubbles only before the song, a step-aside, tomatoes, and mute-aware audio', () => {
   const royal = read('client/src/scum/Royal.jsx');
   const css = read('client/src/scum/scum.css');
   const sfx = read('client/src/scum/royalSfx.js');
   assert.match(royal, /data-test="scum-royal-bubble"/);
-  assert.match(royal, /data-test="scum-royal-karaoke"/);
+  assert.doesNotMatch(royal, /data-test="scum-royal-karaoke"/, 'no lyric karaoke bubbles during the song');
   assert.match(royal, /data-test="scum-royal-tomatoes"/);
+  assert.match(royal, /sc-juice/);
+  assert.match(royal, /sc-bit/);
   assert.match(royal, /data-phase/);
-  assert.match(css, /sc-royal-karaoke/);
   assert.match(css, /sc-royal-bubble/);
   assert.match(css, /sc-tomato-eat/);
   assert.match(css, /sc-tomato-roll/);
+  assert.match(css, /sc-splat-fly/);
+  assert.match(css, /sc-juice-drip/);
+  assert.match(css, /sc-bit-fly/);
+  assert.match(css, /sc-royal-sing-mouth/);
+  assert.match(css, /royal-sing \.bust \.b-head::after/, 'lip-sync mouth is on the Scum\'s face');
+  assert.match(css, /sc-royal-sing [0-9.]+s ease-in-out infinite/, 'Scum sways for the whole song');
+  assert.match(css, /sc-royal-chomp [0-9.]+s ease-in-out infinite/, 'King chomps through the song');
+  assert.match(css, /clamp\(-44px/, 'Scum visibly steps aside from the table');
   assert.match(css, /royal-king-sing/);
   assert.match(css, /royal-sing/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*sc-royal-karaoke/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*sc-royal-bubble/);
   assert.match(sfx, /function flute/);
   assert.match(sfx, /createOscillator/);
   assert.match(sfx, /isMuted/);
