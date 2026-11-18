@@ -48,6 +48,11 @@ function deal(fixed, counts, used = []) {
   return hands;
 }
 const stats = (k, s, sk) => ({ rounds: 1, king: k, scum: s, skips: sk, skipped: 0 });
+/** Mark last round's royal command as already issued and seen, so the King picker stays off the felt in screenshots. */
+const royalDone = (P, now, { kingSeat, scumSeat, kingName, scumName }) => ([{
+  id: 'r-done', round: 1, at: now - 250e3, cmd: 'jig', kingSeat, scumSeat, kingName, scumName,
+  seen: Object.fromEntries(Object.values(P).map((p) => [p.id, true])),
+}]);
 function tables(P, now) {
   const seat = (n, st) => ({ id: P[n].id, name: n, joinedAt: now - 3600e3, stats: st });
   const bot = { id: 'scumbot-0', name: 'Dusty', bot: true, stats: stats(0, 1, 0) };
@@ -97,7 +102,8 @@ function tables(P, now) {
     seats: [seat('Ann', stats(1, 0, 0)), seat('Bob', stats(0, 0, 0)), seat('Cat', stats(0, 1, 0)), seat('Dee', stats(0, 0, 0))],
     titles: { 0: 'king', 1: 'queen', 3: 'babyScum', 2: 'scum' }, roundNo: 2,
     lastRound: { no: 1, finish: [{ seat: 0, name: 'Ann', title: 'king', pay: 100, net: 100 }, { seat: 1, name: 'Bob', title: 'queen', pay: 50, net: 50 }, { seat: 3, name: 'Dee', title: 'babyScum', pay: -5, net: -5 }, { seat: 2, name: 'Cat', title: 'scum', pay: -10, net: -10 }] },
-    round: { no: 2, phase: 'play', order: [0, 1, 3, 2], hands: h5, pile: { cards: ['7h', '7c'], count: 2, rank: 7, seat: 0 }, owner: 0, playOn: true, turn: 0, finished: [], gone: [], exchange: null, lastPlay: { seat: 0, cards: ['7h', '7c'] }, skipped: null, turnAt: now - 60e3, deadline: now + 86340e3 },
+    royal: royalDone(P, now, { kingSeat: 0, scumSeat: 2, kingName: 'Ann', scumName: 'Cat' }),
+    round: { no: 2, phase: 'play', order: [0, 1, 3, 2], hands: h5, pile: { cards: ['7h', '7c'], count: 2, rank: 7, seat: 0 }, owner: 0, playOn: true, turn: 0, finished: [], gone: [], exchange: null, lastPlay: { seat: 0, cards: ['7h', '7c'] }, skipped: null, passed: [1, 3, 2], turnAt: now - 60e3, deadline: now + 86340e3 },
     log: [{ seq: 1, t: now - 300e3, round: 2, text: 'Ann leads round 2.', ev: { k: 'lead', seat: 0 } }, { seq: 2, t: now - 240e3, round: 2, text: 'Ann plays two 7s.', ev: { k: 'play', seat: 0, cards: ['7h', '7c'], left: 6 } },
       { seq: 3, t: now - 200e3, round: 2, text: 'Bob passes.', ev: { k: 'pass', seat: 1 } }, { seq: 4, t: now - 150e3, round: 2, text: 'Dee passes.', ev: { k: 'pass', seat: 3 } }, { seq: 5, t: now - 100e3, round: 2, text: 'Cat passes.', ev: { k: 'pass', seat: 2 } },
       { seq: 6, t: now - 99e3, round: 2, text: 'Everyone passed. Ann can keep playing on it or pass to clear.', ev: { k: 'playon', seat: 0 } }], seq: 6 };
@@ -110,7 +116,18 @@ function tables(P, now) {
     log: [{ seq: 1, t: now - 300e3, round: 2, text: 'Cat is out first.', ev: { k: 'out', seat: 2, place: 1 } }, { seq: 2, t: now - 200e3, round: 2, text: 'Ann plays a 7.', ev: { k: 'play', seat: 0, cards: ['7h'], left: 4 } },
       { seq: 3, t: now - 100e3, round: 2, text: 'Bob plays a 7. Same rank: Ann is SKIPPED!', ev: { k: 'play', seat: 1, cards: ['7c'], left: 4, skip: 0 } },
       { seq: 4, t: now - 99e3, round: 2, text: 'Everyone passed. Bob can keep playing on it or pass to clear.', ev: { k: 'playon', seat: 1 } }], seq: 4 };
-  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4, PLAYON: t5, SKIP2: t6 } };
+  // Table 7: Ann led a 9, Bob passed, Cat played a 9. The skip jumps Bob (already out) and lands on Dee. Ann is up.
+  const h7 = deal({ 0: ['3h', '5c', 'Tc', 'Qh', '2c'], 1: ['4c', '6d', 'Kd'], 2: ['5h', '8s', 'Jh'], 3: ['6s', '7d', 'Ad'] }, {}, ['9h', '9c']);
+  const t7 = { code: 'PASSOUT', name: 'Out For The Pile', hostId: P.Ann.id, hostName: 'Ann', createdAt: now - 9000e3, status: 'playing', settings: { turnSec: 86400, maxSeats: 4, bots: 0 }, turnSec: 86400, maxSeats: 4,
+    seats: [seat('Ann', stats(1, 0, 0)), seat('Bob', stats(0, 0, 0)), seat('Cat', { ...stats(0, 0, 1), skips: 1 }), seat('Dee', { ...stats(0, 0, 0), skipped: 1 })],
+    titles: { 0: 'king', 1: 'queen', 2: 'babyScum', 3: 'scum' }, roundNo: 2,
+    lastRound: { no: 1, finish: [{ seat: 0, name: 'Ann', title: 'king', pay: 100, net: 100 }, { seat: 1, name: 'Bob', title: 'queen', pay: 50, net: 50 }, { seat: 2, name: 'Cat', title: 'babyScum', pay: -5, net: -5 }, { seat: 3, name: 'Dee', title: 'scum', pay: -10, net: -10 }] },
+    royal: royalDone(P, now, { kingSeat: 0, scumSeat: 3, kingName: 'Ann', scumName: 'Dee' }),
+    round: { no: 2, phase: 'play', order: [0, 1, 2, 3], hands: h7, pile: { cards: ['9c'], count: 1, rank: 9, seat: 2 }, owner: 2, playOn: false, turn: 0, finished: [], gone: [], exchange: null, lastPlay: { seat: 2, cards: ['9c'] }, skipped: 3, passed: [1], turnAt: now - 60e3, deadline: now + 86340e3 },
+    log: [{ seq: 1, t: now - 300e3, round: 2, text: 'Ann leads round 2.', ev: { k: 'lead', seat: 0 } }, { seq: 2, t: now - 200e3, round: 2, text: 'Ann plays a 9.', ev: { k: 'play', seat: 0, cards: ['9h'], left: 5 } },
+      { seq: 3, t: now - 150e3, round: 2, text: 'Bob passes.', ev: { k: 'pass', seat: 1 } },
+      { seq: 4, t: now - 100e3, round: 2, text: 'Cat plays a 9. Same rank: Dee is SKIPPED!', ev: { k: 'play', seat: 2, cards: ['9c'], left: 3, skip: 3 } }], seq: 4 };
+  return { tables: { SCUMMY: t1, COURT7: t2, THRONE: t3, MINES1: t4, PLAYON: t5, SKIP2: t6, PASSOUT: t7 } };
 }
 
 async function page(browser, who, view, extra = {}) {
@@ -201,20 +218,39 @@ try {
   await annP.waitForSelector('[data-test=scum-hand]'); await bobP.waitForSelector('[data-test=scum-hand]'); await wait(900);
   check(/Everyone passed — keep playing or pass to clear/.test(await annP.locator('[data-test=scum-status]').innerText()), 'play-on hint for the last player');
   check(/Pass & clear/.test(await annP.locator('[data-test=scum-pass]').innerText()) && await annP.locator('[data-test=scum-pass]').isEnabled(), '"Pass & clear" is offered');
-  check(/can play on or clear/.test(await bobP.locator('[data-test=scum-status]').innerText()), 'others see she can play on');
+  check(/out of this pile/.test(await bobP.locator('[data-test=scum-status]').innerText()) && /can play on or clear/.test(await bobP.locator('[data-test=scum-status]').innerText()), 'Bob is out and sees she can play on');
+  check(await bobP.locator('[data-test=scum-passed]').count() === 3, 'the three who passed are badged as out');
   await annP.click('[data-test=scum-card-8h]', { position: { x: 8, y: 14 } }); await annP.click('[data-test=scum-card-8d]', { position: { x: 8, y: 14 } });
   await shot(annP, 'desktop-play-on'); await noScroll(annP, 'desktop play-on');
   await shot(bobP, 'phone-play-on-watching'); await noScroll(bobP, 'phone play-on');
   await annP.click('[data-test=scum-play]'); await wait(1200);
-  check(/Bob/.test(await annP.locator('[data-test=scum-status]').innerText()), 'she played on (8s on her own 7s); Bob gets another chance');
+  check(/keep playing or pass to clear/.test(await annP.locator('[data-test=scum-status]').innerText()), 'she played 8s on her 7s; others stay out, she plays on again');
+  check(await annP.locator('[data-test=scum-passed]').count() === 3, 'passed players stay out after a later play');
+  await shot(annP, 'desktop-still-out'); await noScroll(annP, 'desktop still out after a later play');
+  await shot(bobP, 'phone-still-out'); await noScroll(bobP, 'phone still out after a later play');
   await annP.context().close(); await bobP.context().close();
   const annC = await page(browser, P.Ann, PHONE); await annC.goto(`${BASE}/scum/PLAYON`); await annC.waitForSelector('[data-test=scum-hand]');
-  await call(P.Bob.cookie, 'POST', '/api/scum/tables/PLAYON/pass'); await call(P.Dee.cookie, 'POST', '/api/scum/tables/PLAYON/pass'); await call(P.Cat.cookie, 'POST', '/api/scum/tables/PLAYON/pass');
-  await annC.waitForFunction(() => /keep playing or pass to clear/.test(document.querySelector('[data-test=scum-status]')?.innerText || ''), null, { timeout: 6000 }).then(() => check(true, 'back to Ann after everyone passes again'), () => check(false, 'back to Ann after everyone passes again'));
+  await annC.waitForFunction(() => /keep playing or pass to clear/.test(document.querySelector('[data-test=scum-status]')?.innerText || ''), null, { timeout: 6000 }).then(() => check(true, 'Ann still has play-on after the 8s'), () => check(false, 'Ann still has play-on after the 8s'));
   await wait(400); await shot(annC, 'phone-play-on'); await noScroll(annC, 'phone play-on (you)');
   await annC.click('[data-test=scum-pass]'); await wait(1200);
   check(/Your lead/.test(await annC.locator('[data-test=scum-status]').innerText()), 'pass & clear: she leads fresh');
+  check(await annC.locator('[data-test=scum-passed]').count() === 0, 'out badges clear with the pile');
   await annC.context().close();
+
+  // 7b. Bob passed on a 9, then Cat played a 9: the skip jumps Bob and lands on Dee. Bob stays out.
+  const annO = await page(browser, P.Ann, DESK);
+  const bobO = await page(browser, P.Bob, PHONE);
+  await annO.goto(`${BASE}/scum/PASSOUT`); await bobO.goto(`${BASE}/scum/PASSOUT`);
+  await annO.waitForSelector('[data-test=scum-hand]'); await bobO.waitForSelector('[data-test=scum-hand]'); await wait(800);
+  check(await annO.locator('[data-test=scum-passed]').count() === 1, 'Bob is badged as out of the pile');
+  check(await annO.locator('[data-test=scum-skipped]').count() === 1, 'Dee is badged as skipped, not Bob');
+  check(/out of this pile until it clears/.test(await bobO.locator('[data-test=scum-status]').innerText()), "Bob's status says he is out until the pile clears");
+  check(/Your turn|beat/.test(await annO.locator('[data-test=scum-status]').innerText()), "Ann is up on Cat's 9");
+  const passedTxt = await annO.locator('[data-test=scum-passed]').innerText();
+  check(/^Out$/i.test(passedTxt.trim()), `out badge is compact ("${passedTxt.trim()}")`);
+  await shot(annO, 'desktop-pass-out'); await noScroll(annO, 'desktop pass-out');
+  await shot(bobO, 'phone-pass-out'); await noScroll(bobO, 'phone pass-out');
+  await annO.context().close(); await bobO.context().close();
 
   // 8. two left, skip then pass: Bob (desktop) is playing on after skipping Ann; he passes and Ann (phone) gets the live pile.
   const annS = await page(browser, P.Ann, PHONE);

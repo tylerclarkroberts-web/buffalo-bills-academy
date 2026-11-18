@@ -44,8 +44,8 @@ export function playProblem(pile, sel) {
 const RULES = [
   'No jokers. 2 is low, K is high, A is trump.',
   'Lead a single, pair, three or four of a kind. Follow with the same number, equal or higher, or pass.',
-  'Match the rank just played and the next player is SKIPPED. A skip only costs that one turn: they stay in and can still play on this pile.',
-  'If you pass, you are out of this pile until it clears. The pile clears when everyone still holding cards except the last player to play has passed. Skipped players do not count as passed. That last player then leads fresh.',
+  'Match the rank just played and the next player who can still play is SKIPPED. A skip only costs that one turn: they stay in and can still play on this pile. Skips jump over anyone who already passed.',
+  'If you pass, you are out of this pile until it clears — even if play goes all the way around or someone else plays after you. The pile clears when everyone still holding cards except the last player to play has passed. Skipped players do not count as passed. That last player then leads fresh.',
   'Aces clear the pile: 1 ace on singles, 2 on pairs, 3 on threes, 4 on fours. Nothing goes on an ace; you lead again.',
   'Everyone else passed on your set? Keep playing on it, or pass. If someone was skipped (not passed), they still get a chance on the live pile.',
   'One 52-card deck, always. No jokers, 3–7 players. The King leads every new round.',
@@ -386,6 +386,7 @@ function ScumTable({ code, me }) {
     : ex ? 'Royal court in session: cards changing hands'
     : flyingTxt ? flyingTxt
     : r?.myTurn && !fly ? (r.leading ? 'Your lead. Play any set.' : r.playOn ? 'Everyone passed — keep playing or pass to clear' : `Your turn: beat ${setName(r.pile)} or pass.`)
+    : mine?.passed && r?.pile && !fly ? (r.playOn && turnName ? `You're out of this pile. ${turnName} can play on or clear` : "You're out of this pile until it clears.")
     : r?.playOn && turnName && !fly ? `Everyone passed. ${turnName} can play on or clear`
     : turnName ? `${turnName}'s turn` : '';
   const readyToDeal = canStartDeal(v.seats.filter(Boolean).length, v.bots);
@@ -441,7 +442,7 @@ function ScumTable({ code, me }) {
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
                   </SeatBuddy>
-                  {s.passed && <span className="sc-seatbadge pass" data-test="scum-passed">Passed</span>}
+                  {s.passed && <span className="sc-seatbadge pass" data-test="scum-passed">Out</span>}
                   {s.skipped && <span className="sc-seatbadge skip" data-test="scum-skipped">Skipped</span>}
                   {s.title && <span className={`sc-title t-${s.title}`} data-test="scum-title">{CROWN[s.title]} {TITLE[s.title]}</span>}
                   {v.payouts && s.broke ? <span className="sc-paychip broke" data-test="scum-minechip" title="Off to the Acid Mines">⛏ mines</span>
@@ -483,7 +484,7 @@ function ScumTable({ code, me }) {
                 {r.myTurn ? <>
                   <button className="btn primary" disabled={busy || !!prob || !!pb.pending} onClick={play} data-test="scum-play">{prob && sel.length ? prob : sel.length ? `Play ${setName({ count: sel.length, rank: rk(sel[0]) })}` : r.leading ? 'Pick your lead' : 'Pick cards'}</button>
                   <button className="btn" disabled={busy || r.leading || !!pb.pending} onClick={() => post('pass')} data-test="scum-pass">{r.playOn ? 'Pass & clear' : 'Pass'}</button>
-                </> : <span className="small dim">{mine.place ? 'Watching the rest fight it out.' : `Waiting on ${turnName || '…'}`}</span>}
+                </> : <span className="small dim">{mine.place ? 'Watching the rest fight it out.' : mine.passed ? 'Out of this pile.' : `Waiting on ${turnName || '…'}`}</span>}
               </div>}
             </>}
         </div>
