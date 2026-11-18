@@ -27,6 +27,7 @@ async function login(name, email) {
   return r.headers.get('set-cookie').split(';')[0].split('=')[1];
 }
 const noScroll = (p) => p.evaluate(() => { const de = document.documentElement; return !(de.scrollHeight > innerHeight + 1 || de.scrollWidth > innerWidth + 1); });
+async function dismissRotate(p) { const b = p.locator('[data-test=elhalo-rotate-dismiss]'); if (await b.count() && await b.isVisible().catch(() => false)) await b.click(); }
 const inView = (p, sel) => p.evaluate((s) => { const els = [...document.querySelectorAll(s)].filter((el) => el.getClientRects().length); return els.length > 0 && els.every((el) => { const r = el.getBoundingClientRect(); return r.width > 8 && r.height > 8 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }); }, sel);
 const st = (p) => p.evaluate(() => window.__elHalo.state());
 const hook = (p, body) => p.evaluate((b) => fetch('/api/elhalo/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json()), body);
@@ -48,7 +49,10 @@ async function open(browser, sid, s) {
   if (s.m) await p.tap('[data-test=door-open]'); else await p.keyboard.press('f');
   await p.waitForSelector('[data-test=door-hall]', { timeout: 5000 });
   await tap(p, '[data-test=hall-door-elhalo]');
-  await p.waitForSelector('[data-test=elhalo-lobby]', { timeout: 15000 });
+  const skip = p.getByRole('button', { name: 'Skip for now' });
+  const lobby = p.locator('[data-test=elhalo-lobby]');
+  await skip.or(lobby).first().waitFor({ timeout: 30000 });
+  if (await skip.count()) { await skip.click(); await lobby.waitFor({ timeout: 20000 }); }
   await p.waitForFunction(() => !!window.__elHalo && window.__elHalo.state().status === 'live', null, { timeout: 10000 }).catch(() => null);
   return p;
 }
@@ -268,6 +272,8 @@ async function main() {
   check(await until(K, () => !!window.__elHalo.state().look, null, 3000) || true, 'Kash edits his look before joining');
   await K.tap('[data-test=elhalo-start]');
   check(await playing(K), 'Kash: late joiner goes straight into the running match');
+  await dismissRotate(K);
+  await K.tap('[data-test=pad-more]');
   check(await inView(K, '[data-test=pad-grenade]') && await inView(K, '[data-test=pad-nadekind]') && await noScroll(K), 'Kash: phone pad incl. grenade buttons, no scroll');
   await hook(K, { place: { x: -1.8, z: 20, yaw: -Math.PI / 2 } }); await K.waitForTimeout(300);
   await shot(K, 'phone-playing-night');

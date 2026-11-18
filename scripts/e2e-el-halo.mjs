@@ -49,7 +49,10 @@ async function open(browser, sid, s) {
   check(!p.reqs.some((r) => /ElHaloRoom/.test(r.url)), `${s.n}: El Halo chunk not loaded in the hall`);
   p.tIn = Date.now();
   if (s.m) await p.tap('[data-test=hall-door-elhalo]'); else await p.click('[data-test=hall-door-elhalo]');
-  await p.waitForSelector('[data-test=elhalo-lobby]', { timeout: 15000 });
+  const skip = p.getByRole('button', { name: 'Skip for now' });
+  const lobby = p.locator('[data-test=elhalo-lobby]');
+  await skip.or(lobby).first().waitFor({ timeout: 30000 });
+  if (await skip.count()) { await skip.click(); await lobby.waitFor({ timeout: 20000 }); }
   await p.waitForFunction(() => !!window.__elHalo && window.__elHalo.mode === 'title', null, { timeout: 10000 });
   return p;
 }
@@ -64,6 +67,7 @@ async function start(p) {
 }
 async function holdKey(p, key, ms) { await p.keyboard.down(key); await p.waitForTimeout(ms); await p.keyboard.up(key); }
 async function holdPad(p, btn, ms, id = 21) { const b = p.locator(`[data-test=pad-${btn}]`); await b.dispatchEvent('pointerdown', { pointerId: id, pointerType: 'touch' }); await p.waitForTimeout(ms); await b.dispatchEvent('pointerup', { pointerId: id, pointerType: 'touch' }); }
+async function dismissRotate(p) { const b = p.locator('[data-test=elhalo-rotate-dismiss]'); if (await b.count() && await b.isVisible().catch(() => false)) await b.click(); }
 const place = (p, x, z, yaw) => hook(p, { place: { x, z, yaw } });
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), -(to.z - from.z));
 
@@ -140,6 +144,7 @@ async function main() {
   check(kd.length === 4 && td.length === 6 && kd.filter((d) => d.pair).length === 2, `dogs: 6 on the desktop, 4 on the phone, the stuck pair on both (${td.length}/${kd.length})`);
   const pk = kd.filter((d) => d.pair), ptd = td.filter((d) => d.pair);
   check(Math.hypot(pk[0].x - ptd[0].x, pk[0].z - ptd[0].z) < 2.5 && Math.abs(Math.hypot(pk[0].x - pk[1].x, pk[0].z - pk[1].z) - 0.84) < 0.05, `Kash: the pair is where Tyler sees it, stuck together (${JSON.stringify(pk)} vs ${JSON.stringify(ptd)})`);
+  await dismissRotate(K);
   check(await inView(K, '[data-test^=pad-]') && await noScroll(K), 'Kash: phone pad on screen (incl. ACCIÓN), no scroll');
   // the phone's ACCIÓN button buys you an elote (heal + ammo, once per wave)
   await hook(K, { calm: true, hp: 45 });
@@ -153,7 +158,7 @@ async function main() {
   check(await until(K, () => /Ya comiste este round/.test(window.__elHalo.state().prompt?.label || ''), null, 2000), `Kash: already ate this wave (${JSON.stringify((await st(K)).prompt)})`);
   await K.evaluate(() => window.__elHalo.face(Math.PI * 0.75, -0.05));
   await K.waitForTimeout(400); await shot(K, '07-mobile-playing');
-  await K.tap('[data-test=elhalo-board-btn]'); await K.waitForTimeout(300);
+  await K.tap('[data-test=elhalo-pause]'); await K.tap('[data-test=elhalo-board-btn]'); await K.waitForTimeout(300);
   check(await K.isVisible('[data-test=elhalo-board]'), 'Kash: MARCADOR shows the scoreboard on the phone'); await shot(K, '08-mobile-scoreboard');
   await K.tap('[data-test=elhalo-board-close]');
 
