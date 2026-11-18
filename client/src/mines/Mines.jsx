@@ -6,7 +6,7 @@ import { BY_ID } from '../../../server/engine/creatures.js';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
-import { rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, RUBBLE } from '../../../server/engine/maze.js';
+import { rng, veinChain, eggSpot, findSpots, rodHeading, geigerBars, farthest, RUBBLE } from '../../../server/engine/maze.js';
 import { shiftMaze, tierInfo, tierLight } from '../../../server/engine/mine-tiers.js';
 import { WormSwarm } from './worms.js';
 import Worms from './Worms.jsx';
@@ -325,7 +325,7 @@ function Nephew({ hired }) {
 }
 
 function Intro({ me, loading, onStart, starting, office, open, going, onShaft }) {
-  const units = Math.min(office?.capacity || 100, going?.max || 100);
+  const units = office?.capacity || 100;
   // Signed out: the sign-in form takes the place of the orientation, so the page still fits one screen.
   const [signing, setSigning] = useState(false);
   if (signing && !me) {
@@ -356,14 +356,14 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · hold Shift to run · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
             <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
             <li>Follow the clicks. Closer is faster; facing the right tunnel gives them a little boost.</li>
-            <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one.</li>
+            <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one. The farther from the lift, the richer the acid.</li>
             <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
             <li>A hatched barn bug knows the tunnels and leads you to the glow. If it gets knocked out, take it to the <b>Bug Center</b> in the Barn. Otherwise it recovers all HP after the fight.</li>
-            <li><b>Everyone shares today's tunnels.</b> Get close behind an unsuspecting miner and press <b>X</b> or tap <b>Assassinate</b> for their acid and up to $100. Meet face to face and your <b>bugs battle automatically</b> for the haul and the loser's smokes. You'll need a day-old account and three finished shifts. Guests and the elevator landing are protected.</li>
+            <li><b>Everyone in your shaft shares today's tunnels.</b> Get close behind an unsuspecting miner and press <b>X</b> or tap <b>Assassinate</b> for their acid and up to $100. Meet face to face and your <b>bugs battle automatically</b> for the haul and the loser's smokes. You'll need a day-old account and three finished shifts. Guests and the elevator landing are protected.</li>
           </ol>
           <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
           {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
-            {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}</span></button>)}
+            {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}{s.quality > 1 ? ` · ACID ×${s.quality}` : ''}</span></button>)}
           </div>}
           <div className="m-go">
           {loading ? null : me ? <button className="m-btn" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
@@ -378,7 +378,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
             <li><b>???</b> Old-timers whisper about a motherlode, a well full of something shiny, and things that are not from here.</li>
           </ul>
           <p className="m-dim">Nobody knows the odds. Payroll will not say. Every shift pays something.</p>
-          {me && <button className="m-link" onClick={() => navigate('/store')}>BIGGER BUCKETS AND DEEPER SHAFTS: GENERAL STORE ►</button>}
+          {me && <button className="m-link" onClick={() => navigate('/store')}>DEEPER SHAFTS AND FASTER TOOLS: GENERAL STORE ►</button>}
         </section>
       </div>
     </main>
@@ -546,7 +546,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     } else if (pool?.remaining) {
       setStatus('FIND THE ACID POOL');
       if (previous.pools.find(p => p.id === pool.id)?.quantity == null) setLine(pool.quantity >= state.capacity ? 'A GUSHER. ONE HOLE, ONE WHOLE BUCKET. TELL NOBODY.'
-        : pool.quantity <= 10 * (SHAFTS.find(s => s.id === state.shaft)?.scale || 1) ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : 'TAKE WHAT YOU CAN CARRY.');
+        : pool.quantity <= 10 ? 'A PUDDLE. IT IS STILL, TECHNICALLY, ACID.' : pool.rich >= 1.5 * (SHAFTS.find(s => s.id === state.shaft)?.quality || 1) ? `THE DEEP STUFF. PAYROLL PAYS ×${pool.rich.toFixed(1)} FOR IT AND ASKS NO QUESTIONS.` : 'TAKE WHAT YOU CAN CARRY.');
     } else {
       setStatus(pool?.quantity != null ? 'POOLS DRAINED. CLOCK OUT WITH YOUR HAUL.' : 'FIND THE ACID POOL');
     }
@@ -883,7 +883,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (!doomRef.current && !done.current && !document.hidden) chart();
       setElapsed(Date.now() - shift.localStart);
       const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
-      const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden });
+      const out = maze.dist[Math.round(scene.pos.y / TILE)]?.[Math.round(scene.pos.x / TILE)]; // worms keep to the far tunnels: none at the lift, twice as many at the far end
+      const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden, scale: out >= 0 ? 2 * out / farthest(maze) : 1 });
       if (landed) { setWorms([...swarm.current.worms]); audio?.splat(); setLine(WORM_LINES[landed.id % WORM_LINES.length]); }
       if (!landed) { // a cave-in a step or two ahead: say so once (not on the tick a worm lands, or its line would swallow this one)
         const tx = Math.round(scene.pos.x / TILE), ty = Math.round(scene.pos.y / TILE), fx = -Math.sin(scene.yaw), fz = -Math.cos(scene.yaw);
@@ -1036,7 +1037,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
         {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
-          <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}</span>
+          <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}{bucket.rich > 1.004 && <span className="m-rich" data-test="bucket-rich"> · ACID ×{bucket.rich.toFixed(2)}</span>}</span>
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
         </div>}
         <button className="m-link" disabled={clockingOut} onClick={() => clockOut()}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
@@ -1214,7 +1215,7 @@ function Result({ r, onAgain, onLeave, starting, fare }) {
       {r.pvp && <p className="m-twin" data-test="pvp-receipt">{r.pvp.by.toUpperCase()} TOOK {r.pvp.cash ? `$${r.pvp.cash}` : 'NO CASH (YOU HIT TODAY\'S LOSS CAP)'}{r.pvp.acid ? `, ${Math.floor(r.pvp.acid)} ACID` : ''}{r.pvp.tobacco?.length ? ` AND YOUR ${r.pvp.tobacco.map((t) => t.toUpperCase()).join(', ')}` : ''}. NO PAY FOR THIS SHIFT.</p>}
       {r.pvp?.fainted && <p className="m-twin" data-test="pvp-fainted">{typeof r.pvp.fainted === 'string' ? r.pvp.fainted.toUpperCase() : 'YOUR BUG'} FAINTED. <button className="m-link" onClick={() => navigate('/barn/center')}>BUG CENTER ►</button></p>}
       {r.twin && <p className="m-twin" data-test="twin">THE OTHER FAUN WAS WAITING AT THE ELEVATOR. HE TOOK ${r.twin.took.toLocaleString('en-US', { maximumFractionDigits: 2 })} AND SAID THANK YOU.</p>}
-      {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED</p>}
+      {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED{r.rich ? <span data-test="result-rich"> · ACID QUALITY ×{r.rich.toFixed(2)}</span> : null}</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">
         <button className="m-btn" disabled={starting} onClick={onAgain}>[ ANOTHER SHIFT{fare ? ` · $${fare} FARE` : ''} ]</button>

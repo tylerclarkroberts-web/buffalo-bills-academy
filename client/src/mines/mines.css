@@ -442,3 +442,6 @@ body.in-mines { background: #020402; }
   .m-scare, .m-scare .m-scare-face { animation: m-scare-fade .9s ease forwards; transform: none; }
 }
 @media (max-width: 720px) { .m-horror-banner { font-size: 16px; } }
+
+/* Rich acid from far out: the bucket readout says what the haul is worth. */
+.m-rich { color: #c8ff5a; }

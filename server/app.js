@@ -71,7 +71,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
   const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, poolInt, vein, barn, foreman,
-    ...(mineTier ? { layout: (now) => dailyLayout(mineDay(now), mineTier) } : {}) });
+    ...(mineTier ? { layout: (now, shaft) => dailyLayout(mineDay(now), mineTier, shaft) } : {}) });
   const avatars = new Avatars({ dir: service.store.dir, store: service.store, now: service.now });
   service.avatars = avatars;
   // v34: the General Store. Avatars carry what you wear; the barn reads bug looks, toy and gear bonuses from it.

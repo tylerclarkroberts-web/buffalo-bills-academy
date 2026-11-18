@@ -6,10 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Mines } from '../server/mines.js';
+import { Mines, richAt, RICH_FREE, RICH_STEPS } from '../server/mines.js';
+import { SHAFTS } from '../server/catalog/mine.js';
 import { mineDay, daySeed, dailyLayout, dailyMine } from '../server/engine/daily-maze.js';
 import { TIERS, dayTier, tierInfo, shiftMaze, tierLight, MIN_FOG } from '../server/engine/mine-tiers.js';
-import { distFrom, makeMaze, bucketChain, RUBBLE, FIRST_POOL_STEPS } from '../server/engine/maze.js';
+import { distFrom, makeMaze, bucketChain, farthest, RUBBLE, FIRST_POOL_STEPS, MAX_CELLS } from '../server/engine/maze.js';
 import { onTunnel } from '../server/engine/pvp-geometry.js';
 import { WormSwarm, WORM_GRACE_MS } from '../client/src/mines/worms.js';
 import { MINE_REACH, LEAVE_REACH } from '../client/src/mines/vein.js';
@@ -152,14 +153,31 @@ function fixture(t, tier, { payout = 20000 } = {}) {
 
 test('everyone on shift the same day gets the same tier, size and cave-ins; the office shows it before clock-in', (t) => {
   const f = fixture(t);
-  const day = dailyLayout('2026-11-12');
+  const day = dailyLayout('2026-11-12', null, SHAFTS[0]);
   const office = f.mines.office(f.players[0]);
   assert.deepEqual(office.today, { day: '2026-11-12', tier: day.tier, cells: day.cells, pay: tierInfo(day.tier).pay });
   const a = f.mines.start(f.players[0], V2); f.clock.now += 3600e3;
   const b = f.mines.start(f.players[1], V2);
-  assert.equal(a.tier, day.tier); assert.equal(b.tier, day.tier); assert.equal(a.cells, tierInfo(day.tier).cells);
+  assert.equal(a.tier, day.tier); assert.equal(b.tier, day.tier); assert.equal(a.cells, tierInfo(day.tier).cells + SHAFTS[0].cells);
   assert.deepEqual(a.pools.map((p) => [p.x, p.y]), b.pools.map((p) => [p.x, p.y]));
   assert.deepEqual(shiftMaze(a).grid, shiftMaze(b).grid);
+});
+
+test('every shaft digs its own tunnels, bigger the deeper it is, with pools that lead outward and get richer', () => {
+  assert.equal(richAt(0), 1000); assert.equal(richAt(RICH_FREE), 1000); assert.equal(richAt(RICH_FREE + RICH_STEPS), 2000);
+  for (const t of TIERS) {
+    const digs = SHAFTS.map((shaft) => dailyMine('2026-11-19', t.tier, shaft));
+    assert.equal(new Set(digs.map((d) => d.seed)).size, SHAFTS.length, 'no two shafts share tunnels');
+    digs.forEach((d, i) => {
+      assert.equal(d.tier, t.tier, 'the day is as rough in every shaft');
+      assert.equal(d.cells, t.cells + SHAFTS[i].cells); assert.ok(d.cells <= MAX_CELLS);
+      if (i) assert.ok(d.cells > digs[i - 1].cells, 'each shaft is bigger than the one above');
+      assert.ok(d.chain.length >= 5 && d.chain.length <= SHAFTS[i].pools);
+      const out = d.chain.map((p) => d.maze.dist[p.y][p.x]);
+      assert.ok(out[1] > out[0], 'the second pool is farther from the lift than the first');
+      assert.ok(Math.max(...out) <= farthest(d.maze));
+    });
+  }
 });
 
 test('acid you reach is minable on every tier, and harder days pay more for ordinary acid', (t) => {
@@ -172,7 +190,10 @@ test('acid you reach is minable on every tier, and harder days pay more for ordi
     const end = f.fill(f.players[0], s); // no 425, no 409: in reach and in means minable
     assert.ok(end.result, `tier ${tt.tier} settled`);
     paid.push(end.result.amount);
-    assert.equal(end.result.amount, Math.round(80 * tt.pay * 100) / 100);
+    const rich = end.result.rich || 1; // acid from far out is worth more, on top of the day's hazard pay
+    assert.ok(Math.abs(end.result.amount / (80 * tt.pay) - rich) < 0.006, `tier ${tt.tier}: $${end.result.amount} at ×${rich}`);
+    const first = s.pools[0], steps = shiftMaze(s).dist[first.y][first.x];
+    assert.ok(Math.abs(rich - richAt(steps) / 1000) < 0.006, 'one pool filled the bucket, so the bucket is as rich as that pool');
     if (tt.pay > 1) assert.equal(end.result.hazard, tt.pay); else assert.equal(end.result.hazard, undefined);
   }
   for (let k = 1; k < paid.length; k++) assert.ok(paid[k] > paid[k - 1]);

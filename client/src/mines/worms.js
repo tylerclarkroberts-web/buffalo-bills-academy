@@ -12,11 +12,12 @@ export class WormSwarm {
     this.rate = row?.worms || 0; this.size = row?.wormSize || 0; this.max = row?.wormMax || 0;
     this.rand = rand; this.worms = []; this.n = 0; this.clock = 0; this.cuts = 0;
   }
-  /** Advance by dt ms. `hold`: no new worms right now. Returns the worm that just landed, or null. */
-  tick(dt, { hold = false } = {}) {
+  /** Advance by dt ms. `hold`: no new worms right now. `scale`: how thick they are here (0 at the lift, 2 at the far
+   *  end of the shaft, 1 on average). Returns the worm that just landed, or null. */
+  tick(dt, { hold = false, scale = 1 } = {}) {
     this.clock += dt;
     if (!this.rate || hold || this.clock < WORM_GRACE_MS || this.worms.length >= this.max) return null;
-    if (this.rand() >= 1 - Math.exp(-this.rate * dt / 60000)) return null;
+    if (this.rand() >= 1 - Math.exp(-this.rate * scale * dt / 60000)) return null;
     return this.spawn();
   }
   /** One worm, somewhere in the middle of the view (never over the HUD corners). */

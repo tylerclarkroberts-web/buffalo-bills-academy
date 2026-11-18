@@ -7,6 +7,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Mines } from '../server/mines.js';
+import { SHAFTS } from '../server/catalog/mine.js';
 import { mineDay, daySeed, dailyLayout, dailyMine, MIN_DAY_POOLS } from '../server/engine/daily-maze.js';
 import { TIERS } from '../server/engine/mine-tiers.js';
 import { distFrom } from '../server/engine/maze.js';
@@ -75,7 +76,7 @@ test('two miners clocking in the same day get the same maze and the same acid sp
   assert.equal(a.day, '2026-11-12'); assert.equal(b.day, a.day);
   assert.equal(a.seed, b.seed); assert.equal(a.cells, b.cells);
   assert.deepEqual(a.pools.map(({ id, x, y }) => [id, x, y]), b.pools.map(({ id, x, y }) => [id, x, y]));
-  const layout = dailyLayout(a.day);
+  const layout = dailyLayout(a.day, null, SHAFTS[0]);
   assert.equal(a.seed, layout.seed); assert.equal(a.cells, layout.cells);
   // The day after (past Denver midnight), a new layout.
   f.clock.now = Date.parse('2026-11-13T08:00:00Z');

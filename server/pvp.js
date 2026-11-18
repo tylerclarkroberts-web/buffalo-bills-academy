@@ -7,7 +7,7 @@
 // ConquestK; nothing in this file reads or changes the ConquestK betting switch.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { FIRST_POOL_STEPS } from './engine/maze.js';
+import { validCells } from './engine/maze.js';
 import { shiftMaze } from './engine/mine-tiers.js';
 import { mineDay } from './engine/daily-maze.js';
 import { MAX_SHIFT_MS } from './mines.js';
@@ -75,7 +75,7 @@ export class Pvp {
 
   // ----- who is where -----
   maze(shift) {
-    const cells = FIRST_POOL_STEPS[shift.cells] ? shift.cells : 7;
+    const cells = validCells(shift.cells) ? shift.cells : 7;
     return this.mazeAt(`${shift.seed}:${cells}:${shift.tier || 0}`); // the tier's cave-ins are rock here too
   }
   mazeAt(key) {

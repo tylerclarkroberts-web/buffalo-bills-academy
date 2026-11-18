@@ -30,19 +30,22 @@ export const MIN_DAY_POOLS = 5;
 
 /** Everything about the day's tunnels that every miner shares (`forceTier`: the local dev server's MINE_TEST_TIER hook). The size is the day's; the seed is the first dig
  *  (the day, then 'day#1', 'day#2', ...) that leaves at least MIN_DAY_POOLS acid spots. */
-export function dailyLayout(day, forceTier = null) {
-  const tier = tierInfo(forceTier) ? forceTier : dayTier(daySeed(day)), cells = tierInfo(tier).cells;
-  let seed = daySeed(day);
+export function dailyLayout(day, forceTier = null, shaft = null) {
+  // The tier is the day's, whatever the shaft. Each shaft (a SHAFTS row, server/catalog/mine.js) digs its own tunnels
+  // from its own seed, `cells` bigger a side than the tier's size. With no shaft: the plain tier-sized maze.
+  const tier = tierInfo(forceTier) ? forceTier : dayTier(daySeed(day)), cells = tierInfo(tier).cells + (shaft?.cells || 0);
+  const dig = shaft ? `${day}/${shaft.id}` : day, pools = shaft?.pools || 8;
+  let seed = daySeed(dig);
   for (let k = 1; k <= 40; k++) {
-    if (bucketChain(shiftMaze({ seed, cells, tier }), seed).length >= MIN_DAY_POOLS) break;
-    seed = daySeed(`${day}#${k}`);
+    if (bucketChain(shiftMaze({ seed, cells, tier }), seed, pools).length >= MIN_DAY_POOLS) break;
+    seed = daySeed(`${dig}#${k}`);
   }
-  return { day, seed, cells, tier };
+  return { day, seed, cells, tier, pools };
 }
 
 /** The day's maze and its pool chain (positions only: how much each holds is rolled per shift on the server). */
-export function dailyMine(day, forceTier = null) {
-  const { seed, cells, tier } = dailyLayout(day, forceTier);
+export function dailyMine(day, forceTier = null, shaft = null) {
+  const { seed, cells, tier, pools } = dailyLayout(day, forceTier, shaft);
   const maze = shiftMaze({ seed, cells, tier });
-  return { day, seed, cells, tier, maze, chain: bucketChain(maze, seed) };
+  return { day, seed, cells, tier, maze, chain: bucketChain(maze, seed, pools) };
 }

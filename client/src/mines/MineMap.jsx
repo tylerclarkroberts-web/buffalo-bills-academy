@@ -18,6 +18,13 @@ export default function MineMap({ maze, explored, pools, wilds = [], pose, onClo
   const bugs = wilds.map(w => ({ ...w, label: `${wildWhat(w).replace(/^w/, 'W')} · ${TYPES[typeOf(w.species)]?.name || 'bug'} · Lv ${w.level}` }));
   const entranceKnown = explored.tiles.has(`${maze.start.x},${maze.start.y}`);
   const { lift, door } = entranceLayout(maze);
+  // A small shaft shows whole. A big one is drawn around what you have walked, so the chart stays readable down Earl's Level.
+  let view = `-1 -1 ${maze.size + 2} ${maze.size + 2}`;
+  if (maze.size > 33) {
+    const seen = [...explored.tiles].map(key => key.split(',').map(Number)), xs = [pose.x, ...seen.map(t => t[0])], ys = [pose.y, ...seen.map(t => t[1])];
+    const span = Math.max(17, Math.max(...xs) - Math.min(...xs) + 3, Math.max(...ys) - Math.min(...ys) + 3);
+    view = `${(Math.min(...xs) + Math.max(...xs) - span) / 2} ${(Math.min(...ys) + Math.max(...ys) - span) / 2} ${span} ${span}`;
+  }
   return (
     <dialog ref={dialog} className="m-map" data-test="mine-map" aria-labelledby="mine-map-title"
       onCancel={e => { e.preventDefault(); onClose(); }}>
@@ -27,7 +34,7 @@ export default function MineMap({ maze, explored, pools, wilds = [], pose, onClo
       </header>
       <p className="m-map-note">Walk to fill it in. New shift, new sheet.</p>
       <div className="m-map-chart">
-        <svg viewBox={`-1 -1 ${maze.size + 2} ${maze.size + 2}`} role="img" aria-label={`Explored mine tunnels. You are at column ${Math.round(pose.x)}, row ${Math.round(pose.y)}. ${wet} known acid pools. Unexplored areas are blank.`}>
+        <svg viewBox={view} role="img" aria-label={`Explored mine tunnels. You are at column ${Math.round(pose.x)}, row ${Math.round(pose.y)}. ${wet} known acid pools. Unexplored areas are blank.`}>
           {bugs.length > 0 && <desc>{bugs.map(b => `${b.label} at column ${b.x}, row ${b.y}.`).join(' ')}</desc>}
           {[...explored.tiles].map(key => {
             const [x, y] = key.split(',').map(Number), tile = maze.grid[y][x];

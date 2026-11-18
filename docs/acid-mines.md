@@ -16,22 +16,25 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 
 | Gear | Effect |
 | --- | --- |
-| Buckets (Second Bucket to Golden Bucket) | Capacity of 200, 400, 600, 800 or 1,600 units; the largest owned counts. |
 | Bendy Straw, Shop-Vac | Collection is 2 or 10 times the base five units per second; the fastest owned counts. |
 | Headlamp Helmet | Longer lamp and fog distance. This is drawn by the browser only. |
 | The Foreman's Nephew | `POST /api/mines/nephew` once a UTC day (the faun's day) pays the owner $40 to $90, fixed by player and day, plus $1 for each day he has already worked (up to $30). His record (days, total, best day and a tally of what he did instead) is kept in `mines.json`. It is not a shift: no shift count, history or mining earnings. |
 | Dowsing Rod | An arrow along the shortest walk to the current pool. It does not change how much an acid deposit fills the bucket. |
 
-| Shaft | Permit | Most a bucket brings up | Fare | Cave-in per pool |
+| Shaft | Permit | Acid quality | Fare | Cave-in per pool (average) | Bigger than the day's size by | Acid spots |
 | --- | --- | --- | --- | --- |
-| Shaft 7 | none | 100 | free | never |
-| Shaft 8 | $15,000 | 400 | $20 | 4% |
-| Shaft 12 | $50,000 | 800 | $80 | 7% |
-| Earl's Level | $100,000 | 1,600 | $160 | 10% |
+| Shaft 7 | none | ×1 | free | never | 2 cells a side | 8 |
+| Shaft 8 | $15,000 | ×4 | $20 | 4% | 6 | 10 |
+| Shaft 12 | $50,000 | ×8 | $80 | 7% | 10 | 12 |
+| Earl's Level | $100,000 | ×16 | $160 | 10% | 16 | 14 |
 
-A shift's capacity is the smaller of the bucket and the shaft's limit, so big buckets do nothing in Shaft 7. The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid fills are a share of that shift's capacity, so a halfway fill in a 200-unit bucket is 100 units. Acid and mud pay per 100 units, so a 200-unit bucket of ordinary acid pays twice the $80–$120 roll. The three rare finds pay the same for a full bucket of any size: Motherlode $10,000 (0.05%), Alien Skeletons $25,000 (0.02%) and Diamond Well $50,000 (0.01%).
+Every shaft digs its own tunnels each Mountain-time day, from its own seed, so miners only share a maze (and meet) with others in the same shaft. The day's tier is the same in every shaft; its size (6 to 16 cells a side) grows by the shaft's column above, so Earl's Level on the roughest day is 32 cells a side. Loops and blocked hallways scale with the area. The acid spots lead outward: each is farther from the lift than the one before while such a dead end is left.
 
-In a permit shaft, each pool after the first may cave in as the miner arrives, decided at clock-in from a separate random source and never sent to the browser beforehand. A cave-in spills a quarter of the bucket's current contents once; state then carries `spill` (`poolId`, `lost`). Later deposits still use their own fill roll, clamped to whatever space is left after the spill, so a cave-in costs volume, or pay if the miner clocks out early.
+Everyone carries the same 100-unit bucket; what a shift pays comes from how good its acid is. Ordinary acid is worth the shaft's quality (the table above), and more the farther its pool is from the lift (`richAt` in `server/mines.js`): the first 80 tiles of walk pay the shaft's rate, and every 62 tiles past that adds that rate again. The quality is the multiple the bucket that used to match the shaft carried; the permits cost what they did, so the deep shafts are cheaper to reach than when a bucket had to be bought as well. The shift keeps a running `worth` (units weighted by each pool's richness); settlement pays ordinary acid on that, and the result carries `rich` when it is above 1. Mud ($10 for a full bucket) and the three rare finds ignore quality and richness, as they ignore hazard pay. A cave-in spill and acid taken in PvP keep their richness. To re-check: `node scripts/mine-timing.mjs` prints time and pay per minute for every shaft; the richness numbers were chosen so each shaft pays within a few percent of what it did per minute, with the bucket that used to match it, before the shafts grew.
+
+The fare is charged once when a new shift starts, in the same write as the clock-in, and is never refunded; resuming does not charge again. Deeper shafts are darker. Acid fills are a share of the 100-unit bucket. A full bucket of ordinary acid pays the $80–$120 roll times its quality. The three rare finds pay the same in every shaft: Motherlode $10,000 (0.05%), Alien Skeletons $25,000 (0.02%) and Diamond Well $50,000 (0.01%).
+
+In a permit shaft, each pool after the first may cave in as the miner arrives (the chance is the shaft's rate times twice the pool's share of the way to the far end of the maze: none at the lift, double at the end), decided at clock-in from a separate random source and never sent to the browser beforehand. A cave-in spills a quarter of the bucket's current contents once; state then carries `spill` (`poolId`, `lost`). Later deposits still use their own fill roll, clamped to whatever space is left after the spill, so a cave-in costs volume, or pay if the miner clocks out early.
 
 A permit shaft may also have the other faun waiting at the elevator: 10% of shifts in Shaft 8, 20% in Shaft 12 and 30% on Earl's Level, decided at clock-in from its own random source and never sent to the browser beforehand. He takes a third of whatever the shift pays, rare finds included; the result then carries `twin` (`took`). Shaft 7 never meets him.
 
