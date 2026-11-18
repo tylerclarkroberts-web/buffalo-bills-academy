@@ -4,7 +4,7 @@
 // you send in whoever is still standing. Beat them all for the area's ribbon. Progress lives in circuit.json; a fight
 // lives in memory, so a restart mid-round just calls that round off.
 //
-// XP: only a win pays (the mine's battle XP, BATTLE_XP plus the upset bonus); a loss pays nothing, so losing on
+// XP: only a win pays (the mine's battle XP, by the line and the level beaten: fightXp); a loss pays nothing, so losing on
 // purpose earns nothing. A ribbon adds RIBBON_XP to every bug that won a round of it. A beaten trainer stays beaten.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
@@ -117,7 +117,7 @@ export class Circuit {
   settle(pid, stop, bug, foe, fight) {
     const me = this.me(pid), S = fight.S, won = fight.over.winner === 0, fainted = S.hp[0] === 0;
     const res = this.barn.battleResult(pid, { battleId: fight.id, bornAt: bug.bornAt, won, fought: false, fainted,
-      foeName: `${stop.who}'s ${foe.name}`, odds: this.fights.lineOf(fight, 0), place: 'circuit' });
+      foeLevel: foe.level, foeName: `${stop.who}'s ${foe.name}`, odds: this.fights.lineOf(fight, 0), place: 'circuit' });
     const extra = { ...(res.xp ? { xpEarned: res.xp } : {}), levelBefore: res.levelBefore, levelAfter: res.levelAfter, ...(fainted ? { healthAfter: 0 } : {}) }; // a loss says nothing about XP: there is none
     const say = (line) => `${stop.who}: “${line}”`;
     const run = me.run?.stop === stop.id ? me.run : null;

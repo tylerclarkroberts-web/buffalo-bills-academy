@@ -44,9 +44,14 @@ export const WILD = {
   holdMs: 30e3, // it stands its ground while a miner decides: the fight can start from where it was up to this long ago
   jarAt: 0.25,  // a jar only works on a wild bug at or under a quarter of its health
   jarBase: 0.35, jarBest: 0.85, // the chance at exactly a quarter, and the most it can be; it climbs as the bug weakens
+  jarPerLevel: 0.2, jarLeast: 0.3, // a wild bug above your bug's level is harder to jar
+  keepAbove: 2,                    // and arrives at most this many levels above the bug that caught it
 };
 /** The chance a jar holds, from the wild bug's health as a share of its full health. */
-export const jarChance = (share) => (share > WILD.jarAt ? 0 : Math.min(WILD.jarBest, WILD.jarBase + (WILD.jarAt - share) * 2));
+/** `above`: how many levels the wild bug has on the bug catching it. Each one makes the jar a fifth less likely to hold, down to WILD.jarLeast of the usual chance. */
+export const jarChance = (share, above = 0) => (share > WILD.jarAt ? 0 : Math.min(WILD.jarBest, WILD.jarBase + (WILD.jarAt - share) * 2) * Math.max(WILD.jarLeast, 1 - WILD.jarPerLevel * Math.max(0, above)));
+/** The level a caught bug arrives at: its own, but no more than WILD.keepAbove over the bug that caught it. */
+export const caughtLevel = (wildLevel, catcherLevel) => Math.min(wildLevel, catcherLevel + WILD.keepAbove);
 
 const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const LOANER = { species: 'onymacris', name: 'Gerald', level: 1 }; // the Foreman's lunchbox beetle
@@ -306,7 +311,7 @@ export class Pvp {
     if (reason !== 'jarred') this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
     if (reason === 'fainted' || reason === 'decision' || reason === 'jarred') {
       battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: battle.bugs.a.bornAt,
-        won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeName: battle.wild.stray ? `${battle.wild.stray.owner}'s abandoned ${battle.wild.name}` : `a wild ${battle.wild.name}`, odds: fight.line });
+        won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeLevel: battle.wild.level, foeName: battle.wild.stray ? `${battle.wild.stray.owner}'s abandoned ${battle.wild.name}` : `a wild ${battle.wild.name}`, odds: fight.line });
     }
   }
   /**
@@ -321,11 +326,12 @@ export class Pvp {
     if (share > WILD.jarAt) throw new GameError('It is far too lively for a jar. Get it under a quarter of its health.', 409);
     if (!this.barn.room(player.id)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
     if (battle.jarTurn === S.turn) throw new GameError('It is still shaking off the last one.', 429);
-    const held = this.randInt(1000) < Math.round(jarChance(share) * 1000);
+    const mine = battle.fight.fighters[0].level, above = battle.wild.level - mine;
+    const held = this.randInt(1000) < Math.round(jarChance(share, above) * 1000);
     const wildId = battle.wild.id, battleId = battle.id;
     if (!this.shop.takeJar(player.id, held ? { wildId, battleId } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {
-      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: battle.wild.level, name: battle.wild.stray?.name });
+      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: caughtLevel(battle.wild.level, mine), name: battle.wild.stray?.name });
       this.finish(battle, 'a', 'jarred', caught.name);
     } else battle.jarTurn = S.turn;
     return { held, battle: this.battleView(battle, player.id, body.have) };
@@ -351,7 +357,7 @@ export class Pvp {
     const xpBefore = battle.bugs?.[side]?.xp;
     return { ...this.fights.view(battle.fight, pid, have), benched: battle.benched?.[side] || null,
       // against a wild bug: how many jars you carry, whether a stall is free, and the chance one holds right now (0 until it is weak enough)
-      ...(battle.wild ? { wild: true, wildId: battle.wild.id, ...(battle.over ? {} : { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), at: WILD.jarAt, chance: jarChance(share) } }) } : {}),
+      ...(battle.wild ? { wild: true, wildId: battle.wild.id, ...(battle.over ? {} : { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), at: WILD.jarAt, chance: jarChance(share, battle.wild.level - battle.fight.fighters[0].level), keeps: caughtLevel(battle.wild.level, battle.fight.fighters[0].level) } }) } : {}),
       over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
         bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0)) } : null,
@@ -451,8 +457,8 @@ export class Pvp {
   settleBugs(rec) {
     const b = rec.bugs, out = { winner: null, loser: null };
     if (!this.barn?.battleResult) return out;
-    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, odds: b.winner.odds });
-    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, fainted: b.loser.fainted ?? true, foeName: rec.winnerName });
+    if (b.winner) out.winner = this.barn.battleResult(rec.winner, { battleId: rec.battleId, bornAt: b.winner.bornAt, won: true, foeName: rec.loserName, odds: b.winner.odds, foeLevel: b.loser ? levelFor(b.loser.xp || 0) : 1 });
+    if (b.loser) out.loser = this.barn.battleResult(rec.loser, { battleId: rec.battleId, bornAt: b.loser.bornAt, won: false, fought: b.fought, fainted: b.loser.fainted ?? true, foeName: rec.winnerName, foeLevel: b.winner ? levelFor(b.winner.xp || 0) : 1 });
     return out;
   }
   /** Both bankrolls in one atomic write, with the raid id on both players so a retry is a no-op. Never below zero. */

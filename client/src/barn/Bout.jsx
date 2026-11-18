@@ -43,13 +43,13 @@ export const mergeFight = (held, page) => ({ ...page, rounds: [...(held?.id === 
  * Against a wild bug: throw a jar once it is weak enough. It sits in the ring, small while it cannot be thrown (and
  * says what it is waiting for), big once a throw can hold. It also says what the last throw did.
  */
-function Jar({ jar, hp, onJar }) {
+function Jar({ jar, hp, level, onJar }) {
   const [said, setSaid] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => { if (!said) return undefined; const id = setTimeout(() => setSaid(''), 2500); return () => clearTimeout(id); }, [said]);
   const why = !jar.have ? 'No jars to catch it with' : !jar.room ? 'No free stall to keep it in' : !jar.chance ? `Jar it at ${hp} HP or less` : '';
   // onJar answers true (caught), false (it got out) or the server's reason for refusing
   const throwIt = async () => { setBusy(true); const out = await onJar(); setBusy(false); if (out !== true) setSaid(out === false ? 'It squeezed out!' : String(out)); };
-  return <button className={`btn small bout-jar${why ? '' : ' ready'}`} onClick={throwIt} disabled={busy || !!why} data-test="bout-jar">{said || why || `Throw a jar · ${pct(jar.chance)} to hold`}{jar.have > 0 && <small> · {jar.have} left</small>}</button>;
+  return <button className={`btn small bout-jar${why ? '' : ' ready'}`} onClick={throwIt} disabled={busy || !!why} data-test="bout-jar">{said || why || `Throw a jar · ${pct(jar.chance)} to hold${jar.keeps < level ? ` · arrives Lv ${jar.keeps}` : ''}`}{jar.have > 0 && <small> · {jar.have} left</small>}</button>;
 }
 
 /** Under the ring while a fight is live: what your bug does next, and the buttons to decide that for it. */
@@ -201,7 +201,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           {weak && <strong className="bout-stamp jar">WEAK ENOUGH TO JAR!</strong>}
           {pos.phase === 'finish' && <strong className="bout-stamp end">{jarred ? 'CAUGHT!' : plan.ending === 'ko' ? 'K.O.' : 'TIME!'}</strong>}
         </div>
-        {live && bout.jar && onJar && !quit && <Jar jar={bout.jar} hp={jarHp} onJar={onJar} />}
+        {live && bout.jar && onJar && !quit && <Jar jar={bout.jar} hp={jarHp} level={bout.them.level} onJar={onJar} />}
       </div>
       <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <>
         <b>{bout.verdict || verdictLine(bout)}</b>
