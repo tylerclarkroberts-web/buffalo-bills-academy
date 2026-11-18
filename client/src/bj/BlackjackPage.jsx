@@ -10,6 +10,7 @@ import { useDealReveal } from './useDealReveal.js';
 import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
 import { NextTablePill } from '../turns/TurnsPill.jsx';
 import './bj.css';
+import { publicTitle } from '../../../server/pageMeta.js';
 
 const money = (x) => (x == null ? '∞' : `$${Number(x).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 const pct = (x) => `${(x * 100).toFixed(2)}%`;
@@ -90,7 +91,7 @@ const TURN = { 30: '30 s', 120: '2 min', 600: '10 min', 3600: '1 hour', 86400: '
 
 export default function BlackjackPage({ code }) {
   const { me } = useSession();
-  useEffect(() => { document.title = "Blackjack · Buffalo Bill's Academy"; }, []);
+  useEffect(() => { document.title = publicTitle(code ? `Blackjack table ${code}` : 'Blackjack'); }, [code]);
   if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">Blackjack</h2><SignIn compact next={code ? `/bj/${code}` : '/bj'} /></div></div>;
   return code ? <BjTable code={code} me={me} /> : <BjLobby me={me} />;
 }

@@ -36,6 +36,7 @@ import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
 import { listTurns, registerTurnSource, scumSource } from './turns.js';
+import { applyHtmlMeta } from './pageMeta.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
@@ -565,11 +566,13 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       if (req.method === 'HEAD') return res.end();
       fs.createReadStream(hit.gz).on('error', () => res.destroy()).pipe(res);
     });
+    const appHtml = () => fs.readFileSync(path.join(staticDir, 'index.html'), 'utf8');
+    const sendApp = (req, res) => res.type('html').send(applyHtmlMeta(appHtml(), req.path));
     // /elhalo is the game route. public/elhalo/ holds musica and the lobby thumb, and express.static
     // would 301 /elhalo to /elhalo/ (a path the client treats as the lobby). Serve the app instead.
-    app.get(['/elhalo', '/elhalo/'], (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+    app.get(['/elhalo', '/elhalo/'], sendApp);
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
-    app.get('/{*splat}', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+    app.get('/{*splat}', sendApp);
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }

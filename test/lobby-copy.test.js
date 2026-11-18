@@ -26,10 +26,10 @@ test('user-facing Scum copy is SCUM, not Async Scum', () => {
   assert.match(card, /<span className="western">SCUM<\/span>/);
   assert.match(card, /<b className="western">SCUM<\/b>/);
   assert.doesNotMatch(card.replace(/^\/\/.*$/m, ''), /Async Scum/);
-  assert.match(page, /document\.title = "SCUM · Buffalo Bill's Academy"/);
+  assert.match(page, /document\.title = publicTitle\('SCUM'\)/);
   assert.match(page, /<h1 className="western">SCUM<\/h1>/);
   assert.match(page, /<h2 className="western">SCUM<\/h2>/);
-  assert.match(page, /\$\{v\.name\} · SCUM/);
+  assert.match(page, /publicTitle\(v\?\.code \? `SCUM table \$\{v\.code\}` : 'SCUM'/);
   assert.match(slack, /at SCUM \$\{f\.table\}/);
   assert.match(slack, /at SCUM \*\$\{esc\(f\.table\)\}\*/);
   assert.match(report, /scum: 'SCUM'/);

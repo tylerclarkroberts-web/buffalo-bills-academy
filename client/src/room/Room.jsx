@@ -13,6 +13,7 @@ import { RoomActivity } from './activity.js';
 import { roomView, nudgeAxes, ROOM_VIEW_LIMITS } from './scene-model.js';
 import { layoutOf, layoutKey, addShelf, resizeShelf, moveShelf, moveWallDisplay, addWallDisplay, removeWallDisplay, removeShelf, changeStyle, furnitureOf, placeFurniture, moveToRoom } from './layout.js';
 import './room.css';
+import { publicTitle } from '../../../server/pageMeta.js';
 
 const left = (ms) => ms > 0 ? `${Math.max(1, Math.ceil(ms / 60000))} min` : 'Ready';
 const SHELF_SIZES = [{ id: 'standard', label: 'Small shelf', detail: '1 item' }, { id: 'wide', label: 'Large shelf', detail: '3 items' }];
@@ -168,7 +169,7 @@ export default function Room({ id }) {
     };
   }, [load]);
 
-  useEffect(() => { document.title = `${room?.owner.name ? room.owner.name + "'s house" : 'My House'} · Buffalo Bill's Academy`; }, [room?.owner.name]);
+  useEffect(() => { document.title = publicTitle('My House'); }, []);
 
   useEffect(() => {
     if (!dirty) return undefined;
