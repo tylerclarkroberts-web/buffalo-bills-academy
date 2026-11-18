@@ -2,6 +2,7 @@
 import React, { useRef } from 'react';
 import { Bust } from '../avatar/Bust.jsx';
 import { SeatBuddy } from '../table/TableBug.jsx';
+import { usePlayerCard } from '../table/PlayerCard.jsx';
 import { Card } from '../Card.jsx';
 import { useSize } from '../ui.jsx';
 import { Dealer, DealerPlate } from '../table/Dealer.jsx';
@@ -51,6 +52,7 @@ export function BjArena({
 }) {
   const box = useRef(null);
   const { w, h } = useSize(box);
+  const who = usePlayerCard();
   const N = v.seats.length;
   const mySeat = v.mySeat >= 0 ? v.mySeat : 0;
   const tall = w && h ? w / h < 1.25 : false;
@@ -153,6 +155,7 @@ export function BjArena({
                 className={`bj-rail ${s ? '' : 'empty'} ${s?.me ? 'me' : ''} ${turnSeat === i ? 'turn' : ''}`}
                 style={{ left: `${p.x}%`, top: `${p.y}%` }}
                 data-test={s ? `bj-seat-${i}` : `bj-open-${i}`}
+                {...(s && !s.me && !s.bot ? who.seat(s.id, s.name) : {})}
               >
                 {s ? (
                   <>
@@ -217,6 +220,7 @@ export function BjArena({
           {dealing && !reduced && (
             <div className="bj-pace" data-test="bj-pace">Tap to speed</div>
           )}
+          {who.card}
         </>
       )}
     </div>

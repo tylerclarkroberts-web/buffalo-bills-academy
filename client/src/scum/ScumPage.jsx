@@ -6,6 +6,7 @@ import { SignIn } from '../Home.jsx';
 import { useMedia } from '../ui.jsx';
 import { Bust } from '../avatar/Bust.jsx';
 import { SeatBuddy } from '../table/TableBug.jsx';
+import { usePlayerCard } from '../table/PlayerCard.jsx';
 import { Card } from '../Card.jsx';
 import { sfx, isMuted, setMuted } from '../bj/sfx.js';
 import { SkipBlast, CrownBlast } from './Trollface.jsx';
@@ -216,6 +217,7 @@ function seatXY(k, n, tall) {
 
 function ScumTable({ code, me }) {
   const [v, setV, err] = useView(code);
+  const who = usePlayerCard();
   const [sel, setSel] = useState([]);
   const [beg, setBeg] = useState('');
   const [show, setShow] = useState(null);
@@ -437,7 +439,7 @@ function ScumTable({ code, me }) {
             {disp.map((i) => {
               const s = v.seats[i]; const p = pos[i]; const isTurn = i === turnSeat;
               return (
-                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`}>
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(s.me || s.bot ? {} : who.seat(s.id, s.name))}>
                   {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${s.name}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
@@ -494,6 +496,7 @@ function ScumTable({ code, me }) {
         {show === 'log' && <div className="bj-pop" data-test="scum-log" onClick={() => setShow(null)}><div className="panel sc-logp"><h3 className="western">Table log</h3><ol className="sc-log">{v.log.slice(-40).reverse().map((e) => <li key={e.seq} className={e.ev?.skip != null ? 'skip' : ''}>{e.text}</li>)}</ol><button className="btn small">Close</button></div></div>}
         {v.status === 'over' && v.lastRound && <Final v={v} />}
       </div>
+      {who.card}
       {crown && <CrownBlast key={crown.seq} {...crown} onDone={endCrown} />}
       {blast && <SkipBlast key={blast.seq} name={blast.name} by={blast.by} me={blast.me} short={blast.short} onDone={endBlast} />}
     </div>

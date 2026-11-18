@@ -145,11 +145,11 @@ export default function Store() {
                 <h2>{cur.name}</h2>
                 <p className="sd-price">{cur.retired ? <b>No longer sold</b> : <><b className="num">{money(cur.price)}</b> <span className={`tier t-${TIER(cur.price)}`}>{TIER(cur.price)}</span></>}{owned ? <span className="muted"> · you have {CONSUMABLE(cur) && !ONCE(cur) ? owned : 'it'}</span> : null}</p>
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
-                {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}Room decoration · no gameplay bonus.</p>}
+                {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}House decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
                 <div className="sd-acts">
-                  {owned > 0 && cur.kind === 'furniture' && <button className="btn ghost" onClick={() => navigate('/room')}>Put it in My Room</button>}
-                  {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My Room</button>}
+                  {owned > 0 && cur.kind === 'furniture' && <button className="btn ghost" onClick={() => navigate('/room')}>Put it in My House</button>}
+                  {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My House</button>}
                   {!takenBy && !cur.retired && (!owned || (CONSUMABLE(cur) && !ONCE(cur))) && <button className="btn" onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy · ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id }), 'On it goes.')} data-test="store-equip">Wear</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}

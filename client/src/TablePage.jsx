@@ -14,6 +14,7 @@ import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
 import { SeatBuddy } from './table/TableBug.jsx';
 import { GagLayer, GagButton } from './table/Gags.jsx';
+import { usePlayerCard } from './table/PlayerCard.jsx';
 import { SmokeLayer, SmokeButton } from './table/Smoke.jsx';
 import { ShowButton } from './table/Spectacle.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
@@ -440,6 +441,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) 
   const shown = (!hand && view.lastHand?.shown) || {};
   const winners = new Set((!hand && view.lastHand?.winners?.filter((w) => w.playerId === view.seats[w.seat]?.playerId).map((w) => w.seat)) || []);
   const button = hand ? hand.buttonSeat : view.buttonSeat;
+  const who = usePlayerCard();
   const box = useRef(null);
   const { w, h } = useSize(box);
   const tall = w && h ? w / h < 1.25 : false;
@@ -579,7 +581,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) 
             <React.Fragment key={seat}>
               <div data-pid={s.playerId} className={`seat ${bit && !hold && bit.seat === seat && bit.playerId === s.playerId ? 'in-bit' : ''} ${isMe ? 'me' : ''} ${toAct ? 'toact' : ''} ${s.folded ? 'folded' : ''} ${winners.has(seat) ? 'winner' : ''} ${s.say?.text ? 'has-say' : ''}`} style={style}>
                 {s.say?.text && <SayBubble text={s.say.text} name={s.name} below={y < 34} align={x < 24 ? 'l' : x > 76 ? 'r' : 'c'} />}
-                <div className="seat-top" {...(isMe && onSay ? { role: 'button', tabIndex: 0, onClick: onSay, onKeyDown: (e) => e.key === 'Enter' && onSay(), 'aria-label': 'Your seat: say something', title: 'Say something' } : {})}>
+                <div className="seat-top" {...(isMe && onSay ? { role: 'button', tabIndex: 0, onClick: onSay, onKeyDown: (e) => e.key === 'Enter' && onSay(), 'aria-label': 'Your seat: say something', title: 'Say something' } : isMe || s.bot ? {} : who.seat(s.playerId, s.name))}>
                   <SeatBuddy bug={s.bug} playerId={s.playerId} size={Math.round(bust * 0.52)} myAction={!!(isMe && toAct)} busy={!!hold} pose={bugPose}>
                     <Bust id={s.playerId} avatar={view.avatars?.[s.playerId]} size={bust} state={state} title={s.name} />
                   </SeatBuddy>
@@ -620,6 +622,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) 
           );
         })}
         <ReplayLayer rp={rp} xy={xy} geo={geo} />
+        {who.card}
         {tea !== null && theme === 'anime' && !hold && (
           <GeishaTea key={String(tea)} stops={view.seats.map((s, i) => (s ? xy(i) : null)).filter(Boolean)} center={{ x: geo.cx, y: geo.cy }} onDone={() => setTea(null)} />
         )}

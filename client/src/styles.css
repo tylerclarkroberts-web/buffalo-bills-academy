@@ -1226,6 +1226,10 @@ input, select { background: rgba(0, 0, 0, .28); }
 .pp-items { display: flex; flex-wrap: wrap; gap: 4px; }
 .pp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .gag-fx { position: fixed; z-index: 80; pointer-events: none; width: 0; height: 0; }
+/* Tap another player's seat: their name, a way to their house and their profile (table/PlayerCard.jsx) */
+.player-card { position: fixed; z-index: 90; min-width: 150px; max-width: min(240px, 86vw); padding: 10px; gap: 6px; border-radius: 12px; }
+.player-card p { margin: 0; }
+.bj-rail[role=button] { cursor: pointer; }
 .gag-fx .pf-from { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); font-size: 40px; animation: pf-pop 2.4s ease-out forwards; }
 .gag-fx .pf-name { position: absolute; left: 0; top: calc(var(--w) * -.75); transform: translateX(-50%); white-space: nowrap; font: 600 11px var(--mono); color: #fff; background: rgba(0,0,0,.6); padding: 1px 6px; border-radius: 999px; animation: pf-fade 2.4s ease-out forwards; }
 .gag-fx i { position: absolute; left: -7px; top: -7px; width: 14px; height: 18px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: #5ac8ff; box-shadow: inset -2px -2px 0 rgba(0,0,0,.15); opacity: 0;

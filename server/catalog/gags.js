@@ -14,14 +14,14 @@ export const GAG_ITEMS = [
 /** v36 migration: old prank ids -> gag ids (the rubber chicken became the spaghetti noodle). */
 export const GAG_RENAME = { 'prank-squirt': 'gag-squirt', 'prank-soaker': 'gag-soaker', 'prank-confetti': 'gag-confetti', 'prank-chicken': 'gag-spaghetti', 'prank-pie': 'gag-pie', 'prank-tumbleweed': 'gag-tumbleweed' };
 
-// Furniture for My Room: bought once, then brought out with Add while editing the room. See ROOM_FURNITURE.
+// Furniture for My House: bought once, then brought out with Add while editing the house. See ROOM_FURNITURE.
 export const FURNITURE_ITEMS = [
   ['case', 'Glass Display Case', 1800, '🗄️', 'Three velvet squares under glass. Whatever goes in looks expensive. Whatever goes in was not.'],
   ['pokertable', 'Poker Table', 3500, '🃏', 'Your chips move here from the tray. Nobody is dealt in. The table prefers it that way.'],
 ].map(([id, name, price, emoji, desc]) => ({ id: `furn-${id}`, name, price, emoji, pix: id, desc, kind: 'furniture', cat: 'furnishings', slot: null }));
 export const ABSURD_ITEMS = [
   ['lamp', 'Oil Lamp', 60, '🪔', 'Lights nothing. Requires oil you do not have.'],
-  ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. Park it in the yard beside your room. Still no horse included.'],
+  ['wagon', 'Covered Wagon', 6000, '🛻', 'A whole covered wagon. Park it in the yard beside your house. Still no horse included.'],
   ['vaccine', 'Smallpox Vaccine', 900, '💉', 'Smallpox was declared eradicated in 1980. You are, however, extra prepared.'],
   ['anvil', 'Anvil', 450, '⚒️', 'Falls on no one. Very heavy on your floor.'],
   ['spittoon', 'Brass Spittoon', 150, '🏺', 'Polished. Unused. Let\'s keep it that way.'],
