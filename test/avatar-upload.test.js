@@ -116,6 +116,23 @@ test('other miners and a seated poker table receive the current tone', async (t)
   assert.deepEqual(tick.others.find(miner => miner.id === id).avatar, skin.avatar);
 });
 
+test('a failed skin tone save keeps the prior preference on the live player', async (t) => {
+  const { service, id } = await fixture(t);
+  const player = service.store.players[id], tone = SKIN_TONES[3];
+  const save = service.store.savePlayers.bind(service.store);
+  const fail = () => { throw new Error('player file write failed'); };
+  service.store.savePlayers = fail;
+  assert.throws(() => service.avatars.setSkinTone(player, tone), /write failed/);
+  assert.equal(Object.hasOwn(player, 'skinTone'), false);
+  service.store.savePlayers = save;
+  service.avatars.setSkinTone(player, tone);
+  service.store.savePlayers = fail;
+  assert.throws(() => service.avatars.setSkinTone(player, null), /write failed/);
+  assert.equal(service.avatars.info(player).skinTone, tone);
+  assert.equal(service.store.players[id], player);
+  service.store.savePlayers = save;
+});
+
 test('merging an account keeps the destination tone or brings over the source preference', async (t) => {
   const { service } = await fixture(t);
   const first = { skinTone: SKIN_TONES[0] }, kept = { skinTone: SKIN_TONES[1] };
