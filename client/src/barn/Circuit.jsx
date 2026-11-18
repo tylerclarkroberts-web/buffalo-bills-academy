@@ -125,8 +125,8 @@ export default function Circuit({ b, busy, act, boutOpen }) {
   return <div className="cc-wrap" data-test="circuit">
     <div className="cc-top">
       <div><span className="cc-org">Tri-County Invertebrate Athletic Association</span>
-        {c.areas.length > 1 && <div className="cc-areas" role="group" aria-label="Areas">{c.areas.map((a) => <button key={a.id} className={`btn small${a.id === area.id ? ' on' : ' ghost'}`} aria-pressed={a.id === area.id} disabled={!a.open} title={a.open ? undefined : `Win ribbon ${a.ribbon - 1} first`} onClick={() => { setAreaId(a.id); setSel(null); }} data-test="circuit-area">{a.ribbon}. {a.name}{a.open ? '' : ' 🔒'}</button>)}</div>}
-        <h2>{area.name}</h2><p className="small muted">{area.blurb} · Your bugs top out at level {c.cap}.</p></div>
+        {c.areas.length > 1 && <div className="cc-areas" role="group" aria-label="Areas">{c.areas.map((a) => <button key={a.id} className={`btn small${a.id === area.id ? ' on' : ' ghost'}`} aria-pressed={a.id === area.id} disabled={!a.open} title={a.open ? undefined : a.anyOrder ? 'Win ribbon 2 first' : `Win ribbon ${a.ribbon - 1} first`} onClick={() => { setAreaId(a.id); setSel(null); }} data-test="circuit-area">{a.ribbon}. {a.name}{a.open ? (c.ribbons[a.ribbon - 1]?.at ? ' ✓' : '') : ' 🔒'}</button>)}</div>}
+        <h2>{area.name}</h2><p className="small muted">{area.blurb} · Your bugs top out at level {c.cap}.{area.anyOrder ? ' Areas 3 to 6 can be won in any order; whoever you leave for later trains harder.' : ''}</p></div>
       <div className="cc-rack" aria-label="Ribbons">{c.ribbons.map((r) => <Rosette key={r.n} n={r.n} on={!!r.at} />)}</div>
     </div>
     <div className="cc-body">

@@ -6,12 +6,12 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies } from '../server/circuit.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies, scaled, AREAS } from '../server/circuit.js';
 import { typeOf, edge } from '../server/engine/bug-types.js';
 import { RULES } from '../server/engine/bout.js';
 import { simulateBout } from '../server/engine/bout.js';
 import { xpFor, levelFor } from '../server/engine/creatures.js';
-import { startBout, stepBout, tellDue } from '../server/engine/bout.js';
+import { startBout, stepBout, tellDue, odds } from '../server/engine/bout.js';
 
 function setup(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-circuit-'));
@@ -188,4 +188,61 @@ test('Bent\'s cough is going round: either bug sometimes loses a turn to it', ()
   assert.ok(coughs[0] > 5 && coughs[1] > 5, 'both corners');
   const rate = (coughs[0] + coughs[1]) / turns;
   assert.ok(rate > RULES.cough.chance / 2 && rate < RULES.cough.chance * 2, `${Math.round(rate * 100)}% of turns`);
+});
+
+test('areas 3 to 6 open together with ribbon 2, and what is left for later trains harder and pays more', (t) => {
+  const { barn, circuit, pid, hatch } = setup(t);
+  hatch(10); const me = circuit.me(pid);
+  const areas = () => circuit.view(pid).areas;
+  me.ribbons[1] = 1;
+  assert.deepEqual(areas().map((a) => a.open), [true, true, false, false, false, false]);
+  me.ribbons[2] = 1;
+  assert.deepEqual(areas().map((a) => a.open), [true, true, true, true, true, true]);
+  assert.deepEqual(areas().slice(2).map((a) => a.anyOrder), [true, true, true, true]);
+  const dale = () => areas()[2].stops.at(-1), ruperto = () => areas()[3].stops.at(-1);
+  assert.deepEqual([dale().bugs.map((b) => b.level), dale().purse, areas()[2].stops[0].bugs[0].level], [[8, 9], PURSE.ribbon * 3, 7]);
+  me.ribbons[4] = 1; me.ribbons[5] = 1; // two more ribbons won elsewhere first
+  assert.deepEqual([dale().bugs.map((b) => b.level), dale().purse, areas()[2].stops[0].bugs[0].level], [[11, 12, 13], PURSE.ribbon * 5, 10], 'three bugs, three levels up, and the fifth ribbon\'s purse');
+  assert.deepEqual(scaled(AREAS[3].stops.at(-1).bugs, 2).length, 2);
+  // a gauntlet under way keeps the lineup it began with
+  for (const id of ['inspector', 'bmehl']) me.done[id] = 1;
+  const live = circuit.fight(pid, 'Tester', { stop: 'ruperto' }).live, began = circuit.me(pid).run.lineup.map((b) => b.level);
+  me.ribbons[3] = 1; // a ribbon won mid-gauntlet (it cannot be, but the lineup must not move)
+  assert.deepEqual(ruperto().bugs.map((b) => b.level), began);
+  barn.fights.finish(barn.fights.get(live), 1);
+});
+
+test('the porch light: on every third turn a bug that is not a Dazzle type hits less often', () => {
+  const dale = { species: 'photuris', name: 'Porchlight', level: 8, rule: 'flicker' };
+  const hits = { off: [0, 0], on: [0, 0] };
+  for (let k = 0; k < 60; k++) { const S = startBout({ species: 'lamprima', name: 'Mine', level: 8 }, dale, `flick:${k}`);
+    while (!S.over) for (const e of stepBout(S)) if (e.type === 'move' && e.by === 0 && !e.skipped && e.effect !== 'heal') { const bin = e.turn % RULES.flicker.every === 0 ? hits.off : hits.on; bin[0] += e.hit ? 1 : 0; bin[1]++; } }
+  assert.ok(hits.off[1] > 40 && hits.on[0] / hits.on[1] - hits.off[0] / hits.off[1] > 0.1, `lit ${Math.round(100 * hits.on[0] / hits.on[1])}% v dark ${Math.round(100 * hits.off[0] / hits.off[1])}%`);
+});
+
+test('an exterminator\'s poison never wears off, a rager hits harder when hurt, and a mulligan is at most three a fight', () => {
+  const voss = { species: 'platymeris', name: 'Regret', level: 8, rule: 'linger' };
+  let longest = 0;
+  for (let k = 0; k < 10; k++) { const S = startBout({ species: 'lamprima', name: 'Mine', level: 8 }, voss, `linger:${k}`); let ticks = 0;
+    while (!S.over) for (const e of stepBout(S)) if (e.type === 'venom' && e.by === 1 && !e.pop && e.ability !== 'Rising Water') ticks++;
+    longest = Math.max(longest, ticks); }
+  assert.ok(longest >= 6, `poison ticked ${longest} times in one fight`);
+  const dmg = (rule, health) => odds(startBout({ species: 'phanaeus', name: 'Seven Iron', level: 8, rule, health }, { species: 'lamprima', name: 'Them', level: 8 }, 'rage'), 0).basic.dmg[1];
+  assert.ok(dmg('rage', 40) > dmg(undefined, 40) * 1.15 && dmg('rage', 100) === dmg(undefined, 100));
+  for (let k = 0; k < 20; k++) { const S = startBout({ species: 'lamprima', name: 'Mine', level: 8 }, { species: 'empusa', name: 'Ranch Rules', level: 8, rule: 'mulligan' }, `mull:${k}`); let taken = 0;
+    while (!S.over) for (const e of stepBout(S)) if (/takes a mulligan/.test(e.line)) taken++;
+    assert.ok(taken <= RULES.mulligan.tries); }
+});
+
+test('the grill is always lit and every fourth order comes out hot; Dwayne\'s shaft hides his bug\'s health', (t) => {
+  const S = startBout({ species: 'solenopsis', name: 'Order 41', level: 8, rule: 'grill' }, { species: 'lamprima', name: 'Them', level: 8 }, 'grill');
+  const plain = startBout({ species: 'solenopsis', name: 'Order 41', level: 8 }, { species: 'lamprima', name: 'Them', level: 8 }, 'grill');
+  assert.ok(odds(S, 0).basic.dmg[1] > odds(plain, 0).basic.dmg[1], 'flare-up at full health');
+  S.side[0].turn = RULES.grill.every - 1; plain.side[0].turn = RULES.grill.every - 1;
+  assert.ok(tellDue(S, 0) && !tellDue(plain, 0));
+  assert.ok(odds(S, 0).basic.dmg[1] > odds(plain, 0).basic.dmg[1] * 1.3, 'order up');
+  const { barn, circuit, pid, hatch } = setup(t);
+  hatch(10); const me = circuit.me(pid); me.ribbons[1] = me.ribbons[2] = 1; for (const id of ['newguy', 'kashely']) me.done[id] = 1;
+  const live = circuit.fight(pid, 'Tester', { stop: 'dwayne' }).live;
+  assert.equal(barn.fights.view(barn.fights.get(live), pid).dark, true);
 });
