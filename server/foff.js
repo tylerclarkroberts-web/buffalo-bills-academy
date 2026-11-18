@@ -1,7 +1,7 @@
 // Foff's Bachelor Party: the golf and the side quests run entirely in the browser, so the server takes a player's
 // word for what they won. It pays out once per account per thing, on the honour system, like the trip itself:
 // $2,000 and the Presidential Medal of Freedom for beating all eleven friends, and pocket money for each side
-// quest, four of which also leave a keepsake. Keepsakes hang in My Room with the other oddities and cannot be bought.
+// quest, four of which also leave a keepsake. Keepsakes hang in My House with the other oddities and cannot be bought.
 // Course records and holes-in-one are also honour-system: a signed-in player posts a finished nine, and older
 // local saves can backfill a total with no hole card. Missing `best` / `aces` in foff.json is an empty board.
 import { GameError } from './engine/game.js';
