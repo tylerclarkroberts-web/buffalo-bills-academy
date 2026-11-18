@@ -20,6 +20,7 @@ export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty ba
 export const STALLS = 3;                        // every barn starts with room for three
 export const STALL_COSTS = [1500, 4000, 10000]; // the fourth, fifth and sixth stall
 export const BENCH_SLOW = 5;                    // a stalled bug lives this many times slower than the partner
+const STRAYS_KEPT = 50;                         // released bugs loose in the mines at once; the oldest wander off for good
 /** What names one bug among its owner's: when its egg was picked up (rows from before stalls: when it hatched). */
 export const idOf = (pen) => pen.eggAt || pen.bornAt;
 const idOk = (v) => v === undefined || Number.isFinite(v);
@@ -170,13 +171,14 @@ export class Barn {
     return battleId === undefined ? !!caught : caught === battleId;
   }
   /** A wild bug jarred in the mine takes a free stall at the level it was caught, at full health. */
-  adopt(playerId, { wildId, battleId, species, level }) {
+  adopt(playerId, { wildId, battleId, species, level, name = null }) { // `name`: a released stray keeps the one it had
     if (!wildId || !battleId || this.wildCaught(wildId)) throw new GameError('There is nothing wild here.', 409);
     if (!this.room(playerId)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
     const now = this.now(), stalled = !!this.doc.pens[playerId];
     let at = now; while (this.bugs(playerId).some((pen) => idOf(pen) === at || pen.bornAt === at)) at++; // its id, and the bornAt its fight receipts go by
     const changes = { names: { ...this.doc.names }, count: { ...this.doc.count }, wildCatches: { ...this.doc.wildCatches, [wildId]: battleId } };
-    const pen = { stage: 'creature', species, name: this.newName(playerId, BY_ID[species], changes), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
+    if (name) changes.names[name.toLowerCase()] = playerId;
+    const pen = { stage: 'creature', species, name: name || this.newName(playerId, BY_ID[species], changes), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 60, at: now }])), ...(stalled ? { benchedAt: now } : {}) };
     if (stalled) changes.bench = { ...this.doc.bench, [playerId]: [...(this.doc.bench[playerId] || []), pen] };
     else changes.pens = { ...this.doc.pens, [playerId]: pen };
@@ -767,6 +769,24 @@ export class Barn {
     this.save();
     return { ...this.view(playerId), graves: this.doc.graves[playerId] };
   }
+  /**
+   * Let a living bug go. It leaves the barn for the mines as a stray: some days it turns up among the wild bugs under
+   * its own name and level, and anyone can jar it, its old owner included. The stall it leaves is empty at once.
+   */
+  release(playerId, bug) {
+    const pen = this.refresh(playerId, bug);
+    if (!pen || pen.stage !== 'creature') throw new GameError('Only a hatched, living bug can be let go.', 409);
+    if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
+    const stray = { id: `stray:${playerId}:${pen.bornAt}`, species: pen.species, name: pen.name, level: levelFor(pen.xp), owner: this.store.players[playerId]?.name || 'Somebody', at: this.now() };
+    const changes = { strays: [...(this.doc.strays || []), stray].slice(-STRAYS_KEPT) };
+    if (pen === this.doc.pens[playerId]) { changes.pens = { ...this.doc.pens }; delete changes.pens[playerId]; }
+    else changes.bench = { ...this.doc.bench, [playerId]: this.doc.bench[playerId].filter((kept) => kept !== pen) };
+    this.commitDoc(changes); // gone from the barn and loose in the mines in one write
+    this.promote(playerId);
+    return this.view(playerId);
+  }
+  /** Released bugs nobody has caught yet. */
+  strays() { return (this.doc.strays || []).filter((stray) => !this.wildCaught(stray.id)); }
   /** A fight is over and this bug ate its packed lunch in it: the lunch is gone. Only for the bug that fought. */
   lunchEaten(playerId, bornAt) {
     const pen = this.bugs(playerId).find((kept) => kept.bornAt === bornAt); // a stalled bug can step into a Barn bout

@@ -4,6 +4,9 @@ import { BY_ID } from '../../../server/engine/creatures.js';
 import { entranceLayout } from './entrance.js';
 import { TYPES, typeOf } from '../../../server/engine/bug-types.js';
 
+/** How a wild bug is named on screen: a released one (a stray) says whose it was. */
+export const wildWhat = (w) => (w.stray ? `${w.stray.owner}'s abandoned ${w.stray.name}` : `wild ${BY_ID[w.species]?.name || 'bug'}`);
+
 export default function MineMap({ maze, explored, pools, wilds = [], pose, onClose, returnFocus }) {
   const dialog = useRef(null);
   useEffect(() => {
@@ -12,7 +15,7 @@ export default function MineMap({ maze, explored, pools, wilds = [], pose, onClo
   }, []);
   const knownPools = pools.filter(p => explored.pools.has(p.id));
   const wet = knownPools.filter(p => p.remaining > 0).length;
-  const bugs = wilds.map(w => ({ ...w, label: `Wild ${BY_ID[w.species]?.name || 'bug'} · ${TYPES[typeOf(w.species)]?.name || 'bug'} · Lv ${w.level}` }));
+  const bugs = wilds.map(w => ({ ...w, label: `${wildWhat(w).replace(/^w/, 'W')} · ${TYPES[typeOf(w.species)]?.name || 'bug'} · Lv ${w.level}` }));
   const entranceKnown = explored.tiles.has(`${maze.start.x},${maze.start.y}`);
   const { lift, door } = entranceLayout(maze);
   return (

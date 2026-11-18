@@ -358,3 +358,101 @@
   .barn-rooms .btn { flex: 1 1 0; }
 }
 .cc-detail { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+
+/* The Barn as a column: the header, then whichever room fills the rest. On big screens it fills the window. */
+.barn-wrap { display: flex; flex-direction: column; }
+.barn-wrap > .bs, .barn-wrap > .barn-ring, .barn-wrap > .cc-wrap, .barn-wrap > .barn-body, .barn-wrap > .barn-none { flex: 1 1 0; min-height: 0; }
+.barn-wrap > .barn-msg { flex: none; }
+@media (min-width: 1100px) {
+  .barn-wrap { width: min(1560px, 100%); max-height: none; padding: 16px 22px; }
+  .bout { width: min(1280px, calc(100vw - 48px)); height: min(820px, calc(100dvh - 60px)); }
+  .bout.live { height: min(940px, calc(100dvh - 40px)); }
+}
+/* The ? button: the rules, on demand, over whatever room is showing. */
+.barn-help-btn { font: 700 15px var(--mono); min-width: 34px; }
+.barn-help { position: absolute; z-index: 6; top: 64px; right: 16px; width: min(440px, calc(100% - 32px)); box-sizing: border-box; display: grid; gap: 10px; padding: 14px 16px;
+  background: #2a160c; border: 1px solid var(--gold); border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.6); }
+.barn-help ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; font-size: 14px; line-height: 1.4; }
+.barn-help .btn { justify-self: end; }
+
+/* A bug's stall: what it is and its record up top; the bug, its care and its card (or combat, or field notes) side by side. */
+.bs { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; }
+.bs:not(:has(.barn-warn)) { grid-template-rows: auto minmax(0, 1fr); }
+.bs-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.bs-kind { display: inline-flex; align-items: center; gap: 6px; color: var(--paper-2); font-size: 14px; }
+.bs-rec { font: 600 13px var(--mono); color: var(--gold); padding: 2px 9px; border: 1px solid rgba(242,198,90,.45); border-radius: 999px; }
+.bs-partner { color: var(--gold); }
+.bs .barn-warn { margin: 0; }
+.bs-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); grid-template-rows: minmax(200px, 1fr) auto; gap: 14px 22px; min-height: 0; }
+.bs-stage { grid-column: 1; grid-row: 1; min-height: 200px; }
+.bs-care { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px 24px; }
+.bs-care .barn-needs { grid-template-columns: 1fr; gap: 8px; }
+.bs-care .barn-need { grid-template-columns: 52px 1fr; }
+.bs-care .barn-bar { height: 11px; }
+.bs-care .barn-supplies { margin: 0; }
+.bs-xp { display: grid; gap: 5px; }
+.bs-info { grid-column: 2; grid-row: 1 / 3; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; }
+.bs-info .barn-tabs button { min-height: 36px; }
+.bs-pane { min-height: 0; overflow-y: auto; }
+.bs-cardpane { display: grid; justify-items: center; align-content: start; padding-bottom: 6px; }
+@media (min-width: 1300px) and (min-height: 860px) { .bs-cardpane .bugcard { zoom: 1.2; } }
+.bs-combat { display: grid; gap: 14px; align-content: start; padding-right: 4px; }
+.bs-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; }
+.bs-stats dt { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--paper-2); }
+.bs-stats dd { margin: 2px 0 0; font: 600 15px var(--mono); color: var(--gold); }
+.bs-stance { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; min-width: 0; }
+.bs-stance label { display: flex; align-items: center; gap: 10px; font-size: 13px; white-space: nowrap; }
+.bs-stance select { min-height: 38px; padding: 6px 8px; background: #2a160c; color: var(--paper-2); border: 1px solid #7a4a2a; border-radius: 6px; font: inherit; }
+.bs-stance p { margin: 0; }
+.bs-moves { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bs-moves li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.12); }
+.bs-moves li .num { color: var(--gold); }
+.bs-moves small { grid-column: 1 / -1; color: var(--paper-2); font-size: 12px; line-height: 1.35; }
+.bs-moves li.locked { opacity: .55; }
+.bs-moves li.locked .num { color: inherit; }
+@media (max-width: 760px) {
+  .bs { overflow-y: auto; }
+  .bs-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .bs-stage, .bs-care, .bs-info { grid-column: 1; grid-row: auto; }
+  .bs-care { grid-template-columns: minmax(0, 1fr); }
+  .bs-stage { height: 220px; min-height: 0; }
+  .bs-info { grid-template-rows: auto auto; }
+  .bs-pane, .bs-care { overflow: visible; }
+  .bs-info .barn-notes { min-height: 360px; }
+}
+
+/* The ring: players first (each opens to their bugs), then open bouts and recent fights as tabs. One column. */
+.barn-ring { display: flex; flex-direction: column; gap: 12px; width: min(980px, 100%); margin: 0 auto; }
+.ring-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.ring-bar .barn-ring-note:empty { display: none; }
+.ring-bar .barn-ring-note { flex-basis: 100%; }
+.ring-calls { display: grid; gap: 8px; }
+.ring-call { display: grid; gap: 6px; padding: 10px 14px; border: 1px solid var(--gold); border-radius: 12px; background: rgba(242,198,90,.08); }
+.ring-tabs { flex: none; }
+.ring-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ring-players > li { border: 1px solid #7a4a2a; border-radius: 12px; background: rgba(0,0,0,.22); }
+.ring-players > li.open { border-color: var(--gold); }
+.ring-player { width: 100%; min-height: 58px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 8px 14px;
+  background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 12px; }
+.ring-player:hover { background: rgba(255,255,255,.04); }
+.ring-player:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.ring-thumbs { display: flex; min-width: 0; }
+.ring-thumbs .barn-thumb { width: 40px; height: 33px; margin-right: -10px; }
+.ring-who b { display: block; font-size: 16px; }
+.ring-who small { color: var(--paper-2); }
+.ring-chev { color: var(--gold); font-size: 14px; }
+.ring-players .barn-roster { padding: 0 14px 12px; }
+.barn-ring .barn-roster li, .barn-ring .barn-open-bouts li { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 4px 12px; }
+.barn-ring .barn-roster li > :nth-child(n+3), .barn-ring .barn-open-bouts li > :nth-child(3) { grid-column: auto; justify-self: end; }
+.barn-ring .barn-roster li > form { grid-column: 1 / -1; justify-self: stretch; }
+.barn-ring .barn-roster p, .barn-ring .barn-open-bouts p { margin: 2px 0 0; }
+.ring-odds { color: var(--gold); }
+.ring-pane { display: grid; gap: 14px; }
+@media (max-width: 560px) {
+  .barn-ring .barn-roster li, .barn-ring .barn-open-bouts li { grid-template-columns: 48px minmax(0, 1fr); }
+  .barn-ring .barn-roster li > :nth-child(n+3), .barn-ring .barn-open-bouts li > :nth-child(3) { grid-column: 1 / -1; justify-self: start; }
+  .ring-thumbs .barn-thumb { width: 32px; height: 27px; }
+}
+.barn-ring .barn-post label { flex: 0 1 260px; }
+.bs-letgo { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid #c8782a; border-radius: 10px; background: rgba(200,120,40,.12); }
+.bs-letgo p { margin: 0; }

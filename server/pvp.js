@@ -291,10 +291,11 @@ export class Pvp {
     const mine = this.bugOf(a, true, bug);
     if (mine.loaner || this.fights.fightOf(a)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
-    const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: BY_ID[species].name }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
+    // a stray (a released bug) fights under its own name and says whose it was
+    const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: wild.stray?.name || BY_ID[species].name, ...(wild.stray ? { stray: wild.stray } : {}) }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
       bugs: { a: { bornAt: mine.bornAt, xp: mine.xp }, b: null }, benched: { a: null, b: null } };
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
-      fighters: [{ ...this.barn.fighter(a, this.barn.penOf(a, bug)), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true }],
+      fighters: [{ ...this.barn.fighter(a, this.barn.penOf(a, bug)), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true, ...(wild.stray ? { owner: `abandoned by ${wild.stray.owner}` } : {}) }],
       onFinish: (fight) => this.fought(battle, fight) });
     this.battles.set(id, battle); this.inBattle.set(a, id);
     this.mines.holds.delete(a); const pr = this.presence.get(a); if (pr) pr.lastBattle = id;
@@ -305,7 +306,7 @@ export class Pvp {
     if (reason !== 'jarred') this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
     if (reason === 'fainted' || reason === 'decision' || reason === 'jarred') {
       battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: battle.bugs.a.bornAt,
-        won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeName: `a wild ${battle.wild.name}`, odds: fight.line });
+        won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeName: battle.wild.stray ? `${battle.wild.stray.owner}'s abandoned ${battle.wild.name}` : `a wild ${battle.wild.name}`, odds: fight.line });
     }
   }
   /**
@@ -324,7 +325,7 @@ export class Pvp {
     const wildId = battle.wild.id, battleId = battle.id;
     if (!this.shop.takeJar(player.id, held ? { wildId, battleId } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {
-      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: battle.wild.level });
+      const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: battle.wild.level, name: battle.wild.stray?.name });
       this.finish(battle, 'a', 'jarred', caught.name);
     } else battle.jarTurn = S.turn;
     return { held, battle: this.battleView(battle, player.id, body.have) };
