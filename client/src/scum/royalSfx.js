@@ -1,5 +1,6 @@
 // Synthesized royal-command sounds. Honor the shared table mute (bba.bj.muted).
 import { isMuted } from '../bj/sfx.js';
+import { SONG_NOTES, SONG_START } from './songScript.js';
 
 let ac = null;
 const ctx = () => {
@@ -26,6 +27,34 @@ function noise(dur, { vol = 0.04, at = 0, from = 1200, to = 400 } = {}) {
   src.connect(f).connect(g).connect(a.destination); src.start(t); src.stop(t + dur + 0.02);
 }
 
+
+/** Breathy pan-flute: sine core, light octave air, noise breath, slow vibrato. */
+function flute(freq, dur, { at = 0, vol = 0.055 } = {}) {
+  const a = ctx(); if (!a) return;
+  const t = a.currentTime + at;
+  const o = a.createOscillator(), air = a.createOscillator(), lfo = a.createOscillator();
+  const g = a.createGain(), airG = a.createGain(), lfoG = a.createGain();
+  o.type = 'sine'; air.type = 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  air.frequency.setValueAtTime(freq * 2.01, t);
+  lfo.type = 'sine'; lfo.frequency.setValueAtTime(5.1, t);
+  lfoG.gain.setValueAtTime(freq * 0.014, t);
+  lfo.connect(lfoG).connect(o.frequency);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.07);
+  g.gain.setValueAtTime(vol * 0.85, t + Math.max(0.1, dur - 0.14));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  airG.gain.setValueAtTime(0.0001, t);
+  airG.gain.exponentialRampToValueAtTime(vol * 0.14, t + 0.08);
+  airG.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(a.destination);
+  air.connect(airG).connect(a.destination);
+  o.start(t); o.stop(t + dur + 0.04);
+  air.start(t); air.stop(t + dur + 0.04);
+  lfo.start(t); lfo.stop(t + dur + 0.04);
+  noise(Math.min(dur, 0.28), { vol: vol * 0.12, at, from: Math.min(1800, freq * 3), to: freq });
+}
+
 export const royalSfx = {
   jig() { [0, 4, 7, 4, 7, 12].forEach((n, i) => tone(392 * 2 ** (n / 12), 392 * 2 ** (n / 12), 0.1, { wave: 'triangle', vol: 0.05, at: i * 0.12 })); },
   bow() { tone(180, 80, 0.45, { wave: 'sine', vol: 0.06 }); },
@@ -35,8 +64,14 @@ export const royalSfx = {
   carpet() { noise(0.8, { vol: 0.04, from: 500, to: 140 }); },
   dunce() { tone(330, 280, 0.2, { wave: 'triangle', vol: 0.05 }); tone(247, 200, 0.35, { wave: 'triangle', vol: 0.05, at: 0.18 }); },
   boots() { tone(1800, 2200, 0.06, { wave: 'sine', vol: 0.03 }); tone(2000, 2400, 0.06, { wave: 'sine', vol: 0.025, at: 0.2 }); tone(1600, 1900, 0.06, { wave: 'sine', vol: 0.025, at: 0.4 }); },
-  serenade() { [0, 2, 0.4, 4, -1, 3].forEach((n, i) => tone(440 * 2 ** (n / 12), 440 * 2 ** ((n + (i % 2 ? 0.7 : -0.5)) / 12), 0.28, { wave: 'sine', vol: 0.05, at: i * 0.3 })); },
+  sing() {
+    const lead = SONG_START / 1000;
+    SONG_NOTES.forEach((n) => flute(n.freq, n.dur, { at: lead + n.at, vol: 0.05 }));
+  },
+  serenade() { this.sing(); },
   train() { noise(0.7, { vol: 0.03, from: 300, to: 120 }); },
   sweep() { noise(0.22, { vol: 0.04, from: 1400, to: 500 }); noise(0.22, { vol: 0.035, at: 0.28, from: 1200, to: 400 }); noise(0.22, { vol: 0.03, at: 0.56, from: 1100, to: 350 }); },
-  play(cmd) { try { (this[cmd] || this.jig)(); } catch { /* autoplay / no audio */ } },
+  play(cmd) { try { this.stop(); (this[cmd] || this.jig)(); } catch { /* autoplay / no audio */ } },
+  stop() { if (ac) { try { ac.close(); } catch { /* already closed */ } ac = null; } },
 };
+

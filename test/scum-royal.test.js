@@ -35,7 +35,11 @@ test('the catalog has the named bits plus more, and toot needs a target', () => 
   const ids = COMMANDS.map((c) => c.id);
   assert.ok(ids.includes('jig') && ids.includes('bow') && ids.includes('milk') && ids.includes('toot'));
   assert.ok(ids.includes('fan') && ids.includes('carpet') && ids.includes('dunce') && ids.includes('boots'));
-  assert.ok(ids.includes('serenade') && ids.includes('train') && ids.includes('sweep'));
+  assert.ok(ids.includes('sing') && ids.includes('train') && ids.includes('sweep'));
+  assert.ok(!ids.includes('serenade'), 'serenade was replaced by sing');
+  assert.equal(byId.sing.label, 'Sing me a song');
+  assert.match(caption({ cmd: 'sing' }, { scum: 'Dee', king: 'Ann' }), /Dee sings Ann a song/);
+  assert.match(caption({ cmd: 'serenade' }, { scum: 'Dee', king: 'Ann' }), /serenades/, 'old events still caption');
   assert.equal(COMMANDS.length, 11);
   assert.equal(byId.toot.needsTarget, true);
   assert.equal(COMMANDS.filter((c) => c.needsTarget).length, 1);
@@ -145,4 +149,73 @@ test('the picker is compact, the Scum does not press anything, and there is a sk
   assert.match(css, /\.sc-seat\.royal-toot \.bust/);
   assert.match(css, /sc-royal-green/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*sc-royal-pick/);
+});
+
+
+import { SONG_DIALOG, SONG_LYRICS, SONG_MS, SONG_START, SONG_NOTES, dialogAt, lyricAt, phaseAt } from '../client/src/scum/songScript.js';
+
+test('Sing me a song has paced original dialogue, lyrics, and a flute line timed to them', () => {
+  assert.equal(COMMANDS.filter((c) => c.id === 'sing').length, 1);
+  assert.equal(SONG_DIALOG.length, 3);
+  assert.equal(SONG_DIALOG[0].who, 'king');
+  assert.equal(SONG_DIALOG[1].who, 'scum');
+  assert.equal(SONG_DIALOG[2].who, 'king');
+  assert.equal(SONG_DIALOG[0].text, 'Sing me a song.');
+  assert.match(SONG_DIALOG[1].text, /already heard enough/);
+  assert.match(SONG_DIALOG[2].text, /didn't ask if you wanted to/);
+  assert.equal(dialogAt(100).who, 'king');
+  assert.equal(dialogAt(3000).who, 'scum');
+  assert.equal(dialogAt(6500).who, 'king');
+  assert.equal(dialogAt(SONG_START), null);
+  assert.equal(phaseAt(100), 'talk');
+  assert.equal(phaseAt(SONG_START), 'song');
+  assert.equal(SONG_LYRICS.length, 8);
+  assert.match(SONG_LYRICS[0].text, /lamps burn low/);
+  assert.match(SONG_LYRICS.at(-1).text, /night rolls on/);
+  assert.equal(lyricAt(SONG_START).i, 0);
+  assert.equal(lyricAt(SONG_START + SONG_LYRICS[3].at + 10).i, 3);
+  assert.ok(SONG_MS >= 24000 && SONG_MS <= 32000, `SONG_MS ${SONG_MS}`);
+  assert.match(read('client/src/scum/Royal.jsx'), /sing: SONG_MS/);
+  assert.ok(SONG_NOTES.length >= 16);
+  const lastNote = SONG_NOTES.at(-1);
+  assert.ok(lastNote.at + lastNote.dur > SONG_LYRICS.at(-1).at / 1000, 'flute covers the last lyric');
+  const gaps = SONG_DIALOG.slice(1).map((d, i) => d.at - SONG_DIALOG[i].at);
+  assert.ok(gaps.every((g) => g >= 2500), 'each spoken line is held long enough to read');
+  const lyricGaps = SONG_LYRICS.slice(1).map((d, i) => d.at - SONG_LYRICS[i].at);
+  assert.ok(lyricGaps.every((g) => g >= 1600), 'each lyric is held long enough to read');
+});
+
+test('the King can issue Sing me a song; skip and rewatch still go through seen/history', () => {
+  const x = svc(); const { s, P, code } = toTitles(x.s, x.P);
+  const out = s.command(P.a, code, { cmd: 'sing' });
+  assert.equal(out.royal.history.at(-1).cmd, 'sing');
+  assert.match(out.royal.history.at(-1).caption, /Dee sings Ann a song/);
+  assert.match(s.view(P.d, code).log.at(-1).text, /Sing me a song/);
+  const dee = s.view(P.d, code);
+  assert.equal(dee.royal.pending.cmd, 'sing');
+  const after = s.seenRoyal(P.d, code, { id: dee.royal.pending.id });
+  assert.equal(after.royal.pending, null);
+  assert.equal(after.royal.history.at(-1).cmd, 'sing');
+});
+
+test('the song scene has bubbles, karaoke, a step-aside, tomatoes, and a mute-aware flute', () => {
+  const royal = read('client/src/scum/Royal.jsx');
+  const css = read('client/src/scum/scum.css');
+  const sfx = read('client/src/scum/royalSfx.js');
+  assert.match(royal, /data-test="scum-royal-bubble"/);
+  assert.match(royal, /data-test="scum-royal-karaoke"/);
+  assert.match(royal, /data-test="scum-royal-tomatoes"/);
+  assert.match(royal, /data-phase/);
+  assert.match(css, /sc-royal-karaoke/);
+  assert.match(css, /sc-royal-bubble/);
+  assert.match(css, /sc-tomato-eat/);
+  assert.match(css, /sc-tomato-roll/);
+  assert.match(css, /royal-king-sing/);
+  assert.match(css, /royal-sing/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*sc-royal-karaoke/);
+  assert.match(sfx, /function flute/);
+  assert.match(sfx, /createOscillator/);
+  assert.match(sfx, /isMuted/);
+  assert.match(sfx, /SONG_NOTES/);
+  assert.match(sfx, /lfo/);
 });

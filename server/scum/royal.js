@@ -9,7 +9,7 @@ export const COMMANDS = [
   { id: 'carpet', label: 'Roll out the red carpet', short: 'Red carpet' },
   { id: 'dunce', label: 'Wear the dunce cap of shame', short: 'Dunce cap' },
   { id: 'boots', label: 'Shine the King’s boots', short: 'Shine my boots' },
-  { id: 'serenade', label: 'Sing a serenade off-key', short: 'Serenade me' },
+  { id: 'sing', label: 'Sing me a song', short: 'Sing me a song' },
   { id: 'train', label: 'Carry the King’s train', short: 'Carry my train' },
   { id: 'sweep', label: 'Sweep the floor under the King’s feet', short: 'Sweep up' },
 ];
@@ -30,6 +30,7 @@ export function caption(ev, names = {}) {
     case 'carpet': return `${scum} rolls out the red carpet for ${king}.`;
     case 'dunce': return `${scum} wears the dunce cap of shame.`;
     case 'boots': return `${scum} shines ${king}'s boots.`;
+    case 'sing': return `${scum} sings ${king} a song.`;
     case 'serenade': return `${scum} serenades ${king}, off-key.`;
     case 'train': return `${scum} carries ${king}'s train.`;
     case 'sweep': return `${scum} sweeps under ${king}'s feet.`;
