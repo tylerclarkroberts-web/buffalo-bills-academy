@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Box3, Group, Raycaster, Vector3 } from 'three';
-import { buildHomestead } from '../client/src/room/homestead.js';
-import { ROOM_FLOOR_SCALE as S, ROOM_HOMESTEAD, roomHomestead } from '../server/catalog/room.js';
+import { buildHomestead, HOMESTEAD_PIECES } from '../client/src/room/homestead.js';
+import { ROOM_FLOOR_SCALE as S, ROOM_HOMESTEAD, defaultFurniture, furnitureRect, furnitureFits } from '../server/catalog/room.js';
 import { makeRoomCamera, ROOM_WALL_HEIGHT } from '../client/src/room/scene-model.js';
 
 async function readAsset(request) {
@@ -14,12 +14,20 @@ async function readAsset(request) {
 function actions(home) {
   return home.picks.map(mesh => [mesh.name, mesh.userData.selection.kind, mesh.userData.selection.action]);
 }
-const expected = [['toilet', 'houseAction', 'flush'], ['kitchenCoffeeMachine', 'houseAction', 'coffee'], ['chair', 'houseAction', 'coffee']];
+const expected = [['kitchenCoffeeMachine', 'houseAction', 'coffee'], ['toilet', 'houseAction', 'flush'], ['chair', 'houseAction', 'coffee']];
+// What the room scene does with saved furniture: put each fitting where it was left.
+function place(home, root, furniture = defaultFurniture()) {
+  for (const id of HOMESTEAD_PIECES) {
+    home.pieces[id].position.set(furniture[id].x, 0, furniture[id].z);
+    home.pieces[id].rotation.y = furniture[id].r * Math.PI / 2; home.pieces[id].visible = !furniture[id].off;
+  }
+  home.update(undefined, furniture); root.updateMatrixWorld(true);
+}
 
 test('local GLB supplies the nine furnishings and pickable actions in the expanded floor plan', async t => {
   t.mock.method(globalThis, 'fetch', readAsset);
   const root = new Group(), home = buildHomestead(root);
-  await home.ready;
+  await home.ready; place(home, root);
   assert.deepEqual(actions(home), expected);
   const pump = root.getObjectByName('Ranch windpump and stock trough');
   assert.ok(pump.isMesh);
@@ -57,12 +65,12 @@ test('an unavailable model file leaves visible, pickable household fixtures', as
 test('furniture fits the resident and usable surfaces meet at their finished heights', async t => {
   t.mock.method(globalThis, 'fetch', readAsset);
   const root = new Group(), home = buildHomestead(root), inch = ROOM_WALL_HEIGHT / 102;
-  await home.ready;
-  root.updateMatrixWorld(true);
+  await home.ready; place(home, root);
   const item = name => root.getObjectByName(name);
   const bounds = name => new Box3().setFromObject(item(name));
   const close = (actual, wanted) => assert.ok(Math.abs(actual - wanted) < 0.1, `${actual}″ should be ${wanted}″`);
-  function topAt(mesh, x = mesh.position.x, z = mesh.position.z) {
+  const at = mesh => mesh.getWorldPosition(new Vector3());
+  function topAt(mesh, x = at(mesh).x, z = at(mesh).z) {
     const from = new Vector3(x, 8, z);
     return new Raycaster(from, new Vector3(0, -1, 0)).intersectObject(mesh)[0].point.y;
   }
@@ -70,10 +78,10 @@ test('furniture fits the resident and usable surfaces meet at their finished hei
   close(tub.x, 72); close(tub.z, 36);
   const toilet = item('toilet');
   close((topAt(toilet) - toilet.position.y) / inch, 17);
-  close((topAt(toilet, toilet.position.x, toilet.position.z - 12 * inch) - toilet.position.y) / inch, 31);
+  close((topAt(toilet, at(toilet).x, at(toilet).z - 12 * inch) - toilet.position.y) / inch, 31);
   assert.ok(bounds('toilet').min.z > (-7.05 + 0.075) * S, 'tank clears the outer wall cap');
   const camera = makeRoomCamera(2), view = new Raycaster();
-  const seat = new Vector3(toilet.position.x, toilet.position.y + 17 * inch, toilet.position.z + 4 * inch);
+  const seat = new Vector3(at(toilet).x, toilet.position.y + 17 * inch, at(toilet).z + 4 * inch);
   view.setFromCamera(seat.project(camera), camera);
   assert.equal(view.intersectObjects([toilet, item('Linen cupboard'), item('bedSingle')], true)[0]?.object,
     toilet, 'the bathroom divider and linen cupboard leave the seat visible in the whole-house view');
@@ -104,7 +112,7 @@ test('custom furnishings and surfaces update in place for the GLB and offline mo
     t.mock.method(globalThis, 'fetch', offline ? async () => { throw Error('Offline'); } : readAsset);
     const root = new Group(), home = buildHomestead(root), next = {};
     for (const [id, catalog] of Object.entries(ROOM_HOMESTEAD)) next[id] = {
-      typeId: catalog.types[1].id, colorId: catalog.colors[1].id, layoutId: 'alternate',
+      typeId: catalog.types[1].id, colorId: catalog.colors[1].id,
     };
     home.update(next); // The saved room can arrive before its models.
     await home.ready;
@@ -112,8 +120,6 @@ test('custom furnishings and surfaces update in place for the GLB and offline mo
     assert.deepEqual(new Set(home.editPicks.map(mesh => mesh.userData.editSelection.id)), new Set(Object.keys(ROOM_HOMESTEAD)));
     const find = name => root.getObjectByName(name);
     const bed = find('bedSingle'), tub = find('bathtub'), chair = find('chair'), cabinet = find('kitchenCabinet');
-    assert.equal(bed.rotation.y, -Math.PI / 2); assert.equal(tub.rotation.y, Math.PI / 2);
-    assert.equal(chair.position.x, 5.55 * S);
     assert.equal(bed.getObjectByName('Surface pattern').geometry.attributes.position.count, 28);
     assert.equal(cabinet.position.x, find('kitchenCoffeeMachine').position.x);
     assert.equal(cabinet.position.z, find('kitchenCoffeeMachine').position.z);
@@ -140,40 +146,27 @@ test('custom furnishings and surfaces update in place for the GLB and offline mo
   }
 });
 
-test('every arrangement stays in its own room and leaves both sides of the bathroom and bedroom doors clear', async t => {
+test('every fitting stays inside the footprint its room checks, at every turn, and the sprinkler follows the chair', async t => {
   t.mock.method(globalThis, 'fetch', readAsset);
   const root = new Group(), home = buildHomestead(root);
   await home.ready; t.after(() => home.dispose());
-  const choices = roomHomestead();
-  for (let layout = 0; layout < 8; layout++) {
-    for (const [id, bit] of Object.entries({ tub: 1, bathroom: 2, bed: 1, bedroom: 2, kitchen: 4, porch: 1, porchChair: 2 })) {
-      choices[id].layoutId = layout & bit ? 'alternate' : 'classic';
-    }
-    home.update(choices);
-    const bounds = name => new Box3().setFromObject(root.getObjectByName(name));
-    const rooms = [
-      [[-4, -0.45, -7.05, -3], ['bathtub', 'toilet', 'bathroomSink', 'Linen cupboard']],
-      [[-0.45, 3.55, -7.05, -3], ['bedSingle', 'Nightstand and lamp']],
-      [[-2.35, 3.25, 3.35, 7.15], ['Kitchen worktable', 'kitchenCabinet', 'kitchenStove']],
-      [[4.13, 8.5, 1.47, 4.8], ['chair', 'pottedPlant']],
-    ];
-    for (const [[left, right, back, front], names] of rooms) {
-      for (const name of names) {
-        const box = bounds(name);
-        assert.ok(box.min.x > left * S && box.max.x < right * S && box.min.z > back * S && box.max.z < front * S, name);
-        for (const [x, z, w, d] of [[-0.45, -4.10, 1.50, 0.86], [2.85, -3, 0.85, 1.28], [2, 3.35, 0.85, 1.28]]) {
-          const threshold = new Box3(new Vector3((x - w/2) * S, 0, (z - d/2) * S), new Vector3((x + w/2) * S, 3, (z + d/2) * S));
-          assert.equal(box.intersectsBox(threshold), false, name + ' clears door threshold');
-        }
-      }
-      for (let i = 0; i < names.length; i++) for (const other of names.slice(i + 1)) {
-        assert.equal(bounds(names[i]).expandByScalar(-0.005).intersectsBox(bounds(other)), false, names[i] + ' clears ' + other);
-      }
-    }
-    const chair = bounds('chair'), jet = root.getObjectByName('Watering the lawn chair').geometry.attributes.position;
-    const end = new Vector3().fromBufferAttribute(jet, jet.count - 1);
-    assert.ok(chair.containsPoint(end), 'the spray still lands on the chair after moving it');
+  // Rugs laid in front of the tub and stove may run past the footprint; everything that stands up may not.
+  const standing = id => {
+    const box = new Box3();
+    home.pieces[id].traverse(part => { if (part.isMesh && !['Bath mat', 'Kitchen runner', 'Surface pattern'].includes(part.name)) box.expandByObject(part, true); });
+    return box;
+  };
+  for (const id of HOMESTEAD_PIECES) for (const r of [0, 1, 2, 3]) {
+    const furniture = defaultFurniture(); furniture[id] = { ...furniture[id], r };
+    place(home, root, furniture);
+    const box = standing(id), [minX, minZ, maxX, maxZ] = furnitureRect(id, furniture[id]);
+    assert.ok(box.min.x > minX - 0.06 && box.max.x < maxX + 0.06 && box.min.z > minZ - 0.06 && box.max.z < maxZ + 0.06, `${id} turned ${r}`);
   }
+  const furniture = defaultFurniture(); furniture.porchChair = { ...furniture.porchChair, x: 10, z: 7, r: 2 };
+  assert.ok(furnitureFits(furniture, 'porchChair'));
+  place(home, root, furniture);
+  const chair = new Box3().setFromObject(root.getObjectByName('chair')), jet = root.getObjectByName('Watering the lawn chair').geometry.attributes.position;
+  assert.ok(chair.containsPoint(new Vector3().fromBufferAttribute(jet, jet.count - 1)), 'the spray still lands on the chair after moving it');
 });
 
 test('leaving before the models arrive releases the scene and suppresses its redraw', async t => {

@@ -21,7 +21,7 @@ const validShelves = value => Array.isArray(value) && value.length <= ROOM_SHELF
 const validFinishes = value => allowedBody(value, ['floor', 'rug', 'wardrobe', 'couch', 'fence'])
   && ['floor', 'rug', 'wardrobe'].every(kind => Object.hasOwn(value, kind))
   && Object.entries(value).every(([kind, style]) => validFinish(kind, style));
-const homesteadFields = { typeId: 'types', colorId: 'colors', layoutId: 'layouts' };
+const homesteadFields = { typeId: 'types', colorId: 'colors' };
 const validHomestead = value => allowedBody(value, Object.keys(ROOM_HOMESTEAD)) && Object.entries(value).every(([id, choice]) =>
   allowedBody(choice, Object.keys(homesteadFields)) && Object.entries(choice).every(([field, pick]) =>
     ROOM_HOMESTEAD[id][homesteadFields[field]].some(option => option.id === pick)));

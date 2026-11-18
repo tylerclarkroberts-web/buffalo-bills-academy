@@ -56,7 +56,7 @@ export function removeShelf(layout, id) {
 }
 export function changeStyle(layout, kind, field, value, shelfId) {
   const home = ROOM_HOMESTEAD[kind], options = home || ROOM_FINISHES[kind];
-  const choices = { typeId: 'types', colorId: 'colors', layoutId: 'layouts' }[field];
+  const choices = { typeId: 'types', colorId: 'colors' }[field];
   if (!options?.[choices]?.some(option => option.id === value)) return layout;
   if (home) return { ...layout, homestead: { ...layout.homestead, [kind]: { ...home.default, ...layout.homestead?.[kind], [field]: value } } };
   if (kind === 'shelf') return { ...layout, shelves: layout.shelves.map(shelf => shelf.id === shelfId ? { ...shelf, [field]: value } : shelf) };
@@ -65,7 +65,7 @@ export function changeStyle(layout, kind, field, value, shelfId) {
 
 /** The movable piece behind a scene or panel selection, if any. */
 export const furnitureOf = selection => {
-  const id = selection?.kind === 'anchor' ? anchorHost(selection.anchorId) : selection?.kind === 'surface' ? selection.surface : selection?.kind;
+  const id = selection?.kind === 'anchor' ? anchorHost(selection.anchorId) : selection?.kind === 'surface' ? selection.surface : selection?.kind === 'homestead' ? selection.piece : selection?.kind;
   return id !== 'floor' || selection.kind === 'anchor' ? (Object.hasOwn(ROOM_FURNITURE, id) ? id : null) : null;
 };
 /** Move, turn (`r`), store (`off: true`) or restore (`off: false`) one piece; unchanged when it would not fit. */

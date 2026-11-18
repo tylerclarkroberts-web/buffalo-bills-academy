@@ -103,13 +103,15 @@ test('HTTP layout writes enforce ownership, reject stale edits and cannot target
 
 test('HTTP homestead edits allow catalog choices, reject unknown or cross-target values and keep the saved revision', async t => {
   const { owner, visitor } = await fixture(t);
-  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements: [], homestead: { tub: { typeId: 'copper', colorId: 'slate', layoutId: 'alternate' } } };
+  const draft = { expectedRevision: 0, themeId: 'bunkhouse-timber', placements: [], homestead: { tub: { typeId: 'copper', colorId: 'slate' } } };
   assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 200);
   assert.equal((await owner.api('PATCH', '/api/room/layout', draft)).status, 409);
   for (const homestead of [null, [], { workshop: {} }, { tub: [] }, { bed: { typeId: 'copper' } }, { porch: { colorId: 'unknown' } },
     { kitchen: { layoutId: 'free' } }, { tub: { x: 40 } }]) {
     assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, homestead })).status, 400);
   }
+  // Fittings move like furniture, but only within their own room.
+  assert.equal((await owner.api('PATCH', '/api/room/layout', { ...draft, expectedRevision: 1, homestead: undefined, furniture: { bed: { x: 0, z: 0, r: 0 } } })).status, 400);
   const shown = (await visitor.api('GET', `/api/players/${owner.id}/room`)).body;
   assert.equal(shown.layoutRevision, 1);
   assert.deepEqual(shown.homestead.tub, draft.homestead.tub);

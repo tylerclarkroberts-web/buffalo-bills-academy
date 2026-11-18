@@ -44,7 +44,7 @@ test('coffee crosses the open door and stays clear of a wagon parked at the edge
   furniture.window = { x: 5.5 * S, z: 1.4 * S - 1.025, r: 0 };
   assert.ok(furnitureValid(furniture));
   const { path } = residentErrands(furniture, defaultShelves()).find(errand => errand.kind === 'coffee');
-  assert.deepEqual(path.at(-1), [6.55 * S, 3.5 * S]);
+  assert.deepEqual(path.at(-1), [furniture.porchChair.x - S, furniture.porchChair.z], 'he stops a stride in front of the porch chair');
   const wagon = furnitureRect('window', furniture.window);
   let from = [furniture.rug.x, furniture.rug.z], crossed = false;
   for (const to of path) {

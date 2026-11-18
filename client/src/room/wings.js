@@ -3,7 +3,7 @@ import { ROOM_DOOR_HEIGHT, ROOM_FLOOR_SCALE as S, ROOM_WALL_HEIGHT as height } f
 import { makeWallCutaway } from './cutaway.js';
 
 // x runs from the long rear wall to the porch. Looking in from the porch, +z is on the left.
-export function buildWings(parent, box, batch, style, plan) {
+export function buildWings(parent, box, batch, style) {
   const oak = '#996c48', trim = '#674832', honey = '#c39a67';
   // End the bathroom just behind the parlor's display sill so the pass-through looks into the bedroom.
   const dividerX = -0.45, bathWidth = dividerX + 4, bedWidth = 3.55 - dividerX, wingDepth = 4.05;
@@ -23,11 +23,6 @@ export function buildWings(parent, box, batch, style, plan) {
     box(w - 0.012, 0.016, d - 0.012, tile[(i + j) % 2],
       -4 + (i + 0.5) * w, 0.008, -7.05 + (j + 0.5) * d);
   }
-  const turnedTub = style.tub.layoutId === 'alternate', matX = turnedTub ? plan.tub[0] + 0.73 : plan.tub[0];
-  const matZ = turnedTub ? plan.tub[1] : plan.tub[1] + 0.77;
-  box(1.48, 0.020, 0.55, bathColor, matX, 0.026, matZ, turnedTub ? Math.PI / 2 : 0);
-  for (const dx of [-0.61, 0.61]) box(0.056, 0.007, 0.53, '#c0c9a6',
-    matX + (turnedTub ? 0 : dx), 0.039, matZ + (turnedTub ? dx : 0), turnedTub ? Math.PI / 2 : 0);
   floorMesh('Bathroom floor', 'bathroom');
 
   box(bedWidth, 0.19, wingDepth, trim, dividerX + bedWidth / 2, -0.095, -5.025);
@@ -53,8 +48,6 @@ export function buildWings(parent, box, batch, style, plan) {
     if (from < to) box((to - from) * kitchenWidth / 6 - 0.014, 0.016, 3.90 / 7 - 0.014,
       clay.clone().multiplyScalar(0.92 + 0.055 * ((i + j * 3) % 4)), kitchenRear + (from + to) * kitchenWidth / 12, 0.008, 3.25 + (j + 0.5) * 3.90 / 7);
   }
-  box(1.95, 0.020, 0.68, kitchenColor.clone().multiplyScalar(0.68), plan.counterX + 0.31, 0.026, 6.05);
-  for (const dx of [-0.84, -0.76, 0.76, 0.84]) box(0.034, 0.007, 0.66, '#cfaf82', plan.counterX + 0.31 + dx, 0.039, 6.05);
   floorMesh('Kitchen floor', 'kitchen');
 
   const bath = { paint: new Color('#eee5cd').lerp(bathColor, 0.25), lower: bathColor, base: 0.60 };

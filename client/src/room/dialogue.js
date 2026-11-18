@@ -1,4 +1,4 @@
-import { wealthStage } from '../../../server/catalog/room.js';
+import { wealthStage, ROOM_FURNITURE } from '../../../server/catalog/room.js';
 
 export const ROOM_LINES = [
   'My throat still hurts from that mine acid. In my defence, it was a lovely colour.',
@@ -214,11 +214,40 @@ const POOR_LINES = [
   'I count the money every day. It is still mostly table.',
 ];
 
+// Something on show in a room other than the parlour, and a few pairings worth a remark of their own.
+const ELSEWHERE = {
+  kitchen: [['range', 'worktable', 'floor-kitchen'], 'I keep a little something in the kitchen. Gives the stove someone to talk to.'],
+  bedroom: [['nightstand', 'bed', 'floor-bedroom'], 'I sleep better with something odd keeping an eye on me. Not well. Better.'],
+  bathroom: [['toilet', 'linen', 'floor-bath'], 'Every bathroom needs a conversation piece. Ours starts the conversation.'],
+  porch: [['floor-porch'], 'I put something on the porch so the neighbours know a person of means lives here. Or at least a person.'],
+};
+const PAIRINGS = [
+  ['odd-skull', ['toilet', 'linen', 'floor-bath'], 'The buffalo skull in the bathroom watches me shave. I’ve started doing a better job.'],
+  ['odd-ghost', ['bed'], 'There’s a ghost on my bed. We take turns being under the sheet.'],
+  ['odd-turkey', ['floor-kitchen'], 'The pardoned turkey lives in the kitchen now. Bold choice, for him.'],
+  ['odd-anvil', ['floor-porch'], 'The anvil keeps the porch from blowing away. Nobody has proved otherwise.'],
+  ['odd-snakeoil', ['toilet'], 'I keep the snake oil by the toilet. That way, whichever way it works, I’m ready.'],
+  ['odd-jackolantern', ['range', 'worktable'], 'The pumpkin in the kitchen keeps asking what’s for supper. I keep not saying.'],
+  ['odd-rock', ['nightstand'], 'I keep the rock by the bed. In case of what, I haven’t decided.'],
+];
+
 export function roomContextLines(view, visitor = false) {
   if (!view) return [];
   const lines = [];
   const displayed = new Set(view.placements?.map(place => place.itemId));
   const furniture = view.furniture;
+  const shownAt = new Map(view.placements?.map(place => [place.anchorId, place.itemId]));
+  for (const [spots, line] of Object.values(ELSEWHERE)) if (spots.some(spot => shownAt.has(spot))) lines.push(line);
+  for (const [item, spots, line] of PAIRINGS) if (spots.some(spot => shownAt.get(spot) === item)) lines.push(line);
+  if (!visitor) {
+    const moved = id => furniture?.[id] && (furniture[id].r || Math.hypot(furniture[id].x - ROOM_FURNITURE[id].home[0], furniture[id].z - ROOM_FURNITURE[id].home[1]) > 0.5);
+    if (moved('bed')) lines.push('I moved the bed. I still wake up in the old spot, on the floor.');
+    if (moved('tub')) lines.push('I moved the bathtub. The plumbing is taking it personally.');
+    if (moved('range')) lines.push('I moved the stove. Now I walk into the wall every morning with real confidence.');
+    if (moved('porchChair')) lines.push('I moved the porch chair. The sprinkler found it anyway.');
+    if (furniture?.nightstand?.off) lines.push('I put the nightstand away. My glass of water lives on the floor now, like an animal.');
+    if (furniture?.linen?.off) lines.push('I put the linen cupboard away. The towels are on the honour system.');
+  }
   if (furniture?.case && !furniture.case.off) displayed.add('furn-case');
   if (furniture?.poker && !furniture.poker.off) displayed.add('furn-pokertable');
   for (const [id, [shown, stored]] of Object.entries(pieces)) {

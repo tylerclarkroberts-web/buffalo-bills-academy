@@ -382,7 +382,7 @@ export default function Room({ id }) {
   const forSale = Object.keys(ROOM_FURNITURE).filter(id => !has(id)).map(id => ROOM_FURNITURE[id].label.toLowerCase());
   const steps = nudgeAxes(cameraView.rotation);
   const nudge = ([x, z], sign) => arrangeFurniture(pieceId, { x: piecePlace.x + x * sign * 0.25, z: piecePlace.z + z * sign * 0.25 });
-  const panelTitle = selectedHome?.label || { add: 'Add to the room', surface: surfaceLabel, finish: 'Walls', pet: 'The terrarium', wardrobe: 'Wardrobe & mirror', wealth: 'Chips & cash', poker: 'Poker table', couch: 'Couch', door: 'The front door', collection: editing ? 'Your collection' : 'On display' }[selection.kind]
+  const panelTitle = (selection.piece && piece?.label) || selectedHome?.label || { add: 'Add to the room', surface: surfaceLabel, finish: 'Walls', pet: 'The terrarium', wardrobe: 'Wardrobe & mirror', wealth: 'Chips & cash', poker: 'Poker table', couch: 'Couch', door: 'The front door', collection: editing ? 'Your collection' : 'On display' }[selection.kind]
     || selectedShelfLabel || selectedAnchor?.label || 'Display spot';
   const parlorTargets = [{ label: 'Walls', target: { kind: 'finish' } }, { label: 'Floor finish', target: { kind: 'surface', surface: 'floor' } }, { label: 'Rug', target: { kind: 'surface', surface: 'rug' } }, ...anchors.filter(anchor => !anchor.shelfId || anchor.id === anchor.shelfId).map(anchor => ({ label: ROOM_ANCHORS.find(base => base.id === anchor.id)?.label || anchor.label, target: { kind: 'anchor', anchorId: anchor.id } })), { label: 'Wardrobe', target: { kind: 'wardrobe' } }, ...(!draft || draft.furniture.couch.off ? [] : [{ label: 'Couch', target: { kind: 'couch' } }]), { label: 'Terrarium', target: { kind: 'pet' } }, { label: 'Cash table', target: { kind: 'wealth' } }, ...(!draft || draft.furniture.poker.off ? [] : [{ label: 'Poker table', target: { kind: 'poker' } }])];
   const homeTargets = Object.entries(ROOM_HOMESTEAD).map(([id, option]) => ({ label: option.label, target: { kind: 'homestead', id } }));
@@ -394,7 +394,7 @@ export default function Room({ id }) {
     const target = index === '' ? { kind: 'none' } : editTargets[index].target;
     setSelection(target); setMsg(''); setCameraMode(null);
     if (target.kind === 'none') return;
-    const area = ROOM_HOMESTEAD[target.id]?.area || (target.surface === 'fence' || target.anchorId === 'window' ? 'yard' : 'parlor');
+    const area = ROOM_HOMESTEAD[target.id]?.area || ROOM_FURNITURE[furnitureOf(target)]?.area || (target.surface === 'fence' || target.anchorId === 'window' ? 'yard' : 'parlor');
     if (area !== cameraView.area) setCameraView(roomView({ area, rotation: area === 'parlor' ? -45 : 0 }));
   }
   const shelvesFull = !!draft && draft.shelves.length >= ROOM_SHELF_IDS.length;
@@ -477,7 +477,10 @@ export default function Room({ id }) {
           <ShelfSizes disabled={busy || shelvesFull} onChange={putShelf} />
           <h3>Wall display <small className="muted">{wallCount} of {ROOM_WALL_IDS.length}</small></h3>
           <div className="room-choices"><button className="btn room-choice" disabled={busy || wallsFull} onClick={hangDisplay}>Hang a wall display</button></div>
-          {stored.length > 0 && <><h3>In storage</h3><div className="room-choices">{stored.map(id => <button key={id} className="btn room-choice" disabled={busy} onClick={() => arrangeFurniture(id, { off: false }, `${ROOM_FURNITURE[id].label} is in the room. Drag it where you want it, then save.`)}>{ROOM_FURNITURE[id].label}</button>)}</div></>}
+          {stored.length > 0 && <><h3>In storage</h3><div className="room-choices">{stored.map(id => <button key={id} className="btn room-choice" disabled={busy} onClick={() => {
+            arrangeFurniture(id, { off: false }, `${ROOM_FURNITURE[id].label} is in the room. Drag it where you want it, then save.`);
+            if (ROOM_FURNITURE[id].area) setCameraView(roomView({ area: ROOM_FURNITURE[id].area }));
+          }}>{ROOM_FURNITURE[id].label}</button>)}</div></>}
           {forSale.length > 0 && <p className="small muted">The <Link to="/store">General Store</Link> sells a {forSale.join(' and a ')}.</p>}
         </>}
         {selection.kind === 'door' && <><p>Sign in with an account so friends can visit.</p><SignIn compact next="/room" /></>}

@@ -195,7 +195,7 @@ test('reduced motion keeps a still resident and renders only at activity boundar
   assert.ok(bubbles.at(-1)?.text);
   assert.equal(scene.residentGroup.scale.y, RESIDENT_HEIGHT_SCALE);
   assert.deepEqual(scene.residentGroup.rotation.toArray().slice(0, 3), [0, 0.35, 0]);
-  assert.equal(scene.residentHead.rotation.y, 0);
+  assert.ok(Math.abs(scene.residentHead.rotation.y) <= 0.5, 'only a still half-turn toward the camera');
   t.mock.timers.tick(9000); frames.shift()(29000);
   assert.equal(bubbles.at(-1), null);
 });
