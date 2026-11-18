@@ -18,10 +18,9 @@ test('a win pays by the level beaten; a loss fades with your own level', () => {
 });
 
 test('a jar is harder on a bug above yours, and it arrives at most two levels up', () => {
-  assert.equal(jarChance(0.25), 0.35);
-  assert.ok(Math.abs(jarChance(0.25, 2) - 0.35 * 0.6) < 1e-9);
-  assert.ok(Math.abs(jarChance(0.25, 9) - 0.35 * 0.3) < 1e-9);
-  assert.equal(jarChance(0.25, -3), 0.35);
-  assert.equal(jarChance(0.5, 0), 0);
+  assert.equal(jarChance(1, 0), 0.6);
+  assert.ok(Math.abs(jarChance(1, 2) - 0.6 * 0.6) < 1e-9);
+  assert.ok(Math.abs(jarChance(1, 9) - 0.6 * 0.3) < 1e-9);
+  assert.equal(jarChance(1, -3), 0.6);
   assert.deepEqual([caughtLevel(10, 6), caughtLevel(7, 6), caughtLevel(3, 6)], [8, 7, 3]);
 });

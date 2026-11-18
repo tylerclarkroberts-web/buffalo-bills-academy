@@ -1,4 +1,4 @@
-import { BY_ID, ABILITY_LEVELS, MAX_LEVEL } from './creatures.js';
+import { BY_ID, ABILITY_LEVELS, LEVEL_CAP } from './creatures.js';
 
 export const MOVE_IDS = ['basic', 'technique', 'signature', 'tactic', 'capstone'];
 export const STANCES = {
@@ -60,6 +60,9 @@ const KITS = {
   dasymutilla: ['venom', 'guard', 'Warning Squeak', 'weaken', 'Nectar Stop', 'heal'],
   peruphasma: ['venom', 'pierce', 'Stands Very Still', 'guard', 'Schinus Leaves', 'heal'],
   ampulex: ['venom', 'pierce', 'Half an Antenna', 'heal', 'By the Antenna', 'weaken'],
+  dryococelus: ['guard', 'pierce', 'Ball\'s Pyramid', 'heal', 'Twenty-Four Left', 'weaken'],
+  megachile: ['pierce', 'weaken', 'Sealed With Resin', 'guard', 'Bacan Nectar', 'heal'],
+  meganeura: ['pierce', 'weaken', 'Stephanian Rest', 'heal', 'Seventy Centimetres', 'guard'],
   colobopsis: ['venom', 'guard', 'Epiphyte Graze', 'heal', 'Sixty Metres Up', 'pierce'],
 };
 
@@ -97,6 +100,7 @@ export function battleFor(species, level, legacyAbilities = 0, stored = null) {
 // to themselves, until each species averaged near an even record. No single level is perfectly even: a trait tied to
 // a move does nothing until that move is learned.
 export const TRAIT = {
+  lobster: 0.12, giant: 0.1, griffin: 0.06, griffinDodge: 0.05,
   still: 0.05, shell: 0.1, vanish: 0.25, fifth: 0.35, linger: 0.25, stun: 0.04, blind: 0.12, mask: 0.35, caseGuard: 0.35, log: 0.3, regen: 0.75, pop: 8, xylella: 0.3,
   scales: 0.55, lights: 0.06, front: 0.1, kick: 0.4, maneater: 0.3, heavy: 0.07, calm: 0.25, lure: 1, prey: 0.02, fan: 0.05, streak: 0.02, turtles: 0.05, smell: 0.15,
   // the thirteen that came with Fire, Sonic and Water, set the same way with the type perks on
@@ -158,6 +162,9 @@ const TRAITS = {
   odontomachus: ['Escape Jump', () => `The first hit to land on it once it is below half health does ${pct(TRAIT.jump)} less.`],
   dasymutilla: ['Cow Killer', () => `A poisoned opponent's hits do ${pct(TRAIT.pain)} less.`],
   peruphasma: ['Sprays When Disturbed', () => `The first two hits that land on it cost the attacker ${TRAIT.spray} HP each.`],
+  dryococelus: ['Thought Extinct', () => `Hard to finish off: every hit on it does ${pct(TRAIT.lobster)} less.`],
+  meganeura: ['Griffinfly', () => `Every hit it lands is ${pct(TRAIT.griffin)} harder, and attacks are ${pct(TRAIT.griffinDodge)} less likely to hit it.`],
+  megachile: ['Largest Living Bee', () => `Every hit it lands is ${pct(TRAIT.giant)} harder.`],
   ampulex: ['Second Sting', () => `Once it has landed two hits, the opponent's hits do ${pct(TRAIT.sting)} less for the rest of the fight. Twice that on a cockroach.`],
   colobopsis: ['Yellow Goo', () => `Its hits do ${pct(TRAIT.minor)} less. The blow that would knock it out sets it off instead: ${TRAIT.goo} damage to the opponent, and if that finishes the opponent it is left standing on 1 HP.`],
 };
@@ -179,7 +186,9 @@ export const gapXp = (mine, theirs) => { const gap = theirs - mine; return gap >
 export const fightXp = ({ won, base, bonus, odds = 0.5, level, foeLevel = level }) => (won ? Math.max(1, Math.round((base + upsetXp(bonus, odds)) * gapXp(level, foeLevel))) : fadedXp(base, level));
 export const traitFor = (species) => { const [name, text] = TRAITS[species] || []; return name ? { name, description: text() } : null; };
 
+// What a level is worth: each one past GROWTH.from adds this much health and this share of damage.
+export const GROWTH = { from: 1, hp: 5, dmg: 0.03 };
 export function combatStats(level) {
-  const growth = Math.max(0, Math.min(MAX_LEVEL, Number.isFinite(level) ? Math.floor(level) : 3) - 3);
-  return { maxHp: 100 + growth * 3, damageMultiplier: (100 + growth * 2) / 100 };
+  const growth = Math.max(0, Math.min(LEVEL_CAP, Number.isFinite(level) ? Math.floor(level) : 3) - GROWTH.from);
+  return { maxHp: 100 + growth * GROWTH.hp, damageMultiplier: 1 + growth * GROWTH.dmg };
 }

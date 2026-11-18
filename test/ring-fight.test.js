@@ -46,7 +46,7 @@ test('the odds shown for a move are what the fight then does with it', () => {
       }
       const events = stepBout(S), act = events[0];
       // Venom, a sip of fog or a mantis lying still change the sum after it was shown; every other action must match it.
-      if (act.type !== 'move' || act.skipped || act.critical || S.side.some(s => s.t === 'onymacris' || s.t === 'deroplatys')) continue;
+      if (act.type !== 'move' || act.skipped || act.critical || S.side.some(s => ['onymacris', 'deroplatys', 'pheropsophus'].includes(s.t))) continue; // (a bombardier can come back up at 1 HP)
       const o = shown[act.moveId]; checked++;
       if (act.effect === 'heal') assert.equal(act.healed, o.heal, `${b.id} heal`);
       else if (act.hit) assert.ok(act.dmg >= o.dmg[0] && act.dmg <= o.dmg[1], `${b.id} ${act.moveId}: ${act.dmg} outside ${o.dmg}`);

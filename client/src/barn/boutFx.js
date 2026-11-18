@@ -19,13 +19,13 @@ export const STYLES = {
   wriggler: { name: 'Wriggler', approach: 600, sound: 'wriggle' },
 };
 const BY_STYLE = {
-  flyer: ['phrictus', 'pyrops', 'nemoptera', 'chrysochroa', 'mantispa', 'polyphylla', 'melanophila', 'brevisana', 'bertholdia', 'photuris', 'ampulex'],
+  flyer: ['phrictus', 'pyrops', 'nemoptera', 'chrysochroa', 'mantispa', 'polyphylla', 'melanophila', 'brevisana', 'bertholdia', 'photuris', 'ampulex', 'megachile', 'meganeura'],
   hopper: ['bocydium', 'umbonia', 'graphocephala', 'sagra', 'halobates', 'micronecta'],
   charger: ['ceroplophana', 'phanaeus', 'lamprima', 'macrodontia', 'onymacris', 'trachelophorus', 'pyrrhocoris', 'gromphadorhina', 'gryllotalpa', 'dytiscus', 'phloeodes', 'dasymutilla'],
   striker: ['pseudocreobotra', 'deroplatys', 'empusa', 'platymeris', 'acanthaspis', 'manticora', 'lethocerus', 'notonecta', 'solenopsis', 'myrmeleon', 'odontomachus', 'colobopsis'],
   sprayer: ['brachinus', 'pheropsophus', 'peruphasma'],
   roller: ['eupholus', 'pachyrhynchus', 'sphaerocoris', 'helicopsyche', 'gyrinus'],
-  wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa'],
+  wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa', 'dryococelus'],
 };
 export const STYLE_OF = Object.fromEntries(Object.entries(BY_STYLE).flatMap(([style, ids]) => ids.map((id) => [id, style])));
 export const styleOf = (species) => STYLE_OF[species] || 'charger';

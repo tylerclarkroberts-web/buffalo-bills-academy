@@ -10,8 +10,7 @@ export function buildMineHands() {
   scene.add(new THREE.AmbientLight('#d8dfc4', 1.5));
   const lamp = new THREE.DirectionalLight('#fff1cc', 2.2); lamp.position.set(-1, 2, 3); scene.add(lamp);
   const material = color => new THREE.MeshLambertMaterial({ color, flatShading: true });
-  const wood = material('#a4774a'), iron = material('#515c60'), steel = material('#859397');
-  const barrel = new THREE.CylinderGeometry(1, 1, 1, 8);
+  const wood = material('#9c6b3d'), wrap = material('#4a3020'), iron = material('#3d4649'), steel = material('#a9b6ba');
   const part = (geo, mat, x, y, z, w, h, d) => {
     const mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, y, z); mesh.scale.set(w, h, d); pickaxe.add(mesh); return mesh;
   };
@@ -19,12 +18,18 @@ export function buildMineHands() {
   const grip = new THREE.Group(); grip.name = 'mine-grip'; group.add(grip);
   const pickaxe = new THREE.Group(); pickaxe.name = 'mine-pickaxe'; grip.add(pickaxe);
   pickaxe.rotation.y = -.86;
-  part(barrel, wood, 0, .23, 0, .038, .84, .03);
-  part(barrel, iron, 0, .594, 0, .054, .094, .048);
-  // A diamond section narrows to the pick point and flattens out at the chisel edge.
+  // The haft: an oval of ash that swells toward the butt, with a leather wrap where it is held and a knob so it cannot slip.
+  part(new THREE.CylinderGeometry(.8, 1.12, 1, 8), wood, 0, .25, 0, .036, .8, .028);
+  part(new THREE.CylinderGeometry(1, 1.06, 1, 8), wrap, 0, -.02, 0, .046, .2, .036);
+  part(new THREE.CylinderGeometry(1.1, .9, 1, 8), wood, 0, -.15, 0, .05, .05, .04);
+  // The eye: a forged iron block the head is drawn out from, with the haft's end showing through the top.
+  part(new THREE.BoxGeometry(1, 1, 1), iron, 0, .612, 0, .1, .116, .098);
+  part(new THREE.CylinderGeometry(1, 1, 1, 8), wood, 0, .682, 0, .03, .03, .024);
+  // The head: one bar of steel curving down to a point at each end, diamond in section so a ridge runs along its top.
+  // [x, y of the middle, half height, half width]; the first is the point that strikes.
   const sections = [
-    [-.44, .385, .003, .003], [-.34, .504, .018, .018], [-.18, .587, .034, .033],
-    [0, .61, .044, .042], [.14, .584, .034, .032], [.28, .514, .008, .056],
+    [-.44, .4, .004, .004], [-.37, .462, .017, .013], [-.26, .535, .03, .024], [-.13, .59, .04, .034], [-.05, .606, .046, .04],
+    [.05, .606, .046, .04], [.13, .59, .04, .034], [.23, .54, .03, .024], [.31, .478, .017, .013], [.36, .428, .004, .004],
   ];
   const vertices = [], indices = [];
   for (const [x, y, height, width] of sections) {

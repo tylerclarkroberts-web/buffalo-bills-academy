@@ -42,14 +42,14 @@ export default function BugCard({ species, bug = null }) {
   const moves = movesFor(species, 10), trait = traitFor(species), perk = perkFor(type), no = ROSTER.indexOf(b) + 1;
   const record = bug?.record ? `${bug.record.w}–${bug.record.l}` : null;
   return (
-    <article className="bugcard" style={{ '--tc': TYPES[type]?.color || '#c8b888' }} data-test="bug-card" aria-label={`${bug?.name || b.name}, ${TYPES[type]?.name} type`}>
+    <article className={`bugcard r${rarityOf(species)}`} style={{ '--tc': TYPES[type]?.color || '#c8b888' }} data-test="bug-card" aria-label={`${bug?.name || b.name}, ${TYPES[type]?.name} type`}>
       <header>
         <small>{b.order}{bug ? ` · ${b.name}` : ''}</small>
         <h3>{bug?.name || b.name}</h3>
         <b className="bc-hp num">{bug?.maxHp || combatStats(bug?.level ?? 1).maxHp}<i>HP</i></b>
         <TypeChip type={type} />
       </header>
-      <div className="bc-window"><Art bug={b} style={bug?.style} level={level} /></div>
+      <div className="bc-window"><Art bug={b} style={bug?.style} level={level} /><i className="bc-foil" aria-hidden="true" /></div>
       <p className="bc-strip"><i>{b.sci}{b.genus ? ' (genus)' : ''}</i>{b.size ? ` · ${b.size.replace(/\.$/, '')}` : ''}{bug ? ` · Lv ${level}${record ? ` · ${record}` : ''}` : ''}</p>
       <ul className="bc-moves">
         {moves.map((m) => (

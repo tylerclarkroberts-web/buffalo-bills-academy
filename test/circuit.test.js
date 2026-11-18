@@ -6,8 +6,11 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP } from '../server/circuit.js';
-import { xpFor } from '../server/engine/creatures.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies } from '../server/circuit.js';
+import { typeOf, edge } from '../server/engine/bug-types.js';
+import { RULES } from '../server/engine/bout.js';
+import { simulateBout } from '../server/engine/bout.js';
+import { xpFor, levelFor } from '../server/engine/creatures.js';
 import { startBout, stepBout, tellDue } from '../server/engine/bout.js';
 
 function setup(t) {
@@ -17,7 +20,7 @@ function setup(t) {
   const store = new Store(dir);
   const accounts = new Accounts({ store, now });
   const barn = new Barn({ store, accounts, now, incubateMs: 1 });
-  const circuit = new Circuit({ store, barn, now });
+  const circuit = new Circuit({ store, barn, accounts, now });
   const pid = 'p1';
   store.players[pid] = { id: pid, name: 'Tester', bankroll: 100 };
   let n = 0;
@@ -26,7 +29,7 @@ function setup(t) {
     else { barn.layEgg(pid); clock.now += 5; barn.view(pid); }
     const pen = barn.bugs(pid).at(-1); pen.xp = xpFor(level); barn.save(); return pen;
   };
-  return { clock, barn, circuit, pid, hatch };
+  return { clock, barn, circuit, pid, hatch, store };
 }
 const fake = (id, winner, hp) => ({ id, line: 0.5, S: { hp, maxHp: [100, 100] }, over: { winner } });
 
@@ -75,6 +78,7 @@ test('a leader gauntlet: health carries, a lost round benches that bug, two wins
   assert.equal(me.run, null);
   assert.ok(me.ribbons[1] && me.done.pugh);
   assert.match(win.extra.spoils[0], /Ribbon 1/);
+  assert.deepEqual(win.extra.spoils.slice(1, 3), [`$${PURSE.ribbon} purse`, 'Your bugs can now reach level 11']);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === b.bornAt).xp >= xpB + RIBBON_XP);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === a.bornAt).xp >= xpFor(6) + RIBBON_XP); // a won a round too
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'pugh' }), /already yours/);
@@ -102,4 +106,86 @@ test('dodgeball: every third own turn of the leader\'s bug cannot miss, and the 
       if (own && !due) assert.doesNotMatch(own.line, /DODGEBALL/);
     }
   }
+});
+
+test('a beaten trainer pays its purse once, and a ribbon pays more and raises the level cap by one', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  const a = hatch(6);
+  const me = circuit.me(pid), salad = circuit.stopOf('salad'), pugh = circuit.stopOf('pugh');
+  circuit.settle(pid, salad, { id: idOf(a), bornAt: a.bornAt }, salad.bugs[0], fake('t1', 0, [50, 0]));
+  assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'salad' }), /Not yet|enough for one lifetime/);
+  assert.equal(barn.view(pid).pen.cap, 10);
+  me.run = { stop: 'pugh', foe: 1, foeHp: null, out: [], hp: {}, won: [], live: null };
+  circuit.settle(pid, pugh, { id: idOf(a), bornAt: a.bornAt }, pugh.bugs[1], fake('r9', 0, [30, 0]));
+  assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer + PURSE.ribbon);
+  assert.deepEqual([capFor(0), capFor(1), capFor(8), capFor(30)], [10, 11, 18, 20]);
+  const pen = barn.view(pid).pen;
+  assert.equal(pen.cap, 11);
+  barn.doc.pens[pid].xp = xpFor(15);
+  assert.equal(barn.view(pid).pen.level, 11, 'XP past the cap waits for the next ribbon');
+  assert.equal(levelFor(xpFor(15)), 10, 'and a bug with no ribbons behind it still tops out at 10');
+});
+
+test('circuit bugs are drilled: a barn bug a level below one seldom wins on its own', () => {
+  let won = 0, n = 0;
+  for (const mine of ['lamprima', 'pyrops', 'eupholus', 'gyrinus']) for (const theirs of ['trachelophorus', 'nemoptera', 'sagra']) for (let k = 0; k < 20; k++) {
+    won += simulateBout({ species: mine, level: 4, mood: 75 }, { species: theirs, level: 5, mood: 100, gear: 0.06, defense: 0.06, trained: TRAINED }, `drill:${k}`).winner === 0 ? 1 : 0; n++;
+  }
+  assert.ok(won / n < 0.2, `a level 4 beat a trained level 5 in ${Math.round((won / n) * 100)}% of fights`);
+});
+
+test('the Culvert opens with ribbon 1; the Nephew brings whatever beats your partner, and keeps it', (t) => {
+  const { barn, circuit, pid, hatch } = setup(t);
+  const a = hatch(8), me = circuit.me(pid);
+  const culvert = () => circuit.view(pid).areas[1];
+  assert.deepEqual([culvert().name, culvert().open, culvert().stops[0].open], ['The Culvert', false, false]);
+  assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'nephew1' }), /Not yet/);
+  me.ribbons[1] = 1;
+  const nephew = culvert().stops[0];
+  assert.deepEqual([culvert().open, nephew.open, nephew.bugs[0].name, nephew.bugs[0].level], [true, true, 'Bug Two', 5]);
+  assert.equal(edge(typeOf(nephew.bugs[0].species), typeOf(a.species)), 1, 'its type beats the partner\'s');
+  assert.equal(nephew.bugs[0].species, rivalSpecies(a.species));
+  barn.doc.pens[pid].species = nephew.bugs[0].species; // change partner: he does not re-pick
+  assert.equal(culvert().stops[0].bugs[0].species, nephew.bugs[0].species);
+  const live = circuit.fight(pid, 'Tester', { stop: 'nephew1' }).live;
+  assert.deepEqual([barn.fights.get(live).fighters[1].name, barn.fights.get(live).fighters[1].owner], ['Bug Two', 'The Nephew']);
+});
+
+test('a toll can be paid or fought; paying costs the toll and wins nothing, and the Hoppers eat your packed lunch', (t) => {
+  const { barn, circuit, pid, hatch, store } = setup(t);
+  hatch(8); const me = circuit.me(pid);
+  me.ribbons[1] = 1; for (const id of ['nephew1', 'net']) me.done[id] = 1;
+  store.players[pid].bankroll = 100;
+  assert.throws(() => circuit.payToll(pid, { stop: 'toll1' }), /Not enough money|toll/);
+  store.players[pid].bankroll = 400;
+  barn.doc.pens[pid].lunch = { name: 'Bug Banquet', heal: 10 };
+  const live = circuit.fight(pid, 'Tester', { stop: 'toll1' }).live, fight = barn.fights.get(live);
+  assert.deepEqual([fight.fighters[0].lunch, fight.fighters[1].lunch], [null, { name: 'Bug Banquet', heal: 10 }], 'tribute: Lefty has it now');
+  assert.equal(barn.doc.pens[pid].lunch, undefined);
+  barn.fights.finish(fight, 1); // lost: still there
+  assert.equal(circuit.me(pid).done.toll1, undefined);
+  const paid = circuit.payToll(pid, { stop: 'toll1' });
+  assert.match(paid.reply, /Pleasure doing business/);
+  assert.deepEqual([store.players[pid].bankroll, paid.tolls.toll1, !!circuit.me(pid).done.toll1], [250, 'paid', true]);
+  assert.throws(() => circuit.payToll(pid, { stop: 'toll1' }), /already through/);
+});
+
+test('Gil\'s flood: from turn nine a bug that cannot swim loses health every turn of its own, and a Water bug does not', () => {
+  const gil = { species: 'dytiscus', name: 'Queen Size', level: 6, rule: 'flood', tell: 'give' };
+  const lost = (species) => { let n = 0; for (let k = 0; k < 10; k++) { const S = startBout({ species, name: 'Mine', level: 6 }, gil, `flood:${k}`); while (!S.over) for (const e of stepBout(S)) if (e.ability === 'Rising Water') { n++; assert.ok(e.turn >= RULES.flood.from && e.dmg <= RULES.flood.hp); } } return n; };
+  assert.ok(lost('lamprima') > 20);
+  assert.equal(lost('gyrinus'), 0, 'a Water bug is at home');
+  const S = startBout({ species: 'lamprima', name: 'Mine', level: 6 }, gil, 'tell'); let told = 0;
+  while (!S.over) { if (tellDue(S, 1)) told++; stepBout(S); }
+  assert.ok(told >= 1 && told <= 3, 'the tell shows as the water comes up, not all fight');
+});
+
+test('Bent\'s cough is going round: either bug sometimes loses a turn to it', () => {
+  let coughs = [0, 0], turns = 0;
+  for (let k = 0; k < 30; k++) { const S = startBout({ species: 'lamprima', name: 'Mine', level: 6 }, { species: 'notonecta', name: 'Lozenge', level: 6, rule: 'cough' }, `cough:${k}`);
+    while (!S.over) for (const e of stepBout(S)) { if (e.type === 'move') turns++; if (/coughs/.test(e.line)) coughs[e.by]++; } }
+  assert.ok(coughs[0] > 5 && coughs[1] > 5, 'both corners');
+  const rate = (coughs[0] + coughs[1]) / turns;
+  assert.ok(rate > RULES.cough.chance / 2 && rate < RULES.cough.chance * 2, `${Math.round(rate * 100)}% of turns`);
 });
