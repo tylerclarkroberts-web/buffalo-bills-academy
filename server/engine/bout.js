@@ -15,13 +15,21 @@ export const LUNCH_CAP = 10;
 // miss and lands harder, and the leader's tell (Fights.view) warns the owner a turn ahead so they can line up a guard.
 // Cough: before any action, either bug may lose its turn to a coughing fit. Flood: from overall turn `from` the water
 // is up, and every bug that is not a Water type loses `hp` at the start of each of its own turns.
-export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.12 }, flood: { from: 9, hp: 3 } };
+// Flicker: every third overall turn the porch light is off, and an attack from anything but a Dazzle bug is likelier
+// to miss. Grill: its bug's Fire flare-up is always on, and every fourth own turn is an order up, which hits harder.
+// Linger: poison its bug puts on never wears off. Dark: nothing in the fight itself; the page hides its bug's health.
+// Rage: below half health its bug hits harder. Mulligan: its bug takes up to `tries` missed attacks again.
+export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.12 }, flood: { from: 9, hp: 3 },
+  flicker: { every: 3, aim: 0.22 }, grill: { every: 4, power: 0.3 }, rage: { power: 0.25 }, mulligan: { tries: 3 } };
 const ruled = (S, rule) => S.side.some((q) => q.c.rule === rule);
 /** A circuit trainer's bug is drilled (`c.trained`): that share more health and damage than a barn bug of its level. */
 const trainedOf = (c) => Math.max(0, Math.min(0.5, Number(c.trained) || 0));
 const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball.every === 0;
 /** Whether side `i`'s next own turn is its leader's big one: what the tell is for. */
-export const tellDue = (S, i) => ball(S.side[i], S.side[i].turn + 1) || (S.side[i].c.rule === 'flood' && S.turn + 1 >= RULES.flood.from - 2 && S.turn + 1 <= RULES.flood.from);
+export const tellDue = (S, i) => { const q = S.side[i], rule = q.c.rule;
+  return ball(q, q.turn + 1) || (rule === 'flood' && S.turn + 1 >= RULES.flood.from - 2 && S.turn + 1 <= RULES.flood.from)
+    || (rule === 'flicker' && (S.turn + 1) % RULES.flicker.every === 0) || (rule === 'grill' && (q.turn + 1) % RULES.grill.every === 0)
+    || (rule === 'linger' && !S.side[1 - i].venom) || (rule === 'dark' && S.by === i && nextMove(S, i).effect === 'pierce'); };
 
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -78,12 +86,13 @@ export function cooldowns(S, i) {
 
 // The three sums below only read the fight. stepBout rolls against them; odds() shows them to the owner first.
 /** The chance side `by`'s attack lands, as things stand, on its `attacks`-th attack. */
-function aim(S, by, move, attacks) {
+function aim(S, by, move, attacks, turnNo = S.turn) {
   const foe = 1 - by, s = S.side[by], target = S.side[foe];
   let spd = (target.st.spd - 3) * 0.03; if (s.t === 'polyphylla') spd = Math.min(0, spd) - TRAIT.fan;
   let acc = move.accuracy - spd;
   if (target.t === 'nemoptera' && !target.damaged) acc -= TRAIT.calm;
   if (s.blind) acc -= TRAIT.blind;
+  if (ruled(S, 'flicker') && turnNo % RULES.flicker.every === 0 && s.ty !== 'dazzle') acc -= RULES.flicker.aim; // the porch light is off
   if (target.ty === 'flier') acc -= PERK.quick;
   if (target.under) acc -= PERK.dive; // a Water bug that was just hit has gone under
   if (target.t === 'micronecta') acc -= TRAIT.tiny;
@@ -114,6 +123,8 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.t === 'lethocerus' && theirs > mine) mult *= 1 + TRAIT.turtles;
   if (s.t === 'empusa') mult *= 1 + TRAIT.prey * target.st.spd;
   if (s.kick) mult *= 1 + TRAIT.kick;
+  if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
+  if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
   if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
   if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
   if (shell && pierce) mult *= 1 - TRAIT.shell;
@@ -153,7 +164,7 @@ export function odds(S, i) {
   const s = S.side[i], target = S.side[1 - i];
   return Object.fromEntries(s.moves.filter(move => move.unlocked).map(move => {
     if (move.effect === 'heal') return [move.id, { heal: Math.min(S.maxHp[i] - S.hp[i], Math.round(move.heal * s.stats.damageMultiplier)) }];
-    return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move, s.attacks + 1))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
+    return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move, s.attacks + 1, S.turn + 1))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
       ...(move.criticalChance ? { crit: move.criticalChance } : {}),
       ...(move.effect === 'venom' ? { venom: [venomOf(s, target, move), move.duration] } : taints(s, target, move) ? { venom: [venomOf(s, target, TAINT), TAINT.duration] } : {}),
       ...(move.effect === 'weaken' ? { weaken: (1 - move.weaken) * scalesOf(target) } : {}),
@@ -228,7 +239,7 @@ export function stepBout(S, choice) {
     const dmg = hurt(by, s.venom.damage);
     rounds.push({ by: foe, type: 'venom', effect: 'venom', moveId: s.venom.moveId, ability: s.venom.name, tier: s.venom.tier, hit: true, dmg, hp: [...hp], turn,
       line: `${s.c.name} takes ${dmg} venom damage${stood ? ` and ${stood} at 1 HP` : ''}.${spots()}` });
-    if (--s.venom.left === 0) s.venom = null;
+    if (target.c.rule !== 'linger' && --s.venom.left === 0) s.venom = null; // a retired exterminator's poison does not wear off
     pop(by); bursts(); rest();
     if (hp[0] <= 0 || hp[1] <= 0) return done();
   }
@@ -256,14 +267,16 @@ export function stepBout(S, choice) {
   const thrown = ball(s, s.turn);
   if (thrown && move.effect === 'heal') move = s.moves[0]; // the tell promised a ball: it throws one
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
-  let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false;
+  let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false, mulligan = false;
   if (move.effect === 'heal') {
     healed = Math.min(maxHp[by] - hp[by], Math.round(move.heal * s.stats.damageMultiplier)); hp[by] += healed;
     detail = `recovers ${healed} HP`;
     if (s.t === 'helicopsyche') { s.guard = TRAIT.caseGuard; s.guardLeft = 1; detail += ' and coils into its case'; }
   } else {
     s.attacks++;
-    hit = R() < aim(S, by, move, s.attacks); s.blind = false; target.met = true; s.grip = hit;
+    hit = R() < aim(S, by, move, s.attacks);
+    if (!hit && s.c.rule === 'mulligan' && (s.taken || 0) < RULES.mulligan.tries) { s.taken = (s.taken || 0) + 1; hit = R() < aim(S, by, move, s.attacks); mulligan = true; }
+    s.blind = false; target.met = true; s.grip = hit;
     if (target.ty === 'water') target.under = hit;
     if (hit) {
       const masked = target.t === 'acanthaspis' && target.mask;
@@ -300,7 +313,7 @@ export function stepBout(S, choice) {
     detail = hit ? `deals ${dmg} damage${detail}` : `misses${move.effect === 'guard' ? ' but raises a guard' : ''}`;
   }
   rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
-    line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : 'uses'} ${move.name}: ${detail}.${spots()}` });
+    line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : mulligan ? 'takes a mulligan and uses' : 'uses'} ${move.name}: ${detail}.${spots()}` });
   pop(foe); bursts();
   return done();
 }

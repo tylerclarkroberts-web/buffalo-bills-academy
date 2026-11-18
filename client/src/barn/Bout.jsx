@@ -198,14 +198,15 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
     <dialog ref={dialog} className={`bout${live ? ' live' : ''}${legendary ? ' legendary' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
       <div className="bout-top">
         {fighters.map((c, i) => {
-          const pct = Math.max(0, Math.min(100, (hp[i] / maxHp[i]) * 100));
+          const hidden = i === 1 && bout.dark && live; // too dark to see how hurt it is
+          const pct = hidden ? 100 : Math.max(0, Math.min(100, (hp[i] / maxHp[i]) * 100));
           return (
             <div key={i} className={`bout-side s${i}`}>
               <b>{c.name}</b><span className="small muted">{i === 1 && legendary ? <em className="bout-legend" data-test="bout-legendary">✦ legendary</em> : null}{c.wild ? 'wild · ' : c.stray ? 'stray · ' : ''}{c.owner ? `${c.owner} · ` : ''}Lv {c.level} <TypeChip type={typeOf(c.species)} small /></span>
-              <div className={`barn-bar hp ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}`} role="progressbar" aria-label={`${c.name} health`} aria-valuemin={0} aria-valuemax={maxHp[i]} aria-valuenow={hp[i]}>
+              <div className={`barn-bar hp ${hidden ? 'dark' : pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}`} role="progressbar" aria-label={hidden ? `${c.name} health: too dark to see` : `${c.name} health`} aria-valuemin={0} aria-valuemax={maxHp[i]} aria-valuenow={hidden ? undefined : hp[i]}>
                 <b className="ghost" style={{ width: `${pct}%` }} /><i style={{ width: `${pct}%` }} />
               </div>
-              <span className="small num bout-hp">{hp[i]} / {maxHp[i]} HP{fav === i && <span className="bout-fav" data-test="bout-favoured">favoured {i ? 100 - mine : mine}%</span>}{live && edge(typeOf(c.species), typeOf(fighters[1 - i].species)) > 0 && <em className="bout-chip edge" data-test="bout-edge">type edge</em>}{STATUS.filter(([k]) => status?.[i][k]).map(([k, label]) => <em key={k} className={`bout-chip ${k}`}>{label}</em>)}</span>
+              <span className="small num bout-hp">{hidden ? <span data-test="bout-dark">?? / {maxHp[i]} HP · too dark to see</span> : <>{hp[i]} / {maxHp[i]} HP</>}{fav === i && !(bout.dark && live) && <span className="bout-fav" data-test="bout-favoured">favoured {i ? 100 - mine : mine}%</span>}{live && edge(typeOf(c.species), typeOf(fighters[1 - i].species)) > 0 && <em className="bout-chip edge" data-test="bout-edge">type edge</em>}{STATUS.filter(([k]) => status?.[i][k]).map(([k, label]) => <em key={k} className={`bout-chip ${k}`}>{label}</em>)}</span>
             </div>
           );
         })}

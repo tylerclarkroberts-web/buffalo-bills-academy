@@ -18,7 +18,12 @@ export const RIBBONS = 8; // the leaders still to come show as empty hooks
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
 export const PURSE = { trainer: 75, ribbon: 750 };
 const FIGHTS = ['trainer', 'rival', 'toll', 'leader']; // stops with somebody to beat
-export const purseOf = (stop, area) => (stop.kind === 'leader' ? PURSE.ribbon : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * area.ribbon;
+/** `held`: the ribbons the player has. An any-order area pays as the next ribbon they would win, whichever slot it fills. */
+export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon);
+// Any-order areas grow with the ribbons held: every bug gains SCALE levels a ribbon past the two it takes to get there,
+// and a leader's last bug (`from`) only turns up once the player holds that many.
+export const SCALE = 1.5;
+export const scaled = (bugs, held) => bugs.filter((bug) => !bug.from || held >= bug.from).map(({ from: _from, ...bug }) => ({ ...bug, level: bug.level + Math.round(SCALE * Math.max(0, held - 2)) }));
 /** The rival copies off you: a common bug of a type that beats your partner's. */
 export const rivalSpecies = (partnerSpecies) => {
   const beats = weakTo(typeOf(partnerSpecies) || 'brawler');
@@ -58,7 +63,7 @@ export const AREAS = [{
       won: 'Hit the showers. …That was good hustle. Don\'t tell anyone I said that.', lost: 'LAPS! Come back when you\'ve stretched.' },
   ],
 }, {
-  id: 'culvert', name: 'The Culvert', ribbon: 2, blurb: 'A storm drain behind the feed store. It is not supposed to have a current.',
+  id: 'culvert', name: 'The Culvert', ribbon: 2, needs: 1, blurb: 'A storm drain behind the feed store. It is not supposed to have a current.',
   stops: [
     { id: 'nephew1', kind: 'rival', who: 'The Nephew', level: 5, bugName: 'Bug Two',
       intro: ['My uncle said I had to do something with my summer.', 'This is Bug Two. Don\'t ask about Bug One.', 'I saw what you brought. I brought the other thing.'],
@@ -80,6 +85,70 @@ export const AREAS = [{
       next: 'That one was a floor model.', sub: 'See? No give. Send in another.',
       won: 'You\'d sleep like a baby on one. Take the ribbon. Take a brochure.', lost: 'Sunk. Come back when you\'ve got something that floats.' },
   ],
+}, {
+  id: 'porch', name: 'The Front Porch', ribbon: 3, needs: 2, scale: true, blurb: 'Next door, after dark. The light has a mind of its own.',
+  stops: [
+    { id: 'ladder', kind: 'trainer', who: 'Man Returning a Ladder', bugs: [{ species: 'gromphadorhina', name: 'Rung', level: 7 }],
+      intro: ['I borrowed this in 2019.', 'I\'m not here about the bug. But I did bring the bug.'],
+      won: 'Tell Dale I was by. Don\'t tell him about the ladder.', lost: 'I\'ll just lean this here.' },
+    { id: 'tcut', kind: 'trainer', who: 'Tcut', friend: true, rule: 'rage', bugs: [{ species: 'phanaeus', name: 'Seven Iron', level: 8 }],
+      intro: ['Hey man. Just out here to have fun.', 'Nice and easy. Nothing to get upset about.'],
+      won: 'Good game. Really. I SAID GOOD GAME.', lost: 'See? Calm wins.' },
+    { id: 'center3', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Mind the step. And the other step ♡'] },
+    { id: 'dale', kind: 'leader', who: 'Dale', title: 'Ribbon 3', rule: 'flicker', tell: 'Dale reaches for the porch light switch…',
+      bugs: [{ species: 'photuris', name: 'Porchlight', level: 8 }, { species: 'bertholdia', name: 'Bylaw', level: 9 }, { species: 'chrysochroa', name: 'Covenant', level: 10, from: 4 }],
+      intro: ['Dale. Next door. Eleven years on the HOA board, and I have notes.', 'Your bugs were out past nine. Section four.', 'When this light goes off, nothing can see to hit. My Dazzle bugs manage.'],
+      next: 'That\'s going in the minutes.', sub: 'Noted. All of it. Noted.',
+      won: 'I\'ll be raising this at the next meeting. Take the ribbon off my porch.', lost: 'Section four. Read it.' },
+  ],
+}, {
+  id: 'kitchen', name: 'Buffalo Bill\'s Back Kitchen', ribbon: 4, needs: 2, scale: true, blurb: 'Through the swinging door. Nobody is supposed to be back here.',
+  stops: [
+    { id: 'inspector', kind: 'trainer', who: 'Health Inspector, Off Duty', bugs: [{ species: 'melanophila', name: 'Violation', level: 7 }],
+      intro: ['I\'m not here in an official capacity.', 'If I were, this would be a very different conversation.'],
+      won: 'I didn\'t see this. I didn\'t see any of this.', lost: 'That\'s a write-up. Unofficially.' },
+    { id: 'bmehl', kind: 'trainer', who: 'BMehl', friend: true, bugs: [{ species: 'brachinus', name: 'F***ing Carl', level: 8, stance: 'aggressive' }],
+      intro: ['How f***ing hard can it be.'],
+      won: 'What the f***.', lost: 'F*** yes.' },
+    { id: 'center4', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Please do not touch the fryer ♡'] },
+    { id: 'ruperto', kind: 'leader', who: 'Ruperto', title: 'Ribbon 4', rule: 'grill', tell: 'Ruperto slams the bell. “ORDER UP!”',
+      bugs: [{ species: 'solenopsis', name: 'Order 41', level: 8 }, { species: 'pyrrhocoris', name: 'Order 52', level: 9 }, { species: 'brachinus', name: 'Order 86', level: 10, from: 4 }],
+      intro: ['FORTY-ONE!', 'FIFTY-TWO!', 'The grill is never off. Every fourth one comes out HOT.'],
+      next: 'FIFTY-TWO! FIFTY-TWO IS UP!', sub: 'NEXT!',
+      won: 'EIGHTY-SIX the ribbon. It\'s yours. NEXT!', lost: 'SEND IT BACK!' },
+  ],
+}, {
+  id: 'van', name: 'The Van at the Mine Entrance', ribbon: 5, needs: 2, scale: true, blurb: 'A white van, lettering scraped off. It has been parked here since she retired.',
+  stops: [
+    { id: 'oils', kind: 'trainer', who: 'Woman Selling Essential Oils', bugs: [{ species: 'dasymutilla', name: 'Lavender', level: 7 }],
+      intro: ['Have you thought about what you\'re putting ON your bug?', 'It\'s not a pyramid. It\'s a wellness triangle.'],
+      won: 'I can get you in at the ground floor.', lost: 'That\'s the toxins leaving.' },
+    { id: 'article', kind: 'trainer', who: 'Guy Who Read One Article', bugs: [{ species: 'graphocephala', name: 'Actually', level: 8 }],
+      intro: ['Actually, most people get bug fighting completely wrong.', 'I read a thing.'],
+      won: 'That\'s not what the article said would happen.', lost: 'Like I said. One article.' },
+    { id: 'center5', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['Please stay upwind of the van ♡'] },
+    { id: 'voss', kind: 'leader', who: 'Aldine Voss', title: 'Ribbon 5', rule: 'linger', tell: 'Aldine Voss looks away. “I\'m so sorry about this next part.”',
+      bugs: [{ species: 'sphaerocoris', name: 'Apology', level: 8 }, { species: 'platymeris', name: 'Regret', level: 9 }, { species: 'graphocephala', name: 'Remorse', level: 10, from: 4 }],
+      intro: ['Forty years I did the other thing. To bugs. I\'m sorry.', 'I\'m sorry to yours in particular. In advance.', 'What I put on them doesn\'t wear off. It never did. That was the selling point.'],
+      next: 'I\'m sorry. I have another.', sub: 'Oh, I\'m sorry. I\'m so sorry.',
+      won: 'Thank you. I needed to lose one. Take the ribbon. I\'m sorry it\'s damp.', lost: 'I\'m sorry. I really am. I did warn you.' },
+  ],
+}, {
+  id: 'shaft12', name: 'Shaft 12, Night Shift', ribbon: 6, needs: 2, scale: true, blurb: 'Nineteen years of nights. Bring a lamp. It will not help.',
+  stops: [
+    { id: 'newguy', kind: 'trainer', who: 'New Guy, First Night', bugs: [{ species: 'umbonia', name: 'Lunchbox', level: 7 }],
+      intro: ['Is it always this dark?', 'Nobody told me to bring a bug. I found one.'],
+      won: 'I\'m going to ask about days.', lost: 'This job\'s alright.' },
+    { id: 'kashely', kind: 'trainer', who: 'Kashely', friend: true, rule: 'mulligan', bugs: [{ species: 'empusa', name: 'Ranch Rules', level: 8 }],
+      intro: ['Howdy. Out here a bug gets a few mulligans.', 'That\'s not a mine thing. It is on my ranch.'],
+      won: 'Three mulligans and I still lost. I\'ll pencil it in as a draw.', lost: 'That\'s how the West was won. Mostly mulligans.' },
+    { id: 'center6', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['I brought a night light. Dwayne asked me to turn it off ♡'] },
+    { id: 'dwayne', kind: 'leader', who: 'Dwayne', title: 'Ribbon 6', rule: 'dark', tell: 'Dwayne stops whispering.',
+      bugs: [{ species: 'acanthaspis', name: 'Second Shift', level: 8 }, { species: 'deroplatys', name: 'Third Shift', level: 9 }, { species: 'myrmeleon', name: 'Graveyard', level: 10, from: 4 }],
+      intro: ['…', '…you can\'t see it. that\'s the idea.', '…you won\'t know how hurt it is. i do. i\'m used to the dark.'],
+      next: '…there\'s another. there\'s always another.', sub: '…next.',
+      won: '…take it. what\'s it look like? the ribbon. i never saw it.', lost: '…clock out.' },
+  ],
 }];
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
 
@@ -96,11 +165,13 @@ export class Circuit {
   /** An area opens with the ribbon before it. Inside it, a stop is open once every stop before it is done (the Bug Center never blocks anything). */
   open(me, stop) {
     const { area, i } = STOPS.get(stop.id);
-    if (area.ribbon > 1 && !me.ribbons[area.ribbon - 1]) return false;
+    if (area.needs && !me.ribbons[area.needs]) return false;
     return stop.kind === 'center' || area.stops.slice(0, i).every((s) => s.kind === 'center' || me.done[s.id]);
   }
   /** The bugs a stop fields against this player. The rival's is whatever beats their partner, fixed the first time they look. */
   bugsOf(pid, me, stop) {
+    const { area } = STOPS.get(stop.id), held = Object.keys(me.ribbons).length;
+    if (area.scale) return me.run?.stop === stop.id && me.run.lineup ? me.run.lineup : scaled(stop.bugs, held); // a gauntlet under way keeps the lineup it began with
     if (stop.kind !== 'rival') return stop.bugs;
     const chosen = (me.rival ||= {})[stop.id] ||= rivalSpecies(this.barn.doc.pens[pid]?.species);
     return [{ species: chosen, name: stop.bugName, level: stop.level }];
@@ -118,8 +189,8 @@ export class Circuit {
     return {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
-      areas: AREAS.map((area) => ({ id: area.id, name: area.name, ribbon: area.ribbon, blurb: area.blurb, open: area.ribbon === 1 || !!me.ribbons[area.ribbon - 1],
-        stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
+      areas: AREAS.map((area) => ({ id: area.id, name: area.name, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: !area.needs || !!me.ribbons[area.needs],
+        stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
       cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED, tolls: me.tolls || {},
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
       live: this.fights.fightOf(pid)?.id || null,
@@ -147,7 +218,7 @@ export class Circuit {
     if (this.fights.fightOf(pid)) throw new GameError('One of your bugs is in the ring right now.', 409);
     const pen = this.barn.ready(pid, body.bug ?? undefined), id = idOf(pen);
     let run = me.run?.stop === stop.id ? me.run : null;
-    if (stop.kind === 'leader' && !run) run = { stop: stop.id, foe: 0, foeHp: null, out: [], hp: {}, won: [], live: null };
+    if (stop.kind === 'leader' && !run) run = { stop: stop.id, foe: 0, foeHp: null, out: [], hp: {}, won: [], live: null, lineup: this.bugsOf(pid, me, stop) };
     if (run?.out.includes(id)) throw new GameError(`${pen.name} is out of this one. Send in someone else.`, 409);
     if (me.run && me.run !== run) me.run = null; // walked off another leader's gauntlet: it starts again next time
     const k = run ? run.foe : 0, foe = this.bugsOf(pid, me, stop)[k], health = run?.hp[id];
@@ -187,7 +258,7 @@ export class Circuit {
         run.out.push(bug.id); run.foeHp = fight.over.winner === 1 ? pct(1) : run.foeHp;
       }
       const standing = this.barn.bugs(pid).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && !run.out.includes(idOf(pen)));
-      if (run.foe >= stop.bugs.length) {
+      if (run.foe >= (run.lineup || stop.bugs).length) {
         me.done[stop.id] = me.ribbons[area.ribbon] = this.now(); me.run = null;
         for (const bornAt of run.won) {
           const got = this.barn.grantXp(pid, bornAt, RIBBON_XP);
@@ -224,7 +295,8 @@ export class Circuit {
   }
   /** The stop's one-time purse, into the bankroll. Returns the line the ring shows. */
   pay(pid, stop, area) {
-    const amount = purseOf(stop, area), player = this.store.players[pid];
+    const me = this.me(pid), held = Object.keys(me.ribbons).length - (stop.kind === 'leader' && me.ribbons[area.ribbon] ? 1 : 0); // a ribbon just won does not raise its own purse
+    const amount = purseOf(stop, area, held), player = this.store.players[pid];
     if (amount && player && this.accounts) this.accounts.change(player, amount, 'circuit', `Bug Circuit: ${stop.kind === 'leader' ? `ribbon ${area.ribbon} from` : 'beat'} ${stop.who}`);
     return `$${amount} purse`;
   }
