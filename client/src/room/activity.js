@@ -1,28 +1,5 @@
-export const ROOM_LINES = [
-  'My throat still hurts from that mine acid. In my defence, it was a lovely colour.',
-  'The foreman said hydrate. I assumed the glowing puddle counted.',
-  'I came home to relax. Now the furniture is judging my finances.',
-  'Apparently a deed to the moon does not include parking.',
-  'That rock really ties the room together. Financially, it has ruined me.',
-  'I should buy a chair. Standing here is becoming a whole personality.',
-  'The bug has a better healthcare plan than I do. Someone mists him.',
-  'I washed the mine out of my clothes. The clothes asked for a transfer.',
-  'This is not hoarding. It is a museum with no funding.',
-  'If anyone asks, the anvil is load-bearing.',
-  'I was going to save money. Then the store had a completely ordinary rock.',
-  'Quiet evening. Just me and the consequences of several small purchases.',
-  'The couch was free. I have not stopped wondering why.',
-  'I count the money every day. It is still mostly table.',
-];
-
-export const FAUN_LINES = [
-  'I only came to borrow sugar. The wagon has made it awkward.',
-  'Lovely wardrobe. Mine has a whole geopolitical situation in it.',
-  'Please tell the landlord I am a very anxious coat rack.',
-  'I brought a parcel. It has been ticking since the mine.',
-  'I was told there would be tea. This appears to be a tax situation.',
-  'The umbrella is for emotional support. It has never stopped any rain.',
-];
+import { ROOM_LINES, CLICK_LINES, REPEAT_CLICK_LINES, VISITOR_LINES, REARRANGE_LINES, roomContextLines } from './dialogue.js';
+import { FAUN_EXCHANGES } from './faun-dialogue.js';
 
 /** Peek around cover, hesitate, then slip back out of sight. */
 export function faunPose(seconds) {
@@ -52,46 +29,81 @@ export function residentPose(seconds) {
 /** Only active viewing time advances these cosmetic events; nothing is saved or awarded. */
 export class RoomActivity {
   constructor(random = Math.random) {
-    this.random = random; this.time = 0; this.lastLine = this.lastFaunLine = -1;
-    this.speechUntil = this.faunUntil = this.faunStarted = this.faunSpeechAt = this.faunSpeechUntil = 0;
+    this.random = random; this.time = 0;
+    this.recent = []; this.context = []; this.visitor = false;
+    this.lastTap = this.lastRemark = -Infinity;
+    this.speechUntil = this.faunUntil = this.faunStarted = 0;
     this.nextSpeech = this.between(20000, 40000);
     this.nextFaun = this.between(20000, 40000);
   }
   between(min, max) { return min + this.random() * (max - min); }
-  lineIndex(count, previous) {
-    let index = Math.floor(this.random() * (count - (previous < 0 ? 0 : 1)));
-    if (previous >= 0 && index >= previous) index++;
-    return index;
+  pick(lines) {
+    const fresh = lines.filter(line => !this.recent.includes(line));
+    const line = fresh.length ? fresh[Math.floor(this.random() * fresh.length)] : this.recent.find(old => lines.includes(old));
+    this.recent = [...this.recent.filter(old => old !== line), line].slice(-20);
+    return line;
+  }
+  setContext(view, visitor) {
+    const context = roomContextLines(view, visitor);
+    if (visitor !== this.visitor) this.quiet();
+    else if (this.context.includes(this.line) && !context.includes(this.line)) this.speechUntil = 0;
+    this.context = context; this.visitor = visitor;
+  }
+  say(lines) {
+    this.line = this.pick(lines); this.lastRemark = this.time;
+    this.speechUntil = this.time + 9000;
+    this.nextSpeech = this.speechUntil + this.between(45000, 90000);
+    this.nextFaun = Math.max(this.nextFaun, this.speechUntil + 6000);
+    return this.line;
+  }
+  talk(now = this.time) {
+    const elapsed = now - this.lastTap;
+    if (elapsed < 9000) return null;
+    this.lastTap = now;
+    // Let the player get a word in; the faun can stay for the rest of his visit.
+    this.exchange = null;
+    return this.say(elapsed < 30000 ? REPEAT_CLICK_LINES : this.visitor ? VISITOR_LINES : CLICK_LINES);
+  }
+  rearranged() {
+    this.remarkOnLayout = true;
+    this.nextSpeech = Math.min(this.nextSpeech, Math.max(this.time + 1200, this.lastRemark + 45000));
   }
   advance(ms) {
     this.time += Math.max(0, ms);
     if (this.time >= this.nextFaun) {
       this.faunStarted = this.time; this.faunUntil = this.time + 18000;
-      this.faunSpeechAt = this.time + 4000; this.faunSpeechUntil = this.time + 13000;
-      this.lastFaunLine = this.lineIndex(FAUN_LINES.length, this.lastFaunLine);
+      this.exchange = this.pick(FAUN_EXCHANGES);
       this.nextFaun = this.faunUntil + this.between(120000, 240000);
       this.speechUntil = 0;
       this.nextSpeech = Math.max(this.nextSpeech, this.faunUntil + this.between(15000, 30000));
     }
     if (this.time >= this.nextSpeech) {
-      this.lastLine = this.lineIndex(ROOM_LINES.length, this.lastLine);
-      this.speechUntil = this.time + 9000;
-      this.nextSpeech = this.speechUntil + this.between(45000, 90000);
+      if (this.remarkOnLayout) this.say(REARRANGE_LINES);
+      else if (this.visitor && this.random() < 0.2) this.say(VISITOR_LINES);
+      else this.say(this.context.length && this.random() < 0.6 ? this.context : ROOM_LINES);
+      this.remarkOnLayout = false;
     }
     return this.state();
   }
   state() {
-    const faun = this.time < this.faunUntil;
-    const faunSpeaking = faun && this.time >= this.faunSpeechAt && this.time < this.faunSpeechUntil;
-    return { text: faunSpeaking ? FAUN_LINES[this.lastFaunLine] : !faun && this.time < this.speechUntil ? ROOM_LINES[this.lastLine] : null,
-      speaker: faunSpeaking ? 'faun' : 'resident', faun, faunAge: faun ? this.time - this.faunStarted : 0 };
+    const faun = this.time < this.faunUntil, faunAge = faun ? this.time - this.faunStarted : 0;
+    if (faun && this.exchange && faunAge >= 4000 && faunAge < 13000) {
+      const opener = faunAge < 8500;
+      return { text: this.exchange[opener ? 0 : 1], speaker: opener ? 'faun' : 'resident', faun, faunAge };
+    }
+    return { text: this.time < this.speechUntil ? this.line : null, speaker: 'resident', faun, faunAge };
   }
   quiet() {
-    this.speechUntil = this.faunUntil = this.faunSpeechAt = this.faunSpeechUntil = 0;
+    this.speechUntil = this.faunUntil = 0; this.remarkOnLayout = false;
+    this.lastTap = -Infinity;
     this.nextSpeech = Math.max(this.nextSpeech, this.time + this.between(20000, 40000));
     this.nextFaun = Math.max(this.nextFaun, this.time + this.between(20000, 40000));
   }
   untilChange() {
-    return Math.min(...[this.nextSpeech, this.nextFaun, this.speechUntil, this.faunUntil, this.faunSpeechAt, this.faunSpeechUntil].filter(at => at > this.time)) - this.time;
+    const times = [this.nextSpeech, this.nextFaun, this.speechUntil, this.faunUntil];
+    if (this.exchange && this.time < this.faunUntil) {
+      for (const age of [4000, 8500, 13000]) times.push(this.faunStarted + age);
+    }
+    return Math.min(...times.filter(at => at > this.time)) - this.time;
   }
 }
