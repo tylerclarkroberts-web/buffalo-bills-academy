@@ -1,5 +1,6 @@
 // EL HALO rules, shared by the server match (server/elhalo/match.js) and the client (client/src/mines/elhalo).
 // No three.js and no DOM, so node:test drives them. Times are seconds. An original game; nothing borrowed.
+export * from './chiles.js';
 
 export const SHIELD = { max: 100, delay: 3.2, rate: 45 };   // waits `delay` after the last hit, then refills at `rate`/s
 export const HEALTH = { max: 100 };                         // health never refills by itself: drops, revives and new rounds do
@@ -151,13 +152,13 @@ export function applyDamage(p, amount, now) {
 }
 
 // Returns 'charging' while it refills, 'full' on the tick it tops off, otherwise null.
-export function tickShield(p, now, dt) {
-  if (p.dead || p.shield >= SHIELD.max || now - p.lastHit < SHIELD.delay) return null;
-  p.shield = Math.min(SHIELD.max, p.shield + SHIELD.rate * dt);
-  return p.shield >= SHIELD.max ? 'full' : 'charging';
+export function tickShield(p, now, dt, max = SHIELD.max) {
+  if (p.dead || p.shield >= max || now - p.lastHit < SHIELD.delay) return null;
+  p.shield = Math.min(max, p.shield + SHIELD.rate * dt);
+  return p.shield >= max ? 'full' : 'charging';
 }
 
-export const heal = (p, n) => { if (!p.dead) p.health = Math.min(HEALTH.max, p.health + n); };
+export const heal = (p, n, max = HEALTH.max) => { if (!p.dead) p.health = Math.min(max, p.health + n); };
 export function reloading(p, now) { return (p.weapons[p.current]?.reloadUntil || 0) > now; }
 
 // One trigger pull. Returns true if a round left the barrel. An empty magazine starts a reload by itself.

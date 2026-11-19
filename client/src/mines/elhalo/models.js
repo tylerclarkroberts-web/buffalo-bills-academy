@@ -653,3 +653,70 @@ export function setBleed(ring, k) {
   const fg = ring.userData.fg; fg.geometry.dispose(); fg.geometry = new THREE.RingGeometry(0.34, 0.42, 32, 1, Math.PI / 2, Math.max(0.001, Math.PI * 2 * k));
   fg.material.color.setRGB(1, 0.24 + 0.6 * k, 0.35 * k);
 }
+
+// ---- La Michoacana chili peppers and their powers (all original art)
+export function makeChile(color = [0.9, 0.15, 0.12]) {
+  const c = color, dark = c.map((v) => v * 0.65), shine = c.map((v) => Math.min(1, v * 1.25 + 0.08));
+  const body = painted(new THREE.ConeGeometry(0.22, 0.82, 7).translate(0, 0.41, 0), c);
+  const tip = painted(new THREE.SphereGeometry(0.1, 6, 4).translate(0, 0.03, 0.02), dark);
+  const mid = painted(new THREE.SphereGeometry(0.22, 7, 5).translate(0, 0.26, 0), shine);
+  const stem = painted(new THREE.CylinderGeometry(0.035, 0.05, 0.2, 5).translate(0.03, 0.9, 0), [0.22, 0.42, 0.14]);
+  const leaf = B(0.22, 0.04, 0.11, 0.14, 0.9, 0, [0.28, 0.62, 0.2]);
+  return new THREE.Mesh(mergeGeometries([body, tip, mid, stem, leaf]), mat());
+}
+
+// A festive carnival mallet: round candy-striped head, a little chile on top, a gold star on the face.
+// An original shape — not a rectangular mascot mallet from any other game.
+export function makeFiestaMallet() {
+  const wood = [0.45, 0.28, 0.12], woodD = [0.32, 0.18, 0.08];
+  const stripeA = [0.95, 0.15, 0.2], stripeB = [1, 0.85, 0.15], star = [1, 0.82, 0.2], chile = [0.15, 0.7, 0.25];
+  const g = [
+    B(0.09, 1.15, 0.09, 0, 0.5, 0, wood),
+    B(0.12, 0.08, 0.12, 0, 0.04, 0, woodD),
+    painted(new THREE.CylinderGeometry(0.32, 0.32, 0.42, 10).translate(0, 1.18, 0), stripeA),
+    painted(new THREE.TorusGeometry(0.33, 0.05, 6, 12).translate(0, 1.18, 0), stripeB),
+    painted(new THREE.TorusGeometry(0.22, 0.045, 6, 12).translate(0, 1.18, 0), stripeB),
+    painted(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 10).translate(0, 1.38, 0), stripeB),
+    painted(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 10).translate(0, 0.98, 0), stripeB),
+    painted(new THREE.ConeGeometry(0.08, 0.22, 6).translate(0, 1.52, 0), chile),
+    painted(new THREE.CylinderGeometry(0.02, 0.025, 0.08, 5).translate(0, 1.66, 0), [0.2, 0.4, 0.12]),
+    B(0.16, 0.16, 0.05, 0, 1.18, -0.34, star),
+    B(0.06, 0.26, 0.05, 0, 1.18, -0.34, star),
+    B(0.26, 0.06, 0.05, 0, 1.18, -0.34, star),
+  ];
+  const root = new THREE.Group();
+  root.add(new THREE.Mesh(mergeGeometries(g), mat()));
+  return root;
+}
+
+// Stylized water horse: a rushing wave given a mane, a snout and a curling tail.
+export function makeWaterHorse() {
+  const body = [0.25, 0.7, 1], foam = [0.85, 0.95, 1], deep = [0.08, 0.35, 0.75], mane = [0.55, 0.88, 1];
+  const g = [
+    B(0.55, 0.45, 1.3, 0, 0.5, 0, body),
+    B(0.4, 0.35, 0.7, 0, 0.7, -0.7, body),
+    B(0.28, 0.22, 0.4, 0, 0.72, -1.05, deep),
+    B(0.12, 0.1, 0.22, 0, 0.68, -1.28, foam),
+    B(0.08, 0.18, 0.08, -0.1, 0.92, -0.85, foam),
+    B(0.08, 0.18, 0.08, 0.1, 0.92, -0.85, foam),
+    B(0.18, 0.55, 0.12, 0, 1.05, -0.35, mane),
+    B(0.14, 0.4, 0.1, 0.12, 1.0, -0.1, mane),
+    B(0.14, 0.45, 0.1, -0.12, 1.05, 0.15, mane),
+    B(0.12, 0.35, 0.1, 0, 0.95, 0.4, foam),
+    B(0.22, 0.18, 0.35, 0, 0.28, 0.7, deep),
+    B(0.3, 0.22, 0.25, 0.05, 0.45, 0.95, body),
+    B(0.12, 0.28, 0.12, 0.18, 0.7, 1.05, foam),
+  ];
+  const root = new THREE.Group();
+  const mesh = new THREE.Mesh(mergeGeometries(g), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.78, depthWrite: false }));
+  root.add(mesh);
+  root.userData.mesh = mesh;
+  return root;
+}
+
+export function makeRiverSwell(length = 80, width = 8) {
+  const geo = new THREE.BoxGeometry(width, 0.7, length);
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x2a88dd, transparent: true, opacity: 0.45, depthWrite: false }));
+  m.userData.shared = false;
+  return m;
+}

@@ -36,6 +36,7 @@ export class Match {
     this.idleT = 0; this.last = this.last || null;
     this.truck = null; this.jeep = null; this.night = false; this.ammoT = 6; this.nadeT = 12; this.host = null; this.forceNight = null;
     this.bufNext = null; this.bfPh = 'idle'; this.bfUntil = 0;
+    this.chile = null; this.chileAt = null; this.chileWave = 0; this.caballosUntil = 0;
     if (hard) { this.players.clear(); return; }
     for (const [id, p] of this.players) { if (!p.joined) this.players.delete(id); else this.freshStats(p); }
     if (this.online().length) this.phase = 'lobby';
@@ -173,7 +174,8 @@ export class Match {
     // out is a teleport and gets rejected. The body never sits in the rock: see canyonCollide.
     if (!inCanyon(x, z, p.launched ? -8 : -0.2)) return reject();
     const dist = Math.hypot(x - p.x, z - p.z);
-    const top = nowMs < p.lungeMs ? LUNGE_SPEED : MAX_SPEED; // a sword or hammer lunge covers ground fast
+    const boost = p.power?.id === 'schnuttin' ? L.CHILE.schnuttinSpeed : 1;
+    const top = (nowMs < p.lungeMs ? LUNGE_SPEED : MAX_SPEED) * boost; // a sword or hammer lunge covers ground fast
     if (dist > top * Math.max(0.1, dt) + MOVE_SLACK) return reject();
     const g = groundAt(x, z, y);
     if (y < terrain(x, z) - 0.6) return reject();
@@ -190,18 +192,20 @@ export class Match {
     }
     // high above the ground is fine on the way DOWN (stepping or jumping off a roof deck: no fall damage, no snapping
     // back); going up is capped by a jump from the last place you stood
-    if (y > Math.max(g + 2.6, p.groundY + 1.7)) return reject();
-    if (y - p.y > 1.5 + 2 * Math.min(dt, 0.5)) return reject(); // a jump tops out near 1.2 m: no hopping onto roofs
+    const high = p.power?.id === 'schnuttin';
+    if (y > Math.max(g + (high ? 9 : 2.6), p.groundY + (high ? 8 : 1.7))) return reject();
+    if (y - p.y > (high ? 4 : 1.5) + 2 * Math.min(dt, 0.5)) return reject(); // a jump tops out near 1.2 m: no hopping onto roofs
     // no walking through walls: check the path at knee and chest height, and the end spot
     if (dist > 0.05) {
       const d = { x: (x - p.x) / dist, y: 0, z: (z - p.z) / dist };
       for (const h of [0.6, 1.3]) { const o = { x: p.x, y: Math.max(p.y, y) + h, z: p.z }; if (wallDist(o, d, dist + 0.1, true) < dist - 0.05) return reject(); }
     }
-    const q = { x, z }; collide(q, P_RADIUS * 0.6, y, 1.8);
-    canyonCollide(q, P_RADIUS); // full body radius against the rock face, even if building collide was looser
+    const rad = p.power?.id === 'gigante' ? P_RADIUS * L.CHILE.giganteRadius : P_RADIUS;
+    const q = { x, z }; collide(q, rad * 0.6, y, p.power?.id === 'gigante' ? 4.8 : 1.8);
+    canyonCollide(q, rad); // full body radius against the rock face, even if building collide was looser
     const pushed = Math.hypot(q.x - x, q.z - z);
     if (pushed > 0.2) {
-      const was = { x: p.x, z: p.z }; collide(was, P_RADIUS * 0.6, p.y, 1.8); canyonCollide(was, P_RADIUS); // already wedged somewhere? let them wriggle out
+      const was = { x: p.x, z: p.z }; collide(was, rad * 0.6, p.y, p.power?.id === 'gigante' ? 4.8 : 1.8); canyonCollide(was, rad); // already wedged somewhere? let them wriggle out
       if (Math.hypot(was.x - p.x, was.z - p.z) <= 0.2 || dist > 1.5) {
         // modest shove into the canyon face: take the clamped pose so you slide along the wall instead of melting in
         if (pushed < 1.2) { x = q.x; z = q.z; p.corr = [r2(x), r2(y), r2(z)]; }
@@ -415,6 +419,10 @@ export class Match {
 
   hurtEnemy(e, dmg, how, by, from, { head = false, stun = 0, push } = {}) {
     if (e.dead) return;
+    if (by && by.power) {
+      if (by.power.id === 'instakill' && (how === 'gun' || how === 'head')) dmg = Math.max(dmg, e.hp);
+      if (by.power.id === 'gigante' && how === 'melee') dmg = Math.max(dmg, e.hp);
+    }
     e.hp -= dmg; e.flash = 1;
     if (stun) e.stunUntil = this.t + stun;
     if (from && !e.st.etereo) { const k = (push ?? (how === 'melee' ? 1.2 : how === 'grenade' ? 0.8 : 0.04)) * (e.st.heavy ? 0.2 : 1) * (e.leapS?.ph === 'air' ? 0 : 1); const dx = e.x - from.x, dz = e.z - from.z, dd = Math.hypot(dx, dz) || 1; e.x += dx / dd * k; e.z += dz / dd * k; if (!e.st.fly && !e.climb) collide(e, e.st.radius, e.y, e.st.height, true); }
@@ -432,6 +440,9 @@ export class Match {
   hurtPlayer(q, amount, from, by, how, head = false) {
     if (q.state !== 'alive') return;
     if (this.calm && !(by && by.id)) return; // test hook: the horde is all bark
+    // INTOCABLE stops horde damage only. Other players can still hurt you in PVP.
+    const fromPlayer = by && by.id && this.players.has(by.id);
+    if (q.power?.id === 'invuln' && !fromPlayer) { this.ev('blk', q.id); return; }
     const r = L.applyDamage(q.P, amount, this.t);
     this.ev('h', q.id, from ? r1(from.x) : null, from ? r1(from.z) : null, Math.round(amount), r.toShield > 0 ? 1 : 0, r.shieldBroke ? 1 : 0, head ? 1 : 0);
     if (by && by.id && by !== q) this.ev('hm', by.id, head ? 1 : 0);
@@ -464,10 +475,15 @@ export class Match {
 
     // players: shields, the bleed-out clock, riding in the jeep, the ACTION button
     for (const p of online) {
-      if (p.state === 'alive') L.tickShield(p.P, t, dt);
-      else if (p.state === 'downed' && t >= p.until) { p.state = 'dead'; p.until = Infinity; this.ev('dd', p.id); } // back next wave
+      if (p.state === 'alive') L.tickShield(p.P, t, dt, p.shMax || L.SHIELD.max);
+      else {
+        if (p.power) this.clearPower(p);
+        if (p.state === 'downed' && t >= p.until) { p.state = 'dead'; p.until = Infinity; this.ev('dd', p.id); } // back next wave
+      }
       if (p.seat && this.jeep) Object.assign(p, this.seatPos(p.seat));
     }
+    this.tickChile(dt);
+    this.tickPowers(dt);
     for (const p of online) this.action(p, dt);
     this.phases(dt);
     this.tickBufadora(dt);
@@ -516,10 +532,11 @@ export class Match {
       if (this.wave === MATCH.nightWave) this.ev('night');
       this.queue = this.emptyWave ? [] : L.waveRoster(this.wave, Math.max(1, this.online().length), this.rnd); this.spawnT = t + 0.5;
       for (const p of this.online()) {
-        if (p.state === 'alive') L.heal(p.P, L.HEALTH.max);
+        if (p.state === 'alive') L.heal(p.P, p.hpMax || L.HEALTH.max, p.hpMax || L.HEALTH.max);
         else if (p.state === 'dead') this.respawn(p);
       }
       if (this.wave >= MATCH.jeepWave && !this.jeep) this.spawnJeep();
+      this.scheduleChile();
       this.ev('wave', this.wave); return;
     }
     if (this.phase === 'wave') {
@@ -534,6 +551,7 @@ export class Match {
   // between waves: the truck drives through handing out the next gun on the list. Nothing spawns while it's out.
   startTruck() {
     const t = this.t;
+    this.clearChile(false);
     for (const p of this.online()) {
       if (p.state === 'alive') { p.pts += L.waveBonus(this.wave); p.score += L.waveBonus(this.wave); L.addGrenade(p.P, 1, 'frag'); }
       else if (p.state === 'dead') this.respawn(p); // the dead come back for the truck
@@ -581,6 +599,7 @@ export class Match {
     const t = this.t, ps = this.alive();
     for (const e of this.enemies) {
       if (e.dead) continue;
+      if (e.fling) { this.tickFling(e, dt); continue; }
       if (e.blowVy) {
         e.blowVy -= 16 * dt;
         e.y += e.blowVy * dt;
@@ -591,9 +610,12 @@ export class Match {
       const st = e.st;
       e.cool -= dt; e.tcool -= dt; e.ncool -= dt; e.bcool -= dt; e.strafeT -= dt; e.lcool -= dt; if (e.act > 0) e.act -= dt;
       e.retarget -= dt;
-      if (e.retarget <= 0 || !e.target || e.target.state !== 'alive' || !e.target.online || !e.target.joined) {
+      if (e.retarget <= 0 || !e.target || e.target.state !== 'alive' || !e.target.online || !e.target.joined || e.target.power?.id === 'invis') {
         e.retarget = 1; e.target = null; let bd = Infinity;
-        for (const p of ps) { const d = Math.hypot(p.x - e.x, p.z - e.z) + (e.route && buildingAt(p.x, p.z)?.id === e.route.bid ? -6 : 0); if (d < bd) { bd = d; e.target = p; } }
+        for (const p of ps) {
+          if (p.power?.id === 'invis') continue; // they don't see you or go for you
+          const d = Math.hypot(p.x - e.x, p.z - e.z) + (e.route && buildingAt(p.x, p.z)?.id === e.route.bid ? -6 : 0); if (d < bd) { bd = d; e.target = p; }
+        }
       }
       const tg = e.target;
       let spd = e.spd * (e.haste > t ? (st.bless ? 1 : ENEMIES.padre.bless.haste) : 1) * (e.stunUntil > t ? 0.35 : 1);
@@ -1077,6 +1099,137 @@ export class Match {
     return { ok: true, in: BF.warn };
   }
 
+
+  // ---- La Michoacana chili peppers (one per wave, first eater takes it)
+  scheduleChile() {
+    this.chileWave = this.wave;
+    if (this.emptyWave) { this.chileAt = null; return; } // quiet test waves stay empty unless a hook plants one
+    this.clearChile(false);
+    this.chileAt = this.t + L.pickChileAt(this.rnd);
+  }
+  spawnChile(power, x, z) {
+    const id = typeof power === 'string' && L.isChilePower(power) ? power : L.pickChilePower(this.rnd);
+    const sx = x !== undefined ? +x : L.CHILE_SPOT.x;
+    const sz = z !== undefined ? +z : L.CHILE_SPOT.z;
+    this.chile = { id: this.nextId++, power: id, x: sx, z: sz, y: groundAt(sx, sz, 50) };
+    this.chileAt = null;
+    this.ev('chile', id, r2(this.chile.x), r2(this.chile.y), r2(this.chile.z));
+    return this.chile;
+  }
+  clearChile(stripPowers = false) {
+    if (this.chile) { this.ev('ch0', this.chile.id); this.chile = null; }
+    this.chileAt = null;
+    if (stripPowers) for (const p of this.players.values()) if (p.power) this.clearPower(p);
+  }
+  tickChile(dt) {
+    if (this.chileAt != null && this.phase === 'wave' && this.t >= this.chileAt && !this.chile && this.chileWave === this.wave) {
+      this.spawnChile();
+    }
+    const k = this.chile;
+    if (!k) return;
+    // if the wave already moved on, the leftover pepper leaves with it
+    if (this.phase !== 'wave' && this.phase !== 'truck' && this.phase !== 'break') { this.clearChile(false); return; }
+    const who = this.alive().find((p) => !p.seat && Math.hypot(p.x - k.x, p.z - k.z) < L.CHILE.eatRange && Math.abs(p.y - k.y) < L.CHILE.eatY);
+    if (!who) return;
+    const power = k.power;
+    this.chile = null;
+    this.grantPower(who, power);
+  }
+  grantPower(p, id) {
+    if (!p || !L.isChilePower(id)) return { error: 'bad power' };
+    if (p.power) this.clearPower(p);
+    p.power = { id, until: this.t + L.CHILE.duration, swing: 0 };
+    if (id === 'gigante') {
+      p.hpMax = L.HEALTH.max * L.CHILE.giganteVitals;
+      p.shMax = L.SHIELD.max * L.CHILE.giganteVitals;
+      p.P.health = Math.min(p.hpMax, p.P.health * L.CHILE.giganteVitals);
+      p.P.shield = Math.min(p.shMax, p.P.shield * L.CHILE.giganteVitals);
+    }
+    this.ev('eat', p.id, id);
+    if (id === 'schnuttin') this.ev('schnuttin', p.id);
+    if (id === 'caballos') this.washHorde(p);
+    return { ok: true, id, until: p.power.until };
+  }
+  clearPower(p) {
+    if (!p?.power) return;
+    const id = p.power.id;
+    if (id === 'gigante') {
+      p.P.health = Math.min(L.HEALTH.max, p.P.health);
+      p.P.shield = Math.min(L.SHIELD.max, p.P.shield);
+      p.hpMax = L.HEALTH.max;
+      p.shMax = L.SHIELD.max;
+    }
+    p.power = null;
+    this.ev('pw0', p.id, id);
+  }
+  tickPowers(dt) {
+    for (const p of this.players.values()) {
+      if (!p.power) continue;
+      if (this.t >= p.power.until || p.state !== 'alive') { this.clearPower(p); continue; }
+      if (p.power.id === 'mazo') this.tickMazo(p, dt);
+    }
+    if (this.caballosUntil && this.t >= this.caballosUntil) this.caballosUntil = 0;
+  }
+  tickMazo(p, dt) {
+    p.power.swing = (p.power.swing || 0) - dt;
+    if (p.power.swing > 0) return;
+    p.power.swing = L.CHILE.mazoPeriod;
+    const fwd = fwdOf(p.yaw);
+    this.ev('swing', p.id, r2(p.x), r2(p.y), r2(p.z), r2(p.yaw));
+    for (const e of this.enemies) {
+      if (e.dead || e.fling) continue;
+      const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
+      if (d > L.CHILE.mazoReach + (e.st.radius || 0) || Math.abs(e.y - p.y) > 3.2) continue;
+      const along = d < 0.35 ? 1 : (dx * fwd.x + dz * fwd.z) / d;
+      if (along < -0.15 && d > 1.6) continue; // mostly in front or very close
+      this.flingEnemy(e, p, dx, dz, d);
+    }
+  }
+  flingEnemy(e, by, dx, dz, d) {
+    const n = d > 1e-4 ? 1 / d : 1;
+    const ox = d > 1e-4 ? dx * n : -Math.sin(by.yaw);
+    const oz = d > 1e-4 ? dz * n : -Math.cos(by.yaw);
+    e.fling = { vx: ox * L.CHILE.mazoOut, vy: L.CHILE.mazoUp, vz: oz * L.CHILE.mazoOut, by: by.id };
+    e.target = null;
+    e.leapS = 0;
+    e.climb = 0;
+    this.ev('fling', e.id, r2(e.fling.vx), r2(e.fling.vy), r2(e.fling.vz), by.id);
+  }
+  tickFling(e, dt) {
+    if (e.dead || !e.fling) return;
+    const f = e.fling;
+    f.vy -= 18 * dt;
+    const nx = e.x + f.vx * dt, ny = e.y + f.vy * dt, nz = e.z + f.vz * dt;
+    const floor = groundAt(nx, nz, ny);
+    const dist = Math.hypot(nx - e.x, ny - e.y, nz - e.z);
+    const dir = dist > 1e-5 ? { x: (nx - e.x) / dist, y: (ny - e.y) / dist, z: (nz - e.z) / dist } : { x: 0, y: -1, z: 0 };
+    const wall = wallDist({ x: e.x, y: e.y + Math.max(0.4, (e.st.height || 1.6) * 0.5), z: e.z }, dir, dist + 0.2, true);
+    const q = { x: nx, z: nz }; canyonCollide(q, e.st.radius || 0.4);
+    const slammed = ny <= floor + 0.05;
+    const rock = Math.hypot(q.x - nx, q.z - nz) > 0.04;
+    const out = !inCanyon(nx, nz, 0.1);
+    if (wall < dist - 0.02 || slammed || rock || out) {
+      const by = this.players.get(f.by) || null;
+      e.x = rock ? q.x : nx; e.z = rock ? q.z : nz; e.y = Math.max(floor, ny);
+      e.fling = null;
+      this.hurtEnemy(e, Math.max(e.hp, 9999), 'mazo', by, { x: e.x, z: e.z });
+      return;
+    }
+    e.x = nx; e.y = ny; e.z = nz;
+  }
+  washHorde(by) {
+    this.caballosUntil = this.t + L.CHILE.duration;
+    this.ev('caballos', by ? by.id : null);
+    // washes away the horde on the map right now. Other human players are not
+    // swept away — this is a horde-clear, not a PVP wipe.
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      e.fling = null;
+      this.ev('wash', e.id, r2(e.x), r2(e.y), r2(e.z));
+      this.hurtEnemy(e, Math.max(e.hp, 9999), 'caballos', by, { x: e.x, z: e.z });
+    }
+  }
+
   snapshot({ events = true } = {}) {
     const pl = [];
     for (const p of this.players.values()) {
@@ -1101,6 +1254,8 @@ export class Match {
       last: this.phase === 'over' ? this.last : undefined,
       ev: events ? this.events : [],
       bf: this.bfPh === 'idle' ? 0 : [this.bfPh === 'blow' ? 1 : 0, r2(this.bfPh === 'blow' ? Math.max(0, this.bfUntil - this.t) : Math.max(0, this.bufNext - this.t))],
+      ch: this.chile ? [this.chile.id, this.chile.power, r2(this.chile.x), r2(this.chile.y), r2(this.chile.z)] : 0,
+      pw: [...this.players.values()].filter((p) => p.power).map((p) => [p.id, p.power.id, r2(Math.max(0, p.power.until - this.t))]),
     };
     if (events) this.events = [];
     return s;
@@ -1109,7 +1264,8 @@ export class Match {
     const p = this.players.get(id);
     if (!p || !p.joined) return { id, in: false, look: p ? L.lookStr(p.look) : undefined };
     const me = { id, in: true, st: p.state, sh: Math.round(p.P.shield), hp: Math.round(p.P.health), nd: [p.P.nades.frag, p.P.nades.sticky], pts: p.pts, ag: p.ammo,
-      cd: p.state === 'downed' ? Math.max(0, Math.ceil(p.until - this.t)) : 0, pr: p.prompt, ws: p.slots.slice(), cw: p.w, wv: p.wv, seat: p.seat, ready: p.ready, host: this.host === id, look: L.lookStr(p.look) };
+      cd: p.state === 'downed' ? Math.max(0, Math.ceil(p.until - this.t)) : 0, pr: p.prompt, ws: p.slots.slice(), cw: p.w, wv: p.wv, seat: p.seat, ready: p.ready, host: this.host === id, look: L.lookStr(p.look),
+      pw: p.power?.id || null, pwl: p.power ? r2(Math.max(0, p.power.until - this.t)) : 0, hpMax: p.hpMax || L.HEALTH.max, shMax: p.shMax || L.SHIELD.max };
     if (p.corr) { me.corr = p.corr; p.corr = null; }
     if (p.seat === 'd' && this.jeep?.corr) { me.vc = this.jeep.corr; this.jeep.corr = null; }
     return me;

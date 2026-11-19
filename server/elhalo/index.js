@@ -114,7 +114,13 @@ export class ElHalo {
       if (b.pickup) m.pickups.push({ id: m.nextId++, kind: b.pickup.kind, x: +b.pickup.x, z: +b.pickup.z, y: groundAt(+b.pickup.x, +b.pickup.z, 50), life: 60 });
       if (b.hp && p) { p.P.health = +b.hp; p.P.shield = 0; }
       if (b.bufadora) m.triggerBufadora();
-      res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), maxHp: e.maxHp, state: e.state, leap: e.leapS ? e.leapS.ph : null, x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, t: m.t, dogs: b.dogs ? dogsAt(m.t) : undefined, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, me: p ? { x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield } : null });
+      if (b.chile) {
+        const spec = typeof b.chile === 'string' ? { power: b.chile } : (b.chile === true ? {} : b.chile);
+        m.spawnChile(spec.power, spec.x, spec.z);
+      }
+      if (b.grant && p) m.grantPower(p, b.grant);
+      if (b.clearChile) m.clearChile(!!b.strip);
+      res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), maxHp: e.maxHp, state: e.state, leap: e.leapS ? e.leapS.ph : null, x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, t: m.t, dogs: b.dogs ? dogsAt(m.t) : undefined, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, me: p ? { x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield, pw: p.power?.id || null, pwl: p.power ? Math.max(0, p.power.until - m.t) : 0 } : null, chile: m.chile ? { id: m.chile.id, power: m.chile.power, x: m.chile.x, y: m.chile.y, z: m.chile.z } : null });
     });
   }
 }
