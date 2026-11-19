@@ -218,6 +218,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   tableAction('leave', (c, p) => service.leave(c, p));
   tableAction('show', (c, p, b) => service.show(c, p, b.which, b.handNumber));
   tableAction('showdown-seen', (c, p, b) => service.showdownSeen(c, p, b.number)); // v49
+  tableAction('sweep-seen', (c, p, b) => service.sweepSeen(c, p, b.id)); // once-only clean-sweep replay
   tableAction('say', (c, p, b) => service.say(c, p, typeof b.text === 'string' ? b.text : ''));
   tableAction('close', (c, p) => service.close(c, p));
   // Fight Guntrad (big blind side game). Money only moves on the server, from a re-simulated replay.
@@ -458,6 +459,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
   if (barnTest) api.post('/dev/slots-force', needPlayer, wrap((req) => { const f = String(req.body?.force || ''); slots.force = ['toot', 'stash', 'free'].includes(f) ? f : null; slots.lastAt.clear(); return { force: slots.force }; }));
+  if (barnTest) api.post('/dev/holdem-rig', needPlayer, wrap((req) => {
+    const deck = req.body?.deck;
+    service.rigDeck(String(req.body?.code || '').toUpperCase(), req.player, deck);
+    return { ok: true };
+  }));
   if (barnTest) api.post('/dev/bj-rig', needPlayer, wrap((req) => {
     const t = bj.table(req.body?.code); if (t.hostId !== req.player.id && t.house.id !== req.player.id) throw new GameError('no', 403);
     const deck = req.body?.deck; if (!Array.isArray(deck) || deck.length < 4) throw new GameError('Need a deck.', 400);

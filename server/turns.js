@@ -10,6 +10,7 @@
 // listTurns() tags each row with `game` and sorts oldest waiting first.
 
 import { isContinuous } from './blackjack/continuous.js';
+import { isSweepVictim } from './engine/sweep.js';
 
 const extra = [];
 
@@ -195,6 +196,32 @@ export function scumSource(scum) {
   };
 }
 
+/** Fake "your turn" rows for unseen sweep victims. Looks like Hold'em. Never a real toAct. */
+export function sweepSource(service) {
+  return {
+    game: 'holdem',
+    list(player) {
+      const out = [];
+      if (!service?.store?.allTables) return out;
+      for (const t of service.store.allTables()) {
+        if (!isSweepVictim(t.sweep, player.id)) continue;
+        // A real pending action at this table already occupies the queue slot.
+        const seat = (t.seats || []).findIndex((s) => s && s.playerId === player.id);
+        if (t.hand && t.hand.toAct === seat && seat >= 0) continue;
+        out.push({
+          code: t.code,
+          name: t.name,
+          path: `/t/${t.code}`,
+          action: 'play',
+          waitingSince: t.sweep.at || 0,
+          deadline: null,
+        });
+      }
+      return out;
+    },
+  };
+}
+
 export function collectTurns({ player, now, sources }) {
   const rows = [];
   for (const src of sources || []) {
@@ -205,6 +232,6 @@ export function collectTurns({ player, now, sources }) {
 
 /** Built-in Hold'em + blackjack sources, plus anything registered (Scum via registerTurnSource). */
 export function listTurns({ player, service, bj, now, sources } = {}) {
-  const src = sources || [holdemSource(service), blackjackSource(bj), ...extra];
+  const src = sources || [holdemSource(service), blackjackSource(bj), sweepSource(service), ...extra];
   return collectTurns({ player, now, sources: src });
 }

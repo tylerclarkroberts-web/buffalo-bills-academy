@@ -40,3 +40,42 @@ export function bitPlan(n) {
   for (let i = 0; i < n; i++) { punches.push({ start: t, hit: t + slot * 0.55, end: t + slot }); t += slot; }
   return { climb: [0, climb], spread: [climb, climb + spread], punches, finale: [t, t + finale], total: t + finale };
 }
+
+const SWEEP_SEEN = 'bba.sweepSeen';
+
+/**
+ * Timeline for the clean-sweep sit-down. n is how many busted avatars the winner visits
+ * (close-up is always 1). Tight enough for phones; not so fast the squat is a blink.
+ */
+export function sweepPlan(n, { closeup = false } = {}) {
+  const count = Math.max(0, n | 0);
+  const intro = closeup ? 420 : 900;
+  const approach = closeup ? 180 : 420;
+  const bags = 5;
+  const bag = 170;
+  const settle = 160;
+  const outro = closeup ? 600 : 500;
+  const visits = [];
+  let t = intro;
+  for (let i = 0; i < count; i++) {
+    const start = t;
+    const bag0 = t + approach;
+    const end = bag0 + bags * bag + settle;
+    visits.push({ i, start, bag0, bags, bag, end });
+    t = end;
+  }
+  return { intro: [0, intro], visits, outro: [t, t + outro], total: t + outro, closeup };
+}
+
+/** Once per sweep id per device (server also records seen per player). */
+export function claimSweep(code, id, store = globalThis.localStorage) {
+  if (!id) return true;
+  const k = `${code}:${id}`;
+  try {
+    const seen = JSON.parse(store.getItem(SWEEP_SEEN) || '[]');
+    if (seen.includes(k)) return false;
+    seen.push(k);
+    store.setItem(SWEEP_SEEN, JSON.stringify(seen.slice(-40)));
+    return true;
+  } catch { return true; }
+}
