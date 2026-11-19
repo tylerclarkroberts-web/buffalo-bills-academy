@@ -258,7 +258,13 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
           <div className="elh-reticle" data-h="reticle" data-test="elhalo-reticle"><span /></div>
           <div className="elh-hs" data-h="hs" data-test="elhalo-headshot">¡CABEZA!</div>
           <div className="elh-bleed" data-h="bleed" data-test="elhalo-bleed"><i /></div>
+          <div className="elh-chile" data-h="chile" data-test="elhalo-chile-timer">
+            <span className="elh-chilename" data-h="chilename" />
+            <span className="elh-chiletime" data-h="chiletime" data-test="elhalo-chile-time" />
+            <i className="elh-chilebar"><em data-h="chilebar" /></i>
+          </div>
           <div className="elh-banner" data-h="banner" role="status" />
+          <div className="elh-schnuttin" data-h="schnuttin" data-test="elhalo-schnuttin" role="status" />
           <div className="elh-prompt" data-h="prompt" data-test="elhalo-prompt" />
           <div className="elh-pbar" data-h="pbar"><i data-h="promptbar" /></div>
           <div className="elh-down" data-h="down" data-test="elhalo-down" />

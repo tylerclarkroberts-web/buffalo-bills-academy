@@ -6,9 +6,9 @@
 import * as THREE from 'three';
 import { buildWorld, terrain, PICADO } from './world.js';
 import { ENEMY_MAKERS, makeViewModels, makePinata, makePickup, makePlayerModel, makeNote, makeTruck, makeJeep, makeSticky, makeRocket, makeNeedle,
-  makeBleedRing, setBleed, makeWeaponDisplay, PLAYER_COLORS, makeDog, makeEloteCart, makeBubble, makeLandRing } from './models.js';
+  makeBleedRing, setBleed, makeWeaponDisplay, PLAYER_COLORS, makeDog, makeEloteCart, makeBubble, makeLandRing, makeChile, makeFiestaMallet, makeWaterHorse, makeRiverSwell } from './models.js';
 import * as L from './logic.js';
-import { BOUNDS, ELOTE, BUFADORA, groundAt, collide, wallDist } from '../../../../server/elhalo/map.js';
+import { BOUNDS, ELOTE, BUFADORA, groundAt, collide, wallDist, creekX } from '../../../../server/elhalo/map.js';
 import { dogsAt, DOG_COUNT, DOG_PLANS, ELOTE_LINES } from '../../../../server/elhalo/critters.js';
 import { createAudio } from './audio.js';
 import { connect, join, leave, inputSender, post } from './net.js';
@@ -118,6 +118,12 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   const cart = makeEloteCart(); cart.root.position.set(ELOTE.x, terrain(ELOTE.x, ELOTE.z), ELOTE.z); cart.root.rotation.y = ELOTE.yaw; scene.add(cart.root);
   const eloteBubbles = ELOTE_LINES.map((l) => { const b = makeBubble(l, { w: 2.3 }); b.position.set(0, 2.75, 0.75); b.visible = false; cart.root.add(b); return b; });
   let eloteSay = -1, steamT = 0;
+  let chileMesh = null, chilePower = null, earSteam = 0, schnuttinUntil = 0, mazoOn = false;
+  const horses = [];
+  let river = null, riverT = 0, worldMazo = new Map();
+  const mazoVm = makeFiestaMallet(); mazoVm.scale.setScalar(0.5); mazoVm.position.set(0.28, -0.35, -0.55); mazoVm.rotation.set(0.4, 0.15, 0.5); mazoVm.visible = false; vmRig.add(mazoVm);
+  const myPower = () => me?.pw || null;
+  const powerOf = (id) => (snap?.pw || []).find((r) => r[0] === id)?.[1] || null;
   const shouts = []; // ¡ÁGUILA! bubbles riding on the enemy that shouted
   const rings = []; // landing marks on the ground
   let serverT = 0, serverAt = 0;
@@ -173,6 +179,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     const seenK = new Set();
     for (const [id, kind, x, y, z] of s.pk) { seenK.add(id); if (!ents.pk.has(id)) { const m = makePickup(kind); m.position.set(x, y + 0.1, z); scene.add(m); ents.pk.set(id, { m, y }); } }
     for (const [id, k] of ents.pk) if (!seenK.has(id)) { scene.remove(k.m); disposeTree(k.m); ents.pk.delete(id); }
+    syncChile(s);
     // the match clock (dogs and the elote man run off it, so everyone sees the same thing)
     serverT = s.t; serverAt = now;
     if (s.el !== undefined && s.el !== eloteSay) { eloteSay = s.el; eloteBubbles.forEach((b, i) => { b.visible = i === s.el; }); if (s.el >= 0 && near(ELOTE.x, ELOTE.z, 22)) sfx('elote'); }
@@ -363,6 +370,27 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     }
     else if (k === 'bfl') { if (e[1] === myId) { vy = e[2] || 28; onGround = false; shake = Math.max(shake, 0.85); } }
     else if (k === 'bfe') { const en = ents.en.get(e[1]); if (en) emit(en.to.x, en.to.y + 0.4, en.to.z, 18, BLUE, { speed: 3, up: 8, life: 1.1, g: 6 }); }
+    else if (k === 'chile') { /* pepper appears in La Michoacana; mesh comes from the snapshot */ }
+    else if (k === 'eat') {
+      const mine = e[1] === myId, spec = L.CHILE_BY_ID[e[2]];
+      if (mine) {
+        earSteam = 4.2;
+        sfx('spicy');
+        banner = { text: '¡PICOSO!', until: t + 1.2 };
+        setTimeout(() => { if (spec) banner = { text: spec.name, until: t + 2.2 }; }, 700);
+        if (e[2] === 'schnuttin') saySchnuttin();
+        if (e[2] === 'mazo') setMazo(true);
+      } else {
+        const p = ents.pl.get(e[1]);
+        if (p) { p.earSteam = 3.5; emit(p.to.x, p.to.y + 1.85, p.to.z, 18, STEAM, { speed: 0.6, up: 1.6, life: 1.2, g: -0.7 }); }
+      }
+    }
+    else if (k === 'schnuttin') { if (e[1] === myId) saySchnuttin(); }
+    else if (k === 'caballos') { startCaballos(); if (e[1] === myId || near(0, 0, 80)) { sfx('caballos'); shake = Math.max(shake, 0.85); } }
+    else if (k === 'wash') { const en = ents.en.get(e[1]); if (en) emit(e[2] ?? en.to.x, e[3] ?? en.to.y, e[4] ?? en.to.z, 28, BLUE, { speed: 5, up: 3, life: 1.2, g: 2 }); }
+    else if (k === 'fling') { /* server carries the body; a little spray marks the hit */ const en = ents.en.get(e[1]); if (en) emit(en.to.x, en.to.y + 0.8, en.to.z, 10, GOLD, { speed: 4, up: 4, life: 0.7, g: 4 }); }
+    else if (k === 'swing') { if (e[1] !== myId && near(e[2], e[4], 20)) sfx('whoosh'); }
+    else if (k === 'pw0') { if (e[1] === myId) { if (e[2] === 'mazo') setMazo(false); if (e[2] === 'schnuttin') schnuttinUntil = 0; } }
   }
   function feed(text, mine = false, cls = '') {
     const f = H.feed; if (!f) return;
@@ -390,7 +418,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
 
   // ---- world queries for your own movement
   const fwd = () => new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
-  const eyeH = () => (crouched && me?.st === 'alive' && !me?.seat) ? CROUCH_EYE : EYE;
+  const eyeH = () => { const base = (crouched && me?.st === 'alive' && !me?.seat) ? CROUCH_EYE : EYE; return myPower() === 'gigante' ? base * L.CHILE.giganteScale : base; };
   const eye = () => ({ x: pos.x, y: pos.y + eyeH(), z: pos.z });
   function muzzleWorld() { const f = fwd(); const r = { x: Math.cos(yaw), z: -Math.sin(yaw) }; const o = eye(); return { x: o.x + f.x * 0.5 + r.x * 0.16, y: o.y + f.y * 0.5 - 0.14, z: o.z + f.z * 0.5 + r.z * 0.16 }; }
   const enemyCenter = (e, now) => { const c = cur(e, now); return { x: c.x, y: c.y + L.ENEMIES[e.type].height * 0.5, z: c.z }; };
@@ -620,12 +648,112 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   const H = {}; for (const el of root.querySelectorAll('[data-h]')) H[el.dataset.h] = el;
   const prev = {};
   const set = (k, prop, v) => { const key = k + prop; if (prev[key] === v || !H[k]) return; prev[key] = v; if (prop === 'text') H[k].textContent = v; else if (prop === 'w') H[k].style.transform = `scaleX(${v})`; else if (prop.startsWith('.')) H[k].classList.toggle(prop.slice(1), v); else if (prop === 'rot') H[k].style.transform = `rotate(${v}rad)`; else if (prop === 'op') H[k].style.opacity = v; else if (prop === 'data-w') H[k].setAttribute('data-w', v); else if (prop.startsWith('--')) H[k].style.setProperty(prop, v); };
+
+  function syncChile(s) {
+    const ch = s.ch;
+    if (!ch) {
+      if (chileMesh) { scene.remove(chileMesh); disposeTree(chileMesh); chileMesh = null; chilePower = null; }
+      return;
+    }
+    const [id, power, x, y, z] = ch;
+    if (chilePower !== power || !chileMesh) {
+      if (chileMesh) { scene.remove(chileMesh); disposeTree(chileMesh); }
+      const col = L.CHILE_BY_ID[power]?.color || [0.9, 0.15, 0.12];
+      chileMesh = makeChile(col); chileMesh.position.set(x, y + 0.15, z); scene.add(chileMesh); chilePower = power;
+    } else chileMesh.position.set(x, chileMesh.position.y, z);
+    chileMesh.userData.y = y; chileMesh.userData.id = id;
+  }
+  function saySchnuttin() {
+    sfx('schnuttin');
+    schnuttinUntil = t + 3.6;
+    try {
+      if (typeof speechSynthesis !== 'undefined') {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance('Last man schnuttin his pants');
+        u.rate = 1.05; u.pitch = 1.15; u.volume = muted ? 0 : 1;
+        speechSynthesis.speak(u);
+      }
+    } catch { /* TTS is a bonus; the synth line still plays */ }
+  }
+  function setMazo(on) {
+    if (on === mazoOn) { if (on && audio && !muted) audio.mazoStart?.(); return; }
+    mazoOn = on;
+    mazoVm.visible = !!on;
+    if (audio) {
+      try { if (on && !muted) audio.mazoStart(); else audio.mazoStop(); } catch { /* optional */ }
+    }
+  }
+  function startCaballos() {
+    riverT = L.CHILE.duration;
+    banner = { text: '¡CABALLOS DE AGUA!', until: t + 3.5 };
+    if (!river) {
+      river = new THREE.Group();
+      for (let z = BOUNDS.z0 + 4; z <= BOUNDS.z1 - 4; z += 6) {
+        const slab = makeRiverSwell(7, 9);
+        slab.position.set(creekX(z), groundAt(creekX(z), z, 40) + 0.15, z);
+        river.add(slab);
+      }
+      scene.add(river);
+    }
+    river.visible = true;
+    const n = touch ? 10 : 22;
+    for (let i = 0; i < n; i++) {
+      const h = makeWaterHorse();
+      h.scale.setScalar(3.4);
+      const side = i % 2 === 0 ? 1 : -1;
+      const z = BOUNDS.z0 + 8 + (Math.abs(i * 9 + 3) % 104);
+      h.position.set(side * 22.4, 11 + (i % 5) * 1.8, z);
+      h.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+      h.userData = { ...h.userData, side, z0: z, born: t, phase: i * 0.4 };
+      scene.add(h); horses.push(h);
+    }
+  }
+  function tickCaballos(dt, now) {
+    if (riverT > 0) {
+      riverT -= dt;
+      if (river) {
+        river.visible = true;
+        const swell = Math.min(1, riverT, (L.CHILE.duration - riverT) * 2);
+        river.children.forEach((s, i) => { s.material.opacity = 0.25 + 0.35 * swell; s.position.y += Math.sin(now / 280 + i) * 0.01; s.scale.y = 0.7 + swell * 1.6; });
+      }
+      if (riverT <= 0 && river) river.visible = false;
+    }
+    for (let i = horses.length - 1; i >= 0; i--) {
+      const h = horses[i], age = t - (h.userData.born || t);
+      // pour down the canyon wall, then gallop along the swollen creek
+      const fall = Math.min(1, age / 1.1);
+      const gy = groundAt(creekX(h.userData.z0), h.userData.z0, 40) + 0.5;
+      const wallX = h.userData.side * 23.2;
+      const cx = creekX(h.userData.z0 + age * 14);
+      h.position.x = wallX + (cx - wallX) * Math.min(1, fall * 1.2);
+      h.position.y = 16 * (1 - fall) + gy * fall + Math.sin((now / 180) + h.userData.phase) * 0.25;
+      h.position.z = h.userData.z0 + Math.max(0, age - 1.0) * 16;
+      h.rotation.y = Math.atan2(-h.userData.side, 1) + (fall > 0.85 ? Math.PI : 0);
+      h.rotation.x = (1 - fall) * -0.7;
+      if (h.userData.mesh) h.userData.mesh.material.opacity = age > 7 ? Math.max(0, 1 - (age - 7) / 1.5) * 0.78 : 0.78;
+      if (age > 8.6 || h.position.z > BOUNDS.z1 + 4) { scene.remove(h); disposeTree(h); horses.splice(i, 1); }
+    }
+  }
+  function tickEarSteam(dt) {
+    if (earSteam > 0 && me?.st === 'alive') {
+      earSteam -= dt;
+      const heavy = earSteam > 1.5;
+      if (R() < dt * (heavy ? 28 : 10)) {
+        const o = eye();
+        const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+        const side = R() < 0.5 ? 1 : -1;
+        emit(o.x + rx * 0.16 * side, o.y + 0.06, o.z + rz * 0.16 * side, 1, STEAM, { speed: 0.15, up: 1.4, life: 0.9, g: -0.8, drag: 1.2 });
+      }
+    }
+  }
+
   function hud() {
     const id = P.current, s = P.weapons[id] || { mag: 0, reserve: 0 }, w = L.WEAPONS[id];
-    set('shield', 'w', (P.shield / L.SHIELD.max).toFixed(3)); set('health', 'w', (P.health / L.HEALTH.max).toFixed(3));
-    const down = P.shield <= 0.5, chargingS = P.shield < L.SHIELD.max && P.shield > 0.5;
+    const hpMax = me?.hpMax || L.HEALTH.max, shMax = me?.shMax || L.SHIELD.max;
+    set('shield', 'w', (P.shield / shMax).toFixed(3)); set('health', 'w', (P.health / hpMax).toFixed(3));
+    const down = P.shield <= 0.5, chargingS = P.shield < shMax && P.shield > 0.5;
     set('bars', '.down', down); set('bars', '.charging', chargingS && shieldFlash < 0.2); set('bars', '.flash', shieldFlash > 0.5);
-    set('bars', '.low', P.health < 35);
+    set('bars', '.low', P.health < hpMax * 0.35);
     const melee = w.kind === 'melee', driving = me?.seat === 'd';
     const cap = Math.max(1, w.mag || 1);
     const low = !driving && !melee && s.mag > 0 && s.mag <= Math.ceil(cap * 0.25);
@@ -659,6 +787,14 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     set('left', 'text', snap?.ph === 'wave' ? `${snap.left} EN CAMINO` : snap?.ph === 'break' ? `SIGUIENTE EN ${snap.cd}` : snap?.ph === 'truck' ? `LA TROCA · ${snap.cd}s` : '');
     set('count', 'text', `${snap ? snap.pl.filter((r) => !(r[7] & 8)).length : 0} EN LA CANCHA`);
     set('banner', 'text', t < banner.until ? banner.text : ''); set('banner', '.on', t < banner.until);
+    const pw = myPower(), pwl = me?.pwl || 0, spec = pw && L.CHILE_BY_ID[pw];
+    set('chile', '.on', !!spec && pwl > 0);
+    set('chilename', 'text', spec ? spec.name : '');
+    set('chiletime', 'text', spec ? String(Math.max(0, Math.ceil(pwl))) : '');
+    set('chilebar', 'w', spec ? Math.max(0, Math.min(1, pwl / L.CHILE.duration)).toFixed(3) : '0');
+    set('schnuttin', 'text', t < schnuttinUntil ? 'LAST MAN SCHNUTTIN HIS PANTS' : '');
+    set('schnuttin', '.on', t < schnuttinUntil);
+    set('vig', '.pink', pw === 'schnuttin');
     const st = me?.st || 'alive';
     set('vig', '.hurt', hurtFlash > 0.15); set('vig', '.shield', shieldFlash > 0.15 && hurtFlash <= 0.15); set('vig', '.down', (down && st === 'alive') || st === 'downed');
     set('dir', 'op', dirHit ? dirHit.life.toFixed(2) : '0'); if (dirHit) set('dir', 'rot', (yaw - dirHit.a + Math.PI).toFixed(2));
@@ -705,16 +841,17 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
           const dx = lunge.x - pos.x, dz = lunge.z - pos.z, d = Math.hypot(dx, dz), step = Math.min(Math.max(0, d - lunge.stop), 20 * dt);
           if (d > 0.01) { pos.x += dx / d * step; pos.z += dz / d * step; }
           if (d - step <= lunge.stop + 0.05 || t >= lunge.until) land();
-        } else { const spd = SPEED * (crouched ? CROUCH_SPEED : 1); pos.x += (fx * mz + rx * mx) * spd * dt; pos.z += (fz * mz + rz * mx) * spd * dt; }
-        collide(pos, RADIUS, pos.y, crouched ? 1.2 : 1.8);
+        } else { const spd = SPEED * (crouched ? CROUCH_SPEED : 1) * (myPower() === 'schnuttin' ? L.CHILE.schnuttinSpeed : 1); pos.x += (fx * mz + rx * mx) * spd * dt; pos.z += (fz * mz + rz * mx) * spd * dt; }
+        const rad = myPower() === 'gigante' ? RADIUS * L.CHILE.giganteRadius : RADIUS;
+        collide(pos, rad, pos.y, myPower() === 'gigante' ? 4.8 : crouched ? 1.2 : 1.8);
         const now = performance.now();
         for (const e of ents.en.values()) { const c = cur(e, now), dx = pos.x - c.x, dz = pos.z - c.z, d = Math.hypot(dx, dz), m = RADIUS + L.ENEMIES[e.type].radius * 0.9; if (d < m && d > 1e-4 && Math.abs(c.y - pos.y) < 1.5) { pos.x = c.x + dx / d * m; pos.z = c.z + dz / d * m; } }
         if (jeepObj && !veh) { const j = cur(jeepObj, now), dx = pos.x - j.x, dz = pos.z - j.z, d = Math.hypot(dx, dz); if (d < 2 && d > 1e-4 && Math.abs(j.y - pos.y) < 1.6) { pos.x = j.x + dx / d * 2; pos.z = j.z + dz / d * 2; } }
         if (input.edges.has('KeyC') || input.edges.has('crouch')) crouched = !crouched;
-        if ((input.edges.has('Space') || input.edges.has('jump')) && onGround) { vy = JUMP; onGround = false; crouched = false; }
+        if ((input.edges.has('Space') || input.edges.has('jump')) && onGround) { vy = JUMP * (myPower() === 'schnuttin' ? L.CHILE.schnuttinJump : 1); onGround = false; crouched = false; }
       }
       // gravity. Stepping or jumping off a roof is just a drop: no fall damage, and the server lets you come down.
-      vy -= GRAV * dt; pos.y += vy * dt;
+      vy -= GRAV * (myPower() === 'schnuttin' ? L.CHILE.schnuttinGravity : 1) * dt; pos.y += vy * dt;
       const gy = groundAt(pos.x, pos.z, pos.y);
       if (pos.y <= gy) { pos.y = gy; vy = 0; onGround = true; } else if (pos.y - gy > 0.05) onGround = false;
     }
@@ -840,9 +977,19 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     critters(dt, now, tt);
     for (let i = dying.length - 1; i >= 0; i--) { const d = dying[i]; d.life -= dt; d.m.root.scale.multiplyScalar(0.88); d.m.root.rotation.y += dt * 12; d.m.root.position.y += dt * 2; if (d.life <= 0) { scene.remove(d.m.root); disposeTree(d.m.root); dying.splice(i, 1); } }
     for (const p of ents.pl.values()) {
-      const c = cur(p, now), m = p.m, f = p.flags || 0;
+      const c = cur(p, now), m = p.m, f = p.flags || 0, pw = powerOf(p.id);
+      const faded = pw === 'invis';
       m.root.visible = !(f & 4);
       m.root.position.set(c.x, c.y, c.z); m.root.rotation.y = c.yaw;
+      const sc = pw === 'gigante' ? L.CHILE.giganteScale : 1;
+      m.root.scale.setScalar(sc);
+      for (const mt of (m.mats || [])) {
+        if (mt) {
+          mt.transparent = faded || pw === 'schnuttin';
+          mt.opacity = faded ? 0.22 : 1;
+          if (mt.emissive) mt.emissive.set(pw === 'schnuttin' ? 0xff66bb : 0x000000);
+        }
+      }
       const downed = !!(f & 2), seated = !!p.seat;
       m.body.rotation.x = downed ? -1.35 : 0; m.body.position.y = downed ? 0.3 : 0; m.tag.position.y = downed ? 1.2 : 2.95;
       m.tag.visible = !(seated && me?.seat); // riding together: no name tag in your face
@@ -854,7 +1001,22 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
         if (!p.ring) { p.ring = makeBleedRing(); scene.add(p.ring); }
         p.ring.visible = true; p.ring.position.set(c.x, c.y + 1.5, c.z); p.ring.quaternion.copy(camera.quaternion); setBleed(p.ring, (p.bleed || 0) / 100);
       } else if (p.ring) p.ring.visible = false;
+      if (p.earSteam > 0) {
+        p.earSteam -= dt;
+        if (R() < dt * 16) {
+          const rx = Math.cos(c.yaw), rz = -Math.sin(c.yaw), side = R() < 0.5 ? 1 : -1;
+          emit(c.x + rx * 0.2 * side * sc, c.y + 1.85 * sc, c.z + rz * 0.2 * side * sc, 1, STEAM, { speed: 0.2, up: 1.5, life: 0.9, g: -0.7 });
+        }
+      }
+      let mal = worldMazo.get(p.id);
+      if (pw === 'mazo') {
+        if (!mal) { mal = makeFiestaMallet(); mal.scale.setScalar(1.15); scene.add(mal); worldMazo.set(p.id, mal); }
+        mal.visible = true;
+        mal.position.set(c.x - Math.sin(c.yaw) * 0.7, c.y + 1.1, c.z - Math.cos(c.yaw) * 0.7);
+        mal.rotation.set(Math.sin(tt * 16) * 1.2, c.yaw, 0.2);
+      } else if (mal) { mal.visible = false; }
     }
+    for (const [id, mal] of worldMazo) if (!ents.pl.has(id) || powerOf(id) !== 'mazo') { scene.remove(mal); disposeTree(mal); worldMazo.delete(id); }
     for (const o of ents.pj.values()) { const c = cur(o, now); o.m.position.set(c.x, c.y, c.z); o.m.rotation.y += dt * 8; o.m.rotation.x += dt * 5; }
     for (const o of ents.gr.values()) { const c = cur(o, now); o.m.position.set(c.x, c.y, c.z); if (o.kind !== 1) { o.m.rotation.y += dt * 8; o.m.rotation.x += dt * 5; } else o.m.rotation.y += dt * 3; }
     for (const o of ents.pr.values()) {
@@ -863,6 +1025,12 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       if (o.kind === 0 && R() < dt * 40) emit(c.x, c.y, c.z, 1, SMOKE, { speed: 0.4, up: 0.5, life: 0.8, g: -0.5 });
     }
     let i = 0; for (const k of ents.pk.values()) { k.m.rotation.y += dt * 1.6; k.m.position.y = k.y + 0.15 + Math.sin(now / 330 + i++) * 0.08; }
+    if (chileMesh) { chileMesh.rotation.y += dt * 2.1; chileMesh.position.y = (chileMesh.userData.y || chileMesh.position.y) + 0.18 + Math.sin(now / 280) * 0.1; }
+    tickEarSteam(dt);
+    tickCaballos(dt, now);
+    if (myPower() === 'mazo') setMazo(true);
+    else if (mazoOn) setMazo(false);
+    if (myPower() === 'schnuttin' && R() < dt * 14) emit(pos.x, pos.y + 0.2, pos.z, 1, PINK, { speed: 0.6, up: 0.4, life: 0.5, g: 1 });
     for (const s of world.stations) s.children[0].rotation.y = Math.sin(now / 900) * 0.06;
     // the truck rolls through, the gun on offer spins over the bed
     if (truckObj) {
@@ -958,7 +1126,14 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     if (st !== 'alive' || zoom) return;
     vmRig.visible = true;
     const c = P.current, home = vm.home[c] || vm.home.rifle;
-    for (const [id, g] of Object.entries(vm.guns)) g.visible = id === c;
+    const swingingMazo = myPower() === 'mazo';
+    for (const [id, g] of Object.entries(vm.guns)) g.visible = !swingingMazo && id === c;
+    mazoVm.visible = swingingMazo;
+    if (swingingMazo) {
+      const sw = Math.sin(t * 16);
+      mazoVm.rotation.set(0.2 + sw * 1.4, 0.15, 0.4 + sw * 0.5);
+      mazoVm.position.set(0.22 + sw * 0.08, -0.3 - Math.abs(sw) * 0.1, -0.45);
+    }
     vmKick = Math.max(0, vmKick - dt * 14); swapAnim = Math.max(0, swapAnim - dt * 4);
     const ws = P.weapons[c];
     const rl = L.reloading(P, t) && ws ? Math.sin(Math.min(1, (ws.reloadUntil - t) / L.WEAPONS[c].reload) * Math.PI) : 0;
@@ -1073,7 +1248,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       foes: [...ents.en.values()].map((e) => { const c = cur(e, performance.now()); return { id: e.id, type: e.type, st: e.st, hp: e.hp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.z.toFixed(2) }; }), rings: rings.length,
       dogs: dogs.map((d) => ({ i: d.i, x: +d.m.root.position.x.toFixed(2), z: +d.m.root.position.z.toFixed(2), yaw: +d.m.root.rotation.y.toFixed(2), pair: d.pair || null })), dogT: +dogT.toFixed(3), shop: world.shop?.children.length || 0,
       elote: { x: ELOTE.x, z: ELOTE.z, say: eloteSay, line: eloteSay >= 0 ? ELOTE_LINES[eloteSay] : null },
-      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA, crouched, adsHeld, gfxTier, controls: { ...controls } }),
+      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA, crouched, adsHeld, gfxTier, controls: { ...controls }, chile: snap?.ch || 0, power: myPower(), powerLeft: me?.pwl || 0, powers: snap?.pw || [], schnuttin: t < schnuttinUntil, horses: horses.length, river: !!(river && river.visible) }),
     aimAt(x, y, z) { const o = eye(); yaw = Math.atan2(-(x - o.x), -(z - o.z)); pitch = Math.atan2(y - o.y, Math.hypot(x - o.x, z - o.z)); },
     aimAtNearest(head = false) { const now = performance.now(); const e = [...ents.en.values()].sort((a, b) => Math.hypot(a.to.x - pos.x, a.to.z - pos.z) - Math.hypot(b.to.x - pos.x, b.to.z - pos.z))[0]; if (!e) return false; const c = head ? enemyHead(e, now) : enemyCenter(e, now); api.aimAt(c.x, c.y, c.z); return true; },
     aimAtPlayer(name, head = false) { const p = [...ents.pl.values()].find((q) => q.name === name); if (!p) return false; const c = cur(p, performance.now()); api.aimAt(c.x, c.y + (head ? 1.62 : 1), c.z); return true; },
@@ -1116,7 +1291,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       document.removeEventListener('pointerlockchange', onLockChange);
       offs.forEach((f) => f());
       if (document.pointerLockElement === canvas) document.exitPointerLock?.();
-      if (audio) audio.close();
+      if (audio) { try { audio.mazoStop(); } catch {} audio.close(); }
       if (truckGun) truck.show.remove(truckGun);
       for (const sc of [scene, vmScene, pvScene]) sc.traverse((o) => { if (o.geometry) o.geometry.dispose(); const m = o.material; if (m) (Array.isArray(m) ? m : [m]).forEach((x) => { x.map?.dispose(); x.dispose(); }); });
       renderer.dispose();
