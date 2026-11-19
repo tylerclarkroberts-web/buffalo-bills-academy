@@ -20,10 +20,11 @@ import { SmokeLayer, SmokeButton } from './table/Smoke.jsx';
 import { ShowButton } from './table/Spectacle.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
+import { TableSweep } from './table/TableSweep.jsx';
 import { Showdown } from './table/Showdown.jsx';
 import { useReplay, ReplayLayer } from './table/Replay.jsx';
 import { REPLAY_ON, cinematicPlays } from './table/replay.js';
-import { bitEnabled, bitQueue, claimBit } from './table/fx.js';
+import { bitEnabled, bitQueue, claimBit, claimSweep } from './table/fx.js';
 import * as music from './table/music.js';
 import { chipSpot, rectAt } from './table/chipspot.js';
 import { betPresets, betToSlider, clampBet, sliderToBet, stepBet, SLIDER_MAX } from './table/betsize.js';
@@ -120,7 +121,13 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const takeView = useCallback((v) => { skew.current = v.serverNow - Date.now(); versionRef.current = v.version; setView(v); }, []);
   const mySeat = view?.me?.seat;
   const myTurn = !!view?.hand && view.hand.toAct !== null && view.hand.toAct === mySeat;
-  const turnBlocked = rp.pending || !!sdPlay || !!(sdDue && cinematicPlays(sdDue, view?.log, rp.enabled)) || !!fightMode;
+  const [sweepBusy, setSweepBusy] = useState(false);
+  const arrivedWithSweep = useRef(undefined);
+  if (arrivedWithSweep.current === undefined && view) {
+    arrivedWithSweep.current = (view.sweep && !view.sweep.seen) ? view.sweep.id : null;
+  }
+  const sweepLate = !!(view?.sweep && arrivedWithSweep.current === view.sweep.id);
+  const turnBlocked = rp.pending || !!sdPlay || !!(sdDue && cinematicPlays(sdDue, view?.log, rp.enabled)) || !!fightMode || sweepBusy;
   const turnAdvance = useTurnAdvance({ currentPath: `/t/${String(code).toUpperCase()}`, hasAction: myTurn, blocked: turnBlocked, enabled: !pane });
   useEffect(() => { if (myTurn) setTab('table'); }, [myTurn]);
   // The big blind's fight offer: a centered prompt (FightOffer). Decline is remembered per hand.
@@ -132,11 +139,13 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   useEffect(() => { if (pane && view) onStatus?.(code, { myTurn, deadline: myTurn ? view.hand?.deadline ?? null : null, name: view.name, seated: view.me?.seat !== null && view.me?.seat !== undefined, offer: offerOpen ? offerKey : null }); }, [pane, myTurn, view?.hand?.deadline, view?.name, view?.me?.seat, code, offerOpen, offerKey]);
   // Busted out here with nothing left anywhere: the house has a suggestion.
   const bustBroke = !!view?.me?.broke;
+  const sweepWaiting = !!(view?.sweep && !view.sweep.seen && (view.sweep.role === 'victim' || view.sweep.role === 'winner'));
   useEffect(() => {
     if (!view) return;
+    if (sweepBusy || sweepWaiting) return; // finish the sit-down replay before the leave/broke prompt
     if (bustBroke) showBrokeOnce(`t.${code}`, 'bust', { need: view.settings.buyIn });
     else clearBrokeSeen(`t.${code}`);
-  }, [bustBroke, code, !!view]);
+  }, [bustBroke, code, !!view, sweepBusy, sweepWaiting]);
 
   // tab title + notification when it becomes your turn (code only — never the custom table name)
   useEffect(() => {
@@ -241,7 +250,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const stage = (
     <div className="tp-stage">
       {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => { rp.afterShowdown(); setSdPlay(null); }} />}
-      <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+      <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSweep={setSweepBusy} sweepLate={sweepLate} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
       {errBox}
@@ -433,7 +442,7 @@ function seatDeg(pos, N) {
   return 270 + gap + (span * (k + 0.5)) / N;
 }
 
-export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) {
+export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, onSweep, sweepLate }) {
   // v42: a quick "✓ auto-check" pop over a seat for checks the table made in the last few seconds
   const autoPops = {};
   for (const e of view.log || []) { const m = / checks \(auto-check\)$/.exec(e.text); if (m && e.t > (view.serverNow || 0) - 3000) autoPops[e.text.slice(0, m.index)] = e.t; }
@@ -466,6 +475,28 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) 
     const fresh = bitQueue(view, nowRef.current).filter((x) => claimBit(code, x.number, x.seat));
     if (fresh.length) setBit({ ...fresh[0], others: fresh.slice(1).map((x) => x.name) });
   }, [lhKey, bit, code, hold]);
+  const [sweep, setSweep] = useState(null);
+  useEffect(() => { onSweep?.(!!sweep); }, [!!sweep, onSweep]);
+  useEffect(() => {
+    if (sweep || bit || hold || !view?.sweep || view.sweep.seen) return;
+    const s = view.sweep;
+    let mode = null;
+    if (s.role === 'winner' || s.role === 'watcher') mode = 'tour';
+    else if (s.role === 'victim') mode = sweepLate ? 'closeup' : 'tour';
+    if (!mode) return;
+    if (!claimSweep(code, s.id)) {
+      if (s.role === 'winner' || s.role === 'victim') api('POST', `/tables/${code}/sweep-seen`, { id: s.id }).then(() => refreshTurns()).catch(() => {});
+      return;
+    }
+    setSweep({ mode, id: s.id, focusId: view.me?.playerId });
+  }, [view?.sweep, bit, hold, sweep, code]);
+  const finishSweep = () => {
+    const s = sweep;
+    setSweep(null);
+    if (s && (view.sweep?.role === 'winner' || view.sweep?.role === 'victim' || s.mode === 'closeup')) {
+      api('POST', `/tables/${code}/sweep-seen`, { id: s.id }).then(() => refreshTurns()).catch(() => {});
+    }
+  };
   const xy = (seat) => {
     const ang = (seatDeg((seat - mySeat + N) % N, N) * Math.PI) / 180;
     return { x: geo.cx + geo.rx * Math.cos(ang), y: geo.cy + geo.ry * Math.sin(ang) };
@@ -634,6 +665,16 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose }) 
           const punchers = view.seats.map((s, i) => (s && s.playerId !== bit.playerId ? { playerId: s.playerId, name: s.name, ...xy(i) } : null)).filter(Boolean);
           const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
           return <AllInBit key={`${bit.number}:${bit.seat}`} loser={loser} punchers={punchers} stage={{ x: geo.cx, y: geo.cy + geo.fry * 0.72 }} w={w} h={h} size={bust} avatars={view.avatars} reduced={reduced} onDone={() => setBit(null)} />;
+        })()}
+        {sweep && !bit && (() => {
+          const posOf = (p) => {
+            const seated = p.seat >= 0 && view.seats[p.seat]?.playerId === p.playerId;
+            return seated ? xy(p.seat) : { x: geo.cx, y: 88 };
+          };
+          const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          const winner = { ...view.sweep.winner, ...posOf(view.sweep.winner) };
+          const victims = (view.sweep.victims || []).map((v) => ({ ...v, ...posOf(v) }));
+          return <TableSweep key={sweep.id} mode={sweep.mode} winner={winner} victims={victims} focusId={sweep.focusId} avatars={view.avatars} w={w} h={h} size={bust} reduced={reduced} onDone={finishSweep} />;
         })()}
       </>}
     </div>

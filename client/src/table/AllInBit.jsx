@@ -83,7 +83,7 @@ export function AllInBit({ loser, punchers, stage, w, h, size, avatars, onDone, 
 
   if (reduced) {
     return (
-      <div className="bit bit-reduced" style={root} {...skip}>
+      <div className="bit bit-reduced" data-test="allin-bit" style={root} {...skip}>
         <div className="bit-shade" />
         <div className="bit-loser shake" style={pct(stage.x, stage.y)}><Bust id={loser.playerId} avatar={avatars?.[loser.playerId]} size={S} still /></div>
         <div className="bit-caption" style={pct(stage.x, 3)}><b>OOF!</b> {who} went all in and lost.</div>
@@ -142,7 +142,7 @@ export function AllInBit({ loser, punchers, stage, w, h, size, avatars, onDone, 
   const burstOn = last && t - last.hit < Math.min(420, (last.end - last.hit) * 0.85);
 
   return (
-    <div className="bit" style={root} {...skip}>
+    <div className="bit" data-test="allin-bit" style={root} {...skip}>
       <div className="bit-shade" />
       <div className="bit-loser" style={{ ...pct(lx, ly, 0, hop), transform: `translate(-50%, -100%) rotate(${rot}deg) scale(${sx}, ${sy})` }}>
         <div className="bit-body">

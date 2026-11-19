@@ -10,6 +10,14 @@ import { checkUsername, normUsername } from './passwords.js';
 import { attachSeatBugs } from './tableBug.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid typos
+
+/** Real toAct wins; otherwise an unseen sweep victim gets the same "your turn" badge, with no deadline. */
+function holdemMyTurn(t, playerId, seat) {
+  if (t.hand && t.hand.toAct === seat && seat >= 0) return true;
+  const s = t.sweep;
+  return !!(s && !s.seen?.[playerId] && s.victims?.some((v) => v.playerId === playerId));
+}
+
 const MAX_TIMER = 2 ** 31 - 1;
 const hashToken = (tok) => crypto.createHash('sha256').update(tok).digest('hex');
 
@@ -186,6 +194,11 @@ export class PokerService {
       avatars[s.playerId] = s.bot ? botAvatar(t, s.playerId) : this.avatars && this.store.players[s.playerId] ? this.avatars.info(this.store.players[s.playerId]) : null;
     }
     for (const l of t.lastHand?.allInLosers || []) if (!(l.playerId in avatars) && this.store.players[l.playerId]) avatars[l.playerId] = this.avatars ? this.avatars.info(this.store.players[l.playerId]) : null;
+    if (t.sweep) {
+      for (const p of [t.sweep.winner, ...(t.sweep.victims || [])]) {
+        if (p?.playerId && !(p.playerId in avatars) && this.store.players[p.playerId]) avatars[p.playerId] = this.avatars ? this.avatars.info(this.store.players[p.playerId]) : null;
+      }
+    }
     const v = { ...G.viewFor(t, player?.id ?? null, this.now()), visibility: t.visibility === 'public' ? 'public' : 'private', econ: !!t.econ, avatars };
     if (t.bots) { v.bots = { count: t.bots.count, friends: t.bots.friends }; for (const st of v.seats) if (st && t.seats[st.seat]?.bot) st.bot = true; }
     if (v.fightOffer) v.fightOffer.stake = G.fightStake(this.ctx().bankrollOf(player.id), t.settings.bigBlind);
@@ -202,7 +215,7 @@ export class PokerService {
         const seat = t.seats.findIndex((s) => s && s.playerId === player.id);
         return {
           code: t.code, name: t.name, status: t.status, visibility: t.visibility === 'public' ? 'public' : 'private', players: t.seats.filter(Boolean).length, maxPlayers: t.settings.maxPlayers,
-          seated: seat >= 0, myTurn: !!t.hand && t.hand.toAct === seat && seat >= 0, deadline: t.hand && t.hand.toAct === seat ? t.hand.deadline : null,
+          seated: seat >= 0, myTurn: holdemMyTurn(t, player.id, seat), deadline: t.hand && t.hand.toAct === seat && seat >= 0 ? t.hand.deadline : null,
           turn: G.turnSummary(t, player.id),
           handNumber: t.handNumber, isHost: t.hostId === player.id, createdAt: t.createdAt, bots: !!t.bots,
           ready: t.seats.filter((_, i) => G.eligibleForHand(t, i)).length, // players who could be dealt in (2+ to start)
@@ -315,7 +328,21 @@ export class PokerService {
     if (!t.ledger[player.id] || !t.seats.some((s) => s && s.playerId === player.id)) this.requireBuyIn(code, player, 'the buy-in');
     return this.mutate(code, (tb, ctx) => G.joinTable(tb, { id: player.id, name: player.name }, seat, ctx), player.id);
   }
-  start(code, player) { return this.mutate(code, (t, ctx) => G.startGame(t, player.id, ctx), player.id); }
+  start(code, player) {
+    return this.mutate(code, (t, ctx) => {
+      const c = t.devDeck ? { ...ctx, deck: t.devDeck } : ctx;
+      delete t.devDeck;
+      G.startGame(t, player.id, c);
+    }, player.id);
+  }
+  // DEV_LOGIN test hook only (wired from app.js). Next start/deal uses this shoe, then it is dropped.
+  rigDeck(code, player, deck) {
+    return this.mutate(code, (t) => {
+      if (t.hostId !== player.id) throw new G.GameError('Only the host can rig a test shoe.', 403);
+      if (!Array.isArray(deck) || deck.length < 10) throw new G.GameError('Need a deck.', 400);
+      t.devDeck = deck.slice();
+    }, player.id);
+  }
   updateSettings(code, player, input) { return this.mutate(code, (t, ctx) => G.updateSettings(t, player.id, input, ctx), player.id); }
   act(code, player, action) { return this.mutate(code, (t, ctx) => G.act(t, player.id, action, ctx), player.id); }
   rebuy(code, player) { this.requireBuyIn(code, player, 'a rebuy'); return this.mutate(code, (t, ctx) => G.rebuy(t, player.id, ctx), player.id); }
@@ -323,6 +350,13 @@ export class PokerService {
   sitOut(code, player, sitOut) { return this.mutate(code, (t, ctx) => G.setSittingOut(t, player.id, sitOut, ctx), player.id); }
   leave(code, player) { return this.mutate(code, (t, ctx) => G.leaveTable(t, player.id, ctx), player.id); }
   showdownSeen(code, player, number) { return this.mutate(code, (t) => G.markShowdownSeen(t, player.id, number), player.id); }
+  sweepSeen(code, player, id) {
+    return this.mutate(code, (t) => {
+      if (!t.sweep) return;
+      if (id && t.sweep.id !== id) return;
+      G.markSweepSeen(t, player.id);
+    }, player.id);
+  }
   show(code, player, which, handNumber) { return this.mutate(code, (t, ctx) => G.showCards(t, player.id, which, ctx, handNumber), player.id); }
   /** Speech bubble: seated players only, 10 edits a minute each (in memory; resets on restart, which is fine). */
   say(code, player, text) {

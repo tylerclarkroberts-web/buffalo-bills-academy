@@ -6,6 +6,8 @@ import { bestHand, compareScores } from './evaluator.js';
 import { buildPots, splitPot } from './pots.js';
 import * as F from './fight.js';
 import { pickFatality, pickGag, FINALE_MS } from './fatality.js';
+import { maybeRecordSweep, markSweepSeen, sweepView } from './sweep.js';
+export { markSweepSeen };
 
 export class GameError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -655,6 +657,8 @@ function wrapUp(t, ctx, result) {
   t.muck = null; // a new result: last hand's hidden cards can no longer be shown
   t.lastHand = { number: h.number, board: h.board.slice(), buttonSeat: h.buttonSeat, endedAt: ctx.now, ...result };
   t.hand = null;
+  // Last one standing with everyone else's chips: record the sweep while busted seats are still here.
+  maybeRecordSweep(t, ctx);
   // players who asked to leave (or were removed) cash out now
   t.seats.forEach((s, i) => {
     if (s && s.leaving) removeSeat(t, i, ctx);
@@ -814,6 +818,7 @@ export function viewFor(t, playerId, now) {
     fight: fightView(t.fight),
     seats, hand, legal: mySeat >= 0 ? legalActions(t, mySeat) : null,
     lastHand: t.lastHand, standings,
+    sweep: sweepView(t, playerId),
     // v49: last finished hand's showdown (hand is over, so its cards are public); per-player 'seen' for the auto-play
     showdown: t.lastShowdown || null, showdownSeen: !!t.lastShowdown && (t.showdownSeen?.[playerId] ?? -1) >= t.lastShowdown.number, log: t.log.slice(-MAX_LOG), serverNow: now,
   };
