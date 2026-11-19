@@ -312,7 +312,7 @@
 .bj-lane.live { color: #ffe9a8; }
 .bj-lane em { font-style: normal; }
 .bj-lane em.up { color: #8ef0a0; } .bj-lane em.down { color: #ff9a8a; }
-/* easter egg: royal chips that never quite left the felt (player dealers only) */
+/* leftover alias for the old sneak class; the live control is .bj-kash in kash.css */
 .bj-sneak { display: inline-flex; align-items: center; gap: 1px; min-height: 32px; padding: 0 6px; border: 1px dashed rgba(255,233,168,.28); border-radius: 999px; background: transparent; color: rgba(255,233,168,.45); font-size: 15px; cursor: pointer; }
 .bj-sneak small { font-size: 9px; }
 .bj-sneak:hover, .bj-sneak:focus-visible { color: #ffe9a8; border-color: rgba(255,233,168,.7); }

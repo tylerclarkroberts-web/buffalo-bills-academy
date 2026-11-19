@@ -325,10 +325,10 @@ export function findAnomalies({ players, rows, ledger, access, bj, bjSeat, docs,
     const k = `${x.p}|${denverDay(x.t)}`; dayGain[k] = (dayGain[k] || 0) + (Number(x.amt) || 0);
   }
   for (const [k, v] of Object.entries(dayGain)) if (v >= 3000) { const [id, d] = k.split('|'); add('med', 'day-jump', `${nameOf(id)} gained $${Math.round(v).toLocaleString('en-US')} on ${d}`, [id], { day: d }); }
-  // sneak bets
+  // Kash bets (recorded as sneak* for older logs)
   for (const [id, b] of Object.entries(bj)) {
-    if (b.sneakN >= 10) add(b.sneakN >= 25 ? 'high' : 'med', 'sneak', `${nameOf(id)} slid ${b.sneakN} sneak bets (won $${b.sneakWon}, staked $${b.sneakStaked})`, [id]);
-    else if (b.sneakWins >= 3) add('low', 'sneak', `${nameOf(id)} has ${b.sneakWins} winning sneak bets`, [id]);
+    if (b.sneakN >= 10) add(b.sneakN >= 25 ? 'high' : 'med', 'sneak', `${nameOf(id)} slid ${b.sneakN} Kash bets (won $${b.sneakWon}, staked $${b.sneakStaked})`, [id]);
+    else if (b.sneakWins >= 3) add('low', 'sneak', `${nameOf(id)} has ${b.sneakWins} winning Kash bets`, [id]);
   }
   // mining speed: earnings per hour way above everyone else
   const rates = minesRows.filter((m) => m.perHour && m.timedShifts >= 5).map((m) => m.perHour);

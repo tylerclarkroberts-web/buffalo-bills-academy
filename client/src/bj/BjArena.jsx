@@ -7,6 +7,7 @@ import { Card } from '../Card.jsx';
 import { useSize } from '../ui.jsx';
 import { Dealer, DealerPlate } from '../table/Dealer.jsx';
 import { takeCards } from './useDealReveal.js';
+import { KashTell } from './KashStage.jsx';
 
 const money = (x) => (x == null ? '∞' : `$${Number(x).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 
@@ -48,7 +49,7 @@ function LaneTag({ l, i }) {
  * `shown` from useDealReveal limits how many cards are painted. Tap calls onTap (speed).
  */
 export function BjArena({
-  v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, onTap, reduced, onSit, bugPose,
+  v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, onTap, reduced, onSit, bugPose, kashTell, now,
 }) {
   const box = useRef(null);
   const { w, h } = useSize(box);
@@ -200,6 +201,7 @@ export function BjArena({
                         ))}
                       </div>
                     )}
+                    <KashTell tell={kashTell} seat={i} now={now} />
                   </>
                 ) : (
                   <button

@@ -11,6 +11,7 @@ import * as G from './game.js';
 import * as C from './continuous.js';
 import { GUNTRAD_RULES, RULE_CHOICES, LIMITS, ROYAL } from './rules.js';
 import { attachSeatBugs, tableBugOf } from '../tableBug.js';
+import * as Kash from './kash.js';
 
 const edgeSummary = (t) => { const e = tableEdge(t); return { main: { edge: e.main.edge, tone: e.main.tone }, side: Object.fromEntries(Object.entries(e.side).map(([k, v]) => [k, { edge: v.edge, tone: v.tone }])), needsAck: e.needsAck, grandfathered: !!e.grandfathered }; };
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -97,6 +98,12 @@ export class Blackjack {
       v.house.avatar = this.avatars && hp ? this.avatars.info(hp) : { kind: 'gen', seed: t.house.id };
       const bug = tableBugOf(this.barn, t.house.id);
       if (bug) v.house.bug = bug;
+    }
+    Object.assign(v, Kash.kashView(t, viewerId, this.now()));
+    if (v.kashRoom && t.kashRoom) {
+      const cid = t.kashRoom.cheaterId;
+      const cp = this.getPlayer(cid);
+      v.kashRoom.avatar = this.avatars && cp ? this.avatars.info(cp) : { kind: 'gen', seed: cid };
     }
     return v;
   }
@@ -235,9 +242,64 @@ export class Blackjack {
   }
   insure(p, code, yes) { return this.play(p, code, (t, i) => G.insure(t, i, !!yes, this.now(), this.rng)); }
   act(p, code, action) { return this.play(p, code, (t, i) => G.act(t, i, String(action || ''), this.now(), this.rng)); }
-  /** Easter egg: a late royal bet against a player dealer (see G.sneakBet). */
-  sneak(p, code, body) { return this.play(p, code, (t, i) => G.sneakBet(t, i, body?.royal || {}, this.now())); }
-  view(p, code) { const t = this.table(code); return this.viewOf(t, p.id); }
+  /** Kash Bet: a late royal bet against a player dealer (see G.sneakBet and ./kash.js). */
+  sneak(p, code, body) {
+    const t = this.table(code);
+    return this.mutate(t, p.id, () => {
+      const i = this.mySeat(t, p);
+      const now = this.now();
+      let result;
+      if (C.isContinuous(t)) C.laneOp(t, i, now, this.rng, (lane) => { result = G.sneakBet(lane, i, body?.royal || {}, now); });
+      else { G.advance(t, now, this.rng); result = G.sneakBet(t, i, body?.royal || {}, now); }
+      const s = t.seats[i];
+      Kash.recordKash(t, { seat: i, id: s.id, name: s.name, stake: result.stake, net: result.net, kinds: result.kinds }, now);
+      return this.viewOf(t, p.id);
+    });
+  }
+  /** Poll: this is the only place a player is marked as watching the table. */
+  view(p, code) { const t = this.table(code); Kash.noteView(t, p.id, this.now()); return this.viewOf(t, p.id); }
+  kashCatch(p, code) {
+    const t = this.table(code);
+    return this.mutate(t, p.id, () => {
+      const room = Kash.callSecurity(t, p.id, this.now());
+      G.log(t, this.now(), `${t.house.name} calls security on ${room.cheaterName}.`, { k: 'kash-catch', seat: room.seat, id: room.cheaterId });
+      return this.viewOf(t, p.id);
+    });
+  }
+  kashHit(p, code, body) {
+    const t = this.table(code);
+    return this.mutate(t, p.id, () => { Kash.recordHit(t, p.id, body || {}, this.now()); return this.viewOf(t, p.id); });
+  }
+  kashFinish(p, code, body) {
+    const t = this.table(code);
+    return this.mutate(t, p.id, () => {
+      const room = t.kashRoom;
+      if (!room || room.status === 'done') throw new GameError('Nobody is in the room.', 409);
+      if (room.dealerId !== p.id) throw new GameError('Only the dealer can collect.', 403);
+      const s = t.seats[room.seat];
+      const cheater = this.getPlayer(room.cheaterId);
+      const dealer = this.getPlayer(p.id);
+      const chips = s && !s.left ? s.chips : 0;
+      const bankroll = cheater && typeof cheater.bankroll === 'number' ? cheater.bankroll : 0;
+      const plan = Kash.planCollect({ won: room.won, extra: body?.extra, chips, bankroll });
+      if (plan.fromChips && s && !s.left) s.chips = Math.round((s.chips - plan.fromChips) * 100) / 100;
+      if (plan.fromBankroll && cheater) this.accounts.change(cheater, -plan.fromBankroll, 'blackjack', `Kash Bet: security collected $${plan.take} at ${t.code}`, { save: false });
+      if (plan.take && dealer) this.accounts.change(dealer, plan.take, 'blackjack', `Kash Bet: recovered $${plan.take} from ${room.cheaterName} (${t.code})`, { save: false });
+      if (plan.take) this.accounts.save();
+      room.status = 'done'; room.collect = plan; room.doneAt = this.now();
+      G.log(t, this.now(), `Security collected $${plan.take} from ${room.cheaterName} (Kash Bet $${plan.won} + $${plan.extra} extra).`, { k: 'kash-collect', seat: room.seat, id: room.cheaterId, take: plan.take, won: plan.won, extra: plan.extra, fromChips: plan.fromChips, fromBankroll: plan.fromBankroll });
+      t.kashNotice ||= {};
+      const notice = { take: plan.take, won: plan.won, extra: plan.extra, from: room.cheaterName, by: t.house.name, hits: (room.hits || []).length };
+      t.kashNotice[room.cheaterId] = { kind: 'caught', ...notice };
+      t.kashNotice[p.id] = { kind: 'collected', ...notice };
+      t.kashRoom = { ...room }; // keep a moment so the client can close the toy, then view hides it (status done)
+      return this.viewOf(t, p.id);
+    });
+  }
+  kashDismiss(p, code) {
+    const t = this.table(code);
+    return this.mutate(t, p.id, () => { Kash.clearNotice(t, p.id); return this.viewOf(t, p.id); });
+  }
   leave(p, code) {
     const t = this.table(code);
     return this.mutate(t, p.id, () => {

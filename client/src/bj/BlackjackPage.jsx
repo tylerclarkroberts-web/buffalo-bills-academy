@@ -10,6 +10,7 @@ import { useDealReveal } from './useDealReveal.js';
 import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
 import { NextTablePill } from '../turns/TurnsPill.jsx';
 import './bj.css';
+import { KashButtons, KashCatch, KashOverlay } from './KashStage.jsx';
 import { publicTitle } from '../../../server/pageMeta.js';
 
 const money = (x) => (x == null ? '∞' : `$${Number(x).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
@@ -330,13 +331,15 @@ function BjTable({ code, me }) {
           onTap={tap}
           reduced={reduced}
           onSit={canSit ? sit : null}
+          kashTell={v.kashTell}
+          now={now}
         />
         <NextTablePill advance={turnAdvance} />
         <div className="bj-bar" data-test="bj-bar">
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>
             : v.laneOver ? <span className="small" data-test="bj-lane-over">{v.laneOver} <button className="btn small" onClick={() => post('leave')}>Cash out</button></span>
-            : !mine ? <span className="small dim">{v.house.isMe ? 'You are the house: the cards follow the table rules.' : 'Watching.'} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
+            : !mine ? <span className="small dim">{v.house.isMe ? 'You are the house: the cards follow the table rules.' : 'Watching.'} {v.house.isMe && <KashCatch kash={v.kashCatch} onCatch={() => post('kash-catch')} />} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
             : ins && ready ? <div className="bj-acts"><span className="small">Insurance costs {money(Math.floor((r.hands.find((h) => h.seat === v.mySeat)?.bet || 0) / 2))}, pays 2:1</span><button className="btn" onClick={() => post('insure', { yes: true })} data-test="bj-ins-yes">Insure</button><button className="btn ghost" onClick={() => post('insure', { yes: false })} data-test="bj-ins-no">No thanks</button></div>
             : r.myTurn && ready ? <div className="bj-acts" data-test="bj-acts">
                 <button className="btn primary" disabled={busy} onClick={() => act('hit')} data-test="bj-hit">Hit</button>
@@ -344,11 +347,11 @@ function BjTable({ code, me }) {
                 <button className={`btn ${r.can?.double ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.double} onClick={() => act('double')} data-test="bj-double" aria-hidden={!r.can?.double} title="Double down: one more card, then you stand">Double</button>
                 <button className={`btn ${r.can?.split ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.split} onClick={() => act('split')} data-test="bj-split" aria-hidden={!r.can?.split}>Split</button>
                 <button className={`btn ghost ${r.can?.surrender ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.surrender} onClick={() => act('surrender')} data-test="bj-surrender" aria-hidden={!r.can?.surrender}>Surrender</button>
-                <Sneak v={v} r={r} post={post} />
+                <KashButtons v={v} r={r} post={post} />
               </div>
             : r.phase === 'betting' && !myBet ? <BetBar min={v.limits.min} max={maxNow} royal={v.royal} bet={clampBet(bet)} setBet={(x) => setBet(clampBet(x))} side={side} setSide={setSide}
                 onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={v.continuous ? null : () => post('sitout')} />
-            : <span className="small dim">{status}… {ready && <Sneak v={v} r={r} post={post} />}</span>}
+            : <span className="small dim">{status}… {ready && <KashButtons v={v} r={r} post={post} />} {v.house?.isMe && <KashCatch kash={v.kashCatch} onCatch={() => post('kash-catch')} />}</span>}
         </div>
         {err && <p className="error bj-err" role="alert">{err}</p>}
         {show === 'sit' && v.mySeat < 0 && !v.house.isMe && ['lobby', 'playing'].includes(v.status) && <SitGate v={v} post={post} onClose={() => { setShow(null); history.replaceState(null, '', `/bj/${code}`); }} />}
@@ -357,20 +360,12 @@ function BjTable({ code, me }) {
                 : <li>Turn clock {TURN[v.turnSec]}: no bet in time sits you out; no move stands.</li>}</ul><button className="btn small">Close</button></div></div>}
         {show === 'summary' && mine && <Summary s={mine} onClose={() => setShow(null)} />}
         {v.final && <Final v={v} />}
+        <KashOverlay v={v} post={post} reduced={reduced} />
       </div>
     </div>
   );
 }
 
-/** Easter egg: against a player dealer the royal chips never quite leave the felt. Tap one after you've seen your cards. */
-function Sneak({ v, r, post }) {
-  const b = r?.bets?.[v.mySeat];
-  if (!r?.sneak || !b?.bet) return null;
-  const amt = Math.min(v.limits.royalMax, b.bet);
-  return ['match', 'pairs'].filter((k) => r.sneak[k]).map((k) => (
-    <button key={k} type="button" className="bj-sneak" data-test={`bj-sneak-${k}`} aria-label={`${k === 'match' ? 'Royal Match' : 'Royal Pairs'} $${amt}`}
-      onClick={() => post('sneak', { royal: { [k]: amt } })}>{k === 'match' ? '♛' : '♚'}<small>${amt}</small></button>));
-}
 function Summary({ s, onClose }) {
   const st = s.stats; const net = st.won - st.wagered;
   return (

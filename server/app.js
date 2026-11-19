@@ -439,7 +439,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/bj/tables', needPlayer, wrap((req) => bj.create(req.player, req.body || {})));
   api.get('/bj/tables/:code', needPlayer, wrap((req) => bj.view(req.player, req.params.code)));
   for (const [path, fn] of Object.entries({ join: (p, c, b) => bj.join(p, c, b?.ack === true), start: (p, c) => bj.start(p, c), leave: (p, c) => bj.leave(p, c), close: (p, c) => bj.close(p, c), sitout: (p, c) => bj.sitOut(p, c),
-    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId) })) {
+    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId), 'kash-catch': (p, c) => bj.kashCatch(p, c), 'kash-hit': (p, c, b) => bj.kashHit(p, c, b), 'kash-finish': (p, c, b) => bj.kashFinish(p, c, b), 'kash-dismiss': (p, c) => bj.kashDismiss(p, c) })) {
     api.post(`/bj/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   // Async Scum: /scum (your tables) and /scum/CODE (invite link)
@@ -458,6 +458,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
   if (barnTest) api.post('/dev/slots-force', needPlayer, wrap((req) => { const f = String(req.body?.force || ''); slots.force = ['toot', 'stash', 'free'].includes(f) ? f : null; slots.lastAt.clear(); return { force: slots.force }; }));
+  if (barnTest) api.post('/dev/bj-rig', needPlayer, wrap((req) => {
+    const t = bj.table(req.body?.code); if (t.hostId !== req.player.id && t.house.id !== req.player.id) throw new GameError('no', 403);
+    const deck = req.body?.deck; if (!Array.isArray(deck) || deck.length < 4) throw new GameError('Need a deck.', 400);
+    t.deck = deck; bj.save(); return { ok: true, left: t.deck.length };
+  }));
   api.get('/shop', needPlayer, wrap((req) => shop.view(req.player)));
   api.post('/shop/buy', needPlayer, wrap((req) => shop.buy(req.player, String(req.body?.id || ''), { confirm: req.body?.confirm === true, bug: req.body?.bug ?? null })));
   api.post('/shop/equip', needPlayer, wrap((req) => shop.equip(req.player, { id: req.body?.id == null ? null : String(req.body.id), slot: String(req.body?.slot || ''), bug: req.body?.bug ?? null })));
