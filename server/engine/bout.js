@@ -20,9 +20,13 @@ export const LUNCH_CAP = 10;
 // Linger: poison its bug puts on never wears off. Dark: nothing in the fight itself; the page hides its bug's health.
 // Rage: below half health its bug hits harder. Mulligan: its bug takes up to `tries` missed attacks again.
 // Rewind: once, the first time its bug is left standing under `at` of its health, the reel goes back and it is at `to`.
+// The Fair Board. Encore: the other bug's move does less if it is the move it used last. Inspect: the other bug's hits
+// go by its condition, from `low` at mood 0 to `low + span` at 100. Best in show: the other bug takes `bare` more for
+// each gear slot it left empty. Pull: its own hits do `power` more and are `aim` likelier to miss.
 // Retake: a mulligan by another name, `tries` a fight; the Retake prize gives the player's bug one.
 export const RULES = { dodgeball: { every: 3, power: 0.25 }, cough: { chance: 0.12 }, flood: { from: 9, hp: 3 },
   flicker: { every: 3, aim: 0.22 }, grill: { every: 4, power: 0.3 }, rage: { power: 0.25 }, mulligan: { tries: 3 }, rewind: { at: 0.25, to: 0.45 }, retake: { tries: 2 },
+  encore: { power: 0.2 }, inspect: { low: 0.85, span: 0.2 }, bestinshow: { bare: 0.08 }, pull: { power: 0.5, aim: 0.18 },
   // Feature-presentation bosses. Web: a word written over the other bug, whose hits do less and land less often.
   // Conscience: it heals whenever the other bug uses a dirty move (poison or a pierce). Sing: it heals a little at the
   // start of every turn of its own. Telepod: once, when it drops under `at` of its health, the two bugs swap how hurt they are.
@@ -107,6 +111,7 @@ function aim(S, by, move, attacks, turnNo = S.turn) {
   if (target.ty === 'flier') acc -= PERK.quick;
   if (target.under) acc -= PERK.dive; // a Water bug that was just hit has gone under
   if (target.t === 'micronecta') acc -= TRAIT.tiny;
+  if (s.c.rule === 'pull') acc -= RULES.pull.aim; // it went 310. Into what, nobody could say
   if (target.c.rule === 'web') acc -= RULES.web.aim; // hard to concentrate with that written over you
   if (target.t === 'meganeura') acc -= TRAIT.griffinDodge;
   if (target.t === 'halobates' && S.hp[foe] > S.maxHp[foe] / 2) acc -= TRAIT.skate;
@@ -138,6 +143,10 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
   if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
   if (target.c.rule === 'web') mult *= 1 - RULES.web.power;
+  if (target.c.rule === 'encore' && s.prev === move.id) mult *= 1 - RULES.encore.power; // the judge has seen that one
+  if (target.c.rule === 'inspect') mult *= RULES.inspect.low + RULES.inspect.span * Math.max(0, Math.min(100, s.c.mood ?? 60)) / 100;
+  if (s.c.rule === 'bestinshow') mult *= 1 + RULES.bestinshow.bare * (!(Number(target.c.gear) > 0) + !(Number(target.c.defense) > 0));
+  if (s.c.rule === 'pull') mult *= 1 + RULES.pull.power;
   if (s.ty === 'fire' && has(target, 'mitt')) mult *= 1 - PRIZE.mitt;
   if (s.t === 'phrixothrix' && move.id !== 'basic') mult *= 1 + TRAIT.lights;
   if (target.t === 'acanthaspis' && target.mask) mult *= 1 - TRAIT.mask;
@@ -303,6 +312,7 @@ export function stepBout(S, choice) {
   if (thrown && move.effect === 'heal') move = s.moves[0]; // the tell promised a ball: it throws one
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
   let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false, mulligan = false;
+  const encore = target.c.rule === 'encore' && s.prev === move.id && move.effect !== 'heal';
   if (move.effect === 'heal') {
     healed = Math.min(maxHp[by] - hp[by], Math.round(move.heal * s.stats.damageMultiplier)); hp[by] += healed;
     detail = `recovers ${healed} HP`;
@@ -348,6 +358,8 @@ export function stepBout(S, choice) {
     if (move.effect === 'guard') { s.guard = move.guard; s.guardLeft = s.t === 'umbonia' ? 2 : 1; detail += ' and raises a guard'; }
     detail = hit ? `deals ${dmg} damage${detail}` : `misses${move.effect === 'guard' ? ' but raises a guard' : ''}`;
   }
+  s.prev = move.id;
+  if (encore && hit) detail += '; the judge has seen that one';
   rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
     line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : mulligan ? (s.c.rule === 'mulligan' ? 'takes a mulligan and uses' : 'says that one did not count, and retakes') : 'uses'} ${move.name}: ${detail}.${spots()}` });
   pop(foe); bursts();

@@ -38,7 +38,7 @@ function Icon({ stop }) {
   const lead = stop.bugs[0];
   return <Thumb species={lead.species} level={lead.level} w={40} h={32} />;
 }
-const stateOf = (stop, run, tolls) => stop.done ? (stop.kind === 'leader' ? 'Ribbon won' : stop.kind === 'boss' ? 'Card won' : stop.kind === 'wild' ? 'Caught' : stop.kind === 'quest' ? 'Done' : stop.kind === 'talk' ? 'Registered' : tolls?.[stop.id] === 'paid' ? 'Paid' : 'Beaten')
+const stateOf = (stop, run, tolls) => stop.done ? (stop.kind === 'champion' ? 'Yours' : stop.kind === 'leader' ? 'Ribbon won' : stop.kind === 'boss' ? 'Card won' : stop.kind === 'wild' ? 'Caught' : stop.kind === 'quest' ? 'Done' : stop.kind === 'talk' ? 'Registered' : tolls?.[stop.id] === 'paid' ? 'Paid' : 'Beaten')
   : !stop.open ? 'Not yet' : run?.stop === stop.id ? `Round ${run.foe + 1} of ${stop.bugs.length}` : stop.kind === 'center' ? 'Open' : 'Up next';
 
 function Say({ who, lines }) {
@@ -92,12 +92,13 @@ function Stop({ stop, c, b, busy, act: run0, setC, pin, next, onArea, afterName 
       <div className="cc-answers">{stop.ask.options.map(([text], k) => <button key={k} className="btn" disabled={busy} onClick={() => act(async () => { const r = await api('POST', '/circuit/talk', { stop: stop.id, answer: k }); setReply(r.reply); setC(r); })} data-test="circuit-answer">{text}</button>)}</div>
     </> : <><Say who={stop.who} lines={[...(reply ? [reply] : [`Conceived: ${c.conceived || 'somewhere'}. It's on file. Somewhere.`]), ...stop.after]} />{onward}</>}
   </div>;
-  const leader = stop.kind === 'leader', boss = stop.kind === 'boss', wild = stop.kind === 'wild', many = stop.bugs?.length > 1;
+  const leader = stop.kind === 'leader', boss = stop.kind === 'boss', wild = stop.kind === 'wild', judge = stop.kind === 'judge', champ = stop.kind === 'champion', many = stop.bugs?.length > 1;
   return <div className="cc-stop" data-test="circuit-stop">
-    <h3>{stop.who}{leader && <small> · {stop.title}</small>}{boss && <small> · Feature presentation</small>}</h3>
+    <h3>{stop.who}{(leader || judge) && <small> · {stop.title}</small>}{boss && <small> · Feature presentation</small>}</h3>
+    {champ && <p className="cc-poster cc-rare" data-test="circuit-champion">Held by {stop.heldBy}{stop.since ? ` since ${new Date(stop.since).toLocaleDateString()}` : ' for the house'}</p>}
     {wild && <p className="cc-poster cc-rare" data-test="circuit-rare">★ Rare · wild · you carry {c.jars} {c.jars === 1 ? 'jar' : 'jars'}</p>}
     {boss && <p className="cc-poster" data-test="circuit-poster">“{stop.poster}” · one of a kind · no jar will hold it</p>}
-    <Say who={stop.who} lines={wild ? (stop.done ? ['It is in your barn now.'] : stop.intro) : stop.done ? [paid ? reply || stop.paid : stop.won] : run ? [run.out.length ? stop.sub : run.foe ? stop.next : stop.intro.at(-1)] : stop.intro} />
+    <Say who={stop.who} lines={champ ? (stop.done ? ['Your bug sits at the card table. It fights whoever comes, without you.'] : stop.intro) : wild ? (stop.done ? ['It is in your barn now.'] : stop.intro) : stop.done ? [paid ? reply || stop.paid : stop.won] : run ? [run.out.length ? stop.sub : run.foe ? stop.next : stop.intro.at(-1)] : stop.intro} />
     <div className="cc-lineup" aria-label={many ? `${stop.who}'s bugs, in order` : `${stop.who}'s bug`}>
       {stop.bugs.map((bug, k) => { const beaten = stop.done || (run && k < run.foe), up = !stop.done && k === (run ? run.foe : 0);
         return <div key={k} className={`cc-foe${beaten ? ' beaten' : ''}${up ? ' up' : ''}`} data-test="circuit-foe">
@@ -105,11 +106,11 @@ function Stop({ stop, c, b, busy, act: run0, setC, pin, next, onArea, afterName 
           <span><b>{bug.name}</b><small>Lv {bug.level} <TypeChip type={typeOf(bug.species)} small />{up && run?.foeHp < 100 ? ` · ${run.foeHp}% HP` : ''}</small>{BY_ID[bug.species]?.name !== bug.name && <small>{BY_ID[bug.species]?.name}</small>}</span>
         </div>; })}
     </div>
-    {stop.done ? <><p className="small cc-done">{leader ? `Ribbon ${c.ribbons.filter((r) => r.at).length} of ${c.ribbons.length} is yours.` : boss ? `You hold the “${stop.poster}” card.` : wild ? 'Caught. It has a stall in your barn.' : paid ? 'Paid. You are through.' : 'Beaten. They won\'t fight you again.'}</p>{onward}</>
+    {stop.done ? <><p className="small cc-done">{champ ? 'You are the Grand Champion until somebody takes it off you.' : leader ? `Ribbon ${c.ribbons.filter((r) => r.at).length} of ${c.ribbons.length} is yours.` : boss ? `You hold the “${stop.poster}” card.` : wild ? 'Caught. It has a stall in your barn.' : paid ? 'Paid. You are through.' : 'Beaten. They won\'t fight you again.'}</p>{onward}</>
       : !stop.open ? <p className="small muted">Finish the stops before this one first.</p>
       : !bugs.length ? <p className="small muted">You need a hatched bug. The mines sometimes leave an egg behind.</p>
       : <>
-        <p className="small muted cc-send">{many && !run ? `${stop.bugs.length} rounds for $${stop.purse} and the ${leader ? 'ribbon' : 'card'}. Health carries over; a beaten bug sits out.` : run ? 'Send in' : wild ? (c.jars ? 'Send in · knock it out, then jar it' : 'Send in · you have no jars: the General Store sells them') : `Send in · $${stop.purse} purse${boss ? ' and its card' : ''}`}</p>
+        <p className="small muted cc-send">{many && !run ? `${stop.bugs.length} rounds for $${stop.purse}${leader ? ' and the ribbon' : boss ? ' and the card' : ''}. Health carries over; a beaten bug sits out.` : run ? 'Send in' : wild ? (c.jars ? 'Send in · knock it out, then jar it' : 'Send in · you have no jars: the General Store sells them') : champ ? `Send in · the rosette${stop.purse ? ` and $${stop.purse}` : ''}` : `Send in · $${stop.purse} purse${boss ? ' and its card' : ''}`}</p>
         <Pick bugs={bugs} run={run} foe={foe} sel={chosen?.id} setSel={setSel} />
         <div className="barn-row cc-go">
           <button className="btn primary" disabled={busy || !chosen || !!b.live} onClick={fight} data-test="circuit-fight">{!chosen ? 'Nobody fit to fight' : b.live ? 'A fight is on' : `Send in ${chosen.name}`}</button>
@@ -137,7 +138,7 @@ export default function Circuit({ b, busy, act, boutOpen }) {
   return <div className="cc-wrap" data-test="circuit">
     <div className="cc-top">
       <div><span className="cc-org">Tri-County Invertebrate Athletic Association</span>
-        {c.areas.length > 1 && <div className="cc-areas" role="group" aria-label="Areas">{c.areas.map((a) => <button key={a.id} className={`btn small${a.id === area.id ? ' on' : ' ghost'}`} aria-pressed={a.id === area.id} disabled={!a.open} title={a.open ? undefined : a.anyOrder ? 'Win ribbon 2 first' : `Win ribbon ${a.ribbon - 1} first`} onClick={() => { setAreaId(a.id); setSel(null); }} data-test="circuit-area">{a.ribbon}. {a.short || a.name}{a.open ? (c.ribbons[a.ribbon - 1]?.at ? ' ✓' : '') : ' 🔒'}</button>)}</div>}
+        {c.areas.length > 1 && <div className="cc-areas" role="group" aria-label="Areas">{c.areas.map((a) => <button key={a.id} className={`btn small${a.id === area.id ? ' on' : ' ghost'}`} aria-pressed={a.id === area.id} disabled={!a.open} title={a.open ? undefined : a.anyOrder ? 'Win ribbon 2 first' : a.ribbon > 8 ? 'Win all eight ribbons first' : `Win ribbon ${a.ribbon - 1} first`} onClick={() => { setAreaId(a.id); setSel(null); }} data-test="circuit-area">{a.ribbon > 8 ? '' : `${a.ribbon}. `}{a.short || a.name}{a.open ? (c.ribbons[a.ribbon - 1]?.at ? ' ✓' : '') : ' 🔒'}</button>)}</div>}
         <h2>{area.name}</h2><p className="small muted">{area.blurb} · Your bugs top out at level {c.cap}.{area.anyOrder ? ' Areas 3 to 6 can be won in any order; whoever you leave for later trains harder.' : ''}</p></div>
       <div className="cc-won">
         {c.prizes.length > 0 && <details className="cc-prizes" data-test="circuit-prizes"><summary>{c.prizes.length} {c.prizes.length === 1 ? 'prize' : 'prizes'}</summary><ul>{c.prizes.map((prize) => <li key={prize.id}><b>{prize.name}.</b> {prize.does}</li>)}</ul></details>}
@@ -150,7 +151,7 @@ export default function Circuit({ b, busy, act, boutOpen }) {
         {area.stops.map((s) => <li key={s.id}>
           <button className={`cc-node${s.id === stop.id ? ' on' : ''}${s.done ? ' done' : ''}${!s.open ? ' locked' : ''}${s.kind === 'leader' ? ' leader' : ''}${s.kind === 'boss' ? ' boss' : ''}`} aria-current={s.id === stop.id ? 'step' : undefined} onClick={() => pick(s.id)} data-test="circuit-node">
             <span className="cc-icon"><Icon stop={s} /></span>
-            <span className="cc-label"><b>{s.who}</b><small>{s.title || (s.bugs ? `${s.bugs[0].name} · Lv ${s.bugs[0].level}` : '')}{s.kind === 'quest' ? (s.done ? '' : ` · errand · $${s.reward}`) : s.kind === 'wild' && !s.done ? ' · ★ rare' : s.purse && !s.done ? ` · $${s.purse}` : ''}</small></span>
+            <span className="cc-label"><b>{s.who}</b><small>{s.kind === 'champion' ? `Held by ${s.heldBy}` : s.title || (s.bugs ? `${s.bugs[0].name} · Lv ${s.bugs[0].level}` : '')}{s.kind === 'quest' ? (s.done ? '' : ` · errand · $${s.reward}`) : s.kind === 'wild' && !s.done ? ' · ★ rare' : s.purse && !s.done ? ` · $${s.purse}` : ''}</small></span>
             <span className={`cc-state${s.done ? ' done' : ''}`}>{s.done ? '✓ ' : ''}{stateOf(s, c.run, c.tolls)}</span>
           </button>
         </li>)}

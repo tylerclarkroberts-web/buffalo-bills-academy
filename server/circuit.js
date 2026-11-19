@@ -17,8 +17,8 @@ export const RIBBON_XP = 100;
 export const RIBBONS = 8;
 // One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
-export const PURSE = { trainer: 75, ribbon: 750, boss: 300 };
-const FIGHTS = ['trainer', 'rival', 'toll', 'leader', 'boss', 'wild']; // stops with somebody to beat
+export const PURSE = { trainer: 75, ribbon: 750, boss: 300, judge: 250, champion: 1200 };
+const FIGHTS = ['trainer', 'rival', 'toll', 'leader', 'boss', 'wild', 'judge', 'champion']; // stops with somebody to beat
 const OPTIONAL = ['center', 'wild', 'boss', 'quest']; // stops nothing later waits on
 // Sidequests: an errand somebody on the trail wants run. Each is done when its check passes, and pays its reward once.
 const GLOWS = ['photuris', 'arachnocampa', 'phrixothrix'];
@@ -46,7 +46,7 @@ export const prizesOf = (me) => Object.entries(PRIZES).filter(([leader]) => me.d
 // A boss is a feature presentation: one of a kind, after its area's ribbon, never needed to go on. Beating one wins its card.
 export const BOSSES = () => AREAS.flatMap((area) => area.stops.filter((stop) => stop.kind === 'boss'));
 /** `held`: the ribbons the player has. An any-order area pays as the next ribbon they would win, whichever slot it fills. */
-export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : stop.kind === 'wild' ? 0 : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon) + (stop.kind === 'quest' ? stop.reward : 0);
+export const purseOf = (stop, area, held = 0) => (stop.kind === 'leader' ? PURSE.ribbon : stop.kind === 'boss' ? PURSE.boss : stop.kind === 'judge' ? PURSE.judge : stop.kind === 'champion' ? PURSE.champion : stop.kind === 'wild' ? 0 : FIGHTS.includes(stop.kind) ? PURSE.trainer : 0) * (area.scale ? held + 1 : area.ribbon) + (stop.kind === 'quest' ? stop.reward : 0);
 // Any-order areas grow with the ribbons held: every bug gains SCALE levels a ribbon past the two it takes to get there,
 // and a leader's last bug (`from`) only turns up once the player holds that many.
 export const SCALE = 1.5;
@@ -59,10 +59,15 @@ export const rivalSpecies = (partnerSpecies) => {
 // Circuit bugs are drilled: in top condition, with the best gear, and TRAINED more health and damage than a barn bug
 // of their level. With both left to themselves, a barn bug of the same level wins about one fight in eight.
 export const TRAINED = 0.1;
+const BOARD = 0.22; // the Fair Board's bugs, and whichever bug holds the rosette, are drilled harder still
 /** An area is open with the ribbon it follows (`needs`), or, past the any-order four, with enough ribbons of any kind (`held`). */
 export const areaOpen = (me, area) => (!area.needs || !!me.ribbons[area.needs]) && Object.keys(me.ribbons).length >= (area.held || 0);
-/** The top level a player's bugs can reach: one more for every ribbon. */
-export const capFor = (ribbons) => Math.min(LEVEL_CAP, MAX_LEVEL + ribbons);
+/** The top level a player's bugs can reach: one more for every ribbon, and the last two for getting past the Fair Board. */
+export const capFor = (ribbons, board = false) => Math.min(LEVEL_CAP, MAX_LEVEL + ribbons + (board ? 2 : 0));
+const capOf = (me) => capFor(Object.keys(me?.ribbons || {}).length, !!me?.done?.korn);
+// Until somebody wins the circuit, the house holds the rosette. After that it is a copy of the bug that took it,
+// as it stood that day, fought by the computer; its owner need not be anywhere near.
+export const HOUSE = { pid: null, owner: 'Guntrad', bug: { species: 'dryococelus', name: 'The House', level: 20, mood: 100, gear: 0.06, defense: 0.06, battle: { stance: 'balanced' } } };
 
 export const AREAS = [{
   id: 'back40', short: 'Back Forty', name: 'The Back Forty', ribbon: 1, blurb: 'The field behind the Barn. Last mown in 2019.',
@@ -276,6 +281,36 @@ export const AREAS = [{
       intro: ['You have been served.', 'My client is every bee. The defendant is, broadly, you.', 'According to all known laws of this county, you should not have been able to get this far.'],
       won: 'We will settle. The settlement is this card. Do not discuss the card.', lost: 'Court is adjourned. I am also the court.' },
   ],
+}, {
+  id: 'fair', short: 'Fair', name: 'The Fairgrounds', ribbon: 9, held: 8, blurb: 'Fair week. Four judges in folding chairs, then a card table with a rosette on it.',
+  stops: [
+    { id: 'nephew5', kind: 'rival', who: 'The Nephew', level: 18, bugName: 'Bug Two',
+      intro: ['My uncle is here. He\'s by the funnel cakes. He can see us.', 'Bug Two has been practicing. I have also been practicing. Separately.', 'I\'m actually going to try. Don\'t tell anyone I said that.'],
+      won: 'I tried. That was me trying. I\'m writing that down as trying.', lost: 'I won. On purpose. Uncle! UNCLE. He wasn\'t looking.' },
+    { id: 'center9', kind: 'center', who: 'Nurse Hikari', title: 'Bug Center', lines: ['First aid tent, next to the fried butter. The fried butter is not first aid ♡'] },
+    { id: 'marjorie', kind: 'judge', who: 'Marjorie', title: 'Pie judge', rule: 'encore', trained: BOARD,
+      bugs: [{ species: 'chrysochroa', name: 'Blue Ribbon Peach', level: 18 }, { species: 'gryllotalpa', name: 'Honorable Mention', level: 18 }, { species: 'bertholdia', name: 'Lattice Top', level: 18 }],
+      intro: ['I have judged pie at this fair for thirty-one years.', 'I will score every move out of ten. Out loud.', 'Do the same move twice running and it lands softer. We have SEEN that one.'],
+      next: 'A six. Generous.', sub: 'Next entry.',
+      won: 'An eight. I have given one nine. It was to a rhubarb. Go on through.', lost: 'A four. Soggy bottom.' },
+    { id: 'hollis', kind: 'judge', who: 'Hollis', title: 'Livestock judge', rule: 'inspect', trained: BOARD,
+      bugs: [{ species: 'lamprima', name: 'Grade A', level: 18 }, { species: 'pachyrhynchus', name: 'Good Feet', level: 18 }, { species: 'macrodontia', name: 'Best of Breed', level: 19 }],
+      intro: ['Hold it still. I\'m looking at the feet.', 'A bug that\'s been fed, cleaned and played with hits like it. One that hasn\'t, doesn\'t.', 'I can tell. I can always tell. It\'s the feet.'],
+      next: 'Sound animal. Poor feet.', sub: 'Bring the next one round.',
+      won: 'Well kept. I\'d have that bug on my place. Marjorie wouldn\'t. Go on.', lost: 'Feed it. Then come back and show me the feet.' },
+    { id: 'gunt', kind: 'judge', who: 'Gunt', friend: true, title: 'Best-in-Show judge', rule: 'bestinshow', trained: BOARD,
+      bugs: [{ species: 'nemoptera', name: 'Silhouette', level: 18 }, { species: 'phanaeus', name: 'Italian Leather', level: 18 }, { species: 'sagra', name: 'Clean Lines', level: 19 }],
+      intro: ['I was told there was a dress code. I exceeded it.', 'A bug wearing nothing takes more from mine. Each bare slot. I don\'t make the rules. I do, actually.', 'I dressed my bug for the clubhouse.'],
+      next: 'Bold. Wrong, but bold.', sub: 'That one had a silhouette.',
+      won: 'Effortless. I hate that I respect it. Nobody tells anyone about any of this.', lost: 'I would not wear that bug.' },
+    { id: 'korn', kind: 'judge', who: 'Korn', friend: true, title: 'Tractor-pull judge', rule: 'pull', trained: BOARD,
+      bugs: [{ species: 'manticora', name: 'Three Hundred', level: 18 }, { species: 'brachinus', name: 'Three Ten', level: 18 }, { species: 'trachelophorus', name: 'Long Ball', level: 19 }],
+      intro: ['Cuck me, you made it.', 'My bugs hit harder than anybody\'s. Ask anyone.', 'They miss some. Cuck me, do they miss. Far, though.'],
+      next: 'Cuck me. Okay, but how HARD was it.', sub: 'Happens to us big hitters.',
+      won: 'Cuck me. I outhit you every round. So who won? Cuck me.', lost: 'Big hits win. Cuck me, they actually win.' },
+    { id: 'champion', kind: 'champion', who: 'The Grand Champion', title: 'Grand Champion', trained: BOARD,
+      intro: ['A card table. A rosette the size of a hubcap.', 'Whoever holds it is not here. Their bug is, and it remembers how.', 'Beat it and yours sits here instead, for everyone who comes after.'] },
+  ],
 }];
 const STOPS = new Map(AREAS.flatMap((area) => area.stops.map((stop, i) => [stop.id, { area, stop, i }])));
 
@@ -284,7 +319,7 @@ export class Circuit {
     this.store = store; this.accounts = accounts; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.barn = barn; this.fights = fights || barn.fights; this.now = now;
     this.doc = store.loadDoc('circuit', { players: {} });
     this.doc.players ||= {};
-    barn.capOf = (pid) => capFor(Object.keys(this.doc.players[pid]?.ribbons || {}).length);
+    barn.capOf = (pid) => capOf(this.doc.players[pid]);
   }
   save() { this.store.saveDoc('circuit', this.doc); }
   me(pid) { return (this.doc.players[pid] ||= { done: {}, ribbons: {}, run: null }); }
@@ -299,10 +334,12 @@ export class Circuit {
   bugsOf(pid, me, stop) {
     const { area } = STOPS.get(stop.id), held = Object.keys(me.ribbons).length;
     if (area.scale) return me.run?.stop === stop.id && me.run.lineup ? me.run.lineup : scaled(stop.bugs, held); // a gauntlet under way keeps the lineup it began with
+    if (stop.kind === 'champion') return [this.champion().bug];
     if (stop.kind !== 'rival') return stop.bugs;
     const chosen = (me.rival ||= {})[stop.id] ||= rivalSpecies(this.barn.doc.pens[pid]?.species);
     return [{ species: chosen, name: stop.bugName, level: stop.level }];
   }
+  champion() { return this.doc.champion || HOUSE; }
   stopOf(id) {
     const found = STOPS.get(String(id || ''));
     if (!found) throw new GameError('There is no such stop on the circuit.', 404);
@@ -319,8 +356,10 @@ export class Circuit {
       ribbons: Array.from({ length: RIBBONS }, (_, k) => ({ n: k + 1, at: me.ribbons[k + 1] || null })),
       conceived: me.conceived || null,
       areas: AREAS.map((area) => ({ id: area.id, name: area.name, short: area.short, ribbon: area.ribbon, blurb: area.blurb, anyOrder: !!area.scale, open: areaOpen(me, area),
-        stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length), done: me.done[stop.id] || null, open: this.open(me, stop) })) })),
-      cap: capFor(Object.keys(me.ribbons).length), trained: TRAINED, tolls: me.tolls || {},
+        stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length),
+          // the rosette is only ever held: `done` is holding it now, and its purse is paid the first time
+          ...(stop.kind === 'champion' ? { done: this.champion().pid === pid ? this.champion().at : null, heldBy: this.champion().owner, since: this.champion().at || null, purse: me.done[stop.id] ? 0 : purseOf(stop, area) } : { done: me.done[stop.id] || null }), open: this.open(me, stop) })) })),
+      cap: capOf(me), trained: TRAINED, tolls: me.tolls || {},
       prizes: prizesOf(me), jars: this.shop?.jars(pid) || 0,
       cards: BOSSES().map((stop) => ({ id: stop.id, who: stop.who, poster: stop.poster, species: stop.bugs.at(-1).species, at: me.cards?.[stop.id] || null })),
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
@@ -342,10 +381,12 @@ export class Circuit {
 
   /** Send one of your bugs (`bug`, the partner if left out) against a trainer or the leader's next bug. */
   fight(pid, ownerName, body = {}) {
-    const stop = this.stopOf(body.stop), me = this.me(pid);
+    const raw = this.stopOf(body.stop), me = this.me(pid), champ = raw.kind === 'champion';
+    const stop = champ ? { ...raw, who: this.champion().owner } : raw; // the rosette's bug fights under its owner's name
     if (!FIGHTS.includes(stop.kind)) throw new GameError('There is nobody to fight here.', 409);
+    if (champ && this.champion().pid === pid) throw new GameError('The rosette is yours. Your bug is the one sitting there.', 409);
     if (!this.open(me, stop)) throw new GameError('Not yet. Finish the stops before it.', 409);
-    if (me.done[stop.id]) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : stop.kind === 'boss' ? 'You hold that card already. It will not fight you twice.' : stop.kind === 'wild' ? 'You caught it. There was only the one.' : `${stop.who} has had enough for one lifetime.`, 409);
+    if (me.done[stop.id] && !champ) throw new GameError(stop.kind === 'leader' ? 'That ribbon is already yours.' : stop.kind === 'boss' ? 'You hold that card already. It will not fight you twice.' : stop.kind === 'wild' ? 'You caught it. There was only the one.' : `${stop.who} has had enough for one lifetime.`, 409);
     if (this.fights.fightOf(pid)) throw new GameError('One of your bugs is in the ring right now.', 409);
     const pen = this.barn.ready(pid, body.bug ?? undefined), id = idOf(pen);
     let run = me.run?.stop === stop.id ? me.run : null;
@@ -387,8 +428,18 @@ export class Circuit {
         extra.jar = this.jarOf(pid, me.catch); extra.verdict = `${foe.name} is out cold. Jar it before it comes to.`;
       } else extra.verdict = won ? `${foe.name} is beaten on points and slips away. It will be back.` : `${foe.name} keeps its spot.`;
     } else if (!run) {
-      if (won) { me.done[stop.id] = this.now(); extra.spoils = stop.kind === 'boss' ? card() : [this.pay(pid, stop, area)]; }
-      extra.verdict = say(won ? stop.won : stop.lost);
+      if (stop.kind === 'champion') { // the rosette changes hands: a copy of the bug that took it sits there now
+        if (won) {
+          const first = !me.done[stop.id], { health: _health, lunch: _lunch, prizes: _prizes, ...snap } = fight.fighters[0];
+          extra.spoils = ['The Grand Champion rosette', ...(first ? [this.pay(pid, stop, area)] : [])];
+          me.done[stop.id] ||= this.now();
+          this.doc.champion = { pid, owner: fight.fighters[0].owner, bug: snap, at: this.now() };
+        }
+        extra.verdict = won ? `The rosette is yours. ${fight.fighters[0].name} defends it from here, whether you are around or not.` : `${foe.name} keeps the rosette for ${stop.who}.`;
+      } else {
+        if (won) { me.done[stop.id] = this.now(); extra.spoils = stop.kind === 'boss' ? card() : [this.pay(pid, stop, area)]; }
+        extra.verdict = say(won ? stop.won : stop.lost);
+      }
     } else {
       run.live = null;
       const pct = (i) => Math.max(1, Math.round((S.hp[i] / S.maxHp[i]) * 100));
@@ -402,6 +453,10 @@ export class Circuit {
       if (run.foe >= (run.lineup || stop.bugs).length && stop.kind === 'boss') {
         me.done[stop.id] = this.now(); me.run = null;
         extra.verdict = say(stop.won); extra.spoils = card();
+      } else if (run.foe >= (run.lineup || stop.bugs).length && stop.kind !== 'leader') { // a trainer or a judge with more than one bug: beaten, paid, no ribbon
+        me.done[stop.id] = this.now(); me.run = null;
+        extra.verdict = say(stop.won);
+        extra.spoils = [this.pay(pid, stop, area), ...(stop.id === 'korn' ? [`The Fair Board is behind you. Your bugs can now reach level ${capOf(me)}`] : [])];
       } else if (run.foe >= (run.lineup || stop.bugs).length) {
         me.done[stop.id] = me.ribbons[area.ribbon] = this.now(); me.run = null;
         for (const bornAt of run.won) {
@@ -410,7 +465,7 @@ export class Circuit {
         }
         extra.verdict = say(stop.won);
         this.award(pid, AWARDS.ribbon);
-        const cap = capFor(Object.keys(me.ribbons).length);
+        const cap = capOf(me);
         extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, ...(PRIZES[stop.id] ? [`Prize: ${PRIZES[stop.id].name}`] : []), this.pay(pid, stop, area), `Your bugs can now reach level ${cap}`, `+${RIBBON_XP} XP to every bug that won a round`];
       } else if (!won && !standing.length) {
         me.run = null;
@@ -487,7 +542,7 @@ export class Circuit {
   pay(pid, stop, area) {
     const me = this.me(pid), held = Object.keys(me.ribbons).length - (stop.kind === 'leader' && me.ribbons[area.ribbon] ? 1 : 0); // a ribbon just won does not raise its own purse
     const amount = purseOf(stop, area, held), player = this.store.players[pid];
-    if (amount && player && this.accounts) this.accounts.change(player, amount, 'circuit', `Bug Circuit: ${stop.kind === 'leader' ? `ribbon ${area.ribbon} from` : 'beat'} ${stop.who}`);
+    if (amount && player && this.accounts) this.accounts.change(player, amount, 'circuit', `Bug Circuit: ${stop.kind === 'leader' ? `ribbon ${area.ribbon} from` : stop.kind === 'champion' ? 'Grand Champion, took it from' : 'beat'} ${stop.who}`);
     return `$${amount} purse`;
   }
   /** Walk away from a leader's gauntlet between rounds. It starts from the first bug next time. */
