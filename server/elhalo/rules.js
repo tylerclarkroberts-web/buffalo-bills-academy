@@ -1,6 +1,7 @@
 // EL HALO rules, shared by the server match (server/elhalo/match.js) and the client (client/src/mines/elhalo).
 // No three.js and no DOM, so node:test drives them. Times are seconds. An original game; nothing borrowed.
 export * from './chiles.js';
+export * from './badges.js';
 
 export const SHIELD = { max: 100, delay: 3.2, rate: 45 };   // waits `delay` after the last hit, then refills at `rate`/s
 export const HEALTH = { max: 100 };                         // health never refills by itself: drops, revives and new rounds do
@@ -98,7 +99,7 @@ export function headOf(type, x, y, z, yaw = 0) {
 export const BUFADORA_RULES = { period: 60, warn: 4, blast: 2.4, launchVy: 28, enemyVy: 24 };
 
 export const MATCH = {
-  tickHz: 10, maxAlive: 30, maxPlayers: 8, breakSecs: 4, firstBreakSecs: 5, overSecs: 9,
+  tickHz: 10, maxAlive: 30, maxPlayers: 8, breakSecs: 4, firstBreakSecs: 5, overSecs: 40,
   downedSecs: 20, reviveSecs: 3, reviveRange: 1.9, buyRange: 1.8, elote: { heal: 30, cool: 60 },
   offlineDropSecs: 20, emptyResetSecs: 20, pickupLife: 25,
   lobbyCountdown: 5, truck: { grab: 3.4, reach: 5 }, chupaWave: 5, nightWave: 10, jeepWave: 15, gordoWave: 3, voladorEvery: 5,

@@ -248,3 +248,38 @@
   text-shadow: 0 3px 0 #7a1f3a, 0 0 22px rgba(255,80,180,.8); opacity: 0; pointer-events: none; z-index: 5;
   transform: scale(.92); transition: opacity .15s, transform .15s; }
 .elh-schnuttin.on { opacity: 1; transform: scale(1); }
+
+/* end-of-round leaderboard: tight, no scroll, sits above the pad on phones */
+.elh-hud.is-over .elh-down, .elh-hud.is-over .elh-reticle, .elh-hud.is-over .elh-bleed,
+.elh-hud.is-over .elh-prompt, .elh-hud.is-over .elh-pbar, .elh-hud.is-over .elh-dir { opacity: 0 !important; visibility: hidden; }
+.elh-over { z-index: 6; pointer-events: auto; gap: 6px; padding: 10px 12px max(12px, var(--safe-b));
+  background: radial-gradient(ellipse at center, rgba(29,15,36,.88), rgba(29,15,36,.96)); justify-content: center; overflow: hidden; }
+.elh-over .elh-logo.sm { font-size: clamp(22px, 6.4vw, 44px); }
+.elh-over .elh-final { font-size: clamp(14px, 3.2vw, 18px); letter-spacing: .12em; }
+.elh-over .elh-final b { font-size: clamp(18px, 4.4vw, 28px); }
+.elh-overboard { width: min(520px, 96vw); border-collapse: collapse; font-family: 'VT323', monospace; font-size: clamp(14px, 3.3vw, 20px); color: #fff; }
+.elh-overboard th { color: var(--sun); font-weight: 400; letter-spacing: .1em; text-align: right; padding: 0 7px 2px; }
+.elh-overboard th:not(:first-child), .elh-overboard td:not(:first-child) { width: 2.6em; }
+.elh-overboard th:first-child, .elh-overboard td:first-child { text-align: left; }
+.elh-overboard td { text-align: right; padding: 3px 7px; vertical-align: top; white-space: nowrap; }
+.elh-overboard td:first-child { white-space: normal; max-width: 70%; }
+.elh-overname { margin-right: 4px; }
+.elh-overboard tr.me .elh-overname { color: var(--sun); }
+.elh-overboard tr.top-killer { box-shadow: inset 3px 0 0 var(--sun); }
+.elh-overboard tr.top-reviver { box-shadow: inset 3px 0 0 var(--tq); }
+.elh-overboard tr.top-killer.top-reviver { box-shadow: inset 3px 0 0 var(--sun), inset 6px 0 0 var(--tq); }
+.elh-crown { display: inline-block; margin-left: 4px; color: var(--sun); }
+.elh-crown.up { color: var(--tq); }
+.elh-badges { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 1px; }
+.elh-badges i { font-style: normal; font-size: clamp(10px, 2.4vw, 13px); letter-spacing: .04em; color: #1d0f24; background: var(--sun); padding: 0 5px; line-height: 1.35; }
+.elh-overboard tr.top-reviver .elh-badges i[data-test="elhalo-badge-samaritan"] { background: var(--tq); }
+.elh-overboard tr .elh-badges i[data-test="elhalo-badge-piso"] { background: var(--rosa); color: #fff; }
+.elh-overacts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; pointer-events: auto; }
+.elh-overacts .m-btn { min-height: 42px; padding: 6px 16px; font-size: 18px; }
+.elh-over .elh-keys { font-size: 14px !important; }
+@media (max-height: 420px) {
+  .elh-over { gap: 3px; padding: 6px 8px max(8px, var(--safe-b)); }
+  .elh-over .elh-logo.sm { font-size: clamp(18px, 5.5vw, 28px); }
+  .elh-overboard td { padding: 1px 6px; }
+  .elh-overacts .m-btn { min-height: 36px; padding: 4px 12px; font-size: 16px; }
+}

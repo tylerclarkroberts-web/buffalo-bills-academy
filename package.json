@@ -28,6 +28,7 @@
     "e2e:ammo": "node scripts/e2e-el-halo-ammo.mjs",
     "e2e:walls": "node scripts/e2e-el-halo-walls.mjs",
     "e2e:chiles": "node scripts/e2e-el-halo-chiles.mjs",
+    "e2e:end-board": "node scripts/e2e-el-halo-end-board.mjs",
     "e2e:gag": "node scripts/e2e-gag.mjs",
     "e2e:barn": "node scripts/e2e-barn.mjs",
     "e2e:bout": "node scripts/e2e-bout.mjs",
