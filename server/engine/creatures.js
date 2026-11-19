@@ -11,5 +11,7 @@ export const MAX_LEVEL = 10; // where every bug tops out until its owner wins ci
 export const LEVEL_CAP = 20; // the most ribbons can raise that to
 /** Level from experience: 1 + floor(sqrt(xp / 40)), capped. Level 5 needs 640 xp (about a week of steady care). */
 /** `cap`: the top level this bug's owner has earned (MAX_LEVEL with no ribbons). */
-export const levelFor = (xp, cap = MAX_LEVEL) => Math.min(Math.max(MAX_LEVEL, Math.min(LEVEL_CAP, cap || 0)), 1 + Math.floor(Math.sqrt(Math.max(0, xp) / 40)));
+/** Every player's bug holds here until evolution is built. XP past it still counts and is kept for when the hold lifts. */
+export const PAUSED_AT = 9;
+export const levelFor = (xp, cap = MAX_LEVEL) => Math.min(PAUSED_AT, Math.max(MAX_LEVEL, Math.min(LEVEL_CAP, cap || 0)), 1 + Math.floor(Math.sqrt(Math.max(0, xp) / 40)));
 export const xpFor = (level) => 40 * (level - 1) ** 2;

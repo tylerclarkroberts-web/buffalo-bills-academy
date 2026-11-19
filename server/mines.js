@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { bucketChain, rng, farthest } from './engine/maze.js';
 import { shiftMaze, tierInfo } from './engine/mine-tiers.js';
-import { ROSTER, MAX_LEVEL } from './engine/creatures.js';
+import { ROSTER, PAUSED_AT } from './engine/creatures.js';
 import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
 import { mineDay, daySeed, dailyLayout } from './engine/daily-maze.js';
@@ -545,7 +545,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   // it starts on its spot and roams 6 to 12 tiles from there, out of the acid and never more than 3 tiles nearer the lift
   const route = (wild) => ({ ...wild, path: roamRoute(wild, 6 + pick(7), (p) => depth(p) >= Math.max(3, depth(wild) - 3) && !pool(p), pick) });
   const out = Array.from({ length: count }, (_, i) => {
-    const level = Math.min(MAX_LEVEL, tier + Math.min(pick(tier + 1), pick(tier + 1))); // the lower of two rolls: the day's strongest are the hardest to find
+    const level = Math.min(PAUSED_AT, tier + Math.min(pick(tier + 1), pick(tier + 1))); // the lower of two rolls: the day's strongest are the hardest to find
     return { id: `${day}:${i + 1}`, species: species(), level };
   }).map((wild) => route({ ...wild, ...spotFor(wild.level) })); // who is out today is rolled before any spot, so every shaft's tunnels hold the same bugs
   // Strays roll from their own seed, so letting one go never reshuffles the day's wild bugs.
@@ -560,7 +560,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   const deep = [];
   for (let k = 1; k <= depthOf(shift.shaft) && spots.length; k++) {
     const roll = rng(daySeed(`wild:${day}:deep:${k}`)), choose = (n) => Math.floor(roll() * n), at = tier + k;
-    const level = Math.min(MAX_LEVEL, at + choose(2));
+    const level = Math.min(PAUSED_AT, at + choose(2));
     deep.push(route({ id: `${day}:deep${k}`, species: species(at, roll, choose), level, ...spotFor(level) }));
   }
   // Which legendary: one of those nobody holds, picked by the day.

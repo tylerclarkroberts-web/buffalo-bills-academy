@@ -148,7 +148,7 @@ test('paid open bouts use the chosen opponent, settle both wallets and award bot
   });
   assert.equal(host.pen.xp, xpFor(4) - 10 + earned(host.pen)); assert.equal(host.pen.level, 4); // win or lose (the two species are random, and one type may beat the other), a fight's XP takes it past level 4
   assert.equal(hostResult.you.level, 3); assert.equal(hostResult.levelBefore, 3); assert.equal(hostResult.levelAfter, 4);
-  assert.equal(joined.body.pen.level, 10); assert.equal(joined.body.pen.xp, xpFor(10) + earned(joined.body.pen));
+  assert.equal(joined.body.pen.level, 9); assert.equal(joined.body.pen.xp, xpFor(10) + earned(joined.body.pen)); // levels hold at 9 for now; the XP for 10 is kept
   // a level 10 against a level 3 is as lopsided as the line goes: the favourite puts up nine times the stake for a sliver of bonus XP
   assert.deepEqual([hostResult.line, guestResult.line], [0.1, 0.9]);
   assert.deepEqual([hostResult.stake, guestResult.stake, guestResult.against], [100, riskFor(100, 0.1), 100]);
