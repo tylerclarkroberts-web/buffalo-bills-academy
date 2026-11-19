@@ -82,6 +82,7 @@ export class ElHalo {
     api.post('/elhalo/ready', needPlayer, (req, res) => { const r = this.match.setReady(req.player.id, !!req.body?.ready); if (r.error) return res.status(r.status || 409).json({ error: r.error }); res.json(r); });
     api.post('/elhalo/begin', needPlayer, (req, res) => { const r = this.match.begin(req.player.id); if (r.error) return res.status(r.status || 409).json({ error: r.error }); res.json(r); });
     api.post('/elhalo/leave', needPlayer, (req, res) => { this.match.leave(req.player.id); res.json({ ok: true }); });
+    api.post('/elhalo/again', needPlayer, (req, res) => { const r = this.match.again(req.player.id); if (r.error) return res.status(r.status || 409).json({ error: r.error }); res.json(r); });
     api.post('/elhalo/input', needPlayer, (req, res) => {
       const r = this.match.input(req.player.id, req.body, this.now());
       if (r.error) return res.status(r.status || 409).json({ error: r.error });
@@ -120,7 +121,15 @@ export class ElHalo {
       }
       if (b.grant && p) m.grantPower(p, b.grant);
       if (b.clearChile) m.clearChile(!!b.strip);
-      res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), maxHp: e.maxHp, state: e.state, leap: e.leapS ? e.leapS.ph : null, x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, t: m.t, dogs: b.dogs ? dogsAt(m.t) : undefined, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, me: p ? { x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield, pw: p.power?.id || null, pwl: p.power ? Math.max(0, p.power.until - m.t) : 0 } : null, chile: m.chile ? { id: m.chile.id, power: m.chile.power, x: m.chile.x, y: m.chile.y, z: m.chile.z } : null });
+      if (b.reset) m.reset(!!b.hard);
+      if (b.stats) for (const [id, st] of Object.entries(b.stats)) { const q = m.players.get(id) || (id === req.player.id ? p : null); if (q) Object.assign(q, st); }
+      if (b.over) {
+        if (m.phase === 'lobby' || m.phase === 'idle') { m.countdown(); m.phase = 'wave'; m.wave = Math.max(1, b.wave || m.wave || 1); }
+        m.queue = []; for (const e of m.enemies) e.dead = true; m.enemies = [];
+        for (const q of m.online()) if (q.state === 'alive') { q.state = 'downed'; q.until = m.t + 99; }
+        m.endMatch();
+      }
+      res.json({ ok: true, list: b.peek ? m.enemies.filter((e) => !e.dead).map((e) => ({ id: e.id, type: e.type, hp: Math.round(e.hp), maxHp: e.maxHp, state: e.state, leap: e.leapS ? e.leapS.ph : null, x: +e.x.toFixed(2), y: +e.y.toFixed(2), z: +e.z.toFixed(2) })) : undefined, wave: m.wave, phase: m.phase, t: m.t, dogs: b.dogs ? dogsAt(m.t) : undefined, enemies: m.enemies.length, truck: m.truck ? { t: m.truck.t, weapon: m.truck.weapon } : null, jeep: m.jeep ? { x: m.jeep.x, z: m.jeep.z, driver: m.jeep.driver, gunner: m.jeep.gunner } : null, last: m.last || null, me: p ? { id: p.id, x: p.x, y: p.y, z: p.z, st: p.state, slots: p.slots, seat: p.seat, nades: p.P.nades, hp: p.P.health, sh: p.P.shield, pw: p.power?.id || null, pwl: p.power ? Math.max(0, p.power.until - m.t) : 0 } : null, chile: m.chile ? { id: m.chile.id, power: m.chile.power, x: m.chile.x, y: m.chile.y, z: m.chile.z } : null });
     });
   }
 }

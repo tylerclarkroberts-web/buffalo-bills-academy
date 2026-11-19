@@ -229,7 +229,7 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
       )}
       <div className="elh-stage" ref={stage}>
         <canvas ref={canvas} className="elh-canvas" data-test="elhalo-canvas" />
-        <div className="elh-hud" aria-hidden={m !== 'playing'}>
+        <div className={`elh-hud${over ? ' is-over' : ''}`} aria-hidden={m !== 'playing' || over}>
           <div className="elh-vig" data-h="vig" />
           <div className="elh-dir" data-h="dir"><span /></div>
           <div className="elh-top">
@@ -270,7 +270,7 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
           <div className="elh-down" data-h="down" data-test="elhalo-down" />
         </div>
         {touch && (
-          <div className="elh-pad" data-test="elhalo-pad" hidden={m !== 'playing'}>
+          <div className="elh-pad" data-test="elhalo-pad" hidden={m !== 'playing' || over}>
             <div className="elh-look" data-pad="look" />
             <div className="elh-stick" data-pad="stick" data-test="elhalo-stick"><div className="elh-base" data-pad="base"><div className="elh-knob" data-pad="knob" /></div></div>
             <div className="elh-acts">
@@ -312,11 +312,43 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
           </div>
         )}
         {over && (m === 'playing' || m === 'paused') && (
-          <div className="elh-card elh-dead" data-test="elhalo-over">
+          <div className="elh-card elh-over" data-test="elhalo-over">
             <h2 className="elh-logo sm">SE ACABÓ</h2>
-            <p className="elh-final">LLEGARON A LA OLEADA <b>{info.last.wave}</b></p>
-            <ol className="elh-top3">{info.last.board.slice(0, 5).map((r) => <li key={r.id}>{r.name} · {r.score.toLocaleString()} · {r.kills}✶{r.pvp ? ` · ${r.pvp} PVP` : ''}</li>)}</ol>
-            <p className="elh-keys">OTRA RONDA EN {info.cd}</p>
+            <p className="elh-final">OLEADA <b data-test="elhalo-over-wave">{info.last.wave}</b></p>
+            <table className="elh-overboard" data-test="elhalo-leaderboard">
+              <thead>
+                <tr>
+                  <th>JUGADOR</th>
+                  <th title="Horde kills">✶</th>
+                  <th title="Revives">↑</th>
+                  <th title="Times downed">↓</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(info.last.board || []).map((row) => (
+                  <tr key={row.id} className={[row.id === info.myId || row.me ? 'me' : '', row.topKiller ? 'top-killer' : '', row.topReviver ? 'top-reviver' : ''].filter(Boolean).join(' ')} data-test={`elhalo-row-${row.id}`}>
+                    <td>
+                      <span className="elh-overname">{row.name}</span>
+                      {row.topKiller && <span className="elh-crown" title="Most kills" data-test="elhalo-top-killer">✶</span>}
+                      {row.topReviver && <span className="elh-crown up" title="Most revives" data-test="elhalo-top-reviver">↑</span>}
+                      {!!row.badges?.length && (
+                        <span className="elh-badges">
+                          {row.badges.map((b) => <i key={b.id} data-test={`elhalo-badge-${b.id}`} title={b.name}>{b.name}</i>)}
+                        </span>
+                      )}
+                    </td>
+                    <td>{row.kills}</td>
+                    <td>{row.revives || 0}</td>
+                    <td>{row.deaths || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="elh-overacts">
+              <button type="button" className="m-btn" onClick={() => game.current?.again()} data-test="elhalo-again">▸ OTRA RONDA</button>
+              <button type="button" className="m-btn alt" onClick={() => game.current?.leaveLobby()} data-test="elhalo-over-back">SALIR</button>
+            </div>
+            <p className="elh-keys">NUEVA RONDA EN {info.cd}</p>
           </div>
         )}
         {m === 'error' && <div className="elh-card"><p>This door needs WebGL, and this browser said no.</p></div>}

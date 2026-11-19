@@ -405,7 +405,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
   function info() {
     if (!snap) return;
     const ro = roster();
-    const i = { players: ro.length, names: ro.map((r) => r.name), roster: ro, wave: snap.wv, phase: snap.ph, cd: snap.cd, joined, st: me?.st, last: snap.last || null, status,
+    const i = { players: ro.length, names: ro.map((r) => r.name), roster: ro, wave: snap.wv, phase: snap.ph, cd: snap.cd, joined, st: me?.st, last: snap.last || null, myId, status,
       ready: !!me?.ready, host: !!me?.host, hostName: ro.find((r) => r.host)?.name || null, look: me?.look || null, myColor: ro.find((r) => r.me)?.color ?? null, seat: me?.seat || null, night: !!snap.nt };
     const key = JSON.stringify(i);
     if (key !== infoKey) { infoKey = key; onInfo(i); }
@@ -809,7 +809,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     set('pbar', '.on', !!(pr && pr.p));
     set('actbtn', '.ready', !!pr && st === 'alive');
     set('down', '.on', st !== 'alive' && joined);
-    set('down', 'text', st === 'downed' ? `¡CAÍSTE! QUE TE LEVANTEN · ${me.cd}` : st === 'dead' ? (snap?.ph === 'over' ? '' : 'VUELVES LA PRÓXIMA OLEADA') : '');
+    set('down', 'text', snap?.ph === 'over' ? '' : st === 'downed' ? `¡CAÍSTE! QUE TE LEVANTEN · ${me.cd}` : st === 'dead' ? 'VUELVES LA PRÓXIMA OLEADA' : '');
     set('bleed', '.on', st === 'downed'); set('bleed', '--k', st === 'downed' ? (me.cd / L.MATCH.downedSecs).toFixed(3) : '0');
   }
   function aimingAt() { const r = aimRay(eye(), fwd(), 60); return !!r.hit; }
@@ -1222,6 +1222,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
     async ready(onOff) { const r = await post('/ready', { ready: !!onOff }).catch(() => null); return r?.ok; },
     async begin() { const r = await post('/begin').catch(() => null); return r?.ok ? true : (r?.data?.error || false); },
     async leaveLobby() { if (!joined) return; await leave().catch(() => {}); joined = false; setMode('title'); },
+    async again() { const r = await post('/again').catch(() => null); return r?.ok ? true : (r?.data?.error || false); },
     setLook(look, color) { setPreview(look, color ?? pvColor); },
     resume() { if (mode !== 'paused') return; setMode('playing'); if (audio) { audio.resume(); audio.music(true); } if (!PAD) lock(); },
     pause,
@@ -1248,7 +1249,7 @@ export function createGame({ canvas, root, touch = false, reduceMotion = false, 
       foes: [...ents.en.values()].map((e) => { const c = cur(e, performance.now()); return { id: e.id, type: e.type, st: e.st, hp: e.hp, x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.z.toFixed(2) }; }), rings: rings.length,
       dogs: dogs.map((d) => ({ i: d.i, x: +d.m.root.position.x.toFixed(2), z: +d.m.root.position.z.toFixed(2), yaw: +d.m.root.rotation.y.toFixed(2), pair: d.pair || null })), dogT: +dogT.toFixed(3), shop: world.shop?.children.length || 0,
       elote: { x: ELOTE.x, z: ELOTE.z, say: eloteSay, line: eloteSay >= 0 ? ELOTE_LINES[eloteSay] : null },
-      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA, crouched, adsHeld, gfxTier, controls: { ...controls }, chile: snap?.ch || 0, power: myPower(), powerLeft: me?.pwl || 0, powers: snap?.pw || [], schnuttin: t < schnuttinUntil, horses: horses.length, river: !!(river && river.visible) }),
+      bf: snap?.bf || 0, vy: +vy.toFixed(3), bufadora: BUFADORA, crouched, adsHeld, gfxTier, controls: { ...controls }, chile: snap?.ch || 0, power: myPower(), powerLeft: me?.pwl || 0, powers: snap?.pw || [], schnuttin: t < schnuttinUntil, horses: horses.length, river: !!(river && river.visible), last: snap?.last || null }),
     aimAt(x, y, z) { const o = eye(); yaw = Math.atan2(-(x - o.x), -(z - o.z)); pitch = Math.atan2(y - o.y, Math.hypot(x - o.x, z - o.z)); },
     aimAtNearest(head = false) { const now = performance.now(); const e = [...ents.en.values()].sort((a, b) => Math.hypot(a.to.x - pos.x, a.to.z - pos.z) - Math.hypot(b.to.x - pos.x, b.to.z - pos.z))[0]; if (!e) return false; const c = head ? enemyHead(e, now) : enemyCenter(e, now); api.aimAt(c.x, c.y, c.z); return true; },
     aimAtPlayer(name, head = false) { const p = [...ents.pl.values()].find((q) => q.name === name); if (!p) return false; const c = cur(p, performance.now()); api.aimAt(c.x, c.y + (head ? 1.62 : 1), c.z); return true; },

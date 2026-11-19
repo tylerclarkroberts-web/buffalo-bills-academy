@@ -42,7 +42,8 @@ export class Match {
     if (this.online().length) this.phase = 'lobby';
   }
   freshStats(p) {
-    Object.assign(p, { kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, ready: false, truckGot: -1, eloteAt: -Infinity, eloteWave: 0 });
+    Object.assign(p, { kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, ready: false, truckGot: -1, eloteAt: -Infinity, eloteWave: 0,
+      revives: 0, revived: 0, melee: 0, chiles: 0, launches: 0, dmg: 0, alive: 0 });
     p.state = 'dead'; // a new match: back to the starting guns
     this.respawn(p);
   }
@@ -59,6 +60,7 @@ export class Match {
       p = { id, name: String(name).slice(0, 18), color, joined: false, online: true, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, state: 'dead', P: L.createPlayer(),
         w: 'rifle', slots: [...L.START_WEAPONS], wv: 0, moving: 0, firing: 0, lastIn: nowMs, tokens: 3, act: false, actWas: false, rev: 0, revOf: null, prompt: null,
         hist: [], kills: 0, pvp: 0, deaths: 0, heads: 0, score: 0, pts: 500, ammo: 0, eloteAt: -Infinity, eloteWave: 0, inputs: 0, inWin: 0, until: 0, offT: 0, corr: null, seq: 0,
+        revives: 0, revived: 0, melee: 0, chiles: 0, launches: 0, dmg: 0, alive: 0,
         ready: false, joinedAt: 0, seat: null, lungeMs: 0, airT: 0, groundY: 0, look: L.cleanLook(look ?? this.looks?.(id)), needles: null, truckGot: -1 };
       this.players.set(id, p);
       if (this.online().length > MATCH.maxPlayers) { this.players.delete(id); return { error: 'full' }; }
@@ -430,7 +432,7 @@ export class Match {
     if (e.hp > 0) return;
     e.dead = true;
     const pts = L.killPoints(e.type, how);
-    if (by) { by.kills++; by.pts += pts; by.score += pts; if (head) by.heads++; }
+    if (by) { by.kills++; by.pts += pts; by.score += pts; if (head) by.heads++; if (how === 'melee') by.melee = (by.melee || 0) + 1; }
     this.ev('k', e.id, TYPE_IDX[e.type], r2(e.x), r2(this.lift(e)), r2(e.z), by ? by.id : null, how);
     const roll = this.rnd();
     const kind = roll < 0.18 ? 'ammo' : roll < 0.26 ? 'health' : roll < 0.3 ? 'frag' : roll < 0.33 ? 'sticky' : null;
@@ -444,6 +446,7 @@ export class Match {
     const fromPlayer = by && by.id && this.players.has(by.id);
     if (q.power?.id === 'invuln' && !fromPlayer) { this.ev('blk', q.id); return; }
     const r = L.applyDamage(q.P, amount, this.t);
+    q.dmg = (q.dmg || 0) + r.toShield + r.toHealth;
     this.ev('h', q.id, from ? r1(from.x) : null, from ? r1(from.z) : null, Math.round(amount), r.toShield > 0 ? 1 : 0, r.shieldBroke ? 1 : 0, head ? 1 : 0);
     if (by && by.id && by !== q) this.ev('hm', by.id, head ? 1 : 0);
     if (!r.dead) return;
@@ -475,7 +478,7 @@ export class Match {
 
     // players: shields, the bleed-out clock, riding in the jeep, the ACTION button
     for (const p of online) {
-      if (p.state === 'alive') L.tickShield(p.P, t, dt, p.shMax || L.SHIELD.max);
+      if (p.state === 'alive') { p.alive = (p.alive || 0) + dt; L.tickShield(p.P, t, dt, p.shMax || L.SHIELD.max); }
       else {
         if (p.power) this.clearPower(p);
         if (p.state === 'downed' && t >= p.until) { p.state = 'dead'; p.until = Infinity; this.ev('dd', p.id); } // back next wave
@@ -513,10 +516,7 @@ export class Match {
   phases() {
     const t = this.t, alive = this.alive();
     if (!['over', 'idle', 'lobby'].includes(this.phase) && !alive.length && this.online().some((p) => p.state !== 'alive') && this.wave > 0) {
-      this.phase = 'over'; this.phaseUntil = t + MATCH.overSecs; this.truck = null;
-      const board = [...this.players.values()].sort((a, b) => b.score - a.score).slice(0, 8).map((p) => ({ id: p.id, name: p.name, score: p.score, kills: p.kills, pvp: p.pvp, heads: p.heads }));
-      this.last = { wave: this.wave, board };
-      this.ev('over', this.wave); return;
+      this.endMatch(); return;
     }
     if (this.phase === 'over' && t >= this.phaseUntil) { this.reset(); this.ev('new'); return; }
     if (this.phase === 'truck') {
@@ -1010,7 +1010,7 @@ export class Match {
         p.rev += dt;
         if (p.rev >= MATCH.reviveSecs) {
           downed.state = 'alive'; downed.P.dead = false; downed.P.health = 50; downed.P.shield = 0; downed.P.lastHit = this.t; downed.until = 0;
-          p.pts += MATCH.points.revive; p.score += MATCH.points.revive; p.rev = 0; p.revOf = null; this.ev('rv', downed.id, p.id);
+          p.pts += MATCH.points.revive; p.score += MATCH.points.revive; p.revives = (p.revives || 0) + 1; downed.revived = (downed.revived || 0) + 1; p.rev = 0; p.revOf = null; this.ev('rv', downed.id, p.id);
         }
       } else { p.rev = 0; p.revOf = null; }
       p.prompt = { k: 'revive', label: downed.name, p: p.rev / MATCH.reviveSecs };
@@ -1076,7 +1076,7 @@ export class Match {
     for (const p of this.alive()) {
       if (p.seat) continue; // riding EL TORO: stay in the jeep
       if (!this.overBufadora(p.x, p.z, p.y)) continue;
-      p.launched = true; p.airT = 0;
+      p.launched = true; p.airT = 0; p.launches = (p.launches || 0) + 1;
       this.ev('bfl', p.id, BF.launchVy);
     }
     for (const e of this.enemies) {
@@ -1145,6 +1145,7 @@ export class Match {
       p.P.health = Math.min(p.hpMax, p.P.health * L.CHILE.giganteVitals);
       p.P.shield = Math.min(p.shMax, p.P.shield * L.CHILE.giganteVitals);
     }
+    p.chiles = (p.chiles || 0) + 1;
     this.ev('eat', p.id, id);
     if (id === 'schnuttin') this.ev('schnuttin', p.id);
     if (id === 'caballos') this.washHorde(p);
@@ -1228,6 +1229,28 @@ export class Match {
       this.ev('wash', e.id, r2(e.x), r2(e.y), r2(e.z));
       this.hurtEnemy(e, Math.max(e.hp, 9999), 'caballos', by, { x: e.x, z: e.z });
     }
+  }
+
+
+  endMatch() {
+    this.phase = 'over';
+    this.phaseUntil = this.t + MATCH.overSecs;
+    this.truck = null;
+    this.last = { wave: this.wave, board: L.buildEndBoard([...this.players.values()]) };
+    this.ev('over', this.wave);
+    return { ok: true, last: this.last };
+  }
+  // Play again from the end board: back to the lobby, and the host (or a fully-ready room) starts the next one.
+  again(id) {
+    const p = this.players.get(id);
+    if (!p || !p.joined) return { error: 'not in the match' };
+    if (this.phase !== 'over') return { error: 'the match is still on', status: 409 };
+    this.reset();
+    this.pickHost();
+    p.ready = true;
+    this.ev('again', id);
+    this.countdown();
+    return { ok: true, phase: this.phase };
   }
 
   snapshot({ events = true } = {}) {
