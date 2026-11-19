@@ -14,7 +14,7 @@ import { MAX_SHIFT_MS } from './mines.js';
 import { RUN_SPEED } from './engine/mine-movement.js';
 import { sees, touching, behind, onTunnel, lineOfSight } from './engine/pvp-geometry.js';
 import { wildAt } from './engine/wild-roam.js';
-import { BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
+import { BY_ID, levelFor, xpFor, PAUSED_AT } from './engine/creatures.js';
 import { rarityOf } from './engine/bug-types.js';
 import { ITEM } from './catalog/index.js';
 import { danceId } from './engine/dances.js';
@@ -250,10 +250,10 @@ export class Pvp {
     return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp, cap: pen.cap, health: healthOf(pen) } : { species: pen.species, name: pen.name };
   }
   /** Own-side XP bar numbers for the battle screen (null for a loaner). */
-  xpBar(xp, cap = MAX_LEVEL) {
+  xpBar(xp, cap = PAUSED_AT) {
     if (xp == null) return null;
     const level = levelFor(xp, cap);
-    return { xp, level, from: xpFor(level), to: level >= (cap || MAX_LEVEL) ? null : xpFor(level + 1) };
+    return { xp, level, from: xpFor(level), to: level >= (cap || PAUSED_AT) ? null : xpFor(level + 1) };
   }
   startBattle(a, b) {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');

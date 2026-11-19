@@ -480,6 +480,18 @@ export class MineScene {
     if (!this.reduce && bg.moving) m.mesh.rotation.z = Math.sin(now / 90) * 0.18;
     else m.mesh.rotation.z *= 0.85;
   }
+  /** The day's purple pool (server/mines.js, purpleSpot): there for every miner, mined by none. A dark rim, the liquid, a paler eye, and its own light. */
+  addPurple({ x, y }) {
+    const at = new THREE.Vector3(x * TILE, 0, y * TILE), flat = (mesh, h) => { mesh.rotation.x = -Math.PI / 2; mesh.position.copy(at).setY(h); this.scene.add(mesh); return mesh; };
+    flat(new THREE.Mesh(new THREE.CircleGeometry(0.98, 24), new THREE.MeshBasicMaterial({ color: '#1c0b2e' })), 0.016);
+    // its own blocky liquid: the acid's texture is green, and green times purple is mud
+    const cv = Object.assign(document.createElement('canvas'), { width: 24, height: 24 }), g = cv.getContext('2d'), r = rng(0x9e3779b1);
+    for (let i = 0; i < 576; i++) { g.fillStyle = ['#5a14a8', '#7a1fd6', '#7a1fd6', '#9b45ee', '#c07bff'][Math.floor(r() * 5)]; g.fillRect(i % 24, Math.floor(i / 24), 1, 1); }
+    const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
+    flat(new THREE.Mesh(new THREE.CircleGeometry(0.84, 24), new THREE.MeshBasicMaterial({ map: tex })), 0.022);
+    this.purpleEye = flat(new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), new THREE.MeshBasicMaterial({ color: '#f0d4ff', transparent: true, opacity: 0.55 })), 0.028);
+    this.purpleLight = new THREE.PointLight('#a040ff', 18, 11, 1.3); this.purpleLight.position.copy(at).setY(0.7); this.scene.add(this.purpleLight);
+  }
   /** v67: 'acid' = glowing, minable; 'damp' = dark wet rock, not in yet. What you see is what you can mine. */
   setAcid(on) {
     on = !!on; if (on === this.acidIn) return; this.acidIn = on;
@@ -714,6 +726,10 @@ export class MineScene {
     const jitter = fl ? (Math.random() - 0.5) * 2.4 * fl : 0;
     this.lamp.intensity = Math.max(1.5, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter) * this.lampPower); // a tired headlamp (more tired when he's near)
     if (this.horror?.target) this.lamp.intensity = Math.max(0.25, this.lamp.intensity * (0.08 + 0.92 * this.horror.lamp)); // Horror Night: it barely holds on
+    if (this.purpleLight) { // it breathes, slower than the acid does
+      const k = this.reduce ? 0 : Math.sin(now / 620);
+      this.purpleLight.intensity = 18 + k * 7; this.purpleEye.scale.setScalar(1 + k * 0.25);
+    }
     this.poolLight.intensity = this.acidIn ? 11 + (this.reduce ? 0 : Math.sin(now / 380) * 4) : 1.6;
     if (this.horror?.target) this.poolLight.intensity *= 0.65; // the acid still glows (the liquid itself is unlit and unfogged), it just lights less of the tunnel
     if (this.acidIn && !this.reduce) this.poolTex.offset.set(now / 9000, now / 13000);

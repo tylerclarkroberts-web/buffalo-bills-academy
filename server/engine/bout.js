@@ -8,6 +8,11 @@ import { typeEdge, typeOf, PERK } from './bug-types.js';
 export const BOUT_HP = 100;
 export const MAX_ROUNDS = 32; // actions; venom and a bombardier's pop can add events around an action
 export const GEAR_CAP = 0.06;
+// A bug whose evolution went wrong (server/barn.js, evolve) carries one of these as `botched`, for good. Lazy: now and
+// then it does not take its turn. Berserk: it hits harder, is hit harder, and will not stop to heal. Haywire: its hits
+// land anywhere from a tap to a wallop, and now and then the arm goes for its owner instead.
+export const QUIRKS = ['lazy', 'berserk', 'haywire'];
+export const QUIRK = { lazy: { skip: 0.08 }, berserk: { power: 0.3, open: 0.18 }, haywire: { low: 0.4, span: 1.5, self: 0.06, hp: 0.06 } };
 // HP: the most a packed lunch (store food) gives back, once a fight. Measured over every species pair, 10 HP moves an
 // even fight to about 65% (60% at level 10), level with the best armour; 15 HP made it 72%, more than any gear.
 export const LUNCH_CAP = 10;
@@ -59,7 +64,7 @@ export function startBout(a, b, seed) {
     const battle = battleFor(c.species, c.level, c.legacyAbilities, c.battle), stats = combatStats(c.level), stance = STANCES[battle.stance];
     // `plain` (tests, balance runs) fights without the species trait
     return { c, t: c.plain ? null : c.species, ty: c.plain ? null : typeOf(c.species), st: BY_ID[c.species].stats, battle, stats, stance, moves: movesFor(c.species, c.level, c.legacyAbilities),
-      boost: (1 + trainedOf(c)) * stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage,
+      boost: (1 + trainedOf(c)) * stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage * (c.botched === 'berserk' ? 1 + QUIRK.berserk.power : 1),
       ward: 1 - Math.max(0, Math.min(GEAR_CAP, Number(c.defense) || 0)), // defense gear: what is left of each hit it takes
       lunch: Number(c.lunch?.heal) > 0 ? { name: String(c.lunch.name || 'packed lunch'), heal: Math.min(LUNCH_CAP, Math.round(Number(c.lunch.heal))) } : null, ate: false,
       turn: 0, readyAt: {}, usedAt: {}, guard: 0, guardLeft: 0, weaken: 1, venom: null, lastSpecial: null,
@@ -142,6 +147,7 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.kick) mult *= 1 + TRAIT.kick;
   if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
   if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
+  if (target.c.botched === 'berserk') mult *= 1 + QUIRK.berserk.open; // it does not look where it is going
   if (target.c.rule === 'web') mult *= 1 - RULES.web.power;
   if (target.c.rule === 'encore' && s.prev === move.id) mult *= 1 - RULES.encore.power; // the judge has seen that one
   if (target.c.rule === 'inspect') mult *= RULES.inspect.low + RULES.inspect.span * Math.max(0, Math.min(100, s.c.mood ?? 60)) / 100;
@@ -306,8 +312,22 @@ export function stepBout(S, choice) {
       line: `${s.c.name} ${why} and loses the turn.` });
     return done();
   }
+  // The quirks roll only for a botched bug, so every other fight draws the same numbers it always did.
+  if (s.c.botched === 'lazy' && R() < QUIRK.lazy.skip) {
+    rounds.push({ by, type: 'move', skipped: true, effect: 'strike', moveId: 'basic', ability: s.moves[0].name, tier: 0, hit: false, critical: false, dmg: 0, healed: 0, hp: [...hp], turn, ownTurn: s.turn,
+      line: `${s.c.name} cannot be bothered and loses the turn.` });
+    return done();
+  }
+  if (s.c.botched === 'haywire' && R() < QUIRK.haywire.self) {
+    const dmg = hurt(by, Math.max(1, Math.round(maxHp[by] * QUIRK.haywire.hp)));
+    rounds.push({ by: foe, type: 'venom', effect: 'weaken', moveId: 'rule', ability: 'Loose Wiring', tier: 0, hit: true, dmg, hp: [...hp], turn,
+      line: `${s.c.name}'s arm goes for ${s.c.name} instead: ${dmg} damage, and the turn is gone.${spots()}` });
+    pop(by); bursts(); rest();
+    return done();
+  }
 
   let move = (choice && s.moves.find(m => m.id === choice && usable(s, m, s.turn))) || pickFor(S, by, s.turn);
+  if (s.c.botched === 'berserk' && move.effect === 'heal') move = s.moves[0]; // it will not stop to heal, whoever asks
   const thrown = ball(s, s.turn);
   if (thrown && move.effect === 'heal') move = s.moves[0]; // the tell promised a ball: it throws one
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
@@ -326,6 +346,7 @@ export function stepBout(S, choice) {
     if (hit) {
       const masked = target.t === 'acanthaspis' && target.mask;
       let roll = 0.8 + R() * 0.45; if (s.t === 'chrysochroa') roll = Math.max(roll, 0.8 + R() * 0.45);
+      if (s.c.botched === 'haywire') roll = QUIRK.haywire.low + R() * QUIRK.haywire.span;
       const leaps = target.t === 'odontomachus' && !target.jumped && hp[foe] < maxHp[foe] / 2;
       dmg = blow(S, by, move, roll, s.attacks, s.turn);
       s.kick = false; if (masked) target.mask = false;
@@ -375,7 +396,7 @@ export function simulateBout(a, b, seed) {
 
 export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
 const lines = new Map();
-const lineKey = (c) => JSON.stringify([c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null, c.trained || 0, (c.prizes || []).join()]);
+const lineKey = (c) => JSON.stringify([c.botched || 0, c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null, c.trained || 0, (c.prizes || []).join()]);
 /**
  * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, attack and
  * defense gear, packed lunch, stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is

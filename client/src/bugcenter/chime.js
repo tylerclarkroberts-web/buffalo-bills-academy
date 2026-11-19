@@ -22,5 +22,7 @@ export function healChime() {
   [0, 0.12].forEach((at, i) => note(a, semi(1760, i ? 7 : 4), 1.75 + at, 0.25, { wave: 'sine', vol: 0.04 }));
   return true;
 }
+/** The specialist at work behind the curtain: three short, rude buzzes. */
+export function drill() { const a = ctx(); if (!a) return; [0, 0.5, 0.85].forEach((at, i) => note(a, 92 + i * 14, at, 0.34, { wave: 'sawtooth', vol: 0.04 })); }
 /** A soft "pod clicks into the machine" blip. */
 export function podBlip() { const a = ctx(); if (!a) return; note(a, 1320, 0, 0.07, { wave: 'square', vol: 0.03 }); note(a, 990, 0.06, 0.08, { wave: 'triangle', vol: 0.03 }); }

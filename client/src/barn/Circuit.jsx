@@ -139,7 +139,7 @@ export default function Circuit({ b, busy, act, boutOpen }) {
     <div className="cc-top">
       <div><span className="cc-org">Tri-County Invertebrate Athletic Association</span>
         {c.areas.length > 1 && <div className="cc-areas" role="group" aria-label="Areas">{c.areas.map((a) => <button key={a.id} className={`btn small${a.id === area.id ? ' on' : ' ghost'}`} aria-pressed={a.id === area.id} disabled={!a.open} title={a.open ? undefined : a.anyOrder ? 'Win ribbon 2 first' : a.ribbon > 8 ? 'Win all eight ribbons first' : `Win ribbon ${a.ribbon - 1} first`} onClick={() => { setAreaId(a.id); setSel(null); }} data-test="circuit-area">{a.ribbon > 8 ? '' : `${a.ribbon}. `}{a.short || a.name}{a.open ? (c.ribbons[a.ribbon - 1]?.at ? ' ✓' : '') : ' 🔒'}</button>)}</div>}
-        <h2>{area.name}</h2><p className="small muted">{area.blurb} · Your bugs top out at level {c.cap}.{area.anyOrder ? ' Areas 3 to 6 can be won in any order; whoever you leave for later trains harder.' : ''}</p></div>
+        <h2>{area.name}</h2><p className="small muted">{area.blurb}{area.anyOrder ? ' Areas 3 to 6 can be won in any order; whoever you leave for later trains harder.' : ''}</p></div>
       <div className="cc-won">
         {c.prizes.length > 0 && <details className="cc-prizes" data-test="circuit-prizes"><summary>{c.prizes.length} {c.prizes.length === 1 ? 'prize' : 'prizes'}</summary><ul>{c.prizes.map((prize) => <li key={prize.id}><b>{prize.name}.</b> {prize.does}</li>)}</ul></details>}
         <div className="cc-rack" aria-label="Ribbons">{c.ribbons.map((r) => <Rosette key={r.n} n={r.n} on={!!r.at} />)}</div>

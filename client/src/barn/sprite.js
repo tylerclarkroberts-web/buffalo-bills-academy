@@ -415,6 +415,20 @@ const legTip = (grid, y0, y1) => { let best = null; for (let y = Math.max(0, y0)
 function stamp(ctx, p, k, x, y, mirror = false) {
   p.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '.') return; ctx.fillStyle = k[ch]; ctx.fillRect(x + c, y + r, 1, 1); if (mirror) ctx.fillRect(SPRITE - 1 - x - c, y + r, 1, 1); }));
 }
+const ARM = [
+  '........d...d', '........dh.hd', '........ds.sd', '.........dsd.', '........djjjd', '.........dsd.', '........dhsd.', '........dhsd.',
+  '.......dhssd.', '......dpjjd..', '.....dhspd...', '....dhssd....', '...dhssd.....', '..dhhhsd.....', '..ddddd......',
+];
+const ARM_PAL = { d: '#2b3138', s: '#9aa5b1', h: '#e8eef4', j: '#ffb347', p: '#b455ff' };
+/** The mech arm an evolved bug comes back with: shoulder plate bolted to its right side, elbow, forearm, claw. Botched, it went on the left, upside down. */
+function armOverlay(ctx, grid, botched) {
+  // bolted on where the body is widest between the shoulders and the waist, so it sits on the thorax and not on a neck
+  const b = bounds(grid), h = b.bot - b.top; let y = 0, run = null;
+  for (let r = b.top + Math.round(h * 0.3); r <= b.top + Math.round(h * 0.6); r++) { const at = bodyRun(grid, r); if (at && (!run || at[1] - at[0] > run[1] - run[0])) { run = at; y = r; } }
+  if (!run) return;
+  if (botched) stamp(ctx, [...ARM].reverse().map((row) => [...row].reverse().join('')), ARM_PAL, run[0] - ARM[0].length + 6, y - 1);
+  else stamp(ctx, ARM, ARM_PAL, run[1] - 5, y - ARM.length + 2);
+}
 export const GEAR_SHAPES = ['shell', 'claws', 'boots', 'helmet', 'shield', 'mandibles', 'armor', 'bandage'];
 function gearOverlay(ctx, grid, shape) {
   const b = bounds(grid), h = b.bot - b.top, at = (f) => b.top + Math.round(h * f);
@@ -473,7 +487,7 @@ function paintWear(ctx, wear, body, outline) {
  * a big drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
  */
 export function spriteCanvas(bug, style, level, fine = 1) {
-  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${fine}`;
+  const key = `${bug.id}|${youngForm(bug, level) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${style?.evo ? (style.botched ? 'x' : 'e') : ''}|${fine}`;
   if (cache.has(key)) return cache.get(key);
   const b = style?.bugskin?.pal ? { ...bug, look: { ...(bug.look || {}), pal: style.bugskin.pal } } : bug;
   const grid = spriteGrid(b, level), N = SPRITE * fine;
@@ -483,11 +497,12 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
   const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
   const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
+  if (style?.evo) armOverlay(x, grid, style.botched);
   if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape); // defense gear goes on first, the attack item over it
   if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape);
   if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eyeSpot(b, level));
   if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
-  if (fine !== 1 && (style?.gear?.shape || style?.defense?.shape || style?.bugacc?.shape || style?.bughat?.shape)) paintWear(ctx, wear, body, b.look?.pal?.[0] || '#111111');
+  if (fine !== 1 && (style?.evo || style?.gear?.shape || style?.defense?.shape || style?.bugacc?.shape || style?.bughat?.shape)) paintWear(ctx, wear, body, b.look?.pal?.[0] || '#111111');
   cache.set(key, c);
   return c;
 }

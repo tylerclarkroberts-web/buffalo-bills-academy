@@ -67,6 +67,17 @@ export function rollOutcome(randInt = (n) => crypto.randomInt(n)) {
 export const SCARE_CHANCE = 28000; // out of 100,000
 export const FAUN_CHANCE = 20000; // out of 100,000: overall 20% of shifts, never the same shift as the visitor
 export const SCARE_AFTER_MS = 30000;
+export const PURPLE_AFTER_MS = [45000, 90000]; // a purple shift's backstop: the bug wanders off and finds the pool by then, wherever the miner is
+/** Where the day's purple pool lies: about halfway along the shortest walk from the lift to the first acid pool, so every miner passes it. */
+export function purpleSpot(maze, first) {
+  let p = { x: first.x, y: first.y }; const at = (q) => maze.dist[q.y]?.[q.x] ?? -1, stop = Math.max(3, Math.round(at(p) / 2));
+  while (at(p) > stop) {
+    const next = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: p.x + dx, y: p.y + dy })).find((q) => at(q) === at(p) - 1);
+    if (!next) break;
+    p = next;
+  }
+  return at(p) >= 3 && at(p) < at(first) ? p : null;
+}
 export const EGG_WINDOW_MS = 30000; // an egg (when there is one) lies near the start for the first 30 s of the shift
 // One roll, two mutually exclusive encounters. 0..27999 the visitor (28%), 28000..47999 the faun (20%), else neither.
 export function rollScare(randInt = (n) => crypto.randomInt(n)) {
@@ -218,8 +229,8 @@ export class Mines {
   }
   completionView(player, receipt) {
     const pending = this.foreman?.doc.lastMineShift?.[player.id] === receipt.shiftId ? this.foreman.view(player.id).pending : null;
-    if (!receipt.result) return { pending };
-    return { result: { ...receipt.result, bankroll: player.bankroll, ...(receipt.reason === 'mud' && pending ? { foreman: pending } : {}) } };
+    if (!receipt.result) return { pending, ...(receipt.sick ? { sick: receipt.sick } : {}) };
+    return { ...(receipt.sick ? { sick: receipt.sick } : {}), result: { ...receipt.result, bankroll: player.bankroll, ...(receipt.reason === 'mud' && pending ? { foreman: pending } : {}) } };
   }
 
   start(player, request = {}) {
@@ -255,8 +266,12 @@ export class Mines {
       // The roof is looser the farther out a pool is: nothing at the lift, the shaft's rate halfway, double it at the far end.
       pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, rich: richAt(out(p), shaft.quality), roll: this.poolInt(100000), quantity: null, remaining: null,
         ...(shaft.caveIn && this.caveInt(100) < shaft.caveIn * 2 * out(p) / far ? { cave: true } : {}) })) }); // decided now, sprung on arrival
+    const purplePool = purpleSpot(maze, chain[0]); if (purplePool) shift.purplePool = purplePool; // the same tile for everyone in this shaft today
     if (this.horrorOn(now)) shift.horror = { lightsOutMs: lightsOutMs(shift.id) }; // stamped at clock-in: the whole shift is one kind of night
     if (this.barn?.rollEgg(player.id)) shift.egg = true; // rolled last and from the barn's own source: pay and visitor never see it
+    // Everyone sees the purple pool. Only a partner due to evolve (server/barn.js), on a shift that rolled for it, drinks: when its miner
+    // walks past, or PURPLE_AFTER_MS in at the latest. The shift ends there.
+    if (shift.purplePool && this.barn?.rollPurple?.(player.id)) shift.purple = { afterMs: PURPLE_AFTER_MS[0] + this.scareInt(PURPLE_AFTER_MS[1] - PURPLE_AFTER_MS[0]) };
     // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
@@ -290,7 +305,7 @@ export class Mines {
     const bug = guide?.fainted ? null : guide;
     const wilds = this.wildsFor(s);
     const egg = this.eggAvailable(s, playerId);
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })) } : {}) };
   }
@@ -443,7 +458,9 @@ export class Mines {
         const took = Math.floor(result.amount * 100 * TWIN_CUT) / 100;
         result.amount = Math.round((result.amount - took) * 100) / 100; result.twin = { took };
       }
-      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt } };
+      // However a purple shift ends, the bug drank: it goes home sick. The acid already in the bucket is paid as usual.
+      let sick = null; if (cur.purple) try { sick = this.barn?.fallSick?.(player.id) || null; } catch { /* the pay must not wait on the barn */ }
+      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}) } };
       this.commit(player.id, cur);
       try { this.onShiftEnd?.(player.id, cur, cur.settlement); } catch { /* admin stats only */ }
     }
@@ -503,6 +520,10 @@ export class Mines {
   }
 }
 
+export const WILD_STRONG = 8; // one wild bug in this many is a strong one
+/** A wild bug's level on a day of tier `at` (deeper shafts count as rougher days). Most are low: 1 to 3 on a calm day, 3 to 5 on the
+ *  roughest. A strong one is `at` + 3 to 5, so a level past 5 is a lucky find, not the usual. */
+export const wildLevel = (at, pick) => Math.min(PAUSED_AT, pick(WILD_STRONG) === 0 ? at + 3 + pick(3) : 1 + Math.floor((at - 1) / 2) + pick(3));
 export const WILDS_A_DAY = [5, 8]; // fewest and most in a day, all of them out at once
 // A released bug (a stray, Barn.release) is down here about one day in STRAY_DAYS, the same day for every miner, at most
 // STRAYS_A_DAY of them at once. It keeps its name and level and says whose it was; jarring it ends it for everyone.
@@ -545,7 +566,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   // it starts on its spot and roams 6 to 12 tiles from there, out of the acid and never more than 3 tiles nearer the lift
   const route = (wild) => ({ ...wild, path: roamRoute(wild, 6 + pick(7), (p) => depth(p) >= Math.max(3, depth(wild) - 3) && !pool(p), pick) });
   const out = Array.from({ length: count }, (_, i) => {
-    const level = Math.min(PAUSED_AT, tier + Math.min(pick(tier + 1), pick(tier + 1))); // the lower of two rolls: the day's strongest are the hardest to find
+    const level = wildLevel(tier, pick);
     return { id: `${day}:${i + 1}`, species: species(), level };
   }).map((wild) => route({ ...wild, ...spotFor(wild.level) })); // who is out today is rolled before any spot, so every shaft's tunnels hold the same bugs
   // Strays roll from their own seed, so letting one go never reshuffles the day's wild bugs.
@@ -560,7 +581,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   const deep = [];
   for (let k = 1; k <= depthOf(shift.shaft) && spots.length; k++) {
     const roll = rng(daySeed(`wild:${day}:deep:${k}`)), choose = (n) => Math.floor(roll() * n), at = tier + k;
-    const level = Math.min(PAUSED_AT, at + choose(2));
+    const level = wildLevel(at, choose);
     deep.push(route({ id: `${day}:deep${k}`, species: species(at, roll, choose), level, ...spotFor(level) }));
   }
   // Which legendary: one of those nobody holds, picked by the day.

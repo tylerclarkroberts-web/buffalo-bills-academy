@@ -204,6 +204,7 @@ export default function Mines() {
   const [phase, setPhase] = useState('intro'); // intro | play | result
   const [shift, setShift] = useState(null);
   const [result, setResult] = useState(null);
+  const [sick, setSick] = useState(null); // the partner drank purple acid: its name and what the shift still paid
   const [err, setErr] = useState('');
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -226,6 +227,10 @@ export default function Mines() {
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
   useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
   function complete(v, toSurface = false) {
+    if (v.sick) { // whichever way the shift ended, this comes first
+      rememberMineReceipt(me?.id, v.result?.shiftId);
+      setSick({ name: v.sick, result: v.result || null }); setPhase('sick'); refreshSession(); return;
+    }
     if (toSurface && (v.result || Object.hasOwn(v, 'pending'))) {
       rememberMineReceipt(me?.id, v.result?.shiftId);
       refreshSession(); navigate('/'); return;
@@ -296,6 +301,7 @@ export default function Mines() {
         {err && <div className="m-err" role="alert" onClick={() => setErr('')}>! {err}</div>}
         {phase === 'intro' && <Intro me={me} loading={loading} onStart={start} starting={starting} office={office} open={open} going={going} onShaft={setShaft} />}
         {phase === 'play' && shift && <Shift key={shift.shiftId} shift={shift} me={me} audio={audio.current} sound={sound} onFinish={finish} onQuit={quit} onComplete={complete} exitShift={exitShift} onLeaving={setLeaving} />}
+        {phase === 'sick' && sick && <Sick sick={sick} />}
         {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} fare={going?.fare} />}
       </div>
       {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); if (lecture.reason === 'paid') navigate('/'); else setPhase('intro'); }} />}
@@ -451,6 +457,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   }
   const release = () => { hold(false); client.current?.stop().catch(() => {}); };
   const [elapsed, setElapsed] = useState(0);
+  const [purple, setPurple] = useState(false); // the partner has found the purple acid; the shift ends a few seconds on
+  const purpleRef = useRef(false);
   // A fainted bug stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone).
   const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
   const [status, setStatus] = useState('FIND THE ACID POOL');
@@ -755,6 +763,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       },
     });
     sceneRef.current = scene;
+    if (shift.purplePool) scene.addPurple(shift.purplePool);
     chart();
     if (me) scene.setSelf(me);
     if (!bucketShift) scene.setAcid(vein.current.flowing);
@@ -882,6 +891,19 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const tick = setInterval(() => {
       if (!doomRef.current && !done.current && !document.hidden) chart();
       setElapsed(Date.now() - shift.localStart);
+      // The purple pool. Everybody passes it; only a bug on a purple shift goes in, when its miner walks by or the backstop runs out.
+      const pp = shift.purplePool;
+      if (pp && !purpleRef.current && !battleRef.current && !doomRef.current && !done.current) {
+        const by = Math.hypot(scene.pos.x / TILE - pp.x, scene.pos.y / TILE - pp.y) < 1.7, name = String(shift.bug?.name || 'YOUR BUG').toUpperCase();
+        if (shift.purple && (by || Date.now() - shift.localStart >= shift.purple.afterMs)) {
+          purpleRef.current = true; setPurple(true); hold(false); bugGuide?.setPool(pp); // it walks in
+          setLine(by ? `${name} IS HEADING STRAIGHT FOR THE PURPLE STUFF.` : `${name} HAS WANDERED OFF AND FOUND SOMETHING PURPLE.`);
+          setTimeout(() => exitShift.current?.(), PURPLE_MS);
+        } else if (by && !shift.purple) {
+          purpleRef.current = true; // said once
+          setLine(shift.bug ? `THAT'S WEIRD. NEVER SEEN ACID LIKE THAT BEFORE. ${name} WON'T GO NEAR IT.` : 'THAT\'S WEIRD. NEVER SEEN ACID LIKE THAT BEFORE.');
+        }
+      }
       const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
       const out = maze.dist[Math.round(scene.pos.y / TILE)]?.[Math.round(scene.pos.x / TILE)]; // worms keep to the far tunnels: none at the lift, twice as many at the far end
       const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden, scale: out >= 0 ? 2 * out / farthest(maze) : 1 });
@@ -1098,6 +1120,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
+      {purple && <div className={`m-purple${lowFlash ? ' calm' : ''}`} role="status" data-test="purple"><p>{String(shift.bug?.name || 'Your bug').toUpperCase()} IS DRINKING IT.</p></div>}
       {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} wilds={[...explored.current.wilds].map(id => sceneRef.current?.wilds.get(id)).filter(Boolean)}
         pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
@@ -1199,6 +1222,25 @@ function MovePad({ apply }) {
       <button type="button" className="m-turn" aria-label="Turn right" data-test="mine-turn-r"
         onPointerDown={hold(1)} onPointerUp={release} onPointerCancel={release} onPointerLeave={release}>▸</button>
     </div>
+  );
+}
+
+const PURPLE_MS = 6000; // from the bug going for the purple acid to the shift ending
+
+/** The shift ended because the partner drank purple acid. One way out. */
+function Sick({ sick }) {
+  const r = sick.result;
+  return (
+    <main className="m-result m-sick" data-test="sick">
+      <div className="hazard-bar" />
+      <p className="m-sub">SHIFT REPORT</p>
+      <h1 className="m-title">{String(sick.name).toUpperCase()} IS NOT WELL</h1>
+      <p className="m-story">It drank something purple. The shift is over.</p>
+      {r && <p className="m-dim">THE ACID YOU HAD STILL PAID +${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>}
+      <div className="m-actions">
+        <button className="m-btn" onClick={() => navigate('/barn/center')}>[ BUG CENTER ]</button>
+      </div>
+    </main>
   );
 }
 

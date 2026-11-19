@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
-import { Circuit, RIBBON_XP, PURSE, TRAINED, capFor, rivalSpecies, scaled, AREAS, BOSSES, PRIZES, prizesOf, HOUSE } from '../server/circuit.js';
+import { Circuit, RIBBON_XP, PURSE, TRAINED, rivalSpecies, scaled, AREAS, BOSSES, PRIZES, prizesOf, HOUSE } from '../server/circuit.js';
 import { Shop } from '../server/shop.js';
 import { WILD } from '../server/pvp.js';
 import { typeOf, edge } from '../server/engine/bug-types.js';
@@ -80,7 +80,7 @@ test('a leader gauntlet: health carries, a lost round benches that bug, two wins
   assert.equal(me.run, null);
   assert.ok(me.ribbons[1] && me.done.pugh);
   assert.match(win.extra.spoils[0], /Ribbon 1/);
-  assert.deepEqual(win.extra.spoils.slice(1, 4), ['Prize: The Whistle', `$${PURSE.ribbon} purse`, 'Your bugs can now reach level 11']);
+  assert.deepEqual(win.extra.spoils.slice(1, 4), ['Prize: The Whistle', `$${PURSE.ribbon} purse`, `+${RIBBON_XP} XP to every bug that won a round`]);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === b.bornAt).xp >= xpB + RIBBON_XP);
   assert.ok(barn.bugs(pid).find((p) => p.bornAt === a.bornAt).xp >= xpFor(6) + RIBBON_XP); // a won a round too
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'pugh' }), /already yours/);
@@ -110,20 +110,19 @@ test('dodgeball: every third own turn of the leader\'s bug cannot miss, and the 
   }
 });
 
-test('a beaten trainer pays its purse once, and a ribbon pays more and raises the level cap by one', (t) => {
+test('a beaten trainer pays its purse once, and a ribbon pays more but no longer moves the level cap', (t) => {
   const { barn, circuit, pid, hatch, store } = setup(t);
   const a = hatch(6);
   const me = circuit.me(pid), salad = circuit.stopOf('salad'), pugh = circuit.stopOf('pugh');
   circuit.settle(pid, salad, { id: idOf(a), bornAt: a.bornAt }, salad.bugs[0], fake('t1', 0, [50, 0]));
   assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer);
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'salad' }), /Not yet|enough for one lifetime/);
-  assert.equal(barn.view(pid).pen.cap, 9); // levels hold at 9 for now, whatever the ribbons say
+  assert.equal(barn.view(pid).pen.cap, 9);
   me.run = { stop: 'pugh', foe: 1, foeHp: null, out: [], hp: {}, won: [], live: null };
   circuit.settle(pid, pugh, { id: idOf(a), bornAt: a.bornAt }, pugh.bugs[1], fake('r9', 0, [30, 0]));
   assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer + PURSE.ribbon);
-  assert.deepEqual([capFor(0), capFor(1), capFor(8), capFor(30)], [10, 11, 18, 20]);
   const pen = barn.view(pid).pen;
-  assert.equal(pen.cap, 9); // the ribbon's extra level waits with the rest while levels hold at 9
+  assert.equal(pen.cap, 9); // a bug's stage sets its ceiling (9 until it evolves), not its owner's ribbons
   barn.doc.pens[pid].xp = xpFor(15);
   assert.equal(barn.view(pid).pen.level, 9, 'XP past the hold is kept for when it lifts');
   assert.equal(barn.doc.pens[pid].xp, xpFor(15));
@@ -410,7 +409,7 @@ test('the drive-in opens with six ribbons and the rail spur with seven; Ray rewi
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'follower' }), /Not yet/);
   me.ribbons[7] = 1; assert.deepEqual(open(), [true, true]);
   const ray = circuit.view(pid).areas[6].stops.find((x) => x.id === 'ray'), jack = circuit.view(pid).areas[7].stops.find((x) => x.id === 'jack');
-  assert.deepEqual([ray.purse, jack.purse, ray.bugs.length, jack.bugs.length, circuit.view(pid).cap], [PURSE.ribbon * 7, PURSE.ribbon * 8, 3, 3, 17]);
+  assert.deepEqual([ray.purse, jack.purse, ray.bugs.length, jack.bugs.length], [PURSE.ribbon * 7, PURSE.ribbon * 8, 3, 3]);
   const mine = (prizes) => ({ species: 'lamprima', name: 'Mine', level: 16, prizes });
   // the rewind: once a fight, and only once
   let most = 0, any = 0;
@@ -442,15 +441,14 @@ test('the Fairgrounds: four judges in a row lift the cap to 20, and the rosette 
   for (const n of [1, 2, 3, 4, 5, 6, 7]) me.ribbons[n] = 1;
   assert.equal(fair().open, false);
   me.ribbons[8] = 1;
-  assert.deepEqual([fair().open, circuit.view(pid).cap, fair().stops.map((x) => x.kind).join()], [true, 18, 'rival,center,judge,judge,judge,judge,champion']);
+  assert.deepEqual([fair().open, fair().stops.map((x) => x.kind).join()], [true, 'rival,center,judge,judge,judge,judge,champion']);
   me.done.nephew5 = 1;
   const beat = (stop, rounds) => { let fight; for (let k = 0; k < rounds; k++) { fight = barn.fights.get(circuit.fight(pid, 'Tester', { stop }).live); fight.S.hp = [90, 0]; barn.fights.finish(fight, 0); } return fight; };
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'hollis' }), /Not yet/);
   const before = store.players[pid].bankroll;
   for (const judge of ['marjorie', 'hollis', 'gunt']) beat(judge, 3);
-  assert.deepEqual([circuit.view(pid).cap, Object.keys(me.ribbons).length, store.players[pid].bankroll - before], [18, 8, PURSE.judge * 9 * 3]);
-  assert.match(beat('korn', 3).extra.spoils.join(), /level 20/);
-  assert.deepEqual([circuit.view(pid).cap, barn.capOf(pid)], [20, 20]);
+  assert.deepEqual([Object.keys(me.ribbons).length, store.players[pid].bankroll - before], [8, PURSE.judge * 9 * 3]);
+  beat('korn', 3);
   // the house holds the rosette until somebody takes it
   const table = () => fair().stops.at(-1);
   assert.deepEqual([table().heldBy, table().bugs[0].name, table().done, table().purse], [HOUSE.owner, HOUSE.bug.name, null, PURSE.champion * 9]);

@@ -128,7 +128,7 @@ test('walking into it starts the fight; beating it pays the partner, robs nobody
   for (let i = 0; i < 200 && !battle.over; i++) { f.clock.now += 5000; f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }); }
   assert.deepEqual([battle.over.winner, battle.over.reason, battle.over.raid], ['a', 'fainted', null], 'a level 10 against the least grown');
   const bonus = upsetXp(WIN_BONUS_XP, view.battle.line); // the line had the level 10 at 90%: a sliver of the even-fight bonus
-  assert.deepEqual([view.battle.line, bonus], [0.9, 6]);
+  assert.deepEqual([view.battle.line, bonus], [0.9, 4]);
   assert.equal(f.barn.doc.pens.ann.xp, before + fightXp({ won: true, base: BATTLE_XP, bonus: WIN_BONUS_XP, odds: 0.9, level: 10, foeLevel: s.wilds[0].level })); // and next to nothing for one so far below it
   assert.equal(f.ann.bankroll, cash);
   const after = f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId });
