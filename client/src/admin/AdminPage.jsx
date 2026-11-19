@@ -204,16 +204,16 @@ function Money({ data, pick }) {
           cols={[{ k: 'day', label: 'Day' }, ...srcKeys.map((k) => ({ k, label: SRC[k], r: 1, fmt: (v) => (v ? <Sg v={v} /> : <span className="muted">·</span>) })), { k: 'net', label: 'Net', r: 1, val: (r) => srcKeys.reduce((a, k) => a + (r[k] || 0), 0), fmt: (v, r) => <Sg v={srcKeys.reduce((a, k) => a + (r[k] || 0), 0)} /> }]} />
       </>}
       {sub === 'bj' && <>
-        <p className="small muted bo-note">From the blackjack table logs (older rounds where logs survive, every round from now on). Sneak bets are counted from now on; older sneak wins are shown without their stake.</p>
+        <p className="small muted bo-note">From the blackjack table logs (older rounds where logs survive, every round from now on). Kash bets are counted from now on; older Kash wins are shown without their stake.</p>
         <Grid compact rows={m.blackjack} onRow={(r) => pick(r.id)} initial={{ k: 'lifetime', dir: -1 }} cols={[
           { k: 'name', label: 'Player', fmt: (v) => <b>{v}</b> },
           { k: 'handsN', label: 'Hands', r: 1, fmt: (v, r) => <span title={`${r.wins} W / ${r.losses} L / ${r.pushes} P · ${r.bjs} blackjacks`}>{v}</span> },
           { k: 'hands', label: 'Main bets', r: 1, fmt: (v) => <Sg v={v} /> },
           { k: 'match', label: 'Royal Match', r: 1, fmt: (v) => <Sg v={v} /> },
           { k: 'pairs', label: 'Royal Pairs', r: 1, fmt: (v) => <Sg v={v} /> },
-          { k: 'sneakN', label: 'Sneaks', r: 1, fmt: (v, r) => <span title={`staked ${$(r.sneakStaked)}, won ${$(r.sneakWon)}`}>{v ? `${v} (${r.sneakWins} won)` : '·'}</span> },
+          { k: 'sneakN', label: 'Kash', r: 1, fmt: (v, r) => <span title={`staked ${$(r.sneakStaked)}, won ${$(r.sneakWon)}`}>{v ? `${v} (${r.sneakWins} won)` : '·'}</span> },
           { k: 'ins', label: 'Insurance', r: 1, fmt: (v) => (v ? <Sg v={v} /> : '·') },
-          { k: 'house', label: 'As the house', r: 1, fmt: (v, r) => (v ? <span title={r.sneakAgainstN ? `${r.sneakAgainstN} sneak bets against them: ${$(r.sneakAgainst, { sign: true })}` : ''}><Sg v={v} /></span> : '·') },
+          { k: 'house', label: 'As the house', r: 1, fmt: (v, r) => (v ? <span title={r.sneakAgainstN ? `${r.sneakAgainstN} Kash bets against them: ${$(r.sneakAgainst, { sign: true })}` : ''}><Sg v={v} /></span> : '·') },
           { k: 'lifetime', label: 'Lifetime (cash-outs)', r: 1, fmt: (v) => <Sg v={v} /> },
         ]} />
       </>}
@@ -387,7 +387,7 @@ function Drill({ id, onClose, players }) {
               <Panel title="Blackjack">{d.bj || d.bjSeat ? <ul className="bo-subs">
                 {d.bjSeat && <><li><span>Rounds · tables</span><b className="num">{d.bjSeat.rounds} · {d.bjSeat.tables}</b></li><li><span>Wagered → returned</span><b className="num">{$(d.bjSeat.wagered)} → {$(d.bjSeat.won)}</b></li></>}
                 {d.bj && <><li><span>Main bets</span><Sg v={d.bj.hands} /></li><li><span>Royal Match / Pairs</span><span><Sg v={d.bj.match} /> / <Sg v={d.bj.pairs} /></span></li>
-                  <li><span>Sneak bets</span><b className="num">{d.bj.sneakN} · won {$(d.bj.sneakWon)}</b></li><li><span>Insurance</span><Sg v={d.bj.ins} /></li><li><span>As the house</span><Sg v={d.bj.house} /></li></>}
+                  <li><span>Kash bets</span><b className="num">{d.bj.sneakN} · won {$(d.bj.sneakWon)}</b></li><li><span>Insurance</span><Sg v={d.bj.ins} /></li><li><span>As the house</span><Sg v={d.bj.house} /></li></>}
                 <li><span>Lifetime (cash-outs)</span><Sg v={d.bjLifetime} /></li></ul> : <p className="muted small">Never played.</p>}</Panel>
               <Panel title="Slots">{d.slots ? <ul className="bo-subs"><li><span>Spins</span><b className="num">{d.slots.spins}</b></li><li><span>Wagered → won</span><b className="num">{$(d.slots.wagered)} → {$(d.slots.won)}</b></li><li><span>Return</span><b className="num">{d.slots.wagered ? Math.round((100 * d.slots.won) / d.slots.wagered) : 0}%</b></li><li><span>Biggest</span><b className="num">{$(d.slots.biggest)}</b></li></ul> : <p className="muted small">Never played.</p>}</Panel>
               <Panel title="Other"><ul className="bo-subs"><li><span>Faun gifts</span><Sg v={d.sources.fawn?.net || 0} /></li><li><span>Foff golf</span><Sg v={d.sources.golf?.net || 0} /></li><li><span>Store spend</span><Sg v={d.sources.store?.net || 0} /></li><li><span>Investing (realized)</span><Sg v={d.invest.realized || 0} /></li></ul></Panel>

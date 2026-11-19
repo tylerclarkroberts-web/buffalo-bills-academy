@@ -2,7 +2,7 @@
 // Everything lives in new files next to players.json, so older data files are untouched:
 //   access.json   per player: IPs, devices, visits (time by area), login count
 //   ledger.jsonl  one line per bankroll change (append-only; players' own txns keep only their last 200)
-//   events.jsonl  logins, mine shifts, blackjack settlements and sneak bets
+//   events.jsonl  logins, mine shifts, blackjack settlements and Kash bets
 // Entries backfilled from older data carry `r: 1` (reconstructed); everything else is recorded live.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -192,8 +192,8 @@ export class Telemetry {
       reason: receipt?.reason || null, scare: !!(s.scare || s.scareAt), faun: !!s.faun, twin: r?.twin?.took || 0, spill: s.spill ? s.spill.lost / 1000 : 0, pvp: r?.pvp?.kind || null }, { t: receipt?.at });
   }
 }
-/** Feed blackjack into the telemetry: backfill every table once, scan each change, and note each sneak bet
- * (a losing sneak bet leaves no log line, so it is recorded as it is slid onto the felt). */
+/** Feed blackjack into the telemetry: backfill every table once, scan each change, and note each Kash Bet
+ * (a losing Kash Bet leaves no log line, so it is recorded as it is slid onto the felt). */
 export function watchBlackjack(bj, telemetry) {
   for (const t of Object.values(bj.doc.tables || {})) { try { telemetry.bjScan(t); } catch { /* skip a bad table */ } }
   const prev = bj.onChange;

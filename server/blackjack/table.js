@@ -41,15 +41,23 @@ export function newTable({ code, name, host, settings }) {
     seats: Array(st.maxSeats).fill(null), deck: null, discards: [], shuffles: 0, log: [], seq: 0, roundNo: 0, round: null, last: null,
   };
 }
-const RULE_TEXT = (r) => [
-  r.s17 ? 'Dealer stands on all 17s (S17)' : 'Dealer hits soft 17 (H17)',
-  `Blackjack pays ${r.bjPays === 1.5 ? '3:2' : '6:5'}`,
-  `Double on ${r.doubleOn === 'any' ? 'any first two cards' : r.doubleOn}${r.das ? ', also after a split' : ', not after a split'}`,
-  r.maxHands > 1 ? `Split up to ${r.maxHands} hands${r.resplitAces ? ', aces too' : ''}; split aces ${r.hitSplitAces ? 'may hit' : 'get one card each'}` : 'No splitting',
-  r.insurance ? 'Insurance 2:1 when the dealer shows an ace' : 'No insurance',
-  r.surrender ? 'Late surrender: give up half after the peek' : 'No surrender',
-  'Dealer peeks for blackjack under an ace or ten', 'Single deck; fresh shuffle when fewer than 18 cards are left, announced',
-];
+/** Buried in the middle of the house-rules list so it reads like any other line. */
+export const KASH_RULE = 'A Kash Bet is a royal bet slid onto the felt after you have seen your cards, paid as if it went down before the deal, and only against a player dealer. A dealer who is watching and sees it can call security.';
+const RULE_TEXT = (r) => {
+  const rows = [
+    r.s17 ? 'Dealer stands on all 17s (S17)' : 'Dealer hits soft 17 (H17)',
+    `Blackjack pays ${r.bjPays === 1.5 ? '3:2' : '6:5'}`,
+    `Double on ${r.doubleOn === 'any' ? 'any first two cards' : r.doubleOn}${r.das ? ', also after a split' : ', not after a split'}`,
+    r.maxHands > 1 ? `Split up to ${r.maxHands} hands${r.resplitAces ? ', aces too' : ''}; split aces ${r.hitSplitAces ? 'may hit' : 'get one card each'}` : 'No splitting',
+    r.insurance ? 'Insurance 2:1 when the dealer shows an ace' : 'No insurance',
+    r.surrender ? 'Late surrender: give up half after the peek' : 'No surrender',
+    'Dealer peeks for blackjack under an ace or ten',
+    'Single deck; fresh shuffle when fewer than 18 cards are left, announced',
+  ];
+  // Not first, not last: after the split line, before insurance.
+  rows.splice(4, 0, KASH_RULE);
+  return rows;
+};
 export { RULE_TEXT };
 export function royalInfo(royal) {
   return Object.fromEntries(Object.entries(royal).map(([k, v]) => [k, { ...v, ...royalEv(k, v) }]));

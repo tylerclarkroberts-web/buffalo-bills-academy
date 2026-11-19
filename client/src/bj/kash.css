@@ -1,0 +1,121 @@
+/* Kash Bet: a slightly more apparent late royal, a felt glint, and the back-room toy. Mobile-first, no scroll. */
+
+.bj-kash {
+  display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: 0 8px;
+  border: 1px dashed rgba(255,233,168,.5); border-radius: 999px;
+  background: rgba(255,233,168,.08); color: rgba(255,233,168,.78);
+  font-size: 13px; cursor: pointer; letter-spacing: .02em;
+  animation: kash-breathe 2.8s ease-in-out 1;
+}
+.bj-kash span { font-size: 10px; text-transform: uppercase; font-weight: 700; }
+.bj-kash small { font-size: 9px; }
+.bj-kash:hover, .bj-kash:focus-visible { color: #ffe9a8; border-color: #ffe9a8; background: rgba(255,233,168,.16); }
+@keyframes kash-breathe {
+  0% { box-shadow: 0 0 0 0 rgba(255,233,168,0); }
+  30% { box-shadow: 0 0 0 4px rgba(255,233,168,.22); }
+  100% { box-shadow: 0 0 0 0 rgba(255,233,168,0); }
+}
+
+.bj-kash-glint {
+  position: absolute; inset: auto; left: 50%; bottom: 8%; width: 42px; height: 42px;
+  margin-left: -21px; pointer-events: none; z-index: 4;
+  background: radial-gradient(circle, rgba(255,233,168,.9) 0%, rgba(255,210,80,.35) 40%, transparent 70%);
+  border-radius: 50%;
+  animation: kash-glint 2.6s ease-out 1;
+}
+@keyframes kash-glint {
+  0% { transform: scale(.4); opacity: 0; }
+  18% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.bj-kash-catch {
+  min-height: 36px; padding: 0 12px; border: 0; border-radius: 999px; cursor: pointer;
+  background: #5a1d28; color: #ffe9a8; font: 700 12px/1 system-ui, sans-serif;
+  letter-spacing: .04em; text-transform: uppercase;
+  box-shadow: 0 0 0 1px rgba(255,233,168,.35);
+  animation: kash-breathe 1.8s ease-in-out infinite;
+}
+.bj-kash-catch:hover, .bj-kash-catch:focus-visible { background: #7a2433; }
+
+.kash-overlay {
+  position: fixed; inset: 0; z-index: 120; background: #0b0810;
+  display: flex; flex-direction: column; overflow: hidden;
+  height: 100dvh; max-height: 100dvh;
+}
+
+.kash-drag {
+  flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #2a1a28, #0b0810 70%);
+}
+.kash-door {
+  position: absolute; right: 8%; top: 18%; width: 22%; height: 64%;
+  background: #12080c; border: 3px solid #3a2218; border-radius: 6px 6px 0 0;
+  box-shadow: inset 0 0 30px #000;
+}
+.kash-door::after { content: ''; position: absolute; right: 10%; top: 48%; width: 8px; height: 8px; border-radius: 50%; background: #ffe9a8; }
+.kash-guards { position: absolute; inset: 0; pointer-events: none; }
+.kash-guard {
+  position: absolute; bottom: 10%; width: 64px; height: 170px; background: #1a1a22;
+  clip-path: polygon(32% 2%, 68% 2%, 74% 16%, 70% 24%, 88% 48%, 70% 48%, 72% 100%, 28% 100%, 30% 48%, 12% 48%, 30% 24%, 26% 16%);
+  opacity: .95;
+}
+.kash-guard::before {
+  content: ''; position: absolute; left: 28%; top: -8%; width: 44%; height: 22%;
+  background: #15151c; border-radius: 40% 40% 10% 10%;
+}
+.kash-guard.left { left: 22%; transform: rotate(-8deg); }
+.kash-guard.right { right: 26%; transform: rotate(8deg); }
+.kash-drag-bust {
+  position: absolute; left: 18%; top: 42%; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  color: #ffe9a8; font-size: 12px; transition: left 1.5s ease-in, top 1.5s ease-in, transform 1.5s ease-in;
+}
+.kash-drag.go .kash-drag-bust { left: 68%; top: 36%; transform: rotate(18deg) scale(.7); }
+.kash-drag.rm .kash-drag-bust, .kash-drag.rm.go .kash-drag-bust { transition: none; left: 68%; }
+.kash-drag-line {
+  position: absolute; top: 10%; left: 0; right: 0; text-align: center;
+  color: #ffe9a8; font-size: clamp(22px, 6vw, 36px); margin: 0;
+}
+
+.kash-room {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: #0b0810; color: #f3ead8;
+}
+.kash-room-head { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 4px; }
+.kash-room-head b { font-size: clamp(18px, 5vw, 26px); }
+.kash-stage { position: relative; flex: 1 1 auto; min-height: 0; }
+.kash-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.kash-head { position: absolute; pointer-events: none; will-change: transform, left, top; }
+.kash-tools {
+  flex: 0 0 auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+  padding: 6px 8px; background: rgba(0,0,0,.4);
+}
+.kash-tool {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; min-height: 44px; border: 1px solid rgba(255,233,168,.25); border-radius: 8px;
+  background: #1a1420; color: #ffe9a8; font-size: 18px; cursor: pointer; padding: 2px 0;
+}
+.kash-tool small { font-size: 8px; text-transform: uppercase; letter-spacing: .02em; color: rgba(255,233,168,.75); }
+.kash-tool.on, .kash-tool:focus-visible { border-color: #ffe9a8; background: #2a1d18; }
+.kash-collect {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  flex-wrap: wrap; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #140e16; border-top: 1px solid rgba(255,233,168,.15);
+}
+.kash-step { display: inline-flex; align-items: center; gap: 6px; }
+.kash-step b { min-width: 4.5ch; text-align: center; }
+
+.kash-notice-pop {
+  position: fixed; inset: 0; z-index: 125; background: rgba(0,0,0,.65);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.kash-notice { max-width: 26rem; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.kash-notice p { margin: 0; }
+
+@media (max-width: 420px) {
+  .kash-tools { grid-template-columns: repeat(3, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bj-kash, .bj-kash-catch, .bj-kash-glint { animation: none; }
+  .kash-drag-bust { transition: none; }
+}

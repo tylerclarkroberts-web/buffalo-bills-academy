@@ -22,9 +22,10 @@ function reshuffle(t, now, rng, why) {
   log(t, now, `${houseName(t)} shuffles a fresh single deck (${why}).`, { k: 'shuffle', why });
 }
 /**
- * Easter egg: against a PLAYER dealer (never Guntrad) a royal bet can still be slid onto the felt after the deal,
+ * Kash Bet: against a PLAYER dealer (never Guntrad) a royal bet can still be slid onto the felt after the deal,
  * once you've seen your cards. It settles on the two cards you were dealt, paid exactly as if it went down before
- * the deal, out of the human house's bank. Nobody catches you. Returns which royal bets this seat can still sneak.
+ * the deal, out of the human house's bank. A dealer who is watching may notice (see ./kash.js). Returns which
+ * royal bets this seat can still slide on.
  */
 export function sneakable(t, seat) {
   const r = t.round; const b = r?.bets?.[seat];
@@ -55,14 +56,24 @@ export function sneakBet(t, seat, royal = {}, now) {
   if (!total) throw new GameError('Pick a royal bet.', 400);
   if (total > s.chips) throw new GameError(`You have $${s.chips} in chips.`, 402);
   const cards = dealtCards(t, seat);
+  let stake = 0, net = 0;
+  const kinds = {};
   for (const [k, v] of Object.entries(want)) {
     s.chips = r2(s.chips - v); s.stats.wagered = r2(s.stats.wagered + v);
     b.side[k] = v; (b.sneak ||= {})[k] = true;
     const tier = royalHit(k, cards);
-    // logged like any royal bet that settles on the deal — the felt doesn't snitch
-    if (tier) { const win = r2(v * t.royal[k][tier]); pay(t, seat, v + win, win); log(t, now, `${s.name} hits ${k === 'match' ? 'Royal Match' : 'Royal Pairs'} (${tier}): +$${win}!`, { k: 'royal', seat, bet: k, tier, amt: win, sneak: true }); }
-    else { houseTakes(t, v); s.stats.lost = r2((s.stats.lost || 0) + v); }
+    stake += v;
+    // logged like any royal bet that settles on the deal — the felt doesn't name it a Kash Bet
+    if (tier) {
+      const win = r2(v * t.royal[k][tier]); pay(t, seat, v + win, win); net = r2(net + win);
+      kinds[k] = { stake: v, net: win, tier };
+      log(t, now, `${s.name} hits ${k === 'match' ? 'Royal Match' : 'Royal Pairs'} (${tier}): +$${win}!`, { k: 'royal', seat, bet: k, tier, amt: win, sneak: true, kash: true });
+    } else {
+      houseTakes(t, v); s.stats.lost = r2((s.stats.lost || 0) + v); net = r2(net - v);
+      kinds[k] = { stake: v, net: -v, tier: null };
+    }
   }
+  return { stake, net, kinds };
 }
 
 function draw(t, now, rng) {
