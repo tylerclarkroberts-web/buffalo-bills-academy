@@ -9,7 +9,7 @@
 // so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
+import { ROSTER, BY_ID, levelFor, xpFor, MAX_LEVEL, PAUSED_AT } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { line } from './engine/bout.js';
@@ -256,7 +256,7 @@ export class Barn {
     const now = this.now();
     let dirty = this.hatchIfDue(playerId, pen, now, pen !== this.doc.pens[playerId]);
     // the top level its owner has earned on the circuit (10 with no ribbons): stamped here so every level lookup can read it off the bug
-    const cap = this.capOf?.(playerId) || MAX_LEVEL; if ((pen.cap || MAX_LEVEL) !== cap) { pen.cap = cap; dirty = true; }
+    const cap = Math.min(PAUSED_AT, this.capOf?.(playerId) || MAX_LEVEL); if ((pen.cap || MAX_LEVEL) !== cap) { pen.cap = cap; dirty = true; }
     if (pen.stage === 'creature') {
       const before = pen.xp; const dies = this.deathAt(pen);
       if (now >= dies) { pen.diedAt = dies; }

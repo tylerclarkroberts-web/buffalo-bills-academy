@@ -117,16 +117,17 @@ test('a beaten trainer pays its purse once, and a ribbon pays more and raises th
   circuit.settle(pid, salad, { id: idOf(a), bornAt: a.bornAt }, salad.bugs[0], fake('t1', 0, [50, 0]));
   assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer);
   assert.throws(() => circuit.fight(pid, 'Tester', { stop: 'salad' }), /Not yet|enough for one lifetime/);
-  assert.equal(barn.view(pid).pen.cap, 10);
+  assert.equal(barn.view(pid).pen.cap, 9); // levels hold at 9 for now, whatever the ribbons say
   me.run = { stop: 'pugh', foe: 1, foeHp: null, out: [], hp: {}, won: [], live: null };
   circuit.settle(pid, pugh, { id: idOf(a), bornAt: a.bornAt }, pugh.bugs[1], fake('r9', 0, [30, 0]));
   assert.equal(store.players[pid].bankroll, 100 + PURSE.trainer + PURSE.ribbon);
   assert.deepEqual([capFor(0), capFor(1), capFor(8), capFor(30)], [10, 11, 18, 20]);
   const pen = barn.view(pid).pen;
-  assert.equal(pen.cap, 11);
+  assert.equal(pen.cap, 9); // the ribbon's extra level waits with the rest while levels hold at 9
   barn.doc.pens[pid].xp = xpFor(15);
-  assert.equal(barn.view(pid).pen.level, 11, 'XP past the cap waits for the next ribbon');
-  assert.equal(levelFor(xpFor(15)), 10, 'and a bug with no ribbons behind it still tops out at 10');
+  assert.equal(barn.view(pid).pen.level, 9, 'XP past the hold is kept for when it lifts');
+  assert.equal(barn.doc.pens[pid].xp, xpFor(15));
+  assert.equal(levelFor(xpFor(15)), 9);
 });
 
 test('circuit bugs are drilled: a barn bug a level below one seldom wins on its own', () => {
