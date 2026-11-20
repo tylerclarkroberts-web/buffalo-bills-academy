@@ -37,6 +37,16 @@
   animation: kash-breathe 1.8s ease-in-out infinite;
 }
 .bj-kash-catch:hover, .bj-kash-catch:focus-visible { background: #7a2433; }
+.bj-kash-catch small { margin-left: 6px; font: 700 11px/1 ui-monospace, monospace; opacity: .9; }
+.bj-kash-glint.hold {
+  animation: kash-glint-hold 1.2s ease-in-out infinite;
+  opacity: .9; transform: scale(1);
+}
+@keyframes kash-glint-hold {
+  0%, 100% { opacity: .45; transform: scale(.95); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+.bj-bar .bj-kash-catch { flex: 0 0 auto; }
 
 .kash-overlay {
   position: fixed; inset: 0; z-index: 120; background: #0b0810;
@@ -85,7 +95,9 @@
 .kash-room-head b { font-size: clamp(18px, 5vw, 26px); }
 .kash-stage { position: relative; flex: 1 1 auto; min-height: 0; }
 .kash-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.kash-head { position: absolute; pointer-events: none; will-change: transform, left, top; }
+.kash-head { position: absolute; pointer-events: none; will-change: transform, left, top; overflow: hidden; border-radius: 50%; }
+.kash-head .b-body { display: none; } /* the stick figure is the body; only the avatar head rides on the neck */
+
 .kash-tools {
   flex: 0 0 auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
   padding: 6px 8px; background: rgba(0,0,0,.4);

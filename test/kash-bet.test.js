@@ -10,7 +10,7 @@ import { Blackjack } from '../server/blackjack/index.js';
 import { freshDeck } from '../server/blackjack/rules.js';
 import { RULE_TEXT, KASH_RULE } from '../server/blackjack/table.js';
 import { GUNTRAD_RULES } from '../server/blackjack/rules.js';
-import { KASH_SEEN_MS, KASH_CATCH_MS, KASH_EXTRA_MAX, planCollect, houseWasWatching } from '../server/blackjack/kash.js';
+import { KASH_SEEN_MS, KASH_CATCH_MS, KASH_TELL_MS, KASH_EXTRA_MAX, planCollect, houseWasWatching, housePresent } from '../server/blackjack/kash.js';
 import { mulberry } from '../server/blackjack/sim.js';
 
 function fixture(t, seed = 7) {
@@ -196,4 +196,61 @@ test('bots never get a catch window of their own: only a human house who was wat
   assert.ok(f.bj.viewOf(tb, 'house').kashCatch);
   // a bot is not the house and cannot collect
   assert.throws(() => f.bj.kashCatch(f.P.ann, tb.code), /Only the dealer/);
+});
+
+
+test('a player-dealer is present only after a real table view, and the list tells them to jump in', (t) => {
+  const f = fixture(t);
+  const tb = f.open(rig('Kh', '9c', 'Qh', '8s'));
+  assert.equal(housePresent(tb, f.now), false);
+  assert.equal(f.bj.viewOf(tb, 'house').house.present, false);
+  const listed = f.bj.list(f.P.house).find((x) => x.code === tb.code);
+  assert.equal(listed.isHouse, true);
+  assert.equal(listed.canDeal, true);
+  assert.equal(listed.turnLabel, 'Jump in to deal');
+  // an action (the sneak itself) does not count as watching
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  assert.equal(housePresent(tb, f.now), false);
+  f.bj.view(f.P.house, tb.code);
+  assert.equal(housePresent(tb, f.now), true);
+  assert.equal(f.bj.viewOf(tb, 'house').house.present, true);
+  assert.equal(f.bj.viewOf(tb, 'ann').house.present, true, 'everyone can see the dealer is here');
+  assert.equal(f.bj.list(f.P.house).find((x) => x.code === tb.code).turnLabel, "You're dealing");
+  f.now += KASH_SEEN_MS + 1;
+  assert.equal(housePresent(tb, f.now), false);
+  assert.equal(f.bj.viewOf(tb, 'house').house.present, false);
+  assert.equal(f.bj.list(f.P.house).find((x) => x.code === tb.code).turnLabel, 'Jump in to deal');
+});
+
+test('the present dealer keeps the Kash glint for the whole catch window; other seats only see the short tell', (t) => {
+  const f = fixture(t);
+  const tb = f.open(rig('Kh', '9c', 'Qh', '8s'));
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  f.bj.view(f.P.house, tb.code);
+  f.bj.sneak(f.P.ann, tb.code, { royal: { match: 10 } });
+  const hv = f.bj.viewOf(tb, 'house');
+  const av = f.bj.viewOf(tb, 'ann');
+  assert.equal(hv.kashTell.hold, true);
+  assert.equal(hv.kashTell.until, hv.kashCatch.until);
+  assert.equal(av.kashTell.hold, undefined);
+  assert.ok(av.kashTell.until < hv.kashTell.until);
+  f.now += KASH_TELL_MS + 1;
+  assert.equal(f.bj.viewOf(tb, 'ann').kashTell, undefined, 'the public glint has faded');
+  assert.ok(f.bj.viewOf(tb, 'house').kashTell, 'the dealer still sees the seat');
+  assert.ok(f.bj.viewOf(tb, 'house').kashCatch);
+});
+
+test('Guntrad tables still have no house presence or catch window', (t) => {
+  const f = fixture(t);
+  const g = f.bj.create(f.P.house, { settings: { house: 'guntrad', buyIn: 200, minBet: 5, maxBetX: 20 } });
+  f.bj.join(f.P.ann, g.code, true);
+  f.bj.start(f.P.house, g.code);
+  f.bj.view(f.P.house, g.code);
+  const v = f.bj.viewOf(f.bj.table(g.code), 'ann');
+  assert.equal(v.house.mode, 'guntrad');
+  assert.equal(v.house.present, undefined);
+  assert.equal(v.kashCatch, undefined);
+  const listed = f.bj.list(f.P.house).find((x) => x.code === g.code);
+  assert.equal(listed.canDeal, false);
+  assert.notEqual(listed.turnLabel, 'Jump in to deal');
 });

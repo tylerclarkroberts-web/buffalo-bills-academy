@@ -98,6 +98,7 @@ export class Blackjack {
       v.house.avatar = this.avatars && hp ? this.avatars.info(hp) : { kind: 'gen', seed: t.house.id };
       const bug = tableBugOf(this.barn, t.house.id);
       if (bug) v.house.bug = bug;
+      v.house.present = Kash.housePresent(t, this.now());
     }
     Object.assign(v, Kash.kashView(t, viewerId, this.now()));
     if (v.kashRoom && t.kashRoom) {
@@ -119,6 +120,9 @@ export class Blackjack {
     v.limits.maxNow = i >= 0 && t.lanes?.[i] ? C.laneMaxBet(t, i) : v.limits.maxNow;
     v.house.free = t.house.mode === 'guntrad' ? null : C.freeBank(t);
     if (lane) { v.laneOver = lane.status === 'over' ? lane.overReason : null; if (v.round) v.round.sneak = G.sneakable(C.laneView(t, i), i); }
+    // A present player-dealer should see every lane's cards (hole still hidden until the reveal) so they can
+    // watch deals live and catch a Kash Bet. Seated players still get the card-free line for everyone else.
+    if (t.house.mode === 'player' && t.house.id === viewerId) v.houseWatch = C.houseWatch(t, this.now());
     return v;
   }
   info() {
@@ -147,6 +151,8 @@ export class Blackjack {
         const actor = playing && hand && !hand.done ? t.seats[hand.seat] : null;
         const turnLabel = t.status === 'over' ? 'Over'
           : t.status === 'lobby' ? t.hostId === p.id && t.seats.some((s) => s && !s.left) && (t.house.mode === 'guntrad' || t.house.id) ? 'Ready to start' : 'Not started'
+          : t.house.id === p.id && t.status === 'playing'
+            ? (Kash.housePresent(t, this.now()) ? "You're dealing" : 'Jump in to deal')
           : lane?.status === 'over' ? 'Cash out'
           : betting ? 'Place your bet' : insurance ? 'Insurance?' : myTurn ? 'Your turn'
           : r?.phase === 'betting' ? r.bets[me]?.out ? 'Sitting out' : me >= 0 && t.seats[me].chips < t.limits.min && !r.bets[me] ? 'Out of chips'
@@ -155,6 +161,7 @@ export class Blackjack {
         return { edge: edgeSummary(t), code: t.code, name: t.name, status: t.status, house: t.house.name,
           players: t.seats.filter((s) => s && (!s.left || t.status === 'over')).length, maxSeats: t.maxSeats,
           isHost: t.hostId === p.id, isHouse: t.house.id === p.id, seated: me >= 0, round: r?.no || 0,
+          canDeal: t.house.id === p.id && t.status === 'playing',
           myTurn, turnLabel, actorName: actor?.name || null, deadline: playing ? r?.deadline || null : null };
       });
   }

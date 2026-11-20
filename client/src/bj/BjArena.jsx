@@ -94,7 +94,7 @@ export function BjArena({
           {playerHouse ? (
             /* A player is the house: they stand in Guntrad's spot behind the oval (same box, same layering). */
             <div
-              className={`dealer-spot bj-house-spot ${dealing ? 'dealing' : ''}`}
+              className={`dealer-spot bj-house-spot ${dealing ? 'dealing' : ''} ${v.house.present ? 'present' : ''}`}
               data-test="bj-house-dealer"
               style={{ height: `${spotPct}%` }}
               title={`${v.house.name || 'The house'} (house)`}
@@ -126,7 +126,7 @@ export function BjArena({
           </div>
           {playerHouse ? (
             <div className="dl-plate bj-house-plate" style={{ top: `${geo.cy - geo.fry}%` }} data-test="bj-house-plate">
-              <b>{v.house.id ? (v.house.name || 'The house') : 'House'} <i>{v.house.id ? (v.house.isMe ? 'you · the house' : 'the house') : 'to be picked'}</i></b>
+              <b>{v.house.id ? (v.house.name || 'The house') : 'House'} <i>{v.house.id ? (v.house.isMe ? (v.house.present ? 'you · dealing' : 'you · the house') : (v.house.present ? 'dealing now' : 'the house')) : 'to be picked'}</i></b>
             </div>
           ) : <DealerPlate style={{ top: `${geo.cy - geo.fry}%` }} />}
 
@@ -190,7 +190,14 @@ export function BjArena({
                       })}
                       {!hs.length && b && !b.out && <span className="bj-bet big" data-test="bj-betchip">{money(b.bet)}</span>}
                       {b?.out && <span className="small dim">sitting out</span>}
-                      {v.continuous && !s.me && v.lanes?.[i] && <LaneTag l={v.lanes[i]} i={i} />}
+                      {v.houseWatch?.[i] ? (
+                        <div className="bj-house-watch" data-test={`bj-house-watch-${i}`}>
+                          {(v.houseWatch[i].hands || []).map((h) => (
+                            <HandCards key={h.i} cards={h.cards} small reduced={reduced} />
+                          ))}
+                          {(v.houseWatch[i].dealer || []).length > 0 && <HandCards cards={v.houseWatch[i].dealer} small reduced={reduced} />}
+                        </div>
+                      ) : v.continuous && !s.me && v.lanes?.[i] ? <LaneTag l={v.lanes[i]} i={i} /> : null}
                     </div>
                     {res.length > 0 && (
                       <div className="bj-pay" aria-live="polite">
