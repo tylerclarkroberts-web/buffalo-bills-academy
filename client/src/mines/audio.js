@@ -414,6 +414,52 @@ export class MineAudio {
     }
     this._heeDrone.gain.gain.setTargetAtTime(0.0001 + want * 0.42, t, 0.25);
   }
+  /**
+   * The stolen bug's cry as it is carried off: a high, wavering rabbit-like shriek that
+   * breaks into whimpers, panned and faded with distance. Gore-free; not a jump-scare sting.
+   */
+  heesheeSqueal({ dist = 4, pan = 0, vol = 0.75 } = {}) {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const near = Math.max(0, Math.min(1, 1 - dist / 22));
+    const v = Math.max(0.0001, vol * (0.1 + 0.9 * near * near));
+    const panner = c.createStereoPanner(); panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), t);
+    const out = c.createGain(); out.gain.value = 1; panner.connect(out); out.connect(this.master);
+    // Three cries: a sharp shriek, a shorter panic cry, then a fading whimper.
+    const cries = [
+      { at: 0,    len: 0.24, from: 2480, peak: 3180, then: 1760 },
+      { at: 0.28, len: 0.16, from: 2860, peak: 3480, then: 1980 },
+      { at: 0.5,  len: 0.36, from: 2140, peak: 1880, then: 880 },
+    ];
+    for (const cry of cries) {
+      const start = t + cry.at;
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(cry.from, start);
+      o.frequency.exponentialRampToValueAtTime(cry.peak, start + cry.len * 0.32);
+      o.frequency.exponentialRampToValueAtTime(Math.max(80, cry.then), start + cry.len);
+      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 16 + Math.random() * 10;
+      const lg = c.createGain(); lg.gain.value = 95; lfo.connect(lg); lg.connect(o.frequency);
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = cry.peak; bp.Q.value = 2.4;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(v * 0.58, start + 0.012);
+      g.gain.exponentialRampToValueAtTime(v * 0.22, start + cry.len * 0.55);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + cry.len);
+      o.connect(bp); bp.connect(g); g.connect(panner);
+      o.start(start); o.stop(start + cry.len + 0.02);
+      lfo.start(start); lfo.stop(start + cry.len + 0.02);
+      const s = c.createOscillator(); s.type = 'sine';
+      s.frequency.setValueAtTime(cry.from * 1.45, start);
+      s.frequency.exponentialRampToValueAtTime(Math.max(200, cry.then * 1.25), start + cry.len);
+      const sg = c.createGain();
+      sg.gain.setValueAtTime(0.0001, start);
+      sg.gain.exponentialRampToValueAtTime(v * 0.38, start + 0.01);
+      sg.gain.exponentialRampToValueAtTime(0.0001, start + cry.len);
+      s.connect(sg); sg.connect(panner);
+      s.start(start); s.stop(start + cry.len + 0.02);
+    }
+    this._heesheeNoiseBurst(t, 0.16, 4200, 1600, v * 0.22, panner);
+  }
   /** The grab: a sharp sting and a wet slap, not a scream and not a full-screen scare. */
   heesheeSting() {
     if (!this.on || !this.ctx) return;

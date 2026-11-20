@@ -72,6 +72,9 @@ export function buildHeeshee() {
     for (const k of [-1, 0, 1]) add(hand, 'box', claw, k * 0.045, -0.09, 0.06, 0.03, 0.16, 0.03);
   }
 
+  // A hook out to the right of the hunched chest so a stolen bug is readable from in front and from behind.
+  const carryHook = pivot(g, 'heeshee-carry', 0.62, 1.22, 0.42);
+
   const head = pivot(torso, 'heeshee-head', 0, 0.86, 0.08);
   add(head, 'ball', hide, 0, 0.02, 0, 0.2, 0.22, 0.18);
   add(head, 'box', ridge, 0, 0.08, -0.12, 0.16, 0.16, 0.1);
@@ -112,6 +115,7 @@ export function buildHeeshee() {
   g.visible = false;
   return {
     group: g, hips, torso, head, leftLeg, rightLeg, leftArm, rightArm,
+    leftHand: g.getObjectByName('heeshee-left-hand'), rightHand: g.getObjectByName('heeshee-right-hand'), carryHook,
     leftEye, rightEye, leftTuft: leftEye.getObjectByName('tuft'), rightTuft: rightEye.getObjectByName('tuft'),
     mats,
   };
@@ -119,23 +123,27 @@ export function buildHeeshee() {
 
 /**
  * Pose the joints. `fan` 0..1 slowly opens the feather tufts; `snap` 1 briefly jerks them toward the miner.
- * `lunge` uncoils the long arms; `frozen` holds a dead still; `reduce` skips twitch.
+ * `lunge` uncoils the long arms; `carry` clutches a stolen bug in the right hand and walks off with it;
+ * `frozen` holds a dead still; `reduce` skips twitch.
  */
-export function poseHeeshee(mesh, nowMs, { moving = false, frozen = false, lunge = 0, fan = 0.5, snap = 0, reduce = false } = {}) {
+export function poseHeeshee(mesh, nowMs, { moving = false, frozen = false, lunge = 0, carry = false, fan = 0.5, snap = 0, reduce = false } = {}) {
   if (!mesh) return;
   const t = nowMs / 1000;
-  const walk = moving && !frozen && !lunge && !reduce ? Math.sin(t * 7.4) : 0;
+  const C = carry ? 1 : 0;
+  const walk = moving && !frozen && !lunge && !reduce ? Math.sin(t * (C ? 6.2 : 7.4)) : 0;
   const jerk = moving && !frozen && !reduce && (Math.sin(t * 23) > 0.7) ? 0.12 : 0;
   const L = Math.max(0, Math.min(1, lunge));
-  mesh.leftLeg.rotation.x = walk * 0.45 + L * -0.2;
-  mesh.rightLeg.rotation.x = -walk * 0.45 + L * -0.2;
+  mesh.leftLeg.rotation.x = walk * 0.45 + L * -0.2 + C * 0.08;
+  mesh.rightLeg.rotation.x = -walk * 0.45 + L * -0.2 + C * 0.08;
   mesh.group.position.y = Math.abs(walk) * 0.03 + L * 0.08;
-  mesh.torso.rotation.x = 0.55 - L * 0.45 + (frozen || reduce ? 0 : walk * 0.03);
+  mesh.torso.rotation.x = 0.55 - L * 0.45 - C * 0.08 + (frozen || reduce ? 0 : walk * 0.03);
   mesh.hips.rotation.y = frozen ? 0 : walk * 0.04;
-  mesh.leftArm.rotation.x = 0.15 + walk * 0.5 - L * 1.4;
-  mesh.rightArm.rotation.x = 0.15 - walk * 0.5 - L * 1.4;
-  mesh.leftArm.rotation.z = 0.35 + L * 0.2;
-  mesh.rightArm.rotation.z = -0.35 - L * 0.2;
+  // Carry: right arm holds the bug out to the side, chest-high, so the miner sees it struggling as the thing walks off.
+  mesh.leftArm.rotation.x = 0.15 + walk * (C ? 0.22 : 0.5) - L * 1.4 - C * 0.2;
+  mesh.rightArm.rotation.x = 0.15 - walk * (C ? 0.1 : 0.5) - L * 1.4 - C * 0.55;
+  mesh.leftArm.rotation.z = 0.35 + L * 0.2 - C * 0.05;
+  mesh.rightArm.rotation.z = -0.35 - L * 0.2 - C * 1.15;
+  if (mesh.rightHand) mesh.rightHand.rotation.x = C * 0.4;
   mesh.head.rotation.set(
     (reduce ? 0 : walk * 0.04) - L * 0.2,
     frozen || reduce ? 0 : Math.sin(t * 0.7) * 0.08,

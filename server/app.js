@@ -101,6 +101,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
   service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.circuit = circuit; service.sessions = sessions;
+  try {
+    const mig = mines.migrateHeesheeSteals();
+    if (mig.activeStolen || mig.stamped) console.log('[heeshee] mid-shift steals', mig);
+  } catch (e) { console.error('[heeshee] migrate', e); }
   const guestAllowed = config.allowGuest;
   const slack = new SlackAlerts({ service, publicUrl: env.PUBLIC_URL || 'https://buffalobillsacademy.com',
     client: new SlackClient({ token: env.SLACK_BOT_TOKEN, baseUrl: env.SLACK_API_URL || undefined, fetchImpl: slackFetch || fetchImpl || globalThis.fetch, retryDelayMs: slackRetryMs ?? 1500 }), ...(slackSendRetryMs ? { retryMs: slackSendRetryMs } : {}) });
@@ -358,6 +362,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
+  api.post('/mines/bug/order', needPlayer, wrap((req) => mines.orderBug(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));

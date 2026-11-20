@@ -1,5 +1,7 @@
-// The Heeshee Mazode: 20% of shifts, never with Nosferatu or the faun; steals a hatched guide;
-// the Foreman returns it after acid (or the server restores it on a mid-shift quit). No lasting penalty.
+// The Heeshee Mazode: 20% of shifts, never with Nosferatu or the faun; steals a hatched guide.
+// Finding acid on the same shift brings it back (Foreman farewell). Quit / disconnect / empty settle
+// keeps a barn hold so the bug is never handed back free — it returns after the next acid find.
+// Recall (COME HERE / V) is refused while it is gone.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,8 +10,8 @@ import path from 'path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Foreman, HEESHEE_RETURN } from '../server/foreman.js';
-import { Mines, rollScare, SCARE_CHANCE, FAUN_CHANCE, HEESHEE_CHANCE } from '../server/mines.js';
-import { HeesheeMazode, isLookingAt, lookDot, APPEAR_AFTER_MS, LUNGE_RANGE, GRAB_RANGE } from '../client/src/mines/heeshee.js';
+import { Mines, rollScare, SCARE_CHANCE, FAUN_CHANCE, HEESHEE_CHANCE, HEESHEE_GONE } from '../server/mines.js';
+import { HeesheeMazode, isLookingAt, lookDot, APPEAR_AFTER_MS, LUNGE_RANGE, GRAB_RANGE, CARRY_MIN_S, CARRY_MAX_S } from '../client/src/mines/heeshee.js';
 import { BugGuide } from '../client/src/mines/bugGuide.js';
 import { TILE as GUIDE_TILE } from '../client/src/mines/stalker.js';
 
@@ -31,13 +33,55 @@ test('a single roll never co-occurs, and the Heeshee band is exactly 20%', () =>
 });
 
 function barnWith(bug) {
+  const row = bug ? { stage: 'creature', species: bug.species, name: bug.name, speciesName: bug.speciesName || bug.species } : null;
+  const pens = { miner: row };
+  const penOf = (id) => pens[id] || pens.miner;
   return {
-    view: () => (bug ? { pen: { stage: 'creature', species: bug.species, name: bug.name, speciesName: bug.speciesName || bug.species } } : { pen: null }),
+    view: (id = 'miner') => {
+      const pen = penOf(id);
+      return { pen: pen ? { ...pen } : null };
+    },
+    isHeesheeHeld: (pen) => !!(pen && (pen.heesheeHeld || pen.heesheeHeldAt)),
+    heesheeHoldOf(id = 'miner') {
+      const pen = penOf(id);
+      if (!pen || !(pen.heesheeHeld || pen.heesheeHeldAt)) return null;
+      return { name: pen.name, species: pen.species, fromShift: pen.heesheeHeldFromShift || null, at: pen.heesheeHeldAt || null };
+    },
+    holdHeeshee(id, { shiftId, at } = {}) {
+      const pen = penOf(id);
+      if (!pen || pen.stage !== 'creature') return null;
+      if (pen.heesheeHeld) return this.heesheeHoldOf(id);
+      Object.assign(pen, { heesheeHeld: true, heesheeHeldAt: at || 1, heesheeHeldFromShift: shiftId || null });
+      return this.heesheeHoldOf(id);
+    },
+    releaseHeeshee(id) {
+      const pen = penOf(id);
+      if (!pen?.heesheeHeld) return [];
+      const out = [{ name: pen.name, species: pen.species }];
+      delete pen.heesheeHeld; delete pen.heesheeHeldAt; delete pen.heesheeHeldFromShift;
+      return out;
+    },
     foundAcid() {},
     rollEgg() { return false; },
     rollPurple() { return false; },
     has() { return !!bug; },
   };
+}
+
+function mineAcid(f, shiftId) {
+  let shift = f.mines.publicShift(f.mines.doc.active[f.player.id], true, f.player.id, f.mines.guideBug(f.player.id));
+  const poolId = shift.currentPoolId;
+  shift = f.mines.probe(f.player, shiftId, { rulesVersion: 2, poolId });
+  f.mines.extract(f.player, shiftId, { rulesVersion: 2, poolId, action: 'start' });
+  f.clock.now += 1000;
+  const drawn = f.mines.extract(f.player, shiftId, { rulesVersion: 2, poolId, action: 'stop' });
+  return drawn.result ? drawn : f.mines.quit(f.player, shiftId, { rulesVersion: 2 });
+}
+
+function clearForeman(f) {
+  const nextDoc = { ...f.mines.foreman.doc, pending: { ...f.mines.foreman.doc.pending } };
+  delete nextDoc.pending[f.player.id];
+  f.mines.foreman.doc = nextDoc;
 }
 function fixture(t, { scareInt, bug } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-heeshee-'));
@@ -91,48 +135,53 @@ test('the Heeshee only steals a living hatched guide, and only on a Heeshee shif
   assert.equal(taken.bug, undefined);
   assert.equal(taken.bugStolen.name, 'Pip');
   assert.equal(taken.heeshee, true);
-  // idempotent, and the barn row is untouched
+  // idempotent, and the barn row is never deleted — a hold is stamped instead
   const again = yes.mines.stealBug(yes.player, s.shiftId);
   assert.equal(again.bugStolen.name, 'Pip');
+  assert.equal(again.bugStolen.line, HEESHEE_GONE);
   assert.equal(yes.mines.barn.view().pen.stage, 'creature');
   assert.equal(yes.mines.barn.view().pen.name, 'Pip');
+  assert.equal(yes.mines.barn.view().pen.heesheeHeld, true);
+  assert.equal(yes.mines.barn.heesheeHoldOf('miner').name, 'Pip');
 });
 
-test('quitting mid-shift after a steal restores the bug on the server with no data loss', (t) => {
+test('quitting mid-shift after a steal does not hand the bug back free', (t) => {
   const f = fixture(t, { scareInt: () => SCARE_CHANCE + FAUN_CHANCE, bug: { species: 'candela', name: 'Pip' } });
   const s = f.start();
   f.mines.stealBug(f.player, s.shiftId);
   const done = f.mines.quit(f.player, s.shiftId, { rulesVersion: 2 });
-  // empty bucket: no pay slip, no Foreman heeshee scene, but the bug was never removed
+  // empty bucket: no pay slip, no Foreman heeshee scene, and the bug stays held in the barn (never deleted)
   assert.equal(done.result, undefined);
+  assert.equal(done.bugReturned, undefined);
   assert.equal(f.mines.barn.view().pen.stage, 'creature');
   assert.equal(f.mines.barn.view().pen.name, 'Pip');
+  assert.equal(f.mines.barn.view().pen.heesheeHeld, true);
   assert.equal(f.mines.doc.active[f.player.id], undefined);
-  assert.equal(f.mines.shakenUntil(f.player.id), true);
-  // an empty quit still earns the usual lecture; that is independent of the steal, and the bug is not the fee
+  assert.equal(f.mines.shakenUntil(f.player.id), false, 'no free restore, so no shaken twitch yet');
   assert.ok(f.mines.foreman.pending(f.player.id));
   assert.equal(f.mines.foreman.pending(f.player.id).reason, 'quit');
-  const nextDoc = { ...f.mines.foreman.doc, pending: { ...f.mines.foreman.doc.pending, [f.player.id]: undefined } };
-  delete nextDoc.pending[f.player.id];
-  f.mines.foreman.doc = nextDoc;
+  clearForeman(f);
   const again = f.mines.start(f.player, { rulesVersion: 2 });
-  assert.ok(again.bug, 'the guide is on the next shift');
-  assert.equal(again.bug.name, 'Pip');
-  assert.equal(again.bug.shaken, true, 'a short cosmetic twitch, no stat change');
-  assert.equal(again.bug.species, 'candela');
+  assert.equal(again.bug, undefined, 'the guide is still gone on the next shift');
+  assert.equal(again.bugStolen.name, 'Pip');
+  assert.equal(again.bugStolen.line, HEESHEE_GONE);
+  // a leftover hold cannot be stolen again, even if this shift also rolled a Heeshee
+  if (again.heeshee) assert.throws(() => f.mines.stealBug(f.player, again.shiftId), /no bug/);
+  // finishing this later shift with acid brings it back
+  const body = mineAcid(f, again.shiftId);
+  assert.ok(body.result, JSON.stringify(body));
+  assert.equal(body.result.bugReturned, true);
+  assert.equal(body.result.foreman.reason, 'heeshee');
+  assert.equal(f.mines.barn.view().pen.heesheeHeld, undefined);
+  assert.equal(f.mines.barn.view().pen.name, 'Pip');
 });
 
-test('finding acid after a steal brings the bug back in the Foreman farewell', (t) => {
+test('finding acid after a steal on the same shift brings the bug back in the Foreman farewell', (t) => {
   const f = fixture(t, { scareInt: () => SCARE_CHANCE + FAUN_CHANCE, bug: { species: 'candela', name: 'Pip' } });
   const s = f.start();
   f.mines.stealBug(f.player, s.shiftId);
-  let shift = f.mines.publicShift(f.mines.doc.active[f.player.id], true, f.player.id, f.mines.guideBug(f.player.id));
-  const poolId = shift.currentPoolId;
-  shift = f.mines.probe(f.player, s.shiftId, { rulesVersion: 2, poolId });
-  f.mines.extract(f.player, s.shiftId, { rulesVersion: 2, poolId, action: 'start' });
-  f.clock.now += 1000;
-  const drawn = f.mines.extract(f.player, s.shiftId, { rulesVersion: 2, poolId, action: 'stop' });
-  const body = drawn.result ? drawn : f.mines.quit(f.player, s.shiftId, { rulesVersion: 2 });
+  assert.equal(f.mines.barn.view().pen.heesheeHeld, true);
+  const body = mineAcid(f, s.shiftId);
   assert.ok(body.result, JSON.stringify(body));
   assert.equal(body.result.bugReturned, true);
   assert.equal(body.result.bugShaken, true);
@@ -142,8 +191,25 @@ test('finding acid after a steal brings the bug back in the Foreman farewell', (
   assert.match(HEESHEE_RETURN.join(' '), /wrestle that Heeshee Mazode/i);
   assert.match(HEESHEE_RETURN.join(' '), /cigarettes/i);
   assert.equal(f.mines.barn.view().pen.stage, 'creature');
+  assert.equal(f.mines.barn.view().pen.heesheeHeld, undefined, 'the hold is released on the same shift');
   // the farewell does not block the next clock-in
   assert.equal(f.mines.foreman.pending(f.player.id), null);
+});
+
+test('calling the bug back is refused while it is stolen', (t) => {
+  const f = fixture(t, { scareInt: () => SCARE_CHANCE + FAUN_CHANCE, bug: { species: 'candela', name: 'Pip' } });
+  const s = f.start();
+  assert.equal(f.mines.orderBug(f.player, s.shiftId, { rulesVersion: 2, order: 'come' }).ok, true);
+  f.mines.stealBug(f.player, s.shiftId);
+  assert.throws(() => f.mines.orderBug(f.player, s.shiftId, { rulesVersion: 2, order: 'come' }), (err) => {
+    assert.match(err.message, /nowhere to be found/);
+    assert.equal(err.message, HEESHEE_GONE);
+    assert.equal(err.status, 409);
+    return true;
+  });
+  // the hold survives a quit: recall is still refused, and a later acid find is what returns it
+  f.mines.quit(f.player, s.shiftId, { rulesVersion: 2 });
+  assert.throws(() => f.mines.orderBug(f.player, 'gone', { rulesVersion: 2, order: 'come' }), /nowhere to be found/);
 });
 
 test('Foreman Heeshee lines stay farmer-clean', () => {
@@ -205,13 +271,25 @@ test('with a bug in range it lunges, steals, and the guide leaves', () => {
   for (let i = 0; i < 30 && !h.events.includes('steal'); i++) h.update(0.05, p);
   assert.ok(h.events.includes('steal'), `events=${h.events.join(',')}`);
   assert.equal(h.hasBug, false);
-  assert.ok(h.state === 'fleeing' || h.state === 'gone');
+  assert.equal(h.carrying, true);
+  assert.equal(h.state, 'fleeing');
+  assert.equal(h.present, true, 'it stays on camera with the bug in its hand');
+  h.events.length = 0;
+  for (let i = 0; i < Math.ceil(CARRY_MIN_S / 0.1) - 2; i++) h.update(0.1, p);
+  assert.equal(h.present, true, 'the carry-off stays in view a few seconds');
+  assert.ok(h.events.includes('squeal'), `expected a rabbit squeal, got ${h.events.join(',')}`);
+  for (let i = 0; i < Math.ceil(CARRY_MAX_S / 0.1) + 5 && h.state !== 'gone'; i++) h.update(0.1, p);
+  assert.equal(h.state, 'gone');
+  assert.equal(h.carrying, false);
 
   const g = new BugGuide(MAZE, { armed: true, afterMs: 0, bug: { species: 'candela', name: 'Pip' } });
   g.update(0.05, { x: GUIDE_TILE, z: GUIDE_TILE, yaw: 0, elapsedMs: 1 });
   assert.equal(g.present, true);
   assert.equal(g.steal(), true);
   assert.equal(g.present, false);
+  assert.equal(g.state, 'stolen');
+  assert.equal(g.order('come'), false, 'COME HERE cannot call a stolen bug back');
+  assert.ok(g.events.includes('missing'));
   assert.equal(g.state, 'stolen');
   g.update(1, { x: GUIDE_TILE, z: GUIDE_TILE, yaw: 0, elapsedMs: 9999 });
   assert.equal(g.present, false, 'a stolen guide does not come back on its own');

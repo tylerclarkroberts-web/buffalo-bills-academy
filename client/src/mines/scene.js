@@ -412,17 +412,59 @@ export class MineScene {
     while (h.events.length) {
       const ev = h.events.shift();
       if (ev === 'steal' && !this.reduce) this.shake = 1;
-      this.onEvent?.(ev === 'appear' ? 'heeshee-appear' : ev === 'noise' ? 'heeshee-noise' : ev === 'freeze' ? 'heeshee-freeze' : ev === 'lunge' ? 'heeshee-lunge' : ev === 'steal' ? 'heeshee-steal' : ev === 'gone' ? 'heeshee-gone' : ev);
+      if (ev === 'steal') this.clutchBug();
+      if (ev === 'gone') this.releaseClutch();
+      this.onEvent?.(ev === 'appear' ? 'heeshee-appear' : ev === 'noise' ? 'heeshee-noise' : ev === 'freeze' ? 'heeshee-freeze' : ev === 'lunge' ? 'heeshee-lunge' : ev === 'steal' ? 'heeshee-steal' : ev === 'squeal' ? 'heeshee-squeal' : ev === 'gone' ? 'heeshee-gone' : ev);
     }
     const g = m.group;
-    if (!h.present) { g.visible = false; this.heesheeNear = 0; return; }
+    if (!h.present) { g.visible = false; this.heesheeNear = 0; this.releaseClutch(); return; }
     g.visible = true;
     g.position.set(h.x, 0, h.z);
     g.rotation.y = h.facing;
     const dist = Math.hypot(this.pos.x - h.x, this.pos.y - h.z);
     this.heesheeNear = proximity(dist);
     const lunge = h.state === 'lunging' ? 1 : 0;
-    poseHeeshee(m, now, { moving: h.moving, frozen: h.state === 'frozen', lunge, fan: h.fan, snap: h.snap, reduce: this.reduce });
+    poseHeeshee(m, now, { moving: h.moving, frozen: h.state === 'frozen', lunge, carry: !!h.carrying, fan: h.fan, snap: h.snap, reduce: this.reduce });
+    if (this.bugCarried) this.wriggleCarriedBug(now);
+  }
+  /** Parent the guide billboard into the Heeshee's right fist so the steal is unmistakable. */
+  clutchBug() {
+    const bug = this.bugMesh, hook = this.heesheeMesh?.carryHook || this.heesheeMesh?.rightHand;
+    if (!bug || !hook || this.bugCarried) return;
+    bug.group.removeFromParent();
+    hook.add(bug.group);
+    bug.group.position.set(0, 0, 0);
+    bug.group.rotation.set(0, 0, 0);
+    bug.group.scale.setScalar(1.35);
+    bug.mesh.position.y = 0.16;
+    if (bug.glow) {
+      bug.glow.position.y = 0.2;
+      bug.glow.intensity = 4.2;
+      bug.glow.distance = 6;
+    }
+    bug.group.visible = true;
+    this.bugCarried = true;
+  }
+  releaseClutch() {
+    if (!this.bugCarried || !this.bugMesh) return;
+    const g = this.bugMesh.group;
+    g.removeFromParent();
+    this.scene.add(g);
+    g.visible = false;
+    g.scale.setScalar(1);
+    g.rotation.set(0, 0, 0);
+    this.bugMesh.mesh.position.y = 0.55;
+    if (this.bugMesh.glow) this.bugMesh.glow.position.y = 0.7;
+    this.bugCarried = false;
+  }
+  wriggleCarriedBug(now) {
+    const bug = this.bugMesh; if (!bug || this.reduce) return;
+    const t = now / 1000;
+    // High-frequency struggle so the sprite is clearly a living bug in the fist, not a stuck prop.
+    bug.mesh.rotation.z = Math.sin(t * 22) * 0.7;
+    bug.mesh.rotation.y = Math.sin(t * 17) * 0.85;
+    bug.group.position.y = Math.sin(t * 28) * 0.05;
+    if (bug.glow) bug.glow.intensity = 3.4 + 1.4 * Math.abs(Math.sin(t * 14));
   }
 
 
@@ -491,9 +533,11 @@ export class MineScene {
     bg.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart });
     while (bg.events.length) {
       const ev = bg.events.shift();
-      this.onEvent?.(`bug-${ev}`); // appear, retarget, done, nobody
+      this.onEvent?.(`bug-${ev}`); // appear, retarget, done, nobody, missing
     }
     const g = m.group;
+    // While clutched, the Heeshee owns the sprite — don't snap it back to the guide path or hide it.
+    if (this.bugCarried) return;
     if (!bg.present) { g.visible = false; return; }
     g.visible = true;
     const bob = this.reduce ? 0 : Math.sin(bg.bob) * 0.06;
@@ -784,7 +828,7 @@ export class MineScene {
     this.onNear?.(this.distanceToPool(), this.pathToPool(), this.facingToPool());
     this.renderer.render(this.scene, this.camera);
     if (this.hands) {
-      stepMineHands(this.hands, dt, { distance: Math.hypot(this.pos.x - startX, this.pos.y - startY), mining: this.mining, hidden: !!this.dance || this.danceBlend > .001, reduce: this.reduce });
+      stepMineHands(this.hands, dt, { distance: Math.hypot(this.pos.x - startX, this.pos.y - startY), mining: this.mining, hidden: !!this.dance || this.danceBlend > .001 || !!this.hideHands, reduce: this.reduce });
       if (this.hands.group.visible) {
         drawMineHands(this.hands, this.renderer);
       }
