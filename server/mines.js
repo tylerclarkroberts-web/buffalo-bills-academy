@@ -71,6 +71,8 @@ export const FAUN_CHANCE = 20000; // out of 100,000: overall 20% of shifts, neve
 export const HEESHEE_CHANCE = 20000; // out of 100,000: overall 20% of shifts, never with the visitor or the faun
 export const SCARE_AFTER_MS = 30000;
 export const HEESHEE_SHAKEN_MS = 90_000; // purely cosmetic twitch after the Foreman returns the bug
+/** Shown in the HUD and on any recall (BUG / V / COME HERE) while the guide is away. */
+export const HEESHEE_GONE = 'Your bug is nowhere to be found. The Heeshee Mazode took it.';
 export const PURPLE_AFTER_MS = [45000, 90000]; // a purple shift's backstop: the bug wanders off and finds the pool by then, wherever the miner is
 /** Where the day's purple pool lies: about halfway along the shortest walk from the lift to the first acid pool, so every miner passes it. */
 export function purpleSpot(maze, first) {
@@ -196,9 +198,11 @@ export class Mines {
   office(player) {
     const g = this.gear(player.id);
     const today = this.layout(this.now(), SHAFTS[0]), t = tierInfo(today.tier);
+    const hold = this.barn?.heesheeHoldOf?.(player.id);
     return { capacity: BUCKET_CAPACITY, extractionRate: EXTRACTION_RATE * g.rate, lamp: g.lamp, rod: g.rod, nephew: this.nephew(player.id),
       ...(t ? { today: { day: today.day, tier: t.tier, cells: today.cells, pay: t.pay } } : {}),
-      shafts: SHAFTS.map((s) => ({ id: s.id, name: s.name, fare: s.fare, quality: s.quality, open: g.shafts.includes(s) })) };
+      shafts: SHAFTS.map((s) => ({ id: s.id, name: s.name, fare: s.fare, quality: s.quality, open: g.shafts.includes(s) })),
+      ...(hold ? { heesheeHold: { name: hold.name, line: HEESHEE_GONE } } : {}) };
   }
   /** Null unless hired; otherwise whether he can still go down today (the faun's UTC day), what he brought back, and
    *  his record: days worked, total and best day, the raise he has earned, and a tally of what he did instead of mining. */
@@ -309,34 +313,79 @@ export class Mines {
       }
       if (!pen || pen.stage !== 'creature') return null;
       if (pen.fainted) return { fainted: true, name: pen.name, species: pen.species }; // v75: it stays home until the Bug Center heals it
+      // Held after a steal (this shift, or leftover from a quit): still in the barn, just not a guide.
+      if (pen.heesheeHeld || this.barn.isHeesheeHeld?.(pen) || this.barn.heesheeHoldOf?.(playerId)) {
+        return { held: true, name: pen.name, species: pen.species, speciesName: pen.speciesName || pen.species, style };
+      }
       return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
     } catch { return null; }
   }
   shakenUntil(playerId) { return (this.doc.shaken?.[playerId] || 0) > this.now(); }
   /**
-   * The Heeshee grabbed the guide. The barn row is never touched: the bug is only hidden for the rest of this
-   * shift, and settle() always clears the flag (even a mid-shift quit). Idempotent.
+   * The Heeshee grabbed the guide. The barn row is never deleted: a hold is stamped so a quit or disconnect
+   * cannot hand the bug back free. Finding acid on this same shift (or a later completed acid shift) releases
+   * it and the Foreman brings it back. Idempotent.
    */
   stealBug(player, shiftId) {
     const cur = this.current(player, shiftId);
     if (cur.settlement) throw new GameError('That shift has already ended.', 409);
     if (!cur.heeshee) throw new GameError('There is no Heeshee Mazode on this shift.', 409);
     const guide = this.guideBug(player.id);
-    if (!guide || guide.fainted) throw new GameError('You have no bug for it to take.', 409);
-    if (cur.heesheeStolen) return this.publicShift(cur, true, player.id, guide);
+    if (!guide || guide.fainted || (guide.held && !cur.heesheeStolen)) throw new GameError('You have no bug for it to take.', 409);
+    if (cur.heesheeStolen) {
+      try { this.barn?.holdHeeshee?.(player.id, { shiftId: cur.id, at: cur.heesheeStolenAt || this.now() }); } catch { /* hold is best-effort */ }
+      return this.publicShift(cur, true, player.id, this.guideBug(player.id) || guide);
+    }
     const next = { ...cur, heesheeStolen: true, heesheeStolenAt: this.now() };
     this.commit(player.id, next);
-    return this.publicShift(next, true, player.id, guide);
+    try { this.barn?.holdHeeshee?.(player.id, { shiftId: cur.id, at: next.heesheeStolenAt }); } catch { /* the shift flag is enough until migrate */ }
+    return this.publicShift(next, true, player.id, this.guideBug(player.id) || { ...guide, held: true });
+  }
+  /**
+   * Any recall (BUG / V / COME HERE / an order) while the guide is stolen or held. The guide path is
+   * client-side, but the server refuses the order so a patched client cannot officially call it back.
+   */
+  orderBug(player, shiftId, request = {}) {
+    this.requireVersion(request);
+    const cur = this.doc.active?.[player.id];
+    const stolenHere = !!(cur && cur.id === shiftId && cur.heesheeStolen);
+    const held = !!this.barn?.heesheeHoldOf?.(player.id);
+    if (stolenHere || held) throw new GameError(HEESHEE_GONE, 409);
+    return { ok: true, order: request.order || null };
+  }
+  /** Read-only: live mid-shift steals that would have been restored for free under the old quit path. */
+  auditHeesheeSteals() {
+    const ids = Object.entries(this.doc.active || {}).filter(([, s]) => s?.heesheeStolen && !s.settlement).map(([id]) => id);
+    const held = this.barn?.doc?.pens
+      ? Object.values(this.barn.doc.pens).flatMap((row) => {
+          const pens = row && typeof row === 'object' && !row.stage ? Object.values(row) : [row];
+          return pens.filter((p) => p && (p.heesheeHeld || p.heesheeHeldAt));
+        }).length
+      : 0;
+    return { activeStolen: ids.length, ids, barnHeld: held };
+  }
+  /** Stamp a barn hold on any in-progress steal so a restart plus quit cannot restore the bug free. */
+  migrateHeesheeSteals() {
+    const audit = this.auditHeesheeSteals();
+    let stamped = 0;
+    for (const playerId of audit.ids) {
+      const shift = this.doc.active[playerId];
+      if (this.barn?.heesheeHoldOf?.(playerId)) continue;
+      try {
+        if (this.barn?.holdHeeshee?.(playerId, { shiftId: shift.id, at: shift.heesheeStolenAt || this.now() })) stamped++;
+      } catch { /* leave the shift flag; settle still knows */ }
+    }
+    return { ...audit, stamped };
   }
   eggAvailable(s, playerId) { return !!(s?.egg && !s.eggTaken && this.barn && !this.barn.has(playerId)); }
 
   publicShift(s, resumed, playerId, guide = null) {
-    const stolen = !!s.heesheeStolen;
-    const bug = guide?.fainted || stolen ? null : (guide ? { ...guide, ...(this.shakenUntil(playerId) ? { shaken: true } : {}) } : guide);
+    const taken = !!(s.heesheeStolen || guide?.held);
+    const bug = guide?.fainted || taken ? null : (guide ? { ...guide, ...(this.shakenUntil(playerId) ? { shaken: true } : {}) } : guide);
 
     const wilds = this.wildsFor(s);
     const egg = this.eggAvailable(s, playerId);
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(stolen ? { bugStolen: { name: guide?.name || 'Your bug' } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(taken ? { bugStolen: { name: guide?.name || 'Your bug', line: HEESHEE_GONE } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })) } : {}) };
   }
@@ -490,12 +539,20 @@ export class Mines {
         result.amount = Math.round((result.amount - took) * 100) / 100; result.twin = { took };
       }
       // However a purple shift ends, the bug drank: it goes home sick. The acid already in the bucket is paid as usual.
-      let sick = null; if (cur.purple) try { sick = this.barn?.fallSick?.(player.id) || null; } catch { /* the pay must not wait on the barn */ }
-      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}), ...(cur.heesheeStolen ? { heeshee: true } : {}) } };
+      // A held bug was not in the tunnels to drink; skip sickness so the hold is not also a health penalty.
+      let sick = null; if (cur.purple && !cur.heesheeStolen && !this.barn?.heesheeHoldOf?.(player.id)) try { sick = this.barn?.fallSick?.(player.id) || null; } catch { /* the pay must not wait on the barn */ }
+      // Return the bug only after a successful acid find (this steal shift, or a later one that still has a leftover hold).
+      // Quitting, disconnecting, or settling empty must not hand it back free.
+      const leftover = !!this.barn?.heesheeHoldOf?.(player.id);
+      const shouldReturn = !!result && !!(cur.heesheeStolen || leftover);
+      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}), ...(shouldReturn ? { heeshee: true } : {}) } };
       this.commit(player.id, cur);
-      if (cur.heesheeStolen) {
+      if (shouldReturn) {
+        try { this.barn?.releaseHeeshee?.(player.id); } catch { /* the receipt still returns it visually */ }
         const next = { ...this.doc, shaken: { ...this.doc.shaken, [player.id]: this.now() + HEESHEE_SHAKEN_MS } };
         this.store.saveDoc('mines', next); this.doc = next;
+      } else if (cur.heesheeStolen) {
+        try { this.barn?.holdHeeshee?.(player.id, { shiftId: cur.id, at: cur.heesheeStolenAt || this.now() }); } catch { /* already held, or no barn */ }
       }
       try { this.onShiftEnd?.(player.id, cur, cur.settlement); } catch { /* admin stats only */ }
     }

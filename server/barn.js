@@ -21,6 +21,8 @@ export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty ba
 export const STALLS = 3;                        // every barn starts with room for three
 export const STALL_COSTS = [1500, 4000, 10000]; // the fourth, fifth and sixth stall
 export const BENCH_SLOW = 5;                    // a stalled bug lives this many times slower than the partner
+export const isHeesheeHeld = (pen) => !!(pen && (pen.heesheeHeld || pen.heesheeHeldAt)); // taken by the Heeshee; still in the barn, just away
+
 const STRAYS_KEPT = 50;                         // released bugs loose in the mines at once; the oldest wander off for good
 /** What names one bug among its owner's: when its egg was picked up (rows from before stalls: when it hatched). */
 export const idOf = (pen) => pen.eggAt || pen.bornAt;
@@ -264,7 +266,7 @@ export class Barn {
     let dirty = this.hatchIfDue(playerId, pen, now, pen !== this.doc.pens[playerId]);
     // the top level it can show, by its stage: held at PAUSED_AT until it evolves. Stamped here so every level lookup can read it off the bug.
     const cap = STAGE_CAPS[pen.evo || 0] ?? PAUSED_AT; if (pen.cap !== cap) { pen.cap = cap; dirty = true; }
-    if (pen.stage === 'creature') {
+    if (pen.stage === 'creature' && !isHeesheeHeld(pen)) {
       const before = pen.xp; const dies = this.deathAt(pen);
       if (now >= dies) { pen.diedAt = dies; }
       this.accrue(pen, now, pen === this.doc.pens[playerId] ? this.styleOf?.(playerId).toyXp || 0 : 0); dirty ||= pen.xp !== before; // the toy is in the terrarium, with the partner
@@ -298,10 +300,10 @@ export class Barn {
     const roster = Object.keys(this.doc.pens).flatMap((ownerId) => this.bugs(ownerId).flatMap((pen) => {
       const owner = players[ownerId];
       if (!owner || owner.hidden || pen.stage !== 'creature' || now >= this.deathAt(pen)) return [];
-      const level = levelFor(pen.xp, pen.cap), theirs = ownerId !== playerId && !pen.faintedAt && level >= BOUT_LEVEL && corner.length ? this.fighter(ownerId, pen) : null;
+      const level = levelFor(pen.xp, pen.cap), theirs = ownerId !== playerId && !pen.faintedAt && !isHeesheeHeld(pen) && level >= BOUT_LEVEL && corner.length ? this.fighter(ownerId, pen) : null;
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
       return [{ id: idOf(pen), ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId, pen) || null,
-        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL, health: healthOf(pen), fainted: !!pen.faintedAt,
+        record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL && !isHeesheeHeld(pen), health: healthOf(pen), fainted: !!pen.faintedAt, ...(isHeesheeHeld(pen) ? { heesheeHeld: true } : {}),
         ...(theirs ? { line: Object.fromEntries(corner.map(([id, mine]) => [id, line(mine, theirs)])) } : {}) }];
     })).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
     // A challenge names both bugs (one sent before stalls means each owner's partner).
@@ -318,7 +320,7 @@ export class Barn {
   /** The Barn button's count: challenges to this player, a fight decided while they were away, and (with a bug fit to fight) bouts anyone else has open. */
   challengeCount(playerId) {
     const now = this.now(), players = this.store.players || {};
-    const canFight = this.bugs(playerId).some((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen));
+    const canFight = this.bugs(playerId).some((pen) => pen.stage === 'creature' && !pen.faintedAt && !isHeesheeHeld(pen) && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen));
     return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length + (players[playerId]?.barnBouts?.unseen ? 1 : 0) + (this.fights.fightOf(playerId) ? 1 : 0)
       + (canFight ? Object.values(players).filter(p => p.id !== playerId && p.barnBouts?.open && now < p.barnBouts.open.expiresAt).length : 0);
   }
@@ -355,6 +357,7 @@ export class Barn {
       arena: level >= BOUT_LEVEL, arenaLevel: BOUT_LEVEL, careXp: fadedXp(CARE_XP, level), mood: moodWord(needs), record: pen.record || { w: 0, l: 0, d: 0 },
       title: pen.record?.w >= 5 ? 'Barn Menace' : null,
       fainted: !!pen.faintedAt, ...(pen.faintedAt ? { recoverMs: Math.max(0, pen.faintedAt + RECOVER_MS - now), healCost: FAST_HEAL_COST, faintedAt: pen.faintedAt, faintedBy: pen.faintedBy || null, faintedIn: pen.faintedIn || 'mines' } : {}),
+      ...(isHeesheeHeld(pen) ? { heesheeHeld: true, heesheeHeldAt: pen.heesheeHeldAt || null } : {}),
       ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
       lastBout: pen.lastBout || null }, serverNow: now };
@@ -381,6 +384,7 @@ export class Barn {
       return this.view(playerId);
     }
     if (pen.stage === 'dead') throw new GameError('It is past caring now.', 409);
+    if (isHeesheeHeld(pen)) throw new GameError(`Your bug is nowhere to be found. The Heeshee Mazode took it.`, 409);
     if (pen.sick) throw new GameError(`${pen.name} is not well. The Bug Center, now.`, 409);
     if (now - (pen.cool[action] || 0) < a.cooldownMs) throw new GameError(`You just ${a.word} it. Give it a minute.`, 429);
     const n = this.needs(pen, now), own = this.own(pen, now); // needs and feeds are kept on the bug's own clock; cooldowns on the wall's
@@ -426,6 +430,7 @@ export class Barn {
     if (pen.stage === 'dead') throw new GameError('It is resting. For good.', 409);
     if (pen.stage !== 'creature') throw new GameError('Eggs do not fight. Mostly.', 409);
     const level = levelFor(pen.xp, pen.cap);
+    if (isHeesheeHeld(pen)) throw new GameError(`Your bug is nowhere to be found. The Heeshee Mazode took it.`, 409);
     if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
     if (this.fights.fightOf(playerId)) throw new GameError('One of your bugs is in the ring right now.', 409);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);
@@ -437,7 +442,7 @@ export class Barn {
   /** The caller's bugs that could step into the ring now, as the ring would take them: what each line on the board is worked out against. */
   corner(playerId) {
     const now = this.now();
-    return this.bugs(playerId).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen)).map((pen) => [idOf(pen), this.fighter(playerId, pen)]);
+    return this.bugs(playerId).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && !isHeesheeHeld(pen) && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen)).map((pen) => [idOf(pen), this.fighter(playerId, pen)]);
   }
   /**
    * Both stakes for a fight: side 0 named `stake`, side 1's follows the line as the two bugs stand now. When the
@@ -703,10 +708,45 @@ export class Barn {
     return this.view(playerId);
   }
 
-  /** Can this bug fight or guide right now? (hatched, alive, not fainted) */
+  /** Can this bug fight or guide right now? (hatched, alive, not fainted, not held by the Heeshee) */
   fit(playerId) {
     const pen = this.doc.pens[playerId];
-    return pen?.stage === 'creature' && !pen.faintedAt && !(this.now() >= this.deathAt(pen));
+    return pen?.stage === 'creature' && !pen.faintedAt && !isHeesheeHeld(pen) && !(this.now() >= this.deathAt(pen));
+  }
+
+  /** Public view of a hold: the bug is still in the barn, just away with the Heeshee Mazode. */
+  heesheeHoldOf(playerId, bug) {
+    const pen = this.penOf(playerId, bug);
+    if (!isHeesheeHeld(pen) || pen.stage !== 'creature') return null;
+    return { name: pen.name, species: pen.species, id: idOf(pen), fromShift: pen.heesheeHeldFromShift || null, at: pen.heesheeHeldAt || null };
+  }
+  heesheeHolds(playerId) { return this.bugs(playerId).filter(isHeesheeHeld).map((pen) => this.heesheeHoldOf(playerId, idOf(pen))).filter(Boolean); }
+  /**
+   * Mark the partner as taken. The row is never deleted. Idempotent if it is already held.
+   * Returns the hold, or null if there is no living partner to take.
+   */
+  holdHeeshee(playerId, { shiftId, at } = {}) {
+    const pen = this.doc.pens[playerId];
+    if (!pen || pen.stage !== 'creature') return null;
+    if (isHeesheeHeld(pen)) return this.heesheeHoldOf(playerId);
+    this.commitPen(playerId, { ...pen, heesheeHeld: true, heesheeHeldAt: at || this.now(), heesheeHeldFromShift: shiftId || null });
+    return this.heesheeHoldOf(playerId);
+  }
+  /**
+   * The Foreman brought them back. Clocks resume from now so the absence is not a hunger or XP penalty.
+   * `exceptFromShift` (optional) leaves a hold from that shift in place.
+   */
+  releaseHeeshee(playerId, { exceptFromShift } = {}) {
+    const now = this.now(), released = [];
+    for (const pen of this.bugs(playerId).filter((p) => isHeesheeHeld(p) && p.heesheeHeldFromShift !== exceptFromShift)) {
+      const { heesheeHeld: _h, heesheeHeldAt: _a, heesheeHeldFromShift: _s, ...rest } = pen;
+      const stats = rest.stats && typeof rest.stats === 'object'
+        ? Object.fromEntries(Object.entries(rest.stats).map(([k, v]) => [k, v && typeof v === 'object' ? { ...v, at: now } : v]))
+        : rest.stats;
+      this.commitPen(playerId, { ...rest, stats, ...(rest.fedAt != null ? { fedAt: now } : {}) });
+      released.push({ name: pen.name, species: pen.species, id: idOf(pen) });
+    }
+    return released;
   }
   /** Is the partner due an evolution? Hatched, well, not yet evolved, with the XP for EVOLVE_FROM. */
   due(playerId) {

@@ -103,6 +103,8 @@ export class BugGuide {
   /** An order from its miner. False (with a 'nobody' event) when told to find someone and nobody is there. */
   order(mode) {
     if (!this.armed || !ORDERS.includes(mode)) return false;
+    // A stolen guide cannot be called back — not even with COME HERE / V. The server also refuses this.
+    if (this.state === 'stolen') { this.events.push('missing'); return false; }
     if (mode === 'someone' && !this.others.length) { this.events.push('nobody'); return false; }
     this.mode = mode; this.next = null; this.repath = 0; this.waiting = false;
     // Out it comes whatever it was doing; told to find acid it has already found, it settles again.

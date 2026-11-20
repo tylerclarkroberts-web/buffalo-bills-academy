@@ -17,6 +17,7 @@ import { wildAt } from './engine/wild-roam.js';
 import { BY_ID, levelFor, xpFor, PAUSED_AT } from './engine/creatures.js';
 import { rarityOf } from './engine/bug-types.js';
 import { ITEM } from './catalog/index.js';
+import { isHeesheeHeld } from './barn.js';
 import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
 import { healthOf } from './barn.js';
@@ -237,7 +238,7 @@ export class Pvp {
    * the Foreman's beetle like anyone without a bug: being fainted is never a shield. `benched` names the fainted one.
    */
   /** Hatched, alive and standing. */
-  fit(pen) { return pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen)) && !pen.faintedAt; }
+  fit(pen) { return pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen)) && !pen.faintedAt && !isHeesheeHeld(pen); }
   /** The bug a miner fights with: the partner, or one of their others by id (`bug`). The Foreman's loaner when that one cannot. */
   bugOf(id, full = true, bug = null) {
     let pen = bug == null ? this.barn?.doc?.pens?.[id] : this.barn?.penOf?.(id, bug);

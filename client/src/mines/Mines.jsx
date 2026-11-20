@@ -17,6 +17,7 @@ import { markWild, readExploration, rememberExploration, revealExploration } fro
 import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
 
 // The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
+const HEESHEE_GONE = 'Your bug is nowhere to be found. The Heeshee Mazode took it.';
 const BUG_ORDERS = [
   { id: 'come', icon: '🫳', name: 'COME HERE', line: (n) => `${n} TURNS ROUND AND COMES TO HEEL.` },
   { id: 'acid', icon: '🧪', name: 'FIND ACID', line: (n) => `${n} IS AFTER THE ACID AGAIN. FOLLOW IT.` },
@@ -436,6 +437,11 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const giveOrder = (id) => {
     showBugMenu(false);
     const order = BUG_ORDERS.find((o) => o.id === id), guide = guideRef.current;
+    if (stolenRef.current || guide?.state === 'stolen') {
+      setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
+      api('POST', '/mines/bug/order', { shiftId: shift.shiftId, order: id, rulesVersion: 2 }).catch(() => {});
+      return;
+    }
     if (order && guide?.order(id)) { setBugOrder(id); setLine(order.line((shift.bug?.name || 'Your bug').toUpperCase())); }
   };
   const canFightWild = useRef(!!shift.bug);
@@ -461,8 +467,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const [purple, setPurple] = useState(false); // the partner has found the purple acid; the shift ends a few seconds on
   const purpleRef = useRef(false);
   // A fainted bug stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone).
-  const [line, setLine] = useState(shift.bugStolen ? 'THE HEESHEE MAZODE TOOK YOUR BUG. FIND THE ACID WITHOUT IT.' : shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
-  const [status, setStatus] = useState(shift.bugStolen ? 'YOUR BUG IS GONE. FIND THE ACID.' : 'FIND THE ACID POOL');
+  const [line, setLine] = useState(shift.bugStolen ? HEESHEE_GONE : shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
+  const [status, setStatus] = useState(shift.bugStolen ? HEESHEE_GONE : 'FIND THE ACID POOL');
   const [stolen, setStolen] = useState(!!shift.bugStolen);
   const stolenRef = useRef(!!shift.bugStolen);
   const done = useRef(false);
@@ -776,12 +782,16 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           stolenRef.current = true; setStolen(true); showBugMenu(false);
           bugGuide?.steal();
           audio?.heesheeSting();
-          const nm = (shift.bug?.name || 'YOUR BUG').toUpperCase();
-          setLine(`THE HEESHEE MAZODE TOOK ${nm}. FIND THE ACID WITHOUT IT.`);
-          setStatus('YOUR BUG IS GONE. FIND THE ACID.');
+          const hm = sceneRef.current?.heeshee, pos = sceneRef.current?.pos;
+          if (hm && pos) audio?.heesheeSqueal({ dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.9 });
+          setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
           api('POST', '/mines/heeshee/steal', { shiftId: shift.shiftId, rulesVersion: 2 }).catch(() => {});
         }
-        if (e === 'heeshee-gone') setLine(stolenRef.current ? 'IT RAN OFF WITH YOUR BUG. KEEP LOOKING FOR THE ACID.' : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
+        if (e === 'heeshee-squeal') {
+          const hm = sceneRef.current?.heeshee, pos = sceneRef.current?.pos;
+          if (hm && pos) audio?.heesheeSqueal({ dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.7 });
+        }
+        if (e === 'heeshee-gone') setLine(stolenRef.current ? HEESHEE_GONE : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
 
       },
     });
@@ -860,6 +870,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (heeshee) window.__acidHeeshee = {
       get state() { return heeshee.state; },
       get present() { return heeshee.present; },
+      get carrying() { return !!heeshee.carrying; },
+      get bugCarried() { return !!scene.bugCarried; },
       get pos() { return { x: heeshee.x, z: heeshee.z }; },
       place(x, z, yaw) { heeshee.state = 'wandering'; heeshee.x = x; heeshee.z = z; if (Number.isFinite(yaw)) heeshee.facing = yaw; heeshee.pause = 0; if (scene.heesheeMesh) scene.heesheeMesh.group.visible = true; },
       lookAt() { /* put it in front of the lamp, a few tiles out */ const d = 3.4; heeshee.x = scene.pos.x - Math.sin(scene.yaw) * d; heeshee.z = scene.pos.y - Math.cos(scene.yaw) * d; heeshee.facing = Math.atan2(scene.pos.x - heeshee.x, scene.pos.y - heeshee.z); heeshee.state = 'wandering'; heeshee.pause = 0.2; if (scene.heesheeMesh) scene.heesheeMesh.group.visible = true; },
@@ -895,7 +907,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         return;
       }
       if (k === 'b' && !e.repeat) { showPicker(!pickerRef.current); return; }
-      if (k === 'v' && !e.repeat && guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
+      if (k === 'v' && !e.repeat) {
+        if (stolenRef.current || guideRef.current?.state === 'stolen') {
+          showBugMenu(false); setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
+          api('POST', '/mines/bug/order', { shiftId: shift.shiftId, order: 'come', rulesVersion: 2 }).catch(() => {});
+          return;
+        }
+        if (guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
+      }
       if (k === 'escape' && bugMenuRef.current) { showBugMenu(false); return; }
       if (bugMenuRef.current && /^[1-4]$/.test(k)) { giveOrder(BUG_ORDERS[Number(k) - 1].id); return; }
       if (k === 'escape' && pickerRef.current) { showPicker(false); return; }
@@ -1113,7 +1132,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
       </div>}
-      {stolen && <div className="m-stolen" data-test="heeshee-stolen" role="status">YOUR BUG IS GONE</div>}
+      {stolen && <div className="m-stolen" data-test="heeshee-stolen" role="status">Your bug is nowhere to be found. The Heeshee Mazode took it.</div>}
       <div className="m-ticker" aria-live="polite">{line}</div>
       {prey && !battle && !doom && !mapOpen && (
         <div className="m-door-prompt m-stab" data-test="ambush-prompt">

@@ -4,7 +4,7 @@ export function tableBugOf(barn, playerId) {
   if (!barn || playerId == null) return null;
   try {
     const pen = barn.view(playerId)?.pen;
-    if (!pen || pen.stage !== 'creature') return null;
+    if (!pen || pen.stage !== 'creature' || pen.heesheeHeld) return null;
     const bug = {
       species: pen.species,
       name: pen.name,

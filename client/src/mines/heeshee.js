@@ -12,6 +12,10 @@ export const LUNGE_SPEED = 9.5;
 export const LUNGE_RANGE = 2.6;  // world units: close enough to uncoil
 export const GRAB_RANGE = 1.15;
 export const HEAR_RANGE = 22;
+export const CARRY_SPEED = 1.7;     // slow enough that the carry-off stays on camera
+export const CARRY_MIN_S = 3.6;     // stays in view a few seconds before it can vanish
+export const CARRY_MAX_S = 6.8;
+export const CARRY_GONE_RANGE = 9;  // then it is swallowed by the dark
 export const LOOK_COS = Math.cos(0.62); // ~35° either side of the lamp
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -52,6 +56,7 @@ export class HeesheeMazode {
     this.moving = false; this.next = null;
     this.burst = 0; this.pause = 0; this.hold = 0;
     this.lungeT = 0; this.events = [];
+    this.carryT = 0; this.carrying = false; this.nextSqueal = 0;
     this.nextNoise = 1.4 + this.rand() * 1.8;
     this.fan = 0; // 0 closed .. 1 open; feathers slowly breathe, then snap
     this.snap = 0;
@@ -134,6 +139,7 @@ export class HeesheeMazode {
     this.walkTo(p.x, p.z, LUNGE_SPEED * dt);
     if (this.hasBug && dist <= GRAB_RANGE) {
       this.hasBug = false;
+      this.carrying = true; this.carryT = 0; this.nextSqueal = 0.12;
       this.events.push('steal');
       this.state = 'fleeing';
       this.next = null;
@@ -148,13 +154,26 @@ export class HeesheeMazode {
 
   stepFlee(dt, p) {
     this.moving = true;
+    this.carryT += dt;
+    if (this.carrying) {
+      this.nextSqueal -= dt;
+      if (this.nextSqueal <= 0) { this.events.push('squeal'); this.nextSqueal = 0.45 + this.rand() * 0.4; }
+    }
     if (!this.next) this.pickEscape(p);
-    if (!this.next) { this.state = 'gone'; this.events.push('gone'); return; }
-    this.walkTo(this.next[0] * TILE, this.next[1] * TILE, (BURST_SPEED * 1.6) * dt);
+    if (!this.next && this.carryT >= CARRY_MIN_S) { this.drop(); return; }
+    const speed = (this.carrying ? CARRY_SPEED : BURST_SPEED * 1.6) * dt;
+    if (this.next) this.walkTo(this.next[0] * TILE, this.next[1] * TILE, speed);
     const dist = Math.hypot(p.x - this.x, p.z - this.z);
     const [tx, ty] = tileOf(this.x, this.z);
-    if (tx === this.next[0] && ty === this.next[1]) this.next = null;
-    if (dist > HEAR_RANGE * 0.85) { this.state = 'gone'; this.events.push('gone'); }
+    if (this.next && tx === this.next[0] && ty === this.next[1]) this.next = null;
+    const longEnough = this.carryT >= CARRY_MIN_S;
+    const outOfSight = dist > (this.carrying ? CARRY_GONE_RANGE : HEAR_RANGE * 0.85);
+    if ((longEnough && outOfSight) || this.carryT >= CARRY_MAX_S) this.drop();
+  }
+  drop() {
+    this.carrying = false;
+    this.state = 'gone';
+    this.events.push('gone');
   }
 
   walkTo(x, z, maxStep) {

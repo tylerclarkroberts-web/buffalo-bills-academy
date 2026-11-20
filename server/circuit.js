@@ -8,7 +8,7 @@
 // purpose earns nothing. A ribbon adds RIBBON_XP to every bug that won a round of it. A beaten trainer stays beaten.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { idOf } from './barn.js';
+import { idOf, isHeesheeHeld } from './barn.js';
 import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
 import { ROSTER, levelFor } from './engine/creatures.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
@@ -445,7 +445,7 @@ export class Circuit {
       } else {
         run.out.push(bug.id); run.foeHp = fight.over.winner === 1 ? pct(1) : run.foeHp;
       }
-      const standing = this.barn.bugs(pid).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && !run.out.includes(idOf(pen)));
+      const standing = this.barn.bugs(pid).filter((pen) => pen.stage === 'creature' && !pen.faintedAt && !isHeesheeHeld(pen) && !run.out.includes(idOf(pen)));
       if (run.foe >= (run.lineup || stop.bugs).length && stop.kind === 'boss') {
         me.done[stop.id] = this.now(); me.run = null;
         extra.verdict = say(stop.won); extra.spoils = card();
