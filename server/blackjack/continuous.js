@@ -5,6 +5,7 @@
 import * as G from './game.js';
 import { GameError } from '../engine/game.js';
 import { ROYAL } from './rules.js';
+import { viewFor } from './table.js';
 
 export const isContinuous = (t) => !!t.settings?.continuous;
 const LANE_KEYS = ['deck', 'discards', 'round', 'roundNo', 'last', 'shuffles', 'status', 'final', 'overReason'];
@@ -128,4 +129,26 @@ export function laneSummary(t) {
     return [i, { no: r?.no || 0, phase: l.status === 'over' ? 'over' : r?.phase || 'betting', bet: r?.hands?.length ? r.hands.reduce((a, h) => a + h.bet, 0) : b && !b.out ? b.bet : 0,
       lastNet: mine.length ? mine.reduce((a, x) => a + x.net, 0) : null, lastNo: l.last?.no || 0, reserve: laneReserve(t, l) }];
   }));
+}
+
+/** Live cards for a player-dealer watching continuous lanes. Hole stays down until the engine reveals it. */
+export function houseWatch(t, now) {
+  const out = {};
+  for (const [i, l] of lanesOf(t)) {
+    const s = t.seats[i];
+    if (!s || s.left) continue;
+    const mine = { ...t, round: l.round, deck: l.deck, last: l.last, shuffles: l.shuffles };
+    const lv = viewFor(mine, s.id, now);
+    const r = lv.round;
+    out[i] = {
+      no: r?.no || l.round?.no || 0,
+      phase: l.status === 'over' ? 'over' : (r?.phase || 'betting'),
+      dealer: r?.dealer || [],
+      dealerTotal: r?.dealerTotal ?? null,
+      holeShown: !!r?.holeShown,
+      hands: (r?.hands || []).filter((h) => h.seat === i),
+      last: l.last,
+    };
+  }
+  return out;
 }

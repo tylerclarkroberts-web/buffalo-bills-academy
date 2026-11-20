@@ -98,7 +98,7 @@ test('blackjack list summarizes betting, insurance and the acting player without
   assert.equal(summary('bob').myTurn, false);
   assert.equal(summary('bob').deadline, tb.round.deadline);
   const row = summary('ann');
-  assert.deepEqual(Object.keys(row).sort(), ['edge', 'code', 'name', 'status', 'house', 'players', 'maxSeats', 'isHost', 'isHouse', 'seated', 'round', 'myTurn', 'turnLabel', 'actorName', 'deadline'].sort());
+  assert.deepEqual(Object.keys(row).sort(), ['edge', 'code', 'name', 'status', 'house', 'players', 'maxSeats', 'isHost', 'isHouse', 'seated', 'round', 'myTurn', 'turnLabel', 'actorName', 'deadline', 'canDeal'].sort());
   assert.deepEqual(f.bj.list(f.P.cat), [], 'unrelated players get no private table listing');
 });
 
@@ -332,3 +332,22 @@ test('continuous: lanes survive a restart (plain JSON in blackjack.json)', (t) =
   assert.equal(bj2.view(store.players.bob, tb.code).round.no, 1);
 });
 
+
+
+test('continuous: the player-dealer can watch each lane\'s cards; other players cannot', (t) => {
+  const f = fixture(t);
+  const tb = f.open({ house: 'me', continuous: true }, ['ann', 'bob']);
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  const house = f.bj.view(f.P.house, tb.code);
+  const ann = f.bj.view(f.P.ann, tb.code);
+  const bob = f.bj.view(f.P.bob, tb.code);
+  assert.ok(house.houseWatch, 'dealer gets a live watch of the lanes');
+  const lane = Object.values(house.houseWatch).find(Boolean);
+  assert.ok(lane, 'at least one lane is visible');
+  assert.ok(Array.isArray(lane.dealer), 'dealer hand is on the watch');
+  assert.equal(ann.houseWatch, undefined);
+  assert.equal(bob.houseWatch, undefined);
+  assert.ok(ann.round, 'the seated player still sees their own round');
+  // hole stays hidden until revealed
+  if (lane.dealer.length >= 2) assert.equal(lane.dealer[1], null);
+});

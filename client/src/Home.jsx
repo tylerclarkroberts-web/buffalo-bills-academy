@@ -320,10 +320,10 @@ function TableList({ tables, loaded, loading, error, pending, retry, setTab, fil
           : turn?.state === 'pending' && turn.ahead > 0 ? turn.ahead === 1 ? 'You’re next' : `${turn.ahead} players ahead`
           : TURN_STATES[turn?.state] || 'Waiting on this betting round';
         return (
-        <button className={`trow ${t.myTurn ? 'myturn' : ''}`} data-test={t.myTurn ? 'table-your-turn' : 'table-row'} data-code={t.code} onClick={() => { if (poker) rememberTable(t.code); navigate(`${tablePath}${t.code}`); }}>
+        <button className={`trow ${t.myTurn || t.canDeal ? 'myturn' : ''}`} data-test={t.canDeal ? 'bj-deal-now' : t.myTurn ? 'table-your-turn' : 'table-row'} data-code={t.code} onClick={() => { if (poker) rememberTable(t.code); navigate(`${tablePath}${t.code}`); }}>
           <span className="t-name">{t.name}</span>
           <span className="t-meta mono">{t.bots ? '🤖 Bots · ' : ''}{t.code} · {t.players}/{poker ? t.maxPlayers : t.maxSeats}{t.isHost ? ' · host' : ''}{poker ? t.handNumber ? ` · Hand ${t.handNumber}` : '' : t.round ? ` · Round ${t.round}` : ''}</span>
-          <span className={`badge ${finished(t) ? 'dim' : t.myTurn ? 'hot' : poker && t.status === 'lobby' && t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{status}</span>
+          <span className={`badge ${finished(t) ? 'dim' : t.myTurn || t.canDeal ? 'hot' : poker && t.status === 'lobby' && t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{status}</span>
           {!t.myTurn && turn?.actorName && <span className="t-actor"><span className="ell">{turn.actorName}</span><span>to act{turn.deadline ? ` · ${left(turn.deadline)}` : ''}</span></span>}
           {!poker && (t.myTurn || !turn?.actorName) && <span className="t-actor ell">{game === 'blackjack' ? `House: ${t.house}${t.isHouse ? ' (you)' : ''}` : t.titleLabel || ''}</span>}
         </button>

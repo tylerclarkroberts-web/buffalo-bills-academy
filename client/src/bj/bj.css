@@ -323,3 +323,18 @@
 .bj-house-spot > .bust, .bj-house-spot > .seat-buddy { position: relative; margin-bottom: -6%; }
 .bj-house-spot > .empty-chair { width: 34%; height: auto; aspect-ratio: 1; align-self: center; border-style: dashed; color: rgba(255, 233, 168, .35); }
 .bj-house-plate b { white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+
+.bj-dealing {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: 999px;
+  background: #1a3d2a; color: #9fe3b5; font-size: 11px; letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.bj-dealing::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #3ee08a; box-shadow: 0 0 0 3px rgba(62,224,138,.25); }
+.bj-house-spot.present::after {
+  content: ''; position: absolute; right: 18%; top: 18%; width: 10px; height: 10px; border-radius: 50%;
+  background: #3ee08a; box-shadow: 0 0 0 3px rgba(62,224,138,.35); z-index: 3;
+}
+.bj-row.deal { box-shadow: inset 0 0 0 1px rgba(62,224,138,.45); }
+.bj-house-watch { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.bj-house-watch .bj-cards { transform: scale(.92); transform-origin: top center; }

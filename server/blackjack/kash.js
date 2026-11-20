@@ -42,12 +42,20 @@ export function recordKash(t, ev, now) {
 }
 
 /** Slice of Kash state this viewer is allowed to see. The cheater does not learn whether the dealer saw it. */
+/** True when the human house last viewed the table within the presence window. */
+export function housePresent(t, now) {
+  return houseWasWatching(t, now);
+}
+
 export function kashView(t, viewerId, now) {
   const out = {};
+  const isHouse = !!(viewerId && t.house?.mode === 'player' && viewerId === t.house.id);
   if (t.kashTell && now <= t.kashTell.until) out.kashTell = { seat: t.kashTell.seat, at: t.kashTell.at, until: t.kashTell.until };
   const c = t.kashCatch;
-  if (c && !c.called && now <= c.until && viewerId && viewerId === t.house.id) {
+  if (c && !c.called && now <= c.until && isHouse) {
     out.kashCatch = { seat: c.seat, name: c.name, until: c.until, won: c.won, stake: c.stake };
+    // The public glint is short; the present dealer keeps a hold on that seat for the whole catch window.
+    out.kashTell = { seat: c.seat, at: c.at, until: c.until, hold: true };
   }
   if (t.kashRoom && t.kashRoom.status !== 'done') {
     const r = t.kashRoom;

@@ -10,14 +10,15 @@ export function KashTell({ tell, seat, now }) {
   if (!tell || tell.seat !== seat) return null;
   const left = tell.until - (now || Date.now());
   if (left <= 0) return null;
-  return <span className="bj-kash-glint" data-test="bj-kash-glint" aria-hidden="true" />;
+  return <span className={`bj-kash-glint${tell.hold ? ' hold' : ''}`} data-test="bj-kash-glint" aria-hidden="true" />;
 }
 
-export function KashCatch({ kash, onCatch }) {
+export function KashCatch({ kash, onCatch, now }) {
   if (!kash) return null;
+  const left = Math.max(0, Math.ceil((kash.until - (now || Date.now())) / 1000));
   return (
     <button type="button" className="bj-kash-catch" data-test="bj-kash-catch" onClick={onCatch}>
-      Call security
+      Call security{left ? <small data-test="bj-kash-catch-s">{left}s</small> : null}
     </button>
   );
 }

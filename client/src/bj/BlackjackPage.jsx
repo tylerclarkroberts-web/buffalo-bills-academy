@@ -148,10 +148,10 @@ function BjLobby({ me }) {
   const tables = (
     <div className="bj-list" data-test="bj-tables">
       {info.tables.length ? info.tables.map((t) => (
-        <button key={t.code} className="bj-row" onClick={() => navigate(`/bj/${t.code}`)}>
+        <button key={t.code} className={`bj-row${t.canDeal ? " deal" : ""}`} data-test={t.canDeal ? "bj-deal-now" : "bj-table-row"} onClick={() => navigate(`/bj/${t.code}`)}>
           <b>{t.name}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats} · house {t.house || '?'}</span>
           {t.edge && <span className="bj-rowedge" data-test="bj-rowedge"><em className={`t-${t.edge.main.tone}`}>Edge {ept(t.edge.main.edge)}</em>{Object.entries(t.edge.side).map(([k, x]) => <em key={k} className={`t-${x.tone}`}>{k === 'match' ? 'RM' : 'RP'} {ept(x.edge)}</em>)}{(t.edge.needsAck || t.edge.grandfathered) && <em className="t-poor">⚠</em>}</span>}
-          <span className={`badge ${t.myTurn ? 'hot' : ''}`}>{t.turnLabel}</span>
+          <span className={`badge ${t.myTurn || t.canDeal ? 'hot' : ''}`}>{t.turnLabel}</span>
         </button>)) : <p className="small dim">No blackjack tables yet.</p>}
     </div>
   );
@@ -229,8 +229,25 @@ function BjLobby({ me }) {
 // ---------------------------------------------------------------- the table
 function useView(code) {
   const [v, setV] = useState(null); const [err, setErr] = useState('');
-  const load = async () => { try { setV(await api('GET', `/bj/tables/${code}`)); setErr(''); } catch (e) { setErr(e.message); } };
-  useEffect(() => { load(); const id = setInterval(load, 1500); return () => clearInterval(id); }, [code]);
+  const houseRef = useRef(false);
+  houseRef.current = !!v?.house?.isMe;
+  useEffect(() => {
+    let timer, stopped = false;
+    const load = async () => {
+      if (stopped || document.hidden) return;
+      try { setV(await api('GET', `/bj/tables/${code}`)); setErr(''); } catch (e) { if (!stopped) setErr(e.message); }
+    };
+    const arm = () => {
+      clearInterval(timer);
+      if (document.hidden) return;
+      load();
+      // A player-dealer heartbeats while this tab is in front, so a Kash Bet can still be caught.
+      timer = setInterval(load, houseRef.current ? 800 : 1500);
+    };
+    arm();
+    document.addEventListener('visibilitychange', arm);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', arm); };
+  }, [code]);
   return [v, setV, err, setErr];
 }
 
@@ -288,10 +305,13 @@ function BjTable({ code, me }) {
   const clampBet = (x) => Math.max(v.limits.min, Math.min(maxNow, x));
   const myBet = r?.bets?.[v.mySeat];
   const turnSeat = r?.phase === 'play' ? r.hands[r.turn]?.seat : null;
+  const dealingNow = !!(v.house?.isMe && v.house?.present && v.status === 'playing');
   const status = v.status === 'lobby' ? 'Waiting for the host to start'
     : v.status !== 'playing' ? 'Game over'
     : v.laneOver ? 'Your game is done'
+    : dealingNow && !r ? `You're dealing: ${Object.values(v.lanes || {}).filter((l) => l.bet > 0).length} hands in play`
     : !r ? (v.house.isMe ? `You're the house: ${Object.values(v.lanes || {}).filter((l) => l.bet > 0).length} hands in play` : 'Watching')
+    : dealingNow && dealing ? "You're dealing…"
     : dealing ? 'Dealing…'
     : r.phase === 'betting' ? (myBet ? 'Bet down: waiting for the others' : mine ? 'Place your bet' : 'Betting')
     : r.phase === 'insurance' ? 'Dealer shows an ace: insurance?'
@@ -318,7 +338,7 @@ function BjTable({ code, me }) {
               : (mine || v.house.isMe) ? <button className="btn ghost small" onClick={() => post('leave')} data-test="bj-leave">{v.house.isMe ? 'Close bank' : 'Cash out'}</button> : null}
           </div>
         </div>
-        <div className="bj-status" data-test="bj-status"><span>{shuf ? <b className="bj-shuf" data-test="bj-shuffle">🂠 {shuf}</b> : status}</span>{clock && v.status === 'playing' && <span className="mono">⏱ {clock}</span>}{r && <span className="mono dim">Round {r.no}</span>}</div>
+        <div className="bj-status" data-test="bj-status"><span>{shuf ? <b className="bj-shuf" data-test="bj-shuffle">🂠 {shuf}</b> : status}</span>{dealingNow && <b className="bj-dealing" data-test="bj-dealing">You're dealing</b>}{clock && v.status === 'playing' && <span className="mono">⏱ {clock}</span>}{r && <span className="mono dim">Round {r.no}</span>}</div>
         <BjArena
           v={v}
           dealerCards={dealerCards}
@@ -336,10 +356,11 @@ function BjTable({ code, me }) {
         />
         <NextTablePill advance={turnAdvance} />
         <div className="bj-bar" data-test="bj-bar">
+          {v.house?.isMe && <KashCatch kash={v.kashCatch} now={now} onCatch={() => post('kash-catch')} />}
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>
             : v.laneOver ? <span className="small" data-test="bj-lane-over">{v.laneOver} <button className="btn small" onClick={() => post('leave')}>Cash out</button></span>
-            : !mine ? <span className="small dim">{v.house.isMe ? 'You are the house: the cards follow the table rules.' : 'Watching.'} {v.house.isMe && <KashCatch kash={v.kashCatch} onCatch={() => post('kash-catch')} />} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
+            : !mine ? <span className="small dim">{v.house.isMe ? (dealingNow ? "You're dealing. Watch the felt — a Kash Bet will light up here." : 'You are the house: open this table to deal and catch Kash Bets.') : 'Watching.'} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
             : ins && ready ? <div className="bj-acts"><span className="small">Insurance costs {money(Math.floor((r.hands.find((h) => h.seat === v.mySeat)?.bet || 0) / 2))}, pays 2:1</span><button className="btn" onClick={() => post('insure', { yes: true })} data-test="bj-ins-yes">Insure</button><button className="btn ghost" onClick={() => post('insure', { yes: false })} data-test="bj-ins-no">No thanks</button></div>
             : r.myTurn && ready ? <div className="bj-acts" data-test="bj-acts">
                 <button className="btn primary" disabled={busy} onClick={() => act('hit')} data-test="bj-hit">Hit</button>
@@ -351,7 +372,7 @@ function BjTable({ code, me }) {
               </div>
             : r.phase === 'betting' && !myBet ? <BetBar min={v.limits.min} max={maxNow} royal={v.royal} bet={clampBet(bet)} setBet={(x) => setBet(clampBet(x))} side={side} setSide={setSide}
                 onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={v.continuous ? null : () => post('sitout')} />
-            : <span className="small dim">{status}… {ready && <KashButtons v={v} r={r} post={post} />} {v.house?.isMe && <KashCatch kash={v.kashCatch} onCatch={() => post('kash-catch')} />}</span>}
+            : <span className="small dim">{status}… {ready && <KashButtons v={v} r={r} post={post} />}</span>}
         </div>
         {err && <p className="error bj-err" role="alert">{err}</p>}
         {show === 'sit' && v.mySeat < 0 && !v.house.isMe && ['lobby', 'playing'].includes(v.status) && <SitGate v={v} post={post} onClose={() => { setShow(null); history.replaceState(null, '', `/bj/${code}`); }} />}
