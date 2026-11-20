@@ -17,7 +17,7 @@ import { wildAt } from './engine/wild-roam.js';
 import { BY_ID, levelFor, xpFor, PAUSED_AT } from './engine/creatures.js';
 import { rarityOf } from './engine/bug-types.js';
 import { ITEM } from './catalog/index.js';
-import { isHeesheeHeld } from './barn.js';
+import { isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
 import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
 import { healthOf } from './barn.js';
@@ -134,6 +134,7 @@ export class Pvp {
     const A = this.fresh(a), B = this.fresh(b);
     if (!A || !B || A.key !== B.key || a === b) return false;
     if (this.shield(a) || this.shield(b) || this.cooling(a, b)) return false;
+    if (this.bugLost(a) || this.bugLost(b)) return false;
     return touching(A, B) && this.aware(a, b) && this.aware(b, a);
   }
 
@@ -202,7 +203,7 @@ export class Pvp {
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
     const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id, have) : null;
     const shift = this.shiftOf(player.id), wilds = this.wildsFor(shift);
-    const canFightWild = wilds.length > 0 && !this.fights.fightOf(player.id) && (!!this.bugOf(player.id, false) || (this.barn?.bugs?.(player.id) || []).some((pen) => this.fit(pen))); // the partner (an egg due to hatch counts), or any other bug of theirs
+    const canFightWild = !this.bugLost(player.id) && wilds.length > 0 && !this.fights.fightOf(player.id) && (!!this.bugOf(player.id, false) || (this.barn?.bugs?.(player.id) || []).some((pen) => this.fit(pen))); // the partner (an egg due to hatch counts), or any other bug of theirs
     return { serverNow: this.now(), others, wilds, canFightWild, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
       ...(shift?.egg ? { egg: this.mines.eggAvailable(shift, player.id) } : {}),
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
@@ -239,12 +240,14 @@ export class Pvp {
    */
   /** Hatched, alive and standing. */
   fit(pen) { return pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen)) && !pen.faintedAt && !isHeesheeHeld(pen); }
+  /** Stolen this shift or held on the barn row: no fights, and no Foreman loaner in its place. */
+  bugLost(playerId) { return bugLostToHeeshee(this.barn, playerId, this.mines); }
   /** The bug a miner fights with: the partner, or one of their others by id (`bug`). The Foreman's loaner when that one cannot. */
   bugOf(id, full = true, bug = null) {
     let pen = bug == null ? this.barn?.doc?.pens?.[id] : this.barn?.penOf?.(id, bug);
     if (pen?.stage === 'egg' && this.now() >= pen.hatchAt) pen = this.barn.refresh(id, bug ?? undefined);
     const alive = pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen));
-    const fit = alive && !pen.faintedAt;
+    const fit = alive && !pen.faintedAt && !isHeesheeHeld(pen);
     const p = this.store.players[id];
     if (!fit) return full ? { ...LOANER, loaner: true, ownerName: p?.name, ...(alive ? { benched: pen.name } : {}) } : null;
     const view = { species: pen.species, name: pen.name };
@@ -265,6 +268,7 @@ export class Pvp {
     return { xp, level, from: xpFor(level), to: level >= (cap || PAUSED_AT) ? null : xpFor(level + 1) };
   }
   startBattle(a, b) {
+    if (this.bugLost(a) || this.bugLost(b)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');
     // A bug already in a Barn bout cannot be in two rings at once: its miner borrows Gerald, like anyone without one.
     const pick = (pid) => (this.fights.fightOf(pid) ? { ...LOANER, loaner: true, ownerName: this.store.players[pid]?.name } : this.bugOf(pid));
@@ -288,6 +292,7 @@ export class Pvp {
    */
   meetWild(player, body = {}) {
     this.touch(player.id); this.sweep();
+    if (this.bugLost(player.id)) throw new GameError(HEESHEE_NO_BATTLE, 409);
     const shift = this.shiftOf(player.id), pr = this.fresh(player.id);
     if (this.inBattle.has(player.id)) return this.view(player);
     const wilds = shift?.id === body.shiftId ? this.wildsFor(shift) : [];
@@ -304,6 +309,7 @@ export class Pvp {
     return this.view(player);
   }
   startWild(a, shift, wild, bug = null) {
+    if (this.bugLost(a)) return null;
     const mine = this.bugOf(a, true, bug);
     if (mine.loaner || this.fights.fightOf(a)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;

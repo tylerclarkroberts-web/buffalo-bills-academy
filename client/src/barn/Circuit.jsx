@@ -59,6 +59,7 @@ function Pick({ bugs, run, foe, sel, setSel }) {
   </div>;
 }
 
+const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
 function Stop({ stop, c, b, busy, act: run0, setC, pin, next, onArea, afterName }) {
   const onward = stop.done && next && next.id !== stop.id ? <button className="btn primary" onClick={() => pin(next.id)} data-test="circuit-next">On to {next.who}</button>
     : stop.done && (stop.kind === 'leader' || stop.kind === 'boss') && onArea ? <button className="btn primary" onClick={onArea} data-test="circuit-next-area">On to {afterName}</button> : null;
@@ -66,7 +67,8 @@ function Stop({ stop, c, b, busy, act: run0, setC, pin, next, onArea, afterName 
   const run = c.run?.stop === stop.id ? c.run : null;
   const bugs = (b.stable?.bugs || []).filter((bug) => bug.stage === 'creature');
   const foe = stop.bugs?.[run ? run.foe : 0];
-  const ready = bugs.filter((bug) => !bug.fainted && !run?.out.includes(bug.id));
+  const lost = bugs.some((bug) => bug.heesheeHeld);
+  const ready = lost ? [] : bugs.filter((bug) => !bug.fainted && !bug.heesheeHeld && !run?.out.includes(bug.id));
   const [sel, setSel] = useState(null), [reply, setReply] = useState(null);
   const chosen = ready.find((bug) => bug.id === sel) || ready.find((bug) => bug.partner) || ready[0] || null;
   useEffect(() => { setReply(null); }, [stop.id]);
@@ -117,7 +119,8 @@ function Stop({ stop, c, b, busy, act: run0, setC, pin, next, onArea, afterName 
           {stop.kind === 'toll' && <button className="btn" disabled={busy || !!b.live || stop.toll > b.bankroll} onClick={payToll} data-test="circuit-toll">{stop.toll > b.bankroll ? `Need $${stop.toll}` : `Pay the $${stop.toll} toll`}</button>}
           {run && <button className="btn ghost" disabled={busy || !!b.live} onClick={() => act(async () => setC(await api('POST', '/circuit/give-up')))} data-test="circuit-giveup">Walk away</button>}
         </div>
-        {!ready.length && bugs.some((bug) => bug.fainted) && <p className="small muted">Everyone's out cold. <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button></p>}
+        {lost && <p className="small" role="status" data-test="circuit-heeshee-no-battle">{HEESHEE_NO_BATTLE}</p>}
+        {!ready.length && !lost && bugs.some((bug) => bug.fainted) && <p className="small muted">Everyone's out cold. <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button></p>}
       </>}
   </div>;
 }

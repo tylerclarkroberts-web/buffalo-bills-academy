@@ -22,6 +22,16 @@ export const STALLS = 3;                        // every barn starts with room f
 export const STALL_COSTS = [1500, 4000, 10000]; // the fourth, fifth and sixth stall
 export const BENCH_SLOW = 5;                    // a stalled bug lives this many times slower than the partner
 export const isHeesheeHeld = (pen) => !!(pen && (pen.heesheeHeld || pen.heesheeHeldAt)); // taken by the Heeshee; still in the barn, just away
+/** Shown whenever a lost bug would start or join a fight. */
+export const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
+/** Stolen on the live shift, or held on the barn row. Either flag is enough. */
+export function bugLostToHeeshee(barn, playerId, mines = barn?.mines) {
+  if (!playerId || !barn) return false;
+  if (typeof barn.heesheeHoldOf === 'function' ? barn.heesheeHoldOf(playerId) : null) return true;
+  if ((typeof barn.heesheeHolds === 'function' ? barn.heesheeHolds(playerId) : [])?.length) return true;
+  const cur = mines?.doc?.active?.[playerId];
+  return !!(cur && !cur.settlement && cur.heesheeStolen);
+}
 
 const STRAYS_KEPT = 50;                         // released bugs loose in the mines at once; the oldest wander off for good
 /** What names one bug among its owner's: when its egg was picked up (rows from before stalls: when it hatched). */
@@ -425,12 +435,13 @@ export class Barn {
 
   /** Alive, standing and old enough to fight: the partner, or the bug named. One fight at a time per owner. */
   ready(playerId, bug) {
+    if (bugLostToHeeshee(this, playerId)) throw new GameError(HEESHEE_NO_BATTLE, 409);
     const pen = this.refresh(playerId, bug);
     if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
     if (pen.stage === 'dead') throw new GameError('It is resting. For good.', 409);
     if (pen.stage !== 'creature') throw new GameError('Eggs do not fight. Mostly.', 409);
     const level = levelFor(pen.xp, pen.cap);
-    if (isHeesheeHeld(pen)) throw new GameError(`Your bug is nowhere to be found. The Heeshee Mazode took it.`, 409);
+    if (isHeesheeHeld(pen) || bugLostToHeeshee(this, playerId)) throw new GameError(HEESHEE_NO_BATTLE, 409);
     if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
     if (this.fights.fightOf(playerId)) throw new GameError('One of your bugs is in the ring right now.', 409);
     if (level < BOUT_LEVEL) throw new GameError(`Bouts open at level ${BOUT_LEVEL}.`, 409);

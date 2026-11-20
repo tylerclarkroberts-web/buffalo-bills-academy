@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Barn, isHeesheeHeld } from '../server/barn.js';
+import { Barn, isHeesheeHeld, HEESHEE_NO_BATTLE } from '../server/barn.js';
 import { HEESHEE_GONE } from '../server/mines.js';
 import { tableBugOf } from '../server/tableBug.js';
 
@@ -35,7 +35,7 @@ test('a Heeshee hold never deletes the bug, blocks care, and freezes time until 
   assert.equal(barn.fit(id), false);
   assert.equal(tableBugOf(barn, id), null, 'a held bug is not sitting at the table');
   assert.throws(() => barn.care(id, 'play'), (err) => { assert.equal(err.message, HEESHEE_GONE); return true; });
-  assert.throws(() => barn.ready(id), /nowhere to be found/);
+  assert.throws(() => barn.ready(id), (err) => { assert.equal(err.message, HEESHEE_NO_BATTLE); return true; });
   clock.now += 6 * HOUR;
   barn.refresh(id);
   const mid = barn.doc.pens[id];

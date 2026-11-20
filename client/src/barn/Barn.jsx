@@ -150,6 +150,7 @@ const HELP = {
 };
 
 /** The ring: other players and their bugs, bouts open to anyone, and recent fights. Anyone can look; fighting needs a bug. */
+const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
 function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel, call, accept, drop, watch }) {
   const { openBout, roster, challenges } = b;
   // Any of your hatched bugs can fight: the partner unless you choose another, or the first one standing.
@@ -159,7 +160,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   const step = b.stakeStep || 10, opening = String(Math.max(0, Math.min(100, Math.floor(Math.min(b.maxStake, b.bankroll ?? 0) / step) * step)));
   const [calling, setCalling] = useState(null), [typedCall, setCallStake] = useState(null), callStake = typedCall ?? opening, posting = stake ?? opening;
   const [pane, setPane] = useState('players'), [opened, setOpened] = useState(null);
-  const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
+  const grown = !!mine?.arena, fainted = !!mine?.fainted, lost = !!(mine?.heesheeHeld || (b.stable?.bugs || []).some((bug) => bug.heesheeHeld)), locked = busy || unsaved || !grown || fainted || lost;
   // Other players, each with their bugs: the list opens on a player, the bugs are a tap away.
   const players = [];
   for (const bug of roster.filter((entry) => entry.ownerId !== meId)) {
@@ -177,7 +178,8 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
     <div className="ring-bar">
       {fighters.length > 0 && <label className="barn-with">Fighting with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · {TYPES[typeOf(bug.species)]?.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}
       <span className="small num muted">{money(b.bankroll)} available</span>
-      <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
+      <p className="small barn-ring-note" role="status" data-test={lost ? 'barn-heeshee-no-battle' : undefined}>{!mine ? 'You need a living bug to fight. Watching is free.'
+        : lost ? HEESHEE_NO_BATTLE
         : !grown ? `Bouts unlock at level ${mine.arenaLevel}.`
         : mine.fainted ? <>{mine.name} fainted: <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</>
         : unsaved ? 'Save or discard your Combat changes first.' : ''}</p>
@@ -187,7 +189,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         <p><b>{c.fromName}</b> calls out {c.toBugName} with <b>{c.fromBugName}</b>{bug ? ` (Lv ${bug.level})` : ''}</p>
         <p className="small" data-test="challenge-terms">{c.line ? `${chance(c.toBugName, 1 - c.line)} · ` : ''}{c.stake ? `risk ${money(risk)} to win ${money(c.stake)}` : 'for the grudge'} · {left(c.expiresAt - now)} left</p>
         <div className="barn-row">
-          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || !called || called.fainted || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
+          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || lost || !called || called.fainted || called.heesheeHeld || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
           <button className="btn ghost" onClick={() => drop(c.id)} disabled={busy} data-test="challenge-decline">Decline</button>
           {openBout && <span className="small muted">Cancel your open bout to accept.</span>}
         </div>
@@ -216,7 +218,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
             {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">{bug.owner} would put up {money(riskFor(Number(callStake), bug.line[mine.id]))}.</p>}
           </form>
-          : grown && bug.fights && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted} data-test="challenge-open">Challenge</button>}
+          : grown && bug.fights && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted || lost} data-test="challenge-open">Challenge</button>}
       </li>; })}</ul>}
     </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>)}
     {pane === 'bouts' && <div className="ring-pane" role="tabpanel">
