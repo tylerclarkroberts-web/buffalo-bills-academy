@@ -102,6 +102,22 @@ test('everyone on shift today shares the tunnels and sees each other; a differen
   assert.equal(f.tick(f.ann, { shiftId: a2.id }, { x: f.pvp.presence.get('ann').x, y: f.pvp.presence.get('ann').y, yaw: EAST }).others.length, 0);
 });
 
+test('other miners see the bug’s evolution without its inventory cosmetics', (t) => {
+  const f = fixture(t);
+  f.barn.layEgg('bob');
+  f.clock.now = f.barn.doc.pens.bob.hatchAt;
+  const { species, name } = f.barn.refresh('bob');
+  f.barn.styleOf = () => ({ bughat: { id: 'bughat-cowboy', shape: 'cowboy' } });
+  const { a, at, view } = f.setup();
+  assert.deepEqual(view.others[0].bug, { species, name });
+
+  f.barn.doc.pens.bob.evo = 1;
+  const otherBug = () => f.tick(f.ann, a, { x: at.x, y: at.y, yaw: EAST }).others[0].bug;
+  assert.deepEqual(otherBug(), { species, name, style: { evo: 1 } });
+  f.barn.doc.pens.bob.botched = 'haywire';
+  assert.deepEqual(otherBug(), { species, name, style: { evo: 1, botched: 'haywire' } });
+});
+
 test('positions are checked: no walking through rock, no teleporting, but a reload restarts at the elevator', (t) => {
   const f = fixture(t);
   const a = f.clockIn(f.ann);

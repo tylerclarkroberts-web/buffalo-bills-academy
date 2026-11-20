@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildMiner, walkPose, OtherMiners } from '../client/src/mines/miners.js';
 import { MineScene } from '../client/src/mines/scene.js';
+import { spriteCanvas, FINE } from '../client/src/barn/sprite.js';
 import { danceStep } from '../client/src/mines/dance.js';
 import { headParts, looks } from '../client/src/avatar/genbust.js';
 import { DANCE_IDS } from '../server/engine/dances.js';
@@ -171,6 +172,23 @@ test('remote miners update in place, replace changed avatar seeds, and release o
   checkA(1); checkB(1); checkReplacement(1);
   assert.equal(miners.map.size, 0); assert.equal(scene.children.length, 0);
   assert.equal(sharedSpriteDisposals, 0, 'removing one tag never disposes geometry shared by other sprites');
+});
+
+test('a companion refreshes its sprite when the evolution or botch changes', t => {
+  canvases(t);
+  const miners = new OtherMiners(new THREE.Scene()), player = who();
+  t.after(() => miners.dispose());
+  let previous;
+  for (const style of [undefined, { evo: 1 }, { evo: 1, botched: 'haywire' }, { evo: 2, botched: 'haywire' }]) {
+    const report = { ...player, bug: { ...player.bug, style } };
+    miners.set([report]);
+    const next = miners.map.get(player.id);
+    assert.notEqual(next, previous);
+    assert.equal(next.pet.material.map.image, spriteCanvas(ROSTER[0], style, undefined, FINE));
+    miners.set([report]);
+    assert.equal(miners.map.get(player.id), next);
+    previous = next;
+  }
 });
 
 test('scene cleanup disposes the self model once and preserves shared name-tag geometry', t => {

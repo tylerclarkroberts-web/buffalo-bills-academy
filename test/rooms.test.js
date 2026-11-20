@@ -18,8 +18,9 @@ function fixture(t) {
   Object.assign(store.players, { owner, visitor, guest });
   store.savePlayers();
   const shop = { doc: { inv: { owner: { own: Object.fromEntries(ROOM_ITEMS.map(item => [item.id, 1])) } } } };
-  let pen = { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 4,
-    xp: 399, fedAt: 123, cool: { feed: 999 }, starving: 2, diesInMs: 444, style: { bughat: { id: 'bughat-cowboy', shape: 'cowboy', secret: 'not appearance' } } };
+  let pen = { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 13,
+    xp: 5760, fedAt: 123, cool: { feed: 999 }, starving: 2, diesInMs: 444,
+    style: { evo: 1, botched: 'haywire', bughat: { id: 'bughat-cowboy', shape: 'cowboy', secret: 'not appearance' } } };
   const barn = { view: () => ({ pen, serverNow: 987654321 }) };
   const avatars = { info: p => ({ kind: 'gen', seed: p.id }) };
   let total = 12000;
@@ -58,8 +59,8 @@ test('visitors see displayed things, appearance and exact current worth without 
   assert.deepEqual(Object.keys(shown).sort(), ['finishes', 'furniture', 'homestead', 'layoutRevision', 'owner', 'pet', 'placements', 'shelves', 'themeId', 'wallDisplays', 'wealthStage', 'worth']);
   assert.deepEqual(shown.owner, { id: 'owner', name: 'Room Owner', avatar: { kind: 'gen', seed: 'owner' } });
   assert.deepEqual(shown.placements, [{ anchorId: 'wall-left', itemId: 'odd-deed' }]);
-  assert.deepEqual(shown.pet, { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 4,
-    style: { bughat: { id: 'bughat-cowboy', shape: 'cowboy' } } });
+  assert.deepEqual(shown.pet, { stage: 'creature', species: 'bocydium', speciesName: 'Brazilian Treehopper', name: 'Basil', level: 13,
+    style: { evo: 1, botched: 'haywire', bughat: { id: 'bughat-cowboy', shape: 'cowboy' } } });
   assert.doesNotMatch(JSON.stringify(shown), /email|txns|fedAt|cool|starv|diesInMs|secret|privateNote/);
   assert.deepEqual(shown.worth, { bankroll: 142.87, chips: 100, holdings: 11707.13, riskEscrow: 50, total: 12000 });
   assert.deepEqual(shown.worth, rooms.owner(owner).worth);

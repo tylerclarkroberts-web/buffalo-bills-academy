@@ -246,8 +246,16 @@ export class Pvp {
     const fit = alive && !pen.faintedAt;
     const p = this.store.players[id];
     if (!fit) return full ? { ...LOANER, loaner: true, ownerName: p?.name, ...(alive ? { benched: pen.name } : {}) } : null;
+    const view = { species: pen.species, name: pen.name };
+    if (!full) {
+      if (pen.evo) {
+        view.style = { evo: pen.evo };
+        if (pen.botched) view.style.botched = pen.botched;
+      }
+      return view;
+    }
     const xp = pen.xp || 0, level = levelFor(xp, pen.cap);
-    return full ? { species: pen.species, name: pen.name, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp, cap: pen.cap, health: healthOf(pen) } : { species: pen.species, name: pen.name };
+    return { ...view, level, loaner: false, ownerName: p?.name, bornAt: pen.bornAt, xp, cap: pen.cap, health: healthOf(pen) };
   }
   /** Own-side XP bar numbers for the battle screen (null for a loaner). */
   xpBar(xp, cap = PAUSED_AT) {
