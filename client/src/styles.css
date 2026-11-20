@@ -271,6 +271,17 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .seat-cards .card, .seat-cards .card.sm { --w: max(19px, calc(var(--bust) * .58)); }
 .seat-cards .card + .card { margin-left: calc(var(--bust) * -.2); transform: rotate(7deg); transform-origin: 100% 100%; } /* v50: pivot on the bottom-right so the fan never dips below the row */
 .seat.me .seat-cards .card, .seat.me .seat-cards .card.sm { --w: max(22px, calc(var(--bust) * .7)); }
+.seat-cards { position: relative; }
+.eq-bar { position: absolute; left: 50%; bottom: calc(100% + 3px); transform: translateX(-50%); z-index: 5; display: flex; flex-direction: column; gap: 2px; width: max(148px, calc(var(--bust) * 3.6)); max-width: min(220px, 70vw); padding: 3px 6px 4px; border-radius: 8px; background: rgba(20, 6, 14, .92); border: 1px solid rgba(251, 244, 234, .18); box-shadow: 0 4px 10px -4px rgba(0, 0, 0, .7); pointer-events: none; color: var(--paper); }
+.eq-track { height: 6px; border-radius: 99px; background: rgba(251, 244, 234, .16); overflow: hidden; }
+.eq-fill { display: block; height: 100%; width: calc(var(--eq, 0) * 1%); background: var(--eq-color, #c43030); border-radius: inherit; box-shadow: 0 0 8px color-mix(in srgb, var(--eq-color) 55%, transparent); transition: width .4s ease, background-color .4s ease; }
+.eq-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 6px; min-width: 0; }
+.eq-pct { font: 600 10px/1.15 var(--mono); letter-spacing: .02em; white-space: nowrap; color: var(--eq-color, var(--paper)); }
+.eq-hand { font: 500 9.5px/1.15 var(--sans, inherit); opacity: .92; text-align: left; white-space: nowrap; }
+.felt-box.tall .eq-bar { width: max(140px, calc(var(--bust) * 3.3)); max-width: min(210px, 76vw); padding: 2px 5px 3px; }
+.felt-box.tall .eq-pct { font-size: 9.5px; }
+.felt-box.tall .eq-hand { font-size: 9px; }
+.felt-box.tall .eq-track { height: 5px; }
 .seat-plate { position: relative; z-index: 3; margin-top: 3px; /* v50: a real gap, never over the cards */ text-align: center; padding: 2px 10px 3px; min-width: calc(var(--bust) * 1.4); background: #1e0915; border: 1px solid rgba(251, 244, 234, .18); border-radius: 999px; box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .8); }
 .seat-name { font-size: clamp(10.5px, calc(var(--bust) * .22), calc(13px * var(--tscale, 1))); font-weight: 600; max-width: calc(var(--bust) * 2.2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
 /* A player with the table open and in front right now. Steady, so it never competes with the turn glow. */

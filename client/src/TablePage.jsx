@@ -21,6 +21,8 @@ import { ShowButton } from './table/Spectacle.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { TableSweep } from './table/TableSweep.jsx';
+import { useHandEquity } from './table/useEquity.js';
+import { EquityBar } from './table/EquityBar.jsx';
 import { Showdown } from './table/Showdown.jsx';
 import { useReplay, ReplayLayer } from './table/Replay.jsx';
 import { REPLAY_ON, cinematicPlays } from './table/replay.js';
@@ -449,6 +451,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, on
   const N = view.settings.maxPlayers;
   const hand = view.hand;
   const mySeat = view.me.seat ?? 0;
+  const equity = useHandEquity(view, { paused: !!hold || !!rp?.pending || !!rp?.on });
   const shown = (!hand && view.lastHand?.shown) || {};
   const winners = new Set((!hand && view.lastHand?.winners?.filter((w) => w.playerId === view.seats[w.seat]?.playerId).map((w) => w.seat)) || []);
   const button = hand ? hand.buttonSeat : view.buttonSeat;
@@ -622,6 +625,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, on
                   <div className="seat-cards">
                     {cards ? cards.map((c) => <Card key={c} card={c} size="sm" />)
                       : s.hasCards ? <><Card faceDown size="sm" /><Card faceDown size="sm" /></> : null}
+                    {isMe && equity && <EquityBar equity={equity} />}
                   </div>
                   {button === seat && <div className="dealer-btn" title="Dealer button">D</div>}
                 </div>
