@@ -290,7 +290,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
       <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
       {pen.title && <span className="small barn-title">{pen.title}</span>}
-      {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.botched ? `Stage II, more or less · ${pen.botched}` : 'Stage II'}</span>}
+      {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : ''}</span>}
       {stable.bugs.length > 1 && (pen.partner ? <span className="bs-partner small" data-test="barn-partner">★ Partner</span>
         : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
     </div>

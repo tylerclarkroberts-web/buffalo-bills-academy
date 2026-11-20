@@ -83,6 +83,10 @@ export class Rooms {
     const out = { stage: pen.stage, species: pen.species, speciesName: pen.speciesName, name: pen.name, level: pen.level };
     if (pen.stage === 'creature' && pen.style) {
       const style = {};
+      if (pen.style.evo) {
+        style.evo = pen.style.evo;
+        if (pen.style.botched) style.botched = pen.style.botched;
+      }
       for (const slot of ['bugskin', 'bughat', 'bugacc']) {
         const look = pen.style[slot]; if (!record(look)) continue;
         style[slot] = { id: look.id, ...(look.shape ? { shape: look.shape } : {}), ...(Array.isArray(look.pal) ? { pal: [...look.pal] } : {}) };

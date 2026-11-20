@@ -149,7 +149,7 @@ export function buildMiner({ id, name, avatar, bug }) {
   let pet = null;
   const species = bug && BY_ID[bug.species];
   if (species && typeof document !== 'undefined') {
-    const t = bugTexture(THREE, species, null);
+    const t = bugTexture(THREE, species, bug.style || null);
     pet = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     pet.position.set(0.45, 0.32, 0.2); g.add(pet);
   }
@@ -172,7 +172,8 @@ export class OtherMiners {
     for (const o of list) {
       seen.add(o.id);
       let m = this.map.get(o.id);
-      const key = `${o.avatar?.kind || ''}:${o.avatar?.seed || o.id}:${o.avatar?.skinTone || ''}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${o.name}`;
+      const style = o.bug?.style;
+      const key = `${o.avatar?.kind || ''}:${o.avatar?.seed || o.id}:${o.avatar?.skinTone || ''}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${style?.evo || 0}:${style?.botched || ''}:${o.name}`;
       if (m && m.key !== key) { this.remove(o.id); m = null; }
       if (!m) {
         m = { ...buildMiner(o), key, x: o.x * TILE, z: o.y * TILE, yaw: o.yaw, walk: 0 };
