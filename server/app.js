@@ -357,6 +357,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
   api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
+  api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
@@ -458,6 +459,24 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/slots/end', needPlayer, wrap((req) => slots.end(req.player)));
   // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
+  if (barnTest) api.post('/dev/heeshee', needPlayer, wrap((req) => {
+    const v = req.body?.on; mines.heesheeForce = v === true || v === false ? v : null;
+    let bug = null;
+    if (req.body?.bug) {
+      const id = req.player.id;
+      try {
+        const now = service.now();
+        const view = barn.view(id);
+        if (view?.pen?.stage !== 'creature') {
+          try { barn.layEgg(id); } catch { /* already has an egg or a bug */ }
+          const pen = barn.doc.pens[id];
+          if (pen?.stage === 'egg' && barn.hatchIfDue(id, pen, (pen.hatchAt || now) + 1)) barn.save();
+        }
+        bug = barn.view(id)?.pen?.stage === 'creature' ? { name: barn.view(id).pen.name, species: barn.view(id).pen.species } : null;
+      } catch (e) { bug = { error: String(e.message || e) }; }
+    }
+    return { force: mines.heesheeForce, bug };
+  }));
   if (barnTest) api.post('/dev/slots-force', needPlayer, wrap((req) => { const f = String(req.body?.force || ''); slots.force = ['toot', 'stash', 'free'].includes(f) ? f : null; slots.lastAt.clear(); return { force: slots.force }; }));
   if (barnTest) api.post('/dev/holdem-rig', needPlayer, wrap((req) => {
     const deck = req.body?.deck;

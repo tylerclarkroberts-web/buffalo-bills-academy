@@ -10,6 +10,7 @@ import { mineDay, daySeed, dailyLayout } from './engine/daily-maze.js';
 import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
 import { roamRoute } from './engine/wild-roam.js';
 import { rarityOf, WILD_ODDS, RARE_TIER, LEGENDARY } from './engine/bug-types.js';
+import { HEESHEE_RETURN } from './foreman.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -59,14 +60,17 @@ export function rollOutcome(randInt = (n) => crypto.randomInt(n)) {
 
 
 // Encounters (internal, not shown to players), decided by the server when the shift starts, from its own random
-// source, never the payout one. About 28% of shifts get the visitor; about 20% get the faun; they never share a
-// shift (the visitor's rate is unchanged: the faun is rolled only from the remaining 72%). The visitor can't show
-// up before SCARE_AFTER_MS, and then only when the player takes a corner fast (client/src/mines/stalker.js). The
-// faun trots in a couple of seconds after clock-in and follows for the rest of the shift (client/src/mines/faunFollower.js).
-// Both are harmless: pay and timing ignore them.
+// source, never the payout one. One roll, at most one figure: about 28% of shifts get the visitor (Nosferatu),
+// 20% the faun, 20% the Heeshee Mazode, and the rest none. The visitor's 28% and the faun's 20% are unchanged;
+// the Heeshee takes the next 20,000 of the remaining 52,000, so they never share a shift and nothing is squeezed.
+// The visitor can't show up before SCARE_AFTER_MS, and then only when the player takes a corner fast
+// (client/src/mines/stalker.js). The faun trots in after clock-in (faunFollower.js). The Heeshee bumbles the
+// tunnels and, if you brought a hatched bug guide, may snatch it (heeshee.js); pay and acid timing ignore it.
 export const SCARE_CHANCE = 28000; // out of 100,000
-export const FAUN_CHANCE = 20000; // out of 100,000: overall 20% of shifts, never the same shift as the visitor
+export const FAUN_CHANCE = 20000; // out of 100,000: overall 20% of shifts, never with the visitor or the Heeshee
+export const HEESHEE_CHANCE = 20000; // out of 100,000: overall 20% of shifts, never with the visitor or the faun
 export const SCARE_AFTER_MS = 30000;
+export const HEESHEE_SHAKEN_MS = 90_000; // purely cosmetic twitch after the Foreman returns the bug
 export const PURPLE_AFTER_MS = [45000, 90000]; // a purple shift's backstop: the bug wanders off and finds the pool by then, wherever the miner is
 /** Where the day's purple pool lies: about halfway along the shortest walk from the lift to the first acid pool, so every miner passes it. */
 export function purpleSpot(maze, first) {
@@ -79,11 +83,14 @@ export function purpleSpot(maze, first) {
   return at(p) >= 3 && at(p) < at(first) ? p : null;
 }
 export const EGG_WINDOW_MS = 30000; // an egg (when there is one) lies near the start for the first 30 s of the shift
-// One roll, two mutually exclusive encounters. 0..27999 the visitor (28%), 28000..47999 the faun (20%), else neither.
+// One roll, three mutually exclusive encounters.
+// 0..27999 the visitor (28%), 28000..47999 the faun (20%), 48000..67999 the Heeshee (20%), else none (32%).
 export function rollScare(randInt = (n) => crypto.randomInt(n)) {
   const r = randInt(100000);
-  if (r < SCARE_CHANCE) return { scare: true, faun: false };
-  return { scare: false, faun: (r - SCARE_CHANCE) < FAUN_CHANCE };
+  if (r < SCARE_CHANCE) return { scare: true, faun: false, heeshee: false };
+  if (r < SCARE_CHANCE + FAUN_CHANCE) return { scare: false, faun: true, heeshee: false };
+  if (r < SCARE_CHANCE + FAUN_CHANCE + HEESHEE_CHANCE) return { scare: false, faun: false, heeshee: true };
+  return { scare: false, faun: false, heeshee: false };
 }
 export const MAX_SHIFT_MS = 30 * 60 * 1000;
 /** A cave-in in a permit shaft knocks this share of what is in the bucket onto the floor. */
@@ -168,6 +175,7 @@ export class Mines {
     // Horror Night (engine/horror.js): the clock decides. horrorForce (true/false) overrides it; only the dev-login
     // test route in app.js ever sets it, and that route is never mounted in production.
     this.horrorForce = null;
+    this.heesheeForce = null;
   }
   /** Is it Horror Night right now? Cosmetic only: nothing that pays, times or rolls a shift reads it. */
   horrorOn(now = this.now()) { return this.horrorForce ?? inHorrorWindow(now); }
@@ -230,7 +238,9 @@ export class Mines {
   completionView(player, receipt) {
     const pending = this.foreman?.doc.lastMineShift?.[player.id] === receipt.shiftId ? this.foreman.view(player.id).pending : null;
     if (!receipt.result) return { pending, ...(receipt.sick ? { sick: receipt.sick } : {}) };
-    return { ...(receipt.sick ? { sick: receipt.sick } : {}), result: { ...receipt.result, bankroll: player.bankroll, ...(receipt.reason === 'mud' && pending ? { foreman: pending } : {}) } };
+    const heeshee = receipt.heeshee ? { id: `heeshee-${receipt.shiftId}`, reason: 'heeshee', lines: HEESHEE_RETURN } : null;
+    const foreman = heeshee || (receipt.reason === 'mud' && pending ? pending : null);
+    return { ...(receipt.sick ? { sick: receipt.sick } : {}), result: { ...receipt.result, bankroll: player.bankroll, ...(foreman ? { foreman } : {}), ...(receipt.heeshee ? { bugReturned: true, bugShaken: true } : {}) } };
   }
 
   start(player, request = {}) {
@@ -255,7 +265,10 @@ export class Mines {
     if (shaft.fare) this.accounts.requireFunds(player, shaft.fare, `the elevator to ${shaft.name}`);
     const day = this.layout(now, shaft); // each shaft digs its own tunnels, bigger the deeper it is
     const pinned = this.vein?.(); // a test that pins the size gets plain tunnels unless it pins a tier too
-    const shift = { id: crypto.randomBytes(12).toString('base64url'), startedAt: now, ...rollScare(this.scareInt), seed: day.seed, day: day.day, cells: pinned?.cells || day.cells };
+    let encounter = rollScare(this.scareInt);
+    if (this.heesheeForce === true) encounter = { scare: false, faun: false, heeshee: true };
+    else if (this.heesheeForce === false) encounter = { ...encounter, heeshee: false };
+    const shift = { id: crypto.randomBytes(12).toString('base64url'), startedAt: now, ...encounter, seed: day.seed, day: day.day, cells: pinned?.cells || day.cells };
     const tier = tierInfo(pinned?.cells ? pinned.tier : day.tier); // The shift keeps its tier (and hazard pay) past midnight.
     if (tier) Object.assign(shift, { tier: tier.tier, ...(tier.pay !== 1 ? { hazard: tier.pay } : {}) });
     const maze = shiftMaze(shift);
@@ -299,13 +312,31 @@ export class Mines {
       return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
     } catch { return null; }
   }
+  shakenUntil(playerId) { return (this.doc.shaken?.[playerId] || 0) > this.now(); }
+  /**
+   * The Heeshee grabbed the guide. The barn row is never touched: the bug is only hidden for the rest of this
+   * shift, and settle() always clears the flag (even a mid-shift quit). Idempotent.
+   */
+  stealBug(player, shiftId) {
+    const cur = this.current(player, shiftId);
+    if (cur.settlement) throw new GameError('That shift has already ended.', 409);
+    if (!cur.heeshee) throw new GameError('There is no Heeshee Mazode on this shift.', 409);
+    const guide = this.guideBug(player.id);
+    if (!guide || guide.fainted) throw new GameError('You have no bug for it to take.', 409);
+    if (cur.heesheeStolen) return this.publicShift(cur, true, player.id, guide);
+    const next = { ...cur, heesheeStolen: true, heesheeStolenAt: this.now() };
+    this.commit(player.id, next);
+    return this.publicShift(next, true, player.id, guide);
+  }
   eggAvailable(s, playerId) { return !!(s?.egg && !s.eggTaken && this.barn && !this.barn.has(playerId)); }
 
   publicShift(s, resumed, playerId, guide = null) {
-    const bug = guide?.fainted ? null : guide;
+    const stolen = !!s.heesheeStolen;
+    const bug = guide?.fainted || stolen ? null : (guide ? { ...guide, ...(this.shakenUntil(playerId) ? { shaken: true } : {}) } : guide);
+
     const wilds = this.wildsFor(s);
     const egg = this.eggAvailable(s, playerId);
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(stolen ? { bugStolen: { name: guide?.name || 'Your bug' } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })) } : {}) };
   }
@@ -460,8 +491,12 @@ export class Mines {
       }
       // However a purple shift ends, the bug drank: it goes home sick. The acid already in the bucket is paid as usual.
       let sick = null; if (cur.purple) try { sick = this.barn?.fallSick?.(player.id) || null; } catch { /* the pay must not wait on the barn */ }
-      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}) } };
+      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}), ...(cur.heesheeStolen ? { heeshee: true } : {}) } };
       this.commit(player.id, cur);
+      if (cur.heesheeStolen) {
+        const next = { ...this.doc, shaken: { ...this.doc.shaken, [player.id]: this.now() + HEESHEE_SHAKEN_MS } };
+        this.store.saveDoc('mines', next); this.doc = next;
+      }
       try { this.onShiftEnd?.(player.id, cur, cur.settlement); } catch { /* admin stats only */ }
     }
     const receipt = cur.settlement;

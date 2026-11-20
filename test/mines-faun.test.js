@@ -6,27 +6,31 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Mines, rollScare, SCARE_CHANCE, FAUN_CHANCE } from '../server/mines.js';
+import { Mines, rollScare, SCARE_CHANCE, FAUN_CHANCE, HEESHEE_CHANCE } from '../server/mines.js';
 import { FaunFollower, APPEAR_AFTER_MS, FOLLOW_GAP, BODY_RADIUS, MOON_SECONDS, MOON_MIN_S } from '../client/src/mines/faunFollower.js';
 import { tileOf, TILE } from '../client/src/mines/stalker.js';
 import { buildFaun } from '../client/src/mines/faunMesh.js';
 
-test('encounter roll is 28% visitor, 20% faun, and never both', () => {
-  let scare = 0, faun = 0, both = 0, neither = 0;
+test('encounter roll is 28% visitor, 20% faun, 20% Heeshee, and never two at once', () => {
+  let scare = 0, faun = 0, heeshee = 0, both = 0, neither = 0;
   for (let r = 0; r < 100000; r++) {
     const out = rollScare(() => r);
-    if (out.scare && out.faun) both++;
+    const n = !!out.scare + !!out.faun + !!out.heeshee;
+    if (n > 1) both++;
     else if (out.scare) scare++;
     else if (out.faun) faun++;
+    else if (out.heeshee) heeshee++;
     else neither++;
   }
   assert.equal(scare, SCARE_CHANCE);
   assert.equal(faun, FAUN_CHANCE);
+  assert.equal(heeshee, HEESHEE_CHANCE);
   assert.equal(both, 0);
-  assert.equal(scare + faun + neither, 100000);
-  assert.deepEqual(rollScare(() => 0), { scare: true, faun: false });
-  assert.deepEqual(rollScare(() => SCARE_CHANCE), { scare: false, faun: true });
-  assert.deepEqual(rollScare(() => 99999), { scare: false, faun: false });
+  assert.equal(scare + faun + heeshee + neither, 100000);
+  assert.deepEqual(rollScare(() => 0), { scare: true, faun: false, heeshee: false });
+  assert.deepEqual(rollScare(() => SCARE_CHANCE), { scare: false, faun: true, heeshee: false });
+  assert.deepEqual(rollScare(() => SCARE_CHANCE + FAUN_CHANCE), { scare: false, faun: false, heeshee: true });
+  assert.deepEqual(rollScare(() => 99999), { scare: false, faun: false, heeshee: false });
 });
 
 function minesFixture(t, scareInt) {
@@ -57,6 +61,12 @@ test('clock-in sends faun on a faun roll and never with the visitor', (t) => {
   const quiet = minesFixture(t, (n) => n - 1).start();
   assert.equal(quiet.scare, null);
   assert.equal(quiet.faun, undefined);
+  assert.equal(quiet.heeshee, undefined);
+
+  const heesheeShift = minesFixture(t, () => SCARE_CHANCE + FAUN_CHANCE).start();
+  assert.equal(heesheeShift.heeshee, true);
+  assert.equal(heesheeShift.faun, undefined);
+  assert.equal(heesheeShift.scare, null);
 });
 
 // A one-wide north-south corridor ending in a dead end at (3,5), with a cross passage at (3,1).

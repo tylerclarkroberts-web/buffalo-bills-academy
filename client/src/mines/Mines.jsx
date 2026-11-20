@@ -29,6 +29,7 @@ import { MineAudio } from './audio.js';
 import { Stalker } from './stalker.js';
 import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
+import { HeesheeMazode, panOf, proximity } from './heeshee.js';
 import { VeinTracker } from './vein.js';
 import DoorHall from './DoorHall.jsx';
 import Foreman from './Foreman.jsx';
@@ -304,7 +305,7 @@ export default function Mines() {
         {phase === 'sick' && sick && <Sick sick={sick} />}
         {phase === 'result' && result && <Result r={result} onAgain={start} onLeave={leave} starting={starting} fare={going?.fare} />}
       </div>
-      {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); if (lecture.reason === 'paid') navigate('/'); else setPhase('intro'); }} />}
+      {lecture && <Foreman key={lecture.id} pending={lecture} sound={sound} onDone={() => { setLecture(null); if (lecture.reason === 'paid') navigate('/'); else if (lecture.reason !== 'heeshee') setPhase('intro'); }} />}
     </div>
   );
 }
@@ -460,8 +461,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const [purple, setPurple] = useState(false); // the partner has found the purple acid; the shift ends a few seconds on
   const purpleRef = useRef(false);
   // A fainted bug stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone).
-  const [line, setLine] = useState(shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
-  const [status, setStatus] = useState('FIND THE ACID POOL');
+  const [line, setLine] = useState(shift.bugStolen ? 'THE HEESHEE MAZODE TOOK YOUR BUG. FIND THE ACID WITHOUT IT.' : shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
+  const [status, setStatus] = useState(shift.bugStolen ? 'YOUR BUG IS GONE. FIND THE ACID.' : 'FIND THE ACID POOL');
+  const [stolen, setStolen] = useState(!!shift.bugStolen);
+  const stolenRef = useRef(!!shift.bugStolen);
   const done = useRef(false);
   const maze = useRef(shiftMaze(shift)).current; // v79: the day's tier decides the size and the cave-ins
   const tier = tierInfo(shift.tier);
@@ -713,8 +716,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const stalker = new Stalker(maze, { armed: !!shift.scare, afterMs: shift.scare?.afterMs, rand: rng((shift.seed ^ 0x5eed) >>> 0) });
     // The faun never shares a shift with the visitor; the server already guaranteed that.
     const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
+    // One exclusive slot: the Heeshee never shares a shift with the visitor or the faun (server/mines.js rollScare).
+    const heeshee = (shift.heeshee && !shift.scare && !shift.faun) ? new HeesheeMazode(maze, { armed: true, hasBug: !!(shift.bug && !shift.bugStolen), rand: rng((shift.seed ^ 0x4ee5) >>> 0) }) : null;
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
-    const bugGuide = shift.bug ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
+    const bugGuide = (shift.bug && !shift.bugStolen) ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
     guideRef.current = bugGuide;
     // Inspect on arrival: the server confirms the pool's fixed amount before collection.
     const askVein = async () => {
@@ -740,7 +745,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         const b = geigerBars(path, 48, facing);
         if (b !== lastBars) { lastBars = b; setBars(b); }
       },
-      stalker, bugGuide, faun, localStart: shift.localStart, reduceMotion: reduce,
+      stalker, bugGuide, faun, heeshee, localStart: shift.localStart, reduceMotion: reduce,
       depth: dark, ...light, lampPower: tier ? Math.min(1.15, Math.max(0.7, tier.lamp)) : 1,
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
       onEvent: (e) => {
@@ -760,6 +765,24 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         }
         if (e === 'faun-appear') setLine('A FAUN TROTTED IN BEHIND YOU. HE IS BLEATING.');
         if (e === 'faun-bleat') audio?.bleat();
+        if (e === 'heeshee-appear') setLine('SOMETHING IS MOVING IN THE DARK. IT DOES NOT WALK RIGHT.');
+        if (e === 'heeshee-noise') {
+          const hm = sceneRef.current?.heeshee; const pos = sceneRef.current?.pos;
+          if (hm && pos) audio?.heesheeNoise({ kind: ['breath', 'click', 'warble'][Math.floor(Math.random() * 3)], dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.55 });
+        }
+        if (e === 'heeshee-freeze') { /* feathers snap; the lamp already flickers */ }
+        if (e === 'heeshee-lunge') audio?.heesheeNoise({ kind: 'warble', dist: 1.2, pan: 0, vol: 0.8 });
+        if (e === 'heeshee-steal') {
+          stolenRef.current = true; setStolen(true); showBugMenu(false);
+          bugGuide?.steal();
+          audio?.heesheeSting();
+          const nm = (shift.bug?.name || 'YOUR BUG').toUpperCase();
+          setLine(`THE HEESHEE MAZODE TOOK ${nm}. FIND THE ACID WITHOUT IT.`);
+          setStatus('YOUR BUG IS GONE. FIND THE ACID.');
+          api('POST', '/mines/heeshee/steal', { shiftId: shift.shiftId, rulesVersion: 2 }).catch(() => {});
+        }
+        if (e === 'heeshee-gone') setLine(stolenRef.current ? 'IT RAN OFF WITH YOUR BUG. KEEP LOOKING FOR THE ACID.' : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
+
       },
     });
     sceneRef.current = scene;
@@ -834,6 +857,15 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const lightsTimer = horror ? setTimeout(() => lightsOut.current(), Math.max(0, shift.localStart + horror.lightsOutMs - Date.now())) : null;
     if (horror) window.__acidHorror = { lightsOut: () => lightsOut.current(), scare: () => jump.current(), gate: gate.current, get dark() { return darkRef.current; }, get crew() { return crewRef.current; } };
     window.__acidMine = scene; // handy for debugging and automated screenshots; the server still decides everything
+    if (heeshee) window.__acidHeeshee = {
+      get state() { return heeshee.state; },
+      get present() { return heeshee.present; },
+      get pos() { return { x: heeshee.x, z: heeshee.z }; },
+      place(x, z, yaw) { heeshee.state = 'wandering'; heeshee.x = x; heeshee.z = z; if (Number.isFinite(yaw)) heeshee.facing = yaw; heeshee.pause = 0; if (scene.heesheeMesh) scene.heesheeMesh.group.visible = true; },
+      lookAt() { /* put it in front of the lamp, a few tiles out */ const d = 3.4; heeshee.x = scene.pos.x - Math.sin(scene.yaw) * d; heeshee.z = scene.pos.y - Math.cos(scene.yaw) * d; heeshee.facing = Math.atan2(scene.pos.x - heeshee.x, scene.pos.y - heeshee.z); heeshee.state = 'wandering'; heeshee.pause = 0.2; if (scene.heesheeMesh) scene.heesheeMesh.group.visible = true; },
+      lunge() { heeshee.hasBug = !!(guideRef.current?.armed && guideRef.current.state !== 'stolen'); heeshee.state = 'lunging'; heeshee.lungeT = 0.4; heeshee.events.push('lunge'); },
+    };
+
     window.__acidWorms = { spawn: () => { const w = swarm.current.spawn(); setWorms([...swarm.current.worms]); return w; }, cut: (id) => cutWorm.current(id ?? null), get count() { return swarm.current.worms.length; } };
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
@@ -917,6 +949,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           if (v !== 0) break;
         }
       }
+      if (heeshee?.present) {
+        const d = Math.hypot(scene.pos.x - heeshee.x, scene.pos.y - heeshee.z);
+        audio?.heesheeDread(proximity(d));
+      } else if (heeshee) audio?.heesheeDread(0);
       if (shift.rod) {
         const to = bucketRef.current.pools.find((p) => p.id === bucketRef.current.currentPoolId);
         setRod(to ? rodHeading(maze.grid, { x: Math.round(scene.pos.x / TILE), y: Math.round(scene.pos.y / TILE) }, to, scene.yaw) : null);
@@ -953,7 +989,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const flavor = setInterval(() => { if (Date.now() < caveHold) return; const pool = darkRef.current ? HORROR_LINES : visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
-      scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidWorms; window.removeEventListener('resize', onResize);
+      scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidHeeshee; delete window.__acidWorms; window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor); clearTimeout(lightsTimer); delete window.__acidHorror; audio?.danceBeat(false);
@@ -1068,7 +1104,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <button ref={mapButton} className="m-link" data-test="map-button" aria-haspopup="dialog" aria-expanded={mapOpen} disabled={clockingOut} onClick={() => showMap(true)}>MAP<span className="m-key"> M</span></button>
           <button className={`m-link m-dance-btn${dance ? ' on' : ''}`} data-test="dance-btn" aria-expanded={picker} aria-label={dance ? 'Stop dancing' : 'Dance'}
             onClick={() => (dance ? stopDance() : showPicker(!picker))}>{dance ? '■ STOP' : '♫ DANCE'}<span className="m-key"> B</span></button>
-          {shift.bug && <button className={`m-link m-dance-btn${bugMenu ? ' on' : ''}`} data-test="bug-btn" aria-expanded={bugMenu} aria-label="Tell your bug what to do"
+          {shift.bug && !stolen && <button className={`m-link m-dance-btn${bugMenu ? ' on' : ''}`} data-test="bug-btn" aria-expanded={bugMenu} aria-label="Tell your bug what to do"
             onClick={() => showBugMenu(!bugMenu)}>🐞 BUG<span className="m-key"> V</span></button>}
         </div>}
       </div>
@@ -1077,6 +1113,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
       </div>}
+      {stolen && <div className="m-stolen" data-test="heeshee-stolen" role="status">YOUR BUG IS GONE</div>}
       <div className="m-ticker" aria-live="polite">{line}</div>
       {prey && !battle && !doom && !mapOpen && (
         <div className="m-door-prompt m-stab" data-test="ambush-prompt">
@@ -1258,6 +1295,7 @@ function Result({ r, onAgain, onLeave, starting, fare }) {
       {r.pvp?.fainted && <p className="m-twin" data-test="pvp-fainted">{typeof r.pvp.fainted === 'string' ? r.pvp.fainted.toUpperCase() : 'YOUR BUG'} FAINTED. <button className="m-link" onClick={() => navigate('/barn/center')}>BUG CENTER ►</button></p>}
       {r.twin && <p className="m-twin" data-test="twin">THE OTHER FAUN WAS WAITING AT THE ELEVATOR. HE TOOK ${r.twin.took.toLocaleString('en-US', { maximumFractionDigits: 2 })} AND SAID THANK YOU.</p>}
       {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED{r.rich ? <span data-test="result-rich"> · ACID QUALITY ×{r.rich.toFixed(2)}</span> : null}</p>}
+      {r.bugReturned && <p className={`m-dim m-bug-back${r.bugShaken ? ' shaken' : ''}`} data-test="heeshee-return">YOUR BUG IS BACK. HE'S SHAKEN UP, BUT THE CIGARETTES HELPED.</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">
         <button className="m-btn" disabled={starting} onClick={onAgain}>[ ANOTHER SHIFT{fare ? ` · $${fare} FARE` : ''} ]</button>

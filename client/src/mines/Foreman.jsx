@@ -13,7 +13,7 @@ const isYell = (s) => /!/.test(s) && s.replace(/[^A-Za-z]/g, '').replace(/[a-z]/
 const CPS = 38;
 
 export default function Foreman({ pending, sound, onDone }) {
-  const farewell = pending.reason === 'paid';
+  const farewell = pending.reason === 'paid' || pending.reason === 'heeshee';
   const canvas = useRef(null), scene = useRef(null), audio = useRef(null), input = useRef(null);
   const still = useRef(reducedMotion()).current;
   const [lines] = useState(pending.lines);
