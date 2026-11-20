@@ -60,6 +60,6 @@ test('rarer bugs are likelier on a rougher day, and each deeper shaft holds one 
     const wilds = mines.wildsFor(shift(day, shaft));
     assert.deepEqual(wilds.slice(0, top.length), top, `Shaft ${shaft} has every bug Shaft 7 has`);
     assert.equal(wilds.length, top.length + k + 1);
-    assert.ok(wilds.at(-1).level >= 3 + k + 1, 'and its own is stronger');
+    assert.ok(wilds.at(-1).level >= 1 + Math.floor((3 + k) / 2), 'and its own runs a little stronger');
   });
 });

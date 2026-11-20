@@ -32,7 +32,7 @@ test('a bug left alone reaches for every special it has learned; only the stance
   assert.deepEqual(combatStats(1), { maxHp: 100, damageMultiplier: 1 });
   assert.deepEqual(combatStats(3), { maxHp: 110, damageMultiplier: 1.06 });
   assert.deepEqual(combatStats(10), { maxHp: 145, damageMultiplier: 1.27 });
-  assert.deepEqual(combatStats(100), combatStats(20), 'ribbons raise the cap to 20 at most');
+  assert.deepEqual(combatStats(100), combatStats(30), 'nothing grows past level 30');
   assert.deepEqual(combatStats(NaN), combatStats(3));
 });
 

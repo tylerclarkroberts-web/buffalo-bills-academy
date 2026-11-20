@@ -10,10 +10,10 @@ import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
 import { idOf } from './barn.js';
 import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
-import { MAX_LEVEL, LEVEL_CAP, ROSTER, levelFor } from './engine/creatures.js';
+import { ROSTER, levelFor } from './engine/creatures.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
 
-export const RIBBON_XP = 100;
+export const RIBBON_XP = 75;
 export const RIBBONS = 8;
 // One-time prize money, bigger every area: a trainer pays PURSE.trainer and a ribbon PURSE.ribbon, times the area's
 // ribbon number. Nothing can be beaten twice, so none of it can be farmed.
@@ -62,9 +62,6 @@ export const TRAINED = 0.1;
 const BOARD = 0.22; // the Fair Board's bugs, and whichever bug holds the rosette, are drilled harder still
 /** An area is open with the ribbon it follows (`needs`), or, past the any-order four, with enough ribbons of any kind (`held`). */
 export const areaOpen = (me, area) => (!area.needs || !!me.ribbons[area.needs]) && Object.keys(me.ribbons).length >= (area.held || 0);
-/** The top level a player's bugs can reach: one more for every ribbon, and the last two for getting past the Fair Board. */
-export const capFor = (ribbons, board = false) => Math.min(LEVEL_CAP, MAX_LEVEL + ribbons + (board ? 2 : 0));
-const capOf = (me) => capFor(Object.keys(me?.ribbons || {}).length, !!me?.done?.korn);
 // Until somebody wins the circuit, the house holds the rosette. After that it is a copy of the bug that took it,
 // as it stood that day, fought by the computer; its owner need not be anywhere near.
 export const HOUSE = { pid: null, owner: 'Guntrad', bug: { species: 'dryococelus', name: 'The House', level: 20, mood: 100, gear: 0.06, defense: 0.06, battle: { stance: 'balanced' } } };
@@ -319,7 +316,6 @@ export class Circuit {
     this.store = store; this.accounts = accounts; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.barn = barn; this.fights = fights || barn.fights; this.now = now;
     this.doc = store.loadDoc('circuit', { players: {} });
     this.doc.players ||= {};
-    barn.capOf = (pid) => capOf(this.doc.players[pid]);
   }
   save() { this.store.saveDoc('circuit', this.doc); }
   me(pid) { return (this.doc.players[pid] ||= { done: {}, ribbons: {}, run: null }); }
@@ -359,7 +355,7 @@ export class Circuit {
         stops: area.stops.map((stop) => ({ ...stop, ...(FIGHTS.includes(stop.kind) ? { bugs: this.bugsOf(pid, me, stop) } : {}), purse: purseOf(stop, area, Object.keys(me.ribbons).length),
           // the rosette is only ever held: `done` is holding it now, and its purse is paid the first time
           ...(stop.kind === 'champion' ? { done: this.champion().pid === pid ? this.champion().at : null, heldBy: this.champion().owner, since: this.champion().at || null, purse: me.done[stop.id] ? 0 : purseOf(stop, area) } : { done: me.done[stop.id] || null }), open: this.open(me, stop) })) })),
-      cap: capOf(me), trained: TRAINED, tolls: me.tolls || {},
+      trained: TRAINED, tolls: me.tolls || {},
       prizes: prizesOf(me), jars: this.shop?.jars(pid) || 0,
       cards: BOSSES().map((stop) => ({ id: stop.id, who: stop.who, poster: stop.poster, species: stop.bugs.at(-1).species, at: me.cards?.[stop.id] || null })),
       run: me.run && { stop: me.run.stop, foe: me.run.foe, foeHp: me.run.foeHp ?? 100, out: me.run.out, hp: me.run.hp, live: me.run.live },
@@ -456,7 +452,7 @@ export class Circuit {
       } else if (run.foe >= (run.lineup || stop.bugs).length && stop.kind !== 'leader') { // a trainer or a judge with more than one bug: beaten, paid, no ribbon
         me.done[stop.id] = this.now(); me.run = null;
         extra.verdict = say(stop.won);
-        extra.spoils = [this.pay(pid, stop, area), ...(stop.id === 'korn' ? [`The Fair Board is behind you. Your bugs can now reach level ${capOf(me)}`] : [])];
+        extra.spoils = [this.pay(pid, stop, area)];
       } else if (run.foe >= (run.lineup || stop.bugs).length) {
         me.done[stop.id] = me.ribbons[area.ribbon] = this.now(); me.run = null;
         for (const bornAt of run.won) {
@@ -465,8 +461,7 @@ export class Circuit {
         }
         extra.verdict = say(stop.won);
         this.award(pid, AWARDS.ribbon);
-        const cap = capOf(me);
-        extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, ...(PRIZES[stop.id] ? [`Prize: ${PRIZES[stop.id].name}`] : []), this.pay(pid, stop, area), `Your bugs can now reach level ${cap}`, `+${RIBBON_XP} XP to every bug that won a round`];
+        extra.spoils = [`Ribbon ${area.ribbon} · ${area.name}`, ...(PRIZES[stop.id] ? [`Prize: ${PRIZES[stop.id].name}`] : []), this.pay(pid, stop, area), `+${RIBBON_XP} XP to every bug that won a round`];
       } else if (!won && !standing.length) {
         me.run = null;
         extra.verdict = say(stop.lost);

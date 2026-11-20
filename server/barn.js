@@ -9,9 +9,10 @@
 // so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, levelFor, xpFor, MAX_LEVEL } from './engine/creatures.js';
+import { ROSTER, BY_ID, levelFor, rawLevel, xpFor, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
+import { QUIRKS } from './engine/bout.js';
 import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { cents } from './accounts.js';
@@ -37,22 +38,27 @@ export const CARE = {
   play: { stat: 'mood', gain: 30, cooldownMs: 20 * 60e3, word: 'played with' },
   clean: { stat: 'clean', gain: 45, cooldownMs: 40 * 60e3, word: 'hosed down' },
 };
-export const CARE_XP = 12;   // per care action. No daily cap: the care cooldowns are the only brake
-export const DAY_XP = 10;    // per full day since hatching, while it's not neglected
-export const BOOST_XP = 6;   // a mister or heat lamp (no longer sold; ones already held still work): half a care action
-export const FEEDER_DAY_XP = 12; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
+export const CARE_XP = 9;   // per care action. No daily cap: the care cooldowns are the only brake
+export const DAY_XP = 8;    // per full day since hatching, while it's not neglected
+export const BOOST_XP = 5;   // a mister or heat lamp (no longer sold; ones already held still work): half a care action
+export const FEEDER_DAY_XP = 9; // per full day an automatic feeder covers: one feed's worth, so paying for it still levels the bug
 export const BOUT_LEVEL = 1; // any hatched bug: they could already fight in the mine
-export const BOUT_XP = 20;
-export const BOUT_WIN_XP = 10; // on top, for the winner of an even fight; an underdog's win pays up to 18, a favourite's as little as 2 (upsetXp)
-export const FIND_XP = 2;      // each acid pool a guide bug leads its miner to. ponytail: uncapped (pool travel time is the brake); cap it if someone farms shifts
+export const BOUT_XP = 15;
+export const BOUT_WIN_XP = 8; // on top, for the winner of an even fight; an underdog's win pays up to 18, a favourite's as little as 2 (upsetXp)
+export const FIND_XP = 1;      // each acid pool a guide bug leads its miner to. ponytail: uncapped (pool travel time is the brake); cap it if someone farms shifts
 export const BOUT_OPEN_MS = 60 * 60e3;
 export const MAX_BOUT_STAKE = 10000;
 export const BOUT_STAKE_STEP = 10; // a named stake is $0, $10, $20…: never cents
 // Both mine bugs that fight to a verdict earn BATTLE_XP; the winner gets a bonus scaled by the line.
-export const BATTLE_XP = 20;
-export const WIN_BONUS_XP = 30;
+export const BATTLE_XP = 15;
+export const WIN_BONUS_XP = 22;
 export const RECOVER_MS = 60 * 60e3;
 export const FAST_HEAL_COST = 50;
+// Evolution. A partner whose XP has reached EVOLVE_FROM may find purple acid on a mine shift: one shift in four at
+// first, certain by EVOLVE_BY. It comes home sick, and the Bug Center visit that follows rebuilds it for BILL_SHARE of
+// its owner's cash. One rebuild in BOTCH_ODDS goes wrong: the bug still evolves, with one of the QUIRKS (engine/bout.js) for good.
+export const EVOLVE_FROM = 10, EVOLVE_BY = 13, BILL_SHARE = 0.5, BOTCH_ODDS = 15;
+export const purpleChance = (xp) => Math.max(0, Math.min(1, (rawLevel(xp) - EVOLVE_FROM + 1) / (EVOLVE_BY - EVOLVE_FROM + 1)));
 /** Outside a fight only a knockout persists. Older standing bugs with saved damage recover here too. */
 export function healthOf(pen) {
   return pen && !pen.faintedAt ? 100 : 0;
@@ -65,12 +71,13 @@ const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
 
 export class Barn {
-  constructor({ store, accounts, now, incubateMs, eggInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
+  constructor({ store, accounts, now, incubateMs, eggInt, evoInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
     this.starveMs = Number(starveMs) > 0 ? Number(starveMs) : STARVE_MS; this.k = this.starveMs / STARVE_MS;
     this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
     this.incubateMs = Number(incubateMs) > 0 ? Number(incubateMs) : DEFAULT_INCUBATE_MS;
     this.eggInt = eggInt || ((n) => crypto.randomInt(n)); // its own random source: never the mine's pay or vein ones
+    this.evoInt = evoInt || ((n) => crypto.randomInt(n)); // evolution's own source, for the same reason
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
     this.doc.pens ||= {}; this.doc.names ||= {}; this.doc.count ||= {}; this.doc.graves ||= {};
     this.doc.challenges ||= []; this.doc.fights ||= []; this.doc.bench ||= {}; this.doc.stalls ||= {};
@@ -255,8 +262,8 @@ export class Barn {
     if (!pen) { if (bug != null) throw new GameError('That bug is not in your barn.', 404); return null; }
     const now = this.now();
     let dirty = this.hatchIfDue(playerId, pen, now, pen !== this.doc.pens[playerId]);
-    // the top level its owner has earned on the circuit (10 with no ribbons): stamped here so every level lookup can read it off the bug
-    const cap = this.capOf?.(playerId) || MAX_LEVEL; if ((pen.cap || MAX_LEVEL) !== cap) { pen.cap = cap; dirty = true; }
+    // the top level it can show, by its stage: held at PAUSED_AT until it evolves. Stamped here so every level lookup can read it off the bug.
+    const cap = STAGE_CAPS[pen.evo || 0] ?? PAUSED_AT; if (pen.cap !== cap) { pen.cap = cap; dirty = true; }
     if (pen.stage === 'creature') {
       const before = pen.xp; const dies = this.deathAt(pen);
       if (now >= dies) { pen.diedAt = dies; }
@@ -339,7 +346,8 @@ export class Barn {
     const dies = this.deathAt(pen); const warn = this.starving(pen, now);
     return { pen: { ...which, stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt,
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen) || null, gearBonus: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
-      level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= (pen.cap || MAX_LEVEL) ? null : xpFor(level + 1), cap: pen.cap || MAX_LEVEL,
+      level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= (pen.cap || PAUSED_AT) ? null : xpFor(level + 1), cap: pen.cap || PAUSED_AT,
+      evo: pen.evo || 0, ...(pen.botched ? { botched: pen.botched } : {}), ...(pen.sick ? { sick: true } : {}),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
       abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
       battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
@@ -373,6 +381,7 @@ export class Barn {
       return this.view(playerId);
     }
     if (pen.stage === 'dead') throw new GameError('It is past caring now.', 409);
+    if (pen.sick) throw new GameError(`${pen.name} is not well. The Bug Center, now.`, 409);
     if (now - (pen.cool[action] || 0) < a.cooldownMs) throw new GameError(`You just ${a.word} it. Give it a minute.`, 429);
     const n = this.needs(pen, now), own = this.own(pen, now); // needs and feeds are kept on the bug's own clock; cooldowns on the wall's
     for (const s of STATS) pen.stats[s] = { v: n[s], at: own }; // re-base all three, then bump one
@@ -407,7 +416,7 @@ export class Barn {
     return { species: pen.species, name: pen.name, level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
       gear: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, defense: this.styleOf?.(playerId, idOf(pen)).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen),
-      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle) };
+      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle), ...(pen.botched ? { botched: pen.botched } : {}) };
   }
 
   /** Alive, standing and old enough to fight: the partner, or the bug named. One fight at a time per owner. */
@@ -699,6 +708,36 @@ export class Barn {
     const pen = this.doc.pens[playerId];
     return pen?.stage === 'creature' && !pen.faintedAt && !(this.now() >= this.deathAt(pen));
   }
+  /** Is the partner due an evolution? Hatched, well, not yet evolved, with the XP for EVOLVE_FROM. */
+  due(playerId) {
+    const pen = this.doc.pens[playerId];
+    return this.fit(playerId) && !pen.evo && !pen.sick && rawLevel(pen.xp || 0) >= EVOLVE_FROM ? pen : null;
+  }
+  /** Rolled at clock-in, from evolution's own source: does this shift have purple acid in it? */
+  rollPurple(playerId) {
+    const pen = this.due(playerId);
+    return !!pen && this.evoInt(1000) < Math.round(1000 * purpleChance(pen.xp));
+  }
+  /** The partner drank it. It is out, like a knockout, until the Bug Center sees it. Returns its name, or null if it was never due. */
+  fallSick(playerId) {
+    const pen = this.due(playerId);
+    if (!pen) return null;
+    this.commitPen(playerId, { ...pen, sick: this.now(), faintedAt: this.now(), faintedBy: null, faintedIn: 'purple' });
+    return pen.name;
+  }
+  /** The Bug Center visit for a sick bug: it evolves, clean or botched, and its owner pays BILL_SHARE of their cash. No refusing, no refund. */
+  evolve(playerId, pen) {
+    const player = this.accounts.ensure(this.store.players[playerId]);
+    const had = cents(player.bankroll), took = Math.floor(had * 100 * BILL_SHARE) / 100;
+    const botched = this.evoInt(BOTCH_ODDS) === 0 ? QUIRKS[this.evoInt(QUIRKS.length)] : null; // which way it went wrong is its own roll
+    const levelBefore = levelFor(pen.xp, pen.cap);
+    const { sick: _s, faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, ...rest } = pen;
+    // The bug is saved evolved before the bill is taken, so a crash between the two costs the house, never the bug.
+    this.commitPen(playerId, { ...rest, evo: 1, evolvedAt: this.now(), ...(botched ? { botched } : {}) });
+    if (took > 0) this.accounts.change(player, -took, 'barn-evolve', 'Bug Center: the specialist');
+    const view = this.view(playerId), now = view.stable.bugs.find((bug) => bug.id === idOf(pen));
+    return { ...view, healed: true, cost: took, evolved: { id: idOf(pen), name: pen.name, species: pen.species, botched, levelBefore, levelAfter: now?.level ?? levelBefore, bill: { had, took, left: cents(had - took) } } };
+  }
   /** A guide bug led its miner to a pool with acid in it: a little XP. */
   foundAcid(playerId) {
     if (!this.fit(playerId)) return;
@@ -740,6 +779,7 @@ export class Barn {
     if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
     if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
     if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
+    if (pen.sick) return this.evolve(playerId, pen);
     const was = !!pen.faintedAt;
     const waitMs = pen.faintedAt ? pen.faintedAt + RECOVER_MS - this.now() : 0;
     let cost = 0;
@@ -761,6 +801,8 @@ export class Barn {
     const st = this.styleOf?.(playerId, pen ? idOf(pen) : undefined) || {};
     const o = {}; for (const k of ['bugskin', 'bughat', 'bugacc']) if (st[k]) o[k] = st[k];
     for (const k of ['gear', 'defense']) if (typeof st[k] === 'string' && st[k].startsWith('gear-')) o[k] = { id: st[k], shape: st[k].slice(5) };
+    const evolved = pen || this.doc?.pens?.[playerId]; // an evolved bug's arm is part of how it looks, everywhere it is drawn
+    if (evolved?.evo) { o.evo = evolved.evo; if (evolved.botched) o.botched = evolved.botched; }
     return Object.keys(o).length ? o : undefined;
   }
   /** After a death: lay it to rest. The stall empties (a new egg can turn up in the mines); a small grave record stays. */

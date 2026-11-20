@@ -514,3 +514,7 @@
 @media (min-width: 761px) and (max-width: 1099px) { .barn-wrap { max-height: none; } } /* room for the card under the bug */
 @media (max-width: 1099px) { .bs-info, .bs-pane { min-height: max-content; } .bs-cardpane .bugcard { height: max-content; } } /* stacked: the card keeps its full height and the page scrolls */
 .bs-cardpane { grid-auto-rows: max-content; } .bs-cardpane .bugcard { height: max-content; } /* a card taller than its panel scrolls; it is never squeezed */
+
+/* a bug that drank purple acid: out cold, and the wrong colour */
+.bs-stage.sick { box-shadow: inset 0 0 46px rgba(160, 60, 255, .6); }
+.bs-stage.sick canvas { filter: grayscale(1) sepia(1) hue-rotate(215deg) saturate(3.5); }

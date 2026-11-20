@@ -41,6 +41,7 @@ export function classify(type, note = '') {
     case 'barn-win': return { source: 'barn', sub: 'Won pot' };
     case 'barn-refund': return { source: 'barn', sub: 'Stake returned' };
     case 'barn-heal': return { source: 'barn', sub: 'Expedited recovery' };
+    case 'barn-evolve': return { source: 'barn', sub: 'Evolution bill' };
     case 'barn-stall': return { source: 'barn', sub: 'Built a stall' };
     case 'dev': return { source: 'admin', sub: 'Dev/test cash' };
     default: return /^risk/.test(type || '') ? { source: 'risk', sub: type.replace(/^risk_?/, '') || 'Risk' } : { source: 'other', sub: type || '?' };

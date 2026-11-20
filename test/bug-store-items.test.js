@@ -42,7 +42,7 @@ test('the mister, heat lamp and ambrosia are off the shelf; one already held sti
     assert.throws(() => shop.use(player, id), (e) => e.status === 429);
     assert.equal(USE_COOLDOWN_MS[use], 30 * 60e3);
   }
-  assert.equal(pen.fedAt, fedAt); assert.equal(pen.xp, xp + 12, 'mister and lamp each give 6 care XP');
+  assert.equal(pen.fedAt, fedAt); assert.equal(pen.xp, xp + 10, 'mister and lamp each give 5 care XP');
   clock.now += 30 * 60e3; setNeeds(95);
   shop.use(player, 'mister'); shop.use(player, 'heatlamp');
   assert.equal(barn.needs(pen, clock.now).clean, 100);
@@ -61,14 +61,14 @@ test('each food grants its stated Fed amount and packs its stated lunch; food co
     assert.ok(food.desc.includes(`+${food.food} Fed`) && food.desc.includes(`${food.heal} HP`));
     shop.use(player, food.id);
     assert.equal(barn.needs(pen, clock.now).hunger, food.food);
-    assert.equal(pen.fedAt, clock.now); assert.equal(pen.xp - xp, 12);
+    assert.equal(pen.fedAt, clock.now); assert.equal(pen.xp - xp, 9);
     assert.deepEqual(pen.lunch, { name: food.name, heal: food.heal });
     assert.deepEqual(barn.fighter(player.id, pen).lunch, pen.lunch, 'it goes to the fight');
     assert.deepEqual(barn.view(player.id).pen.lunch, pen.lunch, 'and the Barn can show it');
     assert.throws(() => shop.use(player, 'food-fruit'), (e) => e.status === 429);
     assert.equal(USE_COOLDOWN_MS.food, 15 * 60e3);
     clock.now += 15 * 60e3; shop.use(player, food.id);
-    assert.equal(pen.xp - xp, 24, 'no daily cap: every food pays');
+    assert.equal(pen.xp - xp, 18, 'no daily cap: every food pays');
     assert.ok(barn.needs(pen, clock.now).hunger <= 100);
   }
   const sold = BUG_ITEMS.filter((x) => x.use === 'food' && !x.retired).sort((a, b) => a.price - b.price);
@@ -93,15 +93,15 @@ test('free and store care have no daily XP cap: every action pays in full', () =
   for (let i = 0; i < 12; i++) {
     barn.care(player.id, 'feed'); clock.now += CARE.feed.cooldownMs;
   }
-  assert.equal(pen.xp, 144, 'past the old 120 a day');
-  own('mister'); shop.use(player, 'mister'); assert.equal(pen.xp, 150);
-  barn.care(player.id, 'play'); assert.equal(pen.xp, 162);
+  assert.equal(pen.xp, 108, 'twelve actions at 9 each, with no cap');
+  own('mister'); shop.use(player, 'mister'); assert.equal(pen.xp, 113);
+  barn.care(player.id, 'play'); assert.equal(pen.xp, 122);
   setNeeds(20);
   barn.care(player.id, 'clean');
   own('heatlamp'); shop.use(player, 'heatlamp');
   own('food-leaf'); shop.use(player, 'food-leaf');
   assert.deepEqual(barn.needs(pen, clock.now), { hunger: 40, mood: 60, clean: 65 });
-  assert.equal(pen.xp, 162 + 12 + 6 + 12);
+  assert.equal(pen.xp, 122 + 9 + 5 + 9);
 });
 
 test('feeder XP starts at the next hatch-day checkpoint', () => {
@@ -111,10 +111,10 @@ test('feeder XP starts at the next hatch-day checkpoint', () => {
   clock.now = pen.bornAt + DAY - 1;
   assert.equal(barn.view(player.id).pen.xp, 0, 'no passive XP before the checkpoint');
   clock.now += 1;
-  assert.equal(barn.view(player.id).pen.xp, 10 + 12, 'day and feeder bonuses accrue');
+  assert.equal(barn.view(player.id).pen.xp, 8 + 9, 'day and feeder bonuses accrue');
 });
 
-test('a Golden Ambrosia still held keeps the bug looked after for 7 days; a feeder pays 12 XP per covered hatch-day checkpoint', () => {
+test('a Golden Ambrosia still held keeps the bug looked after for 7 days; a feeder pays 9 XP per covered hatch-day checkpoint', () => {
   const { clock, barn, shop, player, pen, setNeeds, own } = setup();
   setNeeds(10); own('food-ambrosia'); own('feeder');
   assert.match(item('food-ambrosia').desc, /7 days/);
@@ -122,9 +122,9 @@ test('a Golden Ambrosia still held keeps the bug looked after for 7 days; a feed
   assert.equal(pen.feederUntil, clock.now + 7 * DAY);
   clock.now += 3 * DAY; assert.equal(barn.needs(pen, clock.now).hunger, 100);
   const xp = barn.view(player.id).pen.xp; // settle day XP so far
-  shop.use(player, 'feeder'); assert.match(item('feeder').desc, /12 XP/);
+  shop.use(player, 'feeder'); assert.match(item('feeder').desc, /9 XP/);
   setNeeds(100); clock.now += 2 * DAY;
-  assert.equal(barn.view(player.id).pen.xp - xp, 2 * (10 + 12), 'two covered days: day XP plus feeder XP');
+  assert.equal(barn.view(player.id).pen.xp - xp, 2 * (8 + 9), 'two covered days: day XP plus feeder XP');
 });
 
 test('feeder starts on use, fills and holds all three needs, extends remaining time, and needs fall again when it runs out', () => {
@@ -154,13 +154,13 @@ test('a toy earns the bug XP every day on its own, and only the one that is out'
   for (const toy of toys) assert.ok(toy.desc.includes(`earns ${toy.xp} XP a day`));
   const { clock, barn, shop, player, setNeeds, own } = setup();
   const day = () => { const xp = barn.view(player.id).pen.xp; setNeeds(100); clock.now += DAY; return barn.view(player.id).pen.xp - xp; };
-  assert.equal(day(), 10, 'no toy: the day bonus alone');
+  assert.equal(day(), 8, 'no toy: the day bonus alone');
   own('toy-disco'); own('toy-twig'); shop.equip(player, { id: 'toy-disco' });
-  assert.equal(day(), 10 + 20);
-  shop.equip(player, { id: 'toy-twig' }); assert.equal(day(), 10 + 2, 'owning the disco ball is not enough: it has to be out');
+  assert.equal(day(), 8 + 15);
+  shop.equip(player, { id: 'toy-twig' }); assert.equal(day(), 8 + 2, 'owning the disco ball is not enough: it has to be out');
   const before = barn.view(player.id).pen.xp; setNeeds(0); clock.now += 3 * DAY;
   assert.equal(barn.view(player.id).pen.xp - before, 3 * 2, 'three days away and neglected: the toy still pays, the day bonus does not');
-  shop.equip(player, { id: null, slot: 'toy' }); assert.equal(day(), 10);
+  shop.equip(player, { id: null, slot: 'toy' }); assert.equal(day(), 8);
 });
 
 test('with several bugs: food packs a lunch for the partner, the toy pays only the partner, and a lunch eaten by a stalled bug is gone', () => {
@@ -173,7 +173,7 @@ test('with several bugs: food packs a lunch for the partner, the toy pays only t
   own('toy-disco'); shop.equip(player, { id: 'toy-disco' });
   setNeeds(0); for (const stat of ['hunger', 'mood', 'clean']) stalled.stats[stat] = { v: 0, at: barn.own(stalled, clock.now) };
   const before = barn.view(player.id).stable.bugs.map((b) => b.xp); clock.now += BENCH_SLOW * DAY;
-  assert.deepEqual(barn.view(player.id).stable.bugs.map((b, i) => b.xp - before[i]), [BENCH_SLOW * 20, 0]);
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((b, i) => b.xp - before[i]), [BENCH_SLOW * 15, 0]);
   // the fed bug goes to a stall with its lunch, fights from there and eats it
   barn.setPartner(player.id, barn.view(player.id).stable.bugs[1].id);
   assert.deepEqual(barn.view(player.id).stable.bugs.map((b) => !!b.lunch), [false, true]);

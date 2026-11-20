@@ -6,7 +6,7 @@ const add = (o) => items.push({ kind: 'bug', ...o });
 // A paid bug item does something the free Feed, Play and Mist cannot, and its description says what in one plain line.
 // `retired` items are off the shelf for good: only someone still holding one sees it, and it still works (server/shop.js).
 
-// food: consumable. Using one is a feed, the same as the free one (+Fed, a fresh starvation clock, 12 XP), and packs
+// food: consumable. Using one is a feed, the same as the free one (+Fed, a fresh starvation clock, 9 XP), and packs
 // a lunch: in its next fight the bug eats it the first time it drops below half health, for `heal` HP (at most
 // LUNCH_CAP, server/engine/bout.js). It carries one lunch and keeps the bigger.
 const FOOD = [
@@ -21,10 +21,10 @@ const FOOD = [
   ['banquet', 'Bug Banquet', 900, '🍱', 100, 10, 'A full spread. Your bug will be insufferable about it.'],
 ];
 for (const [id, name, price, emoji, food, heal, joke] of FOOD) add({ id: `food-${id}`, name, price, emoji,
-  desc: `${joke} Feeds your bug now (+${food} Fed, 12 XP) and packs it a lunch: the first time it drops below half health in its next fight, it eats and gets ${heal} HP back. It carries one lunch and keeps the bigger.`,
+  desc: `${joke} Feeds your bug now (+${food} Fed, 9 XP) and packs it a lunch: the first time it drops below half health in its next fight, it eats and gets ${heal} HP back. It carries one lunch and keeps the bigger.`,
   cat: 'food', slot: null, use: 'food', food, heal });
 add({ id: 'food-ambrosia', name: 'Golden Ambrosia', price: 3000, emoji: '✨', cat: 'food', slot: null, use: 'food', food: 100, heal: 10, days: 7, retired: true,
-  desc: 'The shopkeeper stopped stocking it; nobody could say what it was. Yours still works: a full meal (+100 Fed, 12 XP), a packed lunch worth 10 HP, and 7 days of the Automatic Feeder.' });
+  desc: 'The shopkeeper stopped stocking it; nobody could say what it was. Yours still works: a full meal (+100 Fed, 9 XP), a packed lunch worth 10 HP, and 7 days of the Automatic Feeder.' });
 
 // toys: owned and equipped in the bug's toy slot. Left with one, the bug earns `xp` a day on its own (capped at 20);
 // Play also lifts Mood a little more (`mood`, capped at 20).
@@ -32,11 +32,11 @@ const TOYS = [
   ['twig', 'Climbing Twig', 25, '🪵', 4, 2, 'It climbs it. It comes down. That is the whole show.'],
   ['pebble', 'Shiny Pebble', 60, '🪨', 5, 3, 'It cannot tell you why it loves the pebble.'],
   ['ball', 'Tiny Dung Ball', 90, '⚽', 6, 4, 'Regulation size. Do not ask which regulations.'],
-  ['maze', 'Leaf Maze', 300, '🌀', 8, 6, 'It solved it on day one. It pretends it has not.'],
-  ['mirror', 'Little Mirror', 450, '🪞', 10, 8, 'It has met a handsome stranger and they are not speaking.'],
-  ['wheel', 'Bug Wheel', 900, '🎡', 12, 10, 'Goes nowhere, quickly.'],
-  ['castle', 'Bark Castle', 2500, '🏰', 15, 14, 'Comes with a moat. The moat is a jar lid.'],
-  ['disco', 'Disco Ball (tiny)', 6000, '🪩', 20, 20, 'The barn has complained about the noise. There is no noise.'],
+  ['maze', 'Leaf Maze', 300, '🌀', 8, 5, 'It solved it on day one. It pretends it has not.'],
+  ['mirror', 'Little Mirror', 450, '🪞', 10, 6, 'It has met a handsome stranger and they are not speaking.'],
+  ['wheel', 'Bug Wheel', 900, '🎡', 12, 8, 'Goes nowhere, quickly.'],
+  ['castle', 'Bark Castle', 2500, '🏰', 15, 11, 'Comes with a moat. The moat is a jar lid.'],
+  ['disco', 'Disco Ball (tiny)', 6000, '🪩', 20, 15, 'The barn has complained about the noise. There is no noise.'],
 ];
 for (const [id, name, price, emoji, mood, xp, joke] of TOYS) add({ id: `toy-${id}`, name, price, emoji,
   desc: `${joke} Left alone with it, your bug earns ${xp} XP a day. Play also gives +${mood} extra Mood. One toy out at a time.`,
@@ -64,9 +64,9 @@ for (const [id, name, price, slot] of WEAR) add({ id: `bugwear-${id}`, name, pri
   cat: 'bugstyle', slot, shape: id });
 
 // the automatic feeder: consumable. Each one fills Fed, Mood and Clean, keeps all three full and pauses the starvation
-// clock for 14 days, and adds 12 XP at each daily checkpoint it covers.
+// clock for 14 days, and adds 9 XP at each daily checkpoint it covers.
 add({ id: 'feeder', name: 'Automatic Feeder (14 days)', price: 2500, emoji: '🥣', cat: 'bugcare', slot: null, use: 'feeder', days: 14,
-  desc: 'A bowl, a sprinkler and a recording of you saying "good bug". Keeps Fed, Mood and Clean full for 14 days, so your bug stays in top fighting condition while you are away, and adds 12 XP a day. Use another to add 14 days, up to 60 days ahead.' });
+  desc: 'A bowl, a sprinkler and a recording of you saying "good bug". Keeps Fed, Mood and Clean full for 14 days, so your bug stays in top fighting condition while you are away, and adds 9 XP a day. Use another to add 14 days, up to 60 days ahead.' });
 add({ id: 'jar', name: 'Specimen Jar', price: 150, emoji: '🫙', cat: 'bugcare', slot: null, use: 'jar',
   desc: 'Single use, down the mine. When a wild bug is at a quarter of its health or less, throw this instead of finishing it: it holds 35% of the time at a quarter, more the weaker the bug, never better than 85%. Held or not, the jar is spent. Needs a free stall. Air holes are your problem.' });
 // retired: each did less than the free button beside it
@@ -82,7 +82,7 @@ const GEAR = [
   ['bandage', 'Lucky Bandage', 60, 'defense', 0.01], ['shell', 'Polished Shell Wax', 300, 'defense', 0.015], ['helmet', 'Acorn Helmet', 1500, 'defense', 0.03],
   ['shield', 'Leaf Shield', 2500, 'defense', 0.04], ['armor', 'Beetle Plate Armour', 20000, 'defense', 0.06],
 ];
-const BOUT_COPY = 'It goes on one bug, which wears one attack item and one defense item at a time. A second bug needs its own, or move this one across. Any hatched bug can fight. A bout awards 30 XP for a win and 20 for a loss or draw, and is fought for free or for a matched stake of up to $10,000. No effect on poker.';
+const BOUT_COPY = 'It goes on one bug, which wears one attack item and one defense item at a time. A second bug needs its own, or move this one across. Any hatched bug can fight. A bout awards 23 XP for a win and 15 for a loss or draw, and is fought for free or for a matched stake of up to $10,000. No effect on poker.';
 for (const [id, name, price, slot, bonus] of GEAR) {
   const pct = +(bonus * 100).toFixed(1);
   add({ id: `gear-${id}`, name, price, emoji: slot === 'gear' ? '⚔️' : '🛡️', cat: 'gear', slot, [slot]: bonus,

@@ -3,11 +3,13 @@
 // corner. Original pixel art (SVG rects), every sign and line in Japanese (訳 shows the English). Talking to Nurse
 // Hikari heals a fainted bug to full while its pod lights up the machine to a little WebAudio jingle.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { api } from '../api.js';
+import { api, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS } from './script.js';
-import { healChime, podBlip } from './chime.js';
+import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, RECEIPT, BACK, STAGE, after } from './script.js';
+import { healChime, podBlip, drill } from './chime.js';
+import { drawBug } from '../barn/sprite.js';
+import { BY_ID } from '../../../server/engine/creatures.js';
 import './bugcenter.css';
 
 const W = 160, H0 = 112; // a portrait phone gets a deeper room (more floor), never a narrower one
@@ -98,6 +100,111 @@ function Room({ H, lit, pod, bow, en, onNurse }) {
   );
 }
 
+const money = (n) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const INK = '#0b0810', LAMP = '#fff3c4', NIGHT = '#14101c';
+const PANEL_ART = [
+  // The door, swung in, with the light across the floor and two boots standing in it.
+  (r) => <>{r(0, 0, 120, 80, '#1b1526')}{r(0, 58, 120, 22, '#120e1a')}{r(0, 56, 120, 2, '#2a2233')}
+    {r(0, 44, 30, 14, '#241c30')}{r(0, 43, 32, 2, '#32283f')}{r(12, 40, 5, 3, '#3a3046')}{r(13, 39, 3, 1, '#4a3d5c')}
+    {r(70, 8, 34, 50, '#3a3046')}{r(72, 10, 30, 48, LAMP)}{r(72, 10, 2, 48, '#ffffff')}
+    {r(84, 10, 18, 48, '#4a3d5c')}{r(87, 14, 12, 16, '#3a3046')}{r(87, 34, 12, 18, '#3a3046')}{r(85, 34, 2, 3, '#ffd76a')}
+    {r(64, 58, 22, 4, '#ffe9a8')}{r(54, 62, 34, 4, '#f2d98c')}{r(42, 66, 48, 5, '#d9bf70')}{r(28, 71, 64, 9, '#b89e55')}
+    {r(75, 38, 4, 20, INK)}{r(80, 38, 4, 20, INK)}{r(73, 56, 6, 2, INK)}{r(80, 56, 6, 2, INK)}
+    {r(60, 60, 16, 2, '#4a3d1e')}{r(46, 64, 24, 2, '#4a3d1e')}{r(30, 68, 36, 3, '#4a3d1e')}{r(10, 73, 50, 4, '#4a3d1e')}</>,
+  // Somebody, in a welding mask, with a case.
+  (r) => <>{r(0, 0, 120, 80, NIGHT)}{r(26, 0, 68, 80, '#d9bf70')}{r(30, 0, 60, 80, LAMP)}
+    {r(48, 11, 24, 16, INK)}{r(50, 9, 20, 3, INK)}{r(53, 16, 14, 5, '#2a2233')}{r(61, 17, 5, 2, '#b455ff')}{r(55, 17, 2, 1, '#e7d0ff')}{r(52, 27, 16, 2, INK)}
+    {r(56, 28, 8, 4, INK)}{r(40, 31, 40, 11, INK)}{r(43, 41, 34, 24, INK)}{r(40, 63, 40, 11, INK)}{r(38, 70, 44, 4, INK)}
+    {r(46, 73, 10, 7, INK)}{r(64, 73, 10, 7, INK)}{r(35, 34, 7, 28, INK)}{r(34, 60, 7, 5, INK)}{r(78, 34, 7, 24, INK)}
+    {r(79, 56, 7, 2, INK)}{r(73, 58, 20, 13, INK)}{r(82, 62, 2, 3, '#ffd76a')}{r(75, 60, 16, 1, '#2a2233')}
+    {r(50, 44, 20, 1, '#2a2233')}{r(50, 44, 1, 20, '#2a2233')}{r(69, 44, 1, 20, '#2a2233')}{r(57, 50, 6, 5, '#2a2233')}</>,
+  // The tray. One of these is not a surgical instrument, and one of them is the arm.
+  (r) => <>{r(0, 0, 120, 80, NIGHT)}{r(8, 16, 104, 54, '#22384a')}{r(8, 16, 104, 2, '#2e4a60')}
+    {r(12, 21, 96, 44, '#aab3bd')}{r(13, 22, 94, 42, '#e5e8ec')}{r(13, 61, 94, 3, '#c9d0d8')}
+    {r(20, 27, 2, 11, '#8a93a0')}{r(21, 27, 1, 9, '#ffffff')}{r(20, 38, 2, 18, '#3d444d')}
+    {r(28, 32, 3, 24, '#7c8690')}{r(26, 26, 7, 7, '#7c8690')}{r(28, 26, 3, 4, '#e5e8ec')}{r(28, 33, 1, 22, '#c9d0d8')}
+    {r(36, 31, 11, 14, '#e2545f')}{r(36, 31, 11, 2, '#f08a96')}{r(38, 45, 6, 11, '#a52f3c')}{r(40, 24, 2, 7, '#3d444d')}{r(35, 47, 3, 3, '#3a2a2a')}{r(44, 35, 2, 6, '#3a2a2a')}
+    {r(52, 27, 4, 24, '#aab3bd')}{r(52, 27, 1, 24, '#e8eef4')}{[0, 1, 2, 3, 4, 5].map((i) => r(56, 28 + i * 4, 2, 2, '#7c8690', { key: i }))}{r(51, 50, 6, 8, '#c9744a')}{r(51, 50, 6, 1, '#e09a6c')}
+    {r(64, 44, 2, 12, '#3d444d')}{r(62, 28, 1, 16, '#8a93a0')}{r(64, 27, 2, 17, '#8a93a0')}{r(67, 28, 1, 16, '#8a93a0')}{r(63, 27, 4, 1, '#8a93a0')}{r(62, 43, 6, 1, '#8a93a0')}
+    {r(73, 27, 5, 8, '#8a93a0')}{r(74, 28, 2, 4, '#e8eef4')}{r(75, 35, 1, 21, '#8a93a0')}
+    {r(83, 31, 6, 9, '#9aa5b1')}{r(84, 31, 1, 9, '#e8eef4')}{r(82, 40, 8, 4, '#ffb347')}{r(83, 44, 6, 12, '#9aa5b1')}{r(84, 44, 1, 12, '#e8eef4')}{r(82, 25, 2, 6, '#2b3138')}{r(88, 25, 2, 6, '#2b3138')}{r(85, 27, 2, 4, '#2b3138')}{r(87, 46, 1, 8, '#b455ff')}
+    {r(96, 29, 2, 2, '#5a626c')}{r(100, 35, 2, 2, '#5a626c')}{r(95, 42, 2, 2, '#5a626c')}{r(101, 47, 2, 2, '#5a626c')}{r(94, 53, 11, 5, LAMP)}{r(96, 55, 7, 1, '#8a2a3a')}</>,
+  // The curtain round the machine, lit from inside: the specialist, the table, the bug, and an arm that was not there before.
+  (r) => <>{r(0, 0, 120, 80, NIGHT)}{r(0, 72, 120, 8, '#120e1a')}{r(26, 72, 68, 2, '#5a2a8a')}
+    {r(16, 8, 88, 2, '#8a93a0')}{[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => r(18 + i * 8, 10, 2, 2, '#5a626c', { key: i }))}
+    {r(18, 12, 84, 60, '#e65d70')}{r(32, 12, 56, 60, '#f08a96')}{r(44, 12, 32, 60, '#f7a3a8')}
+    {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => <g key={i}>{r(18 + i * 7, 12, 2, 60, '#c03a48')}{r(20 + i * 7, 12, 1, 60, '#ffb3bd')}</g>)}
+    <g opacity="0.72">{r(38, 24, 11, 10, '#5a1626')}{r(36, 26, 15, 6, '#5a1626')}{r(41, 34, 5, 2, '#5a1626')}{r(35, 36, 17, 30, '#5a1626')}{r(33, 60, 21, 8, '#5a1626')}
+      {r(52, 38, 10, 3, '#5a1626')}{r(61, 31, 3, 11, '#5a1626')}{r(60, 29, 5, 3, '#5a1626')}
+      {r(58, 56, 34, 3, '#5a1626')}{r(62, 59, 3, 11, '#5a1626')}{r(85, 59, 3, 11, '#5a1626')}
+      {r(66, 46, 18, 10, '#5a1626')}{r(64, 49, 2, 5, '#5a1626')}{r(68, 41, 1, 5, '#5a1626')}{r(71, 42, 1, 4, '#5a1626')}
+      {r(82, 36, 3, 12, '#5a1626')}{r(80, 32, 2, 5, '#5a1626')}{r(85, 32, 2, 5, '#5a1626')}{r(82, 34, 3, 2, '#5a1626')}</g>
+    {r(18, 70, 84, 2, '#b455ff')}
+    {r(65, 27, 2, 2, '#ffe36e', { className: 'bc-spark' })}{r(68, 24, 1, 1, '#fff7c2', { className: 'bc-spark' })}{r(59, 25, 1, 1, '#fff7c2', { className: 'bc-spark' })}{r(69, 30, 2, 1, '#ffe36e', { className: 'bc-spark' })}{r(86, 29, 2, 2, '#e7d0ff', { className: 'bc-spark' })}</>,
+];
+/** One story panel: the illustration if it has loaded, the pixel stand-in otherwise. */
+function Panel({ i }) {
+  const [drawn, setDrawn] = useState(false);
+  return (
+    <>
+      <img className="bc-panel" src={`/bugcenter/evo-${i + 1}.webp`} alt="" hidden={!drawn} onLoad={() => setDrawn(true)} draggable="false" data-test="bc-panel-art" />
+      {!drawn && <svg className="bc-panel" viewBox="0 0 120 80" shapeRendering="crispEdges" aria-hidden="true">{PANEL_ART[i](rect)}</svg>}
+    </>
+  );
+}
+const rect = (x, y, w, h, f, extra = {}) => <rect x={x} y={y} width={w} height={h} fill={f} {...extra} />;
+
+function Receipt({ evolved }) {
+  const { had, took, left } = evolved.bill, arm = Math.round(took * 40) / 100, labour = Math.round(took * 35) / 100, hush = Math.round((took - arm - labour) * 100) / 100;
+  const Row = ({ k, v, className = '' }) => <div className={`bc-rrow ${className}`}><span><span lang="ja">{RECEIPT[k].ja}</span> <small>{RECEIPT[k].en}</small></span><b>{v}</b></div>;
+  return (
+    <div className="bc-receipt" data-test="bc-receipt" lang="en">
+      <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small></h2>
+      <Row k="arm" v={money(arm)} /><Row k="labour" v={money(labour)} /><Row k="hush" v={money(hush)} />
+      {evolved.botched && <Row k="wrong" v={RECEIPT.free.en} />}
+      <Row k="total" v={money(took)} className="total" />
+      <Row k="had" v={money(had)} /><Row k="left" v={money(left)} />
+      <p className="bc-rfoot"><span lang="ja">{RECEIPT.foot.ja}</span> {RECEIPT.foot.en}</p>
+    </div>
+  );
+}
+
+function Reveal({ evolved, pen, en }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const c = ref.current, bug = BY_ID[evolved.species]; if (!c || !bug) return;
+    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+    drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style: pen?.style, level: evolved.levelAfter });
+  }, [evolved, pen]);
+  const back = BACK(evolved.name), stage = STAGE(evolved.botched);
+  return (
+    <div className="bc-reveal" data-test="bc-reveal">
+      <canvas ref={ref} width={192} height={192} role="img" aria-label={`${evolved.name}, with a mechanical arm`} />
+      <p className="bc-cap">{back.ja}{en && <small lang="en">{back.en}</small>}</p>
+      <p className="bc-stage" data-test="bc-stage">{stage.ja} · Lv {evolved.levelBefore} → {evolved.levelAfter}{en && <small lang="en">{stage.en}</small>}</p>
+    </div>
+  );
+}
+
+/** The specialist's visit: four still panels, the receipt, then the curtain opens. Tap (or Enter) to go on. */
+function Operation({ op, pen, en, onNext }) {
+  const evolved = op.r?.evolved, shown = op.r ? op.step : Math.min(op.step, PANELS.length - 1);
+  const newPen = op.r?.stable?.bugs.find((bug) => bug.id === evolved?.id) || pen;
+  const cap = PANELS[shown];
+  return (
+    <div className="bc-op" data-test="bc-op" data-step={shown} role="button" tabIndex={0} aria-label="Next"
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNext(); } }}>
+      {shown < PANELS.length && <>
+        <Panel key={shown} i={shown} />
+        <p className="bc-cap" aria-live="polite">{cap.ja}{en && <small lang="en">{cap.en}</small>}</p>
+      </>}
+      {shown === PANELS.length && evolved && <Receipt evolved={evolved} />}
+      {shown > PANELS.length && evolved && <Reveal evolved={evolved} pen={newPen} en={en} />}
+      <span className="bc-next bc-op-next" aria-hidden="true">{op.waiting ? '…' : '▼'}</span>
+    </div>
+  );
+}
+
 /** Typewriter text: tap once to finish the line, again to go on. */
 function useTyped(text, speed = 34) {
   const [n, setN] = useState(0);
@@ -117,6 +224,7 @@ export default function BugCenter() {
   const [sound, setSound] = useState(() => { try { return localStorage.getItem(SOUND_KEY) !== '0'; } catch { return true; } });
   // talk: null (looking around) | { lines, i, mode: 'talk' | 'ask' | 'heal' }
   const [talk, setTalk] = useState(null);
+  const [op, setOp] = useState(null); // the specialist's visit: { step, r (the server's answer, once billed), waiting }
   const [lit, setLit] = useState(false);
   const [pod, setPod] = useState(false);
   const fit = useRef(null); const [box, setBox] = useState({ w: 0, h: 0, H: H0 });
@@ -138,7 +246,7 @@ export default function BugCenter() {
     on(); const ro = new ResizeObserver(on); ro.observe(el); return () => ro.disconnect();
   }, [b !== null]);
   const bugs = b?.stable?.bugs || [];
-  const pen = bugs.find((bug) => bug.fainted) || b?.pen || null;
+  const pen = bugs.find((bug) => bug.sick) || bugs.find((bug) => bug.fainted) || b?.pen || null;
   const line = talk ? talk.lines[talk.i] : null;
   const [typed, full, finish] = useTyped(line?.ja || '');
   const start = () => { if (!talk) setTalk({ lines: greeting(pen), i: 0, mode: 'talk' }); };
@@ -146,8 +254,23 @@ export default function BugCenter() {
     if (!talk || talk.mode === 'heal') return;
     if (!full) return finish();
     if (line.ask) return; // waiting for はい / いいえ
+    if (line.call) { setTalk(null); setOp({ step: 0, r: null }); return; }
     if (line.end || talk.i + 1 >= talk.lines.length) { setTalk(null); return; }
     setTalk({ ...talk, i: talk.i + 1 });
+  };
+  // The bug is rebuilt and the bill taken only as the last panel is passed, so leaving before then changes nothing.
+  const opNext = () => {
+    if (!op || op.waiting) return;
+    if (op.step < PANELS.length - 1) { if (sound && op.step >= 1) drill(); setOp({ ...op, step: op.step + 1 }); return; }
+    if (!op.r) {
+      setOp({ ...op, waiting: true });
+      api('POST', '/barn/heal', { bug: pen?.id }).then((r) => { setOp({ step: PANELS.length, r }); refreshSession(); })
+        .catch((e) => { setOp(null); setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }); });
+      return;
+    }
+    if (op.step === PANELS.length) { if (sound) healChime(); setOp({ ...op, step: op.step + 1 }); return; }
+    const { healed: _h, cost: _c, evolved, ...view } = op.r;
+    setB(view); setOp(null); setTalk({ lines: after(evolved), i: 0, mode: 'talk' });
   };
   const heal = async (pay) => {
     setTalk({ lines: [WAIT], i: 0, mode: 'heal' });
@@ -170,9 +293,10 @@ export default function BugCenter() {
   return (
     <div className="screen bc" data-test="bug-center" lang="ja">
       <div className="bc-fit" ref={fit}>
-        <div className="bc-scene" style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : undefined}>
+        <div className={`bc-scene${op ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
-          {pen?.stage === 'creature' && pen.fainted && !talk && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} fainted`} /> <span>{pen.name}：<b>ひんし</b></span>{en && <small lang="en">fainted</small>}</div>}
+          {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : 'fainted'}</small>}</div>}
+          {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
             <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>
@@ -190,7 +314,7 @@ export default function BugCenter() {
       </div>
       <nav className="bc-bar">
         <button className="btn ghost small" onClick={() => navigate('/barn')} title="Back to the Barn" data-test="bc-back">◀ 牧場へ{en && <small lang="en"> Barn</small>}</button>
-        <button className="btn" onClick={start} disabled={!!talk} title="Talk to the nurse" data-test="bc-talk">話しかける{en && <small lang="en"> Talk</small>}</button>
+        <button className="btn" onClick={start} disabled={!!talk || !!op} title="Talk to the nurse" data-test="bc-talk">話しかける{en && <small lang="en"> Talk</small>}</button>
         <button className={`btn ghost small ${en ? 'on' : ''}`} onClick={() => setEn(!en)} aria-pressed={en} title="Show English" data-test="bc-en">訳</button>
         <button className="btn ghost small" onClick={() => setSound(!sound)} aria-pressed={sound} title="Jingle on/off">{sound ? '🔊' : '🔈'}</button>
       </nav>
