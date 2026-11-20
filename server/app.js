@@ -78,6 +78,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
   circuit.shop = shop; // jars for the circuit's wild bugs
   mines.owned = (id) => shop.doc.inv[id]?.own;
+  barn.mines = mines; // so a mid-shift steal is visible to barn/circuit fight gates
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }

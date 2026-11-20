@@ -18,6 +18,7 @@ import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
 
 // The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
 const HEESHEE_GONE = 'Your bug is nowhere to be found. The Heeshee Mazode took it.';
+const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
 const BUG_ORDERS = [
   { id: 'come', icon: '🫳', name: 'COME HERE', line: (n) => `${n} TURNS ROUND AND COMES TO HEEL.` },
   { id: 'acid', icon: '🧪', name: 'FIND ACID', line: (n) => `${n} IS AFTER THE ACID AGAIN. FOLLOW IT.` },
@@ -444,7 +445,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     }
     if (order && guide?.order(id)) { setBugOrder(id); setLine(order.line((shift.bug?.name || 'Your bug').toUpperCase())); }
   };
-  const canFightWild = useRef(!!shift.bug);
+  const canFightWild = useRef(!!shift.bug && !shift.bugStolen);
   // A wild bug within reach: the miner is asked before anything starts, and picks which bug goes in. It waits meanwhile.
   const [wildAsk, setWildAsk] = useState(null);
   const wildAskRef = useRef(null), wildActs = useRef(null), wildBugs = useRef([]);
@@ -624,6 +625,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       eggRef.current = 'gone'; sceneRef.current?.removeEgg('sink'); setEggNear(false);
     }
     if (typeof v.canFightWild === 'boolean') canFightWild.current = v.canFightWild;
+    if (stolenRef.current || shift.bugStolen) canFightWild.current = false;
     const p = ambushBusy.current ? null : v.ambush;
     if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
     if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);
@@ -822,7 +824,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         if (sceneRef.current === scene) onPvp(view);
       } catch (e) {
         if (sceneRef.current !== scene || done.current) return;
-        if (!wildRetryAt.has(id)) setLine(String(e.message).toUpperCase());
+        if (!wildRetryAt.has(id)) setLine(e.message === HEESHEE_NO_BATTLE ? HEESHEE_NO_BATTLE : String(e.message).toUpperCase());
         wildRetryAt.set(id, Date.now() + (/another miner is fighting/i.test(e.message) ? 5000 : 1500));
       } finally { askingWild = false; if (scene.heldWild === id) scene.heldWild = null; }
     };
@@ -998,7 +1000,12 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         }
         const asked = wildAskRef.current && scene.wilds.get(wildAskRef.current.id);
         if (wildAskRef.current) { if (!asked || Math.hypot(scene.pos.x / TILE - asked.x, scene.pos.y / TILE - asked.y) > 2.2) leaveWild(3000); } // walked off: that is a no
-        else if (tiles <= 1 && canFightWild.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) askWild(wild);
+        else if (tiles <= 1 && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) {
+          if (stolenRef.current || shift.bugStolen) {
+            setLine(HEESHEE_NO_BATTLE); setStatus(HEESHEE_NO_BATTLE);
+            wildRetryAt.set(wild.id, nowMs + 4000);
+          } else if (canFightWild.current) askWild(wild);
+        }
       }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }

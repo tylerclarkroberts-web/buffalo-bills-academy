@@ -8,7 +8,7 @@
 // purpose earns nothing. A ribbon adds RIBBON_XP to every bug that won a round of it. A beaten trainer stays beaten.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { idOf, isHeesheeHeld } from './barn.js';
+import { idOf, isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
 import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
 import { ROSTER, levelFor } from './engine/creatures.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
@@ -377,6 +377,7 @@ export class Circuit {
 
   /** Send one of your bugs (`bug`, the partner if left out) against a trainer or the leader's next bug. */
   fight(pid, ownerName, body = {}) {
+    if (bugLostToHeeshee(this.barn, pid)) throw new GameError(HEESHEE_NO_BATTLE, 409);
     const raw = this.stopOf(body.stop), me = this.me(pid), champ = raw.kind === 'champion';
     const stop = champ ? { ...raw, who: this.champion().owner } : raw; // the rosette's bug fights under its owner's name
     if (!FIGHTS.includes(stop.kind)) throw new GameError('There is nobody to fight here.', 409);

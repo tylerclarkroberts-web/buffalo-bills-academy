@@ -215,6 +215,7 @@ try {
   check(!afterRecall.present, 'desktop: the guide does not come back when called');
   check(/nowhere to be found/i.test(afterRecall.line), 'desktop: recall says the Heeshee Mazode took it');
 
+
   // Lamp flicker when it is close.
   const lamps = [];
   await H(D, () => {
@@ -223,6 +224,28 @@ try {
   });
   for (let i = 0; i < 30; i++) { lamps.push(await H(D, () => window.__acidMine.lamp.intensity)); await wait(50); }
   check(Math.max(...lamps) - Math.min(...lamps) > 0.4, `desktop: the lamp flickers when it is near (${Math.min(...lamps).toFixed(2)}–${Math.max(...lamps).toFixed(2)})`);
+
+  // A wild bug underfoot must not open a fight or a versus prompt.
+  // Stub nearestWild only — do not plant a dummy in scene.wilds (the draw loop
+  // writes group.rotation.y and glow.intensity on every wild).
+  await H(D, () => {
+    const s = window.__acidMine, x = s.pos.x / 2.2, y = s.pos.y / 2.2;
+    s._nearestWild = s.nearestWild.bind(s);
+    s._seesWild = s.seesWild.bind(s);
+    s.seesWild = () => false;
+    s.nearestWild = () => ({ wild: { id: 'lost-wild', species: 'candela', level: 3, x, y }, tiles: 0.4 });
+  });
+  await wait(600);
+  const noBattle = ((await D.textContent('body')) || '');
+  check(/You can't battle a bug, your bug is lost/.test(noBattle), 'desktop: a wild encounter is refused while the bug is lost');
+  check(!(await D.$('[data-test=wild-prompt]')), 'desktop: no versus intro');
+  await shot(D, 'desktop-7-no-battle');
+  await H(D, () => {
+    const s = window.__acidMine;
+    if (s._nearestWild) s.nearestWild = s._nearestWild;
+    if (s._seesWild) s.seesWild = s._seesWild;
+  });
+
 
   // Find a little acid without the guide, then clock out so the Foreman can return the bug.
   const pool = await H(D, () => { const s = window.__acidMine; return { x: s.poolPos.x / 2.2, y: s.poolPos.z / 2.2 }; });
