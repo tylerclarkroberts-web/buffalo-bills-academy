@@ -71,6 +71,12 @@ export class BugGuide {
   }
 
   get present() { return this.state === 'guiding'; }
+  /** The Heeshee took it: it leaves the tunnels until the Foreman brings it back. */
+  steal() {
+    if (!this.armed || this.state === 'stolen') return false;
+    this.state = 'stolen'; this.moving = false; this.waiting = false; this.events.push('stolen');
+    return true;
+  }
 
   setPool(p) {
     if (!p) return;
@@ -122,7 +128,7 @@ export class BugGuide {
    * @param {{ t:number, x:number, z:number, yaw:number, elapsedMs:number }} p
    */
   update(dt, p) {
-    if (!this.armed) return;
+    if (!this.armed || this.state === 'stolen') return;
     if (this.state === 'dormant') {
       if (p.elapsedMs >= this.afterMs || this.mode !== 'acid') this.appear(p);
       return;

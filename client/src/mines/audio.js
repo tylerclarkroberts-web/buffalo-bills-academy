@@ -354,5 +354,75 @@ export class MineAudio {
     b.connect(bg); bg.connect(this.master); b.start(t); b.stop(t + 0.85);
     this.noise(0.35, 6000, 600, 0.7);
   }
-  dispose() { clearInterval(this.danceTimer); clearTimeout(this.dripTimer); try { this.ctx?.close(); } catch { /* ignore */ } }
+
+  /**
+   * Heeshee Mazode: wet breath, clicks, a warbling almost-voice. Distance falloff and stereo pan
+   * (left/right of the lamp). Gore-free; no scream and no full-screen stab.
+   */
+  heesheeNoise({ kind = 'breath', dist = 8, pan = 0, vol = 0.4 } = {}) {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const near = Math.max(0, Math.min(1, 1 - dist / 22));
+    const v = Math.max(0.0001, vol * (0.15 + 0.85 * near * near));
+    const panner = c.createStereoPanner(); panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), t);
+    const out = c.createGain(); out.gain.value = 1; panner.connect(out); out.connect(this.master);
+    if (kind === 'click') {
+      this._heesheeNoiseBurst(t, 0.06, 1800, 700, v * 0.7, panner);
+      return;
+    }
+    if (kind === 'warble') {
+      const o = c.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(90 + near * 40, t);
+      o.frequency.exponentialRampToValueAtTime(70, t + 0.7);
+      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 7 + near * 5;
+      const lg = c.createGain(); lg.gain.value = 18; lfo.connect(lg); lg.connect(o.frequency);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * 0.35, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+      o.connect(g); g.connect(panner); o.start(t); o.stop(t + 0.9); lfo.start(t); lfo.stop(t + 0.9);
+      return;
+    }
+    // wet breathing: filtered noise + a low pulse
+    this._heesheeNoiseBurst(t, 0.45, 400, 140, v * 0.55, panner, 'lowpass');
+    const o = c.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(52, t); o.frequency.exponentialRampToValueAtTime(36, t + 0.4);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * 0.28, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g); g.connect(panner); o.start(t); o.stop(t + 0.55);
+  }
+  _heesheeNoiseBurst(t, len, from, to, vol, dest, type = 'bandpass') {
+    const c = this.ctx, buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const s = c.createBufferSource(); s.buffer = buf;
+    const f = c.createBiquadFilter(); f.type = type; f.Q.value = 1.8; f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + len);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    s.connect(f); f.connect(g); g.connect(dest); s.start(t);
+  }
+  /** A low dread drone that swells as the Heeshee closes in. level 0..1. */
+  heesheeDread(level = 0) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime, want = Math.max(0, Math.min(1, level));
+    if (!this.on || want <= 0.02) {
+      if (this._heeDrone) { this._heeDrone.gain.gain.setTargetAtTime(0, t, 0.4); }
+      return;
+    }
+    if (!this._heeDrone) {
+      const gain = c.createGain(); gain.gain.value = 0; gain.connect(this.master);
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180; lp.connect(gain);
+      const oscs = [41, 46, 61].map((f, i) => {
+        const o = c.createOscillator(); o.type = i ? 'sine' : 'sawtooth'; o.frequency.value = f;
+        const g = c.createGain(); g.gain.value = i ? 0.12 : 0.06; o.connect(g); g.connect(lp); o.start(); return o;
+      });
+      this._heeDrone = { gain, oscs };
+    }
+    this._heeDrone.gain.gain.setTargetAtTime(0.0001 + want * 0.42, t, 0.25);
+  }
+  /** The grab: a sharp sting and a wet slap, not a scream and not a full-screen scare. */
+  heesheeSting() {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(620, t); o.frequency.exponentialRampToValueAtTime(90, t + 0.22);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.28, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.35);
+    this.noise(0.18, 900, 180, 0.45, 'lowpass');
+  }
+  dispose() { clearInterval(this.danceTimer); clearTimeout(this.dripTimer); try { this._heeDrone?.oscs.forEach((o) => o.stop()); this.ctx?.close(); } catch { /* ignore */ } }
 }

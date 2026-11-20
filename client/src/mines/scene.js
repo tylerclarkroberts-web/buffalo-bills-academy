@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { rng, distFrom, pathSteps, geigerFacing, RUBBLE } from '../../../server/engine/maze.js';
 import { MIN_GAP, lineOfSight } from './stalker.js';
 import { buildFaun, trotFaun } from './faunMesh.js';
+import { buildHeeshee, poseHeeshee } from './heesheeMesh.js';
+import { proximity } from './heeshee.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { rarityOf } from '../../../server/engine/bug-types.js';
@@ -167,10 +169,10 @@ function buildVisitor() {
 }
 
 export class MineScene {
-  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, faun, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0, ambient = 1, flicker = 0, lampPower = 1 } = {}) {
+  constructor(canvas, maze, { onNear, onStep, stalker, bugGuide, faun, heeshee, localStart, reduceMotion = false, onDread, onEvent, fogFar = 17, lampReach = 11, depth = 0, ambient = 1, flicker = 0, lampPower = 1 } = {}) {
     this.flicker = reduceMotion ? 0 : flicker; this.lampPower = lampPower; this.sputter = 0; // v79: the day's lantern
     this.maze = maze; this.onNear = onNear; this.onStep = onStep;
-    this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.faun = faun || null; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
+    this.stalker = stalker || null; this.bugGuide = bugGuide || null; this.faun = faun || null; this.heeshee = heeshee || null; this.shake = 0; this.heesheeNear = 0; this.localStart = localStart ?? Date.now(); this.reduce = reduceMotion; this.onDread = onDread; this.onEvent = onEvent;
     const r = rng(maze.grid.length * 7919 + maze.pool.x * 31 + maze.pool.y);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
@@ -274,6 +276,7 @@ export class MineScene {
 
     if (this.stalker) { this.visitor = buildVisitor(); this.scene.add(this.visitor.group); this.fade = 0; this.flick = 0; this.nextFlick = 1; this.lastDread = -1; }
     if (this.faun) { this.faunMesh = buildFaun(); this.scene.add(this.faunMesh.group); }
+    if (this.heeshee) { this.heesheeMesh = buildHeeshee(); this.scene.add(this.heesheeMesh.group); }
     if (this.bugGuide?.armed) this.addBugGuide(this.bugGuide.bug);
     this.pos = new THREE.Vector2(maze.start.x * TILE, maze.start.y * TILE);
     this.yaw = -maze.facing - Math.PI / 2; this.pitch = 0;
@@ -402,6 +405,27 @@ export class MineScene {
     trotFaun(m, now, fn.moving, this.reduce, fn.moon);
   }
 
+  updateHeeshee(now, dt) {
+    const h = this.heeshee, m = this.heesheeMesh; if (!h || !m) return;
+    const los = !h.present || lineOfSight(this.maze.grid, this.pos.x, this.pos.y, h.x, h.z);
+    h.update(dt, { t: now / 1000, x: this.pos.x, z: this.pos.y, yaw: this.yaw, elapsedMs: Date.now() - this.localStart, los });
+    while (h.events.length) {
+      const ev = h.events.shift();
+      if (ev === 'steal' && !this.reduce) this.shake = 1;
+      this.onEvent?.(ev === 'appear' ? 'heeshee-appear' : ev === 'noise' ? 'heeshee-noise' : ev === 'freeze' ? 'heeshee-freeze' : ev === 'lunge' ? 'heeshee-lunge' : ev === 'steal' ? 'heeshee-steal' : ev === 'gone' ? 'heeshee-gone' : ev);
+    }
+    const g = m.group;
+    if (!h.present) { g.visible = false; this.heesheeNear = 0; return; }
+    g.visible = true;
+    g.position.set(h.x, 0, h.z);
+    g.rotation.y = h.facing;
+    const dist = Math.hypot(this.pos.x - h.x, this.pos.y - h.z);
+    this.heesheeNear = proximity(dist);
+    const lunge = h.state === 'lunging' ? 1 : 0;
+    poseHeeshee(m, now, { moving: h.moving, frozen: h.state === 'frozen', lunge, fan: h.fan, snap: h.snap, reduce: this.reduce });
+  }
+
+
   /** A bug as a small glowing billboard: its pixel sprite, readable from down the tunnel. The guide's light pulses (updateBugGuide); a wild bug's holds at BUG_GLOW. */
   bugBillboard(species, style, glowColor) {
     const g = new THREE.Group();
@@ -507,7 +531,7 @@ export class MineScene {
     this.poolPos.copy(to);
     this.poolMesh.position.copy(to).setY(0.02); this.poolLight.position.copy(to).setY(0.6);
     for (const c of this.crystals) { c.position.x += dx; c.position.z += dz; }
-    this.bugGuide?.setPool({ x, y }); this.faun?.setPool({ x, y });
+    this.bugGuide?.setPool({ x, y }); this.faun?.setPool({ x, y }); this.heeshee?.setPool({ x, y });
   }
   /** Finite deposits share their liquid texture; confirmations only move the liquid surface. */
   setDeposits(pools, currentPoolId) {
@@ -571,7 +595,7 @@ export class MineScene {
       this.poolLight.position.copy(this.poolPos).setY(0.6);
       this.maze.pool = { x: target.x, y: target.y };
       if (this.stalker) this.stalker.pool = this.maze.pool;
-      this.faun?.setPool(this.maze.pool);
+      this.faun?.setPool(this.maze.pool); this.heeshee?.setPool(this.maze.pool);
       this.bugGuide?.setPool(this.maze.pool);
     }
   }
@@ -675,6 +699,7 @@ export class MineScene {
     } else this.pushing = false;
     if (this.stalker) this.updateVisitor(now, dt);
     if (this.faun) this.updateFaun(now, dt);
+    if (this.heeshee) this.updateHeeshee(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
     const serverNow = Date.now() + (this.clockSkew || 0); // a wild bug is where the server's clock says it has roamed to
     for (const wild of this.wilds.values()) {
@@ -716,7 +741,16 @@ export class MineScene {
       this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
       this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
     }
+    if (this.shake > 0 && !this.reduce && !this.danceBlend) {
+      const s = this.shake;
+      this.camera.position.x += (Math.random() - 0.5) * 0.07 * s;
+      this.camera.position.y += (Math.random() - 0.5) * 0.04 * s;
+      this.camera.rotation.z += (Math.random() - 0.5) * 0.035 * s;
+      this.shake = Math.max(0, this.shake - dt * 3.2);
+    }
     const dread = this.dreadLevel || 0;
+    const hee = this.heesheeNear || 0;
+
     const dip = !this.reduce && Math.random() < 0.004 + dread * 0.02 ? -10 - dread * 4 : 0;
     // v79: rough days sputter. Now and then the lantern stutters for a beat; on Dead Man's Dig it nearly goes out.
     const fl = this.flicker;
@@ -724,7 +758,13 @@ export class MineScene {
     let sput = 0;
     if (this.sputter > 0) { this.sputter -= dt; sput = Math.random() < 0.5 ? -6 - 9 * fl * Math.random() : -2 * Math.random(); }
     const jitter = fl ? (Math.random() - 0.5) * 2.4 * fl : 0;
-    this.lamp.intensity = Math.max(1.5, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter) * this.lampPower); // a tired headlamp (more tired when he's near)
+    let heeFlicker = 0;
+    if (hee > 0.12 && !this.reduce) {
+      if (Math.random() < 0.08 + hee * 0.35) heeFlicker = -8 - 14 * hee * Math.random();
+      else heeFlicker = (Math.random() - 0.5) * 3 * hee;
+    }
+    this.lamp.intensity = Math.max(1.2, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter + heeFlicker) * this.lampPower); // a tired headlamp (more tired when he's near)
+
     if (this.horror?.target) this.lamp.intensity = Math.max(0.25, this.lamp.intensity * (0.08 + 0.92 * this.horror.lamp)); // Horror Night: it barely holds on
     if (this.purpleLight) { // it breathes, slower than the acid does
       const k = this.reduce ? 0 : Math.sin(now / 620);

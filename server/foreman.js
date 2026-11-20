@@ -204,6 +204,13 @@ export const CLOSERS = [
   'Sit tight. No shovel, no mud, just you and some figurin\'.',
   'Deep breath. Shoulders down. Now solve this before I start up again.',
 ];
+
+/** After a Heeshee Mazode stole the guide and the miner still found acid: a short farewell, no math, no clock-in gate. */
+export const HEESHEE_RETURN = [
+  "I had to wrestle that Heeshee Mazode myself. Mean as a wet mule, and twice as long in the arm.",
+  "Your bug's shaken up, poor thing, but I gave him some cigarettes and he calmed down. He's back with you.",
+];
+
 export const SHORT = [4, 6], MED = [7, 12], LONG = [13, 20];
 /** Scene length: weighted short 40% / medium 35% / long 25%. */
 export function sceneLength(r) {
