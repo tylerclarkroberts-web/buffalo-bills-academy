@@ -352,11 +352,15 @@ export function endGame(t, now, why) {
 export function advance(t, now, rng) {
   const r = t.round; if (!r || t.status === 'over') return;
   if (r.phase === 'betting') {
-    const seated = active(t).filter(([s]) => s.chips >= t.limits.min);
-    const all = seated.length > 0 && seated.every(([, i]) => r.bets[i]);
+    // Chips are deducted when the bet goes down, so an all-in seat now has 0 (or otherwise
+    // under the minimum). They have already acted: only seats that can still cover the min
+    // and have not bet or sat out are still waiting. Otherwise a solo all-in sits on
+    // "waiting for the others" until the turn clock (default one day) runs out.
+    const waiting = active(t).filter(([s, i]) => !r.bets[i] && s.chips >= t.limits.min);
+    const all = waiting.length === 0;
     const timeUp = r.deadline && now >= r.deadline;
     const anyBet = Object.values(r.bets).some((b) => !b.out);
-    if (timeUp) for (const [, i] of seated) if (!r.bets[i]) { r.bets[i] = { out: true }; log(t, now, `${seatName(t, i)} sits this round out (no bet in time).`, { k: 'out', seat: i }); }
+    if (timeUp) for (const [, i] of waiting) if (!r.bets[i]) { r.bets[i] = { out: true }; log(t, now, `${seatName(t, i)} sits this round out (no bet in time).`, { k: 'out', seat: i }); }
     // Don't run a bots-only deal while a human is still at the table (same stack-overflow class as settle).
     const humanIn = Object.entries(r.bets).some(([i, b]) => !b.out && t.seats[+i] && !t.seats[+i].bot);
     if ((all || timeUp) && anyBet) {
