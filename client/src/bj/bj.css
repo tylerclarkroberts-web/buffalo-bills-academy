@@ -338,3 +338,47 @@
 .bj-row.deal { box-shadow: inset 0 0 0 1px rgba(62,224,138,.45); }
 .bj-house-watch { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .bj-house-watch .bj-cards { transform: scale(.92); transform-origin: top center; }
+
+
+/* After a split, two (or more) hands at the player's rail must never cover Hit/Stand.
+   The action bar stays above the felt, with 44px targets and iPhone safe-area padding. No page scroll. */
+.bj-arena { overflow: hidden; }
+.bj-bar {
+  position: relative;
+  z-index: 8;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  background: linear-gradient(180deg, rgba(12, 42, 28, .97), #0a2418);
+  padding: 6px 4px max(8px, env(safe-area-inset-bottom, 0px));
+}
+/* Player's own seat is at the bottom of the oval: grow up onto the felt, not down over the buttons. */
+.bj-rail.me { transform: translate(-50%, calc(-100% + 18px)); max-width: min(88%, 420px); }
+.bj-rail .bj-hands { flex-wrap: nowrap; gap: 5px; max-width: 100%; }
+.bj-hand.act {
+  background: rgba(255, 209, 102, .22);
+  box-shadow: 0 0 0 2px #ffd166, 0 0 12px rgba(255, 209, 102, .35);
+}
+.bj-hand-now {
+  display: none;
+  font: 800 9px/1 var(--mono, ui-monospace, monospace);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #1a1204;
+  background: #ffd166;
+  border-radius: 999px;
+  padding: 2px 6px;
+  align-self: center;
+}
+.bj-hand.act .bj-hand-now { display: inline-block; }
+@media (max-width: 899px) {
+  .bj-bar {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+  }
+  .bj-acts { width: 100%; flex-wrap: wrap; gap: 4px; }
+  .bj-acts-main { display: flex; flex-wrap: nowrap; width: 100%; gap: 4px; align-items: stretch; }
+  .bj-acts-main .btn { flex: 1 1 0; min-width: 44px; min-height: 44px; padding-inline: 4px; overflow: hidden; }
+  .bj-tips, .bj-chat, .bj-house-bar { flex: none; width: 100%; justify-content: center; }
+  .bj-chat input { max-width: none; }
+}

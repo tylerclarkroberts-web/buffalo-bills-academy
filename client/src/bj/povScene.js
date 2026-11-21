@@ -1528,7 +1528,7 @@ export class PovScene {
     }
     if (!Number.isFinite(minX) || maxX - minX < 1e-4 || maxY - minY < 1e-4) return;
     const padX = (maxX - minX) * (this._portrait ? 0.22 : 0.12) + (this._portrait ? 0.04 : 0.02);
-    const padTop = (maxY - minY) * (this._portrait ? 0.16 : 0.16) + 0.03;
+    const padTop = (maxY - minY) * (this._portrait ? 0.10 : 0.16) + 0.03;
     const padBot = (maxY - minY) * (this._portrait ? 0.16 : 0.14) + 0.04;
     minX -= padX; maxX += padX;
     minY -= padBot; maxY += padTop;
@@ -1540,9 +1540,12 @@ export class PovScene {
     const fitAspect = () => {
       const spanX = right - left, spanY = top - bottom;
       if (spanX / spanY > aspect) {
+        // Portrait: spend some of the empty dark top band so the table sits a tad closer.
+        // Landscape keeps the earlier split so seats and the pit boss stay clear.
         const extra = spanX / aspect - spanY;
-        top += extra * 0.85;
-        bottom -= extra * 0.15;
+        const lift = this._portrait ? 0.62 : 0.85;
+        top += extra * lift;
+        bottom -= extra * (1 - lift);
       } else {
         const extra = spanY * aspect - spanX;
         left -= extra / 2;

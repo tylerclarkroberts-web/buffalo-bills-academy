@@ -181,6 +181,7 @@ export function BjArena({
                           >
                             <HandCards cards={cards} small freshFrom={fresh} reduced={reduced} />
                             <div className="bj-hand-f">
+                              {hs.length > 1 && v.round?.phase === 'play' && v.round.turn === h.i && <span className="bj-hand-now" data-test="bj-hand-now">This hand</span>}
                               <span className="bj-bet">{money(h.bet)}</span>
                               {h.total != null && n >= h.cards.length && <span className="bj-tot">{h.total}</span>}
                               {out && n >= h.cards.length && <span className={`bj-stamp ${out}`} data-test={`bj-out-${out}`}>{out === 'blackjack' ? 'BLACKJACK' : out.toUpperCase()}</span>}

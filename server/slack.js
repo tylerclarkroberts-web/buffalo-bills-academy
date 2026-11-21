@@ -48,6 +48,31 @@ export class SlackClient {
     if (!open.ok) return open;
     return this.call('chat.postMessage', { channel: open.channel.id, text, ...(blocks ? { blocks } : {}), unfurl_links: false, unfurl_media: false });
   }
+  /** Post to a public channel the bot is in. `channel` is a channel id (C…) or #name. */
+  postChannel(channel, { text, blocks } = {}) {
+    if (!channel) return Promise.resolve({ ok: false, error: 'no_channel' });
+    return this.call('chat.postMessage', { channel, text, ...(blocks ? { blocks } : {}), unfurl_links: false, unfurl_media: false });
+  }
+  /**
+   * Upload a PNG (or other file) to a channel with an initial comment.
+   * Uses Slack's files.getUploadURLExternal + files.completeUploadExternal flow.
+   */
+  async uploadImage({ channel, filename, buffer, title, comment } = {}) {
+    if (!channel) return { ok: false, error: 'no_channel' };
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+    const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length: buf.length });
+    if (!up.ok) return up;
+    try {
+      const headers = { 'content-type': 'application/octet-stream' };
+      const put = await this.fetch(up.upload_url, { method: 'POST', headers, body: buf });
+      if (!put.ok) return { ok: false, error: 'upload_failed' };
+    } catch { return { ok: false, error: 'upload_failed' }; }
+    return this.call('files.completeUploadExternal', {
+      files: [{ id: up.file_id, title: title || filename || 'image.png' }],
+      channel_id: channel,
+      initial_comment: comment || '',
+    });
+  }
 }
 
 
@@ -360,7 +385,7 @@ export class SlackAlerts {
       const p = this.service.store.players[f.playerId];
       if (!this.mayAlert(p)) return;
       this.send(p, turnMessage(f, { publicUrl: this.publicUrl }), 'turn', { code: t.code, key: f.key });
-    } catch (e) { this.warn('turn', e.message); } finally { this.reschedule(); }
+    } catch (e) { this.warn('turn', e.message); } finally { this.reschedule(); this.wanted?.scan(); }
   }
   /** A Barn challenge was just sent. One message and no reminder: the Barn shows it for its whole day. Never throws, never awaits Slack. */
   challenged(f) {
@@ -404,7 +429,7 @@ export class SlackAlerts {
         this.send(p, scumMessage(f, { publicUrl: this.publicUrl }), 'scum-turn', { scum: true, code: t.code, key: f.key, seat: f.seat });
       }
       if (dirty) this.save();
-    } catch (e) { this.warn('scum-turn', e.message); } finally { this.reschedule(); }
+    } catch (e) { this.warn('scum-turn', e.message); } finally { this.reschedule(); this.wanted?.scan(); }
   }
   scumTables() { try { return this.scumSource?.all() || []; } catch { return []; } }
   bjTables() { try { return this.bjSource?.all() || []; } catch { return []; } }
@@ -445,7 +470,7 @@ export class SlackAlerts {
         if (!this.mayAlert(p)) continue;
         this.send(p, gameMessage(f, { publicUrl: this.publicUrl, reminder: true }), f.game === 'scum' ? 'scum-reminder' : 'bj-reminder', { [f.game === 'scum' ? 'scum' : 'bj']: true, code: f.code, key: f.key, seat: f.seat });
       }
-    } catch (e) { this.warn('sweep', e.message); } finally { this.reschedule(); }
+    } catch (e) { this.warn('sweep', e.message); } finally { this.reschedule(); this.wanted?.scan(); }
   }
   /**
    * Start nudges. A record per table, persisted with the rest of the Slack state on the volume:

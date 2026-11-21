@@ -73,6 +73,36 @@ function Grid({ cols, rows, onRow, initial, empty = 'Nothing yet.', rowKey = (r)
   );
 }
 
+
+function WantedAdmin() {
+  const { data, error, reload } = useLoad('/admin/wanted');
+  const [busy, setBusy] = useState(false);
+  const [channel, setChannel] = useState('');
+  useEffect(() => { if (data?.channel != null) setChannel(data.channel); }, [data]);
+  const save = async (patch) => {
+    setBusy(true);
+    try { await api('POST', '/admin/wanted', patch); await reload(); } finally { setBusy(false); }
+  };
+  return (
+    <div className="bo-panel bo-pov-card" data-test="bo-wanted">
+      <header><h3>Wanted posters</h3></header>
+      <p className="bo-note">When a human player is on turn in four or more games at once (not blackjack, and not at tables with bots), Guntrad posts a WANTED poster in the Academy Slack channel. Default channel is unset — no posts until you or <code>SLACK_ACADEMY_CHANNEL</code> set one. The bot needs <code>chat:write</code> and <code>files:write</code>, and must be in the channel.</p>
+      {error && <p className="muted small">Could not load the wanted-poster settings.</p>}
+      {data && (
+        <>
+          <p className="small" data-test="bo-wanted-status">{data.envKill ? 'Killed by SLACK_WANTED_POSTERS=0.' : data.toggle ? (data.channelSet ? `On · posting to ${data.channel}` : 'On · no channel configured, so nothing will post.') : 'Off (admin toggle).'}</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="bo-btn bo-pov-btn" disabled={busy || data.envKill} data-test="bo-wanted-toggle" onClick={() => save({ enabled: !data.toggle })}>{data.toggle ? 'Turn posters off' : 'Turn posters on'}</button>
+            <input aria-label="Slack channel" data-test="bo-wanted-channel" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="#channel or C…" style={{ minHeight: 44, minWidth: 180, padding: '0 10px' }}/>
+            <button type="button" className="bo-btn bo-pov-btn" disabled={busy} data-test="bo-wanted-channel-save" onClick={() => save({ channel })}>Save channel</button>
+            <a className="bo-btn bo-pov-btn" data-test="bo-wanted-preview" href="/api/admin/wanted-poster" target="_blank" rel="noreferrer">Sample poster</a>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ Overview
 function Overview({ data, pick }) {
   const o = data.overview;
@@ -83,6 +113,7 @@ function Overview({ data, pick }) {
         <p className="bo-note">Preview the 3D dealer table with mock players, cards, and tips. Nothing here is a real game, and nothing is written to the ledger.</p>
         <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-pov-card" onClick={() => navigate('/admin/bj-preview')}>Preview dealer view</button>
       </div>
+      <WantedAdmin />
       <div className="bo-kpis">
         <Kpi label="Players" value={o.players} sub={`${o.signedIn} signed in`} />
         <Kpi label="Active" value={`${o.active.today} · ${o.active.d7} · ${o.active.d30}`} sub="today · 7d · 30d" />

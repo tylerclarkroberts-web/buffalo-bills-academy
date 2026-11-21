@@ -80,3 +80,13 @@ test('the dealer POV preview is routed under AdminBoundary and not named like an
   const css = read('client/src/bj/pov-preview.css');
   assert.doesNotMatch(css, /\.ad-/);
 });
+
+test('the wanted-poster admin card is on Overview and does not use ad-like class names', () => {
+  const jsx = read('client/src/admin/AdminPage.jsx');
+  assert.match(jsx, /<WantedAdmin \/>/);
+  assert.match(jsx, /data-test="bo-wanted"/);
+  assert.match(jsx, /data-test="bo-wanted-toggle"/);
+  assert.match(jsx, /data-test="bo-wanted-preview"/);
+  assert.match(jsx, /\/admin\/wanted-poster/);
+  assert.match(jsx, /SLACK_ACADEMY_CHANNEL/);
+});
