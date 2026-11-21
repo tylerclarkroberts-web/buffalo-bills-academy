@@ -190,10 +190,34 @@ export function Leaderboard() {
             <p>Recorded earnings add these five sources. Bets and buy-ins are deducted; losses count too.</p>
             <p>Mines: completed shifts. Poker: bankroll-backed table net, including chips still in play and fight stakes paid into pots. Blackjack: cashed-out sessions, including playing the house. Slots: payouts minus bets. Investing: profit or loss on sold coins.</p>
             <p>Starting money, gifts, Foreman bonuses, direct Guntrad payments, other bets and shop spending are excluded. Active blackjack sessions count after cash-out.</p>
+            <p>The strongest bug trainer is whoever owns the living hatched bug with the highest level — the same level that sets a bug's combat strength. Ties go to more training, then more bout and mine-battle wins. Eggs and bugs that have died do not count.</p>
           </div>
         </details>
       </div>
       {err ? <div className="row wrap"><p className="error" role="alert">{err}</p><button className="btn small" onClick={() => setRetry((n) => n + 1)}>Retry</button></div> : !d ? <p className="muted" role="status">Loading…</p> : (
+        <>
+        <section className="bug-trainers" data-test="bug-trainers">
+          <h2 className="bug-trainers-kicker">Strongest bug trainer</h2>
+          {!(d.bugTrainers && d.bugTrainers.length) ? <p className="muted small" data-test="bug-trainers-empty">No hatched bugs yet.</p> : (
+            <ol>
+              {d.bugTrainers.map((t, i) => {
+                const rec = t.bug?.record;
+                const recLine = rec ? `${rec.w}–${rec.l}${rec.d ? `–${rec.d}` : ''}` : '';
+                return <li key={t.id}>
+                  <button type="button" className={`brow bug-trainer ${i === 0 ? 'champ' : ''} ${t.id === d.me ? 'me' : ''}`} data-test={`bug-trainer-${i}`} onClick={() => navigate(t.id === d.me ? '/profile' : `/players/${t.id}`)}>
+                    <span className="rank">{String(i + 1).padStart(2, '0')}</span>
+                    <Bust id={t.id} avatar={t.avatar} size={wide ? 44 : 32} still={!wide} />
+                    <span className="who-cell">
+                      <span className="nm">{t.name}</span>
+                      <span className="brk">{t.bug.name}{t.bug.speciesName && t.bug.speciesName !== t.bug.name ? ` · ${t.bug.speciesName}` : ''}</span>
+                    </span>
+                    <span className="bug-stat"><span className="bug-lvl">Lv {t.bug.level}</span>{recLine ? <span className="bug-rec">{recLine}</span> : null}</span>
+                  </button>
+                </li>;
+              })}
+            </ol>
+          )}
+        </section>
         <Paged items={d.rows} rowH={sources ? (wide || shortLand ? 108 : 150) : (wide || shortLand ? 62 : 74)} gap={4} className={`board-list ${sources ? 'with-sources' : ''}`} resetKey={`${sort}:${direction}:${sources}`}
           empty={<p className="muted">Nobody has played yet.</p>}
           render={(r, i) => {
@@ -206,6 +230,7 @@ export function Leaderboard() {
               {sources && <span className="board-sources">{EARNING_SOURCES.map(([key, label]) => <span key={key}><span>{label}</span><b className={cls(r.earnings[key])}>{money(r.earnings[key], { sign: true })}</b></span>)}</span>}
             </button>;
           }} />
+        </>
       )}
     </div>
   );
