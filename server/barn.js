@@ -82,6 +82,48 @@ const STATS = ['hunger', 'mood', 'clean'];
 const ORDINALS = ['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const roman = (n) => (n <= 10 ? ORDINALS[n - 1] : String(n));
 
+
+/** How many trainers the leaderboard highlight names (the champion, plus up to two runners-up). */
+export const BUG_TRAINER_TOP = 3;
+
+/** A living hatched bug's standing: displayed level first (the same level combat uses), then XP, then wins. */
+export function strengthOf(pen) {
+  if (!pen || pen.stage !== 'creature') return null;
+  const xp = Math.max(0, Number(pen.xp) || 0);
+  const rec = pen.record || {};
+  return {
+    name: pen.name || 'A bug',
+    species: pen.species || '',
+    speciesName: BY_ID[pen.species]?.name || pen.species || '',
+    level: levelFor(xp, pen.cap),
+    xp,
+    record: { w: Math.max(0, Number(rec.w) || 0), l: Math.max(0, Number(rec.l) || 0), d: Math.max(0, Number(rec.d) || 0) },
+  };
+}
+
+export function compareTrainerBugs(a, b) {
+  if (!a || !b) return 0;
+  return (b.level - a.level) || (b.xp - a.xp) || (b.record.w - a.record.w)
+    || (a.name || '').localeCompare(b.name || '') || (a.species || '').localeCompare(b.species || '');
+}
+
+/** Strongest living hatched bug per eligible trainer, best first. Eggs, graves and hidden players do not count. */
+export function strongestTrainers(barn, { players = barn?.store?.players, limit = BUG_TRAINER_TOP, eligible } = {}) {
+  const rows = [];
+  for (const p of Object.values(players || {})) {
+    if (!p || p.hidden) continue;
+    if (eligible && !eligible(p)) continue;
+    let best = null;
+    for (const pen of (barn?.bugs?.(p.id) || [])) {
+      const s = strengthOf(pen);
+      if (s && (!best || compareTrainerBugs(best, s) > 0)) best = s;
+    }
+    if (best) rows.push({ id: p.id, name: p.name, picture: p.google?.picture || null, player: p, bug: best });
+  }
+  rows.sort((a, b) => compareTrainerBugs(a.bug, b.bug) || (a.name || '').localeCompare(b.name || '') || String(a.id).localeCompare(String(b.id)));
+  return rows.slice(0, Math.max(0, Number(limit) || 0));
+}
+
 export class Barn {
   constructor({ store, accounts, now, incubateMs, eggInt, evoInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
@@ -153,6 +195,8 @@ export class Barn {
   save() { this.store.saveDoc('barn', this.doc); }
   /** Every bug a player keeps, partner first. */
   bugs(playerId) { const partner = this.doc.pens[playerId]; return [...(partner ? [partner] : []), ...(this.doc.bench[playerId] || [])]; }
+  /** Champion plus runners-up for the leaderboard, from this barn's live pens and stalls. */
+  strongestTrainers(opts) { return strongestTrainers(this, opts); }
   /** One of them by id; with no id, the partner. */
   penOf(playerId, bug) { return bug == null ? this.doc.pens[playerId] || null : this.bugs(playerId).find((pen) => idOf(pen) === Number(bug)) || null; }
   /** The change that puts `pen` back where it lives: its stall, or the partner's place. */

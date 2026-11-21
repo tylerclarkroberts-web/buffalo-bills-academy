@@ -11,7 +11,7 @@ import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
-import { Barn } from './barn.js';
+import { Barn, strongestTrainers } from './barn.js';
 import { Circuit } from './circuit.js';
 import { Shop, SMOKE } from './shop.js';
 import { ITEM } from './catalog/index.js';
@@ -312,7 +312,13 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
         const value = (r) => sort === 'wealth' ? r.total : r.earnings[sort === 'earnings' ? 'total' : sort];
         return (direction === 'asc' ? 1 : -1) * (value(a) - value(b)) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
       });
-    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction };
+    const bugTrainers = strongestTrainers(barn, {
+      eligible: (p) => typeof p.bankroll === 'number' && (googleOn ? !!(p.google || p.login) : true),
+    }).map((row) => {
+      const { xp: _xp, ...bug } = row.bug;
+      return { id: row.id, name: row.name, picture: row.picture, avatar: avatars.info(row.player), bug };
+    });
+    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction, bugTrainers };
   }));
 
   // Room views are permission-checked snapshots, never reusable public profile/store responses.
