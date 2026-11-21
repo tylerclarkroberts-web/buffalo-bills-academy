@@ -62,6 +62,7 @@
     "e2e:kash": "node scripts/e2e-kash-bet.mjs",
     "e2e:dealer": "node scripts/e2e-dealer-presence.mjs",
     "e2e:pitboss": "node scripts/e2e-pitboss.mjs",
+    "e2e:ios": "node scripts/e2e-ios-webkit.mjs",
     "e2e:heeshee": "node scripts/e2e-heeshee.mjs",
     "e2e:equity": "node scripts/e2e-holdem-equity.mjs"
   },

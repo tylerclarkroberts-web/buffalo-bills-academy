@@ -10,7 +10,7 @@ import { Accounts } from '../server/accounts.js';
 import { Blackjack } from '../server/blackjack/index.js';
 import { freshDeck } from '../server/blackjack/rules.js';
 import { STALL_MS, dealerPrompt } from '../server/blackjack/pace.js';
-import { hasProfanity, SWEAR_LINE, PHONE_LINE, PIT_NAME } from '../server/blackjack/pitboss.js';
+import { hasProfanity, SWEAR_LINE, PHONE_LINE, PIT_NAME, PHONE_MS, PHONE_BG_MS, tickPit, isPhoneStale } from '../server/blackjack/pitboss.js';
 import { TIP_AMOUNTS } from '../server/blackjack/tips.js';
 import { gestureFromLog, samplePose, revealDelay, isHitTap, isStandWave, isDoubleFinger, isSplitV } from '../client/src/bj/povGestures.js';
 import { seatAvatar, seatsInOrder, occupiedSeats, seatFigureKey, isAway, seatLayout, seatSpacing, seatsClear, ARC, HAND_SPAN } from '../client/src/bj/povSeats.js';
@@ -291,4 +291,46 @@ test('seats are distributed on a 120-degree arc so neighboring hands do not over
   assert.equal(ordered[1], null);
   assert.equal(ordered[3], null);
   assert.ok(Math.abs(seatLayout(5, 0).x - seatLayout(5, 2).x) > Math.abs(seatLayout(3, 0).x - seatLayout(3, 1).x) * 0.4);
+});
+
+test('a short iOS app-switch pause does not count as a phone, a long one does', (t) => {
+  const f = fixture(t);
+  const tb = f.open(rig('Kh', '9c', 'Qh', '8s'), { auto: true, players: ['ann'] });
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  tb.watchers = { [f.P.ann.id]: f.now };
+  tb.pit = { name: PIT_NAME, visits: 0, max: 4, nextAt: f.now + 999999, visit: null, lastPhone: {} };
+  f.bj.presence(f.P.ann, tb.code, { state: 'paused' });
+  assert.ok(tb.backgrounded[f.P.ann.id]);
+  f.now += 15_000;
+  tickPit(tb, f.now, () => 0, { lastViews: tb.watchers });
+  assert.equal(tb.pit.visit, null, '15s of iOS app-switch lag is not a phone');
+  assert.equal(isPhoneStale(tb, f.P.ann.id, f.now, tb.watchers), false);
+  const mid = f.bj.viewOf(tb, f.P.house.id);
+  const midAnn = (mid.seats || []).find((s) => s && s.id === f.P.ann.id);
+  assert.notEqual(midAnn?.away, true);
+  f.now += PHONE_BG_MS;
+  tickPit(tb, f.now, () => 0, { lastViews: tb.watchers });
+  assert.equal(tb.pit.visit?.kind, 'phone');
+  assert.match(tb.pit.visit.line, /phone/i);
+  f.bj.presence(f.P.ann, tb.code, { state: 'active' });
+  assert.equal(tb.backgrounded[f.P.ann.id], undefined);
+});
+
+test('a seated player who vanishes without a pause is still a phone after PHONE_MS, and forcePit hiddenId still works', (t) => {
+  const f = fixture(t);
+  const tb = f.open(rig('Kh', '9c', 'Qh', '8s'), { auto: true, players: ['ann'] });
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  tb.watchers = { [f.P.ann.id]: f.now };
+  tb.pit = { name: PIT_NAME, visits: 0, max: 4, nextAt: f.now + 999999, visit: null, lastPhone: {} };
+  f.now += PHONE_MS + 1;
+  tickPit(tb, f.now, () => 0, { lastViews: tb.watchers });
+  assert.equal(tb.pit.visit?.kind, 'phone');
+  tb.pit.visit = null;
+  tb.pit.lastPhone = {};
+  f.now += 1;
+  tb.watchers[f.P.ann.id] = f.now;
+  f.bj.presence(f.P.ann, tb.code, { state: 'paused' });
+  f.bj.forcePit(f.P.house, tb.code, { hiddenId: f.P.ann.id });
+  assert.equal(tb.backgrounded[f.P.ann.id], undefined);
+  assert.equal(tb.pit.visit?.kind, 'phone');
 });

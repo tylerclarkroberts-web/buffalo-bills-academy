@@ -6,6 +6,9 @@ import { cleanSay } from '../engine/game.js';
 export const PIT_NAME = 'Brisk';
 export const PIT_TITLE = 'Pit Boss';
 export const PHONE_MS = 8000;
+/** iOS Safari can pause JS for much longer than PHONE_MS during an app switch or lock.
+ *  A seated player who sent a `paused` presence ping is only called out after this grace. */
+export const PHONE_BG_MS = 45_000;
 export const VISIT_MS = 5500;
 export const APPROACH_MS = 1200;
 export const LOOM_MS = 2200;
@@ -30,6 +33,15 @@ export const BIG_TIP_LINE = "That's a handsome tip.";
 const SWEARS = /\b(fuck(?:er|ing|ed)?|shit(?:ty|head)?|asshole|bitch(?:es)?|bastard|damn(?:ed)?|crap(?:py)?|piss(?:ed)?|dickhead)\b/i;
 export function hasProfanity(text) {
   return SWEARS.test(String(text || ''));
+}
+
+/** True when this seat should be treated as on the phone (away long enough, or paused past the iOS grace). */
+export function isPhoneStale(t, id, now, views) {
+  if (!id) return false;
+  const bg = t.backgrounded?.[id];
+  if (bg) return now - bg >= PHONE_BG_MS;
+  const seen = (views || t.watchers || {})[id] || 0;
+  return !!(seen && now - seen >= PHONE_MS);
 }
 
 export function schedulePit(t, now, rng) {
@@ -71,15 +83,15 @@ export function tickPit(t, now, rng, { lastViews } = {}) {
   if (pit.visit) return pit.visit;
 
   // A seated player whose tab has been hidden / stale: call them out, at most once in a while.
+  // A short iOS app-switch or lock (pagehide / visibilitychange) must not count as a phone.
   const views = lastViews || t.houseViews || {};
   for (const s of t.seats || []) {
     if (!s || s.left || s.bot || s.id === t.house.id) continue;
-    const seen = views[s.id] || 0;
-    if (seen && now - seen >= PHONE_MS && now - (pit.lastPhone[s.id] || 0) > NEXT_VISIT_MIN) {
-      pit.lastPhone[s.id] = now;
-      startVisit(t, now, { line: PHONE_LINE(s.name), target: { id: s.id, name: s.name }, kind: 'phone' });
-      return pit.visit;
-    }
+    if (!isPhoneStale(t, s.id, now, views)) continue;
+    if (now - (pit.lastPhone[s.id] || 0) <= NEXT_VISIT_MIN) continue;
+    pit.lastPhone[s.id] = now;
+    startVisit(t, now, { line: PHONE_LINE(s.name), target: { id: s.id, name: s.name }, kind: 'phone' });
+    return pit.visit;
   }
 
   if (pit.visits >= pit.max) return null;

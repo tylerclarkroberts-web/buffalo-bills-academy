@@ -25,8 +25,18 @@ export function canPovWebGL() {
 const std = (color, extras = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extras });
 const canv = (w, h) => (typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: w, height: h }) : null);
 
+function isIos() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+}
+/** Safari has a tight GPU memory budget. Cap procedural canvases at 1024, 512 on iPhone. */
+function texLimit(preferred) {
+  const max = isIos() || (typeof window !== 'undefined' && window.innerWidth < 720) ? 512 : 1024;
+  return Math.min(preferred || 1024, max);
+}
 function feltTexture() {
-  const S = 1024;
+  const S = texLimit(1024);
   const c = canv(S, S); if (!c) return null;
   const ctx = c.getContext('2d');
   // Bright casino green — the pool of light is baked in so software GL still reads as a lit table.
@@ -529,7 +539,7 @@ export function createPovScene(canvas, opts = {}) {
 }
 
 export class PovScene {
-  constructor(canvas, { reduced = false, onFps, onGesture, onLost, onSfx } = {}) {
+  constructor(canvas, { reduced = false, onFps, onGesture, onLost, onRestore, onSfx } = {}) {
     this.canvas = canvas; this.reduced = reduced; this.onFps = onFps; this.onGesture = onGesture; this.onSfx = onSfx;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
     if (!this.renderer.getContext()) throw new Error('no webgl');
@@ -591,8 +601,25 @@ export class PovScene {
     this.clock = new THREE.Clock();
     this.raf = 0;
     this.onLost = onLost;
-    this._onLost = (ev) => { ev?.preventDefault?.(); this.onLost?.(); };
+    this.onRestore = onRestore;
+    this._lost = false;
+    this._onLost = (ev) => {
+      // preventDefault lets iOS Safari restore the context after a background / lock instead of killing it.
+      ev?.preventDefault?.();
+      this._lost = true;
+      this.setPaused?.(true);
+      clearTimeout(this._restoreTimer);
+      this._restoreTimer = setTimeout(() => { if (this._lost) this.onLost?.(); }, 1800);
+    };
+    this._onRestored = () => {
+      this._lost = false;
+      clearTimeout(this._restoreTimer);
+      this.setPaused?.(false);
+      try { this.resize(); } catch { /* */ }
+      this.onRestore?.();
+    };
     canvas.addEventListener('webglcontextlost', this._onLost);
+    canvas.addEventListener('webglcontextrestored', this._onRestored);
     this._bindLook();
     this._onResize = () => this.resize();
     this.ro = new ResizeObserver(this._onResize);
@@ -603,7 +630,7 @@ export class PovScene {
   }
   _mobile() { return (this.canvas.clientWidth || window.innerWidth) < 720; }
   /** Portrait phones get a deeper, narrower table so a correct-aspect camera can fill the frame. Avatars stay unscaled. */
-  _stageScale() { return this._portrait ? { sx: 0.68, sz: 2.40 } : { sx: 1, sz: 1 }; }
+  _stageScale() { return this._portrait ? { sx: 0.82, sz: 1.65 } : { sx: 1, sz: 1 }; }
   _xz(x, z) { const { sx, sz } = this._stageScale(); return { x: x * sx, z: z * sz }; }
   _lay(n, i) {
     const lay = seatLayout(n, i);
@@ -680,8 +707,10 @@ export class PovScene {
       this.renderer.setPixelRatio(1);
       this.renderer.setSize(rw, Math.max(1, Math.round(rw / aspect)), false);
     } else {
-      const cap = this._mobile() ? 1.15 : 1.25;
-      this.renderer.setPixelRatio(Math.min(cap, window.devicePixelRatio || 1));
+      // iOS Safari OOMs above 2x; cap every path at 2, keep a softer cap on tiny phones.
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const cap = isIos() ? dpr : Math.min(dpr, this._mobile() ? 1.15 : 2);
+      this.renderer.setPixelRatio(cap);
       this.renderer.setSize(w, h, false);
     }
     this.camera.aspect = w / h;
@@ -817,6 +846,8 @@ export class PovScene {
       p.away = away;
       p.group.position.set(lay.x, away ? -0.05 : 0, lay.z);
       p.group.rotation.y = lay.yaw;
+      const fig = this._portrait ? 1.22 : 1;
+      p.group.scale.set(fig, fig, fig);
       p.turn = s.i === turnSeat;
       if (p.turn) { this._turnX = lay.x; this._turnZ = lay.z; }
       if (p.plate && p.tag && p._awayPlate !== away) {
@@ -1033,8 +1064,14 @@ export class PovScene {
     if (!tip) { this._tipFly = null; this._tipAt = null; }
   }
 
+  setPaused(on) {
+    this._paused = !!on;
+    if (this._paused) { cancelAnimationFrame(this.raf); this.raf = 0; }
+    else if (!this.raf) this.raf = requestAnimationFrame(this.loop);
+  }
   loop() {
     this.raf = requestAnimationFrame(this.loop);
+    if (this._paused || this._lost) return;
     try {
       const dt = Math.min(0.05, this.clock.getDelta());
       const now = performance.now();
@@ -1424,15 +1461,40 @@ export class PovScene {
   }
   getFps() { return this.fps; }
   destroy() {
-    cancelAnimationFrame(this.raf);
+    this._paused = true;
+    this._lost = true;
+    cancelAnimationFrame(this.raf); this.raf = 0;
+    clearTimeout(this._restoreTimer);
     this.ro?.disconnect();
     this._lookUnbind?.();
     window.removeEventListener('deviceorientation', this._orient);
     this.canvas.removeEventListener('webglcontextlost', this._onLost);
+    this.canvas.removeEventListener('webglcontextrestored', this._onRestored);
     for (const p of this.players.values()) p.dispose?.();
-    this.res.textures.forEach((t) => t?.dispose?.());
-    this.faceCache.forEach((t) => t?.dispose?.());
+    this.players.clear();
+    for (const s of this._labelById?.values() || []) { this.labels?.remove(s); s.userData?.tex?.dispose?.(); }
+    this._labelById?.clear?.();
+    (this.res.geos || []).forEach((g) => g?.dispose?.());
+    (this.res.mats || []).forEach((m) => { m?.map?.dispose?.(); m?.dispose?.(); });
+    (this.res.textures || []).forEach((tx) => tx?.dispose?.());
+    this.faceCache.forEach((tx) => tx?.dispose?.());
+    this.faceCache.clear();
     this.backTex?.dispose?.();
-    this.renderer.dispose();
+    let glLost = !!this._lost;
+    try { glLost = glLost || !!this.renderer?.getContext?.()?.isContextLost?.(); } catch { glLost = true; }
+    // After an iOS context loss, GPU objects no longer belong to a context; skipping
+    // gl.delete* avoids "INVALID_OPERATION: delete: object does not belong to this context".
+    if (!glLost) {
+      try {
+        this.scene?.traverse((obj) => {
+          obj.geometry?.dispose?.();
+          const mats = obj.material ? (Array.isArray(obj.material) ? obj.material : [obj.material]) : [];
+          for (const m of mats) { try { m.map?.dispose?.(); m.dispose?.(); } catch { /* */ } }
+        });
+      } catch { /* */ }
+    }
+    try { this.renderer?.dispose?.(); } catch { /* */ }
+    if (!glLost) { try { this.renderer?.forceContextLoss?.(); } catch { /* */ } }
+    this.renderer = null;
   }
 }

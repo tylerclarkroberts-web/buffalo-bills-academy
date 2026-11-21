@@ -4,7 +4,7 @@ import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import { SignIn } from '../Home.jsx';
 import { useMedia } from '../ui.jsx';
-import { sfx, isMuted, setMuted } from './sfx.js';
+import { sfx, isMuted, setMuted, unlockSfx } from './sfx.js';
 import { BjArena } from './BjArena.jsx';
 import { DealerPov, TipBar, TableChat } from './DealerPov.jsx';
 import { PitBoss } from './PitBoss.jsx';
@@ -239,16 +239,33 @@ function useView(code) {
       if (stopped || document.hidden) return;
       try { setV(await api('GET', `/bj/tables/${code}`)); setErr(''); } catch (e) { if (!stopped) setErr(e.message); }
     };
+    const ping = (state) => { api('POST', `/bj/tables/${code}/presence`, { state }).catch(() => {}); };
     const arm = () => {
       clearInterval(timer);
-      if (document.hidden) return;
+      // iOS Safari fires hidden / pagehide on an app switch or lock. Tell the pit boss this is a
+      // pause, not a phone, and do not let the 8s stale window start until they stay gone.
+      if (typeof document !== 'undefined' && document.hidden) { ping('paused'); return; }
+      ping('active');
+      try { unlockSfx(); } catch { /* */ }
       load();
       // A player-dealer heartbeats while this tab is in front, so a Kash Bet can still be caught.
       timer = setInterval(load, houseRef.current ? 800 : 1500);
     };
+    const onHide = () => { if (!stopped) ping('paused'); };
     arm();
     document.addEventListener('visibilitychange', arm);
-    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', arm); };
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('pageshow', arm);
+    window.addEventListener('freeze', onHide);
+    window.addEventListener('resume', arm);
+    return () => {
+      stopped = true; clearInterval(timer);
+      document.removeEventListener('visibilitychange', arm);
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('pageshow', arm);
+      window.removeEventListener('freeze', onHide);
+      window.removeEventListener('resume', arm);
+    };
   }, [code]);
   return [v, setV, err, setErr];
 }
