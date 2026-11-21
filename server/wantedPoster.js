@@ -9,7 +9,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { headParts, shade } from '../client/src/avatar/genbust.js';
+import { headParts, shade } from './avatar/genbust.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
