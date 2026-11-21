@@ -113,7 +113,17 @@ export class Blackjack {
     if (v.house && t.house.mode === 'player') {
       v.house.autopilot = t.house.autopilot !== false; // default on, so existing tables keep automatic dealing
       v.house.pov = t.house.id === viewerId && t.status === 'playing';
-      if (t.house.id === viewerId) v.dealer = dealerPrompt(t);
+      if (t.house.id === viewerId) {
+        v.dealer = dealerPrompt(t);
+        // Presentation only, and only on the house view: a stale / hidden tab reads as away.
+        const now = this.now();
+        v.seats = v.seats.map((s) => {
+          if (!s || s.bot) return s;
+          const seen = t.watchers?.[s.id];
+          if (!seen) return s;
+          return { ...s, away: now - seen >= Pit.PHONE_MS };
+        });
+      }
     }
     v.canTip = Tips.canTip(t, viewerId);
     v.tip = Tips.tipView(t, this.now());

@@ -13,6 +13,7 @@ import { STALL_MS, dealerPrompt } from '../server/blackjack/pace.js';
 import { hasProfanity, SWEAR_LINE, PHONE_LINE, PIT_NAME } from '../server/blackjack/pitboss.js';
 import { TIP_AMOUNTS } from '../server/blackjack/tips.js';
 import { gestureFromLog, samplePose, revealDelay, isHitTap, isStandWave, isDoubleFinger, isSplitV } from '../client/src/bj/povGestures.js';
+import { seatAvatar, seatsInOrder, occupiedSeats, seatFigureKey, isAway } from '../client/src/bj/povSeats.js';
 import { mulberry } from '../server/blackjack/sim.js';
 
 function fixture(t, seed = 11) {
@@ -232,4 +233,45 @@ test('dealer prompt says Autopilot is dealing when autopilot is on, never "Autop
   assert.equal(off.autopilot, false);
   assert.notEqual(off.label, 'Autopilot is off');
   assert.match(off.label, /Waiting on a player|Waiting on bets|You.re dealing|Deal|Flip|Draw|Insurance|house is still/i);
+});
+
+
+test('avatar identity maps to the seat player id, gestures follow that seat\'s real action, and empty seats stay empty', () => {
+  const seats = [
+    { i: 0, id: 'ann', name: 'Ann', avatar: { kind: 'gen', seed: 'ann-hair' } },
+    null,
+    { i: 2, name: 'Cal', bot: true, avatar: { kind: 'gen', seed: 'bjbot:Cal', bot: true } },
+    { i: 3, id: 'dee', name: 'Dee' },
+  ];
+  const ordered = seatsInOrder(seats, 5);
+  assert.equal(ordered.length, 5);
+  assert.equal(ordered[1], null);
+  assert.equal(ordered[4], null);
+  assert.deepEqual(occupiedSeats(seats, 5).map((s) => s.i), [0, 2, 3]);
+  assert.equal(seatFigureKey(ordered[0]), 'ann');
+  assert.equal(seatAvatar(ordered[0]).seed, 'ann-hair');
+  assert.equal(seatAvatar(ordered[0]).kind, 'gen');
+  assert.equal(seatFigureKey(ordered[2]), 'bot:Cal:2');
+  assert.equal(seatAvatar(ordered[2]).seed, 'bjbot:Cal');
+  assert.equal(seatAvatar(ordered[2]).bot, true);
+  assert.equal(seatFigureKey(ordered[3]), 'dee');
+  assert.equal(seatAvatar(ordered[3]).seed, 'dee');
+  assert.equal(seatAvatar(null), null);
+  assert.equal(isAway(ordered[0]), false);
+  assert.equal(isAway({ ...ordered[0], away: true }), true);
+  assert.equal(isAway(ordered[2], { watchers: { Cal: 1 }, now: 20_000, staleMs: 8000 }), false);
+
+  const log = [
+    { seq: 20, ev: { k: 'deal', seat: 0 } },
+    { seq: 21, ev: { k: 'hit', seat: 2 } },
+    { seq: 22, ev: { k: 'stand', seat: 0 } },
+    { seq: 23, ev: { k: 'split', seat: 3 } },
+  ];
+  const hit = gestureFromLog(log, 20);
+  assert.deepEqual({ kind: hit.kind, seat: hit.seat, seq: hit.seq }, { kind: 'hit', seat: 2, seq: 21 });
+  const stand = gestureFromLog(log, 21);
+  assert.deepEqual({ kind: stand.kind, seat: stand.seat }, { kind: 'stand', seat: 0 });
+  const split = gestureFromLog(log, 22);
+  assert.deepEqual({ kind: split.kind, seat: split.seat }, { kind: 'split', seat: 3 });
+  assert.equal(gestureFromLog(log, 23), null);
 });

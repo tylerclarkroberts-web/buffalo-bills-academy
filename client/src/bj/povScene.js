@@ -5,13 +5,14 @@ import * as THREE from 'three';
 import { looks, shade, headParts } from '../avatar/genbust.js';
 import { shirtOf } from '../avatar/wear.js';
 import { gestureFromLog, gestureDuration, revealDelay, samplePose, REST } from './povGestures.js';
+import { seatAvatar, seatsInOrder, seatFigureKey, isAway } from './povSeats.js';
 
 export const FELT_Y = 0.78;
 export const TABLE_R = 1.52;
 export const RAIL_R = 1.56;
 export const SEAT_R = 1.86;
-export const CARD_R = 1.18;
-export const CHIP_R = 1.34;
+export const CARD_R = 1.12;
+export const CHIP_R = 0.82;
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const CHIP_COLOR = { r: '#b01c2c', g: '#1c7a3a', k: '#1a1a1a', b: '#1c4a9a' };
 const CHIP_DENOM = [[100, 'b'], [25, 'k'], [5, 'g'], [1, 'r']];
@@ -28,7 +29,8 @@ const canv = (w, h) => (typeof document !== 'undefined' ? Object.assign(document
 
 export function seatLayout(n, i) {
   const count = Math.max(1, n);
-  const spread = count <= 1 ? 0 : count === 2 ? 0.4 : count === 3 ? 0.54 : 0.66;
+  // Slightly tighter than a half-circle so four occupied seats stay in a mobile portrait frame.
+  const spread = count <= 1 ? 0 : count === 2 ? 0.38 : count === 3 ? 0.52 : 0.60;
   const t = count === 1 ? 0 : (i / (count - 1) - 0.5) * 2;
   const yaw = t * spread;
   const at = (r) => ({ x: Math.sin(yaw) * r, z: Math.cos(yaw) * r });
@@ -171,7 +173,10 @@ function cardBack() {
 }
 
 function faceTexture(id, avatar) {
-  const c = canv(160, 192); if (!c) return null;
+  // Same GenHead / photo art as Bust in the top bar and seat ovals, just drawn onto a canvas
+  // so the dealer can read it on a camera-facing sprite in front of the head.
+  const W = 256, H = 320;
+  const c = canv(W, H); if (!c) return null;
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   tex.magFilter = tex.minFilter = THREE.LinearFilter;
   const ctx = c.getContext('2d');
@@ -180,41 +185,76 @@ function faceTexture(id, avatar) {
   const drawParts = () => {
     if (disposed) return;
     const P = headParts(avatar?.seed || id, avatar?.skinTone);
-    ctx.clearRect(0, 0, c.width, c.height);
-    // Warm skin wash so the billboard doesn't go muddy.
-    ctx.fillStyle = shade(P.L.skin, 0.08);
-    ctx.beginPath(); ctx.ellipse(80, 96, 70, 88, 0, 0, 7); ctx.fill();
-    ctx.save(); ctx.scale(2.66, 2.66);
-    for (const list of [P.ears, P.skin, P.beard, P.hair]) for (const f of list) { ctx.fillStyle = f.fill; ctx.fill(new Path2D(f.d)); }
-    if (P.L.brows) { ctx.fillStyle = P.L.hair; ctx.fillRect(19, 31, 8, 1.8); ctx.fillRect(33, 31, 8, 1.8); }
-    ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.arc(23, 36, 2.6, 0, 7); ctx.arc(37, 36, 2.6, 0, 7); ctx.fill();
-    ctx.fillStyle = '#f4efe4'; ctx.beginPath(); ctx.arc(22.2, 35.4, 0.7, 0, 7); ctx.arc(36.2, 35.4, 0.7, 0, 7); ctx.fill();
-    ctx.fillStyle = shade(P.L.skin, -0.18); ctx.fill(new Path2D('M30 37 L27.5 44 L32 44Z'));
-    ctx.strokeStyle = shade(P.L.skin, -0.5); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(25, 49); ctx.quadraticCurveTo(30, 52, 35, 49); ctx.stroke();
-    ctx.restore(); tex.needsUpdate = true;
+    const { L, cx, cy } = P;
+    ctx.clearRect(0, 0, W, H);
+    // Match Bust's GenHead viewBox="-4 -12 68 84"
+    ctx.save();
+    ctx.scale(W / 68, H / 84);
+    ctx.translate(4, 12);
+    for (const list of [P.ears, P.skin, P.beard, P.hair]) {
+      for (const f of list) {
+        ctx.fillStyle = f.fill;
+        ctx.strokeStyle = f.fill;
+        ctx.lineWidth = 0.3;
+        const path = new Path2D(f.d);
+        ctx.fill(path); ctx.stroke(path);
+      }
+    }
+    if (L.brows) {
+      ctx.strokeStyle = shade(L.hair, -0.3); ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(cx - 11, cy - 5); ctx.lineTo(cx - 4, cy - 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + 11, cy - 5); ctx.lineTo(cx + 4, cy - 6); ctx.stroke();
+    }
+    ctx.fillStyle = '#1b1512';
+    ctx.beginPath(); ctx.ellipse(cx - 7, cy, 2, 2.3, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + 7, cy, 2, 2.3, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = shade(L.skin, -0.18);
+    ctx.fill(new Path2D(`M${cx} ${cy + 1} L${cx - 2.5} ${cy + 8} L${cx + 2} ${cy + 8} Z`));
+    ctx.strokeStyle = shade(L.skin, -0.45); ctx.lineWidth = 1.3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - 5, cy + 13); ctx.quadraticCurveTo(cx, cy + 15.5, cx + 5, cy + 13); ctx.stroke();
+    ctx.restore();
+    tex.needsUpdate = true;
   };
   drawParts();
-  if (avatar?.kind === 'photo' && typeof Image !== 'undefined') {
+  if (avatar?.kind === 'photo' && id && typeof Image !== 'undefined') {
     img = new Image();
     img.onload = () => {
       if (disposed) return;
-      ctx.clearRect(0, 0, c.width, c.height); ctx.save(); ctx.beginPath(); ctx.ellipse(80, 96, 70, 88, 0, 0, 7); ctx.clip();
-      ctx.drawImage(img, 0, 0, 160, 192); ctx.restore(); tex.needsUpdate = true;
+      ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      ctx.beginPath(); ctx.ellipse(W / 2, H / 2, W * 0.46, H * 0.48, 0, 0, 7); ctx.clip();
+      ctx.drawImage(img, 0, 0, W, H);
+      ctx.restore();
+      tex.needsUpdate = true;
     };
-    img.onerror = drawParts; img.src = `/api/avatars/${encodeURIComponent(id)}.png?v=${avatar.v || 0}`;
+    img.onerror = drawParts;
+    img.src = `/api/avatars/${encodeURIComponent(id)}.png?v=${avatar.v || 0}`;
   }
   return tex;
 }
 
-function namePlate(text) {
-  const c = canv(256, 64); if (!c) return null;
+function paintNamePlate(tex, text, away = false) {
+  const c = tex.image; if (!c?.getContext) return tex;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(12,8,4,.82)'; ctx.fillRect(8, 10, 240, 44);
-  ctx.strokeStyle = 'rgba(242,198,90,.55)'; ctx.strokeRect(8, 10, 240, 44);
-  ctx.fillStyle = '#f4efe4'; ctx.font = '700 28px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(String(text || '').slice(0, 16), 128, 33, 220);
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  ctx.clearRect(0, 0, 256, 64);
+  ctx.fillStyle = away ? 'rgba(60,60,66,.94)' : 'rgba(20,12,6,.92)';
+  ctx.fillRect(4, 8, 248, 48);
+  ctx.strokeStyle = away ? 'rgba(180,180,188,.7)' : 'rgba(242,198,90,.9)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(4, 8, 248, 48);
+  ctx.fillStyle = away ? '#d8d8de' : '#fff6e8';
+  ctx.font = '700 30px system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const label = away ? `${String(text || '').slice(0, 12)} · away` : String(text || '').slice(0, 16);
+  ctx.fillText(label, 128, 33, 220);
+  tex.needsUpdate = true;
   return tex;
+}
+
+function namePlate(text, away = false) {
+  const c = canv(256, 64); if (!c) return null;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return paintNamePlate(tex, text, away);
 }
 
 function chipBreakdown(amount) {
@@ -302,22 +342,28 @@ function buildSeated({ id, name, avatar }) {
   if (L.style === 'long') add(head, new THREE.BoxGeometry(0.18, 0.16, 0.07), hair, 0, 0.0, 0.09);
   if (L.style === 'bun') add(head, new THREE.SphereGeometry(0.045, 8, 6), hair, 0, 0.14, 0.1);
   const tex = faceTexture(id, avatar);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.32), tex
-    ? new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.05, emissive: '#3a2418', emissiveMap: tex, emissiveIntensity: 0.45 })
-    : skin);
-  face.position.set(0, 0.08, 0.12);
-  head.add(face);
-  const plate = namePlate(name);
+  // Sprite sits on the dealer-facing side of the head (local −Z) so the sphere never hides it,
+  // and it stays camera-facing without a lookAt that can flip the plane to the back of the skull.
+  let face = null;
+  if (tex) {
+    face = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true }));
+    face.center.set(0.5, 0.42);
+    face.position.set(0, 0.1, -0.14);
+    face.scale.set(0.46, 0.58, 1);
+    head.add(face);
+  }
+  const plate = namePlate(name, false);
   let tag = null;
   if (plate) {
     tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: plate, transparent: true, depthWrite: false }));
-    tag.position.set(0, 1.55, 0.02); tag.scale.set(0.42, 0.1, 1); g.add(tag);
+    tag.position.set(0, 1.58, -0.06); tag.scale.set(0.48, 0.12, 1); g.add(tag);
   }
   const stackPush = pivot(g, 'stackPush', -0.12, FELT_Y, -0.4);
   const person = {
     group: g, hips, torso, head, armL, armR, elL: Larm.el, elR: Rarm.el, wrL: Larm.wr, wrR: Rarm.wr,
-    fingersL: Larm.fingers, fingersR: Rarm.fingers, stackPush, faceBillboard: face, seed: (id || name || 'p').length,
-    gesture: null, dispose: () => { tex?.dispose(); plate?.dispose(); },
+    fingersL: Larm.fingers, fingersR: Rarm.fingers, stackPush, faceBillboard: face, tag, plate, name,
+    seed: (id || name || 'p').length, avatarKey: `${avatar?.kind || 'gen'}:${avatar?.seed || id}:${avatar?.v || 0}`,
+    gesture: null, away: false, dispose: () => { tex?.dispose(); plate?.dispose(); },
   };
   applyPose(person, REST);
   return person;
@@ -438,8 +484,8 @@ function buildTable(res) {
 
 function makeCardMesh(frontTex, backTex) {
   const g = new THREE.Group();
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.086, 0.12), new THREE.MeshLambertMaterial({ map: frontTex }));
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(0.086, 0.12), new THREE.MeshLambertMaterial({ map: backTex }));
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.086, 0.12), new THREE.MeshBasicMaterial({ map: frontTex }));
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(0.086, 0.12), new THREE.MeshBasicMaterial({ map: backTex }));
   back.rotation.y = Math.PI;
   const edge = new THREE.Mesh(new THREE.BoxGeometry(0.086, 0.12, 0.0024), std('#f4efe4', { flatShading: true }));
   face.position.z = 0.0014; back.position.z = -0.0014;
@@ -466,12 +512,13 @@ export class PovScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = this.software ? 1.35 : 1.2;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(62, 1, 0.08, 24);
-    this._baseCam = new THREE.Vector3(0, 1.4, -0.62);
+    this.camera = new THREE.PerspectiveCamera(64, 1, 0.08, 24);
+    this._baseCam = new THREE.Vector3(0, 1.4, -0.7);
     this._look = new THREE.Vector3(0, 0.86, 1.28);
     this.camera.position.copy(this._baseCam);
     this.camera.lookAt(this._look);
     this.yaw = 0; this.pitch = 0; this._drag = null;
+    this._panX = 0; this._turnX = 0;
     this.res = { geos: [], mats: [], textures: [], meshes: [] };
     this.scene.add(new THREE.AmbientLight(0xffe6c8, 0.55));
     this.scene.add(new THREE.HemisphereLight(0xffe4b8, 0x2a1a18, 1.05));
@@ -556,14 +603,17 @@ export class PovScene {
     const w = Math.max(1, this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 640);
     const h = Math.max(1, this.canvas.clientHeight || 400);
     const mobile = h > w || this._mobile();
-    this.camera.fov = mobile ? 72 : 62;
+    this._portrait = h > w;
+    this.camera.fov = this._portrait ? 90 : 64;
+    if (this._portrait) { this._baseCam.set(0, 1.54, -1.12); this._look.set(0, 0.9, 1.1); }
+    else { this._baseCam.set(0, 1.4, -0.7); this._look.set(0, 0.86, 1.28); }
     if (this.software) {
       const aspect = w / Math.max(1, h);
-      const rw = Math.min(800, w);
+      const rw = Math.min(720, w);
       this.renderer.setPixelRatio(1);
       this.renderer.setSize(rw, Math.max(1, Math.round(rw / aspect)), false);
     } else {
-      const cap = this._mobile() ? 1.2 : 1.4;
+      const cap = this._mobile() ? 1.15 : 1.25;
       this.renderer.setPixelRatio(Math.min(cap, window.devicePixelRatio || 1));
       this.renderer.setSize(w, h, false);
     }
@@ -662,22 +712,40 @@ export class PovScene {
   }
 
   _syncPlayers(v, turnSeat) {
-    const seats = (v?.seats || []).map((s, i) => s && { ...s, i }).filter(Boolean);
+    const ordered = seatsInOrder(v?.seats, v?.maxSeats);
+    const cap = Math.max(1, ordered.length);
     const keep = new Set();
-    seats.forEach((s, order) => {
-      const key = s.id || `bot:${s.name}:${s.i}`;
+    this._turnX = 0;
+    ordered.forEach((s) => {
+      if (!s) return; // empty seats stay empty — no invented figure
+      const key = seatFigureKey(s);
+      if (!key) return;
       keep.add(key);
+      const avatar = seatAvatar(s);
+      const avatarKey = `${avatar?.kind || 'gen'}:${avatar?.seed || s.id || key}:${avatar?.v || 0}`;
       let p = this.players.get(key);
+      if (p && p.avatarKey !== avatarKey) {
+        this.playerRoot.remove(p.group); p.dispose?.(); this.players.delete(key); p = null;
+      }
       if (!p) {
-        p = buildSeated({ id: s.id || key, name: s.name, avatar: s.avatar });
+        p = buildSeated({ id: s.id || (avatar?.seed) || key, name: s.name, avatar });
+        p.avatarKey = avatarKey;
         this.players.set(key, p);
         this.playerRoot.add(p.group);
       }
       p.seat = s.i;
-      const lay = seatLayout(seats.length, order);
-      p.group.position.set(lay.x, 0, lay.z);
+      const lay = seatLayout(cap, s.i);
+      const away = isAway(s);
+      p.away = away;
+      p.group.position.set(lay.x, away ? -0.05 : 0, lay.z);
       p.group.rotation.y = lay.yaw;
       p.turn = s.i === turnSeat;
+      if (p.turn) this._turnX = lay.x;
+      if (p.plate && p.tag && p._awayPlate !== away) {
+        paintNamePlate(p.plate, p.name, away);
+        p._awayPlate = away;
+        p.tag.material.opacity = away ? 0.78 : 1;
+      }
     });
     for (const [k, p] of this.players) {
       if (keep.has(k)) continue;
@@ -687,34 +755,38 @@ export class PovScene {
 
   _layoutCards(v, dealerCards, handsOf) {
     const need = [];
-    const seats = (v?.seats || []).map((s, i) => s && { ...s, i }).filter(Boolean);
-    seats.forEach((s, order) => {
-      const lay = seatLayout(seats.length, order);
+    const ordered = seatsInOrder(v?.seats, v?.maxSeats);
+    const cap = Math.max(1, ordered.length);
+    ordered.forEach((s) => {
+      if (!s) return;
+      const lay = seatLayout(cap, s.i);
       const hs = handsOf?.(s.i) || [];
+      // Perpendicular to the radius so split hands sit side by side in the circle.
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
       hs.forEach((h, hi) => {
         const cards = h.cards || [];
         const mid = (hs.length - 1) / 2;
-        const ox = (hi - mid) * 0.18 * px, oz = (hi - mid) * 0.18 * pz;
+        const ox = (hi - mid) * 0.22 * px, oz = (hi - mid) * 0.22 * pz;
         cards.forEach((c, ci) => {
+          const fan = (ci - (cards.length - 1) / 2) * 0.155;
           need.push({
             code: c,
-            x: lay.cardX + ox + Math.sin(lay.yaw) * ci * 0.012 + px * (ci - 0.5) * 0.05,
-            y: FELT_Y + 0.014 + ci * 0.0012,
-            z: lay.cardZ + oz + Math.cos(lay.yaw) * ci * 0.012 + pz * (ci - 0.5) * 0.05,
-            rotX: -Math.PI / 2 + 0.42,
+            x: lay.cardX + ox + px * fan,
+            y: FELT_Y + 0.045 + ci * 0.002,
+            z: lay.cardZ + oz + pz * fan,
+            rotX: -Math.PI / 2 - 0.92,
             rotY: lay.yaw,
-            rotZ: (ci - 1) * 0.03,
+            rotZ: (ci - (cards.length - 1) / 2) * 0.05,
             down: !c,
-            scale: 2.4,
+            scale: 2.95,
           });
         });
       });
     });
     (dealerCards || []).forEach((c, ci) => {
       const n = dealerCards.length;
-      const x = (ci - (n - 1) / 2) * 0.14;
-      need.push({ code: c, x, y: FELT_Y + 0.02, z: 0.38 + ci * 0.014, rotX: -Math.PI / 2 + 0.32, rotY: 0, rotZ: 0, down: !c, dealer: true, scale: 2.7 });
+      const x = (ci - (n - 1) / 2) * 0.22;
+      need.push({ code: c, x, y: FELT_Y + 0.045, z: 0.36 + ci * 0.01, rotX: -Math.PI / 2 - 0.62, rotY: 0, rotZ: 0, down: !c, dealer: true, scale: 3.05 });
     });
     while (this.cards.children.length < need.length) this._card();
     this.cards.children.forEach((m, i) => {
@@ -724,7 +796,9 @@ export class PovScene {
       const tex = d.down ? this.backTex : this._face(d.code);
       if (face.material.map !== tex) { face.material.map = tex; face.material.needsUpdate = true; }
       m.position.set(d.x, d.y, d.z);
-      m.rotation.set(d.rotX, d.rotY + (d.down ? Math.PI : 0), d.rotZ);
+      m.rotation.order = 'YXZ';
+      // Face-down cards keep the same tilt and just swap the front texture to the back, so the hole isn't edge-on.
+      m.rotation.set(d.rotX, d.rotY, d.rotZ);
       const sc = d.scale || 1; m.scale.set(sc, sc, sc);
     });
     this._cardTargets = need;
@@ -732,24 +806,26 @@ export class PovScene {
 
   _layoutChips(v, handsOf) {
     this._resetChips();
-    const seats = (v?.seats || []).map((s, i) => s && { ...s, i }).filter(Boolean);
-    seats.forEach((s, order) => {
-      const lay = seatLayout(seats.length, order);
+    const ordered = seatsInOrder(v?.seats, v?.maxSeats);
+    const cap = Math.max(1, ordered.length);
+    ordered.forEach((s) => {
+      if (!s) return;
+      const lay = seatLayout(cap, s.i);
       const bet = v.round?.bets?.[s.i];
       const hs = handsOf?.(s.i) || [];
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
-      // Bankroll stack (presentation of s.chips) plus the bet, so the rail has real height.
-      this._stack(Math.min(36, s.chips || 0), lay.chipX + px * 0.08, lay.chipZ + pz * 0.08);
+      // Real bet in the betting circle, slightly toward the rail from the cards. Bankroll is a shorter stack behind it.
+      this._stack(Math.min(20, s.chips || 0), lay.chipX + px * 0.1, lay.chipZ + pz * 0.1);
       if (bet && !bet.out && !hs.length) this._stack(bet.bet, lay.chipX, lay.chipZ);
       hs.forEach((h, hi) => {
         const mid = (hs.length - 1) / 2;
-        const x = lay.chipX + (hi - mid) * 0.16 * px;
-        const z = lay.chipZ + (hi - mid) * 0.16 * pz;
+        const x = lay.chipX + (hi - mid) * 0.18 * px;
+        const z = lay.chipZ + (hi - mid) * 0.18 * pz;
         this._stack(h.bet || bet?.bet || 0, x, z);
         if (h.doubled) this._stack(h.bet / 2 || 0, x + px * 0.06, z + pz * 0.06);
       });
     });
-    const bank = Math.min(40, Math.max(16, Math.round((v?.house?.bank || 200) / 25)));
+    const bank = Math.min(24, Math.max(12, Math.round((v?.house?.bank || 200) / 25)));
     for (let i = 0; i < bank; i++) {
       const col = i % 5; const row = Math.floor(i / 5);
       const kind = ['r', 'g', 'k', 'b', 'r'][col];
@@ -796,7 +872,8 @@ export class PovScene {
       this._baseCam.z + Math.cos(t * 1.15) * 0.004 * bob,
     );
     const look = this._look.clone();
-    look.x += this.yaw * 0.85; look.y += this.pitch * 0.7;
+    this._panX += ((this._turnX || 0) * 0.34 - this._panX) * Math.min(1, (dt || 0.016) * 2.1);
+    look.x += this.yaw * 0.85 + this._panX; look.y += this.pitch * 0.7;
     look.y += Math.sin(t * 0.9) * 0.008 * bob;
     this.camera.lookAt(look);
   }
@@ -810,10 +887,18 @@ export class PovScene {
     }
     for (const p of this.players.values()) {
       const t = now / 1000 + p.seed;
+      if (p.away) {
+        p.torso.rotation.x = 0.58;
+        p.torso.position.y = 0.06;
+        p.head.rotation.x = 0.48;
+        p.head.rotation.y = 0.18;
+        applyPose(p, REST);
+        continue;
+      }
+      p.torso.rotation.x = 0.22;
       p.torso.position.y = 0.1 + (this.reduced ? 0 : Math.sin(t * 1.5) * 0.006);
       p.head.rotation.y = this.reduced ? 0 : Math.sin(t * 0.35) * 0.12;
       p.head.rotation.x = this.reduced ? 0 : Math.sin(t * 0.5) * 0.03;
-      if (p.faceBillboard) p.faceBillboard.lookAt(this.camera.position);
       const pose = (g && g.seat === p.seat) ? samplePose(g.kind, u) : REST;
       applyPose(p, pose);
       if (!g || g.seat !== p.seat) {
