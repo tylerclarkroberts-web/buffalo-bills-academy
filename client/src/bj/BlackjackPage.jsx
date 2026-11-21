@@ -6,6 +6,8 @@ import { SignIn } from '../Home.jsx';
 import { useMedia } from '../ui.jsx';
 import { sfx, isMuted, setMuted } from './sfx.js';
 import { BjArena } from './BjArena.jsx';
+import { DealerPov, TipBar, TableChat } from './DealerPov.jsx';
+import { PitBoss } from './PitBoss.jsx';
 import { useDealReveal } from './useDealReveal.js';
 import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
 import { NextTablePill } from '../turns/TurnsPill.jsx';
@@ -322,7 +324,7 @@ function BjTable({ code, me }) {
   const sit = () => (v.edge?.needsAck ? setShow('sit') : post('join', { ack: true }));
 
   return (
-    <div className={`screen bj bj-t ${reduced ? 'rm' : ''}`} data-test="bj-table">
+    <div className={`screen bj bj-t ${reduced ? 'rm' : ''}${v.house?.isMe && v.status === 'playing' ? ' pov' : ''}`} data-test="bj-table">
       <div className="panel bj-felt">
         <div className="bj-head">
           <button className="btn ghost small" onClick={() => navigate('/bj')} aria-label="Back">←</button>
@@ -339,21 +341,43 @@ function BjTable({ code, me }) {
           </div>
         </div>
         <div className="bj-status" data-test="bj-status"><span>{shuf ? <b className="bj-shuf" data-test="bj-shuffle">🂠 {shuf}</b> : status}</span>{dealingNow && <b className="bj-dealing" data-test="bj-dealing">You're dealing</b>}{clock && v.status === 'playing' && <span className="mono">⏱ {clock}</span>}{r && <span className="mono dim">Round {r.no}</span>}</div>
-        <BjArena
-          v={v}
-          dealerCards={dealerCards}
-          dealerTotal={dealerTotal}
-          handsOf={handsOf}
-          turnSeat={turnSeat}
-          fxFor={fxFor}
-          shown={shown}
-          dealing={dealing}
-          onTap={tap}
-          reduced={reduced}
-          onSit={canSit ? sit : null}
-          kashTell={v.kashTell}
-          now={now}
-        />
+        {v.house?.isMe && v.status === 'playing' ? (
+          <DealerPov
+            v={v}
+            dealerCards={dealerCards}
+            dealerTotal={dealerTotal}
+            handsOf={handsOf}
+            turnSeat={turnSeat}
+            fxFor={fxFor}
+            shown={shown}
+            dealing={dealing}
+            reduced={reduced}
+            now={now}
+            tip={v.tip}
+            thanks={v.tip?.thanks ? 'Thanks for the tip' : null}
+            onAuto={(on) => post('autopilot', { on })}
+            onDeal={(action) => post('deal', { action })}
+          />
+        ) : (
+          <>
+            <BjArena
+              v={v}
+              dealerCards={dealerCards}
+              dealerTotal={dealerTotal}
+              handsOf={handsOf}
+              turnSeat={turnSeat}
+              fxFor={fxFor}
+              shown={shown}
+              dealing={dealing}
+              onTap={tap}
+              reduced={reduced}
+              onSit={canSit ? sit : null}
+              kashTell={v.kashTell}
+              now={now}
+            />
+            <PitBoss pit={v.pit} reduced={reduced} />
+          </>
+        )}
         <NextTablePill advance={turnAdvance} />
         <div className="bj-bar" data-test="bj-bar">
           {v.house?.isMe && <KashCatch kash={v.kashCatch} now={now} onCatch={() => post('kash-catch')} />}
@@ -373,6 +397,11 @@ function BjTable({ code, me }) {
             : r.phase === 'betting' && !myBet ? <BetBar min={v.limits.min} max={maxNow} royal={v.royal} bet={clampBet(bet)} setBet={(x) => setBet(clampBet(x))} side={side} setSide={setSide}
                 onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={v.continuous ? null : () => post('sitout')} />
             : <span className="small dim">{status}… {ready && <KashButtons v={v} r={r} post={post} />}</span>}
+          <TipBar canTip={v.canTip} busy={busy} tip={v.tip} onTip={async (amount) => {
+            setBusy(true);
+            try { const id = (crypto.randomUUID && crypto.randomUUID()) || `${me.id}:${Date.now()}`; const res = await post('tip', { amount, id }); if (res) sfx.chip(); } finally { setBusy(false); }
+          }} />
+          {(mine || v.house?.isMe) && <TableChat chat={v.chat} meId={me.id} onSay={(text) => post('say', { text })} />}
         </div>
         {err && <p className="error bj-err" role="alert">{err}</p>}
         {show === 'sit' && v.mySeat < 0 && !v.house.isMe && ['lobby', 'playing'].includes(v.status) && <SitGate v={v} post={post} onClose={() => { setShow(null); history.replaceState(null, '', `/bj/${code}`); }} />}

@@ -3,6 +3,7 @@
 // Money here is table chips; ./index.js moves bankroll money in and out (buy-in, cash-out, a human house's bank).
 import { freshDeck, shuffle, handValue, isBlackjack, basicStrategy, royalHit, rankVal, tenish } from './rules.js';
 import { GameError } from '../engine/game.js';
+import { STALL_MS, isManual, buildDealQueue } from './pace.js';
 
 export const RESHUFFLE_AT = 18;  // before a round: fewer than 18 cards left (about a third of the deck) → fresh shuffled deck
 const r2 = (x) => Math.round(x * 100) / 100;
@@ -164,6 +165,17 @@ function deal(t, now, rng) {
       else { houseTakes(t, side[k]); s.stats.lost = r2((s.stats.lost || 0) + side[k]); }
     }
   }
+  if (isManual(t)) {
+    r.phase = 'dealing';
+    r.dealQueue = buildDealQueue(r);
+    r.dealStep = 0;
+    r.deadline = now + STALL_MS;
+    return;
+  }
+  afterDeal(t, now, rng);
+}
+function afterDeal(t, now, rng) {
+  const r = t.round;
   const upA = r.dealer[0][0] === 'A';
   if (upA && t.rules.insurance && r.hands.some((h) => !t.seats[h.seat].bot)) {
     r.phase = 'insurance'; r.deadline = now + t.turnSec * 1000;
@@ -176,9 +188,16 @@ function deal(t, now, rng) {
 function peek(t, now, rng) {
   const r = t.round;
   const up = r.dealer[0];
-  // insurance bets
-  for (const [seat, amt] of Object.entries(r.insurance)) if (amt) { t.seats[seat].chips = r2(t.seats[seat].chips - amt); t.seats[seat].stats.wagered = r2(t.seats[seat].stats.wagered + amt); }
+  // insurance bets (once: a manual pause on a dealer blackjack must not charge them twice)
+  if (!r.peeked) {
+    r.peeked = true;
+    for (const [seat, amt] of Object.entries(r.insurance)) if (amt) { t.seats[seat].chips = r2(t.seats[seat].chips - amt); t.seats[seat].stats.wagered = r2(t.seats[seat].stats.wagered + amt); }
+  }
   if ((up[0] === 'A' || tenish(up)) && isBlackjack(r.dealer)) {
+    if (isManual(t) && !r.holeShown) {
+      r.phase = 'dealer'; r.dealerAct = 'flip-bj'; r.deadline = now + STALL_MS;
+      return;
+    }
     r.holeShown = true;
     log(t, now, `${houseName(t)} peeks… blackjack!`, { k: 'reveal', card: r.dealer[1], bj: true });
     for (const [seat, amt] of Object.entries(r.insurance)) if (amt) { pay(t, +seat, amt * 3, amt * 2); log(t, now, `${seatName(t, +seat)}'s insurance pays $${amt * 2}.`, { k: 'pay', seat: +seat, amt: amt * 2, ins: true }); }
@@ -224,9 +243,14 @@ function nextTurn(t, now, rng) {
     const i = r.hands.findIndex((h) => !h.done);
     if (i < 0) return dealerPlays(t, now, rng);
     r.turn = i; const h = r.hands[i];
-    if (h.cards.length === 1) { const c = draw(t, now, rng); h.cards.push(c); log(t, now, `${seatName(t, h.seat)}'s split hand gets ${c}.`, { k: 'hit', seat: h.seat, hand: i, card: c }); if (h.aces && !t.rules.hitSplitAces && !canResplitAce(t, h)) { h.done = true; continue; } }
+    if (h.cards.length === 1) {
+      const c = draw(t, now, rng); h.cards.push(c);
+      log(t, now, `${seatName(t, h.seat)}'s split hand gets ${c}.`, { k: 'hit', seat: h.seat, hand: i, card: c });
+      if (isManual(t)) { r.pending = { k: 'split', hand: i }; r.deadline = now + STALL_MS; return; }
+      if (h.aces && !t.rules.hitSplitAces && !canResplitAce(t, h)) { h.done = true; continue; }
+    }
     if (handValue(h.cards).total >= 21) { h.done = true; continue; }
-    if (t.seats[h.seat].bot) { const a = basicStrategy(h.cards, r.dealer[0], canDo(t, h)); doAct(t, i, a, now, rng); continue; }
+    if (t.seats[h.seat].bot) { const a = basicStrategy(h.cards, r.dealer[0], canDo(t, h)); doAct(t, i, a, now, rng, true); continue; }
     r.deadline = now + t.turnSec * 1000;
     return;
   }
@@ -234,8 +258,9 @@ function nextTurn(t, now, rng) {
 export function act(t, seat, action, now, rng) {
   const r = t.round;
   if (!r || r.phase !== 'play') throw new GameError('Not time to play a hand.', 409);
+  if (r.pending) throw new GameError('Wait for the dealer to flip the card.', 409);
   const h = r.hands[r.turn]; if (!h || h.seat !== seat) throw new GameError("It isn't your turn.", 409);
-  doAct(t, r.turn, action, now, rng);
+  if (doAct(t, r.turn, action, now, rng) === 'pending') return;
   nextTurn(t, now, rng);
 }
 function doAct(t, i, action, now, rng, auto = false) {
@@ -245,15 +270,19 @@ function doAct(t, i, action, now, rng, auto = false) {
   if (action === 'hit') {
     const c = draw(t, now, rng); h.cards.push(c); const v = handValue(h.cards).total;
     log(t, now, `${who} hits: ${c} (${v > 21 ? 'BUST' : v}).`, { k: 'hit', seat: h.seat, hand: i, card: c });
-    if (v > 21) { h.done = true; h.bust = true; log(t, now, `${who} busts.`, { k: 'bust', seat: h.seat, hand: i }); } else if (v === 21) h.done = true;
+    if (v > 21) { h.bust = true; log(t, now, `${who} busts.`, { k: 'bust', seat: h.seat, hand: i }); }
+    if (isManual(t) && !auto) { r.pending = { k: 'hit', hand: i, bust: v > 21, twentyOne: v === 21 }; r.deadline = now + STALL_MS; return 'pending'; }
+    if (v > 21) h.done = true; else if (v === 21) h.done = true;
   } else if (action === 'stand') {
     h.done = true; log(t, now, `${who} ${auto ? 'ran out of time and stands' : 'stands'} on ${handValue(h.cards).total}.`, { k: 'stand', seat: h.seat, hand: i, auto });
   } else if (action === 'double') {
     if (!can.double) throw new GameError("You can't double this hand.", 400);
     s.chips = r2(s.chips - h.bet); s.stats.wagered = r2(s.stats.wagered + h.bet); h.bet *= 2; h.doubled = true;
-    const c = draw(t, now, rng); h.cards.push(c); h.done = true; const v = handValue(h.cards).total;
+    const c = draw(t, now, rng); h.cards.push(c); const v = handValue(h.cards).total;
     log(t, now, `${who} doubles to $${h.bet}: ${c} (${v > 21 ? 'BUST' : v}).`, { k: 'double', seat: h.seat, hand: i, card: c, amt: h.bet });
     if (v > 21) { h.bust = true; log(t, now, `${who} busts.`, { k: 'bust', seat: h.seat, hand: i }); }
+    if (isManual(t) && !auto) { r.pending = { k: 'double', hand: i, bust: v > 21 }; r.deadline = now + STALL_MS; return 'pending'; }
+    h.done = true;
   } else if (action === 'split') {
     if (!can.split) throw new GameError("You can't split this hand.", 400);
     s.chips = r2(s.chips - h.bet); s.stats.wagered = r2(s.stats.wagered + h.bet);
@@ -271,17 +300,54 @@ function doAct(t, i, action, now, rng, auto = false) {
 }
 
 function dealerPlays(t, now, rng) {
-  const r = t.round; r.phase = 'dealer'; r.turn = -1; r.deadline = null; r.holeShown = true;
-  log(t, now, `${houseName(t)} turns over ${r.dealer[1]} (${handValue(r.dealer).total}).`, { k: 'reveal', card: r.dealer[1] });
+  const r = t.round; r.phase = 'dealer'; r.turn = -1;
+  if (isManual(t) && !r.holeShown) { r.dealerAct = 'flip'; r.deadline = now + STALL_MS; return; }
+  finishDealer(t, now, rng);
+}
+function houseShouldHit(t) {
+  const { total, soft } = handValue(t.round.dealer);
+  const live = t.round.hands.some((h) => !h.bust && !h.surrendered && !h.bj);
+  return live && !(total > 17 || (total === 17 && (!soft || t.rules.s17)));
+}
+function finishDealer(t, now, rng) {
+  const r = t.round; r.phase = 'dealer'; r.turn = -1; r.deadline = null; r.dealerAct = null;
+  if (!r.holeShown) {
+    r.holeShown = true;
+    log(t, now, `${houseName(t)} turns over ${r.dealer[1]} (${handValue(r.dealer).total}).`, { k: 'reveal', card: r.dealer[1] });
+  }
   const live = r.hands.some((h) => !h.bust && !h.surrendered && !h.bj);
   if (live) for (;;) {
-    const { total, soft } = handValue(r.dealer);
-    if (total > 17 || (total === 17 && (!soft || t.rules.s17))) break;
+    if (!houseShouldHit(t)) break;
     const c = draw(t, now, rng); r.dealer.push(c);
     const v = handValue(r.dealer).total;
     log(t, now, `${houseName(t)} hits: ${c} (${v > 21 ? 'BUST' : v}).`, { k: 'dhit', card: c, bust: v > 21 });
   }
   settle(t, now, rng);
+}
+function flipHole(t, now, rng) {
+  const r = t.round;
+  if (r.holeShown) return finishDealer(t, now, rng);
+  r.holeShown = true;
+  const bj = isBlackjack(r.dealer);
+  log(t, now, bj ? `${houseName(t)} peeks… blackjack!` : `${houseName(t)} turns over ${r.dealer[1]} (${handValue(r.dealer).total}).`, { k: 'reveal', card: r.dealer[1], bj });
+  if (bj || r.dealerAct === 'flip-bj') {
+    for (const [seat, amt] of Object.entries(r.insurance)) if (amt) { pay(t, +seat, amt * 3, amt * 2); log(t, now, `${seatName(t, +seat)}'s insurance pays $${amt * 2}.`, { k: 'pay', seat: +seat, amt: amt * 2, ins: true }); }
+    for (const h of r.hands) h.done = true;
+    r.dealerAct = null; r.deadline = null;
+    return settle(t, now, rng);
+  }
+  if (!houseShouldHit(t)) { r.dealerAct = null; r.deadline = null; return settle(t, now, rng); }
+  r.dealerAct = 'draw'; r.deadline = now + STALL_MS;
+}
+function drawHouse(t, now, rng) {
+  const r = t.round;
+  if (!r.holeShown) return flipHole(t, now, rng);
+  if (!houseShouldHit(t)) { r.dealerAct = null; r.deadline = null; return settle(t, now, rng); }
+  const c = draw(t, now, rng); r.dealer.push(c);
+  const v = handValue(r.dealer).total;
+  log(t, now, `${houseName(t)} hits: ${c} (${v > 21 ? 'BUST' : v}).`, { k: 'dhit', card: c, bust: v > 21 });
+  if (!houseShouldHit(t)) { r.dealerAct = null; r.deadline = null; return settle(t, now, rng); }
+  r.dealerAct = 'draw'; r.deadline = now + STALL_MS;
 }
 function pay(t, seat, back, profit) {
   profit = Math.max(0, profit); // losses (surrender) are booked by houseTakes
@@ -349,8 +415,65 @@ export function endGame(t, now, why) {
 }
 
 /** Run anything that is due: deal when every bettor is in (or the betting clock ran out), timeouts, bots. */
+function finishPending(t, now, rng) {
+  const r = t.round, p = r.pending; if (!p) return;
+  const h = r.hands[p.hand];
+  r.pending = null; r.deadline = null;
+  if (p.k === 'split') {
+    if (h && h.aces && !t.rules.hitSplitAces && !canResplitAce(t, h)) h.done = true;
+    return nextTurn(t, now, rng);
+  }
+  if (h) {
+    if (p.bust || p.twentyOne || p.k === 'double') h.done = true;
+  }
+  nextTurn(t, now, rng);
+}
+
+function dealOne(t, now, rng) {
+  const r = t.round;
+  if (r.phase !== 'dealing' || !r.dealQueue) return afterDeal(t, now, rng);
+  r.dealStep = (r.dealStep || 0) + 1;
+  if (r.dealStep >= r.dealQueue.length) { r.phase = 'dealt'; r.deadline = null; return afterDeal(t, now, rng); }
+  r.deadline = now + STALL_MS;
+}
+
+function flushManual(t, now, rng) {
+  const r = t.round; if (!r) return;
+  if (r.phase === 'dealing') { r.dealStep = r.dealQueue?.length || 0; r.phase = 'dealt'; r.deadline = null; afterDeal(t, now, rng); }
+  if (t.round?.pending) finishPending(t, now, rng);
+  if (t.round?.phase === 'dealer' && t.round.dealerAct) {
+    if (t.round.dealerAct === 'flip-bj' || isBlackjack(t.round.dealer)) flipHole(t, now, rng);
+    else finishDealer(t, now, rng);
+  }
+}
+
+/** Manual dealer's next presentation step. Never chooses a card or a result — only when it is shown. */
+export function dealerAct(t, action, now, rng) {
+  if (!isManual(t)) throw new GameError('Autopilot is dealing.', 409);
+  const r = t.round; if (!r) throw new GameError('No hand is out.', 409);
+  const act = String(action || '');
+  if (r.phase === 'dealing' && act === 'deal') return dealOne(t, now, rng);
+  if (r.pending && (act === 'flip' || act === 'deal')) return finishPending(t, now, rng);
+  if (r.phase === 'dealer' && (r.dealerAct === 'flip' || r.dealerAct === 'flip-bj') && (act === 'flip' || act === 'deal')) return flipHole(t, now, rng);
+  if (r.phase === 'dealer' && r.dealerAct === 'draw' && (act === 'draw' || act === 'deal' || act === 'hit')) return drawHouse(t, now, rng);
+  throw new GameError('Nothing to deal right now.', 409);
+}
+
+/** Turning autopilot on finishes whatever is mid-reveal so the hand cannot stick. */
+export function setAutopilot(t, on, now, rng) {
+  if (t.house?.mode !== 'player') throw new GameError('Only a player dealer can set autopilot.', 409);
+  t.house.autopilot = !!on;
+  if (on) flushManual(t, now, rng);
+}
+
 export function advance(t, now, rng) {
   const r = t.round; if (!r || t.status === 'over') return;
+  // A stalled manual dealer: finish the current pause so the hand never sticks. Does not touch betting clocks.
+  if (isManual(t) && r.deadline && now >= r.deadline && (r.phase === 'dealing' || r.pending || (r.phase === 'dealer' && r.dealerAct))) {
+    flushManual(t, now, rng);
+    return;
+  }
+  if (r.phase === 'dealing' || r.pending || (r.phase === 'dealer' && r.dealerAct)) return;
   if (r.phase === 'betting') {
     // Chips are deducted when the bet goes down, so an all-in seat now has 0 (or otherwise
     // under the minimum). They have already acted: only seats that can still cover the min

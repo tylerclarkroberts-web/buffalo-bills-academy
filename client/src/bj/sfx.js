@@ -18,4 +18,9 @@ export const sfx = {
   bj() { [0, 4, 7, 12].forEach((n, i) => tone(523 * 2 ** (n / 12), 523 * 2 ** (n / 12), 0.14, { vol: 0.05, at: i * 0.09 })); },
   win() { [0, 7].forEach((n, i) => tone(659 * 2 ** (n / 12), 659 * 2 ** (n / 12), 0.12, { wave: 'triangle', vol: 0.07, at: i * 0.1 })); },
   lose() { tone(330, 200, 0.2, { wave: 'triangle', vol: 0.05 }); },
+  footsteps() {
+    [0, 0.18, 0.34, 0.55].forEach((at, i) => tone(110 - i * 6, 70, 0.08, { wave: 'sine', vol: 0.04, at }));
+  },
+  loom() { tone(90, 60, 0.4, { wave: 'sine', vol: 0.06 }); tone(180, 140, 0.25, { wave: 'triangle', vol: 0.03, at: 0.05 }); },
 };
+
