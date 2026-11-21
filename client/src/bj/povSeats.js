@@ -1,8 +1,8 @@
 // Pure helpers for the dealer POV. Presentation only: they read the existing table view.
 // Gestures come from the table log; avatar identity is the seat's player (or bot) id; empty seats stay empty.
 
-/** Far half-moon arc, in radians. Seats are distributed evenly around this, facing the dealer. */
-export const ARC = (150 * Math.PI) / 180;
+/** Far half-moon arc, in radians. 120° keeps end seats across the table (not at the dealer's elbows) while neighboring hands still have their own circles. */
+export const ARC = (120 * Math.PI) / 180;
 export const SEAT_R = 2.08;
 export const CARD_R = 1.26;
 export const CHIP_R = 1.10;

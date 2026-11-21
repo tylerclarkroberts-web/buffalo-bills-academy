@@ -477,7 +477,7 @@ function buildTable(res) {
   add(root, new THREE.CylinderGeometry(0.04, 0.04, 0.7, 8), leatherMat, -0.95, FELT_Y + 0.06, -0.02, 1, 1, 1, [0, 0, Math.PI / 2]);
   add(root, new THREE.CylinderGeometry(0.04, 0.04, 0.7, 8), leatherMat, 0.95, FELT_Y + 0.06, -0.02, 1, 1, 1, [0, 0, Math.PI / 2]);
   const leg = std('#2a1a10');
-  for (const [x, z] of [[-1.15, 0.15], [1.15, 0.15], [-0.55, 1.15], [0.55, 1.15]]) {
+  for (const [x, z] of [[-0.55, 1.15], [0.55, 1.15]]) {
     add(root, new THREE.BoxGeometry(0.09, FELT_Y - 0.02, 0.09), leg, x, (FELT_Y - 0.02) / 2, z);
   }
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), std('#1a0e0c'));
@@ -542,15 +542,15 @@ export class PovScene {
     this.renderer.toneMappingExposure = this.software ? 1.35 : 1.2;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.08, 24);
-    this._baseCam = new THREE.Vector3(0, 1.5, -1.18);
-    this._look = new THREE.Vector3(0, 0.7, 0.95);
+    this._baseCam = new THREE.Vector3(0, 2.45, -1.15);
+    this._look = new THREE.Vector3(0, 0.78, 1.00);
     this.camera.position.copy(this._baseCam);
     this.camera.lookAt(this._look);
     this.yaw = 0; this.pitch = 0; this._drag = null;
     this._panX = 0; this._turnX = 0; this._zoom = 0;
     this._introT0 = performance.now();
-    this._introFrom = new THREE.Vector3(0, 2.55, 2.35);
-    this._introLook = new THREE.Vector3(0, 0.9, 0.7);
+    this._introFrom = new THREE.Vector3(0, 3.15, 2.45);
+    this._introLook = new THREE.Vector3(0, 0.9, 0.85);
     this.res = { geos: [], mats: [], textures: [], meshes: [] };
     this.scene.add(new THREE.AmbientLight(0xffe6c8, 0.55));
     this.scene.add(new THREE.HemisphereLight(0xffe4b8, 0x2a1a18, 1.05));
@@ -566,9 +566,9 @@ export class PovScene {
     this.lamp.shadow.camera.near = 0.3; this.lamp.shadow.camera.far = 6;
     this.scene.add(this.lamp, this.lamp.target);
     // Face fill along the far rail so avatars stay readable.
-    const faceFill = new THREE.PointLight(0xffe6c8, 2.4, 5, 1.4); faceFill.position.set(0, 1.35, 1.15); this.scene.add(faceFill);
+    const faceFill = new THREE.PointLight(0xffe6c8, 2.4, 5, 1.4); faceFill.position.set(0, 1.35, 1.15); this.scene.add(faceFill); this.faceFill = faceFill;
     const table = buildTable(this.res);
-    this.scene.add(table.root); this.shoe = table.shoe; this.tray = table.tray;
+    this.scene.add(table.root); this._tableRoot = table.root; this._pendant = table.lamp; this.shoe = table.shoe; this.tray = table.tray;
     this.backTex = cardBack(); this.res.textures.push(this.backTex);
     this.faceCache = new Map();
     this.cards = new THREE.Group(); this.scene.add(this.cards);
@@ -602,6 +602,30 @@ export class PovScene {
     this.raf = requestAnimationFrame(this.loop);
   }
   _mobile() { return (this.canvas.clientWidth || window.innerWidth) < 720; }
+  /** Portrait phones get a deeper, narrower table so a correct-aspect camera can fill the frame. Avatars stay unscaled. */
+  _stageScale() { return this._portrait ? { sx: 0.68, sz: 2.40 } : { sx: 1, sz: 1 }; }
+  _xz(x, z) { const { sx, sz } = this._stageScale(); return { x: x * sx, z: z * sz }; }
+  _lay(n, i) {
+    const lay = seatLayout(n, i);
+    const p = this._xz(lay.x, lay.z);
+    const c = this._xz(lay.cardX, lay.cardZ);
+    const h = this._xz(lay.chipX, lay.chipZ);
+    const yaw = Math.atan2(p.x, p.z);
+    return { ...lay, x: p.x, z: p.z, cardX: c.x, cardZ: c.z, chipX: h.x, chipZ: h.z, yaw };
+  }
+  _applyStageScale() {
+    const { sx, sz } = this._stageScale();
+    if (this._tableRoot) this._tableRoot.scale.set(sx, 1, sz);
+    // Keep shoe, tray, and the pendant from turning into ovals under the table scale.
+    const inv = (o) => { if (o) o.scale.set(sx ? 1 / sx : 1, 1, sz ? 1 / sz : 1); };
+    inv(this.shoe); inv(this.tray); inv(this._pendant);
+    if (this._pendant) this._pendant.visible = !this._portrait;
+
+    if (this.lamp) this.lamp.position.set(0, 2.55, 0.7 * sz);
+    if (this.lamp?.target) this.lamp.target.position.set(0, FELT_Y, 0.7 * sz);
+    if (this.faceFill) this.faceFill.position.set(0, 1.35, 1.15 * sz);
+  }
+
   _isSoftware() {
     try {
       const gl = this.renderer.getContext();
@@ -639,10 +663,17 @@ export class PovScene {
     const h = Math.max(1, this.canvas.clientHeight || 400);
     const mobile = h > w || this._mobile();
     this._portrait = h >= w * 0.92;
-    // Pull back and tilt down so the full 150° arc fits and the near apron sits on the bottom edge — no dead space below.
-    this.camera.fov = this._portrait ? 76 : 56;
-    if (this._portrait) { this._baseCam.set(0, 2.02, -2.08); this._look.set(0, 0.62, 0.55); }
-    else { this._baseCam.set(0, 1.68, -1.72); this._look.set(0, 0.58, 0.62); }
+    // Dealer eye just behind the rail, looking down ~40–45°. On portrait the table is
+    // deepened and narrowed so a physically correct (unstretched) camera can still
+    // fill the lower ~65% of a tall phone with felt, and the player arc sits in the upper third.
+    if (this._portrait) {
+      this._baseCam.set(0, 2.45, -0.20); this._look.set(0, 0.70, 1.70); this.camera.fov = 58;
+      this._introFrom.set(0, 3.40, 3.80); this._introLook.set(0, 0.90, 1.50);
+    } else {
+      this._baseCam.set(0, 2.55, -1.20); this._look.set(0, 0.78, 1.00); this.camera.fov = 48;
+      this._introFrom.set(0, 3.15, 2.45); this._introLook.set(0, 0.9, 0.85);
+    }
+    this._applyStageScale();
     if (this.software) {
       const aspect = w / Math.max(1, h);
       const rw = Math.min(720, w);
@@ -655,6 +686,7 @@ export class PovScene {
     }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this._applyContentFrustum();
   }
   _face(code) {
     const key = code || 'back';
@@ -780,7 +812,7 @@ export class PovScene {
         this.playerRoot.add(p.group);
       }
       p.seat = s.i;
-      const lay = seatLayout(cap, s.i);
+      const lay = this._lay(cap, s.i);
       const away = isAway(s);
       p.away = away;
       p.group.position.set(lay.x, away ? -0.05 : 0, lay.z);
@@ -799,18 +831,24 @@ export class PovScene {
     }
   }
 
-  _shoePos() { return new THREE.Vector3(-0.42, FELT_Y + 0.08, 0.16); }
-  _trayPos() { return new THREE.Vector3(0.46, FELT_Y + 0.08, 0.16); }
+  _shoePos() {
+    if (this.shoe) { const w = new THREE.Vector3(); this.shoe.getWorldPosition(w); w.y = FELT_Y + 0.08; return w; }
+    const p = this._xz(-0.42, 0.16); return new THREE.Vector3(p.x, FELT_Y + 0.08, p.z);
+  }
+  _trayPos() {
+    if (this.tray) { const w = new THREE.Vector3(); this.tray.getWorldPosition(w); w.y = FELT_Y + 0.08; return w; }
+    const p = this._xz(0.46, 0.16); return new THREE.Vector3(p.x, FELT_Y + 0.08, p.z);
+  }
 
   _layoutCards(v, dealerCards, handsOf) {
     const need = [];
     const ordered = seatsInOrder(v?.seats, v?.maxSeats);
     const cap = Math.max(1, ordered.length);
     let stagger = 0;
-    const tilt = -Math.PI / 2 - 0.44; // ~25° toward the dealer, lying in the circle — not a standing wall
+    const tilt = -Math.PI / 2 - 0.28; // flatter for a downward dealer-eye camera so ranks stay readable
     ordered.forEach((s) => {
       if (!s) return;
-      const lay = seatLayout(cap, s.i);
+      const lay = this._lay(cap, s.i);
       const hs = handsOf?.(s.i) || [];
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
       hs.forEach((h, hi) => {
@@ -838,12 +876,12 @@ export class PovScene {
     });
     (dealerCards || []).forEach((c, ci) => {
       const n = dealerCards.length;
-      const x = (ci - (n - 1) / 2) * 0.20;
+      const p = this._xz((ci - (n - 1) / 2) * 0.20, 0.12 + ci * 0.008);
       need.push({
         id: `d:${ci}`, dealer: true, idx: ci, code: c,
-        x, y: FELT_Y + 0.02, z: 0.38 + ci * 0.008,
-        rotX: -Math.PI / 2 - 0.50, rotY: 0, rotZ: 0,
-        down: !c, scale: 2.7, stagger: (stagger++) * 70,
+        x: p.x, y: FELT_Y + 0.02, z: p.z,
+        rotX: -Math.PI / 2 - 0.28, rotY: 0, rotZ: 0,
+        down: !c, scale: 3.3, stagger: (stagger++) * 70,
       });
     });
     this._setCardTargets(need);
@@ -957,7 +995,7 @@ export class PovScene {
     const cap = Math.max(1, ordered.length);
     ordered.forEach((s) => {
       if (!s) return;
-      const lay = seatLayout(cap, s.i);
+      const lay = this._lay(cap, s.i);
       const bet = v.round?.bets?.[s.i];
       const hs = handsOf?.(s.i) || [];
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
@@ -976,7 +1014,7 @@ export class PovScene {
     for (let i = 0; i < bank; i++) {
       const col = i % 5; const row = Math.floor(i / 5);
       const kind = ['r', 'g', 'k', 'b', 'r'][col];
-      this._placeChip(kind, 0.34 + col * 0.042, FELT_Y + 0.02 + (row % 8) * 0.0058, 0.1 + Math.floor(row / 8) * 0.042);
+      { const p = this._xz(0.34 + col * 0.042, 0.1 + Math.floor(row / 8) * 0.042); this._placeChip(kind, p.x, FELT_Y + 0.02 + (row % 8) * 0.0058, p.z); }
     }
     this._flushChips();
   }
@@ -1017,12 +1055,12 @@ export class PovScene {
     const t = now / 1000;
     const bob = this.reduced ? 0 : 1;
     const introU = this.reduced ? 1 : easeInOut((now - (this._introT0 || 0)) / 1200);
-    const wantZoom = (this._turnX || this._turnZ) ? 0.05 : 0;
+    const wantZoom = 0;
     this._zoom += (wantZoom - this._zoom) * Math.min(1, (dt || 0.016) * 1.6);
     const dest = this._baseCam.clone();
     dest.x += this._panX * 0.25;
     const lookDest = this._look.clone();
-    this._panX += ((this._turnX || 0) * 0.14 - this._panX) * Math.min(1, (dt || 0.016) * 2.0);
+    this._panX += ((this._turnX || 0) * 0.05 - this._panX) * Math.min(1, (dt || 0.016) * 2.0);
     lookDest.x += this.yaw * 0.85 + this._panX;
     lookDest.y += this.pitch * 0.7;
     // Subtle zoom toward the acting seat.
@@ -1045,6 +1083,7 @@ export class PovScene {
     look.y += Math.sin(t * 0.9) * 0.008 * bob;
     this.camera.position.copy(pos);
     this.camera.lookAt(look);
+    this._applyContentFrustum();
   }
   _tickPeople(now, dt) {
     const g = this.gesture;
@@ -1089,12 +1128,12 @@ export class PovScene {
     const cap = Math.max(1, ordered.length);
     const want = [];
     if (this.gesture) {
-      const lay = seatLayout(cap, this.gesture.seat);
+      const lay = this._lay(cap, this.gesture.seat);
       want.push({ id: `act:${this.gesture.seq}`, text: String(this.gesture.kind || '').toUpperCase(), x: lay.x, y: 1.78, z: lay.z - 0.08, color: '#f2c65a', until: this.gesture.t0 + this.gesture.dur + 200, scale: 0.5 });
     }
     ordered.forEach((s) => {
       if (!s) return;
-      const lay = seatLayout(cap, s.i);
+      const lay = this._lay(cap, s.i);
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
       const hs = handsOf?.(s.i) || [];
       hs.forEach((h, hi) => {
@@ -1171,7 +1210,7 @@ export class PovScene {
       this._payChips = [];
       const cap = Math.max(1, (this._view?.v?.maxSeats) || 5);
       (p.results || []).forEach((r) => {
-        const lay = seatLayout(cap, r.seat);
+        const lay = this._lay(cap, r.seat);
         const win = (r.net || 0) >= 0;
         for (let i = 0; i < 3; i++) {
           const m = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.006, 10), std(win ? '#1c7a3a' : '#b01c2c'));
@@ -1200,9 +1239,9 @@ export class PovScene {
     if (!this._pit) { this.brisk.visible = false; this._pitPlaced = false; this._pitLoomed = false; return; }
     this.brisk.visible = true;
     // Stand on the dealer's right, behind the rail, fully in the mobile frame.
-    const dest = new THREE.Vector3(1.2, 0, 1.15);
-    const start = new THREE.Vector3(1.85, 0, 1.7);
-    const loom = new THREE.Vector3(1.05, 0, 0.98);
+    const dest = ((p) => new THREE.Vector3(p.x, 0, p.z))(this._xz(1.2, 1.15));
+    const start = ((p) => new THREE.Vector3(p.x, 0, p.z))(this._xz(1.85, 1.7));
+    const loom = ((p) => new THREE.Vector3(p.x, 0, p.z))(this._xz(1.05, 0.98));
     if (!this._pitPlaced) { this.brisk.position.copy(start); this._pitPlaced = true; }
     const st = this._pit.state;
     let target = dest, lean = 0;
@@ -1268,9 +1307,9 @@ export class PovScene {
       m.castShadow = true; this.scene.add(m); this._tipMesh = m;
     }
     const u = Math.min(1, (now - this._tipFly.t0) / 1400);
-    const p0 = new THREE.Vector3(0, FELT_Y + 0.25, 1.15);
-    const p2 = new THREE.Vector3(0.2, FELT_Y + 0.04, 0.2);
-    const p1 = new THREE.Vector3(0.08, FELT_Y + 0.7, 0.6);
+    const p0 = ((p) => new THREE.Vector3(p.x, FELT_Y + 0.25, p.z))(this._xz(0, 1.15));
+    const p2 = ((p) => new THREE.Vector3(p.x, FELT_Y + 0.04, p.z))(this._xz(0.2, 0.2));
+    const p1 = ((p) => new THREE.Vector3(p.x, FELT_Y + 0.7, p.z))(this._xz(0.08, 0.6));
     const a = p0.clone().lerp(p1, u), b = p1.clone().lerp(p2, u);
     this._tipMesh.position.copy(a.lerp(b, u));
     this._tipMesh.rotation.x = u * 8; this._tipMesh.rotation.z = u * 3; this._tipMesh.visible = u < 1;
@@ -1288,6 +1327,100 @@ export class PovScene {
       if (this.canvas.dataset) this.canvas.dataset.fps = String(Math.round(this.fps));
       if (this.fps < 28 && this.lamp.castShadow) { this.lamp.castShadow = false; this.renderer.shadowMap.enabled = false; }
     }
+  }
+
+  _framePoints() {
+    const pts = [];
+    const cap = Math.max(4, this._view?.v?.maxSeats || 5);
+    for (let i = 0; i < cap; i++) {
+      const lay = this._lay(cap, i);
+      const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
+      pts.push(new THREE.Vector3(lay.x, 1.42, lay.z));
+      pts.push(new THREE.Vector3(lay.x + px * 0.2, 1.26, lay.z + pz * 0.04));
+      pts.push(new THREE.Vector3(lay.x - px * 0.2, 1.26, lay.z - pz * 0.04));
+      pts.push(new THREE.Vector3(lay.cardX, FELT_Y + 0.02, lay.cardZ));
+    }
+    const at = (x, y, z) => { const p = this._xz(x, z); return new THREE.Vector3(p.x, y, p.z); };
+    pts.push(at(-0.2, FELT_Y + 0.03, 0.12));
+    pts.push(at(0.2, FELT_Y + 0.03, 0.12));
+    pts.push(at(0, FELT_Y, 0.02));
+    pts.push(at(-0.7, FELT_Y, 0.02));
+    pts.push(at(0.7, FELT_Y, 0.02));
+    return pts;
+  }
+  _applyContentFrustum() {
+    const cam = this.camera;
+    cam.updateMatrixWorld();
+    const inv = new THREE.Matrix4().copy(cam.matrixWorldInverse);
+    const v = new THREE.Vector3();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of this._framePoints()) {
+      v.copy(p).applyMatrix4(inv);
+      const z = -v.z;
+      if (z < 0.1) continue;
+      const x = v.x / z, y = v.y / z;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    if (!Number.isFinite(minX) || maxX - minX < 1e-4 || maxY - minY < 1e-4) return;
+    const padX = (maxX - minX) * 0.10 + 0.02;
+    const padTop = (maxY - minY) * 0.18 + 0.03;
+    const padBot = (maxY - minY) * 0.14 + 0.04;
+    minX -= padX; maxX += padX;
+    minY -= padBot; maxY += padTop;
+    // Keep the canvas aspect so a tall phone does not vertically stretch figures.
+    // Extra room goes above the heads (pit atmosphere), not under the rail.
+    const wPx = this.canvas.clientWidth || this.renderer?.domElement?.clientWidth || 1;
+    const hPx = this.canvas.clientHeight || this.renderer?.domElement?.clientHeight || 1;
+    const aspect = Math.max(0.2, Math.min(4, wPx / hPx));
+    let left = minX, right = maxX, bottom = minY, top = maxY;
+    const spanX = right - left, spanY = top - bottom;
+    if (spanX / spanY > aspect) {
+      const extra = spanX / aspect - spanY;
+      top += extra * 0.88;
+      bottom -= extra * 0.12;
+    } else {
+      const extra = spanY * aspect - spanX;
+      left -= extra / 2;
+      right += extra / 2;
+    }
+    const near = cam.near || 0.08, far = cam.far || 24;
+    cam.projectionMatrix.makePerspective(left * near, right * near, top * near, bottom * near, near, far);
+    cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+  }
+  getFraming() {
+    this.camera.updateMatrixWorld();
+    this._applyContentFrustum();
+    const rect = this.canvas.getBoundingClientRect();
+    const project = (x, y, z) => {
+      const p = new THREE.Vector3(x, y, z).project(this.camera);
+      return {
+        ndcX: p.x, ndcY: p.y, ndcZ: p.z,
+        x: rect.left + (p.x + 1) * 0.5 * rect.width,
+        y: rect.top + (1 - p.y) * 0.5 * rect.height,
+        visible: p.x >= -0.98 && p.x <= 0.98 && p.y >= -0.98 && p.y <= 0.98 && p.z <= 1,
+      };
+    };
+    const seats = [];
+    for (const p of this.players.values()) {
+      const wp = new THREE.Vector3();
+      if (p.head) p.head.getWorldPosition(wp);
+      else wp.set(p.group.position.x, 1.36, p.group.position.z);
+      seats.push({ name: p.name, seat: p.seat, head: project(wp.x, wp.y, wp.z) });
+    }
+    const dealerCards = [];
+    for (const [id, m] of this._cardById || []) {
+      if (!String(id).startsWith('d:')) continue;
+      const wp = new THREE.Vector3();
+      m.getWorldPosition(wp);
+      dealerCards.push({ id, ...project(wp.x, wp.y, wp.z) });
+    }
+    return {
+      canvas: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      seats,
+      dealerCards,
+    };
   }
   getFps() { return this.fps; }
   destroy() {

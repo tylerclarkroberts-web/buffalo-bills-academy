@@ -125,7 +125,8 @@ export function DealerPov({
     if (!scene) { setEngine('css'); return undefined; }
     sceneRef.current = scene;
     setEngine('webgl');
-    return () => { scene.destroy(); sceneRef.current = null; };
+    window.__bjPovFraming = () => scene.getFraming?.();
+    return () => { try { if (window.__bjPovFraming) delete window.__bjPovFraming; } catch { /* */ } scene.destroy(); sceneRef.current = null; };
   }, [reduced]);
 
   useEffect(() => {
@@ -161,6 +162,11 @@ export function DealerPov({
               <span>Autopilot</span>
               <b>{autoOn ? 'On' : 'Off'}</b>
             </label>
+            <div className="bj-pov-count" data-test="bj-pov-count">
+              <em>{v.deckLeft ?? 0}</em> in shoe{out ? <> · <em>{out}</em> out</> : null}
+            </div>
+          </div>
+          <div className="bj-pov-hud-bottom" data-test="bj-pov-hud-bottom">
             <div className="bj-pov-actor" data-test="bj-deal-prompt">
               {actor && <Bust id={actor.id || `bot:${actor.name}`} avatar={actor.avatar} size={28} still title={actor.name} />}
               <span>{status}</span>
@@ -168,11 +174,6 @@ export function DealerPov({
                 <i className="bj-pov-ring" style={{ '--p': String(turnFrac) }} aria-hidden="true" />
               )}
             </div>
-            <div className="bj-pov-count" data-test="bj-pov-count">
-              <em>{v.deckLeft ?? 0}</em> in shoe{out ? <> · <em>{out}</em> out</> : null}
-            </div>
-          </div>
-          <div className="bj-pov-hud-bottom" data-test="bj-pov-hud-bottom">
             {kash && <KashCatch kash={kash} now={now} onCatch={onCatch} />}
             {prompt.action && (
               <button className="btn primary bj-pov-act" onClick={() => { sfx.deal(); buzz(12); onDeal(prompt.action); }} data-test="bj-deal-next">

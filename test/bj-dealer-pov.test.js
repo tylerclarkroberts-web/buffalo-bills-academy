@@ -277,10 +277,10 @@ test('avatar identity maps to the seat player id, gestures follow that seat\'s r
 });
 
 
-test('seats are distributed on a 150-degree arc so neighboring hands do not overlap', () => {
-  assert.ok(Math.abs(ARC - (150 * Math.PI / 180)) < 1e-9);
+test('seats are distributed on a 120-degree arc so neighboring hands do not overlap', () => {
+  assert.ok(Math.abs(ARC - (120 * Math.PI / 180)) < 1e-9);
   const span = Math.abs(seatLayout(5, 0).yaw - seatLayout(5, 4).yaw);
-  assert.ok(span > 2.5 && span < 2.7, `arc was ${span}`);
+  assert.ok(span > 2.0 && span < 2.2, `arc was ${span}`);
   assert.equal(seatsClear(5), true);
   assert.ok(seatSpacing(5) > HAND_SPAN + 0.08);
   const a = seatLayout(5, 0), b = seatLayout(5, 1);

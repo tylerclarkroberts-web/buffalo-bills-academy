@@ -83,6 +83,59 @@ const waitWebgl = async (p, label) => {
   await p.waitForFunction(() => document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-engine') === 'webgl', { timeout: 15000 });
   check(await engineOf(p) === 'webgl', `${label}: 3D scene loaded (webgl)`);
 };
+
+const overlaps = (pt, r, pad = 4) => pt.x >= r.x + pad && pt.x <= r.x + r.w - pad && pt.y >= r.y + pad && pt.y <= r.y + r.h - pad;
+const checkFraming = async (p, label, { mobile = false } = {}) => {
+  const data = await p.evaluate(() => {
+    const fr = window.__bjPovFraming?.() || null;
+    const box = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      return { test: el.getAttribute('data-test') || el.className, x: r.x, y: r.y, w: r.width, h: r.height };
+    };
+    const hud = [
+      ...document.querySelectorAll('[data-test=bj-autopilot], [data-test=bj-deal-prompt], [data-test=bj-deal-next], [data-test=bj-say-toggle], [data-test=bj-pov-count]'),
+      document.querySelector('.bj-t.pov .bj-head'),
+    ].map(box).filter(Boolean);
+    const canvas = box(document.querySelector('[data-test=bj-pov-canvas]'));
+    const topbar = box(document.querySelector('header.topbar'));
+    const footer = box(document.querySelector('footer.legal'));
+    return { fr, hud, canvas, innerH: window.innerHeight, topbarH: topbar?.h || 0, footerH: footer?.h || 0 };
+  });
+  if (!data.fr || !data.canvas) {
+    check(false, `${label}: framing probe is available`);
+    return;
+  }
+  const avail = data.innerH - data.topbarH - data.footerH;
+  if (mobile) {
+    check(data.canvas.h >= avail * 0.85, `${label}: canvas height ${Math.round(data.canvas.h)} is at least 85% of available ${Math.round(avail)}`);
+  }
+  const clipped = [];
+  const covered = [];
+  for (const s of data.fr.seats || []) {
+    const h = s.head;
+    if (!h || !h.visible) clipped.push(`${s.name || s.seat} head`);
+    else {
+      const hit = (data.hud || []).find((r) => (
+        overlaps({ x: h.x, y: h.y }, r) ||
+        overlaps({ x: h.x, y: h.y - 18 }, r) ||
+        overlaps({ x: h.x, y: h.y + 18 }, r)
+      ));
+      if (hit) covered.push(`${s.name || s.seat} head vs ${hit.test}`);
+    }
+  }
+  for (const c of data.fr.dealerCards || []) {
+    if (!c.visible) clipped.push(`dealer ${c.id}`);
+    else {
+      const hit = (data.hud || []).find((r) => overlaps({ x: c.x, y: c.y }, r, 2));
+      if (hit) covered.push(`dealer ${c.id} vs ${hit.test}`);
+    }
+  }
+  check(clipped.length === 0, `${label}: heads and dealer cards stay in view (${clipped.join(', ') || 'ok'})`);
+  check(covered.length === 0, `${label}: HUD does not cover heads or dealer cards (${covered.join(', ') || 'ok'})`);
+};
+
 const waitGesture = async (p, kind, ms = 8000) => {
   await p.waitForFunction((k) => document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-gesture') === k, kind, { timeout: ms });
 };
@@ -159,13 +212,14 @@ try {
     await wait(280);
     await frame(D);
   }
-  await wait(400);
+  await wait(1400);
   dumpErrs(D, 'desktop after deal');
   const desktopFps = await readFps(D);
   console.log('fps desktop', desktopFps.toFixed(1), 'engine', await engineOf(D));
   check(desktopFps > 0, `desktop fps measured (${desktopFps.toFixed(1)})`);
   if (desktopFps > 0) await shot(D, 'desktop-dealer-pov');
   else console.log('skipping blank desktop-dealer-pov overwrite');
+  await checkFraming(D, 'desktop');
   await noScroll(D, 'desktop POV');
 
   // Hit via the API so we only need the dealer's page.
@@ -277,6 +331,7 @@ try {
   await waitWebgl(M, 'mobile');
   await wait(1300);
   await shot(M, 'mobile-dealer-pov');
+  await checkFraming(M, 'mobile', { mobile: true });
   if (OUT) {
     try { await M.locator('[data-test=bj-pov-hud]').screenshot({ path: path.join(OUT, 'mobile-hud.png') }); } catch { await shot(M, 'mobile-hud'); }
     try {
