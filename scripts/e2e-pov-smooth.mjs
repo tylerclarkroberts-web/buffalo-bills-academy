@@ -190,7 +190,15 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
   const reports = [];
   {
     const browser = await webkit.launch({ headless: true });
-    reports.push(await recordOne({ browser, kind: 'webkit-iphone-15', device: devices['iPhone 15'], admin }));
+    for (const [kind, name] of [
+      ['webkit-iphone-13', 'iPhone 13'],
+      ['webkit-iphone-15', 'iPhone 15'],
+      ['webkit-iphone-15-landscape', 'iPhone 15 landscape'],
+    ]) {
+      const device = devices[name];
+      if (!device) throw new Error(`missing Playwright device ${name}`);
+      reports.push(await recordOne({ browser, kind, device, admin }));
+    }
     await browser.close();
   }
   {

@@ -165,13 +165,14 @@
 .bj-t.pov .bj-pov { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; border-radius: 0; background: #050c08; }
 .bj-t.pov .bj-pov-stage { position: relative; flex: 1; min-height: 0; }
 
-.bj-pov-hud { position: absolute; inset: 0; z-index: 7; pointer-events: none; display: flex; flex-direction: column; justify-content: flex-start; padding: calc(44px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)); }
+.bj-pov-stage { position: relative; flex: 1 1 auto; min-height: 0; }
+.bj-pov-hud { position: absolute; top: 0; left: 0; right: 0; bottom: auto; z-index: 7; pointer-events: none; display: flex; flex-direction: column; justify-content: flex-start; padding: calc(10px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 0 calc(12px + env(safe-area-inset-left, 0px)); }
 .bj-pov-hud button, .bj-pov-hud label, .bj-pov-hud input, .bj-auto-pill, .bj-say-toggle, .bj-pov-act { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 
 .bj-pov-hud-top, .bj-pov-hud-bottom { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .bj-pov-hud-top { flex-direction: column; align-items: stretch; justify-content: flex-start; flex-wrap: nowrap; min-height: 44px; gap: 6px; }
 .bj-pov-hud-top-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-.bj-pov-hud-bottom { justify-content: center; position: relative; min-height: 52px; padding-bottom: 2px; margin-top: auto; }
+.bj-pov-hud-bottom { justify-content: center; position: relative; flex: 0 0 auto; min-height: 48px; padding: 6px 10px 8px; margin-top: 0; background: #050c08; border-top: 1px solid rgba(244,239,228,.1); z-index: 8; pointer-events: auto; }
 
 .bj-auto-pill {
   display: inline-flex; align-items: center; gap: 8px;
@@ -209,8 +210,8 @@
 
 .bj-pov-act { min-width: 132px; min-height: 44px; height: 48px; border-radius: 999px; font: 700 16px var(--sans, sans-serif); letter-spacing: .02em; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
 
-.bj-pov-say { position: absolute; right: 0; bottom: 2px; margin: 0; }
-.bj-pov-fps { position: absolute; left: 0; bottom: 6px; opacity: .55; font: 500 10px var(--mono, monospace); }
+.bj-pov-say { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); margin: 0; }
+.bj-pov-fps { position: absolute; left: 8px; bottom: 4px; opacity: .55; font: 500 10px var(--mono, monospace); }
 .bj-say-toggle, .bj-pov-say input {
   border-radius: 999px; border: 1px solid rgba(244,239,228,.16);
   background: rgba(16,12,10,.62); color: #f4efe4;
@@ -249,12 +250,13 @@
   .bj-t.pov .bj-head { padding: 6px 8px; }
   .bj-t.pov .bj-head h1, .bj-t.pov .bj-sub { display: none; }
   .bj-t.pov .bj-head-r .btn:not([data-test=bj-mute]):not([data-test=bj-leave]):not([data-test=bj-close]) { display: none; }
-  .bj-t.pov, .bj-t.pov .bj-felt, .bj-t.pov .bj-pov, .bj-t.pov .bj-pov-stage {
+  .bj-t.pov, .bj-t.pov .bj-felt, .bj-t.pov .bj-pov {
     height: 100%; width: 100%; flex: 1; min-height: 0; max-height: none;
     aspect-ratio: auto;
   }
-  .bj-pov-hud { padding: calc(40px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px)); }
-  .bj-pov-hud-top { flex-wrap: nowrap; align-items: center; }
+  .bj-t.pov .bj-pov-stage { height: auto; width: 100%; flex: 1; min-height: 0; max-height: none; aspect-ratio: auto; }
+  .bj-pov-hud { padding: calc(8px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right, 0px)) 0 calc(10px + env(safe-area-inset-left, 0px)); }
+  .bj-pov-hud-top { flex-wrap: nowrap; align-items: stretch; }
   .bj-pov-actor { flex: 0 1 auto; max-width: min(220px, 55vw); order: 0; }
   .bj-pov-act { min-width: 160px; height: 52px; font-size: 17px; }
   .bj-pov-count { margin-left: auto; margin-right: 0; }
@@ -323,4 +325,14 @@
 @media (max-width: 720px) {
   .bj-pov-notices .pit-line span,
   .bj-pov-notices .bj-thanks { font-size: 11px; }
+}
+
+.bj-pov-notices-band { display: none; }
+@media (max-height: 430px) {
+  .bj-pov-notices-top { display: none !important; }
+  .bj-pov-notices-band { display: flex; flex: 1 1 auto; min-width: 0; justify-content: center; }
+  .bj-pov-hud-bottom { gap: 10px; justify-content: space-between; padding-right: 8px; }
+  .bj-pov-say { position: static; top: auto; right: auto; transform: none; flex: none; }
+  .bj-pov-actor { max-width: min(200px, 34vw); }
+  .bj-pov-fps { display: none; }
 }

@@ -731,8 +731,8 @@ export class PovScene {
     // deepened and narrowed so a physically correct (unstretched) camera can still
     // fill the lower ~65% of a tall phone with felt, and the player arc sits in the upper third.
     if (this._portrait) {
-      this._baseCam.set(0, 2.56, -0.26); this._look.set(0, 0.64, 1.62); this.camera.fov = 56;
-      this._introFrom.set(0, 3.45, 3.70); this._introLook.set(0, 0.85, 1.45);
+      this._baseCam.set(0, 2.95, -0.95); this._look.set(0, 0.70, 1.40); this.camera.fov = 62;
+      this._introFrom.set(0, 3.55, 3.40); this._introLook.set(0, 0.85, 1.35);
     } else {
       this._baseCam.set(0, 2.55, -1.20); this._look.set(0, 0.78, 1.00); this.camera.fov = 48;
       this._introFrom.set(0, 3.15, 2.45); this._introLook.set(0, 0.9, 0.85);
@@ -889,7 +889,7 @@ export class PovScene {
       p.away = away;
       p.group.position.set(lay.x, away ? -0.05 : 0, lay.z);
       p.group.rotation.y = lay.yaw;
-      const fig = this._portrait ? 1.22 : 1;
+      const fig = this._portrait ? 1 : 1;
       p.group.scale.set(fig, fig, fig);
       p.turn = s.i === turnSeat;
       if (p.turn) { this._turnX = lay.x; this._turnZ = lay.z; }
@@ -1349,12 +1349,11 @@ export class PovScene {
   }
 
   _pitTargets() {
-    // Stand in the alley on the dealer's right, between the rail and the last player.
-    // Radially behind Dee is off-frame (and hidden by her) on a tight iPhone portrait.
+    // Behind the player arc, between Bea and Cal: a small upright figure in the dark band.
+    // Never stand on the felt or a betting circle.
     const at = (x, z) => { const p = this._xz(x, z); return new THREE.Vector3(p.x, 0, p.z); };
-    // Dealer's left alley, mid-rail: close enough to stay in a tight iPhone frame, out enough
-    // that he is a distinct figure and not standing on Ann's cards or in the foreground crop.
-    return { dest: at(1.24, 0.46), start: at(1.52, 0.10), loom: at(1.16, 0.38) };
+    const behind = 2.62;
+    return { dest: at(0, behind), start: at(0.28, behind + 0.5), loom: at(0, behind - 0.04) };
   }
   _tickPit(now, dt) {
     const pit = this._pit;
@@ -1362,6 +1361,7 @@ export class PovScene {
     const pts = this._pitTargets();
     if (!this._pitPlaced) { this.brisk.position.copy(pts.start); this._pitPlaced = true; }
     this.brisk.visible = true;
+    this.brisk.scale.setScalar(this._portrait ? 0.7 : 0.92);
     // Prefer timestamps so a stale "approach" view still walks the visit as time passes.
     let st = pit.state;
     if (pit.at && pit.until) {
@@ -1373,8 +1373,8 @@ export class PovScene {
     }
     let target = pts.dest, lean = 0;
     if (st === 'approach') target = pts.dest;
-    else if (st === 'loom') { target = pts.loom; lean = 0.08; }
-    else if (st === 'talk') { target = (pit.loom || st === 'loom') ? pts.loom : pts.dest; lean = pit.loom ? 0.08 : 0; }
+    else if (st === 'loom') { target = pts.loom; lean = this._portrait ? 0 : 0.08; }
+    else if (st === 'talk') { target = (pit.loom || st === 'loom') ? pts.loom : pts.dest; lean = (!this._portrait && pit.loom) ? 0.08 : 0; }
     else if (st === 'leave') target = pts.start;
     this.brisk.position.lerp(target, 1 - Math.pow(0.12, (dt || this._step) * 60));
     const toCam = this._v1.copy(this.camera.position).sub(this.brisk.position);
@@ -1388,7 +1388,8 @@ export class PovScene {
     const aL = this.brisk.getObjectByName('aL'), aR = this.brisk.getObjectByName('aR');
     if (aL) aL.rotation.x = swing; if (aR) aR.rotation.x = -swing;
     this.brisk.position.y = moving && !this.reduced ? Math.abs(step) * 0.04 : 0;
-    this.brisk.rotation.z = moving && !this.reduced ? step * 0.04 : 0;
+    this.brisk.rotation.x = 0;
+    this.brisk.rotation.z = moving && !this.reduced ? step * 0.03 : 0;
   }
   _tickDealerHands(now, dt) {
     const t = now / 1000;
@@ -1481,14 +1482,19 @@ export class PovScene {
 
   _framePoints() {
     const pts = [];
-    const cap = Math.max(4, this._view?.v?.maxSeats || 5);
+    const cap = Math.max(4, this._view?.v?.maxSeats || this.players.size || 4);
+    const side = this._portrait ? 0.42 : 0.28;
     for (let i = 0; i < cap; i++) {
       const lay = this._lay(cap, i);
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
-      pts.push(new THREE.Vector3(lay.x, 1.42, lay.z));
-      pts.push(new THREE.Vector3(lay.x + px * 0.2, 1.26, lay.z + pz * 0.04));
-      pts.push(new THREE.Vector3(lay.x - px * 0.2, 1.26, lay.z - pz * 0.04));
+      // Head, shoulders, name plate, cards, and room for BLACKJACK / totals beside the end seats.
+      pts.push(new THREE.Vector3(lay.x, 1.55, lay.z));
+      pts.push(new THREE.Vector3(lay.x + px * side, 1.28, lay.z + pz * 0.08));
+      pts.push(new THREE.Vector3(lay.x - px * side, 1.28, lay.z - pz * 0.08));
+      pts.push(new THREE.Vector3(lay.x, 1.28, lay.z - 0.1));
       pts.push(new THREE.Vector3(lay.cardX, FELT_Y + 0.02, lay.cardZ));
+      pts.push(new THREE.Vector3(lay.cardX + px * 0.5, 1.55, lay.cardZ + pz * 0.12));
+      pts.push(new THREE.Vector3(lay.cardX + px * 0.28, FELT_Y + 0.18, lay.cardZ + pz * 0.16));
     }
     const at = (x, y, z) => { const p = this._xz(x, z); return new THREE.Vector3(p.x, y, p.z); };
     pts.push(at(-0.2, FELT_Y + 0.03, 0.12));
@@ -1496,10 +1502,13 @@ export class PovScene {
     pts.push(at(0, FELT_Y, 0.02));
     pts.push(at(-0.7, FELT_Y, 0.02));
     pts.push(at(0.7, FELT_Y, 0.02));
-    // Keep Brisk's stand in a tight iPhone frame (head and feet).
+    // Dealer fan and shoe must stay fully on-canvas, including cards still in flight.
+    pts.push(at(-0.4, FELT_Y + 0.06, 0.32));
+    pts.push(at(0.4, FELT_Y + 0.06, 0.32));
+    pts.push(at(0, FELT_Y + 0.12, 0.22));
+    // Small upright Brisk in the dark band behind the center seats (head only, not his feet).
     const stand = this._pitTargets().dest;
-    pts.push(new THREE.Vector3(stand.x, 1.50, stand.z));
-    pts.push(new THREE.Vector3(stand.x, 0.20, stand.z));
+    pts.push(new THREE.Vector3(stand.x, 1.55, stand.z));
     return pts;
   }
   _applyContentFrustum() {
@@ -1518,26 +1527,40 @@ export class PovScene {
       minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     }
     if (!Number.isFinite(minX) || maxX - minX < 1e-4 || maxY - minY < 1e-4) return;
-    const padX = (maxX - minX) * (this._portrait ? 0.14 : 0.10) + 0.02;
-    const padTop = (maxY - minY) * (this._portrait ? 0.34 : 0.18) + (this._portrait ? 0.08 : 0.03);
-    const padBot = (maxY - minY) * (this._portrait ? 0.28 : 0.16) + (this._portrait ? 0.12 : 0.05);
+    const padX = (maxX - minX) * (this._portrait ? 0.22 : 0.12) + (this._portrait ? 0.04 : 0.02);
+    const padTop = (maxY - minY) * (this._portrait ? 0.16 : 0.16) + 0.03;
+    const padBot = (maxY - minY) * (this._portrait ? 0.16 : 0.14) + 0.04;
     minX -= padX; maxX += padX;
     minY -= padBot; maxY += padTop;
     // Keep the canvas aspect so a tall phone does not vertically stretch figures.
-    // Extra room goes above the heads (pit atmosphere), not under the rail.
     const wPx = this.canvas.clientWidth || this.renderer?.domElement?.clientWidth || 1;
     const hPx = this.canvas.clientHeight || this.renderer?.domElement?.clientHeight || 1;
     const aspect = Math.max(0.2, Math.min(4, wPx / hPx));
     let left = minX, right = maxX, bottom = minY, top = maxY;
-    const spanX = right - left, spanY = top - bottom;
-    if (spanX / spanY > aspect) {
-      const extra = spanX / aspect - spanY;
-      top += extra * 0.88;
-      bottom -= extra * 0.12;
-    } else {
-      const extra = spanY * aspect - spanX;
-      left -= extra / 2;
-      right += extra / 2;
+    const fitAspect = () => {
+      const spanX = right - left, spanY = top - bottom;
+      if (spanX / spanY > aspect) {
+        const extra = spanX / aspect - spanY;
+        top += extra * 0.85;
+        bottom -= extra * 0.15;
+      } else {
+        const extra = spanY * aspect - spanX;
+        left -= extra / 2;
+        right += extra / 2;
+      }
+    };
+    fitAspect();
+    // Leave room for the Autopilot row, the notice pill, and ~12px of air above every head.
+    // The status band lives below the canvas, so we do not reserve bottom HUD pixels here.
+    const hudTopPx = (this._portrait ? 118 + 12 : 56);
+    const topLimit = 1 - 2 * Math.min(0.48, hudTopPx / Math.max(1, hPx));
+    const spanY = top - bottom;
+    if (spanY > 1e-5) {
+      const headNdc = 2 * (maxY - bottom) / spanY - 1;
+      if (headNdc > topLimit) {
+        top = bottom + 2 * (maxY - bottom) / (topLimit + 1);
+        fitAspect();
+      }
     }
     const near = cam.near || 0.08, far = cam.far || 24;
     cam.projectionMatrix.makePerspective(left * near, right * near, top * near, bottom * near, near, far);

@@ -85,3 +85,21 @@ test('an idle preview tick does not allocate a new state object', () => {
   const next = previewStep(s, 'tick', 10);
   assert.equal(next, s);
 });
+
+test('the status band sits below the canvas, not over the dealer cards', () => {
+  const page = readFileSync(new URL('../client/src/bj/DealerPov.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../client/src/bj/dealer-pov.css', import.meta.url), 'utf8');
+  assert.match(page, /bj-pov-stage[\s\S]*bj-pov-hud[\s\S]*bj-pov-hud-bottom/);
+  assert.match(css, /\.bj-pov-hud\s*\{[^}]*bottom:\s*auto/);
+  assert.match(css, /\.bj-pov-hud-bottom\s*\{[^}]*flex:\s*0 0 auto/);
+});
+
+test('portrait framing includes end-seat labels and keeps Brisk behind the player arc', () => {
+  const scene = readFileSync(new URL('../client/src/bj/povScene.js', import.meta.url), 'utf8');
+  assert.match(scene, /cardX \+ px \* 0\.5/);
+  assert.doesNotMatch(scene, /_portrait \? 1\.22/);
+  const dest = scene.split('_pitTargets()')[1] || '';
+  assert.match(dest, /behind = 2\.62/);
+  assert.match(scene, /hudTopPx/);
+  assert.match(scene, /\+ 12/);
+});

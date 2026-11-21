@@ -221,7 +221,7 @@ export function DealerPov({
               <em>{v.deckLeft ?? 0}</em> in shoe{out ? <> · <em>{out}</em> out</> : null}
             </div>
             </div>
-            <div className="bj-pov-notices" data-test="bj-pov-notices">
+            <div className="bj-pov-notices bj-pov-notices-top" data-test="bj-pov-notices">
               {notice?.kind === 'pit' && (
                 <p key={notice.key} className="pit-line" data-test="bj-pit-line" role="status">
                   <b>{notice.pit.name}</b>
@@ -235,7 +235,21 @@ export function DealerPov({
               )}
             </div>
           </div>
+      </div>
           <div className="bj-pov-hud-bottom" data-test="bj-pov-hud-bottom">
+            <div className="bj-pov-notices bj-pov-notices-band">
+              {notice?.kind === 'pit' && (
+                <p key={`${notice.key}-band`} className="pit-line" role="status">
+                  <b>{notice.pit.name}</b>
+                  <span>{notice.pit.line}</span>
+                </p>
+              )}
+              {notice?.kind === 'tip' && (
+                <p key={`${notice.key}-band`} className="bj-thanks" role="status">
+                  {notice.tip?.name ? <><b>{notice.tip.name}</b> tipped ${notice.tip.amount}. </> : null}{notice.thanks}
+                </p>
+              )}
+            </div>
             <div className="bj-pov-actor" data-test="bj-deal-prompt">
               {actor && <Bust id={actor.id || `bot:${actor.name}`} avatar={actor.avatar} size={28} still title={actor.name} />}
               <span>{status}</span>
@@ -258,7 +272,6 @@ export function DealerPov({
             )}
             {engine === 'webgl' && <span ref={fpsEl} className="bj-pov-fps" data-test="bj-pov-fps">— fps</span>}
           </div>
-        </div>
     </div>
   );
 }
