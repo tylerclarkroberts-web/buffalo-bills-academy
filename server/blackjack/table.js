@@ -1,6 +1,7 @@
 // v44 Blackjack: table creation (settings with bounds) and the per-viewer view (no card leaks).
 import { cleanRules, cleanRoyal, royalEv, LIMITS, handValue, GUNTRAD_RULES } from './rules.js';
 import { maxBetNow, canDo } from './game.js';
+import { paceShown } from './pace.js';
 import { GameError } from '../engine/game.js';
 import { edgeReport, guntradProblems } from './edge.js';
 
@@ -69,11 +70,23 @@ export const tableEdge = (t) => edgeReport({ house: t.house.mode === 'guntrad' ?
 export function viewFor(t, viewerId, now) {
   const r = t.round;
   const mySeat = t.seats.findIndex((s) => s && !s.left && s.id === viewerId);
-  const hide = r && !r.holeShown && r.dealer.length >= 2;
-  const dealer = r ? r.dealer.map((c, i) => (i === 1 && hide ? null : c)) : [];
+  const pace = paceShown(r);
+  let dealerSrc = r ? r.dealer.slice() : [];
+  if (pace) dealerSrc = dealerSrc.slice(0, pace.d);
+  const hide = r && !r.holeShown && dealerSrc.length >= 2;
+  const dealer = dealerSrc.map((c, i) => (i === 1 && hide ? null : c));
   const shownDealer = dealer.filter(Boolean);
-  const hands = r ? r.hands.map((h, i) => ({ i, seat: h.seat, cards: h.cards, bet: h.bet, doubled: h.doubled, split: h.split, bust: !!h.bust, bj: !!h.bj, surrendered: !!h.surrendered, done: h.done, total: handValue(h.cards).total, soft: handValue(h.cards).soft })) : [];
-  const turnHand = r?.phase === 'play' ? r.hands[r.turn] : null;
+  const pendingHand = r?.pending?.hand;
+  const hands = r ? r.hands.map((h, i) => {
+    let cards = h.cards.slice();
+    if (pace) cards = cards.slice(0, pace.hands[i] || 0);
+    const hidden = pendingHand === i && cards.length;
+    if (hidden) cards = cards.slice(0, -1).concat([null]); // the new card is on the felt, face down, until the dealer flips it
+    const shown = cards.filter((c) => c);
+    const tot = shown.length ? handValue(shown) : { total: 0, soft: false };
+    return { i, seat: h.seat, cards, bet: h.bet, doubled: h.doubled, split: h.split, bust: hidden ? false : !!h.bust, bj: !!h.bj, surrendered: !!h.surrendered, done: h.done, total: tot.total, soft: tot.soft, pending: hidden };
+  }) : [];
+  const turnHand = r?.phase === 'play' && !r.pending ? r.hands[r.turn] : null;
   const myTurn = !!(turnHand && turnHand.seat === mySeat && mySeat >= 0 && !turnHand.done);
   return {
     code: t.code, name: t.name, status: t.status, hostId: t.hostId, isHost: t.hostId === viewerId,
@@ -83,7 +96,7 @@ export function viewFor(t, viewerId, now) {
     mySeat, deckLeft: t.deck ? t.deck.length : 52, shuffles: t.shuffles,
     round: r ? { no: r.no, phase: r.phase, turn: r.turn, deadline: r.deadline, bets: Object.fromEntries(Object.entries(r.bets).map(([k, b]) => [k, b.out ? { out: true } : { bet: b.bet, side: b.side }])),
       insurance: r.insurance, dealer, dealerTotal: shownDealer.length ? handValue(shownDealer).total : 0, holeShown: !!r.holeShown, hands,
-      can: myTurn ? canDo(t, r.hands[r.turn]) : null, myTurn,
+      can: myTurn ? canDo(t, r.hands[r.turn]) : null, myTurn, waitingOnDealer: !!(r.pending || r.phase === 'dealing' || (r.phase === 'dealer' && r.dealerAct)),
       myInsurance: r.phase === 'insurance' && mySeat >= 0 && r.hands.some((h) => h.seat === mySeat) && !(mySeat in r.insurance) } : null,
     last: t.last, final: t.final || null, log: t.log.slice(-60), seq: t.seq, serverNow: now,
   };
