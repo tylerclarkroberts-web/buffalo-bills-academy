@@ -458,11 +458,11 @@ function BjTable({ code, me }) {
                   <button className={`btn ${r.can?.split ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.split} onClick={() => act('split')} data-test="bj-split" aria-hidden={!r.can?.split}>Split</button>
                   <button className={`btn ghost ${r.can?.surrender ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.surrender} onClick={() => act('surrender')} data-test="bj-surrender" aria-hidden={!r.can?.surrender}>Surrender</button>
                 </div>
-                <KashButtons v={v} r={r} post={post} />
               </div>
             : r.phase === 'betting' && !myBet ? <BetBar min={v.limits.min} max={maxNow} royal={v.royal} bet={clampBet(bet)} setBet={(x) => setBet(clampBet(x))} side={side} setSide={setSide}
                 onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={v.continuous ? null : () => post('sitout')} />
-            : <span className="small dim">{status}… {ready && <KashButtons v={v} r={r} post={post} />}</span>}
+            : <span className="small dim">{status}…</span>}
+          {v.status === 'playing' && mine && ready && <KashButtons v={v} r={r} post={post} />}
           <TipBar canTip={v.canTip} busy={busy} tip={v.tip} onTip={async (amount) => {
             setBusy(true);
             try { const id = (crypto.randomUUID && crypto.randomUUID()) || `${me.id}:${Date.now()}`; const res = await post('tip', { amount, id }); if (res) sfx.chip(); } finally { setBusy(false); }

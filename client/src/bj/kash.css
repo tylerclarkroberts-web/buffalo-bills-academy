@@ -7,7 +7,7 @@
   font-size: 13px; cursor: pointer; letter-spacing: .02em;
   animation: kash-breathe 2.8s ease-in-out 1;
 }
-.bj-kash span { font-size: 10px; text-transform: uppercase; font-weight: 700; }
+.bj-kash span { font-size: 11px; text-transform: uppercase; font-weight: 700; white-space: nowrap; }
 .bj-kash small { font-size: 9px; }
 .bj-kash:hover, .bj-kash:focus-visible { color: #ffe9a8; border-color: #ffe9a8; background: rgba(255,233,168,.16); }
 @keyframes kash-breathe {
