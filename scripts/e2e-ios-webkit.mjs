@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'os'; import path from 'path';
 import { createRequire } from 'node:module';
 import { freshDeck } from '../server/blackjack/rules.js';
+import { previewAdminEnv, runPreviewChecks, PREVIEW_OUT } from './lib-pov-preview-e2e.mjs';
 
 const req = createRequire(process.env.PLAYWRIGHT_DIR ? path.join(process.env.PLAYWRIGHT_DIR, 'x.js') : import.meta.url);
 const { webkit, devices } = req('playwright-core');
@@ -11,7 +12,7 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const OUT = process.env.OUT || '/workspace/bba-dealer-pov-shots/ios';
 const PORT = 4320 + Math.floor(Math.random() * 9), B = `http://localhost:${PORT}`;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-ios-'));
-const srv = spawn(process.execPath, ['server/index.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), DATA_DIR: dir, DEV_LOGIN: '1', SLACK_BOT_TOKEN: '', BJ_TICK_MS: '0' }, stdio: ['ignore', 'ignore', 'inherit'] });
+const srv = spawn(process.execPath, ['server/index.js'], { cwd: ROOT, env: previewAdminEnv({ ...process.env, PORT: String(PORT), DATA_DIR: dir, DEV_LOGIN: '1', SLACK_BOT_TOKEN: '', BJ_TICK_MS: '0' }, dir), stdio: ['ignore', 'ignore', 'inherit'] });
 const fails = []; const check = (ok, msg) => { console.log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) fails.push(msg); };
 const shot = async (p, name) => { fs.mkdirSync(OUT, { recursive: true }); await p.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: false }); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -258,6 +259,20 @@ async function loseAndRestore(p) {
     const errs = (primary.errs || []).filter((e) => !/appendChild|ResizeObserver|does not belong to this context|INVALID_OPERATION: delete|texImage3D: FLIP_Y|PREMULTIPLY_ALPHA isn't allowed/.test(e));
     check(errs.length === 0, `iphone-15 page errors (${errs.slice(0, 5).join(' | ') || 'none'})`);
     await primary._ctx.close();
+  }
+
+  const prevShot = async (page, name) => { fs.mkdirSync(PREVIEW_OUT, { recursive: true }); await page.screenshot({ path: path.join(PREVIEW_OUT, `${name}.png`), fullPage: false }); };
+  const phones = [
+    { name: 'iphone-15-portrait', device: devices['iPhone 15'] },
+    { name: 'iphone-13-landscape', device: devices['iPhone 13 landscape'] },
+  ];
+  for (const ph of phones) {
+    const preview = await runPreviewChecks({ open, login, api, shooFaun, skipGate, wait, shot: prevShot, check, B, browser, device: ph.device, shotName: ph.name });
+    const y = await preview.evaluate(() => (document.scrollingElement?.scrollHeight || 0) - (document.scrollingElement?.clientHeight || 0));
+    check((y || 0) <= 8, `${ph.name} preview: no scroll (delta ${y})`);
+    const previewErrs = (preview.errs || []).filter((e) => !/appendChild|ResizeObserver|does not belong to this context|INVALID_OPERATION: delete|texImage3D: FLIP_Y|PREMULTIPLY_ALPHA isn't allowed/.test(e));
+    check(previewErrs.length === 0, previewErrs.length ? `${ph.name} preview page errors (${previewErrs.slice(0, 3).join(' | ')})` : `${ph.name} preview page errors (none)`);
+    await preview._ctx.close();
   }
 
   fs.writeFileSync(path.join(OUT, 'webkit-report.json'), JSON.stringify({ at: new Date().toISOString(), soakNotes, fails }, null, 2));

@@ -49,7 +49,7 @@ test('the dashboard root and header use the bo- names the stylesheet defines', (
 
 test('/admin is wrapped in an error boundary, and its fallback screens do not depend on class names', () => {
   const app = read('client/src/App.jsx');
-  assert.match(app, /path === '\/admin'\) return <AdminBoundary>\s*<Suspense/);
+  assert.match(app, /path === '\/admin'(?: \|\| path === '\/admin\/')?\) return <AdminBoundary>[\s\S]*?<Suspense/);
   const boundary = read('client/src/admin/AdminBoundary.jsx');
   assert.match(boundary, /getDerivedStateFromError/);
   assert.doesNotMatch(boundary, /className=/, 'crash / loading screens use inline styles so nothing can hide them');
@@ -66,4 +66,17 @@ test('adminGate: loading, sign in, owner only, or the dashboard', () => {
   assert.equal(adminGate({ sessionLoading: false, me: { id: 's', name: 'Stranger', signedIn: true }, error: { status: 403 } }), 'denied');
   assert.equal(adminGate({ sessionLoading: false, me: owner, error: null }), 'ok');
   assert.equal(adminGate({ sessionLoading: false, me: owner, error: { status: 500 } }), 'ok', 'server errors show inside the dashboard, not a lock screen');
+});
+
+
+test('the dealer POV preview is routed under AdminBoundary and not named like an ad slot', () => {
+  const app = read('client/src/App.jsx');
+  assert.match(app, /path === '\/admin\/bj-preview'/);
+  assert.match(app, /<AdminBoundary>[\s\S]*PovPreview/);
+  const page = read('client/src/bj/PovPreviewPage.jsx');
+  assert.match(page, /Preview: not a real game|PREVIEW_LABEL/);
+  assert.match(page, /adminGate/);
+  assert.doesNotMatch(page, /className="ad-/);
+  const css = read('client/src/bj/pov-preview.css');
+  assert.doesNotMatch(css, /\.ad-/);
 });

@@ -78,6 +78,11 @@ function Overview({ data, pick }) {
   const o = data.overview;
   return (
     <div className="bo-tab">
+      <div className="bo-panel bo-pov-card">
+        <header><h3>Dealer view</h3></header>
+        <p className="bo-note">Preview the 3D dealer table with mock players, cards, and tips. Nothing here is a real game, and nothing is written to the ledger.</p>
+        <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-pov-card" onClick={() => navigate('/admin/bj-preview')}>Preview dealer view</button>
+      </div>
       <div className="bo-kpis">
         <Kpi label="Players" value={o.players} sub={`${o.signedIn} signed in`} />
         <Kpi label="Active" value={`${o.active.today} · ${o.active.d7} · ${o.active.d30}`} sub="today · 7d · 30d" />
@@ -433,6 +438,7 @@ export default function AdminPage() {
         <button className="bo-home" onClick={() => navigate('/')} aria-label="Back to the Academy">←</button>
         <h1>Back office</h1>
         <nav className="bo-tabs" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{k === 'anomalies' && data?.anomalies.length ? <i className="bo-count">{data.anomalies.length}</i> : null}</button>)}</nav>
+        <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-pov" onClick={() => navigate('/admin/bj-preview')}>Preview dealer view</button>
         <button className="bo-btn bo-refresh" onClick={reload} disabled={loading} aria-label="Refresh">{loading ? '…' : '↻'}</button>
       </header>
       {o && <div className="bo-since small muted">Denver time · tracking since {o.since ? when(o.since) : 'this deploy'}: IPs, devices, visits and shift details exist only from then. Older money is rebuilt from each player's last 200 transactions (marked ~).</div>}

@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'os'; import path from 'path';
 import { createRequire } from 'node:module';
 import { freshDeck } from '../server/blackjack/rules.js';
+import { previewAdminEnv, runPreviewChecks, PREVIEW_OUT } from './lib-pov-preview-e2e.mjs';
 
 const req = createRequire(process.env.PLAYWRIGHT_DIR ? path.join(process.env.PLAYWRIGHT_DIR, 'x.js') : import.meta.url);
 const { chromium } = req('playwright-core');
@@ -11,7 +12,7 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const OUT = process.env.OUT || '/workspace/bba-dealer-pov-shots/reliability';
 const PORT = 4330 + Math.floor(Math.random() * 9), B = `http://localhost:${PORT}`;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-pov-stress-'));
-const srv = spawn(process.execPath, ['server/index.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), DATA_DIR: dir, DEV_LOGIN: '1', SLACK_BOT_TOKEN: '', BJ_TICK_MS: '0' }, stdio: ['ignore', 'ignore', 'inherit'] });
+const srv = spawn(process.execPath, ['server/index.js'], { cwd: ROOT, env: previewAdminEnv({ ...process.env, PORT: String(PORT), DATA_DIR: dir, DEV_LOGIN: '1', SLACK_BOT_TOKEN: '', BJ_TICK_MS: '0' }, dir), stdio: ['ignore', 'ignore', 'inherit'] });
 const fails = []; const check = (ok, msg) => { console.log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) fails.push(msg); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const shot = async (p, name) => { fs.mkdirSync(OUT, { recursive: true }); await p.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: false }); };
@@ -145,6 +146,12 @@ try {
   const leftover = filterErrs(p.errs);
   check(leftover.length === 0, leftover.length ? `page errors (${leftover.slice(0, 3).join(' | ')})` : 'page errors (none)');
   await p._ctx.close();
+
+  const prevShot = async (page, name) => { fs.mkdirSync(PREVIEW_OUT, { recursive: true }); await page.screenshot({ path: path.join(PREVIEW_OUT, `${name}.png`), fullPage: false }); };
+  const preview = await runPreviewChecks({ open, login, api, shooFaun, skipGate, wait, shot: prevShot, check, B, browser, shotName: 'desktop' });
+  const previewErrs = (preview.errs || []).filter((e) => !/appendChild|ResizeObserver|does not belong to this context|INVALID_OPERATION: delete|texImage3D: FLIP_Y|PREMULTIPLY_ALPHA isn't allowed/.test(e));
+  check(previewErrs.length === 0, previewErrs.length ? `preview page errors (${previewErrs.slice(0, 3).join(' | ')})` : 'preview page errors (none)');
+  await preview._ctx.close();
   await browser.close();
 } catch (e) {
   console.error(e);

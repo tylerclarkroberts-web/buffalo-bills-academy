@@ -353,3 +353,55 @@ test('sneak bets are recorded as they are slid on, and the report nets them agai
   assert.equal(bob.sneakN, 1); assert.equal(bob.match, -4);
   assert.equal(house.sneakAgainst, -246); assert.equal(house.sneakAgainstN, 2);
 });
+
+
+test('only the owner can open the dealer POV preview; it writes no game data', async (t) => {
+  const s = await boot(t, { env: { ADMIN_PLAYER_IDS: OWNER }, seed: ownerSeed() });
+  const snapshot = () => {
+    const out = {};
+    for (const n of fs.readdirSync(s.dataDir).sort()) {
+      const f = path.join(s.dataDir, n);
+      if (fs.statSync(f).isFile()) out[n] = fs.readFileSync(f);
+    }
+    return out;
+  };
+  const ignore = (n) => /^(session|access|events|ledger|visits)/.test(n) || n.endsWith('.bak');
+  const other = agent(s.base);
+  await other.post('/auth/dev', { email: 'connor@example.com', name: 'Connor' });
+  assert.equal((await other.get('/api/admin/bj/pov-preview')).status, 403);
+  const otherPost = await other.post('/api/admin/bj/pov-preview', { tip: 5 });
+  assert.ok([403, 404, 405].includes(otherPost.status), `non-admin POST ${otherPost.status}`);
+  const anon = agent(s.base);
+  assert.equal((await anon.get('/api/admin/bj/pov-preview')).status, 403);
+  const owner = agent(s.base);
+  await owner.post('/auth/dev', { email: 'tyler@example.com', name: 'Tyler' });
+  // Snapshot after sign-in so the preview GET is the only thing under test.
+  const before = snapshot();
+  const ok = await owner.get('/api/admin/bj/pov-preview');
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.preview, true);
+  assert.equal(ok.body.path, '/admin/bj-preview');
+  assert.equal(ok.body.label, 'Preview: not a real game');
+  assert.equal(ok.headers.get('cache-control'), 'no-store');
+  await owner.get('/api/admin/bj/pov-preview');
+  const posted = await owner.post('/api/admin/bj/pov-preview', { amount: 25, enabled: true });
+  assert.ok([403, 404, 405].includes(posted.status), `stray POST status ${posted.status}`);
+  const after = snapshot();
+  for (const n of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (ignore(n) || n === 'players.json' || n === 'accounts.json') continue;
+    if (n === 'blackjack.json' || n.startsWith('blackjack')) {
+      const b = before[n] ? JSON.parse(before[n].toString()) : { tables: {} };
+      const a = after[n] ? JSON.parse(after[n].toString()) : { tables: {} };
+      assert.deepEqual(Object.keys(a.tables || {}), Object.keys(b.tables || {}), 'no new blackjack tables');
+      continue;
+    }
+    if (!before[n]) { assert.fail(`preview created ${n}`); continue; }
+    if (!after[n]) { assert.fail(`preview removed ${n}`); continue; }
+    assert.deepEqual(after[n], before[n], `${n} must be unchanged`);
+  }
+  const players = JSON.parse(after['players.json'].toString());
+  for (const p of Object.values(players)) {
+    const tips = (p.txns || []).filter((x) => x.type === 'bj-tip');
+    assert.equal(tips.length, 0, 'no real tip ledger rows');
+  }
+});
