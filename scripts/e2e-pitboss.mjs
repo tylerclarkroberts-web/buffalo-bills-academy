@@ -15,9 +15,13 @@ const srv = spawn(process.execPath, ['server/index.js'], { cwd: ROOT, env: { ...
 const fails = []; const check = (ok, msg) => { console.log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) fails.push(msg); };
 const shot = async (p, name) => { if (OUT) { fs.mkdirSync(OUT, { recursive: true }); await p.screenshot({ path: path.join(OUT, `${name}.png`) }); } };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const rig = (p1, up, p2, hole, extra = []) => {
-  const used = new Set([p1, up, p2, hole, ...extra]);
-  return [...freshDeck().filter((c) => !used.has(c)), ...extra.slice().reverse(), hole, p2, up, p1];
+const rig = (p1, up, p2, hole, extra = []) => rigHands([[p1, p2]], up, hole, extra);
+// Deal order for N hands: first cards, upcard, second cards, hole, then extras (hits).
+const rigHands = (hands, up, hole, extra = []) => {
+  const firsts = hands.map((h) => h[0]);
+  const seconds = hands.map((h) => h[1]);
+  const used = new Set([...firsts, ...seconds, up, hole, ...extra]);
+  return [...freshDeck().filter((c) => !used.has(c)), ...extra.slice().reverse(), hole, ...seconds.slice().reverse(), up, ...firsts.slice().reverse()];
 };
 
 async function login(name, email) {
@@ -114,12 +118,18 @@ try {
   await new Promise((r, j) => { const t = Date.now(); const ping = () => fetch(B + '/api/health').then(() => r()).catch(() => (Date.now() - t > 20000 ? j(new Error('server did not start')) : setTimeout(ping, 200))); ping(); });
   const house = await login('Sam', 'sam@pov.test');
   const ann = await login('Ann', 'ann@pov.test');
-  await api(house, 'POST', '/me/avatar', { kind: 'gen', seed: 'sam-dealer' });
-  await api(ann, 'POST', '/me/avatar', { kind: 'gen', seed: 'ann-hair' });
-  const table = await api(house, 'POST', '/bj/tables', { name: "Sam's pit", settings: { house: 'me', buyIn: 200, houseBank: 500, minBet: 5, maxBetX: 20, bots: 0, continuous: false, turnSec: 86400 } });
-  await api(ann, 'POST', `/bj/tables/${table.code}/join`, { ack: true });
+  const bea = await login('Bea', 'bea@pov.test');
+  const cal = await login('Cal', 'cal@pov.test');
+  const dee = await login('Dee', 'dee@pov.test');
+  const players = [
+    [house, 'sam-dealer'], [ann, 'ann-hair'], [bea, 'mia'], [cal, 'rose'], [dee, 'player-ann'],
+  ];
+  for (const [who, seed] of players) await api(who, 'POST', '/me/avatar', { kind: 'gen', seed });
+  const table = await api(house, 'POST', '/bj/tables', { name: "Sam's pit", settings: { house: 'me', buyIn: 200, houseBank: 800, minBet: 5, maxBetX: 20, bots: 0, continuous: false, turnSec: 86400, maxSeats: 5 } });
+  for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/join`, { ack: true });
   await api(house, 'POST', `/bj/tables/${table.code}/start`);
-  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('9h', '7c', '5d', '8s', ['4c', 'Td']) });
+  // Ann 9-5 (will hit 4), Bea 7-8, Cal T-6, Dee 4-9, dealer 7c-8s.
+  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['9h', '5d'], ['7s', '8h'], ['Td', '6d'], ['4h', '9s']], '7c', '8s', ['4c', 'Td']) });
   await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: false });
 
 
@@ -134,11 +144,12 @@ try {
   check(await D.locator('[data-test=bj-autopilot]').count() > 0, 'desktop: Autopilot toggle is there');
   check(await D.locator('[data-test=bj-pov-canvas]').count() > 0, 'desktop: 3D canvas is in the DOM');
 
-  await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+  for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
   await D.waitForSelector('[data-test=bj-deal-next]', { timeout: 12000 });
   check(await D.locator('[data-test=bj-deal-next]').count() > 0, 'desktop: Deal is offered after the bet');
 
-  for (let i = 0; i < 4; i++) {
+  // 4 players + up + 4 + hole = 10 deal steps.
+  for (let i = 0; i < 10; i++) {
     try {
       await D.locator('[data-test=bj-deal-next]').click({ force: true, timeout: 3000 });
     } catch {
@@ -175,9 +186,23 @@ try {
   await wait(250);
   await frame(D);
   await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
+  const autoLabel = ((await D.locator('[data-test=bj-deal-prompt]').innerText().catch(() => '')) + ' ' + (await D.locator('[data-test=bj-autopilot]').innerText().catch(() => ''))).replace(/\s+/g, ' ');
+  const autoOn = await D.locator('[data-test=bj-autopilot] input').isChecked().catch(() => false);
+  if (autoOn) check(!/Autopilot is off/i.test(autoLabel), 'desktop: autopilot label matches the checked box (' + autoLabel.trim() + ')');
 
+
+
+  const standAll = async () => {
+    for (const who of [ann, bea, cal, dee]) {
+      await api(who, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' }).catch(() => {});
+    }
+    // If a flip is still pending, finish it so the house can settle.
+    await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'flip' }).catch(() => {});
+    await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'draw' }).catch(() => {});
+  };
   // Wait for the next betting round, then a split.
   const readyToBet = async () => {
+    await standAll();
     for (let n = 0; n < 40; n++) {
       const v = await api(house, 'GET', `/bj/tables/${table.code}`);
       if (v?.round?.phase === 'betting' || (!v?.round && v?.status === 'playing')) return v;
@@ -186,8 +211,8 @@ try {
     throw new Error('betting phase never came back');
   };
   await readyToBet();
-  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('8s', '6c', '8h', '9d', ['5c', '9h', '4d']) });
-  await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['8s', '8h'], ['7d', '9c'], ['5s', '6d'], ['4h', 'Td']], '6c', '9d', ['5c', '9h', '4d']) });
+  for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
   // Autopilot deals; wait until Ann can split.
   let canSplit = false;
   for (let n = 0; n < 40; n++) {
@@ -209,8 +234,8 @@ try {
   await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' }).catch(() => {});
   try {
     await readyToBet();
-    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('6h', '9c', '5d', '8s', ['Td']) });
-    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['6h', '5d'], ['7s', '9h'], ['8d', '4c'], ['2s', '3d']], '9c', '8s', ['Td']) });
+    for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
     for (let n = 0; n < 40; n++) {
       const v = await api(house, 'GET', `/bj/tables/${table.code}`);
       if (v?.round?.can?.double) {
@@ -265,8 +290,8 @@ try {
   try {
     await readyToBet();
     await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
-    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('9h', '7c', '5d', '8s', ['4c']) });
-    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['9h', '5d'], ['7s', '8h'], ['Td', '6d'], ['4h', '9s']], '7c', '8s', ['4c']) });
+    for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
     const Mh = await open(browser, house, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
     await Mh.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
     await shooFaun(Mh);
@@ -285,8 +310,8 @@ try {
 
   try {
     await readyToBet();
-    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('8s', '6c', '8h', '9d', ['5c', '9h']) });
-    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['8s', '8h'], ['7d', '9c'], ['5s', '6d'], ['4h', 'Td']], '6c', '9d', ['5c', '9h']) });
+    for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
     const Ms = await open(browser, house, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
     await Ms.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
     await shooFaun(Ms);
@@ -303,10 +328,29 @@ try {
     await close(Ms);
   } catch (e) { console.log('mobile split skipped', e.message); }
 
-  // Tip from Ann's phone view (no WebGL, she's not dealing).
+  // Non-dealer (Ann): classic oval felt, same controls and timing as main. Gestures never gate her.
+  try {
+    await readyToBet();
+    await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['9h', '5d'], ['7s', '8h'], ['Td', '6d'], ['4h', '9s']], '7c', '8s', ['4c']) });
+    for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
+    for (let n = 0; n < 40; n++) {
+      const v = await api(ann, 'GET', `/bj/tables/${table.code}`);
+      if (v?.round?.phase === 'play') break;
+      await wait(200);
+    }
+  } catch (e) { console.log('non-dealer setup', e.message); }
   const Am = await open(browser, ann, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
-  await Am.waitForSelector('[data-test=bj-tip-25]', { timeout: 10000 });
+  await Am.waitForSelector('[data-test=bj-table]', { timeout: 12000 });
   await shooFaun(Am);
+  check(await Am.locator('[data-test=bj-dealer-pov]').count() === 0, 'non-dealer: no 3D dealer POV');
+  check(await Am.locator('[data-test=bj-deal-next]').count() === 0, 'non-dealer: no dealer Deal button');
+  const hasHit = await Am.locator('[data-test=bj-hit]').count();
+  check(hasHit > 0, 'non-dealer: classic Hit control is on the oval felt');
+  check(await Am.locator('text=/Wait for the dealer/i').count() === 0, 'non-dealer: no extra wait-for-dealer prompt with autopilot on');
+  await shot(Am, 'mobile-non-dealer');
+  // Tip from Ann's phone view (still the classic table, not the 3D POV).
+  await Am.waitForSelector('[data-test=bj-tip-25]', { timeout: 10000 });
   await Am.click('[data-test=bj-tip-25]');
   await Am.waitForSelector('[data-test=bj-tip-toss]', { timeout: 5000 });
   await wait(350);

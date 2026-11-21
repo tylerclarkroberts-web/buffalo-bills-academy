@@ -130,3 +130,13 @@
 @media (max-width: 720px) {
   .bj-pov-fps { display: none; }
 }
+
+/* Soft vignette over the 3D felt only; overlays stay above. */
+.bj-pov.gl .bj-pov-stage::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: radial-gradient(ellipse at 50% 42%, transparent 48%, rgba(8,4,6,.4) 100%);
+}

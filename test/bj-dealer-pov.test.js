@@ -9,7 +9,7 @@ import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Blackjack } from '../server/blackjack/index.js';
 import { freshDeck } from '../server/blackjack/rules.js';
-import { STALL_MS } from '../server/blackjack/pace.js';
+import { STALL_MS, dealerPrompt } from '../server/blackjack/pace.js';
 import { hasProfanity, SWEAR_LINE, PHONE_LINE, PIT_NAME } from '../server/blackjack/pitboss.js';
 import { TIP_AMOUNTS } from '../server/blackjack/tips.js';
 import { gestureFromLog, samplePose, revealDelay, isHitTap, isStandWave, isDoubleFinger, isSplitV } from '../client/src/bj/povGestures.js';
@@ -216,4 +216,20 @@ test('hand-signal poses: hit taps, stand waves, double one finger, split a V, af
   assert.equal(isHitTap(samplePose('stand', 0.4)), false);
   assert.ok(revealDelay('hit') < 900 && revealDelay('hit') > 200);
   assert.ok(revealDelay('split') > revealDelay('hit'));
+});
+
+
+test('dealer prompt says Autopilot is dealing when autopilot is on, never "Autopilot is off"', (t) => {
+  const f = fixture(t);
+  const tb = f.open(rig('Kh', '9c', 'Qh', '8s'), { auto: true });
+  f.bj.bet(f.P.ann, tb.code, { bet: 10 });
+  const on = dealerPrompt(tb);
+  assert.equal(on.autopilot, true);
+  assert.equal(on.label, 'Autopilot is dealing');
+  assert.notEqual(on.label, 'Autopilot is off');
+  tb.house.autopilot = false;
+  const off = dealerPrompt(tb);
+  assert.equal(off.autopilot, false);
+  assert.notEqual(off.label, 'Autopilot is off');
+  assert.match(off.label, /Waiting on a player|Waiting on bets|You.re dealing|Deal|Flip|Draw|Insurance|house is still/i);
 });

@@ -33,7 +33,8 @@ export function paceShown(r) {
 /** Button / status for the dealer: what their next manual action is. */
 export function dealerPrompt(t) {
   const r = t.round;
-  if (!isManual(t) || !r) return { autopilot: false, action: null, label: 'Autopilot is off', stallAt: r?.deadline || null };
+  if (!isManual(t)) return { autopilot: true, action: null, label: 'Autopilot is dealing', stallAt: r?.deadline || null };
+  if (!r) return { autopilot: false, action: null, label: "You're dealing", stallAt: null };
   if (r.phase === 'dealing') {
     const ev = r.dealQueue?.[r.dealStep];
     const label = !ev ? 'Dealt' : ev.k === 'd' && ev.down ? 'Slide the hole card' : ev.k === 'd' ? 'Deal the upcard' : 'Deal the next card';

@@ -5,7 +5,7 @@ export const GESTURE_KINDS = ['hit', 'stand', 'double', 'split', 'surrender', 'i
 
 const LOG_KIND = { hit: 'hit', stand: 'stand', double: 'double', split: 'split', surrender: 'surrender', ins: 'insurance' };
 
-export const GESTURE_MS = { hit: 900, stand: 800, double: 1100, split: 1100, surrender: 900, insurance: 900 };
+export const GESTURE_MS = { hit: 1100, stand: 1000, double: 1200, split: 1200, surrender: 900, insurance: 900 };
 
 export function gestureDuration(kind) { return GESTURE_MS[kind] || 800; }
 /** Milliseconds to hold the incoming card or chip change so the signal can read first. */
@@ -29,8 +29,8 @@ export function gestureFromLog(log = [], seenSeq = 0) {
 
 /** Rest pose: both hands loosely on the felt, slightly inward. Radians. */
 export const REST = {
-  armL: [0.55, 0.15, 0.25], elL: [-0.85], wrL: [0, 0, 0],
-  armR: [0.55, -0.15, -0.25], elR: [-0.85], wrR: [0, 0, 0],
+  armL: [0.7, 0.2, 0.28], elL: [-0.7], wrL: [0.1, 0, 0],
+  armR: [0.7, -0.2, -0.28], elR: [-0.7], wrR: [0.1, 0, 0],
   // finger curl: 0 open, 1 fist. index, middle, ring, pinky, thumb
   curlL: [0.15, 0.18, 0.2, 0.22, 0.3],
   curlR: [0.15, 0.18, 0.2, 0.22, 0.3],
@@ -40,31 +40,31 @@ export const REST = {
 const KEYS = {
   hit: [
     { t: 0, ...REST },
-    { t: 0.18, armR: [-0.15, 0.05, -0.05], elR: [-0.25], wrR: [-0.3, 0, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
-    { t: 0.34, armR: [0.05, 0.05, -0.05], elR: [-0.1], wrR: [0.15, 0, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
-    { t: 0.48, armR: [-0.12, 0.08, 0], elR: [-0.2], wrR: [-0.2, 0.2, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
-    { t: 0.64, armR: [0.05, 0.1, 0], elR: [-0.08], wrR: [0.2, 0.25, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.16, armR: [0.95, 0.05, -0.15], elR: [-0.35], wrR: [-0.15, 0, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.34, armR: [1.2, 0.08, -0.18], elR: [-0.15], wrR: [0.25, 0, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.5, armR: [0.95, 0.1, -0.12], elR: [-0.28], wrR: [-0.15, 0.15, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.66, armR: [1.2, 0.12, -0.18], elR: [-0.12], wrR: [0.28, 0.2, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
     { t: 1, ...REST },
   ],
   stand: [
     { t: 0, ...REST },
-    { t: 0.22, armR: [-0.35, 0.1, 0.1], elR: [-0.15], wrR: [0.9, 0, 0], curlR: [0.05, 0.05, 0.05, 0.05, 0.2] },
-    { t: 0.4, armR: [-0.35, 0.45, 0.1], elR: [-0.15], wrR: [0.9, 0.2, 0], curlR: [0, 0, 0, 0, 0.2] },
-    { t: 0.62, armR: [-0.35, -0.2, 0.1], elR: [-0.15], wrR: [0.9, -0.15, 0], curlR: [0, 0, 0, 0, 0.2] },
+    { t: 0.2, armR: [0.15, 0.15, 0.15], elR: [-0.2], wrR: [1.0, 0, 0], curlR: [0.05, 0.05, 0.05, 0.05, 0.2] },
+    { t: 0.4, armR: [0.1, 0.75, 0.15], elR: [-0.1], wrR: [1.05, 0.35, 0], curlR: [0, 0, 0, 0, 0.2] },
+    { t: 0.62, armR: [0.1, -0.55, 0.15], elR: [-0.1], wrR: [1.05, -0.3, 0], curlR: [0, 0, 0, 0, 0.2] },
     { t: 1, ...REST },
   ],
   double: [
     { t: 0, ...REST },
-    { t: 0.22, armL: [0.15, 0.2, 0.35], elL: [-0.4], push: 0.4, armR: [0.1, -0.1, -0.2], elR: [-0.5], curlR: [0.05, 0.9, 0.9, 0.9, 0.45] },
-    { t: 0.5, armL: [0.05, 0.25, 0.4], elL: [-0.2], push: 1, armR: [-0.85, -0.15, 0.1], elR: [-0.15], wrR: [0, 0, 0], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
-    { t: 0.78, armL: [0.1, 0.2, 0.3], elL: [-0.3], push: 1, armR: [-0.85, -0.15, 0.1], elR: [-0.15], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
+    { t: 0.22, armL: [0.4, 0.25, 0.4], elL: [-0.35], push: 0.4, armR: [0.3, -0.15, -0.2], elR: [-0.45], curlR: [0.05, 0.9, 0.9, 0.9, 0.45] },
+    { t: 0.5, armL: [0.25, 0.3, 0.45], elL: [-0.15], push: 1, armR: [-0.85, -0.2, 0.1], elR: [-0.12], wrR: [0.15, 0, 0], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
+    { t: 0.78, armL: [0.3, 0.25, 0.35], elL: [-0.25], push: 1, armR: [-0.85, -0.2, 0.1], elR: [-0.12], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
     { t: 1, ...REST },
   ],
   split: [
     { t: 0, ...REST },
-    { t: 0.22, armL: [0.15, 0.2, 0.35], elL: [-0.4], push: 0.4, armR: [-0.2, -0.05, -0.1], elR: [-0.25], wrR: [0.4, 0, 0], curlR: [0.05, 0.05, 0.9, 0.9, 0.4] },
-    { t: 0.5, armL: [0.05, 0.25, 0.4], elL: [-0.2], push: 1, armR: [-0.7, -0.1, 0.05], elR: [-0.1], wrR: [0.55, 0, 0], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
-    { t: 0.78, armL: [0.1, 0.2, 0.3], elL: [-0.3], push: 1, armR: [-0.7, -0.1, 0.05], elR: [-0.1], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
+    { t: 0.22, armL: [0.4, 0.25, 0.4], elL: [-0.35], push: 0.4, armR: [0.2, -0.1, -0.15], elR: [-0.25], wrR: [0.5, 0, 0], curlR: [0.05, 0.05, 0.9, 0.9, 0.4] },
+    { t: 0.5, armL: [0.25, 0.3, 0.45], elL: [-0.15], push: 1, armR: [-0.55, -0.15, 0.08], elR: [-0.08], wrR: [0.65, 0, 0], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
+    { t: 0.78, armL: [0.3, 0.25, 0.35], elL: [-0.25], push: 1, armR: [-0.55, -0.15, 0.08], elR: [-0.08], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
     { t: 1, ...REST },
   ],
   surrender: [
@@ -118,7 +118,7 @@ export function samplePose(kind, u) {
 
 /** True when a hit pose has the pointing finger extended and the arm reaching the felt. */
 export function isHitTap(pose) {
-  return pose.curlR[0] < 0.1 && pose.curlR[1] > 0.6 && pose.armR[0] < 0.2;
+  return pose.curlR[0] < 0.1 && pose.curlR[1] > 0.6 && pose.armR[0] > 0.7;
 }
 export function isStandWave(pose) {
   return pose.wrR[0] > 0.5 && pose.curlR[0] < 0.2 && pose.curlR[1] < 0.2;
