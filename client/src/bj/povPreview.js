@@ -138,6 +138,7 @@ export function initialPreviewState(now = 0) {
     hands: [],
     pendingAction: null,
     scriptNo: PREVIEW_HANDS[0].no,
+    dealNo: 0,
   };
 }
 
@@ -162,35 +163,36 @@ function applyCue(state, cue, now) {
   let fx = state.fx;
   let pendingAction = null;
   const seq = state.seq + 1;
+  const no = state.dealNo || script.no;
   if (cue.t === 'deal') {
     hands = copyHands(script.hands);
-    round = buildRound(script, hands, { phase: 'play', holeShown: false, turn: 0, no: script.no });
+    round = buildRound(script, hands, { phase: 'play', holeShown: false, turn: 0, no });
     log = [...log, { seq, text: 'Cards are out.', ev: { k: 'deal' } }].slice(-40);
   } else if (cue.t === 'act' && cue.k === 'split') {
     hands = applySplit(hands, cue.seat);
-    round = buildRound(script, hands, { phase: 'play', holeShown: false, turn: cue.seat, no: script.no });
+    round = buildRound(script, hands, { phase: 'play', holeShown: false, turn: cue.seat, no });
     log = [...log, { seq, text: `${PREVIEW_SEATS[cue.seat].name} splits.`, ev: { k: 'split', seat: cue.seat } }].slice(-40);
   } else if (cue.t === 'act') {
     hands = applyHit(hands, cue.seat, cue);
     if (cue.k === 'stand') {
       hands = hands.map((h) => (h.seat === cue.seat && (cue.hand == null || h.i === cue.hand) ? { ...h, done: true } : h));
     }
-    round = buildRound(script, hands, { phase: 'play', holeShown: false, turn: cue.seat, no: script.no });
+    round = buildRound(script, hands, { phase: 'play', holeShown: false, turn: cue.seat, no });
     log = [...log, { seq, text: `${PREVIEW_SEATS[cue.seat].name} ${cue.k === 'double' ? 'doubles' : cue.k === 'hit' ? 'hits' : 'stands'}.`, ev: { k: cue.k, seat: cue.seat } }].slice(-40);
   } else if (cue.t === 'dealer') {
-    round = buildRound(script, hands, { phase: 'dealer', holeShown: true, dealer: cue.cards, dealerTotal: cue.total, turn: -1, no: script.no });
+    round = buildRound(script, hands, { phase: 'dealer', holeShown: true, dealer: cue.cards, dealerTotal: cue.total, turn: -1, no });
     log = [...log, { seq, text: 'Dealer plays.', ev: { k: 'flip' } }].slice(-40);
   } else if (cue.t === 'settle') {
     const dealer = state.round?.dealer?.filter(Boolean).length >= 2 ? state.round.dealer : script.dealer;
     last = {
-      no: script.no,
+      no,
       dealer,
       dealerTotal: state.round?.dealerTotal,
       hands: hands.map((h) => ({ seat: h.seat, cards: h.cards.slice(), bet: h.bet })),
       results: cue.results,
     };
-    fx = { no: script.no, results: cue.results };
-    round = { no: script.no + 1, phase: 'betting', bets: {}, hands: [], dealer: [], holeShown: false, turn: 0, deadline: null, myTurn: false };
+    fx = { no, results: cue.results };
+    round = { no: no + 1, phase: 'betting', bets: {}, hands: [], dealer: [], holeShown: false, turn: 0, deadline: null, myTurn: false };
     hands = [];
     log = [...log, { seq, text: 'Hand is over.', ev: { k: 'settle' } }].slice(-40);
   }
@@ -203,6 +205,7 @@ function applyCue(state, cue, now) {
 
 function startHand(state, handIndex, now) {
   const script = PREVIEW_HANDS[handIndex % PREVIEW_HANDS.length];
+  const dealNo = (state.dealNo || 0) + 1;
   return {
     ...state,
     _started: true,
@@ -213,7 +216,8 @@ function startHand(state, handIndex, now) {
     last: null,
     fx: null,
     hands: [],
-    round: { no: script.no, phase: 'betting', bets: {}, hands: [], dealer: [], holeShown: false, turn: 0, deadline: null, myTurn: false },
+    dealNo,
+    round: { no: dealNo, phase: 'betting', bets: {}, hands: [], dealer: [], holeShown: false, turn: 0, deadline: null, myTurn: false },
     pendingAction: state.autopilot ? null : 'deal',
     scriptNo: script.no,
     seq: state.seq + 1,
@@ -258,7 +262,7 @@ export function previewStep(state, cmd, now = 0) {
     return { ...s, seq: s.seq + 1, chat: [...(s.chat || []), { id: `m${s.seq}`, name: 'You', text, at: now, me: true }].slice(-8) };
   }
   if (cmd === 'tick' || cmd === 'deal' || cmd === 'flip' || cmd === 'draw') {
-    let next = { ...s };
+    let next = s;
     if (next.tip && now >= next.tip.until) next = { ...next, tip: null };
     if (next.pit && now >= next.pit.until) next = { ...next, pit: null };
     if (next.fx && next.settledAt && now - next.settledAt > 2500) next = { ...next, fx: null };
@@ -274,13 +278,17 @@ export function previewStep(state, cmd, now = 0) {
     const shouldAdvance = next.autopilot || cmd === 'deal' || cmd === 'flip' || cmd === 'draw';
     if (shouldAdvance && applied < script.cues.length) {
       const cue = script.cues[applied];
+      let appliedNow = false;
       if (next.autopilot) {
-        if (elapsed >= cue.at) next = applyCue(next, cue, now);
+        if (elapsed >= cue.at) { next = applyCue(next, cue, now); appliedNow = true; }
       } else if (cmd === 'deal' || cmd === 'flip' || cmd === 'draw') {
-        next = applyCue(next, cue, now);
+        next = applyCue(next, cue, now); appliedNow = true;
       }
-      const more = appliedCueCount(next) < script.cues.length && !next.autopilot;
-      next = { ...next, pendingAction: more ? (script.cues[appliedCueCount(next)]?.t === 'dealer' ? 'flip' : script.cues[appliedCueCount(next)]?.t === 'settle' ? 'deal' : 'deal') : null };
+      if (appliedNow && !next.autopilot) {
+        const more = appliedCueCount(next) < script.cues.length;
+        const nxt = script.cues[appliedCueCount(next)];
+        next = { ...next, pendingAction: more ? (nxt?.t === 'dealer' ? 'flip' : 'deal') : null };
+      }
     }
     return next;
   }
@@ -302,14 +310,17 @@ export function previewView(state, now = 0) {
   const auto = s.autopilot !== false;
   const r = s.round;
   const dealer = r?.dealer || [];
-  let action = null, label = auto ? 'Autopilot is dealing' : "You're dealing";
-  if (!auto) {
-    if (s.pendingAction === 'flip') { action = 'flip'; label = 'Flip the hole card'; }
-    else if (s.pendingAction === 'draw') { action = 'draw'; label = 'Draw to the house rule'; }
-    else if (s.pendingAction === 'deal' || !s._cuesApplied) { action = 'deal'; label = 'Deal the next card'; }
-    else if (r?.phase === 'play') label = 'Waiting on a player';
-    else if (r?.phase === 'betting') label = 'Waiting on bets';
-  }
+  let action = null, label;
+  const dealingLabel = auto ? 'Autopilot is dealing' : "You're dealing";
+  if (!auto && s.pendingAction === 'flip') { action = 'flip'; label = 'Flip the hole card'; }
+  else if (!auto && s.pendingAction === 'draw') { action = 'draw'; label = 'Draw to the house rule'; }
+  else if (!auto && (s.pendingAction === 'deal' || !s._cuesApplied)) { action = 'deal'; label = 'Deal the next card'; }
+  else if (r?.phase === 'play' && r.turn != null && r.turn >= 0) {
+    const who = PREVIEW_SEATS[r.turn] || seats().find((x) => x.i === r.turn);
+    label = who ? `${who.name} to act` : 'Waiting on a player';
+  } else if (r?.phase === 'dealer') label = 'Dealer is playing';
+  else if (r?.phase === 'betting') label = s.last ? 'Hand is over' : (auto ? dealingLabel : 'Waiting on bets');
+  else label = dealingLabel;
   const tip = s.tip && now < s.tip.until ? s.tip : null;
   return {
     mock: true,
@@ -325,6 +336,7 @@ export function previewView(state, now = 0) {
       bank: 800, startBank: 800, autopilot: auto, present: true, avatar: HOUSE_AVATAR,
     },
     seats: seats(),
+    maxSeats: 4,
     round: r,
     last: s.last,
     log: s.log,

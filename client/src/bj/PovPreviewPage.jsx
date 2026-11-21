@@ -1,5 +1,5 @@
 // Admin-only dealer POV preview. State stays in the browser; the only network call is the admin gate.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, useSession, signInUrl } from '../api.js';
 import { navigate } from '../App.jsx';
 import { BoScreen, BO_BUTTON } from '../admin/AdminBoundary.jsx';
@@ -62,19 +62,29 @@ export default function PovPreviewPage() {
 }
 
 function LivePreview({ st, setSt, now, setNow, reduced, povCrashed, setPovCrashed }) {
+  const stRef = useRef(st);
+  stRef.current = st;
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [setNow]);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
+    let id = 0, stop = false;
+    const schedule = () => {
+      if (stop) return;
+      const s = stRef.current;
       const n = Date.now();
-      setNow(n);
-      setSt((s) => previewStep(s, 'tick', n));
-    }, nextCueDelay(st, now));
-    return () => clearTimeout(t);
-  }, [st, st.seq, st.autopilot, st._cuesApplied, st.settledAt, st.startedAt, now, setSt, setNow]);
+      const tipIn = s.tip?.until != null ? s.tip.until - n : 8000;
+      const pitIn = s.pit?.until != null ? s.pit.until - n : 8000;
+      const wait = Math.max(80, Math.min(nextCueDelay(s, n), tipIn, pitIn, 2000));
+      id = setTimeout(() => {
+        const at = Date.now();
+        const cur = stRef.current;
+        const nxt = previewStep(cur, 'tick', at);
+        if (nxt !== cur) { setNow(at); setSt(nxt); }
+        else if (cur.tip || cur.pit) setNow(at);
+        schedule();
+      }, wait);
+    };
+    schedule();
+    return () => { stop = true; clearTimeout(id); };
+  }, [setSt, setNow]);
 
   const act = useCallback((cmd) => {
     try { unlockSfx(); } catch { /* */ }
@@ -92,7 +102,7 @@ function LivePreview({ st, setSt, now, setNow, reduced, povCrashed, setPovCrashe
   const handsOf = (seat) => (showLast
     ? (v.last.hands || []).map((h, i) => ({ ...h, i, total: null, res: v.last.results.find((x) => x.hand === i) })).filter((h) => h.seat === seat)
     : (r?.hands || []).filter((h) => h.seat === seat));
-  const turnSeat = r?.phase === 'play' ? r.hands?.[r.turn]?.seat : null;
+  const turnSeat = r?.phase === 'play' && r.turn != null && r.turn >= 0 ? r.turn : null;
   const fxFor = (seat) => (st.fx?.results || []).filter((x) => x.seat === seat);
 
   return (

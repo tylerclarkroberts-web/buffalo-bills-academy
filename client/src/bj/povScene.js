@@ -11,6 +11,19 @@ export const FELT_Y = 0.78;
 export const TABLE_R = 1.52;
 export const RAIL_R = 1.58;
 export { SEAT_R, CARD_R, CHIP_R, seatLayout };
+
+/** Stable mesh id so a new hand sweeps the old cards instead of snapping in place. */
+export function cardSlotId({ roundNo = 0, dealer = false, seat = 0, hand = 0, idx = 0 } = {}) {
+  return dealer ? `d:${roundNo}:${idx}` : `p:${roundNo}:${seat}:${hand}:${idx}`;
+}
+
+/** Fixed-step accumulator: a dropped frame can stall, but it never jumps the sim ahead. */
+export function simSteps(acc, step = 1 / 60, maxSteps = 2) {
+  let steps = 0;
+  while (acc >= step && steps < maxSteps) { acc -= step; steps += 1; }
+  return { steps, acc };
+}
+
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const CHIP_COLOR = { r: '#b01c2c', g: '#1c7a3a', k: '#1a1a1a', b: '#1c4a9a' };
 const CHIP_DENOM = [[100, 'b'], [25, 'k'], [5, 'g'], [1, 'r']];
@@ -270,7 +283,11 @@ function blobShadow() {
   return s;
 }
 
+const _labelCache = new Map();
 function labelTexture(text, color = '#f4efe4', bg = 'rgba(10,8,6,.86)', chip = false) {
+  const key = `${chip ? 1 : 0}|${color}|${bg}|${text}`;
+  const hit = _labelCache.get(key);
+  if (hit) return hit;
   const c = canv(chip ? 128 : 256, chip ? 128 : 64); if (!c) return null;
   const ctx = c.getContext('2d');
   ctx.fillStyle = bg; ctx.beginPath();
@@ -288,6 +305,7 @@ function labelTexture(text, color = '#f4efe4', bg = 'rgba(10,8,6,.86)', chip = f
     ctx.fillText(String(text || '').slice(0, 16), 128, 32, 210);
   }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  _labelCache.set(key, tex);
   return tex;
 }
 
@@ -463,21 +481,26 @@ function buildTable(res) {
   const root = new THREE.Group(); root.name = 'table';
   const feltMap = feltTexture(); const woodMap = woodTexture(); const leatherMap = leatherTexture(); const roomMap = roomTexture();
   res.textures.push(feltMap, woodMap, leatherMap, roomMap);
-  const feltMat = new THREE.MeshLambertMaterial({ color: '#d8ffe0', map: feltMap });
+  const feltMat = new THREE.MeshLambertMaterial({
+    color: '#d8ffe0', map: feltMap,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+  });
   const woodMat = new THREE.MeshLambertMaterial({ color: '#c48a50', map: woodMap, flatShading: true });
   const leatherMat = new THREE.MeshLambertMaterial({ color: '#c07050', map: leatherMap, flatShading: true });
   // Half-moon felt, dealer on the diameter at z=0, players on the +Z arc.
   const felt = new THREE.Mesh(new THREE.CircleGeometry(TABLE_R, 48, Math.PI, Math.PI), feltMat);
   felt.rotation.x = -Math.PI / 2; felt.position.set(0, FELT_Y, 0);
+  felt.renderOrder = 0;
   felt.receiveShadow = true; felt.castShadow = false; root.add(felt);
   // Thick wood body under the felt so the table is a volume, not a plane.
   const body = new THREE.Mesh(new THREE.CylinderGeometry(TABLE_R + 0.05, TABLE_R + 0.03, 0.14, 32, 1, true, Math.PI, Math.PI), woodMat);
   body.position.set(0, FELT_Y - 0.09, 0); body.castShadow = true; body.receiveShadow = true; root.add(body);
   // Dealer-side apron (the flat diameter) with real thickness.
   add(root, new THREE.BoxGeometry((TABLE_R + 0.06) * 2, 0.16, 0.1), woodMat, 0, FELT_Y - 0.08, -0.02);
-  add(root, new THREE.BoxGeometry((TABLE_R + 0.04) * 2, 0.03, 0.08), woodMat, 0, FELT_Y + 0.01, -0.04);
+  add(root, new THREE.BoxGeometry((TABLE_R + 0.04) * 2, 0.03, 0.08), woodMat, 0, FELT_Y - 0.02, -0.04);
   // Padded leather rail on the player arc, sitting on the felt edge — chairs stay behind it.
   const rail = new THREE.Mesh(new THREE.TubeGeometry(railCurve(RAIL_R, FELT_Y + 0.07), 32, 0.055, 8, false), leatherMat);
+  rail.renderOrder = 2;
   rail.castShadow = true; rail.receiveShadow = true; root.add(rail);
   const railUnder = new THREE.Mesh(new THREE.TubeGeometry(railCurve(RAIL_R, FELT_Y + 0.02), 32, 0.035, 6, false), woodMat);
   railUnder.castShadow = true; root.add(railUnder);
@@ -581,8 +604,8 @@ export class PovScene {
     this.scene.add(table.root); this._tableRoot = table.root; this._pendant = table.lamp; this.shoe = table.shoe; this.tray = table.tray;
     this.backTex = cardBack(); this.res.textures.push(this.backTex);
     this.faceCache = new Map();
-    this.cards = new THREE.Group(); this.scene.add(this.cards);
-    this.labels = new THREE.Group(); this.scene.add(this.labels);
+    this.cards = new THREE.Group(); this.cards.renderOrder = 10; this.scene.add(this.cards);
+    this.labels = new THREE.Group(); this.labels.renderOrder = 20; this.scene.add(this.labels);
     this._cardById = new Map();
     this._labelById = new Map();
     this.players = new Map();
@@ -594,11 +617,22 @@ export class PovScene {
     this.camera.add(this.dealerArms.group);
     const handFill = new THREE.PointLight(0xffe6c8, 0.6, 2.5, 2); handFill.position.set(0, 0.02, 0.1); this.camera.add(handFill);
     this.scene.add(this.camera);
-    this.brisk = buildBrisk(); this.brisk.visible = false; this.scene.add(this.brisk);
+    this.brisk = buildBrisk(); this.brisk.visible = false; this.brisk.position.set(2.8, 0, 2.2); this.scene.add(this.brisk);
     this.tipChips = [];
     this.seenSeq = 0; this.gesture = null; this.pendingView = null; this.holdUntil = 0;
     this.fps = 60; this._frames = 0; this._fpsAt = 0; this._fpsWindow = [];
     this.clock = new THREE.Clock();
+    this._step = 1 / 60;
+    this._acc = 0;
+    this._sim = performance.now();
+    this._v0 = new THREE.Vector3();
+    this._v1 = new THREE.Vector3();
+    this._v2 = new THREE.Vector3();
+    this._v3 = new THREE.Vector3();
+    this._m4 = new THREE.Matrix4();
+    this._dprCap = null;
+    this._lowFps = 0;
+    this._okFps = 0;
     this.raf = 0;
     this.onLost = onLost;
     this.onCrash = onCrash;
@@ -626,9 +660,11 @@ export class PovScene {
     this.ro = new ResizeObserver(this._onResize);
     this.ro.observe(canvas);
     this.resize();
+    this._prewarm();
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
   }
+  now() { return this._sim || performance.now(); }
   _mobile() { return (this.canvas.clientWidth || window.innerWidth) < 720; }
   /** Portrait phones get a deeper, narrower table so a correct-aspect camera can fill the frame. Avatars stay unscaled. */
   _stageScale() { return this._portrait ? { sx: 0.82, sz: 1.65 } : { sx: 1, sz: 1 }; }
@@ -695,8 +731,8 @@ export class PovScene {
     // deepened and narrowed so a physically correct (unstretched) camera can still
     // fill the lower ~65% of a tall phone with felt, and the player arc sits in the upper third.
     if (this._portrait) {
-      this._baseCam.set(0, 2.45, -0.20); this._look.set(0, 0.70, 1.70); this.camera.fov = 58;
-      this._introFrom.set(0, 3.40, 3.80); this._introLook.set(0, 0.90, 1.50);
+      this._baseCam.set(0, 2.95, -0.95); this._look.set(0, 0.70, 1.40); this.camera.fov = 62;
+      this._introFrom.set(0, 3.55, 3.40); this._introLook.set(0, 0.85, 1.35);
     } else {
       this._baseCam.set(0, 2.55, -1.20); this._look.set(0, 0.78, 1.00); this.camera.fov = 48;
       this._introFrom.set(0, 3.15, 2.45); this._introLook.set(0, 0.9, 0.85);
@@ -710,13 +746,16 @@ export class PovScene {
     } else {
       // iOS Safari OOMs above 2x; cap every path at 2, keep a softer cap on tiny phones.
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const cap = isIos() ? dpr : Math.min(dpr, this._mobile() ? 1.15 : 2);
+      const auto = isIos() ? dpr : Math.min(dpr, this._mobile() ? 1.15 : 2);
+      const cap = Math.max(1, Math.min(auto, this._dprCap || auto));
       this.renderer.setPixelRatio(cap);
       this.renderer.setSize(w, h, false);
     }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this._frustumReady = false;
     this._applyContentFrustum();
+    this._frustumReady = true;
   }
   _face(code) {
     const key = code || 'back';
@@ -778,8 +817,8 @@ export class PovScene {
     if (ev) {
       this.seenSeq = ev.seq;
       const dur = gestureDuration(ev.kind);
-      const next = { ...ev, t0: performance.now(), dur };
-      if (this.gesture && (performance.now() - this.gesture.t0) < this.gesture.dur) {
+      const next = { ...ev, t0: this.now(), dur };
+      if (this.gesture && (this.now() - this.gesture.t0) < this.gesture.dur) {
         this._gestureQueue = this._gestureQueue || [];
         this._gestureQueue.push(next);
       } else {
@@ -787,10 +826,10 @@ export class PovScene {
         this.onGesture?.(ev);
       }
       // Visual lag is dealer-canvas only. The server and other clients already have the event.
-      this.holdUntil = performance.now() + revealDelay(ev.kind);
+      this.holdUntil = this.now() + revealDelay(ev.kind);
       this.pendingView = payload;
     }
-    if (this.holdUntil && performance.now() < this.holdUntil) {
+    if (this.holdUntil && this.now() < this.holdUntil) {
       this.pendingView = payload;
       this._syncPlayers(v, turnSeat);
       this._syncPit(v);
@@ -813,11 +852,11 @@ export class PovScene {
     this._syncLabels(v, handsOf, fxFor, turnSeat);
     this._syncChat(chat || v?.chat);
     this._dealFlick = !!(payload.dealing);
-    if (v?.shuffles && v.shuffles !== prevShuf) this._shuffleT0 = performance.now();
+    if (v?.shuffles && v.shuffles !== prevShuf) this._shuffleT0 = this.now();
     const lastNo = v?.last?.no;
     if (lastNo && lastNo !== this._paidNo && (v.last.results || []).length) {
       this._paidNo = lastNo;
-      this._payout = { t0: performance.now(), results: v.last.results, last: v.last };
+      this._payout = { t0: this.now(), results: v.last.results, last: v.last };
       this.onSfx?.('chip');
     }
   }
@@ -850,7 +889,7 @@ export class PovScene {
       p.away = away;
       p.group.position.set(lay.x, away ? -0.05 : 0, lay.z);
       p.group.rotation.y = lay.yaw;
-      const fig = this._portrait ? 1.22 : 1;
+      const fig = this._portrait ? 1 : 1;
       p.group.scale.set(fig, fig, fig);
       p.turn = s.i === turnSeat;
       if (p.turn) { this._turnX = lay.x; this._turnZ = lay.z; }
@@ -879,6 +918,7 @@ export class PovScene {
     const need = [];
     const ordered = seatsInOrder(v?.seats, v?.maxSeats);
     const cap = Math.max(1, ordered.length);
+    const roundNo = v?.round?.no ?? v?.last?.no ?? 0;
     let stagger = 0;
     const tilt = -Math.PI / 2 - 0.28; // flatter for a downward dealer-eye camera so ranks stay readable
     ordered.forEach((s) => {
@@ -893,7 +933,7 @@ export class PovScene {
         cards.forEach((c, ci) => {
           const fan = (ci - (cards.length - 1) / 2) * 0.13;
           need.push({
-            id: `p:${s.i}:${hi}:${ci}`,
+            id: cardSlotId({ roundNo, seat: s.i, hand: hi, idx: ci }),
             seat: s.i, hand: hi, idx: ci,
             code: c,
             x: lay.cardX + ox + px * fan,
@@ -911,12 +951,15 @@ export class PovScene {
     });
     (dealerCards || []).forEach((c, ci) => {
       const n = dealerCards.length;
-      const p = this._xz((ci - (n - 1) / 2) * 0.20, 0.12 + ci * 0.008);
+      const mid = (n - 1) / 2;
+      // World card width is ~0.28 at this scale; 0.33 keeps a clean gap. One shared z, a gentle fan.
+      const p = this._xz((ci - mid) * 0.33, 0.32);
+      const fan = (ci - mid) * 0.09;
       need.push({
-        id: `d:${ci}`, dealer: true, idx: ci, code: c,
-        x: p.x, y: FELT_Y + 0.02, z: p.z,
-        rotX: -Math.PI / 2 - 0.28, rotY: 0, rotZ: 0,
-        down: !c, scale: 3.3, stagger: (stagger++) * 70,
+        id: cardSlotId({ roundNo, dealer: true, idx: ci }), dealer: true, idx: ci, code: c,
+        x: p.x, y: FELT_Y + 0.02 + ci * 0.0008, z: p.z,
+        rotX: -Math.PI / 2 - 0.22, rotY: 0, rotZ: fan,
+        down: !c, scale: 3.05, stagger: (stagger++) * 70,
       });
     });
     this._setCardTargets(need);
@@ -924,7 +967,7 @@ export class PovScene {
   }
 
   _setCardTargets(need) {
-    const now = performance.now();
+    const now = this.now();
     const keep = new Set();
     need.forEach((d) => {
       keep.add(d.id);
@@ -941,11 +984,14 @@ export class PovScene {
       } else if (m.userData.down && !d.down) {
         m.userData.anim = { mode: 'flip', t0: now, dur: this.reduced ? 80 : 640, mid: false };
         if (!this.reduced) this.onSfx?.('flip');
+      } else if (!m.userData.anim) {
+        const prev = m.userData.target;
+        const moved = prev && ((Math.abs((prev.x || 0) - d.x) + Math.abs((prev.z || 0) - d.z)) > 0.02);
+        if (moved) m.userData.anim = { mode: 'slide', t0: now, dur: this.reduced ? 80 : 280, fromX: m.position.x, fromY: m.position.y, fromZ: m.position.z };
       }
       m.userData.target = d;
       m.userData.down = d.down;
       m.visible = true;
-      if (!m.userData.anim || m.userData.anim.mode === 'idle') this._applyCardPose(m, d, 1);
     });
     for (const [id, m] of this._cardById) {
       if (keep.has(id)) continue;
@@ -1017,6 +1063,13 @@ export class PovScene {
         m.rotation.z = e * 0.8;
         m.visible = u < 1;
         if (u >= 1) { m.visible = false; m.userData.anim = null; m.userData.target = null; }
+      } else if (a.mode === 'slide') {
+        const e = easeInOut(u);
+        const x = (a.fromX ?? d.x) + (d.x - (a.fromX ?? d.x)) * e;
+        const y = (a.fromY ?? d.y) + (d.y - (a.fromY ?? d.y)) * e;
+        const z = (a.fromZ ?? d.z) + (d.z - (a.fromZ ?? d.z)) * e;
+        this._applyCardPose(m, { ...d, x, y, z }, 1);
+        if (u >= 1) { m.userData.anim = null; this._applyCardPose(m, d, 1); }
       } else {
         m.userData.anim = null;
         if (d) this._applyCardPose(m, d, 1);
@@ -1063,7 +1116,7 @@ export class PovScene {
   _syncTip(tip, v) {
     if (tip && tip.at !== this._tipAt) {
       this._tipAt = tip.at;
-      this._tipFly = { t0: performance.now(), amount: tip.amount, from: tip.from };
+      this._tipFly = { t0: this.now(), amount: tip.amount, from: tip.from };
     }
     if (!tip) { this._tipFly = null; this._tipAt = null; }
   }
@@ -1077,18 +1130,34 @@ export class PovScene {
     this.raf = requestAnimationFrame(this.loop);
     if (this._paused || this._lost) return;
     try {
-      const dt = Math.min(0.05, this.clock.getDelta());
-      const now = performance.now();
-      if (this.pendingView && now >= this.holdUntil) this._applyView(this.pendingView);
-      this._tickCamera(now, dt);
-      this._tickPeople(now, dt);
-      this._tickCards(now);
-      this._tickLabels(now);
-      this._tickPit(now, dt);
-      this._tickDealerHands(now, dt);
-      this._tickTip(now);
-      this._tickPayout(now);
-      this._tickFps(now);
+      const wall = performance.now();
+      if (this._wall0) {
+        const gap = wall - this._wall0;
+        if (gap > 50) {
+          this._hitches = this._hitches || [];
+          this._hitches.push({ dt: Math.round(gap * 10) / 10, at: Math.round(wall), why: this._busy || 'frame' });
+          if (this._hitches.length > 40) this._hitches.shift();
+        }
+      }
+      this._wall0 = wall;
+      this._acc += Math.min(0.1, this.clock.getDelta());
+      const stepped = simSteps(this._acc, this._step, 2);
+      this._acc = stepped.acc;
+      for (let i = 0; i < stepped.steps; i++) {
+        this._sim += this._step * 1000;
+        const now = this._sim;
+        const dt = this._step;
+        if (this.pendingView && now >= this.holdUntil) this._applyView(this.pendingView);
+        this._tickCamera(now, dt);
+        this._tickPeople(now, dt);
+        this._tickCards(now);
+        this._tickLabels(now);
+        this._tickPit(now, dt);
+        this._tickDealerHands(now, dt);
+        this._tickTip(now);
+        this._tickPayout(now);
+      }
+      this._tickFps(wall);
       this.renderer.render(this.scene, this.camera);
     } catch (err) {
       try { console.error('pov loop', err); } catch { /* */ }
@@ -1127,7 +1196,7 @@ export class PovScene {
     look.y += Math.sin(t * 0.9) * 0.008 * bob;
     this.camera.position.copy(pos);
     this.camera.lookAt(look);
-    this._applyContentFrustum();
+    if (introU >= 1 && !this._frustumReady) { this._applyContentFrustum(); this._frustumReady = true; }
   }
   _tickPeople(now, dt) {
     const g = this.gesture;
@@ -1167,7 +1236,7 @@ export class PovScene {
   }
 
   _syncLabels(v, handsOf, fxFor, turnSeat) {
-    const now = performance.now();
+    const now = this.now();
     const ordered = seatsInOrder(v?.seats, v?.maxSeats);
     const cap = Math.max(1, ordered.length);
     const want = [];
@@ -1195,7 +1264,7 @@ export class PovScene {
     want.forEach((d) => {
       let s = this._labelById.get(d.id);
       if (!s || s.userData.text !== d.text) {
-        if (s) { this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(d.id); }
+        if (s) { this.labels.remove(s); this._labelById.delete(d.id); }
         const tex = labelTexture(d.text, d.color, d.bg, !!d.chip);
         s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
         s.userData.tex = tex; s.userData.text = d.text; s.userData.chip = !!d.chip;
@@ -1211,7 +1280,7 @@ export class PovScene {
     for (const [id, s] of this._labelById) {
       if (keep.has(id) || id.startsWith('chat:')) continue;
       if ((s.userData.until || 0) < now && !id.startsWith('tot:')) {
-        this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(id);
+        this.labels.remove(s); this._labelById.delete(id);
       }
     }
   }
@@ -1221,7 +1290,7 @@ export class PovScene {
       const left = (s.userData.until || 0) - now;
       if (s.material) s.material.opacity = left < 400 ? Math.max(0, left / 400) : 1;
       if (left < 0 && !id.startsWith('tot:')) {
-        this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(id);
+        this.labels.remove(s); this._labelById.delete(id);
       }
     }
   }
@@ -1279,35 +1348,48 @@ export class PovScene {
     });
   }
 
+  _pitTargets() {
+    // Behind the player arc, between Bea and Cal: a small upright figure in the dark band.
+    // Never stand on the felt or a betting circle.
+    const at = (x, z) => { const p = this._xz(x, z); return new THREE.Vector3(p.x, 0, p.z); };
+    const behind = 2.62;
+    return { dest: at(0, behind), start: at(0.28, behind + 0.5), loom: at(0, behind - 0.04) };
+  }
   _tickPit(now, dt) {
-    if (!this._pit) { this.brisk.visible = false; this._pitPlaced = false; this._pitLoomed = false; return; }
+    const pit = this._pit;
+    if (!pit) { this.brisk.visible = false; this._pitPlaced = false; this._pitLoomed = false; return; }
+    const pts = this._pitTargets();
+    if (!this._pitPlaced) { this.brisk.position.copy(pts.start); this._pitPlaced = true; }
     this.brisk.visible = true;
-    // Stand on the dealer's right, behind the rail, fully in the mobile frame.
-    const dest = ((p) => new THREE.Vector3(p.x, 0, p.z))(this._xz(1.2, 1.15));
-    const start = ((p) => new THREE.Vector3(p.x, 0, p.z))(this._xz(1.85, 1.7));
-    const loom = ((p) => new THREE.Vector3(p.x, 0, p.z))(this._xz(1.05, 0.98));
-    if (!this._pitPlaced) { this.brisk.position.copy(start); this._pitPlaced = true; }
-    const st = this._pit.state;
-    let target = dest, lean = 0;
-    if (st === 'approach') target = dest;
-    else if (st === 'loom') {
-      target = loom; lean = 0.08;
-      if (!this._pitLoomed) { this.brisk.position.copy(loom); this._pitLoomed = true; }
-    } else if (st === 'talk') { target = this._pit.loom ? loom : dest; lean = this._pit.loom ? 0.08 : 0; }
-    else if (st === 'leave') target = start;
-    this.brisk.position.lerp(target, 1 - Math.pow(0.12, dt * 60));
-    const toCam = this.camera.position.clone().sub(this.brisk.position);
+    this.brisk.scale.setScalar(this._portrait ? 0.7 : 0.92);
+    // Prefer timestamps so a stale "approach" view still walks the visit as time passes.
+    let st = pit.state;
+    if (pit.at && pit.until) {
+      const age = Date.now() - pit.at;
+      const approach = (pit.approachUntil || pit.at + 1200) - pit.at;
+      const loom = (pit.loomUntil || pit.at + 2200) - pit.at;
+      const leave = (pit.until - pit.at) - 900;
+      st = age < approach ? 'approach' : age < loom ? 'loom' : age < leave ? 'talk' : 'leave';
+    }
+    let target = pts.dest, lean = 0;
+    if (st === 'approach') target = pts.dest;
+    else if (st === 'loom') { target = pts.loom; lean = this._portrait ? 0 : 0.08; }
+    else if (st === 'talk') { target = (pit.loom || st === 'loom') ? pts.loom : pts.dest; lean = (!this._portrait && pit.loom) ? 0.08 : 0; }
+    else if (st === 'leave') target = pts.start;
+    this.brisk.position.lerp(target, 1 - Math.pow(0.12, (dt || this._step) * 60));
+    const toCam = this._v1.copy(this.camera.position).sub(this.brisk.position);
     this.brisk.rotation.y += ((Math.atan2(toCam.x, toCam.z)) - this.brisk.rotation.y) * 0.08;
-    this.brisk.userData.head.rotation.x = lean;
+    if (this.brisk.userData.head) this.brisk.userData.head.rotation.x = lean;
     if (this.brisk.userData.face) this.brisk.userData.face.lookAt(this.camera.position);
-    const moving = this.brisk.position.distanceTo(target) > 0.08 && st !== 'loom';
+    const moving = this.brisk.position.distanceTo(target) > 0.08 && st !== 'loom' && st !== 'talk';
     const phase = now / 150;
     const step = Math.sin(phase);
     const swing = moving && !this.reduced ? step * 0.55 : 0;
     const aL = this.brisk.getObjectByName('aL'), aR = this.brisk.getObjectByName('aR');
     if (aL) aL.rotation.x = swing; if (aR) aR.rotation.x = -swing;
     this.brisk.position.y = moving && !this.reduced ? Math.abs(step) * 0.04 : 0;
-    this.brisk.rotation.z = moving && !this.reduced ? step * 0.04 : 0;
+    this.brisk.rotation.x = 0;
+    this.brisk.rotation.z = moving && !this.reduced ? step * 0.03 : 0;
   }
   _tickDealerHands(now, dt) {
     const t = now / 1000;
@@ -1370,19 +1452,49 @@ export class PovScene {
       this.onFps?.(this.fps);
       if (this.canvas.dataset) this.canvas.dataset.fps = String(Math.round(this.fps));
       if (this.fps < 28 && this.lamp.castShadow) { this.lamp.castShadow = false; this.renderer.shadowMap.enabled = false; }
+      this._adaptDpr(this.fps);
+    }
+  }
+  _adaptDpr() {
+    // Changing the drawing-buffer size mid-session costs 200–300ms. Pick a cap at mount and keep it.
+  }
+  _prewarm() {
+    try {
+      for (const r of 'A23456789TJQK') {
+        for (const s of 'shdc') this._face(r + s);
+      }
+      const list = [...(this.res.textures || []), this.backTex, ...this.faceCache.values()].filter(Boolean);
+      for (const tex of list) {
+        try { this.renderer.initTexture(tex); } catch { /* */ }
+      }
+      for (const n of [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 26, 'BLACKJACK', 'BUST', 'HIT', 'STAND', 'DOUBLE', 'SPLIT']) {
+        labelTexture(String(n), n === 'BLACKJACK' || n === 'DOUBLE' ? '#f2c65a' : n === 'BUST' ? '#f0b0a0' : '#f4efe4', 'rgba(20,12,6,.94)', typeof n === 'number');
+      }
+      for (const tex of _labelCache.values()) {
+        try { this.renderer.initTexture(tex); } catch { /* */ }
+      }
+      try { this.renderer.compile(this.scene, this.camera); } catch { /* */ }
+      this.renderer.render(this.scene, this.camera);
+    } catch (err) {
+      try { console.warn('pov prewarm', err); } catch { /* */ }
     }
   }
 
   _framePoints() {
     const pts = [];
-    const cap = Math.max(4, this._view?.v?.maxSeats || 5);
+    const cap = Math.max(4, this._view?.v?.maxSeats || this.players.size || 4);
+    const side = this._portrait ? 0.42 : 0.28;
     for (let i = 0; i < cap; i++) {
       const lay = this._lay(cap, i);
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
-      pts.push(new THREE.Vector3(lay.x, 1.42, lay.z));
-      pts.push(new THREE.Vector3(lay.x + px * 0.2, 1.26, lay.z + pz * 0.04));
-      pts.push(new THREE.Vector3(lay.x - px * 0.2, 1.26, lay.z - pz * 0.04));
+      // Head, shoulders, name plate, cards, and room for BLACKJACK / totals beside the end seats.
+      pts.push(new THREE.Vector3(lay.x, 1.55, lay.z));
+      pts.push(new THREE.Vector3(lay.x + px * side, 1.28, lay.z + pz * 0.08));
+      pts.push(new THREE.Vector3(lay.x - px * side, 1.28, lay.z - pz * 0.08));
+      pts.push(new THREE.Vector3(lay.x, 1.28, lay.z - 0.1));
       pts.push(new THREE.Vector3(lay.cardX, FELT_Y + 0.02, lay.cardZ));
+      pts.push(new THREE.Vector3(lay.cardX + px * 0.5, 1.55, lay.cardZ + pz * 0.12));
+      pts.push(new THREE.Vector3(lay.cardX + px * 0.28, FELT_Y + 0.18, lay.cardZ + pz * 0.16));
     }
     const at = (x, y, z) => { const p = this._xz(x, z); return new THREE.Vector3(p.x, y, p.z); };
     pts.push(at(-0.2, FELT_Y + 0.03, 0.12));
@@ -1390,6 +1502,13 @@ export class PovScene {
     pts.push(at(0, FELT_Y, 0.02));
     pts.push(at(-0.7, FELT_Y, 0.02));
     pts.push(at(0.7, FELT_Y, 0.02));
+    // Dealer fan and shoe must stay fully on-canvas, including cards still in flight.
+    pts.push(at(-0.4, FELT_Y + 0.06, 0.32));
+    pts.push(at(0.4, FELT_Y + 0.06, 0.32));
+    pts.push(at(0, FELT_Y + 0.12, 0.22));
+    // Small upright Brisk in the dark band behind the center seats (head only, not his feet).
+    const stand = this._pitTargets().dest;
+    pts.push(new THREE.Vector3(stand.x, 1.55, stand.z));
     return pts;
   }
   _applyContentFrustum() {
@@ -1408,26 +1527,40 @@ export class PovScene {
       minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     }
     if (!Number.isFinite(minX) || maxX - minX < 1e-4 || maxY - minY < 1e-4) return;
-    const padX = (maxX - minX) * 0.10 + 0.02;
-    const padTop = (maxY - minY) * 0.18 + 0.03;
-    const padBot = (maxY - minY) * 0.14 + 0.04;
+    const padX = (maxX - minX) * (this._portrait ? 0.22 : 0.12) + (this._portrait ? 0.04 : 0.02);
+    const padTop = (maxY - minY) * (this._portrait ? 0.16 : 0.16) + 0.03;
+    const padBot = (maxY - minY) * (this._portrait ? 0.16 : 0.14) + 0.04;
     minX -= padX; maxX += padX;
     minY -= padBot; maxY += padTop;
     // Keep the canvas aspect so a tall phone does not vertically stretch figures.
-    // Extra room goes above the heads (pit atmosphere), not under the rail.
     const wPx = this.canvas.clientWidth || this.renderer?.domElement?.clientWidth || 1;
     const hPx = this.canvas.clientHeight || this.renderer?.domElement?.clientHeight || 1;
     const aspect = Math.max(0.2, Math.min(4, wPx / hPx));
     let left = minX, right = maxX, bottom = minY, top = maxY;
-    const spanX = right - left, spanY = top - bottom;
-    if (spanX / spanY > aspect) {
-      const extra = spanX / aspect - spanY;
-      top += extra * 0.88;
-      bottom -= extra * 0.12;
-    } else {
-      const extra = spanY * aspect - spanX;
-      left -= extra / 2;
-      right += extra / 2;
+    const fitAspect = () => {
+      const spanX = right - left, spanY = top - bottom;
+      if (spanX / spanY > aspect) {
+        const extra = spanX / aspect - spanY;
+        top += extra * 0.85;
+        bottom -= extra * 0.15;
+      } else {
+        const extra = spanY * aspect - spanX;
+        left -= extra / 2;
+        right += extra / 2;
+      }
+    };
+    fitAspect();
+    // Leave room for the Autopilot row, the notice pill, and ~12px of air above every head.
+    // The status band lives below the canvas, so we do not reserve bottom HUD pixels here.
+    const hudTopPx = (this._portrait ? 118 + 12 : 56);
+    const topLimit = 1 - 2 * Math.min(0.48, hudTopPx / Math.max(1, hPx));
+    const spanY = top - bottom;
+    if (spanY > 1e-5) {
+      const headNdc = 2 * (maxY - bottom) / spanY - 1;
+      if (headNdc > topLimit) {
+        top = bottom + 2 * (maxY - bottom) / (topLimit + 1);
+        fitAspect();
+      }
     }
     const near = cam.near || 0.08, far = cam.far || 24;
     cam.projectionMatrix.makePerspective(left * near, right * near, top * near, bottom * near, near, far);
@@ -1467,6 +1600,7 @@ export class PovScene {
     };
   }
   getFps() { return this.fps; }
+  getHitches() { return this._hitches || []; }
   destroy() {
     this._paused = true;
     this._lost = true;
