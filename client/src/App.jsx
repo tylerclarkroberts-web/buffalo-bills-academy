@@ -20,6 +20,7 @@ const Conquest = lazy(() => import('./Conquest.jsx'));
 const Room = lazy(() => import('./room/Room.jsx'));
 const Foff = lazy(() => import('./foff/Foff.jsx'));
 const Admin = lazy(() => import('./admin/AdminPage.jsx'));
+const PovPreview = lazy(() => import('./bj/PovPreviewPage.jsx'));
 const ElHalo = lazy(() => import('./mines/elhalo/ElHaloPage.jsx'));
 
 export function navigate(path, { replace = false } = {}) {
@@ -59,7 +60,8 @@ export default function App() {
   }, [me?.id, me?.hasAvatar, path]);
   if (path.startsWith('/mines')) return <Suspense fallback={<div style={{ background: '#020402', minHeight: '100vh' }} />}><Mines /></Suspense>;
   // owner only; the API enforces it. The boundary means a crash or a failed download shows a message, never a blank page.
-  if (path === '/admin') return <AdminBoundary><Suspense fallback={<BoScreen testId="bo-loading"><p style={{ margin: 0, opacity: 0.7 }}>Opening the back office…</p></BoScreen>}><Admin /></Suspense></AdminBoundary>;
+  if (path === '/admin/bj-preview' || path.startsWith('/admin/bj-preview')) return <AdminBoundary><Suspense fallback={<BoScreen testId="bo-loading"><p style={{ margin: 0, opacity: 0.7 }}>Opening the preview…</p></BoScreen>}><PovPreview /></Suspense></AdminBoundary>;
+  if (path === '/admin' || path === '/admin/') return <AdminBoundary><Suspense fallback={<BoScreen testId="bo-loading"><p style={{ margin: 0, opacity: 0.7 }}>Opening the back office…</p></BoScreen>}><Admin /></Suspense></AdminBoundary>;
   if (path === '/foff') return <Suspense fallback={<div style={{ background: '#0b1c13', minHeight: '100vh' }} />}><Foff /></Suspense>; // lobby card unlocks this after the film
   if (path === '/elhalo' || path === '/elhalo/') return <Suspense fallback={<div style={{ background: '#1d0f24', minHeight: '100vh' }} />}><ElHalo /></Suspense>;
   const t = path.match(/^\/t\/([A-Za-z0-9]{4,8})/);

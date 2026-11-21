@@ -15,6 +15,7 @@ import * as Kash from './kash.js';
 import { isManual, dealerPrompt } from './pace.js';
 import * as Tips from './tips.js';
 import * as Pit from './pitboss.js';
+import { isPovDisabled, setPovEnabled } from './povFlag.js';
 
 const edgeSummary = (t) => { const e = tableEdge(t); return { main: { edge: e.main.edge, tone: e.main.tone }, side: Object.fromEntries(Object.entries(e.side).map(([k, v]) => [k, { edge: v.edge, tone: v.tone }])), needsAck: e.needsAck, grandfathered: !!e.grandfathered }; };
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -112,16 +113,15 @@ export class Blackjack {
     }
     if (v.house && t.house.mode === 'player') {
       v.house.autopilot = t.house.autopilot !== false; // default on, so existing tables keep automatic dealing
-      v.house.pov = t.house.id === viewerId && t.status === 'playing';
+      v.house.pov = t.house.id === viewerId && t.status === 'playing' && !isPovDisabled(this.store?.dir);
       if (t.house.id === viewerId) {
         v.dealer = dealerPrompt(t);
         // Presentation only, and only on the house view: a stale / hidden tab reads as away.
         const now = this.now();
         v.seats = v.seats.map((s) => {
           if (!s || s.bot) return s;
-          const seen = t.watchers?.[s.id];
-          if (!seen) return s;
-          return { ...s, away: now - seen >= Pit.PHONE_MS };
+          if (!Pit.isPhoneStale(t, s.id, now, t.watchers)) return s;
+          return { ...s, away: true };
         });
       }
     }
@@ -377,7 +377,25 @@ export class Blackjack {
       return this.viewOf(t, p.id);
     });
   }
+  povDisabled() { return isPovDisabled(this.store?.dir); }
+  setPovEnabled(on) { return setPovEnabled(this.store.dir, on !== false); }
+
+    /** iOS Safari fires pagehide / visibilitychange on an app switch. Mark the player paused so
+   *  the pit boss does not treat that lag as a phone, then clear it when they come back. */
+  presence(p, code, body = {}) {
+    const t = this.table(code);
+    if (!p?.id) return this.viewOf(t, p?.id);
+    t.backgrounded ||= {};
+    const state = String(body.state || '');
+    if (state === 'paused' || state === 'hidden') {
+      if (!t.backgrounded[p.id]) t.backgrounded[p.id] = this.now();
+    } else {
+      delete t.backgrounded[p.id];
+    }
+    return this.viewOf(t, p.id);
+  }
   forcePit(p, code, body = {}) {
+
     const t = this.table(code);
     if (t.hostId !== p.id && t.house.id !== p.id) throw new GameError('no', 403);
     return this.mutate(t, p.id, () => {
@@ -385,7 +403,10 @@ export class Blackjack {
       t.pit.nextAt = 0;
       t.pit.visit = null;
       t.pit.visits = Math.min(t.pit.visits || 0, Math.max(0, (t.pit.max || 4) - 1));
-      if (body.hiddenId && t.watchers) t.watchers[body.hiddenId] = this.now() - Pit.PHONE_MS - 1;
+      if (body.hiddenId && t.watchers) {
+        t.watchers[body.hiddenId] = this.now() - Pit.PHONE_MS - 1;
+        if (t.backgrounded) delete t.backgrounded[body.hiddenId];
+      }
       Pit.tickPit(t, this.now(), () => 0, { lastViews: t.watchers });
       if (body.line && t.pit.visit) t.pit.visit.line = String(body.line);
       if (body.loom && t.pit.visit) {

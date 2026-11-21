@@ -447,7 +447,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/bj/tables', needPlayer, wrap((req) => bj.create(req.player, req.body || {})));
   api.get('/bj/tables/:code', needPlayer, wrap((req) => bj.view(req.player, req.params.code)));
   for (const [path, fn] of Object.entries({ join: (p, c, b) => bj.join(p, c, b?.ack === true), start: (p, c) => bj.start(p, c), leave: (p, c) => bj.leave(p, c), close: (p, c) => bj.close(p, c), sitout: (p, c) => bj.sitOut(p, c),
-    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId), 'kash-catch': (p, c) => bj.kashCatch(p, c), 'kash-hit': (p, c, b) => bj.kashHit(p, c, b), 'kash-finish': (p, c, b) => bj.kashFinish(p, c, b), 'kash-dismiss': (p, c) => bj.kashDismiss(p, c), autopilot: (p, c, b) => bj.setAutopilot(p, c, b?.on), deal: (p, c, b) => bj.dealerAct(p, c, b?.action), tip: (p, c, b) => bj.tip(p, c, b), say: (p, c, b) => bj.say(p, c, b?.text) })) {
+    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId), 'kash-catch': (p, c) => bj.kashCatch(p, c), 'kash-hit': (p, c, b) => bj.kashHit(p, c, b), 'kash-finish': (p, c, b) => bj.kashFinish(p, c, b), 'kash-dismiss': (p, c) => bj.kashDismiss(p, c), autopilot: (p, c, b) => bj.setAutopilot(p, c, b?.on), deal: (p, c, b) => bj.dealerAct(p, c, b?.action), tip: (p, c, b) => bj.tip(p, c, b), say: (p, c, b) => bj.say(p, c, b?.text), presence: (p, c, b) => bj.presence(p, c, b) })) {
     api.post(`/bj/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   // Async Scum: /scum (your tables) and /scum/CODE (invite link)
@@ -556,6 +556,21 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
 
   const geo = new Geo({ store: service.store, now: service.now, fetchImpl: geoFetch !== undefined ? geoFetch : (env.ADMIN_GEO === '0' ? null : globalThis.fetch) });
+  api.get('/admin/bj/pov-preview', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ preview: true, label: 'Preview: not a real game', path: '/admin/bj-preview' });
+  });
+  api.get('/admin/bj/pov', needPlayer, (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ enabled: !bj.povDisabled() });
+  });
+  api.post('/admin/bj/pov', needPlayer, wrap((req) => {
+    if (!isAdmin(req, adminCfg)) { const e = new GameError('Not found', 403); throw e; }
+    if (typeof req.body?.enabled !== 'boolean') throw new GameError('enabled must be true or false', 400);
+    return bj.setPovEnabled(req.body.enabled);
+  }));
   mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, getCtx: () => ({
     now: service.now(), players: service.store.players, ledger: telemetry.readLedger(), events: telemetry.readEvents(), access: telemetry.doc, worth: netWorth,
     docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc } }) });

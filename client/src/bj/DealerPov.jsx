@@ -4,7 +4,7 @@ import { Bust } from '../avatar/Bust.jsx';
 import { Card } from '../Card.jsx';
 import { takeCards } from './useDealReveal.js';
 import { PitBoss } from './PitBoss.jsx';
-import { sfx } from './sfx.js';
+import { sfx, unlockSfx } from './sfx.js';
 import { KashCatch } from './KashStage.jsx';
 import { canPovWebGL, createPovScene } from './povScene.js';
 import './dealer-pov.css';
@@ -86,15 +86,24 @@ function CssFelt({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown,
   );
 }
 
-function buzz(ms = 10) { try { navigator.vibrate?.(ms); } catch { /* unsupported */ } }
+function canVibrate() {
+  try { return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'; } catch { return false; }
+}
+function buzz(ms = 10) {
+  if (!canVibrate()) return;
+  try { navigator.vibrate(ms); } catch { /* iOS Safari has no haptic API; never throw */ }
+}
+
 
 export function DealerPov({
   v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, reduced, onDeal, onAuto, now, tip, thanks,
-  onSay, meId, kash, onCatch,
+  onSay, meId, kash, onCatch, onCrash,
 }) {
+
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
   const [engine, setEngine] = useState(() => (canPovWebGL() ? 'pending' : 'css'));
+  const [glGen, setGlGen] = useState(0);
   const [fps, setFps] = useState(0);
   const [gesture, setGesture] = useState('');
   const [sayOpen, setSayOpen] = useState(false);
@@ -117,26 +126,50 @@ export function DealerPov({
         onFps: setFps,
         onGesture: (g) => setGesture(g?.kind || ''),
         onLost: () => setEngine('css'),
-        onSfx: (name) => { sfx[name]?.(); if (name === 'deal' || name === 'flip') buzz(name === 'flip' ? 16 : 8); },
+        onRestore: () => { setEngine('pending'); setGlGen((n) => n + 1); },
+        onCrash: (err) => { try { onCrash?.(err); } catch { /* */ } },
+        onSfx: (name) => { try { sfx[name]?.(); } catch { /* */ } if (name === 'deal' || name === 'flip') buzz(name === 'flip' ? 16 : 8); },
       });
-    } catch {
+    } catch (err) {
       scene = null;
+      try { onCrash?.(err); } catch { /* */ }
     }
     if (!scene) { setEngine('css'); return undefined; }
     sceneRef.current = scene;
     setEngine('webgl');
     window.__bjPovFraming = () => scene.getFraming?.();
-    return () => { try { if (window.__bjPovFraming) delete window.__bjPovFraming; } catch { /* */ } scene.destroy(); sceneRef.current = null; };
-  }, [reduced]);
+    const onVis = () => {
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      scene.setPaused?.(hidden);
+      if (!hidden) { try { unlockSfx(); } catch { /* */ } scene.resize?.(); }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onVis);
+    window.addEventListener('pageshow', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onVis);
+      window.removeEventListener('pageshow', onVis);
+      try { if (window.__bjPovFraming) delete window.__bjPovFraming; } catch { /* */ }
+      scene.destroy(); sceneRef.current = null;
+    };
+  }, [reduced, glGen]);
 
   useEffect(() => {
-    sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, chat: v.chat });
+    try { sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, chat: v.chat }); }
+    catch (err) { try { onCrash?.(err); } catch { /* */ } }
   }, [v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, now]);
+
+  // Test hook only: keep the flag set so a concurrent-render retry still throws and the boundary sticks.
+  if (typeof window !== 'undefined' && window.__BBA_POV_THROW) {
+    throw (window.__BBA_POV_THROW instanceof Error ? window.__BBA_POV_THROW : new Error('pov test crash'));
+  }
 
   return (
     <div
       className={`bj-pov ${reduced ? 'rm' : ''} ${engine === 'webgl' ? 'gl' : ''}`}
       data-test="bj-dealer-pov"
+      onPointerDown={unlockSfx}
       data-engine={engine === 'pending' ? 'webgl' : engine}
       data-gesture={gesture}
       data-fps={Math.round(fps)}
@@ -216,5 +249,26 @@ export function TableChat({ chat, onSay, meId }) {
       </ul>
       <input data-test="bj-say" maxLength={80} value={text} onChange={(e) => setText(e.target.value)} placeholder="Say something" aria-label="Table chat" />
     </form>
+  );
+}
+
+
+/** Classic-table dealer controls when the 3D POV is off (kill switch or a crash). */
+export function HouseDealBar({ v, now, onAuto, onDeal, kash, onCatch }) {
+  const prompt = v?.dealer || {};
+  const autoOn = v?.house?.autopilot !== false;
+  return (
+    <div className="bj-house-bar" data-test="bj-house-bar">
+      <KashCatch kash={kash} now={now} onCatch={onCatch} />
+      <label className={`bj-auto bj-auto-pill ${autoOn ? 'on' : 'off'}`} data-test="bj-autopilot">
+        <input type="checkbox" checked={autoOn} onChange={(e) => onAuto?.(e.target.checked)} />
+        Autopilot {autoOn ? 'On' : 'Off'}
+      </label>
+      {prompt.action ? (
+        <button className="btn primary bj-pov-act" onClick={() => onDeal?.(prompt.action)} data-test="bj-deal-next">
+          {prompt.label || 'Deal'}
+        </button>
+      ) : null}
+    </div>
   );
 }
