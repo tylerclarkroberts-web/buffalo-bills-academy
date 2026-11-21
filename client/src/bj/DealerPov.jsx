@@ -155,10 +155,16 @@ export function DealerPov({
     };
   }, [reduced, glGen]);
 
+  const viewSig = [
+    v.seq, v.round?.no, v.round?.phase, turnSeat, dealing, tip?.at, v.pit?.at, thanks,
+    (dealerCards || []).join(','),
+    (v.round?.hands || []).map((h) => `${h.seat}:${(h.cards || []).join('.')}`).join('|'),
+    v.log?.[v.log.length - 1]?.seq,
+  ].join(';');
   useEffect(() => {
     try { sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, chat: v.chat }); }
     catch (err) { try { onCrash?.(err); } catch { /* */ } }
-  }, [v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, now]);
+  }, [viewSig]);
 
   // Test hook only: keep the flag set so a concurrent-render retry still throws and the boundary sticks.
   if (typeof window !== 'undefined' && window.__BBA_POV_THROW) {
@@ -181,12 +187,7 @@ export function DealerPov({
         )}
         {engine === 'webgl' && tip && <span className="bj-tip-toss" data-test="bj-tip-toss" data-amt={tip.amount} hidden aria-hidden="true">${tip.amount}</span>}
         {engine !== 'webgl' && tip && <span className="bj-tip-toss" data-test="bj-tip-toss" data-amt={tip.amount} aria-hidden="true">${tip.amount}</span>}
-        {thanks && (
-          <p className="bj-thanks" data-test="bj-thanks" role="status">
-            {tip?.name ? <><b>{tip.name}</b> tipped ${tip.amount}. </> : null}{thanks}
-          </p>
-        )}
-        <PitBoss pit={v.pit} pov reduced={reduced} hideFigure={engine === 'webgl'} />
+        <PitBoss pit={v.pit} pov reduced={reduced} hideFigure={engine === 'webgl'} hideLine />
       </div>
       <div className="bj-pov-hud" data-test="bj-pov-hud">
           <div className="bj-pov-hud-top" data-test="bj-pov-hud-top">
@@ -198,6 +199,19 @@ export function DealerPov({
             <div className="bj-pov-count" data-test="bj-pov-count">
               <em>{v.deckLeft ?? 0}</em> in shoe{out ? <> · <em>{out}</em> out</> : null}
             </div>
+          </div>
+          <div className="bj-pov-notices" data-test="bj-pov-notices">
+            {v.pit && (
+              <p className="pit-line" data-test="bj-pit-line" role="status">
+                <b>{v.pit.name}</b> <i>{v.pit.title}</i>
+                <span>{v.pit.line}</span>
+              </p>
+            )}
+            {thanks && (
+              <p className="bj-thanks" data-test="bj-thanks" role="status">
+                {tip?.name ? <><b>{tip.name}</b> tipped ${tip.amount}. </> : null}{thanks}
+              </p>
+            )}
           </div>
           <div className="bj-pov-hud-bottom" data-test="bj-pov-hud-bottom">
             <div className="bj-pov-actor" data-test="bj-deal-prompt">
