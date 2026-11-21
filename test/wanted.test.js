@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'os';
 import path from 'path';
 import { createApp } from '../server/app.js';
-import { shameDecision, wantedCaption, wantedSlackText, SHAME_MIN, SHAME_COOLDOWN_MS, envWantedEnabled, resolveChannel, DEFAULT_ACADEMY_CHANNEL } from '../server/wanted.js';
+import { shameDecision, wantedCaption, wantedSlackText, slackErrorLine, SHAME_MIN, SHAME_COOLDOWN_MS, CHANNEL_GAP_MS, envWantedEnabled, resolveChannel, DEFAULT_ACADEMY_CHANNEL } from '../server/wanted.js';
+import { SlackClient } from '../server/slack.js';
 import { listShameTurns, listTurns, holdemSource } from '../server/turns.js';
 import { tableHasBots } from '../server/slack.js';
 import { CRIME, PUNISHMENT, PROCEDURE, SAMPLE_NAME, SAMPLE_SEED, POSTER_W, POSTER_H, wantedSvg, sampleWantedPoster, renderWantedPoster, nameFontSize, fitName } from '../server/wantedPoster.js';
@@ -42,6 +43,11 @@ test('the poster keeps the parody lines and dynamic name, with no official Narut
     wantedSlackText({ name: 'Ann Wait', slackUserId: 'U123ABCDEF', count: 5 }),
     "<!channel> Word from the Sheriff's Office: <@U123ABCDEF> is WANTED for making everyone else wait. They're holding up 5 games. Punishment: One Thousand Years of Pain.",
   );
+  assert.equal(
+    wantedSlackText({ name: 'Ann Wait', count: 4, posterUrl: 'https://bba.test/wanted/ab.png' }),
+    "<!channel> Word from the Sheriff's Office: Ann Wait is WANTED for making everyone else wait. They're holding up 4 games. Punishment: One Thousand Years of Pain. Poster: <https://bba.test/wanted/ab.png>",
+  );
+  assert.equal(slackErrorLine({ method: 'files.getUploadURLExternal', error: 'missing_scope', needed: 'files:write' }), 'files.getUploadURLExternal missing_scope needed=files:write');
 });
 
 test('shameDecision: one poster per streak, re-arm below 4, at most one per 12h', () => {
@@ -124,6 +130,7 @@ function mockSlack() {
       return res({ ok: false, error: 'users_not_found' });
     }
     if (method === 'conversations.list') {
+      if (m.failList) return res({ ok: false, error: 'missing_scope', needed: 'channels:read,groups:read,mpim:read,im:read', provided: 'chat:write,im:write,users:read,users:read.email' });
       return res({
         ok: true,
         channels: [
@@ -133,7 +140,10 @@ function mockSlack() {
         response_metadata: { next_cursor: '' },
       });
     }
-    if (method === 'files.getUploadURLExternal') return res({ ok: true, upload_url: 'https://files.example/upload', file_id: 'F1' });
+    if (method === 'files.getUploadURLExternal') {
+      if (m.failUpload) return res({ ok: false, error: 'missing_scope', needed: 'files:write', provided: 'chat:write,im:write,users:read,users:read.email' });
+      return res({ ok: true, upload_url: 'https://files.example/upload', file_id: 'F1' });
+    }
     if (method === 'files.completeUploadExternal') {
       m.uploads.push({ channel: body.channel_id, comment: body.initial_comment, title: body.files?.[0]?.title });
       return res({ ok: true, files: [{ id: 'F1' }] });
@@ -305,4 +315,157 @@ test('the admin sample route is owner-only and returns a PNG; toggle posts nothi
   assert.equal(slack.uploads.length, 0);
   assert.equal(slack.channelPosts.length, 0);
   assert.equal(service.wanted.enabled, false);
+});
+
+test('a pasted C-ID uploads without conversations.list, even when channels:read is missing', async (t) => {
+  const slack = mockSlack();
+  slack.failList = true;
+  const s = await boot(t, { env: { SLACK_ACADEMY_CHANNEL: 'CACADEMY99', PUBLIC_URL: 'https://bba.test' }, slackFetch: slack.fetch });
+  const ann = { id: 'ann-cid', name: 'Ann Wait', createdAt: 1, bankroll: 5000, txns: [] };
+  const bob = { id: 'bob-cid', name: 'Bob Pal', createdAt: 1, bankroll: 5000, txns: [] };
+  s.service.store.players[ann.id] = ann;
+  s.service.store.players[bob.id] = bob;
+  s.service.store.savePlayers();
+  for (let i = 0; i < 4; i++) {
+    s.service.store.saveTable({
+      code: `C${i}CID0`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
+      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
+      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
+      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
+    });
+  }
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.ok(!slack.calls.some((c) => c.method === 'conversations.list'), 'a C-ID must not look up the channel name');
+  assert.equal(slack.uploads.length, 1);
+  assert.equal(slack.uploads[0].channel, 'CACADEMY99');
+  assert.match(slack.uploads[0].comment, /Poster: <https:\/\/bba\.test\/wanted\/[a-f0-9]{32}\.png>/);
+  assert.equal(slack.channelPosts.length, 0);
+});
+
+test('the admin channel setting also accepts a C-ID and skips name lookup', async (t) => {
+  const slack = mockSlack();
+  slack.failList = true;
+  const s = await boot(t, { env: { SLACK_ACADEMY_CHANNEL: '#academy', PUBLIC_URL: 'https://bba.test' }, slackFetch: slack.fetch });
+  s.service.wanted.setConfig({ channel: 'CBUFFALO99' });
+  assert.equal(s.service.wanted.channel, 'CBUFFALO99');
+  const ann = { id: 'ann-admincid', name: 'Ann Wait', createdAt: 1, bankroll: 5000, txns: [] };
+  const bob = { id: 'bob-admincid', name: 'Bob Pal', createdAt: 1, bankroll: 5000, txns: [] };
+  s.service.store.players[ann.id] = ann;
+  s.service.store.players[bob.id] = bob;
+  s.service.store.savePlayers();
+  for (let i = 0; i < 4; i++) {
+    s.service.store.saveTable({
+      code: `A${i}CID0`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
+      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
+      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
+      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
+    });
+  }
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.ok(!slack.calls.some((c) => c.method === 'conversations.list'));
+  assert.equal(slack.uploads[0].channel, 'CBUFFALO99');
+});
+
+test('a missing files:write scope falls back to a channel post with a public poster link, and logs the Slack error', async (t) => {
+  const slack = mockSlack();
+  slack.failUpload = true;
+  const warns = [];
+  const s = await boot(t, { env: { SLACK_ACADEMY_CHANNEL: 'CACADEMY99', PUBLIC_URL: 'https://bba.test' }, slackFetch: slack.fetch });
+  s.service.wanted.log = { warn: (msg) => warns.push(String(msg)) };
+  const ann = { id: 'ann-fallback', name: 'Ann Wait', createdAt: 1, bankroll: 5000, txns: [] };
+  const bob = { id: 'bob-fallback', name: 'Bob Pal', createdAt: 1, bankroll: 5000, txns: [] };
+  s.service.store.players[ann.id] = ann;
+  s.service.store.players[bob.id] = bob;
+  s.service.store.savePlayers();
+  for (let i = 0; i < 4; i++) {
+    s.service.store.saveTable({
+      code: `F${i}ALL0`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
+      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
+      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
+      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
+    });
+  }
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 0);
+  assert.equal(slack.channelPosts.length, 1);
+  const text = slack.channelPosts[0].text;
+  assert.match(text, /<!channel>/);
+  assert.match(text, /Ann Wait is WANTED/);
+  const m = text.match(/Poster: <(https:\/\/bba\.test\/wanted\/[a-f0-9]{32}\.png)>/);
+  assert.ok(m, text);
+  const urlPath = new URL(m[1]).pathname;
+  const got = await fetch(s.base + urlPath);
+  assert.equal(got.status, 200);
+  assert.match(got.headers.get('content-type'), /image\/png/);
+  const buf = Buffer.from(await got.arrayBuffer());
+  assert.deepEqual([...buf.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.equal((await fetch(s.base + '/wanted/not-a-real-id.png')).status, 404);
+  assert.ok(warns.some((w) => w.includes('[wanted] upload failed:') && w.includes('files.getUploadURLExternal') && w.includes('missing_scope') && w.includes('files:write')));
+  assert.ok(!warns.join(' ').includes('xoxb-'), 'logs must not include the token');
+});
+
+test('one sweep that finds several offenders posts one poster and queues the rest 10 minutes apart', async (t) => {
+  const slack = mockSlack();
+  const s = await boot(t, { env: { SLACK_ACADEMY_CHANNEL: 'CACADEMY99', PUBLIC_URL: 'https://bba.test' }, slackFetch: slack.fetch });
+  const pal = { id: 'pal-queue', name: 'Pal', createdAt: 1, bankroll: 5000, txns: [] };
+  s.service.store.players[pal.id] = pal;
+  const names = ['Keetch', 'Foffenstein', 'Breiden'];
+  const offenders = names.map((name, n) => {
+    const p = { id: `off-${n}`, name, createdAt: 1, bankroll: 5000, txns: [] };
+    s.service.store.players[p.id] = p;
+    for (let i = 0; i < 4; i++) {
+      s.service.store.saveTable({
+        code: `Q${n}${i}AAA`.slice(0, 6), name: `${name} ${i}`, status: 'open', hostId: pal.id,
+        settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
+        seats: [{ playerId: p.id, sittingOut: false, name }, { playerId: pal.id, sittingOut: false, name: 'Pal' }],
+        hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
+      });
+    }
+    return p;
+  });
+  s.service.store.savePlayers();
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 1, 'only the first poster goes out immediately');
+  assert.equal(s.service.wanted.state.queue.length, 2);
+  const first = slack.uploads[0].comment;
+  s.clock.t += CHANNEL_GAP_MS - 1;
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 1, 'still inside the 10-minute gap');
+  s.clock.t += 1;
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 2);
+  assert.equal(s.service.wanted.state.queue.length, 1);
+  s.clock.t += CHANNEL_GAP_MS;
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 3);
+  assert.equal(s.service.wanted.state.queue.length, 0);
+  const posted = slack.uploads.map((u) => {
+    if (/Keetch/.test(u.comment)) return 'Keetch';
+    if (/Foffenstein/.test(u.comment)) return 'Foffenstein';
+    if (/Breiden/.test(u.comment)) return 'Breiden';
+    return '?';
+  });
+  assert.deepEqual(new Set(posted), new Set(names));
+});
+
+test('SlackClient.resolveChannelId returns a pasted C-ID without listing channels', async () => {
+  const calls = [];
+  const client = new SlackClient({
+    token: 'xoxb-test-not-real',
+    fetchImpl: async (url, init) => {
+      const method = new URL(url).pathname.replace('/api/', '');
+      calls.push(method);
+      return { status: 200, ok: true, json: async () => ({ ok: false, error: 'missing_scope' }) };
+    },
+  });
+  assert.equal(await client.resolveChannelId('CACADEMY99'), 'CACADEMY99');
+  assert.equal(await client.resolveChannelId('#academy'), null);
+  assert.deepEqual(calls, ['conversations.list']);
 });

@@ -87,21 +87,30 @@ export class SlackClient {
    * Resolves #name to a C-ID first (completeUploadExternal does not accept #name).
    */
   async uploadImage({ channel, filename, buffer, title, comment } = {}) {
-    if (!channel) return { ok: false, error: 'no_channel' };
-    const channelId = (await this.resolveChannelId(channel)) || channel;
+    if (!channel) return { ok: false, error: 'no_channel', method: 'uploadImage' };
+    const channelId = await this.resolveChannelId(channel);
+    if (!channelId) return { ok: false, error: 'channel_not_resolved', method: 'conversations.list' };
     const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
-    const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length: buf.length });
-    if (!up.ok) return up;
+    const length = buf.byteLength;
+    const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length });
+    if (!up.ok) return { ...up, method: 'files.getUploadURLExternal' };
     try {
-      const headers = { 'content-type': 'application/octet-stream' };
-      const put = await this.fetch(up.upload_url, { method: 'POST', headers, body: buf });
-      if (!put.ok) return { ok: false, error: 'upload_failed' };
-    } catch { return { ok: false, error: 'upload_failed' }; }
-    return this.call('files.completeUploadExternal', {
+      const put = await this.fetch(up.upload_url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: buf,
+      });
+      if (!put.ok) return { ok: false, error: 'upload_failed', method: 'files.upload', status: put.status };
+    } catch {
+      return { ok: false, error: 'upload_failed', method: 'files.upload' };
+    }
+    const done = await this.call('files.completeUploadExternal', {
       files: [{ id: up.file_id, title: title || filename || 'image.png' }],
       channel_id: channelId,
       initial_comment: comment || '',
     });
+    if (!done.ok) return { ...done, method: 'files.completeUploadExternal' };
+    return done;
   }
 }
 

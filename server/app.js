@@ -614,6 +614,12 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
 
+  app.get('/wanted/:id.png', (req, res) => {
+    const png = wanted.readPublic(req.params.id);
+    if (!png) return res.status(404).type('text').send('Not found');
+    res.set({ 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+    res.type('image/png').end(png);
+  });
   app.get('/privacy', (req, res) => res.type('html').send(PRIVACY_HTML));
   app.get('/terms', (req, res) => res.type('html').send(TERMS_HTML));
   if (staticDir && fs.existsSync(path.join(staticDir, 'index.html'))) {
@@ -669,6 +675,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { elhalo.shutdown(); unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  const shutdown = () => { elhalo.shutdown(); unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); wanted.shutdown(); };
   return { app, service, shutdown, bj, scum, telemetry, elhalo };
 }
