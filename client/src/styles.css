@@ -393,6 +393,7 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 }
 .tb-bug.is-idle:not(.still) { animation: tb-cool 5.2s ease-in-out infinite; }
 .tb-sprite { width: 100%; height: 100%; display: block; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
+.tb-sprite.hi-res { image-rendering: auto; }
 .tb-ph { background: radial-gradient(circle at 50% 45%, #86a05a, #3a4a28 70%); border-radius: 40% 40% 35% 35%; }
 .tb-shades {
   position: absolute; left: 22%; top: 22%; width: 56%; height: 16%; border-radius: 40% / 50%;

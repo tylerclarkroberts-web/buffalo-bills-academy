@@ -9,7 +9,7 @@ import { goToMines } from '../App.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { movesFor, STANCES, riskFor } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
-import { drawBug, drawGrave, youngForm } from './sprite.js';
+import { drawBug, drawGrave, youngForm, evolutionMeta, isHiResEvo, onSpriteReady } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip } from './BugCard.jsx';
@@ -111,10 +111,12 @@ function Stage({ pen, poke, reduced }) {
       id = requestAnimationFrame(draw);
     };
     if (ref.current) delete ref.current.dataset.drawn;
+    const unsub = onSpriteReady(() => { if (ref.current) delete ref.current.dataset.drawn; });
     id = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(id);
+    return () => { cancelAnimationFrame(id); unsub(); };
   }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
-  return <canvas ref={ref} className="barn-canvas" data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
+  const hiRes = pen.stage === 'creature' && isHiResEvo(BY_ID[pen.species], pen.style);
+  return <canvas ref={ref} className={`barn-canvas${hiRes ? ' hi-res' : ''}`} data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
 }
 
 const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -122,12 +124,17 @@ const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now
 function BugThumb({ bug }) {
   const ref = useRef(null);
   useEffect(() => {
-    const c = ref.current, kind = BY_ID[bug.species]; if (!c || !kind) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1); c.width = 56 * dpr; c.height = 46 * dpr;
-    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
-    drawBug(x, kind, { w: c.width, h: c.height, still: true, style: bug.style, level: bug.level });
+    const paint = () => {
+      const c = ref.current, kind = BY_ID[bug.species]; if (!c || !kind) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1); c.width = 56 * dpr; c.height = 46 * dpr;
+      const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+      drawBug(x, kind, { w: c.width, h: c.height, still: true, style: bug.style, level: bug.level });
+    };
+    paint();
+    return onSpriteReady(paint);
   }, [bug.species, bug.level, JSON.stringify(bug.style || null)]);
-  return <canvas ref={ref} className="barn-thumb" aria-hidden="true" />;
+  const hiRes = isHiResEvo(BY_ID[bug.species], bug.style);
+  return <canvas ref={ref} className={`barn-thumb${hiRes ? ' hi-res' : ''}`} aria-hidden="true" />;
 }
 
 /** Your stalls: every bug you keep, the partner starred. Picking one shows it below; the last slot builds another. */
@@ -290,7 +297,10 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
       <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
       {pen.title && <span className="small barn-title">{pen.title}</span>}
-      {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : ''}</span>}
+      {pen.evo > 0 && (() => {
+        const meta = evolutionMeta(BY_ID[pen.species], pen.evo, !!pen.botched);
+        return <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : meta?.cultureLabel ? ` · ${meta.cultureLabel}` : ''}</span>;
+      })()}
       {stable.bugs.length > 1 && (pen.partner ? <span className="bs-partner small" data-test="barn-partner">★ Partner</span>
         : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
     </div>

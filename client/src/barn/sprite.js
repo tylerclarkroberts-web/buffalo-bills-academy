@@ -3,11 +3,14 @@
 // one-pixel outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
-import { drawEvolution } from './evolutionArt.js';
+import { drawEvolution, evolutionMeta } from './evolutionArt.js';
+export { evolutionMeta };
 export const SPRITE = 64;
 // Big sprites are drawn on a grid FINE times as dense: the same shapes, written in the same 64-grid coordinates, with
 // smoother edges, a thinner outline and two more tones of shading. Small ones (thumbnails, far-off billboards) keep 64.
 export const FINE = 2;
+export const EVO_COARSE = 256;
+export const EVO_FINE = 512;
 /** The grid to draw a sprite on when it will be shown `s` pixels across: the fine one once each of its pixels gets a whole screen pixel. */
 export const fineFor = (s) => (s >= SPRITE * FINE ? FINE : 1);
 
@@ -500,51 +503,141 @@ function paintWear(ctx, wear, body, outline) {
     ctx.fillRect(x, y, 1, 1);
   }
 }
+
+function paintWearScaled(ctx, wear, body, outline, N, fine) {
+  const big = fine !== 1 ? scale2x(wear) : wear, M = big.length, step = N / M, on = (x, y) => !!big[y]?.[x];
+  for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) {
+    const v = big[y][x];
+    if (v) ctx.fillStyle = !on(x, y - 1) || !on(x - 1, y) ? mix(v, '#ffffff', 0.3) : !on(x, y + 1) || !on(x + 1, y) ? mix(v, '#000000', 0.3) : v;
+    else if (!body?.[y]?.[x] && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1))) ctx.fillStyle = outline;
+    else continue;
+    ctx.fillRect(x * step, y * step, step, step);
+  }
+}
+
+const readyListeners = new Set();
+const evoImages = new Map();
+
+/** Subscribe to async high-res sprite upgrades; returns an unsubscribe callback. */
+export function onSpriteReady(fn) {
+  readyListeners.add(fn);
+  return () => { readyListeners.delete(fn); };
+}
+
+/** True when this bug/style resolves to a pre-rendered high-res WebP sprite. */
+export function isHiResEvo(bug, style) {
+  const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
+  return !!evolutionMeta(bug, stage, stage > 0 && !!style?.botched)?.src;
+}
+
+function loadEvoImage(src, onLoad) {
+  if (!src || typeof Image === 'undefined') return;
+  let entry = evoImages.get(src);
+  if (entry) {
+    if (entry.status === 'ready') onLoad(entry.img);
+    else if (entry.status === 'loading') entry.cbs.push(onLoad);
+    return;
+  }
+  entry = { status: 'loading', img: null, cbs: [onLoad] };
+  evoImages.set(src, entry);
+  const img = new Image();
+  img.decoding = 'async';
+  img.onload = () => {
+    entry.status = 'ready';
+    entry.img = img;
+    const list = entry.cbs.splice(0);
+    for (const cb of list) cb(img);
+  };
+  img.onerror = () => {
+    entry.status = 'error';
+    entry.cbs.length = 0;
+  };
+  img.src = src;
+}
+
 /**
  * The bug's sprite, cached by species, life stage and look, with its accessories: 64x64, or 64 x `fine` a side for
- * a big drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
+ * a big drawing (fineFor); high-res evolved bugs upgrade to 256/512 WebPs once loaded.
  */
 export function spriteCanvas(bug, style, level, fine = 1) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
   const botched = stage > 0 && !!style?.botched;
   const artLevel = stage ? undefined : level;
-  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}`;
+  const meta = evolutionMeta(bug, stage, botched);
+  const hiAsset = !!meta?.src;
+  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${hiAsset ? meta.key : ''}|${fine}`;
   if (cache.has(key)) return cache.get(key);
   const L = lookOf(bug, artLevel), R = ramps(style?.bugskin?.pal ?? L.pal ?? DEFAULT_PAL);
-  const art = spriteArt(L, fine, stage, botched), N = SPRITE * fine;
+  const art = spriteArt(L, fine, stage, botched);
+  const N = hiAsset ? (fine > 1 ? EVO_FINE : EVO_COARSE) : SPRITE * fine;
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : Object.assign(document.createElement('canvas'), { width: N, height: N });
   const ctx = c.getContext('2d'), body = shade(art.g, R, art.part, art.etch);
   paintSprite(ctx, body, 0, 0, N);
-  if (!style?.defense?.shape && !style?.gear?.shape && !style?.bugacc?.shape && !style?.bughat?.shape) {
-    cache.set(key, c);
-    return c;
+  const hasWear = !!(style?.defense?.shape || style?.gear?.shape || style?.bugacc?.shape || style?.bughat?.shape);
+  let wear = null;
+  if (hasWear) {
+    // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine/hi-res canvas then redraws
+    const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched);
+    const grid = fine === 1 ? body : shade(coarse.g, R, coarse.part, coarse.etch);
+    wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
+    const direct = !hiAsset && fine === 1;
+    const x = direct ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
+    if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape, stage); // defense gear goes on first, the attack item over it
+    if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape, stage);
+    if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eyeSpot(coarse.g));
+    if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
+    if (hiAsset) paintWearScaled(ctx, wear, body, R.o, N, fine);
+    else if (fine !== 1) paintWear(ctx, wear, body, R.o);
   }
-  // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
-  const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched);
-  const grid = fine === 1 ? body : shade(coarse.g, R, coarse.part, coarse.etch);
-  const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
-  const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
-  if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape, stage); // defense gear goes on first, the attack item over it
-  if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape, stage);
-  if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eyeSpot(coarse.g));
-  if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
-  if (fine !== 1) paintWear(ctx, wear, body, R.o);
+  c._rev = 0;
+  c._hiRes = false;
   cache.set(key, c);
+  if (hiAsset) {
+    const paintHiRes = (img, notify) => {
+      ctx.clearRect(0, 0, N, N);
+      ctx.save?.();
+      ctx.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, N, N);
+      ctx.restore?.();
+      if (wear) {
+        ctx.imageSmoothingEnabled = false;
+        paintWearScaled(ctx, wear, null, R.o, N, fine);
+      }
+      c._hiRes = true;
+      c._rev = (c._rev || 0) + 1;
+      if (notify) for (const fn of readyListeners) fn(c);
+    };
+    let sync = true;
+    loadEvoImage(meta.src, (img) => paintHiRes(img, !sync));
+    sync = false;
+  }
   return c;
 }
 /**
- * A three.js texture of the bug for a 3D scene (pass the THREE module): the fine sprite up close, with the 64 one
- * as its only smaller level, so a bug drawn small or far off looks exactly as it always did. Both stay pixel-crisp.
+ * A three.js texture of the bug for a 3D scene (pass the THREE module): Stage I and procedural sprites keep pixel
+ * mipmaps (`NearestFilter`); high-res evolved WebP sprites use smooth mipmapped filtering and auto-refresh on load.
  */
 export function bugTexture(THREE, bug, style, level) {
-  const levels = [spriteCanvas(bug, style, level, FINE), spriteCanvas(bug, style, level)], map = new THREE.CanvasTexture(levels[0]);
-  map.mipmaps = levels; map.generateMipmaps = false; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter;
-  map.colorSpace = THREE.SRGBColorSpace;
+  if (!isHiResEvo(bug, style)) {
+    const levels = [spriteCanvas(bug, style, level, FINE), spriteCanvas(bug, style, level)], map = new THREE.CanvasTexture(levels[0]);
+    map.mipmaps = levels; map.generateMipmaps = false; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter;
+    map.colorSpace = THREE.SRGBColorSpace;
+    return map;
+  }
+  const img = spriteCanvas(bug, style, level, FINE), map = new THREE.CanvasTexture(img);
+  map.magFilter = THREE.LinearFilter; map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.generateMipmaps = true; map.colorSpace = THREE.SRGBColorSpace;
+  const unsub = onSpriteReady((ready) => { if (ready === img) map.needsUpdate = true; });
+  map.addEventListener('dispose', unsub);
   return map;
 }
-/** Draws a growing bug with nearest-neighbour pixels, a little idle bob and a hop when poked. */
+/** Draws a growing bug (nearest-neighbour for Stage I/botched pixel art, high-quality smoothed for high-res WebPs). */
 export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip = false, fill = 0.82, style = null, level }) {
-  const adultSize = Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)) * SPRITE;
+  const hiRes = isHiResEvo(bug, style);
+  const adultSize = hiRes
+    ? Math.max(SPRITE, Math.round(Math.min(w, h) * fill))
+    : Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)) * SPRITE;
   const s = Math.round(adultSize * bugScale(level)), px = s / SPRITE;
   const bob = still ? 0 : Math.round(Math.sin(t / 420) * px * 1.2);
   const hop = Math.round(Math.sin(Math.min(1, poke) * Math.PI) * px * 6);
@@ -552,7 +645,8 @@ export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip =
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,.35)';
   ctx.beginPath(); ctx.ellipse(w / 2, (h + adultSize) / 2 + h * 0.02, s * 0.36 * (1 - hop / (s || 1)), s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = hiRes;
+  if (hiRes && 'imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
   if (flip) { ctx.translate(w, 0); ctx.scale(-1, 1); }
   ctx.drawImage(spriteCanvas(bug, style, level, fineFor(s)), ox, oy, s, s);
   ctx.restore();
