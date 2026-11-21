@@ -1,4 +1,5 @@
-// Queue of tables where the current player is up (Hold'em, blackjack, and Scum).
+// Queue of tables where the current player is up (Hold'em and Scum). Blackjack is listed
+// by blackjackSource() for other callers, but listTurns() — the Your turns / Up Next queue — omits it.
 //
 // Scum is plugged in from app.js with registerTurnSource(scumSource(scum)).
 // Do not edit the holdem or blackjack adapters. Invite links are /scum/CODE.
@@ -233,5 +234,23 @@ export function collectTurns({ player, now, sources }) {
 /** Built-in Hold'em + blackjack sources, plus anything registered (Scum via registerTurnSource). */
 export function listTurns({ player, service, bj, now, sources } = {}) {
   const src = sources || [holdemSource(service), blackjackSource(bj), sweepSource(service), ...extra];
-  return collectTurns({ player, now, sources: src });
+  // Blackjack stays out of the Your turns / Up Next queue: it is almost always your turn there.
+  // collectTurns() and blackjackSource() are unchanged so other callers can still list a BJ action.
+  return collectTurns({ player, now, sources: src }).filter((row) => row.game !== 'blackjack');
+}
+
+/** Same "your turn" as Up Next, for the wanted-poster shame count: no blackjack, no bot tables, no sweep fakes. */
+export function listShameTurns({ player, service, now, tableHasBots, scumTables } = {}) {
+  const src = [holdemSource(service), ...extra];
+  const rows = collectTurns({ player, now, sources: src });
+  const holdemOf = (code) => service?.store?.getTable?.(code) || (service?.store?.allTables?.() || []).find((x) => x.code === code);
+  const scumOf = (code) => {
+    if (typeof scumTables === 'function') return (scumTables() || []).find((x) => x.code === code);
+    return service?.scum?.doc?.tables?.[code] || service?.scum?.table?.(code) || null;
+  };
+  const hasBots = typeof tableHasBots === 'function' ? tableHasBots : () => false;
+  return rows.filter((row) => {
+    const t = row.game === 'scum' ? scumOf(row.code) : holdemOf(row.code);
+    return t && !hasBots(t);
+  });
 }

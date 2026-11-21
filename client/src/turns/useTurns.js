@@ -13,7 +13,7 @@ export async function refreshTurns() {
   inFlight = true;
   try {
     const r = await api('GET', '/turns');
-    state = { turns: r.turns || [] };
+    state = { turns: (r.turns || []).filter((t) => t.game !== 'blackjack') };
     emit();
   } catch { /* keep the last good list */ }
   finally { inFlight = false; }

@@ -120,6 +120,17 @@ test('mixed games sort oldest first, and a Scum adapter can plug in', () => {
   ]);
 });
 
+test('listTurns omits blackjack; collectTurns still returns it when a source is passed', () => {
+  const p = { id: 'p1' };
+  const tables = [holdem({ code: 'H1', name: 'Hold', hand: { toAct: 0, deadline: 30_000, startedAt: 20_000 } })];
+  const service = fakeService(tables);
+  const bj = { doc: { tables: { a: bjTable({ code: 'B1', name: 'BJ', round: { phase: 'play', turn: 0, deadline: 25_000, hands: [{ seat: 0, done: false }] } }) } } };
+  const collected = collectTurns({ player: p, now: 22_000, sources: [holdemSource(service), blackjackSource(bj)] });
+  assert.deepEqual(collected.map((r) => r.game), ['blackjack', 'holdem']);
+  const queued = listTurns({ player: p, service, bj, now: 22_000 });
+  assert.deepEqual(queued.map((r) => [r.game, r.code]), [['holdem', 'H1']]);
+});
+
 test('registerTurnSource is the hook a later Scum PR uses', () => {
   const p = { id: 'p1' };
   const off = registerTurnSource({
@@ -179,7 +190,7 @@ async function boot(t) {
   return { service, bj, clock, base, client, player };
 }
 
-test('GET /turns is auth-gated and lists holdem + blackjack in waiting order', async (t) => {
+test('GET /turns is auth-gated and lists holdem in waiting order, but never blackjack', async (t) => {
   const s = await boot(t);
   assert.equal((await s.client().get('/turns')).status, 401);
   const host = await s.player('Tyler');
@@ -212,7 +223,7 @@ test('GET /turns is auth-gated and lists holdem + blackjack in waiting order', a
   assert.equal(hold[0].action, 'play');
   assert.ok(hold[0].waitingSince <= hold[hold.length - 1]?.waitingSince || hold.length === 1);
 
-  // A blackjack table where it's their bet is also in the same list, behind older hold'em waits.
+  // A blackjack table where it's their bet must not join the Up Next list.
   const bj = await actor.api.post('/bj/tables', { name: 'Felt', settings: { house: 'player' } });
   assert.equal(bj.status, 200, JSON.stringify(bj.body));
   const code = bj.body.code || bj.body.table?.code || Object.keys(s.bj.doc.tables)[0];
@@ -230,12 +241,9 @@ test('GET /turns is auth-gated and lists holdem + blackjack in waiting order', a
   const all = (await actor.api.get('/turns')).body.turns;
   const kinds = new Set(all.map((r) => r.game));
   assert.ok(kinds.has('holdem'));
-  // Betting is a pending action once a round is open and they have not bet.
-  const bjRow = all.find((r) => r.game === 'blackjack');
-  if (bjRow) {
-    assert.equal(bjRow.path, `/bj/${bjRow.code}`);
-    assert.ok(['bet', 'play', 'insurance'].includes(bjRow.action));
-  }
+  // Blackjack stays out of the Your turns / Up Next queue even when this player is up there.
+  assert.ok(!kinds.has('blackjack'), 'blackjack must not appear in Up Next');
+  assert.ok(!all.some((r) => String(r.path || '').startsWith('/bj/')), 'no /bj/ paths in the queue');
 });
 
 test('after a holdem action with nothing left at that table, it drops off the queue', async (t) => {

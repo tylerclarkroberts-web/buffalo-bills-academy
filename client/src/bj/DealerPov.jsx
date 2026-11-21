@@ -280,7 +280,7 @@ export function TipBar({ canTip, onTip, busy, tip }) {
   if (!canTip) return null;
   return (
     <div className="bj-tips" data-test="bj-tips">
-      <span className="small dim">Tip the dealer</span>
+      <span className="small dim bj-tips-lbl">Tip</span>
       {[1, 5, 25].map((n) => (
         <button key={n} className="btn small" disabled={busy} onClick={() => onTip(n)} data-test={`bj-tip-${n}`}>${n}</button>
       ))}

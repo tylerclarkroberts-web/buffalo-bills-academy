@@ -36,6 +36,7 @@ import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
 import { listTurns, registerTurnSource, scumSource } from './turns.js';
+import { WantedShame, SAMPLE_NAME } from './wanted.js';
 import { applyHtmlMeta } from './pageMeta.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
@@ -118,6 +119,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   bj.onChange = (t, actorId) => slack.bjChanged(t, actorId);
   slack.scumSource = { all: () => Object.values(scum.doc?.tables || {}) };
   scum.onChange = (t, actorId) => slack.scumChanged(t, actorId);
+  const wanted = new WantedShame({ service, slack, env });
+  slack.wanted = wanted;
+  service.wanted = wanted;
   watchBlackjack(bj, telemetry);
   telemetry.backfill(service.store.players);
   mines.onShiftStart = (id, s, fare) => telemetry.shiftStart(id, s, fare);
@@ -492,7 +496,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest) api.post('/dev/bj-rig', needPlayer, wrap((req) => {
     const t = bj.table(req.body?.code); if (t.hostId !== req.player.id && t.house.id !== req.player.id) throw new GameError('no', 403);
     const deck = req.body?.deck; if (!Array.isArray(deck) || deck.length < 4) throw new GameError('Need a deck.', 400);
-    t.deck = deck; bj.save(); return { ok: true, left: t.deck.length };
+    t.deck = deck.slice();
+    if (t.lanes) for (const l of Object.values(t.lanes)) l.deck = deck.slice();
+    bj.save(); return { ok: true, left: t.deck.length };
   }));
   if (barnTest) api.post('/dev/bj-pit', needPlayer, wrap((req) => bj.forcePit(req.player, req.body?.code, req.body || {})));
   api.get('/shop', needPlayer, wrap((req) => shop.view(req.player)));
@@ -571,6 +577,30 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (typeof req.body?.enabled !== 'boolean') throw new GameError('enabled must be true or false', 400);
     return bj.setPovEnabled(req.body.enabled);
   }));
+  api.get('/admin/wanted', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.json(wanted.status());
+  });
+  api.post('/admin/wanted', needPlayer, wrap((req) => {
+    if (!isAdmin(req, adminCfg)) { const e = new GameError('Not found', 403); throw e; }
+    const body = req.body || {};
+    const patch = {};
+    if (body.enabled !== undefined) patch.enabled = !!body.enabled;
+    if (body.channel !== undefined) patch.channel = String(body.channel);
+    return wanted.setConfig(patch);
+  }));
+  api.get('/admin/wanted-poster', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    try {
+      const name = String(req.query.name || SAMPLE_NAME).slice(0, 40);
+      const png = wanted.previewPng({ name });
+      res.set('Cache-Control', 'no-store');
+      res.type('image/png').end(png);
+    } catch (e) {
+      res.status(500).json({ error: 'Could not render the sample poster' });
+    }
+  });
+
   mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, getCtx: () => ({
     now: service.now(), players: service.store.players, ledger: telemetry.readLedger(), events: telemetry.readEvents(), access: telemetry.doc, worth: netWorth,
     docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc } }) });

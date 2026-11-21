@@ -451,16 +451,18 @@ function BjTable({ code, me }) {
             : !mine ? <span className="small dim">{v.house.isMe ? (dealingNow ? "You're dealing. Watch the felt — a Kash Bet will light up here." : 'You are the house: open this table to deal and catch Kash Bets.') : 'Watching.'} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
             : ins && ready ? <div className="bj-acts"><span className="small">Insurance costs {money(Math.floor((r.hands.find((h) => h.seat === v.mySeat)?.bet || 0) / 2))}, pays 2:1</span><button className="btn" onClick={() => post('insure', { yes: true })} data-test="bj-ins-yes">Insure</button><button className="btn ghost" onClick={() => post('insure', { yes: false })} data-test="bj-ins-no">No thanks</button></div>
             : r.myTurn && ready ? <div className="bj-acts" data-test="bj-acts">
-                <button className="btn primary" disabled={busy} onClick={() => act('hit')} data-test="bj-hit">Hit</button>
-                <button className="btn" disabled={busy} onClick={() => act('stand')} data-test="bj-stand">Stand</button>
-                <button className={`btn ${r.can?.double ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.double} onClick={() => act('double')} data-test="bj-double" aria-hidden={!r.can?.double} title="Double down: one more card, then you stand">Double</button>
-                <button className={`btn ${r.can?.split ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.split} onClick={() => act('split')} data-test="bj-split" aria-hidden={!r.can?.split}>Split</button>
-                <button className={`btn ghost ${r.can?.surrender ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.surrender} onClick={() => act('surrender')} data-test="bj-surrender" aria-hidden={!r.can?.surrender}>Surrender</button>
-                <KashButtons v={v} r={r} post={post} />
+                <div className="bj-acts-main">
+                  <button className="btn primary" disabled={busy} onClick={() => act('hit')} data-test="bj-hit">Hit</button>
+                  <button className="btn" disabled={busy} onClick={() => act('stand')} data-test="bj-stand">Stand</button>
+                  <button className={`btn ${r.can?.double ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.double} onClick={() => act('double')} data-test="bj-double" aria-hidden={!r.can?.double} title="Double down: one more card, then you stand">Double</button>
+                  <button className={`btn ${r.can?.split ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.split} onClick={() => act('split')} data-test="bj-split" aria-hidden={!r.can?.split}>Split</button>
+                  <button className={`btn ghost ${r.can?.surrender ? '' : 'bj-ghosted'}`} disabled={busy || !r.can?.surrender} onClick={() => act('surrender')} data-test="bj-surrender" aria-hidden={!r.can?.surrender}>Surrender</button>
+                </div>
               </div>
             : r.phase === 'betting' && !myBet ? <BetBar min={v.limits.min} max={maxNow} royal={v.royal} bet={clampBet(bet)} setBet={(x) => setBet(clampBet(x))} side={side} setSide={setSide}
                 onBet={(b, rs) => { localStorage.setItem('bba.bj.bet', String(b)); post('bet', { bet: b, royal: rs }); }} onSitout={v.continuous ? null : () => post('sitout')} />
-            : <span className="small dim">{status}… {ready && <KashButtons v={v} r={r} post={post} />}</span>}
+            : <span className="small dim">{status}…</span>}
+          {v.status === 'playing' && mine && ready && <KashButtons v={v} r={r} post={post} />}
           <TipBar canTip={v.canTip} busy={busy} tip={v.tip} onTip={async (amount) => {
             setBusy(true);
             try { const id = (crypto.randomUUID && crypto.randomUUID()) || `${me.id}:${Date.now()}`; const res = await post('tip', { amount, id }); if (res) sfx.chip(); } finally { setBusy(false); }

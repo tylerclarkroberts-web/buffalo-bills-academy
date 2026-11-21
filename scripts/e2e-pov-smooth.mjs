@@ -15,6 +15,8 @@ const OUT = process.env.SMOOTH_OUT || path.join('/workspace/bba-dealer-pov-shots
 const PORT = 4350 + Math.floor(Math.random() * 9);
 const B = `http://localhost:${PORT}`;
 const RECORD_MS = Number(process.env.RECORD_MS || 42000);
+const STILLS_ONLY = process.env.STILLS_ONLY === '1';
+const ONLY = (process.env.KINDS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-pov-smooth-'));
 const srv = spawn(process.execPath, ['server/index.js'], {
   cwd: ROOT,
@@ -84,7 +86,7 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
     ...(device || {}),
     viewport: size,
     reducedMotion: 'no-preference',
-    recordVideo: { dir: videoDir, size },
+    ...(STILLS_ONLY ? {} : { recordVideo: { dir: videoDir, size } }),
   });
   await ctx.addCookies([{ name: 'bba_sid', value: admin.sid, url: B }]);
   await ctx.addInitScript(() => {
@@ -170,7 +172,7 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
     fs.copyFileSync(saved, destVid);
     try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch { /* */ }
   }
-  const media = process.env.METRICS_ONLY ? { skipped: true } : transcode(saved && fs.existsSync(destVid) ? destVid : saved, path.join(OUT, kind));
+  const media = (process.env.METRICS_ONLY || STILLS_ONLY) ? { skipped: true } : transcode(saved && fs.existsSync(destVid) ? destVid : saved, path.join(OUT, kind));
   const st = stats(metrics.frames);
   const report = { tag: TAG, kind, engine: metrics.engine, reportedFps: metrics.fps, viewport: size, stats: st, hitches: metrics.hitches || [], media, stills: fs.readdirSync(OUT).filter((n) => n.startsWith(`${kind}-`) && n.endsWith('.png')) };
   fs.writeFileSync(path.join(OUT, `${kind}-metrics.json`), JSON.stringify(report, null, 2));
@@ -194,14 +196,14 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
       ['webkit-iphone-13', 'iPhone 13'],
       ['webkit-iphone-15', 'iPhone 15'],
       ['webkit-iphone-15-landscape', 'iPhone 15 landscape'],
-    ]) {
+    ].filter(([kind]) => !ONLY.length || ONLY.includes(kind))) {
       const device = devices[name];
       if (!device) throw new Error(`missing Playwright device ${name}`);
       reports.push(await recordOne({ browser, kind, device, admin }));
     }
     await browser.close();
   }
-  {
+  if (!ONLY.length || ONLY.includes('chrome-mobile')) {
     const browser = await chromium.launch({
       executablePath: process.env.CHROME || '/usr/bin/google-chrome',
       args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
