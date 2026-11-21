@@ -5,7 +5,7 @@ export const GESTURE_KINDS = ['hit', 'stand', 'double', 'split', 'surrender', 'i
 
 const LOG_KIND = { hit: 'hit', stand: 'stand', double: 'double', split: 'split', surrender: 'surrender', ins: 'insurance' };
 
-export const GESTURE_MS = { hit: 1100, stand: 1000, double: 1200, split: 1200, surrender: 900, insurance: 900 };
+export const GESTURE_MS = { hit: 1400, stand: 1300, double: 1500, split: 1500, surrender: 1100, insurance: 1100 };
 
 export function gestureDuration(kind) { return GESTURE_MS[kind] || 800; }
 /** Milliseconds to hold the incoming card or chip change so the signal can read first. */
@@ -35,36 +35,45 @@ export const REST = {
   curlL: [0.15, 0.18, 0.2, 0.22, 0.3],
   curlR: [0.15, 0.18, 0.2, 0.22, 0.3],
   push: 0, // left hand shoves a second stack forward, 0–1
+  lean: 0, // torso lean toward the dealer / felt, 0–1
+  reachR: 0, reachL: 0, // arm reach over the rail, 0–1
 };
+
+export function easeInOut(t) { const x = Math.max(0, Math.min(1, t)); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
+export function easeOutBack(t) { const x = Math.max(0, Math.min(1, t)); const c = 1.70158; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); }
+export function easeOutCubic(t) { const x = Math.max(0, Math.min(1, t)); return 1 - Math.pow(1 - x, 3); }
 
 const KEYS = {
   hit: [
     { t: 0, ...REST },
-    { t: 0.16, armR: [0.95, 0.05, -0.15], elR: [-0.35], wrR: [-0.15, 0, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
-    { t: 0.34, armR: [1.2, 0.08, -0.18], elR: [-0.15], wrR: [0.25, 0, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
-    { t: 0.5, armR: [0.95, 0.1, -0.12], elR: [-0.28], wrR: [-0.15, 0.15, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
-    { t: 0.66, armR: [1.2, 0.12, -0.18], elR: [-0.12], wrR: [0.28, 0.2, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.12, lean: 0.25, reachR: 0.3, armR: [0.85, 0.05, -0.15], elR: [-0.4], wrR: [-0.1, 0, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.28, lean: 0.7, reachR: 1, armR: [1.05, 0.08, -0.2], elR: [-0.2], wrR: [0.2, 0, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.34, lean: 0.75, reachR: 1, armR: [1.25, 0.08, -0.22], elR: [-0.08], wrR: [0.32, 0, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.48, lean: 0.55, reachR: 0.75, armR: [0.95, 0.1, -0.12], elR: [-0.28], wrR: [-0.15, 0.15, 0], curlR: [0.05, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.62, lean: 0.75, reachR: 1, armR: [1.25, 0.12, -0.2], elR: [-0.08], wrR: [0.32, 0.2, 0], curlR: [-0.15, 0.85, 0.9, 0.9, 0.5] },
+    { t: 0.82, lean: 0.2, reachR: 0.2, armR: [0.85, 0, -0.2], elR: [-0.5], wrR: [0.1, 0, 0], curlR: [0.1, 0.3, 0.3, 0.3, 0.35] },
     { t: 1, ...REST },
   ],
   stand: [
     { t: 0, ...REST },
-    { t: 0.2, armR: [0.15, 0.15, 0.15], elR: [-0.2], wrR: [1.0, 0, 0], curlR: [0.05, 0.05, 0.05, 0.05, 0.2] },
-    { t: 0.4, armR: [0.1, 0.75, 0.15], elR: [-0.1], wrR: [1.05, 0.35, 0], curlR: [0, 0, 0, 0, 0.2] },
-    { t: 0.62, armR: [0.1, -0.55, 0.15], elR: [-0.1], wrR: [1.05, -0.3, 0], curlR: [0, 0, 0, 0, 0.2] },
+    { t: 0.16, lean: 0.2, reachR: 0.45, armR: [0.2, 0.15, 0.1], elR: [-0.2], wrR: [1.0, 0, 0], curlR: [0.05, 0.05, 0.05, 0.05, 0.2] },
+    { t: 0.4, lean: 0.35, reachR: 0.9, armR: [0.15, 0.85, 0.12], elR: [-0.08], wrR: [1.15, 0.4, 0], curlR: [0, 0, 0, 0, 0.2] },
+    { t: 0.62, lean: 0.35, reachR: 0.9, armR: [0.15, -0.7, 0.12], elR: [-0.08], wrR: [1.15, -0.35, 0], curlR: [0, 0, 0, 0, 0.2] },
+    { t: 0.8, lean: 0.2, reachR: 0.5, armR: [0.2, 0.2, 0.1], elR: [-0.2], wrR: [1.0, 0.1, 0], curlR: [0, 0, 0, 0, 0.2] },
     { t: 1, ...REST },
   ],
   double: [
     { t: 0, ...REST },
-    { t: 0.22, armL: [0.4, 0.25, 0.4], elL: [-0.35], push: 0.4, armR: [0.3, -0.15, -0.2], elR: [-0.45], curlR: [0.05, 0.9, 0.9, 0.9, 0.45] },
-    { t: 0.5, armL: [0.25, 0.3, 0.45], elL: [-0.15], push: 1, armR: [-0.85, -0.2, 0.1], elR: [-0.12], wrR: [0.15, 0, 0], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
-    { t: 0.78, armL: [0.3, 0.25, 0.35], elL: [-0.25], push: 1, armR: [-0.85, -0.2, 0.1], elR: [-0.12], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
+    { t: 0.16, lean: 0.25, reachL: 0.4, armL: [0.4, 0.25, 0.4], elL: [-0.35], push: 0.25, armR: [0.3, -0.15, -0.2], elR: [-0.45], curlR: [0.05, 0.9, 0.9, 0.9, 0.45] },
+    { t: 0.5, lean: 0.45, reachL: 0.85, reachR: 0.3, armL: [0.2, 0.3, 0.45], elL: [-0.12], push: 1, armR: [-0.95, -0.2, 0.1], elR: [-0.1], wrR: [0.15, 0, 0], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
+    { t: 0.78, lean: 0.4, reachL: 0.7, armL: [0.28, 0.25, 0.35], elL: [-0.25], push: 1, armR: [-0.95, -0.2, 0.1], elR: [-0.1], curlR: [-0.1, 0.95, 0.95, 0.95, 0.5] },
     { t: 1, ...REST },
   ],
   split: [
     { t: 0, ...REST },
-    { t: 0.22, armL: [0.4, 0.25, 0.4], elL: [-0.35], push: 0.4, armR: [0.2, -0.1, -0.15], elR: [-0.25], wrR: [0.5, 0, 0], curlR: [0.05, 0.05, 0.9, 0.9, 0.4] },
-    { t: 0.5, armL: [0.25, 0.3, 0.45], elL: [-0.15], push: 1, armR: [-0.55, -0.15, 0.08], elR: [-0.08], wrR: [0.65, 0, 0], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
-    { t: 0.78, armL: [0.3, 0.25, 0.35], elL: [-0.25], push: 1, armR: [-0.55, -0.15, 0.08], elR: [-0.08], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
+    { t: 0.16, lean: 0.2, reachL: 0.45, reachR: 0.45, armL: [0.4, 0.25, 0.4], elL: [-0.35], push: 0.4, armR: [0.2, -0.1, -0.15], elR: [-0.25], wrR: [0.5, 0, 0], curlR: [0.05, 0.05, 0.9, 0.9, 0.4] },
+    { t: 0.5, lean: 0.4, reachL: 0.9, reachR: 0.9, armL: [0.2, 0.35, 0.5], elL: [-0.12], push: 1, armR: [-0.65, -0.15, 0.08], elR: [-0.06], wrR: [0.7, 0, 0], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
+    { t: 0.78, lean: 0.35, reachL: 0.7, reachR: 0.7, armL: [0.28, 0.25, 0.35], elL: [-0.25], push: 1, armR: [-0.65, -0.15, 0.08], elR: [-0.06], curlR: [-0.05, -0.05, 0.95, 0.95, 0.45] },
     { t: 1, ...REST },
   ],
   surrender: [
@@ -99,6 +108,9 @@ function mix(a, b, t) {
     curlL: lerpArr(a.curlL || REST.curlL, b.curlL || REST.curlL, t),
     curlR: lerpArr(a.curlR || REST.curlR, b.curlR || REST.curlR, t),
     push: lerpNum(a.push || 0, b.push || 0, t),
+    lean: lerpNum(a.lean || 0, b.lean || 0, t),
+    reachR: lerpNum(a.reachR || 0, b.reachR || 0, t),
+    reachL: lerpNum(a.reachL || 0, b.reachL || 0, t),
   };
 }
 

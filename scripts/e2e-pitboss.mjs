@@ -140,6 +140,7 @@ try {
   await D.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
   await shooFaun(D);
   await waitWebgl(D, 'desktop');
+  await wait(1300);
   check(await D.locator('[data-test=bj-guntrad]').count() === 0, 'desktop: Guntrad is not in the dealer view');
   check(await D.locator('[data-test=bj-autopilot]').count() > 0, 'desktop: Autopilot toggle is there');
   check(await D.locator('[data-test=bj-pov-canvas]').count() > 0, 'desktop: 3D canvas is in the DOM');
@@ -193,10 +194,11 @@ try {
 
 
   const standAll = async () => {
+    await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true }).catch(() => {});
+    await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'deal' }).catch(() => {});
     for (const who of [ann, bea, cal, dee]) {
       await api(who, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' }).catch(() => {});
     }
-    // If a flip is still pending, finish it so the house can settle.
     await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'flip' }).catch(() => {});
     await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'draw' }).catch(() => {});
   };
@@ -273,8 +275,16 @@ try {
   await M.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
   await shooFaun(M);
   await waitWebgl(M, 'mobile');
-  await wait(400);
+  await wait(1300);
   await shot(M, 'mobile-dealer-pov');
+  if (OUT) {
+    try { await M.locator('[data-test=bj-pov-hud]').screenshot({ path: path.join(OUT, 'mobile-hud.png') }); } catch { await shot(M, 'mobile-hud'); }
+    try {
+      const act = M.locator('[data-test=bj-deal-next]');
+      if (await act.count()) await act.screenshot({ path: path.join(OUT, 'mobile-hud-action.png') });
+      else await M.locator('[data-test=bj-pov-hud-bottom]').screenshot({ path: path.join(OUT, 'mobile-hud-action.png') });
+    } catch { /* optional */ }
+  }
   await noScroll(M, 'mobile POV');
   const mobileFps = await readFps(M);
   console.log('fps mobile', mobileFps.toFixed(1));
@@ -305,6 +315,12 @@ try {
     await waitGesture(Mh, 'hit');
     await wait(280);
     await shot(Mh, 'mobile-hit-gesture');
+    if (OUT) {
+      try {
+        const act = Mh.locator('[data-test=bj-deal-next]');
+        if (await act.count()) await act.screenshot({ path: path.join(OUT, 'mobile-hud-action.png') });
+      } catch { /* optional */ }
+    }
     await close(Mh);
   } catch (e) { console.log('mobile hit skipped', e.message); }
 
@@ -358,11 +374,90 @@ try {
   await noScroll(Am, 'mobile tip');
   const aErrs = (Am.errs || []).filter((e) => !benign(e));
   check(aErrs.length === 0, `mobile ann page errors (${aErrs})`);
+  // Keep Ann's 2D page open through the film so she does not show as away.
+
+
+  // Mobile HUD action close-up: Deal is up when autopilot is off and bets are in.
+  try {
+    await readyToBet();
+    await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: false });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['9h', '5d'], ['7s', '8h'], ['Td', '6d'], ['4h', '9s']], '7c', '8s') });
+    for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
+    const Ma = await open(browser, house, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
+    await Ma.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
+    await shooFaun(Ma);
+    await waitWebgl(Ma, 'mobile-hud-action');
+    await Ma.waitForSelector('[data-test=bj-deal-next]', { timeout: 8000 });
+    await wait(200);
+    if (OUT) {
+      try { await Ma.locator('[data-test=bj-deal-next]').screenshot({ path: path.join(OUT, 'mobile-hud-action.png') }); } catch { /* */ }
+      try { await Ma.locator('[data-test=bj-pov-hud]').screenshot({ path: path.join(OUT, 'mobile-hud.png') }); } catch { /* */ }
+    }
+    await close(Ma);
+    await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
+    await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'deal' }).catch(() => {});
+  } catch (e) { console.log('mobile hud action skipped', e.message); }
+
+  // Full-hand film: deal, stand gestures, dealer finish, payout. Autopilot on.
+  const filmDir = OUT ? fs.mkdtempSync(path.join(os.tmpdir(), 'pov-film-')) : null;
+  let filmI = 0;
+  try {
+    await readyToBet();
+    await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rigHands([['9h', '5d'], ['7s', '8h'], ['Td', '6d'], ['4h', '9s']], 'Ts', '8c') });
+    const F = await open(browser, house, { w: 1280, h: 800 }, `/bj/${table.code}`);
+    await F.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
+    await shooFaun(F);
+    await waitWebgl(F, 'film');
+    await wait(1300);
+    for (const who of [ann, bea, cal, dee]) await api(who, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 }).catch(() => {});
+    const grab = async () => {
+      if (!filmDir) return;
+      filmI += 1;
+      await F.screenshot({ path: path.join(filmDir, `h${String(filmI).padStart(4, '0')}.png`) });
+    };
+    const cap = setInterval(() => { grab().catch(() => {}); }, 55);
+    const t0 = Date.now();
+    for (let n = 0; n < 50; n++) {
+      const v = await api(house, 'GET', `/bj/tables/${table.code}`);
+      if (v?.round?.phase === 'play') break;
+      await wait(120);
+    }
+    await wait(400);
+    for (const who of [ann, bea, cal, dee]) {
+      await api(who, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' }).catch(() => {});
+      await wait(450);
+    }
+    await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'flip' }).catch(() => {});
+    await wait(500);
+    await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'draw' }).catch(() => {});
+    while (Date.now() - t0 < 6500) await wait(80);
+    clearInterval(cap);
+    await wait(200);
+    await grab();
+    await shot(F, 'desktop-payout');
+    await close(F);
+    await close(Am);
+    console.log('film frames', filmI);
+  } catch (e) {
+    console.log('film', e.message);
+  }
   await close(Am);
 
   if (OUT) {
     fs.mkdirSync(OUT, { recursive: true });
     fs.writeFileSync(path.join(OUT, 'fps.txt'), `desktop ${desktopFps.toFixed(1)}\nmobile ${mobileFps.toFixed(1)}\nrenderer swiftshader (e2e, software GL)\n`);
+  }
+
+  if (OUT && filmDir && filmI > 8) {
+    const handMp4 = path.join(OUT, 'hand.mp4');
+    const handGif = path.join(OUT, 'hand.gif');
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '18', '-i', path.join(filmDir, 'h%04d.png'),
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '22', '-t', '8', handMp4]);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '18', '-i', path.join(filmDir, 'h%04d.png'),
+      '-vf', 'fps=18,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160[p];[b][p]paletteuse=dither=sierra2_4a',
+      '-t', '8', '-loop', '0', handGif]);
+    console.log('hand film', handMp4, handGif, 'frames', filmI);
   }
 
   if (OUT && frames && fi > 1) {

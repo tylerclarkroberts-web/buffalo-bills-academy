@@ -5,6 +5,7 @@ import { Card } from '../Card.jsx';
 import { takeCards } from './useDealReveal.js';
 import { PitBoss } from './PitBoss.jsx';
 import { sfx } from './sfx.js';
+import { KashCatch } from './KashStage.jsx';
 import { canPovWebGL, createPovScene } from './povScene.js';
 import './dealer-pov.css';
 
@@ -85,15 +86,27 @@ function CssFelt({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown,
   );
 }
 
+function buzz(ms = 10) { try { navigator.vibrate?.(ms); } catch { /* unsupported */ } }
+
 export function DealerPov({
   v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, reduced, onDeal, onAuto, now, tip, thanks,
+  onSay, meId, kash, onCatch,
 }) {
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
   const [engine, setEngine] = useState(() => (canPovWebGL() ? 'pending' : 'css'));
   const [fps, setFps] = useState(0);
   const [gesture, setGesture] = useState('');
+  const [sayOpen, setSayOpen] = useState(false);
+  const [text, setText] = useState('');
   const prompt = v.dealer || {};
+  const autoOn = v.house.autopilot !== false;
+  const actor = turnSeat != null ? v.seats?.[turnSeat] : null;
+  const left = v.round?.deadline && now ? Math.max(0, v.round.deadline - now) : 0;
+  const turnFrac = v.turnSec ? Math.max(0, Math.min(1, left / (v.turnSec * 1000))) : 0;
+  const out = (v.round?.hands || []).reduce((n, h) => n + (h.cards || []).filter(Boolean).length, 0)
+    + (dealerCards || []).filter(Boolean).length;
+  const status = prompt.label || (actor ? `${actor.name} to act` : (autoOn ? 'Autopilot is dealing' : "You're dealing"));
 
   useEffect(() => {
     if (!canPovWebGL() || !canvasRef.current) { setEngine('css'); return undefined; }
@@ -104,6 +117,7 @@ export function DealerPov({
         onFps: setFps,
         onGesture: (g) => setGesture(g?.kind || ''),
         onLost: () => setEngine('css'),
+        onSfx: (name) => { sfx[name]?.(); if (name === 'deal' || name === 'flip') buzz(name === 'flip' ? 16 : 8); },
       });
     } catch {
       scene = null;
@@ -115,7 +129,7 @@ export function DealerPov({
   }, [reduced]);
 
   useEffect(() => {
-    sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks });
+    sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, chat: v.chat });
   }, [v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, now]);
 
   return (
@@ -133,22 +147,48 @@ export function DealerPov({
         )}
         {engine === 'webgl' && tip && <span className="bj-tip-toss" data-test="bj-tip-toss" data-amt={tip.amount} hidden aria-hidden="true">${tip.amount}</span>}
         {engine !== 'webgl' && tip && <span className="bj-tip-toss" data-test="bj-tip-toss" data-amt={tip.amount} aria-hidden="true">${tip.amount}</span>}
-        {thanks && <p className="bj-thanks" data-test="bj-thanks" role="status">{thanks}</p>}
+        {thanks && (
+          <p className="bj-thanks" data-test="bj-thanks" role="status">
+            {tip?.name ? <><b>{tip.name}</b> tipped ${tip.amount}. </> : null}{thanks}
+          </p>
+        )}
         <PitBoss pit={v.pit} pov reduced={reduced} hideFigure={engine === 'webgl'} />
       </div>
-      <div className="bj-pov-bar" data-test="bj-dealer-bar">
-        <label className="bj-auto" data-test="bj-autopilot">
-          <input type="checkbox" checked={v.house.autopilot !== false} onChange={(e) => onAuto(e.target.checked)} />
-          Autopilot
-        </label>
-        <span className="bj-pov-prompt" data-test="bj-deal-prompt">{prompt.label || (v.house.autopilot ? 'Autopilot is dealing' : "You're dealing")}</span>
-        {prompt.action && (
-          <button className="btn primary" onClick={() => { sfx.deal(); onDeal(prompt.action); }} data-test="bj-deal-next">
-            {prompt.action === 'flip' ? 'Flip' : prompt.action === 'draw' ? 'Draw' : 'Deal'}
-          </button>
-        )}
-        {engine === 'webgl' && <span className="bj-pov-fps" data-test="bj-pov-fps">{Math.round(fps) || '—' } fps</span>}
-      </div>
+      <div className="bj-pov-hud" data-test="bj-pov-hud">
+          <div className="bj-pov-hud-top" data-test="bj-pov-hud-top">
+            <label className={`bj-auto bj-auto-pill ${autoOn ? 'on' : 'off'}`} data-test="bj-autopilot">
+              <input type="checkbox" checked={autoOn} onChange={(e) => onAuto(e.target.checked)} />
+              <span>Autopilot</span>
+              <b>{autoOn ? 'On' : 'Off'}</b>
+            </label>
+            <div className="bj-pov-actor" data-test="bj-deal-prompt">
+              {actor && <Bust id={actor.id || `bot:${actor.name}`} avatar={actor.avatar} size={28} still title={actor.name} />}
+              <span>{status}</span>
+              {left > 0 && actor && (
+                <i className="bj-pov-ring" style={{ '--p': String(turnFrac) }} aria-hidden="true" />
+              )}
+            </div>
+            <div className="bj-pov-count" data-test="bj-pov-count">
+              <em>{v.deckLeft ?? 0}</em> in shoe{out ? <> · <em>{out}</em> out</> : null}
+            </div>
+          </div>
+          <div className="bj-pov-hud-bottom" data-test="bj-pov-hud-bottom">
+            {kash && <KashCatch kash={kash} now={now} onCatch={onCatch} />}
+            {prompt.action && (
+              <button className="btn primary bj-pov-act" onClick={() => { sfx.deal(); buzz(12); onDeal(prompt.action); }} data-test="bj-deal-next">
+                {prompt.action === 'flip' ? 'Flip hole' : prompt.action === 'draw' ? 'Draw' : 'Deal'}
+              </button>
+            )}
+            {onSay && (
+              <form className={`bj-chat bj-pov-say ${sayOpen ? 'open' : ''}`} data-test="bj-chat" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (!t) return; onSay(t); setText(''); setSayOpen(false); }}>
+                {sayOpen
+                  ? <input data-test="bj-say" autoFocus maxLength={80} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => { if (!text) setSayOpen(false); }} placeholder="Say something" aria-label="Table chat" />
+                  : <button type="button" className="bj-say-toggle" onClick={() => setSayOpen(true)} data-test="bj-say-toggle">Say</button>}
+              </form>
+            )}
+            {engine === 'webgl' && <span className="bj-pov-fps" data-test="bj-pov-fps">{Math.round(fps) || '—' } fps</span>}
+          </div>
+        </div>
     </div>
   );
 }

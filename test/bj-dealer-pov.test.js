@@ -13,7 +13,7 @@ import { STALL_MS, dealerPrompt } from '../server/blackjack/pace.js';
 import { hasProfanity, SWEAR_LINE, PHONE_LINE, PIT_NAME } from '../server/blackjack/pitboss.js';
 import { TIP_AMOUNTS } from '../server/blackjack/tips.js';
 import { gestureFromLog, samplePose, revealDelay, isHitTap, isStandWave, isDoubleFinger, isSplitV } from '../client/src/bj/povGestures.js';
-import { seatAvatar, seatsInOrder, occupiedSeats, seatFigureKey, isAway } from '../client/src/bj/povSeats.js';
+import { seatAvatar, seatsInOrder, occupiedSeats, seatFigureKey, isAway, seatLayout, seatSpacing, seatsClear, ARC, HAND_SPAN } from '../client/src/bj/povSeats.js';
 import { mulberry } from '../server/blackjack/sim.js';
 
 function fixture(t, seed = 11) {
@@ -274,4 +274,21 @@ test('avatar identity maps to the seat player id, gestures follow that seat\'s r
   const split = gestureFromLog(log, 22);
   assert.deepEqual({ kind: split.kind, seat: split.seat }, { kind: 'split', seat: 3 });
   assert.equal(gestureFromLog(log, 23), null);
+});
+
+
+test('seats are distributed on a 150-degree arc so neighboring hands do not overlap', () => {
+  assert.ok(Math.abs(ARC - (150 * Math.PI / 180)) < 1e-9);
+  const span = Math.abs(seatLayout(5, 0).yaw - seatLayout(5, 4).yaw);
+  assert.ok(span > 2.5 && span < 2.7, `arc was ${span}`);
+  assert.equal(seatsClear(5), true);
+  assert.ok(seatSpacing(5) > HAND_SPAN + 0.08);
+  const a = seatLayout(5, 0), b = seatLayout(5, 1);
+  const d = Math.hypot(a.cardX - b.cardX, a.cardZ - b.cardZ);
+  assert.ok(d > HAND_SPAN + 0.08, `adjacent circles ${d}`);
+  // Empty seats keep their index so a hole leaves a gap, and no extra figure is invented.
+  const ordered = seatsInOrder([{ i: 0, id: 'ann', name: 'Ann' }, null, { i: 2, id: 'cal', name: 'Cal' }], 5);
+  assert.equal(ordered[1], null);
+  assert.equal(ordered[3], null);
+  assert.ok(Math.abs(seatLayout(5, 0).x - seatLayout(5, 2).x) > Math.abs(seatLayout(3, 0).x - seatLayout(3, 1).x) * 0.4);
 });

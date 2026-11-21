@@ -357,6 +357,10 @@ function BjTable({ code, me }) {
             thanks={v.tip?.thanks ? 'Thanks for the tip' : null}
             onAuto={(on) => post('autopilot', { on })}
             onDeal={(action) => post('deal', { action })}
+            onSay={(text) => post('say', { text })}
+            meId={me.id}
+            kash={v.kashCatch}
+            onCatch={() => post('kash-catch')}
           />
         ) : (
           <>
@@ -379,7 +383,7 @@ function BjTable({ code, me }) {
           </>
         )}
         <NextTablePill advance={turnAdvance} />
-        <div className="bj-bar" data-test="bj-bar">
+        <div className="bj-bar" data-test="bj-bar" hidden={!!(v.house?.isMe && v.status === 'playing')}>
           {v.house?.isMe && <KashCatch kash={v.kashCatch} now={now} onCatch={() => post('kash-catch')} />}
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>

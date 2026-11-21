@@ -4,15 +4,13 @@
 import * as THREE from 'three';
 import { looks, shade, headParts } from '../avatar/genbust.js';
 import { shirtOf } from '../avatar/wear.js';
-import { gestureFromLog, gestureDuration, revealDelay, samplePose, REST } from './povGestures.js';
-import { seatAvatar, seatsInOrder, seatFigureKey, isAway } from './povSeats.js';
+import { gestureFromLog, gestureDuration, revealDelay, samplePose, REST, easeInOut, easeOutBack, easeOutCubic } from './povGestures.js';
+import { seatAvatar, seatsInOrder, seatFigureKey, isAway, seatLayout, SEAT_R, CARD_R, CHIP_R } from './povSeats.js';
 
 export const FELT_Y = 0.78;
 export const TABLE_R = 1.52;
-export const RAIL_R = 1.56;
-export const SEAT_R = 1.86;
-export const CARD_R = 1.12;
-export const CHIP_R = 0.82;
+export const RAIL_R = 1.58;
+export { SEAT_R, CARD_R, CHIP_R, seatLayout };
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const CHIP_COLOR = { r: '#b01c2c', g: '#1c7a3a', k: '#1a1a1a', b: '#1c4a9a' };
 const CHIP_DENOM = [[100, 'b'], [25, 'k'], [5, 'g'], [1, 'r']];
@@ -26,17 +24,6 @@ export function canPovWebGL() {
 
 const std = (color, extras = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extras });
 const canv = (w, h) => (typeof document !== 'undefined' ? Object.assign(document.createElement('canvas'), { width: w, height: h }) : null);
-
-export function seatLayout(n, i) {
-  const count = Math.max(1, n);
-  // Slightly tighter than a half-circle so four occupied seats stay in a mobile portrait frame.
-  const spread = count <= 1 ? 0 : count === 2 ? 0.38 : count === 3 ? 0.52 : 0.60;
-  const t = count === 1 ? 0 : (i / (count - 1) - 0.5) * 2;
-  const yaw = t * spread;
-  const at = (r) => ({ x: Math.sin(yaw) * r, z: Math.cos(yaw) * r });
-  const seat = at(SEAT_R), card = at(CARD_R), chip = at(CHIP_R);
-  return { x: seat.x, z: seat.z, y: 0, yaw, cardX: card.x, cardZ: card.z, chipX: chip.x, chipZ: chip.z };
-}
 
 function feltTexture() {
   const S = 1024;
@@ -69,10 +56,12 @@ function feltTexture() {
   // Visible half is the BOTTOM of the canvas (UV v=0 at the far arc).
   ctx.beginPath(); ctx.arc(cx, cy, S * 0.40, 0, Math.PI, true); ctx.stroke();
   ctx.beginPath(); ctx.arc(cx, cy, S * 0.28, 0.15, Math.PI - 0.15, true); ctx.stroke();
+  // Five betting circles along the 150° far arc, at the card radius (CARD_R / TABLE_R of the half-texture).
+  const cr = S * 0.5 * (CARD_R / TABLE_R);
   for (let i = 0; i < 5; i++) {
-    const a = (Math.PI * (0.18 + i * 0.16));
-    const x = cx + Math.cos(a) * S * 0.34, y = cy + Math.sin(a) * S * 0.34;
-    ctx.beginPath(); ctx.arc(x, y, 30, 0, 7); ctx.stroke();
+    const a = Math.PI / 2 + ((i / 4) - 0.5) * (150 * Math.PI / 180);
+    const x = cx + Math.cos(a) * cr, y = cy + Math.sin(a) * cr;
+    ctx.beginPath(); ctx.arc(x, y, 36, 0, 7); ctx.stroke();
   }
   const gold = ctx.createLinearGradient(0, 0, S, 0);
   gold.addColorStop(0, 'rgba(232,196,96,.15)'); gold.addColorStop(0.5, 'rgba(255,224,140,.95)'); gold.addColorStop(1, 'rgba(232,196,96,.15)');
@@ -257,6 +246,41 @@ function namePlate(text, away = false) {
   return paintNamePlate(tex, text, away);
 }
 
+
+function blobShadow() {
+  const c = canv(64, 64); if (!c) return null;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 4, 32, 32, 30);
+  g.addColorStop(0, 'rgba(0,0,0,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c); tex.needsUpdate = true;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.7 }));
+  s.rotation.x = -Math.PI / 2; // sprite rotation may not flatten; keep as a ground blob in XY
+  s.center.set(0.5, 0.5);
+  return s;
+}
+
+function labelTexture(text, color = '#f4efe4', bg = 'rgba(10,8,6,.86)', chip = false) {
+  const c = canv(chip ? 128 : 256, chip ? 128 : 64); if (!c) return null;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bg; ctx.beginPath();
+  if (chip) {
+    ctx.arc(64, 64, 56, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(242,198,90,.7)'; ctx.lineWidth = 6; ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '700 58px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(text || '').slice(0, 3), 64, 68);
+  } else {
+    if (ctx.roundRect) { ctx.roundRect(16, 10, 224, 44, 12); } else { ctx.rect(16, 10, 224, 44); }
+    ctx.fill();
+    ctx.fillStyle = color; ctx.font = '700 28px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(text || '').slice(0, 16), 128, 32, 210);
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  return tex;
+}
+
 function chipBreakdown(amount) {
   let n = Math.max(0, Math.round(Number(amount) || 0));
   const out = [];
@@ -288,6 +312,10 @@ function applyPose(person, pose) {
   applyCurl(person.fingersL, a.curlL || REST.curlL);
   applyCurl(person.fingersR, a.curlR || REST.curlR);
   if (person.stackPush) person.stackPush.position.z = 0.02 + (a.push || 0) * 0.07;
+  if (person.torso) person.torso.rotation.x = 0.22 + (a.lean || 0) * 0.55;
+  if (person.hips) person.hips.position.z = 0.08 - (a.lean || 0) * 0.24;
+  if (person.armR) person.armR.position.z = -(a.reachR || 0) * 0.26;
+  if (person.armL) person.armL.position.z = -(a.reachL || 0) * 0.26;
 }
 
 function buildHand(parent, skin, sign) {
@@ -337,27 +365,28 @@ function buildSeated({ id, name, avatar }) {
   const neck = pivot(torso, 'neck', 0, 0.42, 0);
   add(neck, new THREE.CylinderGeometry(0.045, 0.05, 0.08, 6), skin, 0, 0.02, 0);
   const head = pivot(neck, 'head', 0, 0.1, 0);
-  add(head, new THREE.SphereGeometry(0.1, 12, 10), skin, 0, 0.08, 0.01, L.wide, 1, 0.88);
-  if (L.style !== 'bald') add(head, new THREE.SphereGeometry(0.104, 12, 10), hair, 0, 0.11, 0.0, L.wide, L.style === 'buzz' ? 0.55 : 0.78, 0.9);
-  if (L.style === 'long') add(head, new THREE.BoxGeometry(0.18, 0.16, 0.07), hair, 0, 0.0, 0.09);
-  if (L.style === 'bun') add(head, new THREE.SphereGeometry(0.045, 8, 6), hair, 0, 0.14, 0.1);
+  // Skull sits slightly back so the face sprite is the front of the head, not a sticker in front of a hat.
+  add(head, new THREE.SphereGeometry(0.1, 12, 10), skin, 0, 0.08, 0.03, L.wide, 1, 0.8);
+  if (L.style !== 'bald') add(head, new THREE.SphereGeometry(0.104, 12, 10), hair, 0, 0.14, 0.05, L.wide, L.style === 'buzz' ? 0.48 : 0.68, 0.72);
+  if (L.style === 'long') add(head, new THREE.BoxGeometry(0.18, 0.16, 0.07), hair, 0, 0.0, 0.12);
+  if (L.style === 'bun') add(head, new THREE.SphereGeometry(0.045, 8, 6), hair, 0, 0.17, 0.08);
   const tex = faceTexture(id, avatar);
-  // Sprite sits on the dealer-facing side of the head (local −Z) so the sphere never hides it,
-  // and it stays camera-facing without a lookAt that can flip the plane to the back of the skull.
   let face = null;
   if (tex) {
     face = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true }));
-    face.center.set(0.5, 0.42);
-    face.position.set(0, 0.1, -0.14);
-    face.scale.set(0.46, 0.58, 1);
+    face.center.set(0.5, 0.46);
+    face.position.set(0, 0.09, -0.085);
+    face.scale.set(0.28, 0.36, 1);
     head.add(face);
   }
   const plate = namePlate(name, false);
   let tag = null;
   if (plate) {
     tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: plate, transparent: true, depthWrite: false }));
-    tag.position.set(0, 1.58, -0.06); tag.scale.set(0.48, 0.12, 1); g.add(tag);
+    tag.position.set(0, 1.28, -0.08); tag.scale.set(0.42, 0.11, 1); g.add(tag);
   }
+  const blob = blobShadow();
+  if (blob) { blob.position.set(0, 0.02, 0.06); blob.scale.set(0.58, 0.22, 1); g.add(blob); }
   const stackPush = pivot(g, 'stackPush', -0.12, FELT_Y, -0.4);
   const person = {
     group: g, hips, torso, head, armL, armR, elL: Larm.el, elR: Rarm.el, wrL: Larm.wr, wrR: Rarm.wr,
@@ -500,8 +529,8 @@ export function createPovScene(canvas, opts = {}) {
 }
 
 export class PovScene {
-  constructor(canvas, { reduced = false, onFps, onGesture, onLost } = {}) {
-    this.canvas = canvas; this.reduced = reduced; this.onFps = onFps; this.onGesture = onGesture;
+  constructor(canvas, { reduced = false, onFps, onGesture, onLost, onSfx } = {}) {
+    this.canvas = canvas; this.reduced = reduced; this.onFps = onFps; this.onGesture = onGesture; this.onSfx = onSfx;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
     if (!this.renderer.getContext()) throw new Error('no webgl');
     this.software = this._isSoftware();
@@ -512,18 +541,21 @@ export class PovScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = this.software ? 1.35 : 1.2;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(64, 1, 0.08, 24);
-    this._baseCam = new THREE.Vector3(0, 1.4, -0.7);
-    this._look = new THREE.Vector3(0, 0.86, 1.28);
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.08, 24);
+    this._baseCam = new THREE.Vector3(0, 1.5, -1.18);
+    this._look = new THREE.Vector3(0, 0.7, 0.95);
     this.camera.position.copy(this._baseCam);
     this.camera.lookAt(this._look);
     this.yaw = 0; this.pitch = 0; this._drag = null;
-    this._panX = 0; this._turnX = 0;
+    this._panX = 0; this._turnX = 0; this._zoom = 0;
+    this._introT0 = performance.now();
+    this._introFrom = new THREE.Vector3(0, 2.55, 2.35);
+    this._introLook = new THREE.Vector3(0, 0.9, 0.7);
     this.res = { geos: [], mats: [], textures: [], meshes: [] };
     this.scene.add(new THREE.AmbientLight(0xffe6c8, 0.55));
     this.scene.add(new THREE.HemisphereLight(0xffe4b8, 0x2a1a18, 1.05));
     const fill = new THREE.DirectionalLight(0xfff0d4, 1.05); fill.position.set(0, 1.7, -1.6); this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xffc8a0, 0.35); rim.position.set(0.6, 1.4, 2.2); this.scene.add(rim);
+    const rim = new THREE.DirectionalLight(0xffd0b0, 0.62); rim.position.set(0.4, 1.55, 2.3); this.scene.add(rim);
     this.lamp = new THREE.SpotLight(0xffe2a8, this.software ? 18 : 28, 12, 0.72, 0.55, 1.2);
     this.lamp.position.set(0, 2.55, 0.7);
     this.lamp.target.position.set(0, FELT_Y, 0.7);
@@ -540,6 +572,9 @@ export class PovScene {
     this.backTex = cardBack(); this.res.textures.push(this.backTex);
     this.faceCache = new Map();
     this.cards = new THREE.Group(); this.scene.add(this.cards);
+    this.labels = new THREE.Group(); this.scene.add(this.labels);
+    this._cardById = new Map();
+    this._labelById = new Map();
     this.players = new Map();
     this.playerRoot = new THREE.Group(); this.scene.add(this.playerRoot);
     this.flying = [];
@@ -603,10 +638,11 @@ export class PovScene {
     const w = Math.max(1, this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 640);
     const h = Math.max(1, this.canvas.clientHeight || 400);
     const mobile = h > w || this._mobile();
-    this._portrait = h > w;
-    this.camera.fov = this._portrait ? 90 : 64;
-    if (this._portrait) { this._baseCam.set(0, 1.54, -1.12); this._look.set(0, 0.9, 1.1); }
-    else { this._baseCam.set(0, 1.4, -0.7); this._look.set(0, 0.86, 1.28); }
+    this._portrait = h >= w * 0.92;
+    // Pull back and tilt down so the full 150° arc fits and the near apron sits on the bottom edge — no dead space below.
+    this.camera.fov = this._portrait ? 76 : 56;
+    if (this._portrait) { this._baseCam.set(0, 2.02, -2.08); this._look.set(0, 0.62, 0.55); }
+    else { this._baseCam.set(0, 1.68, -1.72); this._look.set(0, 0.58, 0.62); }
     if (this.software) {
       const aspect = w / Math.max(1, h);
       const rw = Math.min(720, w);
@@ -701,14 +737,24 @@ export class PovScene {
   }
 
   _applyView(payload) {
-    const { v, dealerCards, handsOf, turnSeat, tip } = payload;
+    const { v, dealerCards, handsOf, turnSeat, tip, fxFor, chat } = payload;
+    const prevShuf = this._view?.v?.shuffles;
     this._view = payload;
     this._syncPlayers(v, turnSeat);
     this._layoutCards(v, dealerCards, handsOf);
     this._layoutChips(v, handsOf);
     this._syncPit(v);
     this._syncTip(tip, v);
+    this._syncLabels(v, handsOf, fxFor, turnSeat);
+    this._syncChat(chat || v?.chat);
     this._dealFlick = !!(payload.dealing);
+    if (v?.shuffles && v.shuffles !== prevShuf) this._shuffleT0 = performance.now();
+    const lastNo = v?.last?.no;
+    if (lastNo && lastNo !== this._paidNo && (v.last.results || []).length) {
+      this._paidNo = lastNo;
+      this._payout = { t0: performance.now(), results: v.last.results, last: v.last };
+      this.onSfx?.('chip');
+    }
   }
 
   _syncPlayers(v, turnSeat) {
@@ -740,7 +786,7 @@ export class PovScene {
       p.group.position.set(lay.x, away ? -0.05 : 0, lay.z);
       p.group.rotation.y = lay.yaw;
       p.turn = s.i === turnSeat;
-      if (p.turn) this._turnX = lay.x;
+      if (p.turn) { this._turnX = lay.x; this._turnZ = lay.z; }
       if (p.plate && p.tag && p._awayPlate !== away) {
         paintNamePlate(p.plate, p.name, away);
         p._awayPlate = away;
@@ -753,55 +799,156 @@ export class PovScene {
     }
   }
 
+  _shoePos() { return new THREE.Vector3(-0.42, FELT_Y + 0.08, 0.16); }
+  _trayPos() { return new THREE.Vector3(0.46, FELT_Y + 0.08, 0.16); }
+
   _layoutCards(v, dealerCards, handsOf) {
     const need = [];
     const ordered = seatsInOrder(v?.seats, v?.maxSeats);
     const cap = Math.max(1, ordered.length);
+    let stagger = 0;
+    const tilt = -Math.PI / 2 - 0.44; // ~25° toward the dealer, lying in the circle — not a standing wall
     ordered.forEach((s) => {
       if (!s) return;
       const lay = seatLayout(cap, s.i);
       const hs = handsOf?.(s.i) || [];
-      // Perpendicular to the radius so split hands sit side by side in the circle.
       const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
       hs.forEach((h, hi) => {
         const cards = h.cards || [];
         const mid = (hs.length - 1) / 2;
-        const ox = (hi - mid) * 0.22 * px, oz = (hi - mid) * 0.22 * pz;
+        const ox = (hi - mid) * 0.26 * px, oz = (hi - mid) * 0.26 * pz;
         cards.forEach((c, ci) => {
-          const fan = (ci - (cards.length - 1) / 2) * 0.155;
+          const fan = (ci - (cards.length - 1) / 2) * 0.13;
           need.push({
+            id: `p:${s.i}:${hi}:${ci}`,
+            seat: s.i, hand: hi, idx: ci,
             code: c,
             x: lay.cardX + ox + px * fan,
-            y: FELT_Y + 0.045 + ci * 0.002,
+            y: FELT_Y + 0.018 + ci * 0.0015,
             z: lay.cardZ + oz + pz * fan,
-            rotX: -Math.PI / 2 - 0.92,
-            rotY: lay.yaw,
-            rotZ: (ci - (cards.length - 1) / 2) * 0.05,
+            rotX: tilt,
+            rotY: lay.yaw * 0.15,
+            rotZ: (ci - (cards.length - 1) / 2) * 0.06,
             down: !c,
-            scale: 2.95,
+            scale: 2.4,
+            stagger: (stagger++) * 70,
           });
         });
       });
     });
     (dealerCards || []).forEach((c, ci) => {
       const n = dealerCards.length;
-      const x = (ci - (n - 1) / 2) * 0.22;
-      need.push({ code: c, x, y: FELT_Y + 0.045, z: 0.36 + ci * 0.01, rotX: -Math.PI / 2 - 0.62, rotY: 0, rotZ: 0, down: !c, dealer: true, scale: 3.05 });
+      const x = (ci - (n - 1) / 2) * 0.20;
+      need.push({
+        id: `d:${ci}`, dealer: true, idx: ci, code: c,
+        x, y: FELT_Y + 0.02, z: 0.38 + ci * 0.008,
+        rotX: -Math.PI / 2 - 0.50, rotY: 0, rotZ: 0,
+        down: !c, scale: 2.7, stagger: (stagger++) * 70,
+      });
     });
-    while (this.cards.children.length < need.length) this._card();
-    this.cards.children.forEach((m, i) => {
-      if (i >= need.length) { m.visible = false; return; }
-      const d = need[i]; m.visible = true;
-      const face = m.userData.face;
-      const tex = d.down ? this.backTex : this._face(d.code);
-      if (face.material.map !== tex) { face.material.map = tex; face.material.needsUpdate = true; }
-      m.position.set(d.x, d.y, d.z);
-      m.rotation.order = 'YXZ';
-      // Face-down cards keep the same tilt and just swap the front texture to the back, so the hole isn't edge-on.
-      m.rotation.set(d.rotX, d.rotY, d.rotZ);
-      const sc = d.scale || 1; m.scale.set(sc, sc, sc);
-    });
+    this._setCardTargets(need);
     this._cardTargets = need;
+  }
+
+  _setCardTargets(need) {
+    const now = performance.now();
+    const keep = new Set();
+    need.forEach((d) => {
+      keep.add(d.id);
+      let m = this._cardById.get(d.id);
+      if (!m) {
+        m = this._card();
+        m.userData.id = d.id;
+        m.position.copy(this._shoePos());
+        m.rotation.order = 'YXZ';
+        m.rotation.set(-Math.PI / 2, 0, 0);
+        m.userData.anim = { mode: 'deal', t0: now + (d.stagger || 0), dur: this.reduced ? 80 : 560 };
+        this._cardById.set(d.id, m);
+        if (!this.reduced) this.onSfx?.('deal');
+      } else if (m.userData.down && !d.down) {
+        m.userData.anim = { mode: 'flip', t0: now, dur: this.reduced ? 80 : 640, mid: false };
+        if (!this.reduced) this.onSfx?.('flip');
+      }
+      m.userData.target = d;
+      m.userData.down = d.down;
+      m.visible = true;
+      if (!m.userData.anim || m.userData.anim.mode === 'idle') this._applyCardPose(m, d, 1);
+    });
+    for (const [id, m] of this._cardById) {
+      if (keep.has(id)) continue;
+      const d = m.userData.target || {};
+      m.userData.anim = { mode: 'sweep', t0: now, dur: this.reduced ? 80 : 480, from: m.position.clone() };
+      m.userData.target = { ...d, x: this._trayPos().x, y: this._trayPos().y, z: this._trayPos().z, rotX: -Math.PI / 2, rotY: 0, rotZ: 0, scale: d.scale || 2.4 };
+      this._cardById.delete(id);
+    }
+  }
+
+  _applyCardPose(m, d, u = 1, extraY = 0, spin = 0) {
+    if (!d) { m.visible = false; return; }
+    m.visible = true;
+    m.position.set(d.x, d.y + extraY, d.z);
+    m.rotation.order = 'YXZ';
+    m.rotation.set(d.rotX || 0, (d.rotY || 0) + spin, d.rotZ || 0);
+    const sc = d.scale || 1; m.scale.set(sc, sc, sc);
+    const face = m.userData.face;
+    const tex = d.down ? this.backTex : this._face(d.code);
+    if (face && face.material.map !== tex) { face.material.map = tex; face.material.needsUpdate = true; }
+  }
+
+  _tickCards(now) {
+    const shoe = this._shoePos(), tray = this._trayPos();
+    const live = new Set(this._cardById.values());
+    this.cards.children.forEach((m) => {
+      const d = m.userData.target;
+      const a = m.userData.anim;
+      if (!a) {
+        if (d) this._applyCardPose(m, d, 1);
+        else m.visible = false;
+        return;
+      }
+      const u = Math.max(0, Math.min(1, (now - a.t0) / (a.dur || 1)));
+      if (u <= 0) {
+        if (a.mode === 'deal') { m.position.copy(shoe); m.visible = true; }
+        return;
+      }
+      if (a.mode === 'deal') {
+        const e = easeOutCubic(u);
+        const mid = new THREE.Vector3((shoe.x + d.x) * 0.5, FELT_Y + 0.42, (shoe.z + d.z) * 0.5);
+        const p = shoe.clone().lerp(mid, e).lerp(mid.clone().lerp(new THREE.Vector3(d.x, d.y, d.z), e), e);
+        const bounce = u > 0.8 ? Math.sin((u - 0.8) / 0.2 * Math.PI) * 0.03 * (1 - (u - 0.8) / 0.2) : 0;
+        const spin = (1 - e) * 1.15;
+        this._applyCardPose(m, { ...d, x: p.x, y: p.y + bounce, z: p.z }, 1, 0, spin);
+        if (u >= 1) { m.userData.anim = null; this._applyCardPose(m, d, 1); }
+      } else if (a.mode === 'flip') {
+        const e = easeInOut(u);
+        const lift = Math.sin(e * Math.PI) * 0.1;
+        const spin = e * Math.PI;
+        const mid = e >= 0.5;
+        if (mid && !a.mid) { a.mid = true; }
+        this._applyCardPose(m, { ...d, down: !mid && d.down ? true : d.down, y: d.y + lift, rotY: (d.rotY || 0) + (mid ? 0 : Math.PI) }, 1);
+        // During the first half show the back; after midpoint, the face.
+        const face = m.userData.face;
+        const tex = e < 0.5 ? this.backTex : this._face(d.code);
+        if (face && face.material.map !== tex) { face.material.map = tex; face.material.needsUpdate = true; }
+        m.rotation.set(d.rotX, d.rotY || 0, spin);
+        if (u >= 1) { m.userData.anim = null; this._applyCardPose(m, d, 1); }
+      } else if (a.mode === 'sweep') {
+        const e = easeInOut(u);
+        const from = a.from || m.position;
+        const to = tray;
+        const midY = Math.max(from.y, to.y) + 0.28;
+        const x = from.x + (to.x - from.x) * e;
+        const z = from.z + (to.z - from.z) * e;
+        const y = (1 - e) * (1 - e) * from.y + 2 * (1 - e) * e * midY + e * e * to.y;
+        m.position.set(x, y, z);
+        m.rotation.z = e * 0.8;
+        m.visible = u < 1;
+        if (u >= 1) { m.visible = false; m.userData.anim = null; m.userData.target = null; }
+      } else {
+        m.userData.anim = null;
+        if (d) this._applyCardPose(m, d, 1);
+      }
+    });
   }
 
   _layoutChips(v, handsOf) {
@@ -856,9 +1003,12 @@ export class PovScene {
       if (this.pendingView && now >= this.holdUntil) this._applyView(this.pendingView);
       this._tickCamera(now, dt);
       this._tickPeople(now, dt);
+      this._tickCards(now);
+      this._tickLabels(now);
       this._tickPit(now, dt);
       this._tickDealerHands(now, dt);
       this._tickTip(now);
+      this._tickPayout(now);
       this._tickFps(now);
       this.renderer.render(this.scene, this.camera);
     } catch (err) { console.error('pov loop', err); }
@@ -866,15 +1016,34 @@ export class PovScene {
   _tickCamera(now, dt) {
     const t = now / 1000;
     const bob = this.reduced ? 0 : 1;
-    this.camera.position.set(
-      this._baseCam.x + Math.sin(t * 0.7) * 0.006 * bob,
-      this._baseCam.y + Math.sin(t * 1.15) * 0.01 * bob,
-      this._baseCam.z + Math.cos(t * 1.15) * 0.004 * bob,
-    );
-    const look = this._look.clone();
-    this._panX += ((this._turnX || 0) * 0.34 - this._panX) * Math.min(1, (dt || 0.016) * 2.1);
-    look.x += this.yaw * 0.85 + this._panX; look.y += this.pitch * 0.7;
+    const introU = this.reduced ? 1 : easeInOut((now - (this._introT0 || 0)) / 1200);
+    const wantZoom = (this._turnX || this._turnZ) ? 0.05 : 0;
+    this._zoom += (wantZoom - this._zoom) * Math.min(1, (dt || 0.016) * 1.6);
+    const dest = this._baseCam.clone();
+    dest.x += this._panX * 0.25;
+    const lookDest = this._look.clone();
+    this._panX += ((this._turnX || 0) * 0.14 - this._panX) * Math.min(1, (dt || 0.016) * 2.0);
+    lookDest.x += this.yaw * 0.85 + this._panX;
+    lookDest.y += this.pitch * 0.7;
+    // Subtle zoom toward the acting seat.
+    const fwd = lookDest.clone().sub(dest).normalize();
+    dest.add(fwd.multiplyScalar(this._zoom));
+    let pos = dest, look = lookDest;
+    if (introU < 1 && this._introFrom) {
+      pos = this._introFrom.clone().lerp(dest, introU);
+      look = (this._introLook || lookDest).clone().lerp(lookDest, introU);
+    }
+    // Pit-boss push-in.
+    const pit = this._pit;
+    if (pit && (pit.state === 'loom' || pit.loom) && !this.reduced) {
+      const push = 0.16;
+      pos = pos.clone().lerp(look, push * 0.35);
+    }
+    pos.x += Math.sin(t * 0.7) * 0.007 * bob;
+    pos.y += Math.sin(t * 1.15) * 0.011 * bob;
+    pos.z += Math.cos(t * 1.15) * 0.005 * bob;
     look.y += Math.sin(t * 0.9) * 0.008 * bob;
+    this.camera.position.copy(pos);
     this.camera.lookAt(look);
   }
   _tickPeople(now, dt) {
@@ -888,17 +1057,24 @@ export class PovScene {
     for (const p of this.players.values()) {
       const t = now / 1000 + p.seed;
       if (p.away) {
+        applyPose(p, REST);
         p.torso.rotation.x = 0.58;
         p.torso.position.y = 0.06;
         p.head.rotation.x = 0.48;
         p.head.rotation.y = 0.18;
-        applyPose(p, REST);
         continue;
       }
-      p.torso.rotation.x = 0.22;
-      p.torso.position.y = 0.1 + (this.reduced ? 0 : Math.sin(t * 1.5) * 0.006);
-      p.head.rotation.y = this.reduced ? 0 : Math.sin(t * 0.35) * 0.12;
-      p.head.rotation.x = this.reduced ? 0 : Math.sin(t * 0.5) * 0.03;
+      p.torso.position.y = 0.1 + (this.reduced ? 0 : Math.sin(t * 1.5) * 0.008);
+      // Glance at the acting seat, or down at their own cards, then back.
+      const glance = this.reduced ? 0 : Math.sin(t * 0.45) * 0.1;
+      let headY = glance;
+      if (this._turnX != null && !p.turn) {
+        const dx = (this._turnX || 0) - p.group.position.x;
+        headY += Math.max(-0.45, Math.min(0.45, Math.atan2(dx, 0.8) * 0.5));
+      }
+      if (p.turn) headY += Math.sin(t * 0.8) * 0.04;
+      p.head.rotation.y = headY;
+      p.head.rotation.x = this.reduced ? 0 : (p.turn ? 0.12 : 0) + Math.sin(t * 0.5) * 0.03;
       const pose = (g && g.seat === p.seat) ? samplePose(g.kind, u) : REST;
       applyPose(p, pose);
       if (!g || g.seat !== p.seat) {
@@ -906,13 +1082,127 @@ export class PovScene {
       }
     }
   }
+
+  _syncLabels(v, handsOf, fxFor, turnSeat) {
+    const now = performance.now();
+    const ordered = seatsInOrder(v?.seats, v?.maxSeats);
+    const cap = Math.max(1, ordered.length);
+    const want = [];
+    if (this.gesture) {
+      const lay = seatLayout(cap, this.gesture.seat);
+      want.push({ id: `act:${this.gesture.seq}`, text: String(this.gesture.kind || '').toUpperCase(), x: lay.x, y: 1.78, z: lay.z - 0.08, color: '#f2c65a', until: this.gesture.t0 + this.gesture.dur + 200, scale: 0.5 });
+    }
+    ordered.forEach((s) => {
+      if (!s) return;
+      const lay = seatLayout(cap, s.i);
+      const px = Math.cos(lay.yaw), pz = -Math.sin(lay.yaw);
+      const hs = handsOf?.(s.i) || [];
+      hs.forEach((h, hi) => {
+        const mid = (hs.length - 1) / 2;
+        const x = lay.cardX + (hi - mid) * 0.26 * px;
+        const z = lay.cardZ + (hi - mid) * 0.26 * pz;
+        if (h.bj) want.push({ id: `bj:${s.i}:${hi}`, text: 'BLACKJACK', x, y: 1.55, z, color: '#f2c65a', until: now + 2400, scale: 0.55 });
+        else if (h.bust) want.push({ id: `bust:${s.i}:${hi}`, text: 'BUST', x, y: 1.5, z, color: '#f0b0a0', until: now + 2000, scale: 0.48 });
+        if (h.total && (h.cards || []).some(Boolean)) {
+          want.push({ id: `tot:${s.i}:${hi}`, text: String(h.total), x: x + px * 0.18, y: FELT_Y + 0.14, z: z + pz * 0.12, color: '#f4efe4', bg: 'rgba(20,12,6,.94)', until: now + 8000, scale: 0.34, chip: true });
+        }
+      });
+    });
+    const keep = new Set(want.map((d) => d.id));
+    want.forEach((d) => {
+      let s = this._labelById.get(d.id);
+      if (!s || s.userData.text !== d.text) {
+        if (s) { this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(d.id); }
+        const tex = labelTexture(d.text, d.color, d.bg, !!d.chip);
+        s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+        s.userData.tex = tex; s.userData.text = d.text; s.userData.chip = !!d.chip;
+        this.labels.add(s);
+        this._labelById.set(d.id, s);
+      }
+      s.position.set(d.x, d.y, d.z);
+      if (d.chip) s.scale.set(0.18, 0.18, 1);
+      else s.scale.set(d.scale || 0.45, (d.scale || 0.45) * 0.28, 1);
+      s.userData.until = d.until;
+      s.visible = true;
+    });
+    for (const [id, s] of this._labelById) {
+      if (keep.has(id) || id.startsWith('chat:')) continue;
+      if ((s.userData.until || 0) < now && !id.startsWith('tot:')) {
+        this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(id);
+      }
+    }
+  }
+
+  _tickLabels(now) {
+    for (const [id, s] of this._labelById) {
+      const left = (s.userData.until || 0) - now;
+      if (s.material) s.material.opacity = left < 400 ? Math.max(0, left / 400) : 1;
+      if (left < 0 && !id.startsWith('tot:')) {
+        this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(id);
+      }
+    }
+  }
+
+  _syncChat(chat) {
+    const now = performance.now();
+    const rows = (chat || []).slice(-4);
+    rows.forEach((m) => {
+      const id = `chat:${m.at}:${m.id || m.name}`;
+      if (this._labelById.has(id)) return;
+      let pos = null;
+      for (const p of this.players.values()) {
+        if (p.name === m.name) { pos = p.group.position; break; }
+      }
+      if (!pos) return;
+      const tex = labelTexture(m.text, '#f4efe4', 'rgba(12,10,8,.9)');
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+      s.position.set(pos.x, 1.85, pos.z); s.scale.set(0.62, 0.18, 1);
+      s.userData = { tex, until: now + 2800 };
+      this.labels.add(s); this._labelById.set(id, s);
+    });
+  }
+
+  _tickPayout(now) {
+    const p = this._payout;
+    if (!p) return;
+    const u = (now - p.t0) / 1600;
+    if (u >= 1) { this._payout = null; if (this._payChips) { this._payChips.forEach((m) => this.scene.remove(m)); this._payChips = null; } return; }
+    if (!this._payChips) {
+      this._payChips = [];
+      const cap = Math.max(1, (this._view?.v?.maxSeats) || 5);
+      (p.results || []).forEach((r) => {
+        const lay = seatLayout(cap, r.seat);
+        const win = (r.net || 0) >= 0;
+        for (let i = 0; i < 3; i++) {
+          const m = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.006, 10), std(win ? '#1c7a3a' : '#b01c2c'));
+          m.userData = { win, lay, i, phase: i * 0.12 };
+          this.scene.add(m); this._payChips.push(m);
+        }
+      });
+      const hasBj = (p.last?.hands || []).some((h) => h.bj);
+      if (hasBj) this.onSfx?.('bj');
+    }
+    const tray = this._trayPos();
+    this._payChips.forEach((m) => {
+      const { win, lay, phase } = m.userData;
+      const e = easeInOut(Math.max(0, Math.min(1, u - phase)));
+      const from = win ? tray : new THREE.Vector3(lay.chipX, FELT_Y + 0.04, lay.chipZ);
+      const to = win ? new THREE.Vector3(lay.chipX, FELT_Y + 0.04, lay.chipZ) : tray;
+      const x = from.x + (to.x - from.x) * e, z = from.z + (to.z - from.z) * e;
+      const y = (1 - e) * (1 - e) * from.y + 2 * (1 - e) * e * (FELT_Y + 0.45) + e * e * to.y;
+      m.position.set(x, y, z);
+      m.rotation.x = e * 6;
+      m.visible = e > 0 && e < 1;
+    });
+  }
+
   _tickPit(now, dt) {
     if (!this._pit) { this.brisk.visible = false; this._pitPlaced = false; this._pitLoomed = false; return; }
     this.brisk.visible = true;
     // Stand on the dealer's right, behind the rail, fully in the mobile frame.
-    const dest = new THREE.Vector3(0.88, 0, 1.42);
-    const start = new THREE.Vector3(1.55, 0, 1.85);
-    const loom = new THREE.Vector3(0.78, 0, 1.28);
+    const dest = new THREE.Vector3(1.2, 0, 1.15);
+    const start = new THREE.Vector3(1.85, 0, 1.7);
+    const loom = new THREE.Vector3(1.05, 0, 0.98);
     if (!this._pitPlaced) { this.brisk.position.copy(start); this._pitPlaced = true; }
     const st = this._pit.state;
     let target = dest, lean = 0;
@@ -928,23 +1218,43 @@ export class PovScene {
     this.brisk.userData.head.rotation.x = lean;
     if (this.brisk.userData.face) this.brisk.userData.face.lookAt(this.camera.position);
     const moving = this.brisk.position.distanceTo(target) > 0.08 && st !== 'loom';
-    const phase = now / 180;
-    const swing = moving && !this.reduced ? Math.sin(phase) * 0.35 : 0;
+    const phase = now / 150;
+    const step = Math.sin(phase);
+    const swing = moving && !this.reduced ? step * 0.55 : 0;
     const aL = this.brisk.getObjectByName('aL'), aR = this.brisk.getObjectByName('aR');
     if (aL) aL.rotation.x = swing; if (aR) aR.rotation.x = -swing;
-    this.brisk.position.y = moving && !this.reduced ? Math.abs(Math.sin(phase)) * 0.02 : 0;
+    this.brisk.position.y = moving && !this.reduced ? Math.abs(step) * 0.04 : 0;
+    this.brisk.rotation.z = moving && !this.reduced ? step * 0.04 : 0;
   }
   _tickDealerHands(now, dt) {
-    const flick = this._dealFlick || (this._view?.dealing);
     const t = now / 1000;
     const arms = this.dealerArms;
-    if (flick && !this.reduced) {
-      const u = (Math.sin(t * 10) * 0.5 + 0.5);
-      arms.armR.rotation.x = 0.35 - u * 0.8;
-      arms.armR.rotation.z = 0.25 - u * 0.2;
+    const dealing = [...(this._cardById?.values() || [])].some((m) => m.userData.anim?.mode === 'deal' && now >= (m.userData.anim.t0 || 0));
+    const flipping = [...(this._cardById?.values() || [])].some((m) => m.userData.anim?.mode === 'flip');
+    const sweeping = [...(this._cardById?.values() || [])].some((m) => m.userData.anim?.mode === 'sweep');
+    if (this._shuffleT0 && this.shoe) {
+      const u = (now - this._shuffleT0) / 800;
+      if (u < 1) this.shoe.rotation.y = Math.sin(u * 16) * 0.14;
+      else { this.shoe.rotation.y = 0; this._shuffleT0 = 0; }
+    }
+    if (!this.reduced && (dealing || this._dealFlick || this._view?.dealing)) {
+      const u = (Math.sin(t * 9) * 0.5 + 0.5);
+      arms.armR.rotation.x = 0.15 - u * 1.05;
+      arms.armR.rotation.z = 0.3 - u * 0.25;
+      arms.armL.rotation.x = 0.4;
+      arms.wrR.rotation.x = u * 0.4;
+    } else if (!this.reduced && flipping) {
+      arms.armR.rotation.x = -0.2;
+      arms.armR.rotation.z = 0.05;
+      arms.wrR.rotation.x = Math.sin(t * 8) * 0.2;
+    } else if (!this.reduced && sweeping) {
+      arms.armR.rotation.x = -0.15;
+      arms.armL.rotation.x = -0.1;
+      arms.armR.rotation.z = 0.45;
     } else {
       arms.armR.rotation.x += (0.35 + Math.sin(t * 1.2) * 0.03 - arms.armR.rotation.x) * 0.08;
       arms.armL.rotation.x += (0.35 + Math.sin(t * 1.1) * 0.03 - arms.armL.rotation.x) * 0.08;
+      arms.armR.rotation.z += (0.2 - arms.armR.rotation.z) * 0.08;
     }
   }
   _tickTip(now) {
@@ -963,7 +1273,7 @@ export class PovScene {
     const p1 = new THREE.Vector3(0.08, FELT_Y + 0.7, 0.6);
     const a = p0.clone().lerp(p1, u), b = p1.clone().lerp(p2, u);
     this._tipMesh.position.copy(a.lerp(b, u));
-    this._tipMesh.rotation.x = u * 4; this._tipMesh.visible = u < 1;
+    this._tipMesh.rotation.x = u * 8; this._tipMesh.rotation.z = u * 3; this._tipMesh.visible = u < 1;
     if (u >= 1) this._tipFly = null;
   }
   _tickFps(now) {
