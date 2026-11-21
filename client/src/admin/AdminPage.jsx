@@ -86,7 +86,7 @@ function WantedAdmin() {
   return (
     <div className="bo-panel bo-pov-card" data-test="bo-wanted">
       <header><h3>Wanted posters</h3></header>
-      <p className="bo-note">When a human player is on turn in four or more games at once (not blackjack, and not at tables with bots), Guntrad posts a WANTED poster in the Academy Slack channel. Default channel is unset — no posts until you or <code>SLACK_ACADEMY_CHANNEL</code> set one. The bot needs <code>chat:write</code> and <code>files:write</code>, and must be in the channel.</p>
+      <p className="bo-note">When a human player is on turn in four or more games at once (not blackjack, and not at tables with bots), Guntrad posts a WANTED poster as an @channel announcement in the Academy Slack channel. Default is <code>#buffalo-bills-academy</code>, overridable here or with <code>SLACK_ACADEMY_CHANNEL</code>. The bot needs <code>chat:write</code>, <code>files:write</code>, and <code>channels:read</code> (plus <code>groups:read</code> if the channel is private), and must be invited to the channel. Pasting the C-ID here skips the name lookup.</p>
       {error && <p className="muted small">Could not load the wanted-poster settings.</p>}
       {data && (
         <>

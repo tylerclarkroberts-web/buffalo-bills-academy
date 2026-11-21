@@ -10,6 +10,7 @@ import { CRIME, PUNISHMENT, renderWantedPoster, sampleWantedPoster, SAMPLE_NAME 
 export const SHAME_MIN = 4;
 export const SHAME_COOLDOWN_MS = 12 * 3600 * 1000;
 export const WANTED_DOC = 'wanted-posters';
+export const DEFAULT_ACADEMY_CHANNEL = '#buffalo-bills-academy';
 
 export function defaultWantedState() {
   return { enabled: true, channel: '', players: {} };
@@ -26,7 +27,7 @@ export function envWantedEnabled(env = process.env) {
 }
 
 export function resolveChannel(state, env = process.env) {
-  return normChannel(state?.channel) || normChannel(env.SLACK_ACADEMY_CHANNEL);
+  return normChannel(state?.channel) || normChannel(env.SLACK_ACADEMY_CHANNEL) || DEFAULT_ACADEMY_CHANNEL;
 }
 
 /**
@@ -46,6 +47,13 @@ export function shameDecision(rec, { count, now, min = SHAME_MIN, cooldown = SHA
 
 export function wantedCaption(name) {
   return `WANTED: ${name} — CRIME: ${CRIME}. PUNISHMENT: ${PUNISHMENT}.`;
+}
+
+/** Guntrad's @channel announcement, passing along the sheriff's message. */
+export function wantedSlackText({ name, slackUserId, count } = {}) {
+  const who = slackUserId ? `<@${slackUserId}>` : String(name || 'Unknown');
+  const n = Number.isFinite(Number(count)) ? Number(count) : 0;
+  return `<!channel> Word from the Sheriff's Office: ${who} is WANTED for making everyone else wait. They're holding up ${n} games. Punishment: One Thousand Years of Pain.`;
 }
 
 export class WantedShame {
@@ -76,7 +84,7 @@ export class WantedShame {
       toggle: this.state.enabled !== false,
       channel: this.channel,
       channelSet: !!this.channel,
-      defaultChannel: '',
+      defaultChannel: DEFAULT_ACADEMY_CHANNEL,
       cooldownMs: SHAME_COOLDOWN_MS,
       minGames: SHAME_MIN,
     };
@@ -131,22 +139,43 @@ export class WantedShame {
     return { posted: true, count };
   }
 
+  /** Photo bytes if this player uploaded one; otherwise the renderer uses their generated bust seed. Never Guntrad's dealer art. */
   readAvatar(player) {
     try {
       if (player?.avatar?.kind !== 'photo') return null;
+      const buf = this.service.avatars?.read?.(player.id);
+      if (buf && buf.length > 32) return buf;
       const file = this.service.avatars?.file?.(player.id);
       if (!file || !fs.existsSync(file)) return null;
       return fs.readFileSync(file);
     } catch { return null; }
   }
 
+  portraitSeed(player) {
+    if (player?.avatar?.kind === 'photo') return null;
+    return player?.avatar?.seed || player?.id || null;
+  }
+
+  async slackMention(player) {
+    try {
+      const r = await this.slack?.resolve?.(player);
+      return r?.id || null;
+    } catch { return null; }
+  }
+
   post(player, count, now) {
     const job = (async () => {
       const name = String(player.name || 'Unknown');
-      const png = this.render({ name, avatarPng: this.readAvatar(player), monogram: name });
+      const png = this.render({
+        name,
+        avatarPng: this.readAvatar(player),
+        seed: this.portraitSeed(player),
+        skinTone: player.skinTone,
+        monogram: name,
+      });
       const channel = this.channel;
-      const caption = wantedCaption(name);
-      const text = `${caption} (${count} tables waiting.)`;
+      const slackUserId = await this.slackMention(player);
+      const text = wantedSlackText({ name, slackUserId, count });
       const client = this.slack.client;
       const up = await client.uploadImage?.({
         channel,
@@ -178,4 +207,4 @@ export class WantedShame {
   }
 }
 
-export { CRIME, PUNISHMENT, SAMPLE_NAME };
+export { CRIME, PUNISHMENT, PROCEDURE, SAMPLE_NAME, SAMPLE_SEED } from './wantedPoster.js';

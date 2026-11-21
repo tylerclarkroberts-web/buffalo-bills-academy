@@ -54,11 +54,41 @@ export class SlackClient {
     return this.call('chat.postMessage', { channel, text, ...(blocks ? { blocks } : {}), unfurl_links: false, unfurl_media: false });
   }
   /**
+   * Turn a #name or C-ID into a channel id. files.completeUploadExternal wants a C-ID.
+   * Public channels: conversations.list needs channels:read. Private: also groups:read.
+   * Cached for the life of this client. Returns null if the name cannot be resolved.
+   */
+  async resolveChannelId(channel) {
+    const raw = String(channel || '').trim();
+    if (!raw) return null;
+    if (/^[CGD][A-Z0-9]{8,}$/i.test(raw)) return raw;
+    const name = raw.replace(/^#/, '').toLowerCase();
+    this._chanIds ||= new Map();
+    if (this._chanIds.has(name)) return this._chanIds.get(name);
+    let cursor = '';
+    do {
+      const params = { types: 'public_channel,private_channel', limit: 200, exclude_archived: true };
+      if (cursor) params.cursor = cursor;
+      const r = await this.call('conversations.list', params);
+      if (!r.ok) return null;
+      for (const ch of r.channels || []) {
+        if (ch?.name && String(ch.name).toLowerCase() === name && ch.id) {
+          this._chanIds.set(name, ch.id);
+          return ch.id;
+        }
+      }
+      cursor = r.response_metadata?.next_cursor || '';
+    } while (cursor);
+    return null;
+  }
+  /**
    * Upload a PNG (or other file) to a channel with an initial comment.
    * Uses Slack's files.getUploadURLExternal + files.completeUploadExternal flow.
+   * Resolves #name to a C-ID first (completeUploadExternal does not accept #name).
    */
   async uploadImage({ channel, filename, buffer, title, comment } = {}) {
     if (!channel) return { ok: false, error: 'no_channel' };
+    const channelId = (await this.resolveChannelId(channel)) || channel;
     const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
     const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length: buf.length });
     if (!up.ok) return up;
@@ -69,7 +99,7 @@ export class SlackClient {
     } catch { return { ok: false, error: 'upload_failed' }; }
     return this.call('files.completeUploadExternal', {
       files: [{ id: up.file_id, title: title || filename || 'image.png' }],
-      channel_id: channel,
+      channel_id: channelId,
       initial_comment: comment || '',
     });
   }

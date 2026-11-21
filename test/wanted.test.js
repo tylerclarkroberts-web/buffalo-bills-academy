@@ -5,25 +5,43 @@ import fs from 'node:fs';
 import os from 'os';
 import path from 'path';
 import { createApp } from '../server/app.js';
-import { shameDecision, wantedCaption, SHAME_MIN, SHAME_COOLDOWN_MS, envWantedEnabled, resolveChannel } from '../server/wanted.js';
+import { shameDecision, wantedCaption, wantedSlackText, SHAME_MIN, SHAME_COOLDOWN_MS, envWantedEnabled, resolveChannel, DEFAULT_ACADEMY_CHANNEL } from '../server/wanted.js';
 import { listShameTurns, listTurns, holdemSource } from '../server/turns.js';
 import { tableHasBots } from '../server/slack.js';
-import { CRIME, PUNISHMENT, JUTSU, SAMPLE_NAME, wantedSvg, sampleWantedPoster } from '../server/wantedPoster.js';
+import { CRIME, PUNISHMENT, PROCEDURE, SAMPLE_NAME, SAMPLE_SEED, POSTER_W, POSTER_H, wantedSvg, sampleWantedPoster, renderWantedPoster, nameFontSize, fitName } from '../server/wantedPoster.js';
 
-test('the poster copy keeps the parody line and an original jutsu nod, no official Naruto marks', () => {
+test('the poster keeps the parody lines and dynamic name, with no official Naruto marks', () => {
   assert.equal(CRIME, 'Making everyone else wait');
   assert.equal(PUNISHMENT, 'One Thousand Years of Pain');
-  assert.equal(JUTSU, 'Leaf Village Secret Finger Jutsu');
-  const svg = wantedSvg({ name: SAMPLE_NAME, sample: true });
-  assert.match(svg, /WANTED/);
-  assert.match(svg, /CRIME: Making everyone else wait/);
-  assert.match(svg, /PUNISHMENT:/);
-  assert.match(svg, /One Thousand Years of Pain/);
-  assert.match(svg, /Leaf Village Secret Finger Jutsu/);
-  assert.match(svg, /BUFFALO BILL'S ACADEMY/);
+  assert.equal(PROCEDURE, 'Everyone waiting is legally justified to use the procedure');
   assert.equal(SAMPLE_NAME, 'Cal Hick');
-  assert.doesNotMatch(svg, /naruto|masashi|kishimoto|sennen|shippuden|konoha|akatsuki| rasengan|sharing an/i);
+  assert.ok(SAMPLE_SEED);
+  assert.notEqual(SAMPLE_SEED, 'guntrad');
+  const svg = wantedSvg({ name: SAMPLE_NAME, portraitDataUrl: 'data:image/png;base64,QQ==' });
+  assert.match(svg, /Cal Hick/);
+  assert.match(svg, /clipPath id="oval"/);
+  assert.match(svg, /poster-template\.png|data:image\/png;base64,/);
+  assert.doesNotMatch(svg, /naruto|masashi|kishimoto|sennen|shippuden|konoha|akatsuki|rasengan|sharingan|dealer\.png|guntrad/i);
+  const png = sampleWantedPoster({ name: SAMPLE_NAME });
+  assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.equal(png.readUInt32BE(16), POSTER_W);
+  assert.equal(png.readUInt32BE(20), POSTER_H);
+  const long = 'Bartholomew J. Winterbottom III';
+  assert.equal(fitName('  Ann   Wait  '), 'Ann Wait');
+  assert.ok(nameFontSize(long) < nameFontSize('Ann'));
+  assert.ok(nameFontSize(long) >= 16);
+  const longPng = renderWantedPoster({ name: long, seed: 'wanted-sample-long' });
+  assert.equal(longPng.readUInt32BE(16), POSTER_W);
+  assert.notDeepEqual([...png], [...longPng], 'a different name must change the poster');
   assert.match(wantedCaption('Cal Hick'), /WANTED: Cal Hick/);
+  assert.equal(
+    wantedSlackText({ name: 'Ann Wait', count: 4 }),
+    "<!channel> Word from the Sheriff's Office: Ann Wait is WANTED for making everyone else wait. They're holding up 4 games. Punishment: One Thousand Years of Pain.",
+  );
+  assert.equal(
+    wantedSlackText({ name: 'Ann Wait', slackUserId: 'U123ABCDEF', count: 5 }),
+    "<!channel> Word from the Sheriff's Office: <@U123ABCDEF> is WANTED for making everyone else wait. They're holding up 5 games. Punishment: One Thousand Years of Pain.",
+  );
 });
 
 test('shameDecision: one poster per streak, re-arm below 4, at most one per 12h', () => {
@@ -44,13 +62,14 @@ test('shameDecision: one poster per streak, re-arm below 4, at most one per 12h'
   assert.equal(shameDecision({ lastAt: 0, streak: false }, { count: 3, now: t0 }).post, false);
 });
 
-test('env kill switch and empty default channel', () => {
+test('env kill switch and default #buffalo-bills-academy channel', () => {
   assert.equal(envWantedEnabled({}), true);
   assert.equal(envWantedEnabled({ SLACK_WANTED_POSTERS: '0' }), false);
   assert.equal(envWantedEnabled({ SLACK_WANTED_POSTERS: 'off' }), false);
-  assert.equal(resolveChannel({ channel: '' }, {}), '');
+  assert.equal(DEFAULT_ACADEMY_CHANNEL, '#buffalo-bills-academy');
+  assert.equal(resolveChannel({ channel: '' }, {}), '#buffalo-bills-academy');
   assert.equal(resolveChannel({ channel: '' }, { SLACK_ACADEMY_CHANNEL: '#academy' }), '#academy');
-  assert.equal(resolveChannel({ channel: 'C123' }, { SLACK_ACADEMY_CHANNEL: '#academy' }), 'C123');
+  assert.equal(resolveChannel({ channel: 'C12345678' }, { SLACK_ACADEMY_CHANNEL: '#academy' }), 'C12345678');
 });
 
 function holdTable({ code, toAct = 0, playerId = 'ann', bots = false, seats } = {}) {
@@ -100,7 +119,20 @@ function mockSlack() {
     const body = init.body && String(init.headers?.['content-type'] || '').includes('json') ? JSON.parse(init.body) : {};
     m.calls.push({ method, body });
     const res = (json) => ({ status: 200, ok: true, json: async () => json });
-    if (method === 'users.lookupByEmail') return res({ ok: false, error: 'users_not_found' });
+    if (method === 'users.lookupByEmail') {
+      if (m.slackUser) return res({ ok: true, user: { id: m.slackUser, team_id: 'T1', deleted: false, is_bot: false } });
+      return res({ ok: false, error: 'users_not_found' });
+    }
+    if (method === 'conversations.list') {
+      return res({
+        ok: true,
+        channels: [
+          { id: 'CACADEMY99', name: 'academy' },
+          { id: 'CBUFFALO99', name: 'buffalo-bills-academy' },
+        ],
+        response_metadata: { next_cursor: '' },
+      });
+    }
     if (method === 'files.getUploadURLExternal') return res({ ok: true, upload_url: 'https://files.example/upload', file_id: 'F1' });
     if (method === 'files.completeUploadExternal') {
       m.uploads.push({ channel: body.channel_id, comment: body.initial_comment, title: body.files?.[0]?.title });
@@ -169,9 +201,12 @@ test('a player on turn in 4 human-only holdem tables gets one poster, not a seco
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 1, JSON.stringify(slack.calls.map((c) => c.method)));
-  assert.match(slack.uploads[0].comment, /Ann Wait/);
+  assert.match(slack.uploads[0].comment, /<!channel>/);
+  assert.match(slack.uploads[0].comment, /Sheriff's Office/);
+  assert.match(slack.uploads[0].comment, /Ann Wait is WANTED for making everyone else wait/);
+  assert.match(slack.uploads[0].comment, /holding up 4 games/);
   assert.match(slack.uploads[0].comment, /One Thousand Years of Pain/);
-  assert.equal(slack.uploads[0].channel, '#academy');
+  assert.equal(slack.uploads[0].channel, 'CACADEMY99');
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 1, 'same streak does not post again');
@@ -208,6 +243,31 @@ test('bot tables and blackjack do not trigger a poster, and no Slack is sent wit
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 0);
   assert.equal(slack.channelPosts.length, 0);
+});
+
+test('a Slack-matched player is @mentioned in the channel post', async (t) => {
+  const slack = mockSlack();
+  slack.slackUser = 'UANNWAIT1';
+  const s = await boot(t, { slackFetch: slack.fetch });
+  const ann = { id: 'ann-mention', name: 'Ann Wait', createdAt: 1, bankroll: 5000, txns: [], google: { email: 'ann@example.com' } };
+  const bob = { id: 'bob-mention', name: 'Bob Pal', createdAt: 1, bankroll: 5000, txns: [] };
+  s.service.store.players[ann.id] = ann;
+  s.service.store.players[bob.id] = bob;
+  s.service.store.savePlayers();
+  for (let i = 0; i < 4; i++) {
+    s.service.store.saveTable({
+      code: `M${i}AAA`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
+      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
+      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
+      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
+    });
+  }
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 1);
+  assert.match(slack.uploads[0].comment, /<!channel>/);
+  assert.match(slack.uploads[0].comment, /<@UANNWAIT1> is WANTED/);
+  assert.doesNotMatch(slack.uploads[0].comment, /Ann Wait is WANTED/);
 });
 
 test('the admin sample route is owner-only and returns a PNG; toggle posts nothing to Slack', async (t) => {
