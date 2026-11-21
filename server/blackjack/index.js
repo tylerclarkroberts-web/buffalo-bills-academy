@@ -374,6 +374,7 @@ export class Blackjack {
       t.pit ||= { name: Pit.PIT_NAME, visits: 0, max: 4, nextAt: 0, visit: null, lastPhone: {} };
       t.pit.nextAt = 0;
       t.pit.visit = null;
+      t.pit.visits = Math.min(t.pit.visits || 0, Math.max(0, (t.pit.max || 4) - 1));
       if (body.hiddenId && t.watchers) t.watchers[body.hiddenId] = this.now() - Pit.PHONE_MS - 1;
       Pit.tickPit(t, this.now(), () => 0, { lastViews: t.watchers });
       if (body.line && t.pit.visit) t.pit.visit.line = String(body.line);

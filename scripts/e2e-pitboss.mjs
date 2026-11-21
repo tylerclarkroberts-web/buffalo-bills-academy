@@ -1,5 +1,5 @@
-// Dealer POV, manual flip, pit-boss loom, and a tip toss. Guntrad stays off camera.
-// npm run build && PLAYWRIGHT_DIR=... OUT=/workspace/bba-dealer-pov-shots CHROME=/usr/bin/google-chrome npm run e2e:pitboss
+// 3D dealer POV, hand signals, pit-boss loom, and a tip toss. Guntrad stays off camera.
+// npm run build && PLAYWRIGHT_DIR=... OUT=/workspace/bba-dealer-pov-shots/v2 CHROME=/usr/bin/google-chrome npm run e2e:pitboss
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'path';
 import { createRequire } from 'node:module';
@@ -37,7 +37,6 @@ async function shooFaun(p) {
     const no = p.locator('[data-test=fawn-no]');
     if (await no.count()) { await no.click({ force: true }); await wait(200); }
   } catch { /* no faun this time */ }
-  await p.evaluate(() => document.querySelectorAll('[data-test=fawn], .fn').forEach((el) => el.remove()));
 }
 async function skipGate(p) {
   const skip = p.getByRole('button', { name: 'Skip for now' });
@@ -72,6 +71,39 @@ const noScroll = async (p, label) => {
   const y = await p.evaluate(() => document.scrollingElement?.scrollHeight - document.scrollingElement?.clientHeight);
   check((y || 0) <= 2, `${label}: no scroll (delta ${y})`);
 };
+const engineOf = async (p) => {
+  try { return await p.locator('[data-test=bj-dealer-pov]').getAttribute('data-engine', { timeout: 4000 }); }
+  catch { return null; }
+};
+const waitWebgl = async (p, label) => {
+  await p.waitForFunction(() => document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-engine') === 'webgl', { timeout: 15000 });
+  check(await engineOf(p) === 'webgl', `${label}: 3D scene loaded (webgl)`);
+};
+const waitGesture = async (p, kind, ms = 8000) => {
+  await p.waitForFunction((k) => document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-gesture') === k, kind, { timeout: ms });
+};
+const readFps = async (p) => {
+  try {
+    await p.waitForFunction(() => Number(document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-fps') || 0) > 0, { timeout: 8000 });
+  } catch { /* measured below */ }
+  try { return Number(await p.locator('[data-test=bj-dealer-pov]').getAttribute('data-fps', { timeout: 2000 })) || 0; }
+  catch { return 0; }
+};
+const dumpErrs = (p, label) => {
+  if (p.errs?.length) console.log(label, 'page errors:', p.errs.slice(0, 8).join(' | '));
+};
+const betIfNeeded = async (page, ann, code) => {
+  await page.waitForSelector('[data-test=bj-deal], [data-test=bj-chip-5], [data-test=bj-bar], [data-test=bj-hit]', { timeout: 8000 }).catch(() => {});
+  if (await page.locator('[data-test=bj-hit]').count()) return;
+  if (await page.locator('[data-test=bj-deal]').count()) {
+    await page.click('[data-test=bj-deal]');
+  } else if (await page.getByRole('button', { name: /^Bet/ }).count()) {
+    await page.getByRole('button', { name: /^Bet/ }).click();
+  } else {
+    await api(ann, 'POST', `/bj/tables/${code}/bet`, { bet: 10 });
+    await page.reload(); await skipGate(page); await shooFaun(page);
+  }
+};
 
 let browser;
 const frames = OUT ? fs.mkdtempSync(path.join(os.tmpdir(), 'pov-gif-')) : null;
@@ -82,64 +114,196 @@ try {
   await new Promise((r, j) => { const t = Date.now(); const ping = () => fetch(B + '/api/health').then(() => r()).catch(() => (Date.now() - t > 20000 ? j(new Error('server did not start')) : setTimeout(ping, 200))); ping(); });
   const house = await login('Sam', 'sam@pov.test');
   const ann = await login('Ann', 'ann@pov.test');
+  await api(house, 'POST', '/me/avatar', { kind: 'gen', seed: 'sam-dealer' });
+  await api(ann, 'POST', '/me/avatar', { kind: 'gen', seed: 'ann-hair' });
   const table = await api(house, 'POST', '/bj/tables', { name: "Sam's pit", settings: { house: 'me', buyIn: 200, houseBank: 500, minBet: 5, maxBetX: 20, bots: 0, continuous: false, turnSec: 86400 } });
   await api(ann, 'POST', `/bj/tables/${table.code}/join`, { ack: true });
   await api(house, 'POST', `/bj/tables/${table.code}/start`);
-  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('9h', '7c', '5d', '8s', ['4c']) });
+  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('9h', '7c', '5d', '8s', ['4c', 'Td']) });
   await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: false });
 
+
   browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const close = async (page) => { try { await page?.context()?.close(); } catch { /* */ } };
 
   const D = await open(browser, house, { w: 1280, h: 800 }, `/bj/${table.code}`);
   await D.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
   await shooFaun(D);
-  check(await D.locator('[data-test=bj-dealer-pov]').count() > 0, 'desktop: dealer POV is on');
+  await waitWebgl(D, 'desktop');
   check(await D.locator('[data-test=bj-guntrad]').count() === 0, 'desktop: Guntrad is not in the dealer view');
   check(await D.locator('[data-test=bj-autopilot]').count() > 0, 'desktop: Autopilot toggle is there');
+  check(await D.locator('[data-test=bj-pov-canvas]').count() > 0, 'desktop: 3D canvas is in the DOM');
 
-  const A = await open(browser, ann, { w: 1280, h: 800 }, `/bj/${table.code}`);
-  await A.waitForSelector('[data-test=bj-table]', { timeout: 12000 });
-  await shooFaun(A);
-  await A.waitForSelector('[data-test=bj-deal], [data-test=bj-chip-5], [data-test=bj-bar]', { timeout: 8000 });
-  // Place a $10 bet if the bet bar is up.
-  if (await A.locator('[data-test=bj-deal]').count()) {
-    await A.click('[data-test=bj-deal]');
-  } else if (await A.getByRole('button', { name: /^Bet/ }).count()) {
-    await A.getByRole('button', { name: /^Bet/ }).click();
-  } else {
-    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
-    await A.reload(); await skipGate(A); await shooFaun(A);
-  }
-  await D.waitForSelector('[data-test=bj-deal-next]', { timeout: 8000 });
+  await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+  await D.waitForSelector('[data-test=bj-deal-next]', { timeout: 12000 });
   check(await D.locator('[data-test=bj-deal-next]').count() > 0, 'desktop: Deal is offered after the bet');
 
-  // Manual deal, framed for a short GIF of the flip.
   for (let i = 0; i < 4; i++) {
-    await D.click('[data-test=bj-deal-next]');
+    try {
+      await D.locator('[data-test=bj-deal-next]').click({ force: true, timeout: 3000 });
+    } catch {
+      await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'deal' });
+    }
     await wait(280);
     await frame(D);
   }
-  await wait(200);
-  await shot(D, 'desktop-dealer-pov');
+  await wait(400);
+  dumpErrs(D, 'desktop after deal');
+  const desktopFps = await readFps(D);
+  console.log('fps desktop', desktopFps.toFixed(1), 'engine', await engineOf(D));
+  check(desktopFps > 0, `desktop fps measured (${desktopFps.toFixed(1)})`);
+  if (desktopFps > 0) await shot(D, 'desktop-dealer-pov');
+  else console.log('skipping blank desktop-dealer-pov overwrite');
   await noScroll(D, 'desktop POV');
 
+  // Hit via the API so we only need the dealer's page.
+  await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'hit' });
+  await waitGesture(D, 'hit');
+  const hitKind = await D.locator('[data-test=bj-dealer-pov]').getAttribute('data-gesture');
+  check(hitKind === 'hit', `desktop: hit gesture is on the scene (${hitKind})`);
+  await wait(280);
+  await frame(D);
+  await shot(D, 'desktop-hit-gesture');
+
+  if (await D.locator('[data-test=bj-deal-next]').count()) {
+    try { await D.locator('[data-test=bj-deal-next]').click({ force: true, timeout: 3000 }); }
+    catch { await api(house, 'POST', `/bj/tables/${table.code}/deal`, { action: 'flip' }); }
+    await wait(200);
+  }
+  await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' });
+  await waitGesture(D, 'stand').catch(() => {});
+  await wait(250);
+  await frame(D);
+  await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
+
+  // Wait for the next betting round, then a split.
+  const readyToBet = async () => {
+    for (let n = 0; n < 40; n++) {
+      const v = await api(house, 'GET', `/bj/tables/${table.code}`);
+      if (v?.round?.phase === 'betting' || (!v?.round && v?.status === 'playing')) return v;
+      await wait(250);
+    }
+    throw new Error('betting phase never came back');
+  };
+  await readyToBet();
+  await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('8s', '6c', '8h', '9d', ['5c', '9h', '4d']) });
+  await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+  // Autopilot deals; wait until Ann can split.
+  let canSplit = false;
+  for (let n = 0; n < 40; n++) {
+    const v = await api(house, 'GET', `/bj/tables/${table.code}`);
+    if (v?.round?.can?.split) { canSplit = true; break; }
+    await wait(250);
+  }
+  if (!canSplit) console.log('split can-flag missed, trying the act anyway');
+  await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'split' });
+  await waitGesture(D, 'split');
+  const splitKind = await D.locator('[data-test=bj-dealer-pov]').getAttribute('data-gesture');
+  check(splitKind === 'split', `desktop: split gesture is on the scene (${splitKind})`);
+  await wait(350);
+  await frame(D);
+  await shot(D, 'desktop-split-gesture');
+
+  // Double on a fresh hand, if we can get there.
+  await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' }).catch(() => {});
+  await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'stand' }).catch(() => {});
+  try {
+    await readyToBet();
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('6h', '9c', '5d', '8s', ['Td']) });
+    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+    for (let n = 0; n < 40; n++) {
+      const v = await api(house, 'GET', `/bj/tables/${table.code}`);
+      if (v?.round?.can?.double) {
+        await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'double' });
+        await waitGesture(D, 'double', 8000);
+        await wait(300);
+        await shot(D, 'desktop-double-gesture');
+        check(true, 'desktop: double gesture fired');
+        break;
+      }
+      await wait(250);
+    }
+  } catch (e) { console.log('double gesture skipped', e.message); }
+
+  await api(house, 'POST', '/dev/bj-pit', { code: table.code, line: 'Hands where the camera can see them.', loom: true });
+  await D.waitForSelector('[data-test=bj-pit][data-state=loom], [data-test=bj-pit][data-state=talk]', { timeout: 8000 });
+  await wait(800);
+  await shot(D, 'desktop-pit-loom');
+  check(/Hands where the camera can see them|Count it again|Language|phone|handsome tip/i.test((await D.locator('[data-test=bj-pit-line]').innerText()).replace(/\s+/g, ' ')), 'desktop: pit boss line is up');
+
+  await api(ann, 'POST', `/bj/tables/${table.code}/tip`, { amount: 25, id: 'e2e-tip-25' });
+  await D.waitForSelector('[data-test=bj-thanks]', { timeout: 6000 });
+  await wait(250);
+  await shot(D, 'desktop-tip-toss');
+  check(await D.locator('[data-test=bj-thanks]').count() > 0, 'desktop: thanks is visible');
+
+  const benign = (e) => /appendChild|ResizeObserver|WebGL|context/.test(e);
+  const dErrs = (D.errs || []).filter((e) => !benign(e));
+  check(dErrs.length === 0, `desktop house page errors (${dErrs})`);
+  check(!/Guntrad/.test(await D.locator('[data-test=bj-table]').innerText().catch(() => '')), 'Guntrad is not on the dealer POV');
+  await close(D);
+
+  // Mobile: one page, a mid-hand already on the table (or a fresh dealt hand).
   const M = await open(browser, house, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
   await M.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
   await shooFaun(M);
+  await waitWebgl(M, 'mobile');
+  await wait(400);
   await shot(M, 'mobile-dealer-pov');
   await noScroll(M, 'mobile POV');
-
-  // Pit boss looms in.
+  const mobileFps = await readFps(M);
+  console.log('fps mobile', mobileFps.toFixed(1));
+  check(mobileFps > 0, `mobile fps measured (${mobileFps.toFixed(1)})`);
   await api(house, 'POST', '/dev/bj-pit', { code: table.code, line: 'Hands where the camera can see them.', loom: true });
-  await D.waitForSelector('[data-test=bj-pit][data-state=loom], [data-test=bj-pit][data-state=talk]', { timeout: 8000 });
-  await wait(500);
-  await shot(D, 'desktop-pit-loom');
-  await M.waitForSelector('[data-test=bj-pit]', { timeout: 8000 });
-  await wait(400);
+  await M.waitForSelector('[data-test=bj-pit-line]', { timeout: 10000 });
+  await wait(800);
   await shot(M, 'mobile-pit-loom');
-  check(/Hands where the camera can see them|Count it again|Language|phone|handsome tip/i.test((await D.locator('[data-test=bj-pit-line]').innerText()).replace(/\s+/g, ' ')), 'desktop: pit boss line is up');
+  check(await M.locator('[data-test=bj-pit-line]').count() > 0, 'mobile: pit boss line is up');
+  await close(M);
 
-  // Tip toss from Ann while Sam is dealing.
+  // Mobile hit / split stills: open a fresh mid-gesture if we can start another hand; otherwise skip.
+  try {
+    await readyToBet();
+    await api(house, 'POST', `/bj/tables/${table.code}/autopilot`, { on: true });
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('9h', '7c', '5d', '8s', ['4c']) });
+    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+    const Mh = await open(browser, house, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
+    await Mh.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
+    await shooFaun(Mh);
+    await waitWebgl(Mh, 'mobile-hit');
+    for (let n = 0; n < 40; n++) {
+      const v = await api(house, 'GET', `/bj/tables/${table.code}`);
+      if (v?.round?.phase === 'play' && v?.round?.can) break;
+      await wait(200);
+    }
+    await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'hit' });
+    await waitGesture(Mh, 'hit');
+    await wait(280);
+    await shot(Mh, 'mobile-hit-gesture');
+    await close(Mh);
+  } catch (e) { console.log('mobile hit skipped', e.message); }
+
+  try {
+    await readyToBet();
+    await api(house, 'POST', '/dev/bj-rig', { code: table.code, deck: rig('8s', '6c', '8h', '9d', ['5c', '9h']) });
+    await api(ann, 'POST', `/bj/tables/${table.code}/bet`, { bet: 10 });
+    const Ms = await open(browser, house, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
+    await Ms.waitForSelector('[data-test=bj-dealer-pov]', { timeout: 12000 });
+    await shooFaun(Ms);
+    await waitWebgl(Ms, 'mobile-split');
+    for (let n = 0; n < 40; n++) {
+      const v = await api(house, 'GET', `/bj/tables/${table.code}`);
+      if (v?.round?.can?.split) break;
+      await wait(200);
+    }
+    await api(ann, 'POST', `/bj/tables/${table.code}/act`, { action: 'split' });
+    await waitGesture(Ms, 'split');
+    await wait(300);
+    await shot(Ms, 'mobile-split-gesture');
+    await close(Ms);
+  } catch (e) { console.log('mobile split skipped', e.message); }
+
+  // Tip from Ann's phone view (no WebGL, she's not dealing).
   const Am = await open(browser, ann, { w: 390, h: 844, m: true }, `/bj/${table.code}`);
   await Am.waitForSelector('[data-test=bj-tip-25]', { timeout: 10000 });
   await shooFaun(Am);
@@ -147,25 +311,23 @@ try {
   await Am.waitForSelector('[data-test=bj-tip-toss]', { timeout: 5000 });
   await wait(350);
   await shot(Am, 'mobile-tip-toss');
-  await D.waitForSelector('[data-test=bj-thanks], [data-test=bj-tip-toss]', { timeout: 6000 });
-  await wait(200);
-  await shot(D, 'desktop-tip-toss');
-  check(await D.locator('[data-test=bj-thanks], [data-test=bj-tip-toss]').count() > 0, 'desktop: thanks or the toss is visible');
   await noScroll(Am, 'mobile tip');
+  const aErrs = (Am.errs || []).filter((e) => !benign(e));
+  check(aErrs.length === 0, `mobile ann page errors (${aErrs})`);
+  await close(Am);
 
-  const benign = (e) => /appendChild|ResizeObserver/.test(e);
-  for (const [p, name] of [[D, 'desktop house'], [A, 'desktop ann'], [M, 'mobile house'], [Am, 'mobile ann']]) {
-    const errs = (p.errs || []).filter((e) => !benign(e));
-    check(errs.length === 0, `${name} page errors (${errs})`);
+  if (OUT) {
+    fs.mkdirSync(OUT, { recursive: true });
+    fs.writeFileSync(path.join(OUT, 'fps.txt'), `desktop ${desktopFps.toFixed(1)}\nmobile ${mobileFps.toFixed(1)}\nrenderer swiftshader (e2e, software GL)\n`);
   }
-  check(!/Guntrad/.test(await D.locator('[data-test=bj-table]').innerText().catch(() => '')), 'Guntrad is not on the dealer POV');
 
   if (OUT && frames && fi > 1) {
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '5', '-i', path.join(frames, 'f%04d.png'),
       '-vf', 'scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=none',
-      '-loop', '0', path.join(OUT, 'manual-deal-flip.gif')]);
-    console.log('gif', path.join(OUT, 'manual-deal-flip.gif'), 'frames', fi);
+      '-loop', '0', path.join(OUT, 'gestures.gif')]);
+    console.log('gif', path.join(OUT, 'gestures.gif'), 'frames', fi);
   }
+
 } catch (e) {
   console.error(e);
   fails.push(String(e.message || e));

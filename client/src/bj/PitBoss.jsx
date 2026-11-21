@@ -32,7 +32,7 @@ export function PitFigure({ state = 'approach', compact = false, reduced }) {
 }
 
 /** Short overlay + figure. Does not capture clicks — play stays live underneath. */
-export function PitBoss({ pit, pov, reduced }) {
+export function PitBoss({ pit, pov, reduced, hideFigure }) {
   const prev = useRef(null);
   useEffect(() => {
     if (!pit) { prev.current = null; return; }
@@ -44,8 +44,8 @@ export function PitBoss({ pit, pov, reduced }) {
   }, [pit?.at, pit?.state, pit?.kind]);
   if (!pit) return null;
   return (
-    <div className={`pit-layer ${pov ? 'pov' : 'rail'} ${pit.state} ${pit.loom ? 'looming' : ''}`} data-test="bj-pit" data-state={pit.state} aria-live="polite">
-      <PitFigure state={pit.state} compact={!pov} reduced={reduced} />
+    <div className={`pit-layer ${pov ? 'pov' : 'rail'} ${pit.state} ${pit.loom ? 'looming' : ''} ${hideFigure ? 'gl' : ''}`} data-test="bj-pit" data-state={pit.state} aria-live="polite">
+      {!hideFigure && <PitFigure state={pit.state} compact={!pov} reduced={reduced} />}
       <p className="pit-line" data-test="bj-pit-line" role="status">
         <b>{pit.name}</b> <i>{pit.title}</i>
         <span>{pit.line}</span>

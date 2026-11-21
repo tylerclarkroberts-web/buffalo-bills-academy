@@ -113,3 +113,20 @@
   .bj-chat-log { display: none; }
   .bj-pov-bar { gap: 6px; }
 }
+
+/* 3D canvas fills the felt; controls stay a tight overlay. */
+.bj-pov-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.bj-pov-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; touch-action: none; }
+.bj-pov.gl .bj-pov-world { display: none; }
+.bj-pov[data-engine="css"] .bj-pov-canvas { display: none; }
+.bj-pov[data-engine="pending"] .bj-pov-canvas { display: block; }
+.bj-pov-stage { z-index: 1; }
+.bj-pov-bar { position: relative; z-index: 8; pointer-events: auto; }
+.bj-pov.gl .bj-pov-bar { position: relative; z-index: 8; }
+.bj-pov.gl .bj-thanks, .bj-pov.gl .pit-layer { z-index: 5; }
+.pit-layer.gl .pit-fig { display: none; }
+.bj-pov-fps { margin-left: auto; font: 500 10px var(--mono, monospace); color: rgba(217,198,160,.55); }
+.bj-pov.gl .bj-tip-toss[hidden] { display: none; }
+@media (max-width: 720px) {
+  .bj-pov-fps { display: none; }
+}

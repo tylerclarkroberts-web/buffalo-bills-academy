@@ -12,6 +12,7 @@ import { freshDeck } from '../server/blackjack/rules.js';
 import { STALL_MS } from '../server/blackjack/pace.js';
 import { hasProfanity, SWEAR_LINE, PHONE_LINE, PIT_NAME } from '../server/blackjack/pitboss.js';
 import { TIP_AMOUNTS } from '../server/blackjack/tips.js';
+import { gestureFromLog, samplePose, revealDelay, isHitTap, isStandWave, isDoubleFinger, isSplitV } from '../client/src/bj/povGestures.js';
 import { mulberry } from '../server/blackjack/sim.js';
 
 function fixture(t, seed = 11) {
@@ -183,4 +184,36 @@ test('the all-in wait is unchanged: a solo all-in does not sit on a stuck deal',
   f.bj.bet(f.P.ann, tb.code, { bet: 10 });
   assert.ok(tb.round, 'a round is out');
   assert.notEqual(tb.round.phase, 'betting', 'the deal ran: we did not wait on an all-in for the others');
+});
+
+
+test('gestureFromLog reads hit, stand, double and split from the table log and ignores already-seen seqs', () => {
+  const log = [
+    { seq: 10, ev: { k: 'deal', seat: 0 } },
+    { seq: 11, ev: { k: 'hit', seat: 0 } },
+    { seq: 12, ev: { k: 'stand', seat: 1 } },
+    { seq: 13, ev: { k: 'double', seat: 0 } },
+    { seq: 14, ev: { k: 'split', seat: 2 } },
+    { seq: 15, ev: { k: 'say', text: 'nice' } },
+  ];
+  assert.deepEqual(gestureFromLog(log, 10), { kind: 'hit', seat: 0, seq: 11, at: undefined });
+  assert.equal(gestureFromLog(log, 11).kind, 'stand');
+  assert.equal(gestureFromLog(log, 12).kind, 'double');
+  assert.equal(gestureFromLog(log, 13).kind, 'split');
+  assert.equal(gestureFromLog(log, 14), null);
+  assert.equal(gestureFromLog([], 0), null);
+});
+
+test('hand-signal poses: hit taps, stand waves, double one finger, split a V, after a mid-gesture reveal delay', () => {
+  const hit = samplePose('hit', 0.34);
+  const stand = samplePose('stand', 0.4);
+  const dbl = samplePose('double', 0.5);
+  const split = samplePose('split', 0.5);
+  assert.equal(isHitTap(hit), true);
+  assert.equal(isStandWave(stand), true);
+  assert.equal(isDoubleFinger(dbl), true);
+  assert.equal(isSplitV(split), true);
+  assert.equal(isHitTap(samplePose('stand', 0.4)), false);
+  assert.ok(revealDelay('hit') < 900 && revealDelay('hit') > 200);
+  assert.ok(revealDelay('split') > revealDelay('hit'));
 });
