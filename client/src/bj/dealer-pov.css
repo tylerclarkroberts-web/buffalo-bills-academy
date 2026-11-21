@@ -169,7 +169,8 @@
 .bj-pov-hud button, .bj-pov-hud label, .bj-pov-hud input, .bj-auto-pill, .bj-say-toggle, .bj-pov-act { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 
 .bj-pov-hud-top, .bj-pov-hud-bottom { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
-.bj-pov-hud-top { justify-content: flex-start; flex-wrap: nowrap; min-height: 44px; }
+.bj-pov-hud-top { flex-direction: column; align-items: stretch; justify-content: flex-start; flex-wrap: nowrap; min-height: 44px; gap: 6px; }
+.bj-pov-hud-top-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .bj-pov-hud-bottom { justify-content: center; position: relative; min-height: 52px; padding-bottom: 2px; margin-top: auto; }
 
 .bj-auto-pill {
@@ -263,51 +264,63 @@
 .bj-house-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; min-height: 44px; }
 
 
-/* Notice queue: pit boss line + tip toast stack at the top, never over the dealer cards or table center. */
+
+/* Compact single-line notice pills live in the top HUD row, in the dark band, one at a time. */
 .bj-pov-notices {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  width: 100%;
-  max-width: min(520px, 90%);
-  margin: 4px auto 0;
   flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
   z-index: 8;
 }
 .bj-pov-notices .pit-line,
 .bj-pov-notices .bj-thanks,
-.bj-pov.gl .bj-pov-notices .pit-line,
-.pit-layer.pov .pit-line,
-.bj-thanks {
+.bj-pov.gl .bj-pov-notices .pit-line {
   position: static;
-  left: auto;
-  top: auto;
-  right: auto;
-  bottom: auto;
+  left: auto; top: auto; right: auto; bottom: auto;
   transform: none;
   margin: 0;
   max-width: 100%;
-}
-.bj-pov-notices .pit-line,
-.bj-pov.gl .bj-pov-notices .pit-line {
-  padding: 10px 16px 12px;
-  background: rgba(8,6,4,.78);
-  border: 1px solid rgba(242,198,90,.28);
-  border-radius: 4px 4px 16px 16px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  text-align: center;
-}
-.bj-pov-notices .bj-thanks {
-  padding: 8px 14px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
   border-radius: 999px;
-  background: rgba(16,12,10,.86);
-  border: 1px solid rgba(242,198,90,.4);
-  font: 500 13px var(--sans, sans-serif);
+  background: rgba(8,6,4,.82);
+  border: 1px solid rgba(242,198,90,.32);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: #f4efe4;
-  backdrop-filter: blur(12px);
-  white-space: normal;
-  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  animation: bj-notice-in .28s ease-out;
+}
+.bj-pov-notices .pit-line b,
+.bj-pov-notices .bj-thanks b {
+  font: 600 11px/1.2 var(--sans, sans-serif);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #f2c65a;
+  flex: none;
+}
+.bj-pov-notices .pit-line i { display: none; }
+.bj-pov-notices .pit-line span,
+.bj-pov-notices .bj-thanks {
+  font: 500 12px/1.2 var(--sans, sans-serif);
+  margin: 0;
+}
+@keyframes bj-notice-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 720px) {
+  .bj-pov-notices .pit-line span,
+  .bj-pov-notices .bj-thanks { font-size: 11px; }
 }

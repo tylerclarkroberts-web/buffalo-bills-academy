@@ -283,7 +283,11 @@ function blobShadow() {
   return s;
 }
 
+const _labelCache = new Map();
 function labelTexture(text, color = '#f4efe4', bg = 'rgba(10,8,6,.86)', chip = false) {
+  const key = `${chip ? 1 : 0}|${color}|${bg}|${text}`;
+  const hit = _labelCache.get(key);
+  if (hit) return hit;
   const c = canv(chip ? 128 : 256, chip ? 128 : 64); if (!c) return null;
   const ctx = c.getContext('2d');
   ctx.fillStyle = bg; ctx.beginPath();
@@ -301,6 +305,7 @@ function labelTexture(text, color = '#f4efe4', bg = 'rgba(10,8,6,.86)', chip = f
     ctx.fillText(String(text || '').slice(0, 16), 128, 32, 210);
   }
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  _labelCache.set(key, tex);
   return tex;
 }
 
@@ -726,8 +731,8 @@ export class PovScene {
     // deepened and narrowed so a physically correct (unstretched) camera can still
     // fill the lower ~65% of a tall phone with felt, and the player arc sits in the upper third.
     if (this._portrait) {
-      this._baseCam.set(0, 2.45, -0.20); this._look.set(0, 0.70, 1.70); this.camera.fov = 58;
-      this._introFrom.set(0, 3.40, 3.80); this._introLook.set(0, 0.90, 1.50);
+      this._baseCam.set(0, 2.56, -0.26); this._look.set(0, 0.64, 1.62); this.camera.fov = 56;
+      this._introFrom.set(0, 3.45, 3.70); this._introLook.set(0, 0.85, 1.45);
     } else {
       this._baseCam.set(0, 2.55, -1.20); this._look.set(0, 0.78, 1.00); this.camera.fov = 48;
       this._introFrom.set(0, 3.15, 2.45); this._introLook.set(0, 0.9, 0.85);
@@ -946,12 +951,15 @@ export class PovScene {
     });
     (dealerCards || []).forEach((c, ci) => {
       const n = dealerCards.length;
-      const p = this._xz((ci - (n - 1) / 2) * 0.20, 0.12 + ci * 0.008);
+      const mid = (n - 1) / 2;
+      // World card width is ~0.28 at this scale; 0.33 keeps a clean gap. One shared z, a gentle fan.
+      const p = this._xz((ci - mid) * 0.33, 0.32);
+      const fan = (ci - mid) * 0.09;
       need.push({
         id: cardSlotId({ roundNo, dealer: true, idx: ci }), dealer: true, idx: ci, code: c,
-        x: p.x, y: FELT_Y + 0.02, z: p.z,
-        rotX: -Math.PI / 2 - 0.28, rotY: 0, rotZ: 0,
-        down: !c, scale: 3.3, stagger: (stagger++) * 70,
+        x: p.x, y: FELT_Y + 0.02 + ci * 0.0008, z: p.z,
+        rotX: -Math.PI / 2 - 0.22, rotY: 0, rotZ: fan,
+        down: !c, scale: 3.05, stagger: (stagger++) * 70,
       });
     });
     this._setCardTargets(need);
@@ -1123,6 +1131,15 @@ export class PovScene {
     if (this._paused || this._lost) return;
     try {
       const wall = performance.now();
+      if (this._wall0) {
+        const gap = wall - this._wall0;
+        if (gap > 50) {
+          this._hitches = this._hitches || [];
+          this._hitches.push({ dt: Math.round(gap * 10) / 10, at: Math.round(wall), why: this._busy || 'frame' });
+          if (this._hitches.length > 40) this._hitches.shift();
+        }
+      }
+      this._wall0 = wall;
       this._acc += Math.min(0.1, this.clock.getDelta());
       const stepped = simSteps(this._acc, this._step, 2);
       this._acc = stepped.acc;
@@ -1247,7 +1264,7 @@ export class PovScene {
     want.forEach((d) => {
       let s = this._labelById.get(d.id);
       if (!s || s.userData.text !== d.text) {
-        if (s) { this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(d.id); }
+        if (s) { this.labels.remove(s); this._labelById.delete(d.id); }
         const tex = labelTexture(d.text, d.color, d.bg, !!d.chip);
         s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
         s.userData.tex = tex; s.userData.text = d.text; s.userData.chip = !!d.chip;
@@ -1263,7 +1280,7 @@ export class PovScene {
     for (const [id, s] of this._labelById) {
       if (keep.has(id) || id.startsWith('chat:')) continue;
       if ((s.userData.until || 0) < now && !id.startsWith('tot:')) {
-        this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(id);
+        this.labels.remove(s); this._labelById.delete(id);
       }
     }
   }
@@ -1273,7 +1290,7 @@ export class PovScene {
       const left = (s.userData.until || 0) - now;
       if (s.material) s.material.opacity = left < 400 ? Math.max(0, left / 400) : 1;
       if (left < 0 && !id.startsWith('tot:')) {
-        this.labels.remove(s); s.userData.tex?.dispose?.(); this._labelById.delete(id);
+        this.labels.remove(s); this._labelById.delete(id);
       }
     }
   }
@@ -1332,14 +1349,12 @@ export class PovScene {
   }
 
   _pitTargets() {
-    // Dealer's right = the last seat's outboard shoulder (Dee in the four-handed preview).
-    // Walk in from further out; never stand in the felt or under Ann.
-    const cap = Math.max(2, this._view?.v?.maxSeats || this.players.size || 4);
-    const lay = this._lay(cap, cap - 1);
-    const len = Math.hypot(lay.x, lay.z) || 1;
-    const ox = lay.x / len, oz = lay.z / len;
-    const at = (out, side = 0) => this._v0.set(lay.x + ox * out + oz * side, 0, lay.z + oz * out - ox * side).clone();
-    return { dest: at(0.42, 0.08), start: at(1.25, 0.2), loom: at(0.28, 0.04) };
+    // Stand in the alley on the dealer's right, between the rail and the last player.
+    // Radially behind Dee is off-frame (and hidden by her) on a tight iPhone portrait.
+    const at = (x, z) => { const p = this._xz(x, z); return new THREE.Vector3(p.x, 0, p.z); };
+    // Dealer's left alley, mid-rail: close enough to stay in a tight iPhone frame, out enough
+    // that he is a distinct figure and not standing on Ann's cards or in the foreground crop.
+    return { dest: at(1.24, 0.46), start: at(1.52, 0.10), loom: at(1.16, 0.38) };
   }
   _tickPit(now, dt) {
     const pit = this._pit;
@@ -1350,7 +1365,7 @@ export class PovScene {
     // Prefer timestamps so a stale "approach" view still walks the visit as time passes.
     let st = pit.state;
     if (pit.at && pit.until) {
-      const age = now - pit.at;
+      const age = Date.now() - pit.at;
       const approach = (pit.approachUntil || pit.at + 1200) - pit.at;
       const loom = (pit.loomUntil || pit.at + 2200) - pit.at;
       const leave = (pit.until - pit.at) - 900;
@@ -1439,19 +1454,8 @@ export class PovScene {
       this._adaptDpr(this.fps);
     }
   }
-  _adaptDpr(fps) {
-    if (this.software) return;
-    if (fps < 36) { this._lowFps++; this._okFps = 0; }
-    else if (fps > 52) { this._okFps++; this._lowFps = 0; }
-    else { this._lowFps = 0; this._okFps = 0; }
-    const cur = this.renderer.getPixelRatio();
-    if (this._lowFps >= 2 && cur > 1.05) {
-      this._dprFloor = Math.max(1, cur - 0.35);
-      this.resize();
-    } else if (this._okFps >= 6 && this._dprFloor < 2 && cur < Math.min(2, window.devicePixelRatio || 1) - 0.05) {
-      this._dprCap = null;
-      this.resize();
-    }
+  _adaptDpr() {
+    // Changing the drawing-buffer size mid-session costs 200–300ms. Pick a cap at mount and keep it.
   }
   _prewarm() {
     try {
@@ -1460,6 +1464,12 @@ export class PovScene {
       }
       const list = [...(this.res.textures || []), this.backTex, ...this.faceCache.values()].filter(Boolean);
       for (const tex of list) {
+        try { this.renderer.initTexture(tex); } catch { /* */ }
+      }
+      for (const n of [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 26, 'BLACKJACK', 'BUST', 'HIT', 'STAND', 'DOUBLE', 'SPLIT']) {
+        labelTexture(String(n), n === 'BLACKJACK' || n === 'DOUBLE' ? '#f2c65a' : n === 'BUST' ? '#f0b0a0' : '#f4efe4', 'rgba(20,12,6,.94)', typeof n === 'number');
+      }
+      for (const tex of _labelCache.values()) {
         try { this.renderer.initTexture(tex); } catch { /* */ }
       }
       try { this.renderer.compile(this.scene, this.camera); } catch { /* */ }
@@ -1486,6 +1496,10 @@ export class PovScene {
     pts.push(at(0, FELT_Y, 0.02));
     pts.push(at(-0.7, FELT_Y, 0.02));
     pts.push(at(0.7, FELT_Y, 0.02));
+    // Keep Brisk's stand in a tight iPhone frame (head and feet).
+    const stand = this._pitTargets().dest;
+    pts.push(new THREE.Vector3(stand.x, 1.50, stand.z));
+    pts.push(new THREE.Vector3(stand.x, 0.20, stand.z));
     return pts;
   }
   _applyContentFrustum() {
@@ -1504,9 +1518,9 @@ export class PovScene {
       minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     }
     if (!Number.isFinite(minX) || maxX - minX < 1e-4 || maxY - minY < 1e-4) return;
-    const padX = (maxX - minX) * 0.10 + 0.02;
-    const padTop = (maxY - minY) * 0.18 + 0.03;
-    const padBot = (maxY - minY) * 0.14 + 0.04;
+    const padX = (maxX - minX) * (this._portrait ? 0.14 : 0.10) + 0.02;
+    const padTop = (maxY - minY) * (this._portrait ? 0.34 : 0.18) + (this._portrait ? 0.08 : 0.03);
+    const padBot = (maxY - minY) * (this._portrait ? 0.28 : 0.16) + (this._portrait ? 0.12 : 0.05);
     minX -= padX; maxX += padX;
     minY -= padBot; maxY += padTop;
     // Keep the canvas aspect so a tall phone does not vertically stretch figures.
@@ -1563,6 +1577,7 @@ export class PovScene {
     };
   }
   getFps() { return this.fps; }
+  getHitches() { return this._hitches || []; }
   destroy() {
     this._paused = true;
     this._lost = true;

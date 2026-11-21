@@ -102,10 +102,10 @@ export function DealerPov({
 
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
+  const rootRef = useRef(null);
+  const fpsEl = useRef(null);
   const [engine, setEngine] = useState(() => (canPovWebGL() ? 'pending' : 'css'));
   const [glGen, setGlGen] = useState(0);
-  const [fps, setFps] = useState(0);
-  const [gesture, setGesture] = useState('');
   const [sayOpen, setSayOpen] = useState(false);
   const [text, setText] = useState('');
   const prompt = v.dealer || {};
@@ -115,7 +115,16 @@ export function DealerPov({
   const turnFrac = v.turnSec ? Math.max(0, Math.min(1, left / (v.turnSec * 1000))) : 0;
   const out = (v.round?.hands || []).reduce((n, h) => n + (h.cards || []).filter(Boolean).length, 0)
     + (dealerCards || []).filter(Boolean).length;
-  const status = prompt.label || (actor ? `${actor.name} to act` : (autoOn ? 'Autopilot is dealing' : "You're dealing"));
+  const dealingLabel = autoOn ? 'Autopilot is dealing' : "You're dealing";
+  const phase = v.round?.phase;
+  let status;
+  if (actor) status = `${actor.name} to act`;
+  else if (prompt.label && prompt.label !== dealingLabel) status = prompt.label;
+  else if (dealing && phase !== 'dealer') status = dealingLabel;
+  else status = prompt.label || dealingLabel;
+  const notice = thanks
+    ? { key: `tip:${tip?.at || thanks}`, kind: 'tip', tip, thanks }
+    : (v.pit ? { key: `pit:${v.pit.at}`, kind: 'pit', pit: v.pit } : null);
 
   useEffect(() => {
     if (!canPovWebGL() || !canvasRef.current) { setEngine('css'); return undefined; }
@@ -123,8 +132,16 @@ export function DealerPov({
     try {
       scene = createPovScene(canvasRef.current, {
         reduced,
-        onFps: setFps,
-        onGesture: (g) => setGesture(g?.kind || ''),
+        onFps: (fps) => {
+          const n = Math.round(fps) || 0;
+          if (fpsEl.current) fpsEl.current.textContent = `${n || '—'} fps`;
+          const el = rootRef.current;
+          if (el) el.setAttribute('data-fps', String(n));
+        },
+        onGesture: (g) => {
+          const el = rootRef.current;
+          if (el) el.setAttribute('data-gesture', g?.kind || '');
+        },
         onLost: () => setEngine('css'),
         onRestore: () => { setEngine('pending'); setGlGen((n) => n + 1); },
         onCrash: (err) => { try { onCrash?.(err); } catch { /* */ } },
@@ -138,6 +155,7 @@ export function DealerPov({
     sceneRef.current = scene;
     setEngine('webgl');
     window.__bjPovFraming = () => scene.getFraming?.();
+    window.__POV_HITCHES = () => scene.getHitches?.() || [];
     const onVis = () => {
       const hidden = typeof document !== 'undefined' && document.hidden;
       scene.setPaused?.(hidden);
@@ -151,6 +169,7 @@ export function DealerPov({
       window.removeEventListener('pagehide', onVis);
       window.removeEventListener('pageshow', onVis);
       try { if (window.__bjPovFraming) delete window.__bjPovFraming; } catch { /* */ }
+      try { if (window.__POV_HITCHES) delete window.__POV_HITCHES; } catch { /* */ }
       scene.destroy(); sceneRef.current = null;
     };
   }, [reduced, glGen]);
@@ -173,12 +192,13 @@ export function DealerPov({
 
   return (
     <div
+      ref={rootRef}
       className={`bj-pov ${reduced ? 'rm' : ''} ${engine === 'webgl' ? 'gl' : ''}`}
       data-test="bj-dealer-pov"
       onPointerDown={unlockSfx}
       data-engine={engine === 'pending' ? 'webgl' : engine}
-      data-gesture={gesture}
-      data-fps={Math.round(fps)}
+      data-gesture=""
+      data-fps="0"
     >
       <div className="bj-pov-stage" data-test="bj-pov-stage">
         <canvas ref={canvasRef} className="bj-pov-canvas" data-test="bj-pov-canvas" aria-label="Dealer table" />
@@ -191,6 +211,7 @@ export function DealerPov({
       </div>
       <div className="bj-pov-hud" data-test="bj-pov-hud">
           <div className="bj-pov-hud-top" data-test="bj-pov-hud-top">
+            <div className="bj-pov-hud-top-row">
             <label className={`bj-auto bj-auto-pill ${autoOn ? 'on' : 'off'}`} data-test="bj-autopilot">
               <input type="checkbox" checked={autoOn} onChange={(e) => onAuto(e.target.checked)} />
               <span>Autopilot</span>
@@ -199,19 +220,20 @@ export function DealerPov({
             <div className="bj-pov-count" data-test="bj-pov-count">
               <em>{v.deckLeft ?? 0}</em> in shoe{out ? <> · <em>{out}</em> out</> : null}
             </div>
-          </div>
-          <div className="bj-pov-notices" data-test="bj-pov-notices">
-            {v.pit && (
-              <p className="pit-line" data-test="bj-pit-line" role="status">
-                <b>{v.pit.name}</b> <i>{v.pit.title}</i>
-                <span>{v.pit.line}</span>
-              </p>
-            )}
-            {thanks && (
-              <p className="bj-thanks" data-test="bj-thanks" role="status">
-                {tip?.name ? <><b>{tip.name}</b> tipped ${tip.amount}. </> : null}{thanks}
-              </p>
-            )}
+            </div>
+            <div className="bj-pov-notices" data-test="bj-pov-notices">
+              {notice?.kind === 'pit' && (
+                <p key={notice.key} className="pit-line" data-test="bj-pit-line" role="status">
+                  <b>{notice.pit.name}</b>
+                  <span>{notice.pit.line}</span>
+                </p>
+              )}
+              {notice?.kind === 'tip' && (
+                <p key={notice.key} className="bj-thanks" data-test="bj-thanks" role="status">
+                  {notice.tip?.name ? <><b>{notice.tip.name}</b> tipped ${notice.tip.amount}. </> : null}{notice.thanks}
+                </p>
+              )}
+            </div>
           </div>
           <div className="bj-pov-hud-bottom" data-test="bj-pov-hud-bottom">
             <div className="bj-pov-actor" data-test="bj-deal-prompt">
@@ -234,7 +256,7 @@ export function DealerPov({
                   : <button type="button" className="bj-say-toggle" onClick={() => setSayOpen(true)} data-test="bj-say-toggle">Say</button>}
               </form>
             )}
-            {engine === 'webgl' && <span className="bj-pov-fps" data-test="bj-pov-fps">{Math.round(fps) || '—' } fps</span>}
+            {engine === 'webgl' && <span ref={fpsEl} className="bj-pov-fps" data-test="bj-pov-fps">— fps</span>}
           </div>
         </div>
     </div>

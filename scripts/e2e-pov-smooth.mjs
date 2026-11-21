@@ -70,16 +70,11 @@ function transcode(video, destBase) {
   } catch (e) { console.warn('mp4 failed', e.message); }
   try {
     const pal = `${destBase}-pal.png`;
-    execFileSync('ffmpeg', ['-y', '-i', video, '-vf', 'fps=16,scale=480:-1:flags=lanczos,palettegen=stats_mode=diff', pal], { stdio: 'ignore' });
-    execFileSync('ffmpeg', ['-y', '-i', video, '-i', pal, '-lavfi', 'fps=16,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer', '-loop', '0', gif], { stdio: 'ignore' });
+    execFileSync('ffmpeg', ['-y', '-t', '18', '-i', video, '-vf', 'fps=8,scale=390:-1:flags=lanczos,palettegen=stats_mode=diff', pal], { stdio: 'ignore' });
+    execFileSync('ffmpeg', ['-y', '-t', '18', '-i', video, '-i', pal, '-lavfi', 'fps=8,scale=390:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer', '-loop', '0', gif], { stdio: 'ignore' });
     try { fs.unlinkSync(pal); } catch { /* */ }
   } catch (e) { console.warn('gif failed', e.message); }
-  const framesDir = `${destBase}-frames`;
-  fs.mkdirSync(framesDir, { recursive: true });
-  try {
-    execFileSync('ffmpeg', ['-y', '-i', video, '-vf', 'fps=10', path.join(framesDir, 'f-%04d.png')], { stdio: 'ignore' });
-  } catch (e) { console.warn('frames failed', e.message); }
-  return { mp4: fs.existsSync(mp4) ? mp4 : null, gif: fs.existsSync(gif) ? gif : null, framesDir, frameCount: fs.existsSync(framesDir) ? fs.readdirSync(framesDir).length : 0 };
+  return { mp4: fs.existsSync(mp4) ? mp4 : null, gif: fs.existsSync(gif) ? gif : null };
 }
 
 async function recordOne({ browser, kind, device, viewport, admin }) {
@@ -106,9 +101,11 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
     window.requestAnimationFrame = function (cb) {
       return orig.call(window, function (t) {
         const s = window.__SMOOTH;
-        if (s.last) s.frames.push(Math.round((t - s.last) * 100) / 100);
-        s.last = t;
-        if (s.frames.length > 20000) s.frames.shift();
+        if (!s._hooked && !s.ignore) {
+          if (s.last) s.frames.push(Math.round((t - s.last) * 100) / 100);
+          s.last = t;
+          if (s.frames.length > 20000) s.frames.shift();
+        }
         cb(t);
       });
     };
@@ -124,37 +121,47 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
     const orig = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (cb) => orig((t) => {
       const s = window.__SMOOTH;
-      if (s.last) s.frames.push(Math.round((t - s.last) * 100) / 100);
-      s.last = t;
-      if (s.frames.length > 20000) s.frames.shift();
+      if (!s.ignore) {
+        if (s.last) s.frames.push(Math.round((t - s.last) * 100) / 100);
+        s.last = t;
+        if (s.frames.length > 20000) s.frames.shift();
+      }
       cb(t);
     });
   });
-  await wait(1200);
-  const still = (name) => p.screenshot({ path: path.join(OUT, `${kind}-${name}.png`), fullPage: false });
-  await still('start');
-  // Let autopilot run ~3 hands. Trigger pit boss + tip during hand 1 and again mid-run.
-  await wait(2500);
+  await wait(1800);
+  await p.evaluate(() => {
+    if (window.__SMOOTH) { window.__SMOOTH.frames = []; window.__SMOOTH.last = performance.now(); window.__SMOOTH.ignore = false; }
+  });
+  const still = async (name) => {
+    await p.evaluate(() => { if (window.__SMOOTH) window.__SMOOTH.ignore = true; });
+    await p.screenshot({ path: path.join(OUT, `${kind}-${name}.png`), fullPage: false });
+    await p.evaluate(() => { if (window.__SMOOTH) { window.__SMOOTH.ignore = false; window.__SMOOTH.last = performance.now(); } });
+  };
+  // Clean metrics window first: no screenshots. Trigger pit + tip during the run.
+  await wait(2000);
   await p.locator('[data-test=bj-preview-pit]').click({ force: true }).catch(() => {});
-  await wait(600);
-  await still('pit');
-  await p.locator('[data-test=bj-preview-tip]').click({ force: true }).catch(() => {});
-  await wait(700);
-  await still('tip');
-  await wait(Math.max(1000, RECORD_MS * 0.45 - 5000));
-  await still('mid');
-  await p.locator('[data-test=bj-preview-pit]').click({ force: true }).catch(() => {});
-  await p.locator('[data-test=bj-preview-tip]').click({ force: true }).catch(() => {});
   await wait(900);
-  await still('pit-tip-2');
-  const left = RECORD_MS - 2500 - 600 - 700 - Math.max(1000, RECORD_MS * 0.45 - 5000) - 900;
-  await wait(Math.max(2000, left));
-  await still('end');
+  await p.locator('[data-test=bj-preview-tip]').click({ force: true }).catch(() => {});
+  const remain = Math.max(4000, RECORD_MS - 2900);
+  await wait(remain);
   const metrics = await p.evaluate(() => ({
     frames: (window.__SMOOTH && window.__SMOOTH.frames) || [],
     fps: Number(document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-fps') || 0),
     engine: document.querySelector('[data-test=bj-dealer-pov]')?.getAttribute('data-engine') || '',
+    hitches: (typeof window.__POV_HITCHES === 'function' && window.__POV_HITCHES()) || [],
   }));
+  // Stills after metrics so Playwright's capture cannot pad the hitch count.
+  await p.locator('[data-test=bj-preview-pit]').click({ force: true }).catch(() => {});
+  await wait(2600);
+  await still('pit');
+  await wait(3200);
+  await p.locator('[data-test=bj-preview-tip]').click({ force: true }).catch(() => {});
+  await wait(700);
+  await still('tip');
+  await still('mid');
+  await still('start');
+  await still('end');
   await p.close();
   await ctx.close();
   const saved = fs.readdirSync(videoDir).map((n) => path.join(videoDir, n)).find((f) => /\.(webm|mp4)$/.test(f));
@@ -165,7 +172,7 @@ async function recordOne({ browser, kind, device, viewport, admin }) {
   }
   const media = process.env.METRICS_ONLY ? { skipped: true } : transcode(saved && fs.existsSync(destVid) ? destVid : saved, path.join(OUT, kind));
   const st = stats(metrics.frames);
-  const report = { tag: TAG, kind, engine: metrics.engine, reportedFps: metrics.fps, viewport: size, stats: st, media, stills: fs.readdirSync(OUT).filter((n) => n.startsWith(`${kind}-`) && n.endsWith('.png')) };
+  const report = { tag: TAG, kind, engine: metrics.engine, reportedFps: metrics.fps, viewport: size, stats: st, hitches: metrics.hitches || [], media, stills: fs.readdirSync(OUT).filter((n) => n.startsWith(`${kind}-`) && n.endsWith('.png')) };
   fs.writeFileSync(path.join(OUT, `${kind}-metrics.json`), JSON.stringify(report, null, 2));
   console.log(kind, JSON.stringify(st), 'engine', metrics.engine, 'media', media);
   return report;

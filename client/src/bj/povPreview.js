@@ -262,7 +262,7 @@ export function previewStep(state, cmd, now = 0) {
     return { ...s, seq: s.seq + 1, chat: [...(s.chat || []), { id: `m${s.seq}`, name: 'You', text, at: now, me: true }].slice(-8) };
   }
   if (cmd === 'tick' || cmd === 'deal' || cmd === 'flip' || cmd === 'draw') {
-    let next = { ...s };
+    let next = s;
     if (next.tip && now >= next.tip.until) next = { ...next, tip: null };
     if (next.pit && now >= next.pit.until) next = { ...next, pit: null };
     if (next.fx && next.settledAt && now - next.settledAt > 2500) next = { ...next, fx: null };
@@ -278,13 +278,17 @@ export function previewStep(state, cmd, now = 0) {
     const shouldAdvance = next.autopilot || cmd === 'deal' || cmd === 'flip' || cmd === 'draw';
     if (shouldAdvance && applied < script.cues.length) {
       const cue = script.cues[applied];
+      let appliedNow = false;
       if (next.autopilot) {
-        if (elapsed >= cue.at) next = applyCue(next, cue, now);
+        if (elapsed >= cue.at) { next = applyCue(next, cue, now); appliedNow = true; }
       } else if (cmd === 'deal' || cmd === 'flip' || cmd === 'draw') {
-        next = applyCue(next, cue, now);
+        next = applyCue(next, cue, now); appliedNow = true;
       }
-      const more = appliedCueCount(next) < script.cues.length && !next.autopilot;
-      next = { ...next, pendingAction: more ? (script.cues[appliedCueCount(next)]?.t === 'dealer' ? 'flip' : script.cues[appliedCueCount(next)]?.t === 'settle' ? 'deal' : 'deal') : null };
+      if (appliedNow && !next.autopilot) {
+        const more = appliedCueCount(next) < script.cues.length;
+        const nxt = script.cues[appliedCueCount(next)];
+        next = { ...next, pendingAction: more ? (nxt?.t === 'dealer' ? 'flip' : 'deal') : null };
+      }
     }
     return next;
   }
@@ -306,14 +310,17 @@ export function previewView(state, now = 0) {
   const auto = s.autopilot !== false;
   const r = s.round;
   const dealer = r?.dealer || [];
-  let action = null, label = auto ? 'Autopilot is dealing' : "You're dealing";
-  if (!auto) {
-    if (s.pendingAction === 'flip') { action = 'flip'; label = 'Flip the hole card'; }
-    else if (s.pendingAction === 'draw') { action = 'draw'; label = 'Draw to the house rule'; }
-    else if (s.pendingAction === 'deal' || !s._cuesApplied) { action = 'deal'; label = 'Deal the next card'; }
-    else if (r?.phase === 'play') label = 'Waiting on a player';
-    else if (r?.phase === 'betting') label = 'Waiting on bets';
-  }
+  let action = null, label;
+  const dealingLabel = auto ? 'Autopilot is dealing' : "You're dealing";
+  if (!auto && s.pendingAction === 'flip') { action = 'flip'; label = 'Flip the hole card'; }
+  else if (!auto && s.pendingAction === 'draw') { action = 'draw'; label = 'Draw to the house rule'; }
+  else if (!auto && (s.pendingAction === 'deal' || !s._cuesApplied)) { action = 'deal'; label = 'Deal the next card'; }
+  else if (r?.phase === 'play' && r.turn != null && r.turn >= 0) {
+    const who = PREVIEW_SEATS[r.turn] || seats().find((x) => x.i === r.turn);
+    label = who ? `${who.name} to act` : 'Waiting on a player';
+  } else if (r?.phase === 'dealer') label = 'Dealer is playing';
+  else if (r?.phase === 'betting') label = s.last ? 'Hand is over' : (auto ? dealingLabel : 'Waiting on bets');
+  else label = dealingLabel;
   const tip = s.tip && now < s.tip.until ? s.tip : null;
   return {
     mock: true,
