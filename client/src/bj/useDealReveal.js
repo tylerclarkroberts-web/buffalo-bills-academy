@@ -47,12 +47,34 @@ export function plan(want, have) {
   return out;
 }
 
-export function useDealReveal(v, { showLast, reduced }) {
+/** Fresh mount / reconnect should snap to the server when the round is already
+ *  mid-hand, instead of replaying the deal. A client that was already open and
+ *  just saw a new round still paces. Exported for tests. */
+export function shouldSnapToServer(v, showLast, have, syncChanged) {
+  const want = targetFrom(v, showLast);
+  if (!v || want.key === 'none') return false;
+  if (syncChanged) return true;
+  const fresh = !have || have.key === 'none';
+  if (!fresh) return false;
+  if (want.settled) return true;
+  const r = v.round;
+  if (!r) return false;
+  if (r.phase === 'play' || r.phase === 'insurance' || r.phase === 'dealer') return true;
+  if (r.phase === 'dealing' && (want.d > 0 || Object.values(want.hands).some((n) => n > 0))) return true;
+  return false;
+}
+
+export function snapShown(want) {
+  return { key: want.key, d: want.d, hands: { ...want.hands }, hole: !!want.hole, flipped: !!want.hole };
+}
+
+export function useDealReveal(v, { showLast, reduced, syncGen = 0 }) {
   const [shown, setShown] = useState({ key: 'none', d: 0, hands: {}, hole: false, flipped: false });
   const [dealing, setDealing] = useState(false);
   const queue = useRef([]);
   const timer = useRef(null);
   const shownRef = useRef(shown);
+  const syncRef = useRef(syncGen);
   shownRef.current = shown;
 
   const clear = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
@@ -92,6 +114,17 @@ export function useDealReveal(v, { showLast, reduced }) {
   useEffect(() => {
     if (!v) return;
     const want = targetFrom(v, showLast);
+    const syncChanged = syncGen !== syncRef.current;
+    syncRef.current = syncGen;
+    if (shouldSnapToServer(v, showLast, shownRef.current, syncChanged)) {
+      clear();
+      queue.current = [];
+      const snap = snapShown(want);
+      setShown(snap);
+      shownRef.current = snap;
+      setDealing(false);
+      return;
+    }
     if (want.key !== shownRef.current.key) {
       clear();
       queue.current = [];
@@ -139,7 +172,7 @@ export function useDealReveal(v, { showLast, reduced }) {
       setDealing(true);
       timer.current = setTimeout(() => pump(false), reduced ? 0 : BEAT_MS);
     }
-  }, [v?.seq, showLast, reduced, pump]);
+  }, [v?.seq, showLast, reduced, pump, syncGen]);
 
   useEffect(() => () => clear(), []);
 

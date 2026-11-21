@@ -97,8 +97,9 @@ function buzz(ms = 10) {
 
 export function DealerPov({
   v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, reduced, onDeal, onAuto, now, tip, thanks,
-  onSay, meId, kash, onCatch,
+  onSay, meId, kash, onCatch, onCrash,
 }) {
+
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
   const [engine, setEngine] = useState(() => (canPovWebGL() ? 'pending' : 'css'));
@@ -126,10 +127,12 @@ export function DealerPov({
         onGesture: (g) => setGesture(g?.kind || ''),
         onLost: () => setEngine('css'),
         onRestore: () => { setEngine('pending'); setGlGen((n) => n + 1); },
+        onCrash: (err) => { try { onCrash?.(err); } catch { /* */ } },
         onSfx: (name) => { try { sfx[name]?.(); } catch { /* */ } if (name === 'deal' || name === 'flip') buzz(name === 'flip' ? 16 : 8); },
       });
-    } catch {
+    } catch (err) {
       scene = null;
+      try { onCrash?.(err); } catch { /* */ }
     }
     if (!scene) { setEngine('css'); return undefined; }
     sceneRef.current = scene;
@@ -153,8 +156,14 @@ export function DealerPov({
   }, [reduced, glGen]);
 
   useEffect(() => {
-    sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, chat: v.chat });
+    try { sceneRef.current?.setView({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, chat: v.chat }); }
+    catch (err) { try { onCrash?.(err); } catch { /* */ } }
   }, [v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, tip, thanks, now]);
+
+  // Test hook only: keep the flag set so a concurrent-render retry still throws and the boundary sticks.
+  if (typeof window !== 'undefined' && window.__BBA_POV_THROW) {
+    throw (window.__BBA_POV_THROW instanceof Error ? window.__BBA_POV_THROW : new Error('pov test crash'));
+  }
 
   return (
     <div
@@ -240,5 +249,26 @@ export function TableChat({ chat, onSay, meId }) {
       </ul>
       <input data-test="bj-say" maxLength={80} value={text} onChange={(e) => setText(e.target.value)} placeholder="Say something" aria-label="Table chat" />
     </form>
+  );
+}
+
+
+/** Classic-table dealer controls when the 3D POV is off (kill switch or a crash). */
+export function HouseDealBar({ v, now, onAuto, onDeal, kash, onCatch }) {
+  const prompt = v?.dealer || {};
+  const autoOn = v?.house?.autopilot !== false;
+  return (
+    <div className="bj-house-bar" data-test="bj-house-bar">
+      <KashCatch kash={kash} now={now} onCatch={onCatch} />
+      <label className={`bj-auto bj-auto-pill ${autoOn ? 'on' : 'off'}`} data-test="bj-autopilot">
+        <input type="checkbox" checked={autoOn} onChange={(e) => onAuto?.(e.target.checked)} />
+        Autopilot {autoOn ? 'On' : 'Off'}
+      </label>
+      {prompt.action ? (
+        <button className="btn primary bj-pov-act" onClick={() => onDeal?.(prompt.action)} data-test="bj-deal-next">
+          {prompt.label || 'Deal'}
+        </button>
+      ) : null}
+    </div>
   );
 }

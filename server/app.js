@@ -556,6 +556,16 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
 
   const geo = new Geo({ store: service.store, now: service.now, fetchImpl: geoFetch !== undefined ? geoFetch : (env.ADMIN_GEO === '0' ? null : globalThis.fetch) });
+  api.get('/admin/bj/pov', needPlayer, (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ enabled: !bj.povDisabled() });
+  });
+  api.post('/admin/bj/pov', needPlayer, wrap((req) => {
+    if (!isAdmin(req, adminCfg)) { const e = new GameError('Not found', 403); throw e; }
+    if (typeof req.body?.enabled !== 'boolean') throw new GameError('enabled must be true or false', 400);
+    return bj.setPovEnabled(req.body.enabled);
+  }));
   mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, getCtx: () => ({
     now: service.now(), players: service.store.players, ledger: telemetry.readLedger(), events: telemetry.readEvents(), access: telemetry.doc, worth: netWorth,
     docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc } }) });

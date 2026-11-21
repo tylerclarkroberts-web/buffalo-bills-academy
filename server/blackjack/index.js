@@ -15,6 +15,7 @@ import * as Kash from './kash.js';
 import { isManual, dealerPrompt } from './pace.js';
 import * as Tips from './tips.js';
 import * as Pit from './pitboss.js';
+import { isPovDisabled, setPovEnabled } from './povFlag.js';
 
 const edgeSummary = (t) => { const e = tableEdge(t); return { main: { edge: e.main.edge, tone: e.main.tone }, side: Object.fromEntries(Object.entries(e.side).map(([k, v]) => [k, { edge: v.edge, tone: v.tone }])), needsAck: e.needsAck, grandfathered: !!e.grandfathered }; };
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -112,7 +113,7 @@ export class Blackjack {
     }
     if (v.house && t.house.mode === 'player') {
       v.house.autopilot = t.house.autopilot !== false; // default on, so existing tables keep automatic dealing
-      v.house.pov = t.house.id === viewerId && t.status === 'playing';
+      v.house.pov = t.house.id === viewerId && t.status === 'playing' && !isPovDisabled(this.store?.dir);
       if (t.house.id === viewerId) {
         v.dealer = dealerPrompt(t);
         // Presentation only, and only on the house view: a stale / hidden tab reads as away.
@@ -376,7 +377,10 @@ export class Blackjack {
       return this.viewOf(t, p.id);
     });
   }
-  /** iOS Safari fires pagehide / visibilitychange on an app switch. Mark the player paused so
+  povDisabled() { return isPovDisabled(this.store?.dir); }
+  setPovEnabled(on) { return setPovEnabled(this.store.dir, on !== false); }
+
+    /** iOS Safari fires pagehide / visibilitychange on an app switch. Mark the player paused so
    *  the pit boss does not treat that lag as a phone, then clear it when they come back. */
   presence(p, code, body = {}) {
     const t = this.table(code);

@@ -6,7 +6,8 @@ import { SignIn } from '../Home.jsx';
 import { useMedia } from '../ui.jsx';
 import { sfx, isMuted, setMuted, unlockSfx } from './sfx.js';
 import { BjArena } from './BjArena.jsx';
-import { DealerPov, TipBar, TableChat } from './DealerPov.jsx';
+import { DealerPov, TipBar, TableChat, HouseDealBar } from './DealerPov.jsx';
+import PovErrorBoundary from './PovErrorBoundary.jsx';
 import { PitBoss } from './PitBoss.jsx';
 import { useDealReveal } from './useDealReveal.js';
 import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
@@ -231,47 +232,62 @@ function BjLobby({ me }) {
 // ---------------------------------------------------------------- the table
 function useView(code) {
   const [v, setV] = useState(null); const [err, setErr] = useState('');
+  const [syncGen, setSyncGen] = useState(0);
   const houseRef = useRef(false);
   houseRef.current = !!v?.house?.isMe;
   useEffect(() => {
     let timer, stopped = false;
-    const load = async () => {
-      if (stopped || document.hidden) return;
-      try { setV(await api('GET', `/bj/tables/${code}`)); setErr(''); } catch (e) { if (!stopped) setErr(e.message); }
+    const bump = () => { if (!stopped) setSyncGen((n) => n + 1); };
+    const load = async (reason) => {
+      // Keep the last good view on a failed poll; only skip while hidden unless we force a resync.
+      if (stopped) return;
+      if (typeof document !== 'undefined' && document.hidden && reason !== 'force') return;
+      try {
+        const next = await api('GET', `/bj/tables/${code}`);
+        if (stopped) return;
+        setV(next);
+        setErr('');
+        if (reason === 'resume' || reason === 'online' || reason === 'force') bump();
+      } catch (e) { if (!stopped) setErr(e.message); }
     };
     const ping = (state) => { api('POST', `/bj/tables/${code}/presence`, { state }).catch(() => {}); };
-    const arm = () => {
+    const arm = (reason = 'poll') => {
       clearInterval(timer);
       // iOS Safari fires hidden / pagehide on an app switch or lock. Tell the pit boss this is a
       // pause, not a phone, and do not let the 8s stale window start until they stay gone.
       if (typeof document !== 'undefined' && document.hidden) { ping('paused'); return; }
       ping('active');
       try { unlockSfx(); } catch { /* */ }
-      load();
+      load(reason);
       // A player-dealer heartbeats while this tab is in front, so a Kash Bet can still be caught.
-      timer = setInterval(load, houseRef.current ? 800 : 1500);
+      timer = setInterval(() => load('poll'), houseRef.current ? 800 : 1500);
     };
     const onHide = () => { if (!stopped) ping('paused'); };
-    arm();
-    document.addEventListener('visibilitychange', arm);
+    const onResume = () => arm('resume');
+    const onOnline = () => { if (!stopped) arm('online'); };
+    arm('resume');
+    document.addEventListener('visibilitychange', onResume);
     window.addEventListener('pagehide', onHide);
-    window.addEventListener('pageshow', arm);
+    window.addEventListener('pageshow', onResume);
     window.addEventListener('freeze', onHide);
-    window.addEventListener('resume', arm);
+    window.addEventListener('resume', onResume);
+    window.addEventListener('online', onOnline);
     return () => {
       stopped = true; clearInterval(timer);
-      document.removeEventListener('visibilitychange', arm);
+      document.removeEventListener('visibilitychange', onResume);
       window.removeEventListener('pagehide', onHide);
-      window.removeEventListener('pageshow', arm);
+      window.removeEventListener('pageshow', onResume);
       window.removeEventListener('freeze', onHide);
-      window.removeEventListener('resume', arm);
+      window.removeEventListener('resume', onResume);
+      window.removeEventListener('online', onOnline);
     };
   }, [code]);
-  return [v, setV, err, setErr];
+  return { v, setV, err, setErr, syncGen };
 }
 
 function BjTable({ code, me }) {
-  const [v, setV, err, setErr] = useView(code);
+  const { v, setV, err, setErr, syncGen } = useView(code);
+  const [povCrashed, setPovCrashed] = useState(false);
   const [bet, setBet] = useState(() => Number(localStorage.getItem('bba.bj.bet')) || 0);
   const [side, setSide] = useState({ match: 0, pairs: 0 });
   const [muted, setMute] = useState(isMuted());
@@ -286,7 +302,8 @@ function BjTable({ code, me }) {
 
   const r = v?.round;
   const showLast = !!(r && r.phase === 'betting' && v.last);
-  const { shown, ready, tap, dealing } = useDealReveal(v, { showLast, reduced });
+  const { shown, ready, tap, dealing } = useDealReveal(v, { showLast, reduced, syncGen });
+  useEffect(() => { setPovCrashed(false); }, [code]);
   const myBetEarly = v?.round?.bets?.[v.mySeat];
   const bjUp = !!(v && v.mySeat >= 0 && v.round && (v.round.myTurn || v.round.myInsurance || (v.round.phase === 'betting' && !myBetEarly)));
   const turnAdvance = useTurnAdvance({ currentPath: `/bj/${String(code).toUpperCase()}`, hasAction: bjUp, blocked: dealing || !ready || !!fx, enabled: true });
@@ -325,6 +342,7 @@ function BjTable({ code, me }) {
   const myBet = r?.bets?.[v.mySeat];
   const turnSeat = r?.phase === 'play' ? r.hands[r.turn]?.seat : null;
   const dealingNow = !!(v.house?.isMe && v.house?.present && v.status === 'playing');
+  const showPov = !!(v.house?.pov && !povCrashed);
   const status = v.status === 'lobby' ? 'Waiting for the host to start'
     : v.status !== 'playing' ? 'Game over'
     : v.laneOver ? 'Your game is done'
@@ -341,7 +359,7 @@ function BjTable({ code, me }) {
   const sit = () => (v.edge?.needsAck ? setShow('sit') : post('join', { ack: true }));
 
   return (
-    <div className={`screen bj bj-t ${reduced ? 'rm' : ''}${v.house?.isMe && v.status === 'playing' ? ' pov' : ''}`} data-test="bj-table">
+    <div className={`screen bj bj-t ${reduced ? 'rm' : ''}${showPov ? ' pov' : ''}`} data-test="bj-table">
       <div className="panel bj-felt">
         <div className="bj-head">
           <button className="btn ghost small" onClick={() => navigate('/bj')} aria-label="Back">←</button>
@@ -358,27 +376,49 @@ function BjTable({ code, me }) {
           </div>
         </div>
         <div className="bj-status" data-test="bj-status"><span>{shuf ? <b className="bj-shuf" data-test="bj-shuffle">🂠 {shuf}</b> : status}</span>{dealingNow && <b className="bj-dealing" data-test="bj-dealing">You're dealing</b>}{clock && v.status === 'playing' && <span className="mono">⏱ {clock}</span>}{r && <span className="mono dim">Round {r.no}</span>}</div>
-        {v.house?.isMe && v.status === 'playing' ? (
-          <DealerPov
-            v={v}
-            dealerCards={dealerCards}
-            dealerTotal={dealerTotal}
-            handsOf={handsOf}
-            turnSeat={turnSeat}
-            fxFor={fxFor}
-            shown={shown}
-            dealing={dealing}
-            reduced={reduced}
-            now={now}
-            tip={v.tip}
-            thanks={v.tip?.thanks ? 'Thanks for the tip' : null}
-            onAuto={(on) => post('autopilot', { on })}
-            onDeal={(action) => post('deal', { action })}
-            onSay={(text) => post('say', { text })}
-            meId={me.id}
-            kash={v.kashCatch}
-            onCatch={() => post('kash-catch')}
-          />
+        {showPov ? (
+          <PovErrorBoundary onError={() => setPovCrashed(true)} fallback={(
+          <>
+            <BjArena
+              v={v}
+              dealerCards={dealerCards}
+              dealerTotal={dealerTotal}
+              handsOf={handsOf}
+              turnSeat={turnSeat}
+              fxFor={fxFor}
+              shown={shown}
+              dealing={dealing}
+              onTap={tap}
+              reduced={reduced}
+              onSit={canSit ? sit : null}
+              kashTell={v.kashTell}
+              now={now}
+            />
+            <PitBoss pit={v.pit} reduced={reduced} />
+          </>
+          )}>
+            <DealerPov
+              v={v}
+              dealerCards={dealerCards}
+              dealerTotal={dealerTotal}
+              handsOf={handsOf}
+              turnSeat={turnSeat}
+              fxFor={fxFor}
+              shown={shown}
+              dealing={dealing}
+              reduced={reduced}
+              now={now}
+              tip={v.tip}
+              thanks={v.tip?.thanks ? 'Thanks for the tip' : null}
+              onAuto={(on) => post('autopilot', { on })}
+              onDeal={(action) => post('deal', { action })}
+              onSay={(text) => post('say', { text })}
+              meId={me.id}
+              kash={v.kashCatch}
+              onCatch={() => post('kash-catch')}
+              onCrash={() => setPovCrashed(true)}
+            />
+          </PovErrorBoundary>
         ) : (
           <>
             <BjArena
@@ -400,8 +440,11 @@ function BjTable({ code, me }) {
           </>
         )}
         <NextTablePill advance={turnAdvance} />
-        <div className="bj-bar" data-test="bj-bar" hidden={!!(v.house?.isMe && v.status === 'playing')}>
-          {v.house?.isMe && <KashCatch kash={v.kashCatch} now={now} onCatch={() => post('kash-catch')} />}
+        <div className="bj-bar" data-test="bj-bar" hidden={showPov}>
+          {v.house?.isMe && v.status === 'playing' && !showPov && (
+            <HouseDealBar v={v} now={now} onAuto={(on) => post('autopilot', { on })} onDeal={(action) => post('deal', { action })} kash={v.kashCatch} onCatch={() => post('kash-catch')} />
+          )}
+          {v.house?.isMe && v.status !== 'playing' && <KashCatch kash={v.kashCatch} now={now} onCatch={() => post('kash-catch')} />}
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>
             : v.laneOver ? <span className="small" data-test="bj-lane-over">{v.laneOver} <button className="btn small" onClick={() => post('leave')}>Cash out</button></span>

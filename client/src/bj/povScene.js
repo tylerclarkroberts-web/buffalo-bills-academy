@@ -539,7 +539,7 @@ export function createPovScene(canvas, opts = {}) {
 }
 
 export class PovScene {
-  constructor(canvas, { reduced = false, onFps, onGesture, onLost, onRestore, onSfx } = {}) {
+  constructor(canvas, { reduced = false, onFps, onGesture, onLost, onRestore, onCrash, onSfx } = {}) {
     this.canvas = canvas; this.reduced = reduced; this.onFps = onFps; this.onGesture = onGesture; this.onSfx = onSfx;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
     if (!this.renderer.getContext()) throw new Error('no webgl');
@@ -601,6 +601,7 @@ export class PovScene {
     this.clock = new THREE.Clock();
     this.raf = 0;
     this.onLost = onLost;
+    this.onCrash = onCrash;
     this.onRestore = onRestore;
     this._lost = false;
     this._onLost = (ev) => {
@@ -766,7 +767,10 @@ export class PovScene {
 
   setView(payload) {
     if (!payload) return;
-    try { this._setView(payload); } catch (err) { console.error('pov setView', err); }
+    try { this._setView(payload); } catch (err) {
+      try { console.error('pov setView', err); } catch { /* */ }
+      try { this.onCrash?.(err); } catch { /* */ }
+    }
   }
   _setView(payload) {
     const { v, turnSeat, tip } = payload;
@@ -1086,7 +1090,10 @@ export class PovScene {
       this._tickPayout(now);
       this._tickFps(now);
       this.renderer.render(this.scene, this.camera);
-    } catch (err) { console.error('pov loop', err); }
+    } catch (err) {
+      try { console.error('pov loop', err); } catch { /* */ }
+      try { this.onCrash?.(err); } catch { /* */ }
+    }
   }
   _tickCamera(now, dt) {
     const t = now / 1000;
