@@ -74,10 +74,21 @@ for (const p of people) {
       mining.history.push({ t: t + ms, outcome, amount: paid, ms });
       add(t + ms, 'mine', paid, `Acid Mines: ${outcome === 'dud' ? 'mostly mud' : 'shift complete'}`);
       if (t >= TRACK) {
-        const scare = rnd() < 0.28, faun = !scare && rnd() < 0.28;
-        events.push({ t, k: 'shift-start', p: p.id, shift: uuid().slice(0, 8), shaft: '7', cells: 7, cap, fare: 0, scare, faun, twin: false, egg: rnd() < 0.05 });
-        events.push({ t: t + ms, k: 'shift-end', p: p.id, shaft: '7', ms, outcome, amt: paid, collected, cap, reason: outcome === 'dud' ? 'mud' : null, scare, faun, twin: 0, spill: 0, pvp: null });
-        if (rnd() < 0.12) { const q = t + ms + 60e3; events.push({ t: q, k: 'shift-start', p: p.id, shaft: '7', cap, fare: 0, scare: false, faun: false }); events.push({ t: q + 40e3, k: 'shift-end', p: p.id, ms: 40e3, outcome: null, amt: 0, collected: 0, cap, reason: 'quit' }); }
+        const roll = rnd();
+        const scare = roll < 0.28, faun = !scare && roll < 0.48, heeshee = !scare && !faun && roll < 0.68;
+        // Older events in the window omit `heeshee` so the panel can label Heeshee as "from this deploy".
+        const tracked = t >= TRACK + 2 * DAY;
+        const stolen = heeshee && rnd() < 0.35, returned = stolen && collected > 0 && outcome !== 'dud' && rnd() < 0.7;
+        const paidShaft = !scare && !faun && !heeshee && rnd() < 0.12;
+        const shaft = paidShaft ? (rnd() < 0.6 ? '8' : '12') : '7';
+        const fare = shaft === '8' ? 20 : shaft === '12' ? 80 : 0;
+        const twinTook = paidShaft && rnd() < (shaft === '12' ? 0.2 : 0.1) ? r2(paid / 3) : 0;
+        const spill = paidShaft && rnd() < (shaft === '12' ? 0.07 : 0.04) ? r2(collected * 0.25) : 0;
+        const start = { t, k: 'shift-start', p: p.id, shift: uuid().slice(0, 8), shaft, cells: shaft === '7' ? 7 : shaft === '8' ? 6 : 10, cap, fare, scare, faun, twin: !!twinTook, egg: rnd() < 0.05 };
+        const end = { t: t + ms, k: 'shift-end', p: p.id, shaft, ms, outcome, amt: r2(paid - twinTook), collected, cap, reason: outcome === 'dud' ? 'mud' : null, scare, faun, twin: twinTook, spill, pvp: null };
+        if (tracked) { start.heeshee = heeshee; Object.assign(end, { heeshee, heesheeStolen: stolen, heesheeReturned: returned }); }
+        events.push(start, end);
+        if (rnd() < 0.12) { const q = t + ms + 60e3; events.push({ t: q, k: 'shift-start', p: p.id, shaft: '7', cap, fare: 0, scare: false, faun: false, ...(tracked ? { heeshee: false } : {}), twin: false }); events.push({ t: q + 40e3, k: 'shift-end', p: p.id, ms: 40e3, outcome: null, amt: 0, collected: 0, cap, reason: 'quit', ...(tracked ? { heeshee: false, heesheeStolen: false, heesheeReturned: false } : {}) }); }
       }
     }
     if (rnd() < 0.5) { const t = base + 90 * 60e3; if (t < NOW) add(t, 'fawn', ri(30, 70), `Faun's wooden box: $${ri(30, 70)}`); }
@@ -135,6 +146,15 @@ for (const p of people) {
     if (i % 3 === 0) { a.logins++; events.push({ t: s, k: 'login', p: p.id, how: p.kind === 'password' ? 'password' : 'google', ip, dev }); }
   }
   a.visits.sort((x, y) => x.s - y.s);
+}
+// A few paid-shaft settlements so the Encounters panel can show twin skims and cave-ins when they happen.
+{
+  const miner = people.find((x) => x !== owner) || people[1];
+  for (const [i, shaft, fare, twinTook, spill] of [[0, '8', 20, 18.5, 0], [1, '8', 20, 0, 12], [2, '12', 80, 40, 20]]) {
+    const t0 = NOW - (i + 1) * 3600e3, ms = 180e3, cap = 100, collected = 100, paid = 90;
+    events.push({ t: t0, k: 'shift-start', p: miner.id, shift: uuid().slice(0, 8), shaft, cells: shaft === '8' ? 6 : 10, cap, fare, scare: false, faun: false, heeshee: false, twin: !!twinTook, egg: false });
+    events.push({ t: t0 + ms, k: 'shift-end', p: miner.id, shaft, ms, outcome: 'normal', amt: r2(paid - twinTook), collected, cap, reason: null, scare: false, faun: false, heeshee: false, heesheeStolen: false, heesheeReturned: false, twin: twinTook, spill, pvp: null });
+  }
 }
 ledger.sort((a, b) => a.t - b.t); events.sort((a, b) => a.t - b.t);
 const w = (name, data) => fs.writeFileSync(path.join(dir, name), typeof data === 'string' ? data : JSON.stringify(data));

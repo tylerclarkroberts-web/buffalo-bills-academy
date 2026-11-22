@@ -148,7 +148,7 @@ export function buildReport(ctx) {
     const rec = shiftEnds.filter((e) => e.p === p.id);
     const starts = shiftStarts.filter((e) => e.p === p.id);
     const shifts = [...hist.filter((h) => !rec.some((e) => Math.abs(e.t - h.t) < 2000 && e.amt === h.amt)),
-      ...rec.map((e) => ({ t: e.t, outcome: e.outcome || (e.reason === 'quit' ? 'quit' : e.pvp ? (e.pvp === 'battle' ? 'defeated' : 'ambushed') : null), amt: e.amt, ms: e.ms, collected: e.collected, cap: e.cap, shaft: e.shaft, scare: e.scare, faun: e.faun, twin: e.twin, spill: e.spill, pvp: e.pvp, reason: e.reason }))]
+      ...rec.map((e) => ({ t: e.t, outcome: e.outcome || (e.reason === 'quit' ? 'quit' : e.pvp ? (e.pvp === 'battle' ? 'defeated' : 'ambushed') : null), amt: e.amt, ms: e.ms, collected: e.collected, cap: e.cap, shaft: e.shaft, scare: e.scare, faun: e.faun, heeshee: e.heeshee, heesheeStolen: e.heesheeStolen, heesheeReturned: e.heesheeReturned, twin: e.twin, spill: e.spill, pvp: e.pvp, reason: e.reason }))]
       .sort((a, b) => b.t - a.t);
     const timedList = shifts.filter((x) => x.ms > 0);
     const timedMs = sum(timedList.map((x) => x.ms)), timedAmt = sum(timedList.map((x) => x.amt));
@@ -158,7 +158,7 @@ export function buildReport(ctx) {
       shifts: m.shifts || 0, earned: r2(m.earned || 0), best: m.best || 0, jackpots: m.jackpots || 0, totalMs, timedShifts: timed,
       avgMs: timed ? Math.round(totalMs / timed) : 0, perHour: timedMs > 60e3 ? r2(timedAmt / (timedMs / 3600e3)) : null, quitsMs: sum(rec.filter((e) => e.reason === 'quit').map((e) => e.ms || 0)),
       recorded: { ends: rec.length, starts: starts.length, quits: rec.filter((e) => e.reason === 'quit').length, full: rec.filter((e) => e.cap && e.collected >= e.cap - 1e-6).length,
-        scare: starts.filter((e) => e.scare).length, faun: starts.filter((e) => e.faun).length, twin: rec.filter((e) => e.twin).length, caveIns: rec.filter((e) => e.spill).length, eggs: starts.filter((e) => e.egg).length,
+        scare: starts.filter((e) => e.scare).length, faun: starts.filter((e) => e.faun).length, heeshee: starts.filter((e) => e.heeshee).length, heesheeStolen: rec.filter((e) => e.heesheeStolen).length, heesheeReturned: rec.filter((e) => e.heesheeReturned).length, twin: rec.filter((e) => e.twin).length, caveIns: rec.filter((e) => e.spill).length, eggs: starts.filter((e) => e.egg).length,
         fares: r2(sum(starts.map((e) => e.fare))) },
       pvp: { won: won.length, lost: lost.length, cashWon: r2(sum(won.map((x) => x.paid ?? x.cash))), cashLost: r2(sum(lost.map((x) => x.paid ?? x.cash))), battlesWon: won.filter((x) => x.kind === 'battle').length, ambushesWon: won.filter((x) => x.kind !== 'battle').length },
       list: shifts.slice(0, 120),
@@ -262,7 +262,11 @@ export function buildReport(ctx) {
     totals: { shifts: sum(players.map((p) => p.mining?.shifts || 0)), earned: r2(sum(players.map((p) => p.mining?.earned || 0))), ms: sum(players.map((p) => p.mining?.totalMs || 0)),
       avgMs: allShiftMs.length ? Math.round(sum(allShiftMs) / allShiftMs.length) : 0, medianMs: Math.round(median(allShiftMs)),
       recordedStarts: shiftStarts.length, recordedEnds: shiftEnds.length,
-      scare: shiftStarts.filter((e) => e.scare).length, faun: shiftStarts.filter((e) => e.faun).length, twin: shiftEnds.filter((e) => e.twin).length,
+      scare: shiftStarts.filter((e) => e.scare).length, faun: shiftStarts.filter((e) => e.faun).length,
+      heesheeTracked: shiftStarts.filter((e) => Object.prototype.hasOwnProperty.call(e, 'heeshee')).length,
+      heeshee: shiftStarts.filter((e) => e.heeshee).length,
+      heesheeStolen: shiftEnds.filter((e) => e.heesheeStolen).length, heesheeReturned: shiftEnds.filter((e) => e.heesheeReturned).length,
+      twin: shiftEnds.filter((e) => e.twin).length,
       caveIns: shiftEnds.filter((e) => e.spill).length, quits: shiftEnds.filter((e) => e.reason === 'quit').length,
       full: shiftEnds.filter((e) => e.cap && e.collected >= e.cap - 1e-6).length, partial: shiftEnds.filter((e) => e.cap && e.collected > 0 && e.collected < e.cap - 1e-6).length,
       active: Object.keys(docs.mines?.active || {}).length },
