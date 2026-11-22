@@ -27,7 +27,7 @@ function Hand({ cards, small, freshFrom, reduced }) {
 }
 
 function CssFelt({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, reduced }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const seats = (v.seats || []).map((s, i) => s && { ...s, i }).filter(Boolean);
   const dShown = shown?.d ?? dealerCards.length;
@@ -104,7 +104,7 @@ export function DealerPov({
   onSay, meId, kash, onCatch, onCrash,
 }) {
 
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
@@ -296,7 +296,7 @@ export function TipBar({ canTip, onTip, busy, tip }) {
 }
 
 export function TableChat({ chat, onSay, meId }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const safeText = (s) => (family ? familyMask(s) : s);
   const [text, setText] = useState('');

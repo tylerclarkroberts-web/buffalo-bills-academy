@@ -13,11 +13,13 @@ html.work-mode, html.work-mode body {
 html.work-mode body { margin: 0; }
 
 .work-root {
-  min-height: 100vh; min-height: var(--app-h, 100vh);
+  height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh;
+  overflow: hidden;
   background: #f4efe6; color: #161616;
   font-family: 'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   display: flex; flex-direction: column;
 }
+html.work-mode, html.work-mode body { overflow: hidden; height: 100%; }
 .work-mast {
   position: sticky; top: 0; z-index: 60;
   display: flex; align-items: center; gap: 12px;
@@ -51,19 +53,19 @@ html.work-mode body { margin: 0; }
 .work-fold:hover, .work-fold:focus-visible { color: #161616; }
 
 .work-article {
-  max-width: 720px; margin: 0 auto; padding: 8px 24px 40px;
+  max-width: 720px; margin: 0 auto; padding: 4px 24px 28px;
 }
 .work-hed {
-  margin: 0 0 16px; font: 700 42px/1.08 Newsreader, 'Iowan Old Style', Georgia, serif;
+  margin: 0 0 10px; font: 700 36px/1.08 Newsreader, 'Iowan Old Style', Georgia, serif;
   letter-spacing: -0.02em; color: #111;
   text-wrap: balance;
 }
 .work-dek {
-  margin: 0 0 22px; font: italic 400 20px/1.4 Newsreader, Georgia, serif; color: #333;
+  margin: 0 0 12px; font: italic 400 18px/1.35 Newsreader, Georgia, serif; color: #333;
 }
 .work-byline {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px;
-  padding: 14px 0 22px; margin: 0 0 28px;
+  padding: 8px 0 10px; margin: 0 0 14px;
   border-top: 1px solid #161616; border-bottom: 1px solid #161616;
   font: 400 13px/1.4 'Source Sans 3', sans-serif;
 }
@@ -78,18 +80,18 @@ html.work-mode body { margin: 0; }
 }
 .work-sub.on { background: transparent; color: #161616; }
 .work-article > p {
-  margin: 0 0 1.15em; font: 400 19px/1.6 Newsreader, Georgia, serif;
+  margin: 0 0 0.85em; font: 400 18px/1.5 Newsreader, Georgia, serif;
   color: #1a1a1a;
 }
 .work-pull {
-  margin: 32px 0; padding: 0 0 0 22px; border: 0; border-left: 2px solid #161616;
+  margin: 18px 0; padding: 0 0 0 18px; border: 0; border-left: 2px solid #161616;
 }
 .work-pull p {
   margin: 0; font: italic 400 26px/1.35 Newsreader, Georgia, serif; color: #111;
 }
 
-.work-chart { margin: 28px 0 32px; }
-.work-chart svg { width: 100%; height: 180px; display: block; border-bottom: 1px solid #161616; }
+.work-chart { margin: 8px 0 18px; }
+.work-chart svg { width: 100%; height: 140px; display: block; border-bottom: 1px solid #161616; }
 .work-grid { stroke: #ddd4c4; stroke-width: 0.4; }
 .work-area { fill: rgba(22, 22, 22, .08); }
 .work-line { fill: none; stroke: #161616; stroke-width: 1.2; }
@@ -100,9 +102,9 @@ html.work-mode body { margin: 0; }
 }
 
 .work-exhibit { margin: 0; padding: 0 0 16px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.work-exhibit-cap { max-width: 1100px; margin: 12px auto 8px; padding: 0 24px; flex: none; }
+.work-exhibit-cap { max-width: 1100px; margin: 8px auto 6px; padding: 0 24px; flex: none; }
 .work-exhibit-frame {
-  margin: 0 16px 0; border: 1px solid #161616; background: #0f070c;
+  margin: 0 16px 0; border: 1px solid #161616; background: #fffdf8;
   flex: 1; min-height: 0; overflow: hidden; position: relative;
   /* The live app keeps its own palette inside the frame — a figure in the memo. */
 }
@@ -135,13 +137,261 @@ html.work-mode .t-name { color: #111; }
 .work-signoff { margin-top: 1em; font-style: normal; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
 
 @media (max-width: 699px) {
-  .work-mast { padding-left: 16px; padding-right: 16px; }
-  .work-hed { font-size: 30px; }
-  .work-dek { font-size: 17px; }
+  .work-mast { padding-left: 16px; padding-right: 16px; height: calc(48px + env(safe-area-inset-top, 0px)); }
+  .work-hed { font-size: 26px; margin-bottom: 8px; }
+  .work-dek { font-size: 15px; margin-bottom: 8px; }
   .work-article, .work-close, .work-exhibit-cap { padding-left: 16px; padding-right: 16px; }
-  .work-article > p { font-size: 17px; }
-  .work-pull p { font-size: 21px; }
+  .work-article { padding-top: 0; padding-bottom: 16px; }
+  .work-article > p { font-size: 16px; }
+  .work-pull p { font-size: 19px; }
   .work-exhibit-frame { margin-left: 10px; margin-right: 10px; }
-  .work-chart svg { height: 140px; }
-  .work-meta { margin-left: 0; width: 100%; }
+  .work-chart { margin: 4px 0 12px; }
+  .work-chart svg { height: 110px; }
+  .work-meta { margin-left: 0; }
+  .work-sub { margin-left: 0; }
+}
+
+
+/* ---------- Work Mode game / lobby exhibit: editorial dashboard, no casino chrome ---------- */
+html.work-mode .work-exhibit-frame,
+html.work-mode .work-exhibit-frame .app,
+html.work-mode .work-exhibit-frame .stage,
+html.work-mode .work-exhibit-frame .screen {
+  background: #fffdf8 !important;
+  color: #161616;
+  font-family: 'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+html.work-mode .work-exhibit-frame .screen { overflow: hidden; padding: 8px 12px; gap: 8px; }
+
+/* Hide western neon, Guntrad art, avatars, fight/smoke spectacle. */
+html.work-mode .mq-bill,
+html.work-mode .neonbill,
+html.work-mode .mq-bulbs,
+html.work-mode .dealer-spot,
+html.work-mode .dealer-fig,
+html.work-mode .dl-plate,
+html.work-mode .dl-body,
+html.work-mode .dl-glow,
+html.work-mode .bust,
+html.work-mode .seat-buddy,
+html.work-mode .felt,
+html.work-mode .felt-logo,
+html.work-mode .smoke-moment,
+html.work-mode [data-test="smoke-fx"],
+html.work-mode .gag-layer,
+html.work-mode [data-test="gag-fx"],
+html.work-mode .fo-backdrop,
+html.work-mode .fo-portrait,
+html.work-mode .stack-chips svg,
+html.work-mode .chip,
+html.work-mode .chip-stack,
+html.work-mode .tb-bug {
+  display: none !important;
+}
+
+/* Lobby exhibit: typographic sign instead of a neon marquee. */
+html.work-mode .marquee5 {
+  background: transparent; border: 0; box-shadow: none; padding: 4px 0 8px;
+  display: flex; align-items: baseline; gap: 16px;
+}
+html.work-mode .mq-sign {
+  background: transparent; border: 0; box-shadow: none; padding: 0; flex: 1;
+}
+html.work-mode .mq-welcome { display: none; }
+html.work-mode .mq-title,
+html.work-mode .mq-title span {
+  font: 600 22px/1.15 Newsreader, Georgia, serif !important;
+  color: #111 !important;
+  text-shadow: none !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+html.work-mode .mq-sub { font: 400 12px/1.3 'Source Sans 3', sans-serif; color: #555; letter-spacing: .06em; text-transform: uppercase; }
+html.work-mode .mq-facts { color: #161616; border-color: #d9d0c2; }
+html.work-mode .mq-facts b { color: #111; font-family: Newsreader, Georgia, serif; }
+
+html.work-mode .panel,
+html.work-mode .lobby-panel,
+html.work-mode .trow,
+html.work-mode .tp-side {
+  background: #fffdf8 !important;
+  color: #161616 !important;
+  border: 1px solid #d9d0c2 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+html.work-mode .western, html.work-mode .display, html.work-mode .script {
+  font-family: Newsreader, Georgia, serif !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  color: #111 !important;
+  text-shadow: none !important;
+}
+html.work-mode .t-name, html.work-mode .hb-name, html.work-mode h1, html.work-mode .tp-title h1 {
+  color: #111 !important;
+  font-family: Newsreader, Georgia, serif !important;
+}
+html.work-mode .muted, html.work-mode .small { color: #555; }
+
+/* Editorial buttons: no gold, no neon, no pill shimmer. */
+html.work-mode .btn,
+html.work-mode .pill,
+html.work-mode .sp-go,
+html.work-mode .lb-start,
+html.work-mode .invite-btn,
+html.work-mode .actionbar button,
+html.work-mode .turnbar button {
+  appearance: none;
+  background: transparent !important;
+  color: #161616 !important;
+  border: 1px solid #161616 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  font-family: 'Source Sans 3', sans-serif !important;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+html.work-mode .btn.primary,
+html.work-mode .btn.on,
+html.work-mode .pill.on,
+html.work-mode .lb-start {
+  background: #161616 !important;
+  color: #f4efe6 !important;
+}
+html.work-mode .btn.ghost { border-color: #bbb; color: #333 !important; }
+
+html.work-mode .bar,
+html.work-mode .lobbybar,
+html.work-mode .lobbybar.host,
+html.work-mode .host-banner,
+html.work-mode .joinbar,
+html.work-mode .turnbar,
+html.work-mode .actionbar,
+html.work-mode .showbar {
+  background: #f4efe6 !important;
+  color: #161616 !important;
+  border: 1px solid #161616 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+html.work-mode .lobbybar .lb-call > b,
+html.work-mode .lobbybar .lb-call > span b,
+html.work-mode .room-code,
+html.work-mode .hb-text b {
+  color: #111 !important;
+  font-family: Newsreader, Georgia, serif !important;
+  text-shadow: none !important;
+}
+html.work-mode .tabs button { color: #444; border-radius: 0; background: transparent; }
+html.work-mode .tabs button.on { color: #111; }
+html.work-mode .tabs button.on::after { background: #161616; box-shadow: none; }
+
+/* Dashboard figure (Hold'em in Work Mode). */
+.work-dash {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+  background: #fffdf8; color: #161616; overflow: hidden;
+  font-family: 'Source Sans 3', sans-serif;
+}
+.work-dash-meta {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px;
+  padding: 8px 0 10px; border-bottom: 1px solid #161616; flex: none;
+}
+.work-dash-meta .kicker {
+  display: block; font: 600 9px/1 'Source Sans 3', sans-serif;
+  letter-spacing: .14em; text-transform: uppercase; color: #666; margin-bottom: 3px;
+}
+.work-dash-meta b { font: 600 14px/1.25 Newsreader, Georgia, serif; color: #111; }
+.work-dash-board { margin: 0; padding: 0; flex: none; }
+.work-dash-board figcaption,
+.work-dash-last {
+  margin: 0 0 6px; font: 400 12px/1.3 'Source Sans 3', sans-serif; color: #555;
+}
+.work-faces { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.work-face {
+  display: inline-grid; place-items: center;
+  min-width: 42px; height: 36px; padding: 0 8px;
+  border: 1px solid #161616; background: #fff; color: #111;
+  font: 600 15px/1 'Source Sans 3', sans-serif;
+}
+.work-face.red { color: #7a1f1f; }
+.work-face.down, .work-face.empty { background: #f4efe6; color: #555; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.work-dash-table-wrap { flex: 1; min-height: 0; overflow: auto; }
+.work-dash-seats { width: 100%; border-collapse: collapse; font-size: 13px; }
+.work-dash-seats th {
+  text-align: left; font: 600 10px/1 'Source Sans 3', sans-serif;
+  letter-spacing: .12em; text-transform: uppercase; color: #555;
+  padding: 6px 8px; border-bottom: 1px solid #161616; background: #f4efe6;
+  position: sticky; top: 0;
+}
+.work-dash-seats td { padding: 7px 8px; border-bottom: 1px solid #e6dccb; vertical-align: middle; }
+.work-dash-seats tr.me { background: #f4efe6; }
+.work-dash-seats tr.toact td { box-shadow: inset 3px 0 0 #161616; }
+.work-dash-seats tr.folded { color: #777; }
+.work-dash-seats .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.work-who {
+  appearance: none; display: flex; align-items: center; gap: 8px;
+  background: none; border: 0; padding: 0; color: inherit; font: inherit;
+  cursor: default; max-width: 100%;
+}
+.work-who:not(:disabled) { cursor: pointer; }
+.work-initials {
+  flex: none; display: grid; place-items: center;
+  width: 24px; height: 24px; border: 1px solid #161616;
+  font: 600 10px/1 'Source Sans 3', sans-serif; letter-spacing: .04em;
+  font-style: normal; background: #fff;
+}
+.work-sit {
+  appearance: none; background: transparent; color: #161616;
+  border: 1px solid #161616; padding: 4px 10px; font: 600 11px/1 'Source Sans 3', sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+}
+.work-hold { white-space: nowrap; }
+.work-hold .work-face { min-width: 36px; height: 28px; font-size: 12px; padding: 0 5px; }
+
+html.work-mode .tp-head { color: #161616; }
+html.work-mode .tp-title .kicker a { color: #333; }
+html.work-mode .card {
+  background: #fff !important; border: 1px solid #161616 !important;
+  border-radius: 0 !important; box-shadow: none !important;
+  color: #111;
+}
+html.work-mode .card.back { background: #f4efe6 !important; }
+html.work-mode .card.red, html.work-mode .card.red .rank, html.work-mode .card.red .suit-s, html.work-mode .card.red .suit-b { color: #7a1f1f !important; }
+
+/* Phone: keep the cockpit on one screen, no overlap, no page scroll. */
+@media (max-width: 699px) {
+  .work-dash-meta { grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 4px 0 6px; }
+  .work-dash-meta b { font-size: 13px; }
+  .work-dash-seats th:nth-child(4),
+  .work-dash-seats td:nth-child(4),
+  .work-dash-seats th:nth-child(6),
+  .work-dash-seats td:nth-child(6) { display: none; } /* Commitment + Holdings */
+  .work-dash-seats tr.open { display: none; }
+  .work-dash-seats th, .work-dash-seats td { padding: 5px 6px; font-size: 12px; }
+  .work-face { min-width: 32px; height: 28px; font-size: 12px; }
+  html.work-mode .work-exhibit-frame .screen { padding: 4px 8px; gap: 4px; }
+  html.work-mode .tp-head h1, html.work-mode .tp-title h1 { font-size: 22px !important; }
+  html.work-mode .tp-bottom, html.work-mode .bar, html.work-mode .actionbar { gap: 4px; padding: 6px 8px; flex: none; }
+  html.work-mode .lobbybar, html.work-mode .bar { flex: none; position: relative; z-index: 2; }
+  html.work-mode .actionbar .card { --w: 28px; }
+  .work-fold { padding: 6px 16px; }
+  html.work-mode .work-exhibit { min-height: 0; overflow: hidden; }
+  html.work-mode .work-exhibit-frame { min-height: 0; }
+}
+
+
+/* Folded memo on a game route: exhibit fills the remaining viewport. */
+html.work-mode .work-lede.shut { flex: none; }
+html.work-mode .work-lede.shut .work-fold { text-align: center; }
+
+html.work-mode .work-exhibit-frame .bar,
+html.work-mode .work-exhibit-frame .actionbar,
+html.work-mode .work-exhibit-frame .turnbar,
+html.work-mode .work-exhibit-frame .lobbybar {
+  flex: none !important;
+  background: #fffdf8 !important;
+  box-shadow: 0 -10px 12px 4px #fffdf8;
 }

@@ -19,7 +19,7 @@ import { displayTableName } from './modes/family.js';
 
 export default function Multi({ wanted = [] }) {
   const { me } = useSession();
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const [mine, setMine] = useState(null);
   const [codes, setCodes] = useState(null);
   const [focus, setFocus] = useState(null);

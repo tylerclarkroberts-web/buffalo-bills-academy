@@ -49,7 +49,7 @@ export function GagLayer({ events }) {
 
 /** The gag button for a seated player holding at least one gag. Firing one uses it up. */
 export function GagButton({ code, view, myId, onEvent, onUsed }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const [open, setOpen] = useState(false);
   const [item, setItem] = useState(null);

@@ -70,6 +70,13 @@ export function familyMask(text) {
 }
 
 /** Player handles: mask in place, or a neutral fallback if the name is nothing but profanity. */
+export function familyInitials(name) {
+  const s = String(name || 'P').trim();
+  const parts = s.split(/\s+/).filter(Boolean);
+  const raw = (parts.length >= 2 ? `${parts[0][0] || ''}${parts[1][0] || ''}` : s.slice(0, 2)).toUpperCase();
+  return raw.replace(/[^A-Z0-9]/g, '') || 'P';
+}
+
 export function familyHandle(name, { fallback = 'Player' } = {}) {
   if (name == null || name === '') return name;
   const masked = familyMask(String(name).trim());

@@ -8,7 +8,7 @@ import { familyHandle } from '../modes/family.js';
 
 /** `seat(id, name)` gives the props that make a seat open the card; render `card` once anywhere in the component. */
 export function usePlayerCard() {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const [open, setOpen] = useState(null);
   const seat = (id, name) => {
     if (!id) return {};

@@ -10,7 +10,7 @@ export function setBitEnabled(on) { try { const p = JSON.parse(localStorage.getI
 /** Once per losing all-in per device: returns true the first time this (table, hand, seat) is claimed. */
 /** Fight gore (cartoon blood and the KO fatalities). Default on; off gives a harmless knock-out with no blood. Family Mode forces off on this device. */
 export function goreEnabled() {
-  try { if (getModes().family) return false; } catch { /* store unavailable */ }
+  try { if (getModes().safe) return false; } catch { /* store unavailable */ }
   try { return JSON.parse(localStorage.getItem(KEY) || '{}').gore !== false; } catch { return true; }
 }
 export function setGoreEnabled(on) { try { const p = JSON.parse(localStorage.getItem(KEY) || '{}'); p.gore = !!on; localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } }

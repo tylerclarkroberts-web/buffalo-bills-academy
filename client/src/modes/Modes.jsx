@@ -6,6 +6,7 @@ import './modes.css';
 const ModesCtx = createContext({
   family: false,
   work: false,
+  safe: false,
   setFamily: () => {},
   setWork: () => {},
 });
@@ -16,6 +17,7 @@ export function ModesProvider({ children }) {
   const value = useMemo(() => ({
     family: !!modes.family,
     work: !!modes.work,
+    safe: !!(modes.family || modes.work),
     setFamily: setFamilyStore,
     setWork: setWorkStore,
   }), [modes.family, modes.work]);
@@ -27,18 +29,18 @@ export function useModes() {
 }
 
 export function useTableLabel(code, rawName) {
-  const { family } = useModes();
-  return displayTableName(code, rawName, family);
+  const { safe } = useModes();
+  return displayTableName(code, rawName, safe);
 }
 
 export function useSafeText(text) {
-  const { family } = useModes();
-  return family ? familyMask(text) : text;
+  const { safe } = useModes();
+  return safe ? familyMask(text) : text;
 }
 
 export function useSafeHandle(name, fallback = 'Player') {
-  const { family } = useModes();
-  return family ? familyHandle(name, { fallback }) : name;
+  const { safe } = useModes();
+  return safe ? familyHandle(name, { fallback }) : name;
 }
 
 /** Compact Family / Work toggles for the main-page header (and the work masthead). */

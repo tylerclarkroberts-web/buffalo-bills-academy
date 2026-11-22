@@ -54,7 +54,7 @@ export function BjArena({
   v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, onTap, reduced, onSit, bugPose, kashTell, now,
 }) {
   const box = useRef(null);
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const { w, h } = useSize(box);
   const who = usePlayerCard();

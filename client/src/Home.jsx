@@ -11,7 +11,7 @@ import { FoffCard, FoffPromo } from './foff/FoffCard.jsx';
 import { ScumCard, ScumPromo } from './scum/ScumCard.jsx';
 import { ElHaloCard, ElHaloPromo } from './mines/elhalo/ElHaloCard.jsx';
 import { useModes } from './modes/Modes.jsx';
-import { displayTableName, familyHandle, familyShareText, FAMILY_GAME } from './modes/family.js';
+import { displayTableName, familyHandle, familyMask, familyShareText, FAMILY_GAME } from './modes/family.js';
 
 const TURN_OPTIONS = [
   [30, '30 sec (quick)'], [60, '1 minute'], [300, '5 minutes'], [3600, '1 hour'],
@@ -241,7 +241,7 @@ function SlotsCard() {
   );
 }
 function SlotsPromo({ bare = false }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   return (
     <div className={`slots-promo ${bare ? 'bare' : ''}`} data-test={bare ? undefined : 'slots-card'}>
       <svg viewBox="0 0 100 100" className="sp-art" aria-hidden="true"><KingRat /></svg>
@@ -273,7 +273,7 @@ const TURN_STATES = {
 };
 const TABLE_GAMES = { poker: ['Poker', '/t/', '/?tab=new'], blackjack: ['Blackjack', '/bj/', '/bj'], scum: ['Scum', '/scum/', '/scum'] };
 function TableList({ tables, loaded, loading, error, pending, retry, setTab, filter, setFilter, game }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const labelOf = (t) => displayTableName(t, t.name, family);
   const who = (n) => (family ? familyHandle(n) : n);
   const poker = game === 'poker';
@@ -339,7 +339,7 @@ function TableList({ tables, loaded, loading, error, pending, retry, setTab, fil
 }
 
 function PublicTableList({ tables, loading, error, startPublic }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const labelOf = (t) => displayTableName(t, t.name, family);
   const hostOf = (n) => (family ? familyHandle(n) : n);
   if (loading) return <p className="small muted" role="status">Loading public tables…</p>;
@@ -360,7 +360,7 @@ function PublicTableList({ tables, loading, error, startPublic }) {
 }
 
 function LobbyPanel({ games, game, setGame, publicTables, tab, setTab, wide, newTable, startPublic, tableFilter, setTableFilter }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const mine = Object.values(games).every((g) => g.loaded) ? Object.values(games).reduce((n, g) => n + g.tables.length, 0) || null : '—';
   // v51: Join-by-code gone; Games tab holds blackjack, slots, Foff's Bachelor Party, Async Scum and El Halo.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
@@ -404,6 +404,8 @@ function VsSwitch({ vs, setVs }) {
 }
 
 function NewTable({ setErr, vs, setVs, inHeader, visibility, setVisibility, form, setForm, suggest, busy, setBusy, pending }) {
+  const { safe: family } = useModes();
+  const hint = (n) => (family ? familyMask(n) : n);
   const set = (k) => (v) => setForm({ ...form, [k]: v?.target ? v.target.value : v });
   const bots = vs === 'bots';
   async function create(e) {
@@ -430,7 +432,7 @@ function NewTable({ setErr, vs, setVs, inHeader, visibility, setVisibility, form
         <label htmlFor="nt-name">Table name</label>
         {!inHeader && <VsSwitch vs={vs} setVs={setVs} />}
       </div>
-      <input id="nt-name" value={form.name} onChange={set('name')} placeholder={bots ? 'Bot practice' : suggest[0]} maxLength={40} />
+      <input id="nt-name" value={form.name} onChange={set('name')} placeholder={bots ? 'Bot practice' : hint(suggest[0])} maxLength={40} />
     </div>
   );
   const speedField = ( // v42: two speed-ups, both off unless the host ticks them
@@ -452,7 +454,7 @@ function NewTable({ setErr, vs, setVs, inHeader, visibility, setVisibility, form
           <Seg label="Bots · always strong" value={form.bots} onChange={set('bots')} options={[1, 2, 3, 4, 5].map((n) => [n, String(n)])} />
           <Seg label="Practice stack (not your bankroll)" value={form.buyIn} onChange={set('buyIn')} options={BUYINS.map((v) => [v, `$${v.toLocaleString()}`])} />
         </> : <>
-          <div className="pills">{suggest.map((n) => <button type="button" key={n} className={`pill ${form.name === n ? 'on' : ''}`} onClick={() => setForm({ ...form, name: n })}>{n}</button>)}</div>
+          <div className="pills">{suggest.map((n) => <button type="button" key={n} className={`pill ${form.name === n ? 'on' : ''}`} onClick={() => setForm({ ...form, name: n })}>{hint(n)}</button>)}</div>
           <div className="nt-visibility">
             <Seg label="Visibility" value={visibility} onChange={setVisibility} options={[['private', 'Private · invite link'], ['public', 'Public']]} />
             <p className="small muted">{visibility === 'public' ? 'Listed in Public tables. Other players can join.' : 'Unlisted. Anyone with the invite link can join.'}</p>
@@ -490,7 +492,7 @@ const afkKey = (t) => `afk:${t.code}:${t.afkMoved.at}`;
 const afkSeen = (t) => { try { return !!localStorage.getItem(afkKey(t)); } catch { return false; } };
 export const afkPick = (tables) => tables.filter((x) => x.afkMoved && !afkSeen(x)).sort((a, b) => b.afkMoved.at - a.afkMoved.at)[0] || null;
 function AfkBanner({ t, onHide, setErr }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   if (!t) return null;
   const tableName = displayTableName(t, t.name, family);
   const open = () => { rememberTable(t.code); navigate(`/t/${t.code}`); };
@@ -514,7 +516,7 @@ function AfkBanner({ t, onHide, setErr }) {
 // ---- the host's nudge: a table you opened is still waiting for you to deal ----
 const readyOf = (t) => t.ready ?? t.players;
 function HostBanner({ tables, setErr }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const waiting = tables.filter((t) => t.isHost && t.status === 'lobby')
     .sort((a, b) => readyOf(b) - readyOf(a) || b.createdAt - a.createdAt);
   const [busy, setBusy] = useState('');

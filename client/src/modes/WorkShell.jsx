@@ -4,6 +4,8 @@ import './work.css';
 
 const TITLE = 'How to Optimize Performance Using AI to Drive Shareholder Value';
 const DEK = 'A field memo for operators who already know the answer is leadership, and would like that in writing.';
+const AUTHOR = 'Lee Ghand E.';
+const ROLE = 'Distinguished Fellow in Value Creation';
 
 function Chart() {
   // Modest upward slope: the only shape a steering committee truly trusts.
@@ -29,7 +31,7 @@ function Chart() {
 }
 
 export default function WorkShell({ children }) {
-  const { work, family } = useModes();
+  const { work } = useModes();
   const [open, setOpen] = useState(true);
   const exhibit = useRef(null);
   // On a game route, collapse the memo so the exhibit stays usable.
@@ -90,20 +92,19 @@ export default function WorkShell({ children }) {
             <h1 className="work-hed">{TITLE}</h1>
             <p className="work-dek">{DEK}</p>
             <div className="work-byline">
-              <span className="work-author">A. Shareholder</span>
-              <span className="work-role">Distinguished Fellow in Value Creation</span>
+              <span className="work-author">{AUTHOR}</span>
+              <span className="work-role">{ROLE}</span>
               <span className="work-meta">November 2026 · 7 min read</span>
               <button type="button" className="work-sub" data-test="work-subscribe" onClick={(e) => e.currentTarget.classList.toggle('on')}>
                 Subscribe
               </button>
             </div>
-            <p>In moments of genuine leadership, one notices that the organization was already performing — and that what it required was not a new strategy so much as the courage to recognize the one already in the room.</p>
-            <p>This is that recognition.</p>
+            <Chart />
+            <p>In moments of genuine leadership, one notices that the organization was already performing — and that what it required was not a new strategy so much as the courage to recognize the one already in the room. This is that recognition.</p>
             <p>The modern enterprise does not merely adopt AI. It invites AI to sit at the table, to listen, and, with appropriate humility, to confirm what leadership has known all along: that excellence, properly instrumented, compounds. Our mandate is simple. We will optimize performance. We will use AI. We will provide more shareholder value. Not as a slogan, but as an operating system.</p>
             <blockquote className="work-pull">
               <p>Shareholder value is not extracted. It is cultivated — preferably on a slide with a modest upward slope.</p>
             </blockquote>
-            <Chart />
             <p>It would be immodest to credit any single architect of this agenda. It would also be inaccurate not to. The vision is, as ever, top-down in the best sense: clear, generous, and already working. What follows is the live operating cadence, rendered for the steering committee.</p>
           </article>
         )}
@@ -111,7 +112,7 @@ export default function WorkShell({ children }) {
 
       <figure className="work-exhibit" data-test="work-exhibit">
         <figcaption className="work-exhibit-cap">
-          Figure 2. Real-time value-creation cockpit{family ? ' · names presented for mixed-company review' : ''}. Interactive.
+          Figure 2. Real-time value-creation cockpit. Interactive.
         </figcaption>
         <div className="work-exhibit-frame" ref={exhibit}>
           {children}
@@ -121,7 +122,7 @@ export default function WorkShell({ children }) {
       {open && (
         <footer className="work-close">
           <p>We remain, as always, grateful for the opportunity to exceed — and then to exceed the exceeding. Please circulate this memo to anyone who still requires convincing. They will not.</p>
-          <p className="work-signoff">— The Office of Alignment</p>
+          <p className="work-signoff">— {AUTHOR}</p>
         </footer>
       )}
     </div>

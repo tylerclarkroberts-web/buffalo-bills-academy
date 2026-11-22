@@ -28,7 +28,7 @@ function hint(ui) {
 
 export default function Foff() {
   const { me, loading } = useSession();
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const gameTitle = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   useEffect(() => { const title = document.title; document.title = gameTitle; return () => { document.title = title; }; }, [gameTitle]);
   if (loading) return <div className="foff foff-gate" data-test="foff-gate-loading" />;
@@ -38,7 +38,7 @@ export default function Foff() {
 }
 
 function FoffGate({ signedOut = false, onUnlocked }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const gameTitle = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   return (
     <div className="foff foff-gate" data-test="foff-gate">
@@ -60,7 +60,7 @@ function FoffGate({ signedOut = false, onUnlocked }) {
 }
 
 function FoffGame() {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const gameTitle = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   const canvas = useRef(null), game = useRef(null);
   const [ui, setUi] = useState(null); // null: the title screen

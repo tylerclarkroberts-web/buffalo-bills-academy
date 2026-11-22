@@ -36,8 +36,8 @@
 html.work-mode .mode-rail { display: none; } /* the work masthead already has the toggles */
 
 /* When Family Mode is on, hide the SCUM "toot" cloud and swap in a party-horn cue. */
-html.family-mode .sc-royal-prop.toot-cloud { visibility: hidden; }
-html.family-mode .sc-royal-prop.toot-cloud::after {
+html.family-mode .sc-royal-prop.toot-cloud, html.kosher-mode .sc-royal-prop.toot-cloud { visibility: hidden; }
+html.family-mode .sc-royal-prop.toot-cloud, html.kosher-mode .sc-royal-prop.toot-cloud::after {
   visibility: visible; content: '🎉'; position: absolute; inset: 0;
   display: grid; place-items: center; font-size: inherit;
 }

@@ -37,7 +37,7 @@ export function FoffCard() { return <FoffUnlock layout="card" />; }
 export function FoffPromo() { return <FoffUnlock layout="promo" />; }
 
 function FoffUnlock({ layout }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const title = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   const { me } = useSession();
   const { on, reveal, unlock } = useUnlocked(me);
@@ -129,7 +129,7 @@ function FilmModal({ onClose, onWatched }) {
 
 /** Embeds the bagpipe film, records a server watch-start when it actually plays, and unlocks only after real playback. */
 export function FilmPlayer({ onWatched }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const title = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   const wrap = useRef(null);
   const player = useRef(null);

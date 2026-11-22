@@ -69,7 +69,7 @@ const PAY_RULES = [
 
 export default function ScumPage({ code }) {
   const { me } = useSession();
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   useEffect(() => { if (!code) document.title = publicTitle(gameName); }, [code, gameName]);
   if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">{gameName}</h2><SignIn compact next={code ? `/scum/${code}` : '/scum'} /></div></div>;
@@ -89,7 +89,7 @@ function RulesPop({ onClose, pay }) {
 
 // ---------------------------------------------------------------- lobby + setup
 function ScumLobby({ me }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState('');
@@ -224,7 +224,7 @@ function seatXY(k, n, tall) {
 }
 
 function ScumTable({ code, me }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   const [v, setV, err] = useView(code);
@@ -569,7 +569,7 @@ function FlyBatch({ cards, seatEl, pileEl, handRects, mine, reduced, onDone }) {
 
 /** Center of the felt during the exchange: last round's titles and who still owes whom. */
 function Court({ v }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const pairs = v.round?.exchange?.pairs || [];
   return (
@@ -585,7 +585,7 @@ function Court({ v }) {
 
 /** Your part of the exchange: hand over (with a beg), wait, or pick what to give back. */
 function Exchange({ v, owe, gets, giving, sel, beg, setBeg, busy, post, onSent }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const nm = (s) => { const n = v.seats[s]?.name || 'them'; return family ? familyHandle(n) : n; };
   if (owe && !owe.paid) return (
     <form className="sc-ex" data-test="scum-beg" onSubmit={async (e) => { e.preventDefault(); if (await post('tribute', { beg })) onSent(); }}>
@@ -609,7 +609,7 @@ function Exchange({ v, owe, gets, giving, sel, beg, setBeg, busy, post, onSent }
 }
 
 function Final({ v }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   const rows = v.seats.filter(Boolean).filter((s) => !s.bot || true).sort((a, b) => (b.stats?.king || 0) - (a.stats?.king || 0) || (a.stats?.scum || 0) - (b.stats?.scum || 0));

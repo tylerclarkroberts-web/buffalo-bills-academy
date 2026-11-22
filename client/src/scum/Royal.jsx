@@ -19,7 +19,7 @@ export function durationOf(cmd, audioDurationSec = null) {
 }
 
 export function RoyalPicker({ royal, onCommand, busy, step, setStep }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   if (!royal?.canCommand) return null;
   const catalog = royal.catalog || [];
   if (step === 'target') {
@@ -76,7 +76,7 @@ function useElapsed(active) {
 }
 
 export function RoyalPlay({ ev, pos, onSkip, onDone, reduced }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const caption = family ? familyRoyalCaption(ev, { king: ev.kingName, scum: ev.scumName, target: ev.targetName, who: ev.targetName }, ev.caption) : ev.caption;
   const done = useRef(false);
   const elapsed = useElapsed(ev.cmd === 'sing' && !reduced);

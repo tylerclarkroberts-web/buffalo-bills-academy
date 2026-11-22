@@ -11,6 +11,7 @@ import { chips, formatDuration, formatLeft, signed, money } from './util.js';
 import { ChipStack, VENUE } from './theme.jsx';
 import { publicTitle, holdemShareText, holdemNotifyTitle } from '../../server/pageMeta.js';
 import { useModes } from './modes/Modes.jsx';
+import WorkTable from './modes/WorkTable.jsx';
 import { displayTableName, familyHandle, familyMask, familyNotifyTitle, familyShareText, familyTableLabel } from './modes/family.js';
 import { SignIn } from './Home.jsx';
 import { Link } from './Shell.jsx';
@@ -61,7 +62,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const [fightMode, setFightMode] = useState(null); // null | 'play' | 'watch' | 'practice'
   const [resultSeen, setResultSeen] = useState(() => new Set());
   const { me } = useSession();
-  const { family } = useModes();
+  const { safe: family, work } = useModes();
   const tableName = displayTableName(code, view?.name, family);
   const wide = useWide();
   const land = useShortLand();
@@ -256,7 +257,9 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const stage = (
     <div className="tp-stage">
       {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => { rp.afterShowdown(); setSdPlay(null); }} />}
-      <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSweep={setSweepBusy} sweepLate={sweepLate} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+      {work
+        ? <WorkTable view={rp.view} now={now} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+        : <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSweep={setSweepBusy} sweepLate={sweepLate} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />}
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
       {errBox}
@@ -449,7 +452,7 @@ function seatDeg(pos, N) {
 }
 
 export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, onSweep, sweepLate }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const bubble = (t) => (family ? familyMask(t) : t);
   // v42: a quick "✓ auto-check" pop over a seat for checks the table made in the last few seconds
@@ -881,7 +884,7 @@ function HereDot() {
 }
 
 function Standings({ view }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   return (
     <Paged items={view.standings} rowH={44} className="standings"
@@ -898,7 +901,7 @@ function Standings({ view }) {
 }
 
 function HandLog({ view }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const items = view.log.filter((e) => !(e.ev?.k === 'win' && e.ev.showdown)).reverse(); // v43: the silent pot-push event is for the replay only
   return (
@@ -914,7 +917,7 @@ function HandLog({ view }) {
 }
 
 function LastHand({ view }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const lh = view.lastHand;
   return (
@@ -991,7 +994,7 @@ export function MusicButton() {
 
 /** Over the felt: "X is fighting Guntrad: Watch", your own unfinished fight, and the latest fight's result. */
 function FightPills({ view, myId, watch, now, seen, onSeen, onWatch, onForfeit }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const f = view.fight;
   if (!f) return null;

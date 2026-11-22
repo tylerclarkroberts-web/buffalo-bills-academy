@@ -30,7 +30,7 @@ export function TurnsEntry() {
 
 /** After you act: a side prompt. Goes to the next table only when clicked. Hidden if nothing else is waiting. */
 export function NextTablePill({ advance }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   if (!advance) return null;
   const { phase, next, restCount, goNow } = advance;
   if (phase !== 'next' || !next) return null;

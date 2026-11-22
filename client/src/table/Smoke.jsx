@@ -31,7 +31,7 @@ function sayHellYeah() {
   if (!voiceOn()) return;
   try {
     const ss = window.speechSynthesis; if (!ss) return;
-    const line = getModes().family ? FAMILY_GAME.guntradYeah : 'hell yeah';
+    const line = getModes().safe ? FAMILY_GAME.guntradYeah : 'hell yeah';
     const u = new SpeechSynthesisUtterance(line); u.pitch = 0.45; u.rate = 0.9; u.volume = 0.9;
     const v = ss.getVoices().find((x) => /en[-_](US|GB)/i.test(x.lang) && /male|david|daniel|fred|alex/i.test(x.name)) || ss.getVoices().find((x) => /^en/i.test(x.lang));
     if (v) u.voice = v;
@@ -101,14 +101,14 @@ export function SmokeLayer({ events, skew = 0, off = false }) {
   const tip = TIP[cur.art] || [0.8, 0.2]; const S = Math.round(Math.max(44, Math.min(84, cur.seat.w * 0.9)));
   return createPortal(
     <div className={`smoke-moment ${cur.still ? 'still' : ''}`} data-test="smoke-fx" data-from={cur.from} aria-live="polite">
-      <div className="sm-bubble" style={{ left: cur.bubble.x, top: cur.bubble.y }} data-test="smoke-bubble"><b>Guntrad:</b> {getModes().family ? FAMILY_GAME.guntradYeah : "hell yeah"}</div>
+      <div className="sm-bubble" style={{ left: cur.bubble.x, top: cur.bubble.y }} data-test="smoke-bubble"><b>Guntrad:</b> {getModes().safe ? FAMILY_GAME.guntradYeah : "hell yeah"}</div>
       <div className="sm-item" style={{ left: cur.seat.x, top: cur.seat.y, width: S, height: S, '--tx': `${tip[0] * 100}%`, '--ty': `${tip[1] * 100}%` }}>
         <LowPoly art={cur.art} size={S} fallback={cur.emoji} />
         <span className="sm-ember" />
         {!cur.still && <span className="sm-flame" aria-hidden="true"><i /></span>}
         <span className="sm-wisp" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <i key={i} style={{ '--i': i }} />)}</span>
       </div>
-      <span className="sr-only">{cur.fromName} lit up a {cur.name}. Guntrad: {getModes().family ? FAMILY_GAME.guntradYeah : "hell yeah"}</span>
+      <span className="sr-only">{cur.fromName} lit up a {cur.name}. Guntrad: {getModes().safe ? FAMILY_GAME.guntradYeah : "hell yeah"}</span>
     </div>, document.body);
 }
 

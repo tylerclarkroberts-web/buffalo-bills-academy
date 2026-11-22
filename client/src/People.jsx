@@ -20,7 +20,7 @@ const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export function Profile({ id }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const { me, loading } = useSession();
   const wide = useWide();
   const [p, setP] = useState(null);
@@ -160,7 +160,7 @@ const EARNING_SOURCES = [['mining', 'Mines'], ['poker', 'Poker'], ['blackjack', 
 const BOARD_METRICS = [['wealth', 'Net worth'], ['earnings', 'Recorded earnings'], ...EARNING_SOURCES];
 
 export function Leaderboard() {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
@@ -332,7 +332,7 @@ function DeleteAccount({ me }) {
 
 /** Table fun: the all-in "busted" animation and the saloon piano. Saved on this device. */
 function TableFun() {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const [bit, setBit] = useState(bitEnabled);
   const [rpl, setRpl] = useState(replayEnabled);
   const [gore, setGore] = useState(goreEnabled);

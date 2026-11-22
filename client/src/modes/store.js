@@ -28,13 +28,20 @@ function writeCookie(name, on) {
   document.cookie = `${name}=${on ? '1' : '0'}; path=/; max-age=${max}; SameSite=Lax`;
 }
 
+function withSafe(s) {
+  return { family: !!s.family, work: !!s.work, safe: !!(s.family || s.work) };
+}
+
 function applyDom(s) {
   if (!hasDoc()) return;
   const root = document.documentElement;
+  const kosher = !!(s.family || s.work);
   root.classList.toggle('family-mode', !!s.family);
   root.classList.toggle('work-mode', !!s.work);
+  root.classList.toggle('kosher-mode', kosher);
   root.dataset.family = s.family ? '1' : '0';
   root.dataset.work = s.work ? '1' : '0';
+  root.dataset.safe = kosher ? '1' : '0';
 }
 
 let state = { family: false, work: false };
@@ -45,12 +52,12 @@ export function loadModes() {
   state = { family: readStorage(FAMILY_KEY), work: readStorage(WORK_KEY) };
   applyDom(state);
   loaded = true;
-  return { ...state };
+  return withSafe(state);
 }
 
 export function getModes() {
   if (!loaded && hasWindow()) loadModes();
-  return { ...state };
+  return withSafe(state);
 }
 
 export function subscribeModes(fn) {
@@ -68,7 +75,7 @@ function persist() {
 
 function emit() {
   persist();
-  const snap = { ...state };
+  const snap = withSafe(state);
   subs.forEach((fn) => { try { fn(snap); } catch { /* listener */ } });
 }
 

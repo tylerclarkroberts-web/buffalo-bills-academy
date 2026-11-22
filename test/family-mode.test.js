@@ -3,7 +3,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   familyTableNumber, familyTableLabel, displayTableName,
-  familyMask, familyHandle, familyRoyalLabel, familyRoyalCaption,
+  familyMask, familyHandle, familyInitials, familyRoyalLabel, familyRoyalCaption,
   familyNotifyTitle, familyShareText, FAMILY_GAME, FAMILY_TITLES,
 } from '../client/src/modes/family.js';
 import {
@@ -42,6 +42,8 @@ test('familyMask and familyHandle hide crude words but leave ordinary names alon
   assert.equal(familyRoyalLabel('toot', 'Let someone toot in your face'), 'Let someone blow a party horn');
   assert.equal(familyRoyalLabel('jig', 'Do a jig'), 'Do a jig');
   assert.match(familyRoyalCaption({ cmd: 'toot' }, { who: 'Ann', scum: 'Bo' }, 'Ann toots in Bo\'s face'), /party horn/);
+  assert.equal(familyInitials('Ann Wait'), 'AW');
+  assert.equal(familyInitials('Tyler'), 'TY');
   assert.equal(FAMILY_GAME.scum, 'Palace');
   assert.equal(FAMILY_TITLES.scum, 'Low Seat');
   assert.equal(familyNotifyTitle('ABCD'), `Your turn at ${familyTableLabel('ABCD')}`);
@@ -87,7 +89,7 @@ beforeEach(() => {
 });
 
 test('Family and Work flags persist in localStorage and a cookie, and survive a reload', () => {
-  assert.deepEqual(getModes(), { family: false, work: false });
+  assert.deepEqual(getModes(), { family: false, work: false, safe: false });
   setFamily(true);
   assert.equal(globalThis.localStorage.getItem(FAMILY_KEY), '1');
   assert.match(globalThis.document.cookie, new RegExp(`${FAMILY_COOKIE}=1`));
@@ -101,7 +103,7 @@ test('Family and Work flags persist in localStorage and a cookie, and survive a 
   assert.match(globalThis.document.cookie, new RegExp(`${WORK_COOKIE}=1`));
   assert.equal(getModes().work, true);
   // Both can be on: Work is the layout, Family still sanitizes names inside it.
-  assert.deepEqual(getModes(), { family: true, work: true });
+  assert.deepEqual(getModes(), { family: true, work: true, safe: true });
 
   // Simulate a later visit on the same device: empty memory, same storage.
   const saved = {
@@ -112,14 +114,26 @@ test('Family and Work flags persist in localStorage and a cookie, and survive a 
   globalThis.localStorage.setItem(FAMILY_KEY, saved.family);
   globalThis.localStorage.setItem(WORK_KEY, saved.work);
   const loaded = loadModes();
-  assert.deepEqual(loaded, { family: true, work: true });
-  assert.deepEqual(getModes(), { family: true, work: true });
+  assert.deepEqual(loaded, { family: true, work: true, safe: true });
+  assert.deepEqual(getModes(), { family: true, work: true, safe: true });
 
   setFamily(false);
   setWork(false);
   assert.equal(globalThis.localStorage.getItem(FAMILY_KEY), null);
   assert.equal(globalThis.localStorage.getItem(WORK_KEY), null);
-  assert.deepEqual(getModes(), { family: false, work: false });
+  assert.deepEqual(getModes(), { family: false, work: false, safe: false });
+});
+
+test('Work Mode alone applies Family sanitizing (safe) without pressing Family', () => {
+  setWork(true);
+  const m = getModes();
+  assert.equal(m.work, true);
+  assert.equal(m.family, false);
+  assert.equal(m.safe, true);
+  assert.equal(globalThis.document.documentElement.classList._on.has('work-mode'), true);
+  assert.equal(globalThis.document.documentElement.classList._on.has('kosher-mode'), true);
+  assert.equal(globalThis.document.documentElement.classList._on.has('family-mode'), false);
+  assert.equal(displayTableName('ABCD', 'Fart Kitchen', m.safe), familyTableLabel('ABCD'));
 });
 
 test('modes are viewer-only: toggling them does not call fetch or write a player record', () => {

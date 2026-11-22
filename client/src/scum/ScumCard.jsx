@@ -7,7 +7,7 @@ import { useModes } from '../modes/Modes.jsx';
 import { FAMILY_GAME } from '../modes/family.js';
 
 export function ScumCard() {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const title = family ? FAMILY_GAME.scum : 'SCUM';
   return (
     <section className="panel lb-card lb-slots lb-scum" data-test="scum-card">
@@ -17,7 +17,7 @@ export function ScumCard() {
   );
 }
 export function ScumPromo({ bare = false }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const title = family ? FAMILY_GAME.scum : 'SCUM';
   const go = family ? 'Play Palace' : 'Play scum';
   return (

@@ -20,7 +20,7 @@ export function ElHaloCard() {
 
 export function ElHaloPromo({ bare = false }) {
   const [src, setSrc] = useState(THUMB_WEBP);
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const blurb = family ? FAMILY_GAME.elhaloBlurb : EL_HALO_BLURB;
   return (
     <div className={`slots-promo elh-promo ${bare ? 'bare' : ''}`} data-test={bare ? undefined : 'elhalo-card'}>

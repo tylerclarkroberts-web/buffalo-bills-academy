@@ -29,7 +29,7 @@ const I = {
 const Ico = ({ k }) => <svg viewBox="0 0 24 24" aria-hidden="true" className="ico">{I[k]}</svg>;
 
 function AccountMenu({ me }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const myName = family ? familyHandle(me.name) : me.name;
   const [open, setOpen] = useState(false);
   const box = useRef(null);

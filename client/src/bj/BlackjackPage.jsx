@@ -97,7 +97,7 @@ const TURN = { 30: '30 s', 120: '2 min', 600: '10 min', 3600: '1 hour', 86400: '
 
 export default function BlackjackPage({ code }) {
   const { me } = useSession();
-  const { family } = useModes();
+  const { safe: family } = useModes();
   useEffect(() => { document.title = publicTitle(code ? (family ? familyTableLabel(code) : `Blackjack table ${code}`) : 'Blackjack'); }, [code, family]);
   if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">Blackjack</h2><SignIn compact next={code ? `/bj/${code}` : '/bj'} /></div></div>;
   return code ? <BjTable code={code} me={me} /> : <BjLobby me={me} />;
@@ -124,7 +124,7 @@ function Num({ label, value, min, max, cap, step = 0.5, onChange, test }) {
 }
 
 function BjLobby({ me }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState('new');
@@ -290,7 +290,7 @@ function useView(code) {
 }
 
 function BjTable({ code, me }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const { v, setV, err, setErr, syncGen } = useView(code);
   const tableName = displayTableName(code, v?.name, family);
   const [povCrashed, setPovCrashed] = useState(false);
@@ -497,7 +497,7 @@ function Summary({ s, onClose }) {
   );
 }
 function Final({ v }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   return (
     <div className="bj-pop final" data-test="bj-final"><div className="panel"><h3 className="western">Final standings</h3><p className="small">{v.final.why}</p>
@@ -508,7 +508,7 @@ function Final({ v }) {
   );
 }
 function Lobby({ v, me, post, onSit }) {
-  const { family } = useModes();
+  const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const people = v.seats.filter((s) => s && !s.bot);
   // v51: skip the house-edge gate when the table does not need an ack — one tap to sit.
