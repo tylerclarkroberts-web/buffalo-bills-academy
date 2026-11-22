@@ -25,7 +25,7 @@ export class SlackClient {
   }
   get enabled() { return !!this.token; }
   /** One Slack Web API call. Returns the parsed body; `ok:false` is returned, not thrown. Retries once on transient failures. */
-  async call(method, params = {}, { get = false } = {}) {
+  async call(method, params = {}, { get = false, form = false } = {}) {
     if (!this.enabled) return { ok: false, error: 'not_configured' };
     for (let attempt = 0; ; attempt++) {
       let body;
@@ -33,6 +33,13 @@ export class SlackClient {
         const headers = { authorization: `Bearer ${this.token}` };
         let url = `${this.baseUrl}/${method}`; let init = { method: 'POST', headers };
         if (get) { url += `?${new URLSearchParams(params)}`; init = { method: 'GET', headers }; }
+        else if (form) {
+          // files.getUploadURLExternal rejects JSON with invalid_arguments (missing length/filename).
+          headers['content-type'] = 'application/x-www-form-urlencoded; charset=utf-8';
+          init.body = new URLSearchParams(
+            Object.fromEntries(Object.entries(params).map(([k, v]) => [k, v == null ? '' : String(v)])),
+          ).toString();
+        }
         else { headers['content-type'] = 'application/json; charset=utf-8'; init.body = JSON.stringify(params); }
         const r = await this.fetch(url, init);
         body = r.status === 429 ? { ok: false, error: 'ratelimited' } : r.status >= 500 ? { ok: false, error: 'http_error' } : await r.json();
@@ -84,6 +91,7 @@ export class SlackClient {
   /**
    * Upload a PNG (or other file) to a channel with an initial comment.
    * Uses Slack's files.getUploadURLExternal + files.completeUploadExternal flow.
+   * getUploadURLExternal is form-urlencoded (JSON is rejected with invalid_arguments).
    * Resolves #name to a C-ID first (completeUploadExternal does not accept #name).
    */
   async uploadImage({ channel, filename, buffer, title, comment } = {}) {
@@ -92,7 +100,7 @@ export class SlackClient {
     if (!channelId) return { ok: false, error: 'channel_not_resolved', method: 'conversations.list' };
     const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
     const length = buf.byteLength;
-    const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length });
+    const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length }, { form: true });
     if (!up.ok) return { ...up, method: 'files.getUploadURLExternal' };
     try {
       const put = await this.fetch(up.upload_url, {

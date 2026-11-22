@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'os';
 import path from 'path';
 import { createApp } from '../server/app.js';
-import { shameDecision, wantedCaption, wantedSlackText, slackErrorLine, SHAME_MIN, SHAME_COOLDOWN_MS, CHANNEL_GAP_MS, envWantedEnabled, resolveChannel, DEFAULT_ACADEMY_CHANNEL } from '../server/wanted.js';
+import { shameDecision, wantedCaption, wantedSlackText, wantedSlackBlocks, slackErrorLine, SHAME_MIN, SHAME_COOLDOWN_MS, CHANNEL_GAP_MS, envWantedEnabled, resolveChannel, DEFAULT_ACADEMY_CHANNEL } from '../server/wanted.js';
 import { SlackClient } from '../server/slack.js';
 import { listShameTurns, listTurns, holdemSource } from '../server/turns.js';
 import { tableHasBots } from '../server/slack.js';
@@ -47,6 +47,11 @@ test('the poster keeps the parody lines and dynamic name, with no official Narut
     wantedSlackText({ name: 'Ann Wait', count: 4, posterUrl: 'https://bba.test/wanted/ab.png' }),
     "<!channel> Word from the Sheriff's Office: Ann Wait is WANTED for making everyone else wait. They're holding up 4 games. Punishment: One Thousand Years of Pain. Poster: <https://bba.test/wanted/ab.png>",
   );
+  const blocks = wantedSlackBlocks({ name: 'Ann Wait', count: 4, posterUrl: 'https://bba.test/wanted/ab.png' });
+  assert.equal(blocks[0].type, 'section');
+  assert.match(blocks[0].text.text, /Ann Wait is WANTED/);
+  assert.deepEqual(blocks[1], { type: 'image', image_url: 'https://bba.test/wanted/ab.png', alt_text: 'WANTED: Ann Wait' });
+  assert.equal(wantedSlackBlocks({ name: 'Ann Wait', count: 4 }).length, 1, 'no image block without a poster URL');
   assert.equal(slackErrorLine({ method: 'files.getUploadURLExternal', error: 'missing_scope', needed: 'files:write' }), 'files.getUploadURLExternal missing_scope needed=files:write');
 });
 
@@ -122,8 +127,11 @@ function mockSlack() {
     }
     const u = new URL(url);
     const method = u.pathname.replace('/api/', '');
-    const body = init.body && String(init.headers?.['content-type'] || '').includes('json') ? JSON.parse(init.body) : {};
-    m.calls.push({ method, body });
+    const ct = String(init.headers?.['content-type'] || init.headers?.['Content-Type'] || '');
+    let body = {};
+    if (init.body && ct.includes('json')) body = JSON.parse(init.body);
+    else if (init.body && ct.includes('application/x-www-form-urlencoded')) body = Object.fromEntries(new URLSearchParams(String(init.body)));
+    m.calls.push({ method, body, contentType: ct });
     const res = (json) => ({ status: 200, ok: true, json: async () => json });
     if (method === 'users.lookupByEmail') {
       if (m.slackUser) return res({ ok: true, user: { id: m.slackUser, team_id: 'T1', deleted: false, is_bot: false } });
@@ -149,7 +157,7 @@ function mockSlack() {
       return res({ ok: true, files: [{ id: 'F1' }] });
     }
     if (method === 'chat.postMessage') {
-      m.channelPosts.push({ channel: body.channel, text: body.text });
+      m.channelPosts.push({ channel: body.channel, text: body.text, blocks: body.blocks });
       return res({ ok: true, ts: '1' });
     }
     return res({ ok: false, error: 'unknown_method' });
@@ -337,6 +345,8 @@ test('a pasted C-ID uploads without conversations.list, even when channels:read 
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.ok(!slack.calls.some((c) => c.method === 'conversations.list'), 'a C-ID must not look up the channel name');
+  const getUrl = slack.calls.find((c) => c.method === 'files.getUploadURLExternal');
+  assert.match(getUrl.contentType, /application\/x-www-form-urlencoded/);
   assert.equal(slack.uploads.length, 1);
   assert.equal(slack.uploads[0].channel, 'CACADEMY99');
   assert.match(slack.uploads[0].comment, /Poster: <https:\/\/bba\.test\/wanted\/[a-f0-9]{32}\.png>/);
@@ -368,7 +378,7 @@ test('the admin channel setting also accepts a C-ID and skips name lookup', asyn
   assert.equal(slack.uploads[0].channel, 'CBUFFALO99');
 });
 
-test('a missing files:write scope falls back to a channel post with a public poster link, and logs the Slack error', async (t) => {
+test('a missing files:write scope falls back to a channel post with an inline image block, and logs the Slack error', async (t) => {
   const slack = mockSlack();
   slack.failUpload = true;
   const warns = [];
@@ -396,6 +406,11 @@ test('a missing files:write scope falls back to a channel post with a public pos
   assert.match(text, /Ann Wait is WANTED/);
   const m = text.match(/Poster: <(https:\/\/bba\.test\/wanted\/[a-f0-9]{32}\.png)>/);
   assert.ok(m, text);
+  const blocks = slack.channelPosts[0].blocks;
+  assert.equal(blocks[0].type, 'section');
+  assert.equal(blocks[1].type, 'image');
+  assert.equal(blocks[1].image_url, m[1]);
+  assert.equal(blocks[1].alt_text, 'WANTED: Ann Wait');
   const urlPath = new URL(m[1]).pathname;
   const got = await fetch(s.base + urlPath);
   assert.equal(got.status, 200);
@@ -453,6 +468,49 @@ test('one sweep that finds several offenders posts one poster and queues the res
     return '?';
   });
   assert.deepEqual(new Set(posted), new Set(names));
+});
+
+test('SlackClient.uploadImage form-encodes getUploadURLExternal (JSON is rejected by Slack)', async () => {
+  const calls = [];
+  const buf = Buffer.from([1, 2, 3, 4]);
+  const client = new SlackClient({
+    token: 'xoxb-test-not-real',
+    fetchImpl: async (url, init) => {
+      if (String(url).includes('https://files.example/upload')) {
+        calls.push({ method: 'UPLOAD_POST', contentType: init.headers?.['content-type'], bytes: init.body?.length ?? init.body?.byteLength });
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      const method = new URL(url).pathname.replace('/api/', '');
+      const ct = init.headers?.['content-type'] || '';
+      calls.push({ method, contentType: ct, body: String(init.body || '') });
+      if (method === 'files.getUploadURLExternal') {
+        return { status: 200, ok: true, json: async () => ({ ok: true, upload_url: 'https://files.example/upload', file_id: 'F1' }) };
+      }
+      if (method === 'files.completeUploadExternal') {
+        return { status: 200, ok: true, json: async () => ({ ok: true, files: [{ id: 'F1' }] }) };
+      }
+      return { status: 200, ok: true, json: async () => ({ ok: false, error: 'unexpected' }) };
+    },
+  });
+  const r = await client.uploadImage({
+    channel: 'CACADEMY99', filename: 'wanted.png', buffer: buf, title: 'WANTED: Ann', comment: 'hi',
+  });
+  assert.equal(r.ok, true);
+  const getUrl = calls.find((c) => c.method === 'files.getUploadURLExternal');
+  assert.ok(getUrl);
+  assert.match(getUrl.contentType, /application\/x-www-form-urlencoded/);
+  assert.doesNotMatch(getUrl.contentType, /application\/json/);
+  const params = new URLSearchParams(getUrl.body);
+  assert.equal(params.get('filename'), 'wanted.png');
+  assert.equal(params.get('length'), '4');
+  const done = calls.find((c) => c.method === 'files.completeUploadExternal');
+  assert.match(done.contentType, /application\/json/);
+  const json = JSON.parse(done.body);
+  assert.equal(json.channel_id, 'CACADEMY99');
+  assert.equal(json.files[0].id, 'F1');
+  assert.equal(json.files[0].title, 'WANTED: Ann');
+  assert.equal(json.initial_comment, 'hi');
+  assert.equal(calls.find((c) => c.method === 'UPLOAD_POST').bytes, 4);
 });
 
 test('SlackClient.resolveChannelId returns a pasted C-ID without listing channels', async () => {

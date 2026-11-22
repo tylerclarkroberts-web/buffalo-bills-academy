@@ -66,6 +66,18 @@ export function wantedSlackText({ name, slackUserId, count, posterUrl } = {}) {
   return `${base} Poster: ${linked}`;
 }
 
+/** Channel blocks so the hosted poster shows inline even when the file upload fails (unfurl is off). */
+export function wantedSlackBlocks({ name, slackUserId, count, posterUrl } = {}) {
+  const text = wantedSlackText({ name, slackUserId, count, posterUrl });
+  const blocks = [{ type: 'section', text: { type: 'mrkdwn', text } }];
+  const url = String(posterUrl || '').trim();
+  if (url) {
+    const alt = `WANTED: ${String(name || 'Unknown')}`.slice(0, 2000);
+    blocks.push({ type: 'image', image_url: url, alt_text: alt });
+  }
+  return blocks;
+}
+
 /** One-line Slack error for logs: method plus error code. Never includes a token or message body. */
 export function slackErrorLine(result, fallbackMethod = 'slack') {
   const method = result?.method || fallbackMethod;
@@ -225,6 +237,7 @@ export class WantedShame {
       const slackUserId = await this.slackMention(player);
       const hosted = this.hostPoster(png, { playerId: player.id, now });
       const text = wantedSlackText({ name, slackUserId, count, posterUrl: hosted.url });
+      const blocks = wantedSlackBlocks({ name, slackUserId, count, posterUrl: hosted.url });
       const client = this.slack.client;
       const up = await client.uploadImage?.({
         channel,
@@ -235,8 +248,8 @@ export class WantedShame {
       });
       if (!up || up.ok === false) {
         this.warn('upload', slackErrorLine(up, 'uploadImage'), player.id);
-        const r = await client.postChannel?.(channel, { text })
-          || await client.call?.('chat.postMessage', { channel, text, unfurl_links: false, unfurl_media: false });
+        const r = await client.postChannel?.(channel, { text, blocks })
+          || await client.call?.('chat.postMessage', { channel, text, blocks, unfurl_links: false, unfurl_media: false });
         if (r && r.ok === false) this.warn('post', slackErrorLine(r, 'chat.postMessage'), player.id);
         return r;
       }
