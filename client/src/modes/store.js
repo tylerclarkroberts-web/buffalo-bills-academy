@@ -105,3 +105,35 @@ export function setModes({ family, work } = {}) {
   state = next;
   emit();
 }
+
+
+/** True when the event target is a field the user is typing into. */
+export function isTypingTarget(el) {
+  let node = el && el.nodeType === 3 ? el.parentElement : el;
+  if (!node) return false;
+  const tag = String(node.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  if (node.isContentEditable) return true;
+  const ce = typeof node.getAttribute === 'function' ? node.getAttribute('contenteditable') : null;
+  if (ce === '' || (ce && ce.toLowerCase() !== 'false')) return true;
+  if (typeof node.closest === 'function') {
+    if (node.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return true;
+  }
+  return false;
+}
+
+/**
+ * Boss key: bare "W" turns Work Mode on. Ignored in fields, with modifiers,
+ * or when Work Mode is already on (W never turns it off).
+ * Returns true if the event was handled (Work Mode was switched on).
+ */
+export function handleWorkHotkey(e) {
+  if (!e || e.defaultPrevented) return false;
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (e.key !== 'w' && e.key !== 'W') return false;
+  if (isTypingTarget(e.target)) return false;
+  if (getModes().work) return false;
+  if (typeof e.preventDefault === 'function') e.preventDefault();
+  setWork(true);
+  return true;
+}

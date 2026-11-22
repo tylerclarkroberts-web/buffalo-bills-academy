@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { getModes, loadModes, setFamily as setFamilyStore, setWork as setWorkStore, subscribeModes } from './store.js';
+import { getModes, loadModes, setFamily as setFamilyStore, setWork as setWorkStore, subscribeModes, handleWorkHotkey } from './store.js';
 import { displayTableName, familyHandle, familyMask } from './family.js';
 import './modes.css';
 
@@ -14,6 +14,11 @@ const ModesCtx = createContext({
 export function ModesProvider({ children }) {
   const [modes, setModes] = useState(() => loadModes());
   useEffect(() => subscribeModes((s) => setModes(s)), []);
+  useEffect(() => {
+    const onKey = (e) => handleWorkHotkey(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const value = useMemo(() => ({
     family: !!modes.family,
     work: !!modes.work,
