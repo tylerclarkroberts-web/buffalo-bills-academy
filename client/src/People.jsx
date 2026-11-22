@@ -11,6 +11,8 @@ import { money, pct, chips } from './util.js';
 import { bitEnabled, goreEnabled, setGoreEnabled, setBitEnabled } from './table/fx.js';
 import { REPLAY_ON, replayEnabled, setReplayEnabled } from './table/replay.js';
 import * as music from './table/music.js';
+import { useModes } from './modes/Modes.jsx';
+import { displayTableName, familyHandle, FAMILY_GAME } from './modes/family.js';
 
 const OUTCOME = { motherlode: 'Motherlode', aliens: 'Alien skeletons', diamonds: 'Diamond well', dud: 'Mostly mud', normal: 'Shift' };
 const TX = { start: 'Start', buyin: 'Buy-in', cashout: 'Cash-out', mine: 'Mines', 'invest-buy': 'Bought', 'invest-sell': 'Sold', risk_stake: 'Risk stake', risk_win: 'Risk win', risk_refund: 'Risk refund' };
@@ -18,6 +20,7 @@ const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export function Profile({ id }) {
+  const { safe: family } = useModes();
   const { me, loading } = useSession();
   const wide = useWide();
   const [p, setP] = useState(null);
@@ -94,7 +97,7 @@ export function Profile({ id }) {
               </div>
               {renameError && <p className="error small" id="rename-error" role="alert">{renameError}</p>}
             </form>
-          ) : <h1 className="display pf-name">{p.name}</h1>}
+          ) : <h1 className="display pf-name">{family ? familyHandle(p.name) : p.name}</h1>}
           <p className="small ok" role="status">{renameStatus}</p>
           {self && p.email && <p className="small muted hide-s">{p.email}</p>}
         </div>
@@ -123,7 +126,7 @@ export function Profile({ id }) {
             header={<div className="dt-row dt-head g"><span>Table</span><span className="hide-s">Status</span><span className="r">Hands</span><span className="r hide-s">In</span><span className="r hide-s">Out</span><span className="r">Net</span></div>}
             render={(g) => (
               <button className="dt-row g click" onClick={() => navigate(`/t/${g.code}`)}>
-                <span className="ell"><b>{g.name}</b> <span className="muted mono small">{g.code}</span>{!g.economy && <span className="muted small"> · practice</span>}</span>
+                <span className="ell"><b>{displayTableName(g, g.name, family)}</b> <span className="muted mono small">{g.code}</span>{!g.economy && <span className="muted small"> · practice</span>}</span>
                 <span className="muted hide-s">{g.status === 'closed' ? 'Closed' : g.status === 'lobby' ? 'Not started' : 'Playing'}</span>
                 <span className="r num">{g.hands}</span><span className="r num hide-s">{chips(g.buyIn)}</span><span className="r num hide-s">{chips(g.cashOut + g.onTable)}</span>
                 <span className={`r num ${cls(g.net)}`}>{g.net > 0 ? '+' : ''}{chips(g.net)}</span>
@@ -157,6 +160,8 @@ const EARNING_SOURCES = [['mining', 'Mines'], ['poker', 'Poker'], ['blackjack', 
 const BOARD_METRICS = [['wealth', 'Net worth'], ['earnings', 'Recorded earnings'], ...EARNING_SOURCES];
 
 export function Leaderboard() {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [sort, setSort] = useState('wealth');
@@ -208,7 +213,7 @@ export function Leaderboard() {
                     <span className="rank">{String(i + 1).padStart(2, '0')}</span>
                     <Bust id={t.id} avatar={t.avatar} size={wide ? 44 : 32} still={!wide} />
                     <span className="who-cell">
-                      <span className="nm">{t.name}</span>
+                      <span className="nm">{handle(t.name)}</span>
                       <span className="brk">{t.bug.name}{t.bug.speciesName && t.bug.speciesName !== t.bug.name ? ` · ${t.bug.speciesName}` : ''}</span>
                     </span>
                     <span className="bug-stat"><span className="bug-lvl">Lv {t.bug.level}</span>{recLine ? <span className="bug-rec">{recLine}</span> : null}</span>
@@ -225,7 +230,7 @@ export function Leaderboard() {
             return <button className={`brow ${r.id === d.me ? 'me' : ''}`} onClick={() => navigate(r.id === d.me ? '/profile' : `/players/${r.id}`)}>
               <span className="rank">{String(i + 1).padStart(2, '0')}</span>
               <Bust id={r.id} avatar={r.avatar} size={wide ? 44 : 32} still={!wide} />
-              <span className="who-cell"><span className="nm">{r.name}</span><span className="brk">{sort === 'wealth' ? `${money(r.bankroll)} cash · ${money(r.holdings)} coins${r.chips ? ` · ${money(r.chips)} chips` : ''}` : `${money(r.total)} net worth`}</span></span>
+              <span className="who-cell"><span className="nm">{handle(r.name)}</span><span className="brk">{sort === 'wealth' ? `${money(r.bankroll)} cash · ${money(r.holdings)} coins${r.chips ? ` · ${money(r.chips)} chips` : ''}` : `${money(r.total)} net worth`}</span></span>
               <span className={`worth ${sort === 'wealth' ? '' : cls(value)}`}>{money(value, { sign: sort !== 'wealth' })}</span>
               {sources && <span className="board-sources">{EARNING_SOURCES.map(([key, label]) => <span key={key}><span>{label}</span><b className={cls(r.earnings[key])}>{money(r.earnings[key], { sign: true })}</b></span>)}</span>}
             </button>;
@@ -327,6 +332,7 @@ function DeleteAccount({ me }) {
 
 /** Table fun: the all-in "busted" animation and the saloon piano. Saved on this device. */
 function TableFun() {
+  const { safe: family } = useModes();
   const [bit, setBit] = useState(bitEnabled);
   const [rpl, setRpl] = useState(replayEnabled);
   const [gore, setGore] = useState(goreEnabled);
@@ -345,7 +351,7 @@ function TableFun() {
       <label className="fun-row"><input type="checkbox" checked={m.on} onChange={(e) => music.setOn(e.target.checked)} /><span><b>Saloon piano music</b> <span className="muted small">{Math.round(m.vol * 100)}% · change it from the speaker on any table</span></span></label>
       {pr !== null && <label className="fun-row"><input type="checkbox" data-test="settings-gags" checked={pr} onChange={(e) => { const on = e.target.checked; setPr(on); api('POST', '/me/gags', { optOut: !on }).catch(() => setPr(!on)); }} /><span><b>Allow Gags?</b> <span className="muted small">Squirt guns, pies, confetti and dry noodles from the General Store, plus table spectacles like fireworks and stampedes. Harmless, and they never show your cards.</span></span></label>}
       {sm !== null && <label className="fun-row"><input type="checkbox" data-test="settings-smoke" checked={sm} onChange={(e) => { const on = e.target.checked; setSm(on); api('POST', '/me/smoke', { optOut: !on }).catch(() => setSm(!on)); }} /><span><b>Show Smoke Shop moments at tables</b> <span className="muted small">When a player lights up (cartoon only), Guntrad comes over with the lighter. Off: you won't see them.</span></span></label>}
-      <label className="fun-row"><input type="checkbox" data-test="settings-voice" checked={vo} onChange={(e) => { setVoiceOn(e.target.checked); setVo(e.target.checked); }} /><span><b>Guntrad's voice</b> <span className="muted small">His "hell yeah" and the lighter sound.</span></span></label>
+      <label className="fun-row"><input type="checkbox" data-test="settings-voice" checked={vo} onChange={(e) => { setVoiceOn(e.target.checked); setVo(e.target.checked); }} /><span><b>Guntrad's voice</b> <span className="muted small">His "{family ? FAMILY_GAME.guntradYeah : "hell yeah"}" and the lighter sound.</span></span></label>
     </div>
   );
 }

@@ -1,0 +1,47 @@
+/* Compact Family / Work toggles: sit in the existing topbar without wrapping it. */
+.mode-toggles { display: flex; align-items: center; gap: 0; flex: none; border: 1px solid rgba(242, 198, 90, .4); border-radius: 999px; overflow: hidden; background: rgba(0, 0, 0, .2); }
+.mode-tog {
+  appearance: none; margin: 0; min-height: 30px; padding: 0 10px;
+  font: 600 10px/1 Inter, system-ui, sans-serif; letter-spacing: .08em;
+  text-transform: uppercase; color: #f4e7c8; background: transparent;
+  border: 0; border-right: 1px solid rgba(242, 198, 90, .35);
+  cursor: pointer; white-space: nowrap;
+}
+.mode-tog:last-child { border-right: 0; }
+.mode-tog:hover, .mode-tog:focus-visible { background: rgba(242, 198, 90, .12); outline: none; }
+.mode-tog[aria-pressed="true"] { background: #f2c65a; color: #1c0714; }
+.mode-tog .mode-short { display: none; }
+@media (max-width: 899px) {
+  .mode-tog { min-height: 36px; padding: 0 8px; font-size: 10px; }
+  .mode-tog .mode-full { display: none; }
+  .mode-tog .mode-short { display: inline; }
+}
+@media (max-width: 420px) {
+  .mode-tog { min-height: 36px; padding: 0 7px; letter-spacing: .05em; }
+}
+
+.mode-rail {
+  position: fixed; z-index: 80; right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  display: flex; gap: 6px; pointer-events: none;
+}
+.mode-rail > * { pointer-events: auto; }
+.mode-rail-chip {
+  appearance: none; border: 1px solid rgba(28, 7, 20, .2); background: #f7f3eb; color: #1c0714;
+  font: 600 11px/1 Inter, system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase;
+  padding: 8px 10px; border-radius: 999px; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  min-height: 36px;
+}
+.mode-rail-chip.work { background: #1c0714; color: #f7f3eb; border-color: #1c0714; }
+html.work-mode .mode-rail { display: none; } /* the work masthead already has the toggles */
+
+/* When Family Mode is on, hide the SCUM "toot" cloud and swap in a party-horn cue. */
+html.family-mode .sc-royal-prop.toot-cloud, html.kosher-mode .sc-royal-prop.toot-cloud { visibility: hidden; }
+html.family-mode .sc-royal-prop.toot-cloud, html.kosher-mode .sc-royal-prop.toot-cloud::after {
+  visibility: visible; content: '🎉'; position: absolute; inset: 0;
+  display: grid; place-items: center; font-size: inherit;
+}
+
+/* Header already has the toggles; keep the rail for pages that skip the shell (Mines, Foff, El Halo). display:none still leaves .topbar in the tree. */
+body:has(.topbar) .mode-rail { display: none; }
+html.work-mode body:has(.topbar) .mode-rail { display: none; }

@@ -1,4 +1,6 @@
 // Table "fun" settings and the all-in-loser bit's timeline. Pure helpers (tested in node) + localStorage.
+import { getModes } from '../modes/store.js';
+
 const KEY = 'bba.fx';
 const SEEN = 'bba.bitSeen';
 
@@ -6,8 +8,11 @@ export function bitEnabled() { try { return JSON.parse(localStorage.getItem(KEY)
 export function setBitEnabled(on) { try { const p = JSON.parse(localStorage.getItem(KEY) || '{}'); p.bit = !!on; localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } }
 
 /** Once per losing all-in per device: returns true the first time this (table, hand, seat) is claimed. */
-/** Fight gore (cartoon blood and the KO fatalities). Default on; off gives a harmless knock-out with no blood. */
-export function goreEnabled() { try { return JSON.parse(localStorage.getItem(KEY) || '{}').gore !== false; } catch { return true; } }
+/** Fight gore (cartoon blood and the KO fatalities). Default on; off gives a harmless knock-out with no blood. Family Mode forces off on this device. */
+export function goreEnabled() {
+  try { if (getModes().safe) return false; } catch { /* store unavailable */ }
+  try { return JSON.parse(localStorage.getItem(KEY) || '{}').gore !== false; } catch { return true; }
+}
 export function setGoreEnabled(on) { try { const p = JSON.parse(localStorage.getItem(KEY) || '{}'); p.gore = !!on; localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ } }
 export function claimBit(code, number, seat, store = globalThis.localStorage) {
   const k = `${code}:${number}:${seat}`;

@@ -25,7 +25,7 @@ test('house rules spell out pass vs skip: pass locks you out, a skip does not', 
 test('the current seat has a pulsing ring and a Your turn / X\'s turn label', () => {
   const page = read('client/src/scum/ScumPage.jsx');
   assert.match(page, /data-test="scum-turn-label"/);
-  assert.match(page, /s\.me \? \(fly \? 'Playing' : 'Your turn'\) : `\$\{s\.name\}'s turn`/);
+  assert.match(page, /s\.me \? \(fly \? 'Playing' : 'Your turn'\) : `\$\{handle\(s\.name\)\}'s turn`/);
   const css = read('client/src/scum/scum.css');
   assert.match(css, /\.sc-seat\.turn \.bust/);
   assert.match(css, /sc-turnpulse/);

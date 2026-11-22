@@ -1,5 +1,7 @@
 // First-person dealer view: a live 3D table when WebGL is available, the CSS felt as a fallback.
 import React, { useEffect, useRef, useState } from 'react';
+import { useModes } from '../modes/Modes.jsx';
+import { familyHandle, familyMask } from '../modes/family.js';
 import { Bust } from '../avatar/Bust.jsx';
 import { Card } from '../Card.jsx';
 import { takeCards } from './useDealReveal.js';
@@ -25,6 +27,8 @@ function Hand({ cards, small, freshFrom, reduced }) {
 }
 
 function CssFelt({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, reduced }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const seats = (v.seats || []).map((s, i) => s && { ...s, i }).filter(Boolean);
   const dShown = shown?.d ?? dealerCards.length;
   const visDealer = takeCards(dealerCards, dShown);
@@ -46,9 +50,9 @@ function CssFelt({ v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown,
             return (
               <div key={s.i} className={`bj-pov-seat ${s.i === turnSeat ? 'turn' : ''} ${s.me ? 'me' : ''}`} data-test={`bj-pov-seat-${s.i}`}>
                 <div className="bj-pov-bust">
-                  <Bust id={s.id || `bot:${s.name}`} avatar={s.avatar} size={64} still={reduced} title={s.name} />
+                  <Bust id={s.id || `bot:${s.name}`} avatar={s.avatar} size={64} still={reduced} title={handle(s.name)} />
                 </div>
-                <b className="bj-pov-name">{s.name}</b>
+                <b className="bj-pov-name">{handle(s.name)}</b>
                 <span className="bj-pov-chips mono">{money(s.chips)}</span>
                 {bet && !bet.out && <span className="bj-pov-bet" data-test="bj-pov-bet">{money(bet.bet)}</span>}
                 <div className="bj-pov-hands">
@@ -100,6 +104,8 @@ export function DealerPov({
   onSay, meId, kash, onCatch, onCrash,
 }) {
 
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
   const rootRef = useRef(null);
@@ -118,7 +124,7 @@ export function DealerPov({
   const dealingLabel = autoOn ? 'Autopilot is dealing' : "You're dealing";
   const phase = v.round?.phase;
   let status;
-  if (actor) status = `${actor.name} to act`;
+  if (actor) status = `${handle(actor.name)} to act`;
   else if (prompt.label && prompt.label !== dealingLabel) status = prompt.label;
   else if (dealing && phase !== 'dealer') status = dealingLabel;
   else status = prompt.label || dealingLabel;
@@ -224,13 +230,13 @@ export function DealerPov({
             <div className="bj-pov-notices bj-pov-notices-top" data-test="bj-pov-notices">
               {notice?.kind === 'pit' && (
                 <p key={notice.key} className="pit-line" data-test="bj-pit-line" role="status">
-                  <b>{notice.pit.name}</b>
+                  <b>{handle(notice.pit.name)}</b>
                   <span>{notice.pit.line}</span>
                 </p>
               )}
               {notice?.kind === 'tip' && (
                 <p key={notice.key} className="bj-thanks" data-test="bj-thanks" role="status">
-                  {notice.tip?.name ? <><b>{notice.tip.name}</b> tipped ${notice.tip.amount}. </> : null}{notice.thanks}
+                  {notice.tip?.name ? <><b>{handle(notice.tip.name)}</b> tipped ${notice.tip.amount}. </> : null}{notice.thanks}
                 </p>
               )}
             </div>
@@ -240,18 +246,18 @@ export function DealerPov({
             <div className="bj-pov-notices bj-pov-notices-band">
               {notice?.kind === 'pit' && (
                 <p key={`${notice.key}-band`} className="pit-line" role="status">
-                  <b>{notice.pit.name}</b>
+                  <b>{handle(notice.pit.name)}</b>
                   <span>{notice.pit.line}</span>
                 </p>
               )}
               {notice?.kind === 'tip' && (
                 <p key={`${notice.key}-band`} className="bj-thanks" role="status">
-                  {notice.tip?.name ? <><b>{notice.tip.name}</b> tipped ${notice.tip.amount}. </> : null}{notice.thanks}
+                  {notice.tip?.name ? <><b>{handle(notice.tip.name)}</b> tipped ${notice.tip.amount}. </> : null}{notice.thanks}
                 </p>
               )}
             </div>
             <div className="bj-pov-actor" data-test="bj-deal-prompt">
-              {actor && <Bust id={actor.id || `bot:${actor.name}`} avatar={actor.avatar} size={28} still title={actor.name} />}
+              {actor && <Bust id={actor.id || `bot:${actor.name}`} avatar={actor.avatar} size={28} still title={handle(actor.name)} />}
               <span>{status}</span>
               {left > 0 && actor && (
                 <i className="bj-pov-ring" style={{ '--p': String(turnFrac) }} aria-hidden="true" />
@@ -290,11 +296,14 @@ export function TipBar({ canTip, onTip, busy, tip }) {
 }
 
 export function TableChat({ chat, onSay, meId }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
+  const safeText = (s) => (family ? familyMask(s) : s);
   const [text, setText] = useState('');
   return (
     <form className="bj-chat" data-test="bj-chat" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (!t) return; onSay(t); setText(''); }}>
       <ul className="bj-chat-log" aria-live="polite">
-        {(chat || []).slice(-3).map((m, i) => <li key={`${m.at}-${i}`} className={m.id === meId ? 'me' : ''}><b>{m.name}</b> {m.text}</li>)}
+        {(chat || []).slice(-3).map((m, i) => <li key={`${m.at}-${i}`} className={m.id === meId ? 'me' : ''}><b>{handle(m.name)}</b> {safeText(m.text)}</li>)}
       </ul>
       <input data-test="bj-say" maxLength={80} value={text} onChange={(e) => setText(e.target.value)} placeholder="Say something" aria-label="Table chat" />
     </form>
