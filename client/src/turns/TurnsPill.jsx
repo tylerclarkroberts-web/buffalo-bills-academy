@@ -2,6 +2,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTurns, jumpToTurns } from './useTurns.js';
 import { gameLabel } from './queue.js';
+import { useModes } from '../modes/Modes.jsx';
+import { displayTableName } from '../modes/family.js';
 import './turns.css';
 
 /** Compact header chip: jumps to the first table you're up at. Hidden when the queue is empty. */
@@ -28,10 +30,12 @@ export function TurnsEntry() {
 
 /** After you act: a side prompt. Goes to the next table only when clicked. Hidden if nothing else is waiting. */
 export function NextTablePill({ advance }) {
+  const { family } = useModes();
   if (!advance) return null;
   const { phase, next, restCount, goNow } = advance;
   if (phase !== 'next' || !next) return null;
   const game = gameLabel(next.game);
+  const tableName = displayTableName(next, next.name, family);
   const waiting = restCount === 1 ? '1 table waiting' : `${restCount} tables waiting`;
   const node = (
     <div className="turns-next" data-test="turns-next" role="status">
@@ -40,11 +44,11 @@ export function NextTablePill({ advance }) {
         className="turns-next-go"
         onClick={goNow}
         data-test="turns-next-go"
-        aria-label={`Next table you're up in: ${next.name}, ${game}. ${waiting}.`}
+        aria-label={`Next table you're up in: ${tableName}, ${game}. ${waiting}.`}
       >
         <span className="turns-next-cta">Next table you're up in <span aria-hidden="true">→</span></span>
         <span className="turns-next-meta">
-          <b className="turns-next-name">{next.name}</b>
+          <b className="turns-next-name">{tableName}</b>
           <span className="turns-next-game">{game}</span>
           <b className="turns-n" title={waiting}>{restCount}</b>
         </span>

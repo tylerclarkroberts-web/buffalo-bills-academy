@@ -8,6 +8,8 @@ import { BrokeHost } from './Broke.jsx';
 import { money } from './util.js';
 import { useMedia } from './ui.jsx';
 import { TurnsEntry } from './turns/TurnsPill.jsx';
+import { ModeToggles, useModes } from './modes/Modes.jsx';
+import { familyHandle } from './modes/family.js';
 
 export function Link({ to, className = '', children, ...rest }) {
   return <a href={to} className={className} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); navigate(to); }} {...rest}>{children}</a>;
@@ -27,6 +29,8 @@ const I = {
 const Ico = ({ k }) => <svg viewBox="0 0 24 24" aria-hidden="true" className="ico">{I[k]}</svg>;
 
 function AccountMenu({ me }) {
+  const { family } = useModes();
+  const myName = family ? familyHandle(me.name) : me.name;
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   useEffect(() => {
@@ -48,7 +52,7 @@ function AccountMenu({ me }) {
       {open && (
         <div className="acct-menu" role="menu">
           <div className="am-head">
-            <b className="ell">{me.name}</b>
+            <b className="ell">{myName}</b>
             <span className="small muted">Net worth <b className="num amber">{money(me.worth.total)}</b></span>
           </div>
           <button role="menuitem" onClick={() => go('/?tab=tables')}><Ico k="tables" />Your tables</button>
@@ -131,6 +135,7 @@ export function Shell({ path, children }) {
           {me && <Link to="/barn" className="barn-btn" title={me.barnChallenges ? `Your barn: ${me.barnChallenges} waiting in the ring` : 'Your barn'} data-test="barn-btn"><Ico k="barn" /><span>Barn</span>{me.barnChallenges > 0 && <b className="barn-count" data-test="barn-count">{me.barnChallenges}</b>}</Link>}
           {me && <Link to="/store" className="barn-btn store-btn" title="The General Store (play money)" aria-label="General Store" data-test="store-btn"><Ico k="store" /><span>General Store</span></Link>}
           </>}
+          <ModeToggles />
           {me ? <AccountMenu me={me} /> : (config.google ? <a className="btn small light" href={signInUrl()}>Sign in</a> : <Link to="/" className="btn small light">Sign in</Link>)}
         </div>
       </header>

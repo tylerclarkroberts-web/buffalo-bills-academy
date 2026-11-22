@@ -14,9 +14,12 @@ import * as music from './table/music.js';
 import { MAX_TABLES, THEMES, themeForCount, pickTables, nextTurn } from './themes/theme-core.js';
 import { setActiveTheme, plainMode, setPlainMode } from './themes/store.js';
 import { ConsoleRoom, Petals } from './themes/decor.jsx';
+import { useModes } from './modes/Modes.jsx';
+import { displayTableName } from './modes/family.js';
 
 export default function Multi({ wanted = [] }) {
   const { me } = useSession();
+  const { family } = useModes();
   const [mine, setMine] = useState(null);
   const [codes, setCodes] = useState(null);
   const [focus, setFocus] = useState(null);
@@ -106,7 +109,7 @@ export default function Multi({ wanted = [] }) {
               {seatedTables.length ? seatedTables.map((t) => (
                 <label key={t.code} className="row mt-opt">
                   <input type="checkbox" checked={open.includes(t.code)} disabled={!open.includes(t.code) && open.length >= MAX_TABLES} onChange={() => toggle(t.code)} />
-                  <span className="ell">{t.name}</span><span className="mono small">{t.code}</span>{t.myTurn && <i className="dot" />}
+                  <span className="ell">{displayTableName(t, t.name, family)}</span><span className="mono small">{t.code}</span>{t.myTurn && <i className="dot" />}
                 </label>
               )) : <p className="small">You're not seated anywhere yet.</p>}
               <button className="btn small ghost" onClick={() => setPick(false)}>Done</button>

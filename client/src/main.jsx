@@ -14,6 +14,8 @@ import '@fontsource/yellowtail/latin-400.css';
 import '@fontsource/rye/latin-400.css';
 import '@fontsource/monoton/latin-400.css';
 import App from './App.jsx';
+import { ModesProvider } from './modes/Modes.jsx';
+import WorkShell from './modes/WorkShell.jsx';
 import './styles.css';
 import './neon.css';
 import './themes/themes.css';
@@ -41,4 +43,4 @@ window.addEventListener('pointerdown', unlock, { passive: true });
 window.addEventListener('touchstart', unlock, { passive: true });
 window.addEventListener('keydown', unlock);
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<ModesProvider><WorkShell><App /></WorkShell></ModesProvider>);

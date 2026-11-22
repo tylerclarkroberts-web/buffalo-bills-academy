@@ -1,3 +1,5 @@
+import { useModes } from '../modes/Modes.jsx';
+import { FAMILY_GAME } from '../modes/family.js';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, refreshSession, useSession } from '../api.js';
 import { navigate } from '../App.jsx';
@@ -35,6 +37,8 @@ export function FoffCard() { return <FoffUnlock layout="card" />; }
 export function FoffPromo() { return <FoffUnlock layout="promo" />; }
 
 function FoffUnlock({ layout }) {
+  const { family } = useModes();
+  const title = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   const { me } = useSession();
   const { on, reveal, unlock } = useUnlocked(me);
   const [open, setOpen] = useState(false);
@@ -46,7 +50,7 @@ function FoffUnlock({ layout }) {
     <>
       {layout === 'card' ? (
         <section className="panel lb-card lb-slots lb-foff" data-test="foff-card">
-          <div className="panel-head"><span className="western">Foff&rsquo;s Bachelor Party</span><span className="ph-sub">{on ? 'The trip' : 'A short film'}</span></div>
+          <div className="panel-head"><span className="western">{title}</span><span className="ph-sub">{on ? 'The trip' : 'A short film'}</span></div>
           <div className="panel-body">{body}</div>
         </section>
       ) : (
@@ -65,7 +69,7 @@ function WatchPromo({ bare, onWatch }) {
         <i aria-hidden="true" />
       </button>
       <div className="sp-txt">
-        {!bare && <b className="western">Foff&rsquo;s Bachelor Party</b>}
+        {!bare && <b className="western">{title}</b>}
         <span className="small sp-desc">Watch the film. Then the trip opens.</span>
         <button className="btn small sp-go" onClick={onWatch} data-test="foff-watch">Watch the film <span className="arrow">→</span></button>
       </div>
@@ -81,7 +85,7 @@ function UnlockedPromo({ bare, reveal }) {
       ))}</span>}
       <FoffArt />
       <div className="sp-txt">
-        {!bare && <b className="western">Foff&rsquo;s Bachelor Party</b>}
+        {!bare && <b className="western">{title}</b>}
         <span className="small sp-desc">Golf with some GFRs</span>
         <button type="button" className="btn small sp-go" onClick={() => navigate('/foff')} data-test="foff-go">Go on the trip <span className="arrow">→</span></button>
       </div>
@@ -114,7 +118,7 @@ function FilmModal({ onClose, onWatched }) {
     <div className="foff-modal-back" onClick={onClose} data-test="foff-modal-back">
       <div className="foff-modal" role="dialog" aria-modal="true" aria-labelledby="foff-film-title" data-test="foff-modal" onClick={(e) => e.stopPropagation()}>
         <div className="foff-modal-head">
-          <span className="western" id="foff-film-title">Foff&rsquo;s Bachelor Party</span>
+          <span className="western" id="foff-film-title">{title}</span>
           <button type="button" className="btn small" onClick={onClose} data-test="foff-modal-close">Close</button>
         </div>
         <FilmPlayer onWatched={onWatched} />
@@ -125,6 +129,8 @@ function FilmModal({ onClose, onWatched }) {
 
 /** Embeds the bagpipe film, records a server watch-start when it actually plays, and unlocks only after real playback. */
 export function FilmPlayer({ onWatched }) {
+  const { family } = useModes();
+  const title = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   const wrap = useRef(null);
   const player = useRef(null);
   const poll = useRef(null);

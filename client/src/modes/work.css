@@ -1,0 +1,147 @@
+@font-face { font-family: 'Newsreader'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/newsreader-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Newsreader'; font-style: italic; font-weight: 400; font-display: swap; src: url('./fonts/newsreader-latin-400-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Newsreader'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/newsreader-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Newsreader'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/newsreader-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/source-sans-3-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/source-sans-3-latin-600-normal.woff2') format('woff2'); }
+
+/* Substack-adjacent, closer to The Great Discontent: cream paper, black serif, thin rules, no platform logos. */
+html.work-mode, html.work-mode body {
+  background: #f4efe6 !important;
+  color: #161616;
+}
+html.work-mode body { margin: 0; }
+
+.work-root {
+  min-height: 100vh; min-height: var(--app-h, 100vh);
+  background: #f4efe6; color: #161616;
+  font-family: 'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  display: flex; flex-direction: column;
+}
+.work-mast {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: 12px;
+  padding: env(safe-area-inset-top, 0px) 24px 0;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  background: rgba(244, 239, 230, .94);
+  border-bottom: 1px solid #161616;
+  backdrop-filter: saturate(1.1) blur(8px);
+}
+.work-mast-inner { min-width: 0; flex: 1; }
+.work-kicker {
+  margin: 0; font: 600 10px/1 'Source Sans 3', sans-serif;
+  letter-spacing: .16em; text-transform: uppercase; color: #161616;
+}
+.work-mast-title {
+  margin: 3px 0 0; font: italic 400 13px/1.2 Newsreader, 'Iowan Old Style', Georgia, serif;
+  color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.work-mast-tools { flex: none; }
+.work-mast .mode-toggles { border-color: #161616; background: #f4efe6; }
+.work-mast .mode-tog { color: #161616; border-right-color: #161616; }
+.work-mast .mode-tog[aria-pressed="true"] { background: #161616; color: #f4efe6; }
+
+.work-lede { border-bottom: 1px solid #161616; }
+.work-fold {
+  appearance: none; display: block; width: 100%; max-width: 720px; margin: 0 auto;
+  padding: 10px 24px; background: transparent; border: 0; cursor: pointer;
+  font: 600 11px/1 'Source Sans 3', sans-serif; letter-spacing: .12em;
+  text-transform: uppercase; color: #555; text-align: left;
+}
+.work-fold:hover, .work-fold:focus-visible { color: #161616; }
+
+.work-article {
+  max-width: 720px; margin: 0 auto; padding: 8px 24px 40px;
+}
+.work-hed {
+  margin: 0 0 16px; font: 700 42px/1.08 Newsreader, 'Iowan Old Style', Georgia, serif;
+  letter-spacing: -0.02em; color: #111;
+  text-wrap: balance;
+}
+.work-dek {
+  margin: 0 0 22px; font: italic 400 20px/1.4 Newsreader, Georgia, serif; color: #333;
+}
+.work-byline {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px;
+  padding: 14px 0 22px; margin: 0 0 28px;
+  border-top: 1px solid #161616; border-bottom: 1px solid #161616;
+  font: 400 13px/1.4 'Source Sans 3', sans-serif;
+}
+.work-author { font-weight: 600; letter-spacing: .02em; }
+.work-role { color: #555; }
+.work-meta { color: #666; margin-left: auto; }
+.work-sub {
+  appearance: none; margin-left: auto; padding: 8px 16px; min-height: 36px;
+  border: 1px solid #161616; background: #161616; color: #f4efe6;
+  font: 600 11px/1 'Source Sans 3', sans-serif; letter-spacing: .1em;
+  text-transform: uppercase; cursor: pointer; border-radius: 0;
+}
+.work-sub.on { background: transparent; color: #161616; }
+.work-article > p {
+  margin: 0 0 1.15em; font: 400 19px/1.6 Newsreader, Georgia, serif;
+  color: #1a1a1a;
+}
+.work-pull {
+  margin: 32px 0; padding: 0 0 0 22px; border: 0; border-left: 2px solid #161616;
+}
+.work-pull p {
+  margin: 0; font: italic 400 26px/1.35 Newsreader, Georgia, serif; color: #111;
+}
+
+.work-chart { margin: 28px 0 32px; }
+.work-chart svg { width: 100%; height: 180px; display: block; border-bottom: 1px solid #161616; }
+.work-grid { stroke: #ddd4c4; stroke-width: 0.4; }
+.work-area { fill: rgba(22, 22, 22, .08); }
+.work-line { fill: none; stroke: #161616; stroke-width: 1.2; }
+.work-dot { fill: #161616; }
+.work-chart-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 400 11px/1 'Source Sans 3', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #666; }
+.work-chart figcaption, .work-exhibit-cap {
+  margin: 10px 0 0; font: 400 13px/1.4 'Source Sans 3', sans-serif; color: #555;
+}
+
+.work-exhibit { margin: 0; padding: 0 0 16px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.work-exhibit-cap { max-width: 1100px; margin: 12px auto 8px; padding: 0 24px; flex: none; }
+.work-exhibit-frame {
+  margin: 0 16px 0; border: 1px solid #161616; background: #0f070c;
+  flex: 1; min-height: 0; overflow: hidden; position: relative;
+  /* The live app keeps its own palette inside the frame — a figure in the memo. */
+}
+html.work-mode .work-exhibit-frame .app,
+html.work-mode .work-exhibit-frame .stage {
+  height: 100%; max-height: 100%; min-height: 0; background: transparent;
+}
+html.work-mode .work-exhibit-frame .stage { padding: 0; overflow: auto; }
+
+/* Hide the western chrome; the memo masthead is the header now. */
+html.work-mode .topbar, html.work-mode .legal { display: none !important; }
+html.work-mode .app { background: transparent; }
+
+/* Soften the lobby so the home page reads as a memo exhibit, not a second website. */
+html.work-mode .lobby-panel, html.work-mode .panel {
+  background: #fffdf8; color: #161616; border-color: #d9d0c2;
+}
+html.work-mode .western, html.work-mode .display, html.work-mode .script {
+  font-family: Newsreader, Georgia, serif !important; letter-spacing: 0; text-transform: none;
+  color: #111;
+}
+html.work-mode .trow { background: #fffdf8; color: #161616; border-color: #e6dccb; }
+html.work-mode .t-name { color: #111; }
+
+.work-close {
+  max-width: 720px; margin: 0 auto; padding: 8px 24px 64px;
+  font: italic 400 18px/1.55 Newsreader, Georgia, serif; color: #222;
+  border-top: 1px solid #161616;
+}
+.work-signoff { margin-top: 1em; font-style: normal; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+
+@media (max-width: 699px) {
+  .work-mast { padding-left: 16px; padding-right: 16px; }
+  .work-hed { font-size: 30px; }
+  .work-dek { font-size: 17px; }
+  .work-article, .work-close, .work-exhibit-cap { padding-left: 16px; padding-right: 16px; }
+  .work-article > p { font-size: 17px; }
+  .work-pull p { font-size: 21px; }
+  .work-exhibit-frame { margin-left: 10px; margin-right: 10px; }
+  .work-chart svg { height: 140px; }
+  .work-meta { margin-left: 0; width: 100%; }
+}

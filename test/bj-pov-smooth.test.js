@@ -75,7 +75,7 @@ test('preview status names the player to act and only says Autopilot is dealing 
   const over = { ...betting, last: { no: 1, dealer: ['7c', '4c'], hands: [], results: [] } };
   assert.equal(previewView(over, 0).dealer.label, 'Hand is over');
   const pov = readFileSync(new URL('../client/src/bj/DealerPov.jsx', import.meta.url), 'utf8');
-  assert.match(pov, /if \(actor\) status = `\$\{actor\.name\} to act`/);
+  assert.match(pov, /if \(actor\) status = `\$\{handle\(actor\.name\)\} to act`/);
   assert.match(pov, /dealing && phase !== 'dealer'/);
 });
 

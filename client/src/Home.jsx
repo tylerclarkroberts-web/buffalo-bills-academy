@@ -10,6 +10,8 @@ import { holdemShareText } from '../../server/pageMeta.js';
 import { FoffCard, FoffPromo } from './foff/FoffCard.jsx';
 import { ScumCard, ScumPromo } from './scum/ScumCard.jsx';
 import { ElHaloCard, ElHaloPromo } from './mines/elhalo/ElHaloCard.jsx';
+import { useModes } from './modes/Modes.jsx';
+import { displayTableName, familyHandle, familyShareText, FAMILY_GAME } from './modes/family.js';
 
 const TURN_OPTIONS = [
   [30, '30 sec (quick)'], [60, '1 minute'], [300, '5 minutes'], [3600, '1 hour'],
@@ -239,12 +241,13 @@ function SlotsCard() {
   );
 }
 function SlotsPromo({ bare = false }) {
+  const { family } = useModes();
   return (
     <div className={`slots-promo ${bare ? 'bare' : ''}`} data-test={bare ? undefined : 'slots-card'}>
       <svg viewBox="0 0 100 100" className="sp-art" aria-hidden="true"><KingRat /></svg>
       <div className="sp-txt">
         {!bare && <b className="western">Three Lil' Squatches</b>}
-        <span className="small sp-desc">Tootin Weenies. Bets $1–$100.</span>
+        <span className="small sp-desc">{family ? FAMILY_GAME.slotsBlurb : "Tootin Weenies. Bets $1–$100."}</span>
         <button className="btn small sp-go" onClick={() => navigate('/slots')} data-test="slots-go">Play the slots <span className="arrow">→</span></button>
       </div>
     </div>
@@ -270,8 +273,12 @@ const TURN_STATES = {
 };
 const TABLE_GAMES = { poker: ['Poker', '/t/', '/?tab=new'], blackjack: ['Blackjack', '/bj/', '/bj'], scum: ['Scum', '/scum/', '/scum'] };
 function TableList({ tables, loaded, loading, error, pending, retry, setTab, filter, setFilter, game }) {
+  const { family } = useModes();
+  const labelOf = (t) => displayTableName(t, t.name, family);
+  const who = (n) => (family ? familyHandle(n) : n);
   const poker = game === 'poker';
-  const [label, tablePath, startPath] = TABLE_GAMES[game];
+  const [rawLabel, tablePath, startPath] = TABLE_GAMES[game];
+  const label = family && game === 'scum' ? 'Palace' : rawLabel;
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -321,26 +328,29 @@ function TableList({ tables, loaded, loading, error, pending, retry, setTab, fil
           : TURN_STATES[turn?.state] || 'Waiting on this betting round';
         return (
         <button className={`trow ${t.myTurn || t.canDeal ? 'myturn' : ''}`} data-test={t.canDeal ? 'bj-deal-now' : t.myTurn ? 'table-your-turn' : 'table-row'} data-code={t.code} onClick={() => { if (poker) rememberTable(t.code); navigate(`${tablePath}${t.code}`); }}>
-          <span className="t-name">{t.name}</span>
+          <span className="t-name">{labelOf(t)}</span>
           <span className="t-meta mono">{t.bots ? '🤖 Bots · ' : ''}{t.code} · {t.players}/{poker ? t.maxPlayers : t.maxSeats}{t.isHost ? ' · host' : ''}{poker ? t.handNumber ? ` · Hand ${t.handNumber}` : '' : t.round ? ` · Round ${t.round}` : ''}</span>
           <span className={`badge ${finished(t) ? 'dim' : t.myTurn || t.canDeal ? 'hot' : poker && t.status === 'lobby' && t.isHost && readyOf(t) >= 2 ? 'gold' : ''}`}>{status}</span>
-          {!t.myTurn && turn?.actorName && <span className="t-actor"><span className="ell">{turn.actorName}</span><span>to act{turn.deadline ? ` · ${left(turn.deadline)}` : ''}</span></span>}
-          {!poker && (t.myTurn || !turn?.actorName) && <span className="t-actor ell">{game === 'blackjack' ? `House: ${t.house}${t.isHouse ? ' (you)' : ''}` : t.titleLabel || ''}</span>}
+          {!t.myTurn && turn?.actorName && <span className="t-actor"><span className="ell">{who(turn.actorName)}</span><span>to act{turn.deadline ? ` · ${left(turn.deadline)}` : ''}</span></span>}
+          {!poker && (t.myTurn || !turn?.actorName) && <span className="t-actor ell">{game === 'blackjack' ? `House: ${who(t.house)}${t.isHouse ? ' (you)' : ''}` : (family && t.titleLabel ? t.titleLabel.replace(/Baby Scum/gi, 'Page').replace(/\bScum\b/gi, 'Low Seat') : t.titleLabel) || ''}</span>}
         </button>
       ); }} />
   );
 }
 
 function PublicTableList({ tables, loading, error, startPublic }) {
+  const { family } = useModes();
+  const labelOf = (t) => displayTableName(t, t.name, family);
+  const hostOf = (n) => (family ? familyHandle(n) : n);
   if (loading) return <p className="small muted" role="status">Loading public tables…</p>;
   if (error) return <p className="error" role="alert">{error}</p>;
   return (
     <Paged items={tables} rowH={128} gap={6} className="tables public-tables"
       empty={<div className="empty"><p>No public tables with open seats.</p><button className="btn primary small" onClick={startPublic}>Start a public table</button></div>}
       render={(t) => (
-        <button className="trow public-trow" aria-label={`View table ${t.name}`} onClick={() => { rememberTable(t.code); navigate(`/t/${t.code}`); }}>
-          <span className="t-name">{t.name}</span>
-          <span className="t-meta">{t.players}/{t.maxPlayers} seats · Hosted by {t.hostName}</span>
+        <button className="trow public-trow" aria-label={`View table ${labelOf(t)}`} onClick={() => { rememberTable(t.code); navigate(`/t/${t.code}`); }}>
+          <span className="t-name">{labelOf(t)}</span>
+          <span className="t-meta">{t.players}/{t.maxPlayers} seats · Hosted by {hostOf(t.hostName)}</span>
           <span className="t-meta">{money(t.buyIn)} buy-in · {t.smallBlind}/{t.bigBlind} blinds</span>
           <span className="t-meta">{turnShort(t.turnSeconds)} per turn · {t.status === 'lobby' ? 'Waiting to start' : 'In progress'}</span>
           <span className="public-table-action">View table →</span>
@@ -350,6 +360,7 @@ function PublicTableList({ tables, loading, error, startPublic }) {
 }
 
 function LobbyPanel({ games, game, setGame, publicTables, tab, setTab, wide, newTable, startPublic, tableFilter, setTableFilter }) {
+  const { family } = useModes();
   const mine = Object.values(games).every((g) => g.loaded) ? Object.values(games).reduce((n, g) => n + g.tables.length, 0) || null : '—';
   // v51: Join-by-code gone; Games tab holds blackjack, slots, Foff's Bachelor Party, Async Scum and El Halo.
   // v51d: do NOT stack Games under Your tables — that ate the Paged height so table cards
@@ -363,7 +374,7 @@ function LobbyPanel({ games, game, setGame, publicTables, tab, setTab, wide, new
           : tabKey === 'new' ? newTable
           : tabKey === 'games' ? <div className="promo-pair" data-test="lobby-games"><BlackjackPromo /><SlotsPromo /><FoffPromo /><ScumPromo /><ElHaloPromo /></div>
           : <>
-            <Tabs label="Your table games" className="table-games" value={game} onChange={setGame} tabs={Object.entries(TABLE_GAMES).map(([key, [label]]) => [key, label, games[key].loaded ? String(games[key].tables.length) : '—'])} />
+            <Tabs label="Your table games" className="table-games" value={game} onChange={setGame} tabs={Object.entries(TABLE_GAMES).map(([key, [label]]) => [key, family && key === 'scum' ? 'Palace' : label, games[key].loaded ? String(games[key].tables.length) : '—'])} />
             <TableList key={game} {...games[game]} game={game} setTab={setTab} filter={tableFilter} setFilter={setTableFilter} />
           </>}
       </div>
@@ -479,7 +490,9 @@ const afkKey = (t) => `afk:${t.code}:${t.afkMoved.at}`;
 const afkSeen = (t) => { try { return !!localStorage.getItem(afkKey(t)); } catch { return false; } };
 export const afkPick = (tables) => tables.filter((x) => x.afkMoved && !afkSeen(x)).sort((a, b) => b.afkMoved.at - a.afkMoved.at)[0] || null;
 function AfkBanner({ t, onHide, setErr }) {
+  const { family } = useModes();
   if (!t) return null;
+  const tableName = displayTableName(t, t.name, family);
   const open = () => { rememberTable(t.code); navigate(`/t/${t.code}`); };
   const rejoin = async () => { // take a seat straight away (same buy-in as Deal me in); if that fails, open the table
     try { await api('POST', `/tables/${t.code}/join`); } catch (e) { setErr?.(e.message); }
@@ -490,7 +503,7 @@ function AfkBanner({ t, onHide, setErr }) {
     <div className="host-banner wait afk-banner" role="status">
       <button type="button" className="hb-text" onClick={open} title="Open the table">
         <b>Your seat opened up.</b>
-        <span>You were moved out of <i className="hb-name">{t.name}</i> after {t.afkMoved.turns} missed turns. Rejoin any time.</span>
+        <span>You were moved out of <i className="hb-name">{tableName}</i> after {t.afkMoved.turns} missed turns. Rejoin any time.</span>
       </button>
       <button type="button" className="btn hb-share" onClick={rejoin}>Rejoin</button>
       <button type="button" className="btn afk-x" onClick={hide} aria-label="Dismiss">✕</button>
@@ -501,6 +514,7 @@ function AfkBanner({ t, onHide, setErr }) {
 // ---- the host's nudge: a table you opened is still waiting for you to deal ----
 const readyOf = (t) => t.ready ?? t.players;
 function HostBanner({ tables, setErr }) {
+  const { family } = useModes();
   const waiting = tables.filter((t) => t.isHost && t.status === 'lobby')
     .sort((a, b) => readyOf(b) - readyOf(a) || b.createdAt - a.createdAt);
   const [busy, setBusy] = useState('');
@@ -516,7 +530,7 @@ function HostBanner({ tables, setErr }) {
   async function copy() {
     const url = `${window.location.origin}/t/${t.code}`;
     try {
-      if (navigator.share && /Mobi/i.test(navigator.userAgent)) await navigator.share({ title: `${VENUE.name} card room`, text: holdemShareText(t.code, url), url });
+      if (navigator.share && /Mobi/i.test(navigator.userAgent)) await navigator.share({ title: `${VENUE.name} card room`, text: family ? familyShareText(t.code, url) : holdemShareText(t.code, url), url });
       else { await navigator.clipboard.writeText(url); setCopied(t.code); setTimeout(() => setCopied(''), 2500); }
     } catch { /* cancelled */ }
   }
@@ -524,7 +538,7 @@ function HostBanner({ tables, setErr }) {
     <div className={`host-banner ${can ? 'go' : 'wait'}`} role="status">
       <button type="button" className="hb-text" onClick={open} title="Open the table">
         <b>{can ? 'Your table is waiting.' : 'Your table needs players.'}</b>
-        <span><i className="hb-name">{t.name}</i> · {n} seated{can ? '' : ', need 2+'}{more ? ` · +${more} more` : ''}</span>
+        <span><i className="hb-name">{displayTableName(t, t.name, family)}</i> · {n} seated{can ? '' : ', need 2+'}{more ? ` · +${more} more` : ''}</span>
       </button>
       {can
         ? <button type="button" className="btn primary hb-start" disabled={!!busy} onClick={start}>{busy ? 'Dealing…' : 'Start the game'} <span className="arrow">▶</span></button>

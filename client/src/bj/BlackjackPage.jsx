@@ -15,6 +15,8 @@ import { NextTablePill } from '../turns/TurnsPill.jsx';
 import './bj.css';
 import { KashButtons, KashCatch, KashOverlay } from './KashStage.jsx';
 import { publicTitle } from '../../../server/pageMeta.js';
+import { useModes } from '../modes/Modes.jsx';
+import { displayTableName, familyHandle, familyTableLabel } from '../modes/family.js';
 
 const money = (x) => (x == null ? '∞' : `$${Number(x).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 const pct = (x) => `${(x * 100).toFixed(2)}%`;
@@ -95,7 +97,8 @@ const TURN = { 30: '30 s', 120: '2 min', 600: '10 min', 3600: '1 hour', 86400: '
 
 export default function BlackjackPage({ code }) {
   const { me } = useSession();
-  useEffect(() => { document.title = publicTitle(code ? `Blackjack table ${code}` : 'Blackjack'); }, [code]);
+  const { family } = useModes();
+  useEffect(() => { document.title = publicTitle(code ? (family ? familyTableLabel(code) : `Blackjack table ${code}`) : 'Blackjack'); }, [code, family]);
   if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">Blackjack</h2><SignIn compact next={code ? `/bj/${code}` : '/bj'} /></div></div>;
   return code ? <BjTable code={code} me={me} /> : <BjLobby me={me} />;
 }
@@ -121,6 +124,7 @@ function Num({ label, value, min, max, cap, step = 0.5, onChange, test }) {
 }
 
 function BjLobby({ me }) {
+  const { family } = useModes();
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState('new');
@@ -152,7 +156,7 @@ function BjLobby({ me }) {
     <div className="bj-list" data-test="bj-tables">
       {info.tables.length ? info.tables.map((t) => (
         <button key={t.code} className={`bj-row${t.canDeal ? " deal" : ""}`} data-test={t.canDeal ? "bj-deal-now" : "bj-table-row"} onClick={() => navigate(`/bj/${t.code}`)}>
-          <b>{t.name}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats} · house {t.house || '?'}</span>
+          <b>{displayTableName(t, t.name, family)}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats} · house {family ? familyHandle(t.house || '?') : (t.house || '?')}</span>
           {t.edge && <span className="bj-rowedge" data-test="bj-rowedge"><em className={`t-${t.edge.main.tone}`}>Edge {ept(t.edge.main.edge)}</em>{Object.entries(t.edge.side).map(([k, x]) => <em key={k} className={`t-${x.tone}`}>{k === 'match' ? 'RM' : 'RP'} {ept(x.edge)}</em>)}{(t.edge.needsAck || t.edge.grandfathered) && <em className="t-poor">⚠</em>}</span>}
           <span className={`badge ${t.myTurn || t.canDeal ? 'hot' : ''}`}>{t.turnLabel}</span>
         </button>)) : <p className="small dim">No blackjack tables yet.</p>}
@@ -286,7 +290,9 @@ function useView(code) {
 }
 
 function BjTable({ code, me }) {
+  const { family } = useModes();
   const { v, setV, err, setErr, syncGen } = useView(code);
+  const tableName = displayTableName(code, v?.name, family);
   const [povCrashed, setPovCrashed] = useState(false);
   const [bet, setBet] = useState(() => Number(localStorage.getItem('bba.bj.bet')) || 0);
   const [side, setSide] = useState({ match: 0, pairs: 0 });
@@ -363,7 +369,7 @@ function BjTable({ code, me }) {
       <div className="panel bj-felt">
         <div className="bj-head">
           <button className="btn ghost small" onClick={() => navigate('/bj')} aria-label="Back">←</button>
-          <h1 className="western" title={v.name}>{v.name}</h1>
+          <h1 className="western" title={tableName}>{tableName}</h1>
           <span className="bj-sub mono">{v.code}</span>
           <div className="bj-head-r">
             {mine && <span className="bj-chips" data-test="bj-mychips">{money(mine.chips)}</span>}
@@ -491,22 +497,26 @@ function Summary({ s, onClose }) {
   );
 }
 function Final({ v }) {
+  const { family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   return (
     <div className="bj-pop final" data-test="bj-final"><div className="panel"><h3 className="western">Final standings</h3><p className="small">{v.final.why}</p>
-      <ol className="bj-stand">{v.final.standings.map((x) => <li key={x.seat}><b>{x.name}</b><span className="mono">{money(x.chips)}</span><span className={`mono ${x.net >= 0 ? 'up' : 'down'}`}>{x.net >= 0 ? '+' : '−'}{money(Math.abs(x.net))}</span></li>)}
-        {v.final.house && <li className="house"><b>{v.final.house.name} (house)</b><span className="mono">{money(v.final.house.bank)}</span><span className={`mono ${v.final.house.net >= 0 ? 'up' : 'down'}`}>{v.final.house.net >= 0 ? '+' : '−'}{money(Math.abs(v.final.house.net))}</span></li>}</ol>
+      <ol className="bj-stand">{v.final.standings.map((x) => <li key={x.seat}><b>{handle(x.name)}</b><span className="mono">{money(x.chips)}</span><span className={`mono ${x.net >= 0 ? 'up' : 'down'}`}>{x.net >= 0 ? '+' : '−'}{money(Math.abs(x.net))}</span></li>)}
+        {v.final.house && <li className="house"><b>{handle(v.final.house.name)} (house)</b><span className="mono">{money(v.final.house.bank)}</span><span className={`mono ${v.final.house.net >= 0 ? 'up' : 'down'}`}>{v.final.house.net >= 0 ? '+' : '−'}{money(Math.abs(v.final.house.net))}</span></li>}</ol>
       <p className="small dim">Chips went back to everyone's bankroll.</p>
       <button className="btn primary small" onClick={() => navigate('/bj')} data-test="bj-final-back">Back to blackjack</button></div></div>
   );
 }
 function Lobby({ v, me, post, onSit }) {
+  const { family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const people = v.seats.filter((s) => s && !s.bot);
   // v51: skip the house-edge gate when the table does not need an ack — one tap to sit.
   const sit = () => (v.edge?.needsAck ? onSit() : post('join', { ack: true }));
   return (
     <div className="bj-acts" data-test="bj-lobby">
       <span className="small">Invite <b className="mono" data-test="bj-code">{v.code}</b></span>
-      {v.isHost && v.house.mode === 'player' && !v.house.id && <span className="small">House: {people.filter((s) => !s.me).map((s) => <button key={s.i} className="btn small" onClick={() => post('house', { playerId: s.id })}>{s.name}</button>)} or wait</span>}
+      {v.isHost && v.house.mode === 'player' && !v.house.id && <span className="small">House: {people.filter((s) => !s.me).map((s) => <button key={s.i} className="btn small" onClick={() => post('house', { playerId: s.id })}>{handle(s.name)}</button>)} or wait</span>}
       {v.isHost ? <button className="btn primary" onClick={() => post('start')} data-test="bj-start">Start dealing</button> : <span className="small dim">Waiting for the host…</span>}
       {v.mySeat < 0 && !v.house.isMe && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}
       <span className="sr-only">{me.name}</span>

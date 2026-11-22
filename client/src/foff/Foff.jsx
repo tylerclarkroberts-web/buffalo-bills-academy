@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useModes } from '../modes/Modes.jsx';
+import { FAMILY_GAME, familyMask } from '../modes/family.js';
 import { navigate } from '../App.jsx';
 import { api, refreshSession, useSession } from '../api.js';
 import { MATCHES } from './course.js';
@@ -26,7 +28,9 @@ function hint(ui) {
 
 export default function Foff() {
   const { me, loading } = useSession();
-  useEffect(() => { const title = document.title; document.title = "Foff's Bachelor Party"; return () => { document.title = title; }; }, []);
+  const { family } = useModes();
+  const gameTitle = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
+  useEffect(() => { const title = document.title; document.title = gameTitle; return () => { document.title = title; }; }, [gameTitle]);
   if (loading) return <div className="foff foff-gate" data-test="foff-gate-loading" />;
   if (!me) return <FoffGate signedOut />;
   if (!me.foffWatched) return <FoffGate onUnlocked={refreshSession} />;
@@ -34,9 +38,11 @@ export default function Foff() {
 }
 
 function FoffGate({ signedOut = false, onUnlocked }) {
+  const { family } = useModes();
+  const gameTitle = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   return (
     <div className="foff foff-gate" data-test="foff-gate">
-      <h1>Foff&rsquo;s Bachelor Party</h1>
+      <h1>{gameTitle}</h1>
       {signedOut ? (
         <>
           <p>Sign in first, then watch the film. The trip opens after.</p>
@@ -54,6 +60,8 @@ function FoffGate({ signedOut = false, onUnlocked }) {
 }
 
 function FoffGame() {
+  const { family } = useModes();
+  const gameTitle = family ? FAMILY_GAME.foff : "Foff's Bachelor Party";
   const canvas = useRef(null), game = useRef(null);
   const [ui, setUi] = useState(null); // null: the title screen
   const [muted, setMuted] = useState(() => store('bba.foff.muted') === '1');
@@ -102,11 +110,11 @@ function FoffGame() {
     })();
   }, [qwon]);
   useEffect(() => {
-    const title = document.title; document.title = 'Foff\'s Bachelor Party';
+    const title = document.title; document.title = gameTitle;
     game.current = createGame(canvas.current, setUi);
     if (!loadSave().seen) game.current.story(); // the first visit opens on how we got here
     return () => { document.title = title; game.current.dispose(); };
-  }, []);
+  }, [gameTitle]);
   const saved = loadSave(), questing = ui?.screen === 'quest';
   const best = saved.best || {}, upNext = (MATCHES.find((x) => !best[x.id]) || MATCHES.at(-1)).id; // each nine opens when the one before it is won
   const play = ui?.screen === 'play', talking = !!ui?.talk, aiming = play && !talking && ['aim', 'power', 'acc'].includes(ui.phase);
@@ -134,16 +142,16 @@ function FoffGame() {
             {ui?.screen === 'scene' && <button className="foff-link" onClick={() => game.current.skip()} data-test="foff-skip">SKIP</button>}
             {(play || questing) && <button className="foff-link" onClick={() => game.current.menu()} data-test="foff-trip">TRIP</button>}
             <button className="foff-link" onClick={() => setMuted((v) => !v)} aria-pressed={!muted}>{muted ? '♪ OFF' : '♪ ON'}<span className="sr-only"> sound</span></button>
-            <button className="foff-link" onClick={() => navigate('/')} aria-label="Leave the bachelor party">✕</button>
+            <button className="foff-link" onClick={() => navigate('/')} aria-label={family ? "Leave the outing" : "Leave the bachelor party"}>✕</button>
           </div>
           {aiming && (ui.phase === 'acc'
             ? <div className="foff-ticks" aria-hidden="true"><span style={{ left: `${meterX(0) * 100}%` }}>LEFT</span><b style={{ left: '50%' }}>STRAIGHT</b><span style={{ right: `${100 - meterX(1) * 100}%` }}>RIGHT</span></div>
             : <div className="foff-ticks" aria-hidden="true">{ui.ticks.map((s, i) => <span key={i} style={{ right: `${100 - meterX((i + 1) / 2) * 100}%` }}>{s}</span>)}</div>)}
-          {ui?.bark && !talking && (play || questing) && <div className="foff-bark" aria-live="polite"><b>{ui.bark.who}</b> {ui.bark.text}</div>}
-          {talking && <button className="foff-talk" onClick={() => game.current.tap()} autoFocus key={ui.talk.text} data-test="foff-talk"><b>{ui.talk.who}</b><span>{ui.talk.text}</span><i aria-hidden="true">▼</i></button>}
+          {ui?.bark && !talking && (play || questing) && <div className="foff-bark" aria-live="polite"><b>{ui.bark.who}</b> {family ? familyMask(ui.bark.text) : ui.bark.text}</div>}
+          {talking && <button className="foff-talk" onClick={() => game.current.tap()} autoFocus key={ui.talk.text} data-test="foff-talk"><b>{ui.talk.who}</b><span>{family ? familyMask(ui.talk.text) : ui.talk.text}</span><i aria-hidden="true">▼</i></button>}
 
           {!ui && <div className="foff-sheet title">
-            <h1>Foff&rsquo;s<br />Bachelor Party</h1>
+            <h1>{family ? gameTitle : <>Foff&rsquo;s<br />Bachelor Party</>}</h1>
             <p>Monterey, in the timeline where Christmas stayed in December.</p>
             <div className="foff-day"><button className="foff-stop" onClick={() => game.current.story()} data-test="foff-story"><b>How we got here</b><span>The story</span></button></div>
             {TRIP.map(({ day, stops }) => <section className="foff-day" key={day}>

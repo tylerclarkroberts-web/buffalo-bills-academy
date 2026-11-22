@@ -3,6 +3,8 @@
 // They reveal nothing and change nothing: the server only keeps a few seconds of "who squirted whom".
 // Anyone can mute a sender (this browser), opt out entirely (store/profile), and the host can switch them off.
 import React, { useEffect, useRef, useState } from 'react';
+import { useModes } from '../modes/Modes.jsx';
+import { familyHandle } from '../modes/family.js';
 import { createPortal } from 'react-dom';
 import { api } from '../api.js';
 import { PixIcon } from '../store/PixIcon.jsx';
@@ -47,6 +49,8 @@ export function GagLayer({ events }) {
 
 /** The gag button for a seated player holding at least one gag. Firing one uses it up. */
 export function GagButton({ code, view, myId, onEvent, onUsed }) {
+  const { family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const [open, setOpen] = useState(false);
   const [item, setItem] = useState(null);
   const [err, setErr] = useState('');
@@ -68,7 +72,7 @@ export function GagButton({ code, view, myId, onEvent, onUsed }) {
           <div className="pp-items">{mine.map((x) => <button key={x.id} className={`btn small ${x.id === pick ? '' : 'ghost'}`} onClick={() => setItem(x.id)} title={x.name}><PixIcon pix={x.pix} size={16} fallback={x.emoji} /> <span className="hide-s">{x.name}</span></button>)}</div>
           {others.length ? others.map((s) => (
             <div key={s.playerId} className="pp-row">
-              <button className="btn small" onClick={() => fire(s.playerId)} data-test="gags-target">{s.name}</button>
+              <button className="btn small" onClick={() => fire(s.playerId)} data-test="gags-target">{handle(s.name)}</button>
               <label className="small muted"><input type="checkbox" checked={isMuted(s.playerId)} onChange={(e) => { setMuted(s.playerId, e.target.checked); bump((n) => n + 1); }} /> mute theirs</label>
             </div>
           )) : <p className="small muted">Nobody else is seated.</p>}

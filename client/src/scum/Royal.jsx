@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { royalSfx } from './royalSfx.js';
 import { isMuted } from '../bj/sfx.js';
 import { dialogAt, phaseAt, loadSongScript, getScript, songDurationMs } from './songScript.js';
+import { useModes } from '../modes/Modes.jsx';
+import { familyHandle, familyRoyalLabel, familyRoyalCaption, FAMILY_ROYAL } from '../modes/family.js';
 
 export const ROYAL_MS = {
   jig: 2800, bow: 2500, milk: 4200, toot: 3200, fan: 3000, carpet: 3200,
@@ -17,19 +19,20 @@ export function durationOf(cmd, audioDurationSec = null) {
 }
 
 export function RoyalPicker({ royal, onCommand, busy, step, setStep }) {
+  const { family } = useModes();
   if (!royal?.canCommand) return null;
   const catalog = royal.catalog || [];
   if (step === 'target') {
     return (
       <div className="sc-royal-pick" data-test="scum-royal-picker" data-step="target">
         <div className="sc-royal-hd">
-          <b>Who toots?</b>
+          <b>{family ? (FAMILY_ROYAL.toot.who) : 'Who toots?'}</b>
           <button type="button" className="btn ghost tiny" onClick={() => setStep('pick')} data-test="scum-royal-back">Back</button>
         </div>
-        <div className="sc-royal-targets" role="group" aria-label="Pick who toots">
+        <div className="sc-royal-targets" role="group" aria-label={family ? 'Pick who blows the horn' : 'Pick who toots'}>
           {(royal.targets || []).map((t) => (
             <button key={t.seat} type="button" className="sc-royal-cmd" disabled={busy} data-test={`scum-royal-target-${t.seat}`}
-              onClick={() => onCommand('toot', t.seat)}>{t.me ? 'Me' : t.name}{t.bot ? ' 🤖' : ''}</button>
+              onClick={() => onCommand('toot', t.seat)}>{t.me ? 'Me' : (family ? familyHandle(t.name) : t.name)}{t.bot ? ' 🤖' : ''}</button>
           ))}
         </div>
       </div>
@@ -41,7 +44,7 @@ export function RoyalPicker({ royal, onCommand, busy, step, setStep }) {
       <div className="sc-royal-grid" role="group" aria-label="Royal command">
         {catalog.map((c) => (
           <button key={c.id} type="button" className="sc-royal-cmd" disabled={busy} data-test={`scum-royal-cmd-${c.id}`}
-            onClick={() => (c.needsTarget ? setStep('target') : onCommand(c.id))}>{c.short || c.label}</button>
+            onClick={() => (c.needsTarget ? setStep('target') : onCommand(c.id))}>{family ? (FAMILY_ROYAL[c.id]?.short || familyRoyalLabel(c.id, c.short || c.label)) : (c.short || c.label)}</button>
         ))}
       </div>
     </div>
@@ -73,6 +76,8 @@ function useElapsed(active) {
 }
 
 export function RoyalPlay({ ev, pos, onSkip, onDone, reduced }) {
+  const { family } = useModes();
+  const caption = family ? familyRoyalCaption(ev, { king: ev.kingName, scum: ev.scumName, target: ev.targetName, who: ev.targetName }, ev.caption) : ev.caption;
   const done = useRef(false);
   const elapsed = useElapsed(ev.cmd === 'sing' && !reduced);
   const script = useSongScript(ev.cmd === 'sing');
@@ -106,8 +111,8 @@ export function RoyalPlay({ ev, pos, onSkip, onDone, reduced }) {
   };
   const cmd = ev.cmd;
   return (
-    <div className={`sc-royal-play cmd-${cmd}`} data-test="scum-royal-play" data-cmd={cmd} data-phase={ev.cmd === 'sing' ? phase : undefined} data-id={ev.id} onClick={skip} role="dialog" aria-label={ev.caption}>
-      {cmd !== 'sing' && <div className="sc-royal-caption" data-test="scum-royal-caption">{ev.caption}</div>}
+    <div className={`sc-royal-play cmd-${cmd}`} data-test="scum-royal-play" data-cmd={cmd} data-phase={ev.cmd === 'sing' ? phase : undefined} data-id={ev.id} onClick={skip} role="dialog" aria-label={caption}>
+      {cmd !== 'sing' && <div className="sc-royal-caption" data-test="scum-royal-caption">{caption}</div>}
       <button type="button" className="btn ghost small sc-royal-skip" data-test="scum-royal-skip" onClick={(e) => { e.stopPropagation(); skip(); }}>Skip</button>
       {cmd === 'milk' && <>
         <span className="sc-royal-prop milk-glass" style={at(ev.scumSeat)} aria-hidden="true">🥛</span>
