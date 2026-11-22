@@ -14,10 +14,9 @@ html.work-mode body { margin: 0; }
 
 .work-root {
   height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh;
-  overflow: hidden;
+  overflow-y: auto; overflow-x: hidden;
   background: #f4efe6; color: #161616;
   font-family: 'Source Sans 3', 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  display: flex; flex-direction: column;
 }
 html.work-mode, html.work-mode body { overflow: hidden; height: 100%; }
 .work-mast {
@@ -25,7 +24,7 @@ html.work-mode, html.work-mode body { overflow: hidden; height: 100%; }
   display: flex; align-items: center; gap: 12px;
   padding: env(safe-area-inset-top, 0px) 24px 0;
   height: calc(56px + env(safe-area-inset-top, 0px));
-  background: rgba(244, 239, 230, .94);
+  background: #f4efe6;
   border-bottom: 1px solid #161616;
   backdrop-filter: saturate(1.1) blur(8px);
 }
@@ -43,17 +42,8 @@ html.work-mode, html.work-mode body { overflow: hidden; height: 100%; }
 .work-mast .mode-tog { color: #161616; border-right-color: #161616; }
 .work-mast .mode-tog[aria-pressed="true"] { background: #161616; color: #f4efe6; }
 
-.work-lede { border-bottom: 1px solid #161616; }
-.work-fold {
-  appearance: none; display: block; width: 100%; max-width: 720px; margin: 0 auto;
-  padding: 10px 24px; background: transparent; border: 0; cursor: pointer;
-  font: 600 11px/1 'Source Sans 3', sans-serif; letter-spacing: .12em;
-  text-transform: uppercase; color: #555; text-align: left;
-}
-.work-fold:hover, .work-fold:focus-visible { color: #161616; }
-
 .work-article {
-  max-width: 720px; margin: 0 auto; padding: 4px 24px 28px;
+  max-width: 720px; margin: 0 auto; padding: 28px 24px 28px;
 }
 .work-hed {
   margin: 0 0 10px; font: 700 36px/1.08 Newsreader, 'Iowan Old Style', Georgia, serif;
@@ -90,23 +80,10 @@ html.work-mode, html.work-mode body { overflow: hidden; height: 100%; }
   margin: 0; font: italic 400 26px/1.35 Newsreader, Georgia, serif; color: #111;
 }
 
-.work-chart { margin: 8px 0 18px; }
-.work-chart svg { width: 100%; height: 140px; display: block; border-bottom: 1px solid #161616; }
-.work-grid { stroke: #ddd4c4; stroke-width: 0.4; }
-.work-area { fill: rgba(22, 22, 22, .08); }
-.work-line { fill: none; stroke: #161616; stroke-width: 1.2; }
-.work-dot { fill: #161616; }
-.work-chart-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 400 11px/1 'Source Sans 3', sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #666; }
-.work-chart figcaption, .work-exhibit-cap {
-  margin: 10px 0 0; font: 400 13px/1.4 'Source Sans 3', sans-serif; color: #555;
-}
-
-.work-exhibit { margin: 0; padding: 0 0 16px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.work-exhibit-cap { max-width: 1100px; margin: 8px auto 6px; padding: 0 24px; flex: none; }
-.work-exhibit-frame {
-  margin: 0 16px 0; border: 1px solid #161616; background: #fffdf8;
-  flex: 1; min-height: 0; overflow: hidden; position: relative;
-  /* The live app keeps its own palette inside the frame — a figure in the memo. */
+.work-exhibit.parked {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  pointer-events: none;
 }
 html.work-mode .work-exhibit-frame .app,
 html.work-mode .work-exhibit-frame .stage {
@@ -130,23 +107,20 @@ html.work-mode .trow { background: #fffdf8; color: #161616; border-color: #e6dcc
 html.work-mode .t-name { color: #111; }
 
 .work-close {
-  max-width: 720px; margin: 0 auto; padding: 8px 24px 64px;
+  max-width: 720px; margin: 0 auto; padding: 20px 24px 64px;
   font: italic 400 18px/1.55 Newsreader, Georgia, serif; color: #222;
   border-top: 1px solid #161616;
 }
-.work-signoff { margin-top: 1em; font-style: normal; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+.work-signoff { margin: 1.15em 0 0; font-style: normal; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #161616; }
 
 @media (max-width: 699px) {
   .work-mast { padding-left: 16px; padding-right: 16px; height: calc(48px + env(safe-area-inset-top, 0px)); }
   .work-hed { font-size: 26px; margin-bottom: 8px; }
   .work-dek { font-size: 15px; margin-bottom: 8px; }
-  .work-article, .work-close, .work-exhibit-cap { padding-left: 16px; padding-right: 16px; }
-  .work-article { padding-top: 0; padding-bottom: 16px; }
+  .work-article, .work-close { padding-left: 16px; padding-right: 16px; }
+  .work-article { padding-top: 18px; padding-bottom: 16px; }
   .work-article > p { font-size: 16px; }
   .work-pull p { font-size: 19px; }
-  .work-exhibit-frame { margin-left: 10px; margin-right: 10px; }
-  .work-chart { margin: 4px 0 12px; }
-  .work-chart svg { height: 110px; }
   .work-meta { margin-left: 0; }
   .work-sub { margin-left: 0; }
 }
@@ -377,15 +351,10 @@ html.work-mode .card.red, html.work-mode .card.red .rank, html.work-mode .card.r
   html.work-mode .tp-bottom, html.work-mode .bar, html.work-mode .actionbar { gap: 4px; padding: 6px 8px; flex: none; }
   html.work-mode .lobbybar, html.work-mode .bar { flex: none; position: relative; z-index: 2; }
   html.work-mode .actionbar .card { --w: 28px; }
-  .work-fold { padding: 6px 16px; }
   html.work-mode .work-exhibit { min-height: 0; overflow: hidden; }
   html.work-mode .work-exhibit-frame { min-height: 0; }
 }
 
-
-/* Folded memo on a game route: exhibit fills the remaining viewport. */
-html.work-mode .work-lede.shut { flex: none; }
-html.work-mode .work-lede.shut .work-fold { text-align: center; }
 
 html.work-mode .work-exhibit-frame .bar,
 html.work-mode .work-exhibit-frame .actionbar,
