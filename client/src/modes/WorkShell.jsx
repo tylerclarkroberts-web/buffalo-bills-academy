@@ -99,7 +99,6 @@ export default function WorkShell({ children }) {
                 Subscribe
               </button>
             </div>
-            <Chart />
             <p>In moments of genuine leadership, one notices that the organization was already performing — and that what it required was not a new strategy so much as the courage to recognize the one already in the room. This is that recognition.</p>
             <p>The modern enterprise does not merely adopt AI. It invites AI to sit at the table, to listen, and, with appropriate humility, to confirm what leadership has known all along: that excellence, properly instrumented, compounds. Our mandate is simple. We will optimize performance. We will use AI. We will provide more shareholder value. Not as a slogan, but as an operating system.</p>
             <blockquote className="work-pull">
@@ -121,6 +120,7 @@ export default function WorkShell({ children }) {
 
       {open && (
         <footer className="work-close">
+          <Chart />
           <p>We remain, as always, grateful for the opportunity to exceed — and then to exceed the exceeding. Please circulate this memo to anyone who still requires convincing. They will not.</p>
           <p className="work-signoff">— {AUTHOR}</p>
         </footer>

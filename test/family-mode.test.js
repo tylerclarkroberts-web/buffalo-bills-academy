@@ -9,6 +9,7 @@ import {
 import {
   FAMILY_KEY, WORK_KEY, FAMILY_COOKIE, WORK_COOKIE,
   loadModes, getModes, setFamily, setWork, setModes,
+  handleWorkHotkey, isTypingTarget,
 } from '../client/src/modes/store.js';
 
 test('familyTableNumber is a stable 4-digit value derived from the table code', () => {
@@ -143,4 +144,62 @@ test('modes are viewer-only: toggling them does not call fetch or write a player
   setWork(true);
   setFamily(false);
   assert.deepEqual(calls, []);
+});
+
+function keyEvent(key, { tag = 'BODY', contentEditable = false, ctrl = false, meta = false, alt = false } = {}) {
+  const target = {
+    nodeType: 1,
+    tagName: tag,
+    isContentEditable: !!contentEditable,
+    getAttribute: (n) => (n === 'contenteditable' ? (contentEditable ? 'true' : null) : null),
+    closest: (sel) => {
+      const tags = { INPUT: 'input', TEXTAREA: 'textarea', SELECT: 'select' };
+      if (tags[tag] && sel.includes(tags[tag])) return target;
+      if (contentEditable && sel.includes('contenteditable')) return target;
+      return null;
+    },
+  };
+  const ev = {
+    key, ctrlKey: ctrl, metaKey: meta, altKey: alt, target,
+    defaultPrevented: false,
+    preventDefault() { ev.defaultPrevented = true; this.defaultPrevented = true; },
+  };
+  return ev;
+}
+
+test('pressing W turns Work Mode on and never turns it off; fields and modifiers are ignored', () => {
+  assert.equal(getModes().work, false);
+  assert.equal(handleWorkHotkey(keyEvent('w')), true);
+  assert.equal(getModes().work, true);
+  assert.equal(globalThis.localStorage.getItem(WORK_KEY), '1');
+  assert.match(globalThis.document.cookie, new RegExp(`${WORK_COOKIE}=1`));
+  // A second W does not toggle it back off.
+  assert.equal(handleWorkHotkey(keyEvent('w')), false);
+  assert.equal(handleWorkHotkey(keyEvent('W')), false);
+  assert.equal(getModes().work, true);
+
+  setWork(false);
+  assert.equal(getModes().work, false);
+  // Typing contexts and modifier combinations must not arm the boss key.
+  for (const ev of [
+    keyEvent('w', { tag: 'INPUT' }),
+    keyEvent('w', { tag: 'TEXTAREA' }),
+    keyEvent('w', { tag: 'SELECT' }),
+    keyEvent('w', { tag: 'DIV', contentEditable: true }),
+    keyEvent('w', { ctrl: true }),
+    keyEvent('w', { meta: true }),
+    keyEvent('w', { alt: true }),
+    keyEvent('x'),
+  ]) {
+    assert.equal(handleWorkHotkey(ev), false, `should ignore ${ev.key} ${ev.target.tagName} ctrl=${ev.ctrlKey} meta=${ev.metaKey} alt=${ev.altKey} ce=${ev.target.isContentEditable}`);
+    assert.equal(getModes().work, false);
+  }
+  assert.equal(isTypingTarget(keyEvent('w', { tag: 'INPUT' }).target), true);
+  assert.equal(isTypingTarget(keyEvent('w').target), false);
+  // Bare W still works after those ignored presses, and still persists.
+  const ev = keyEvent('W');
+  assert.equal(handleWorkHotkey(ev), true);
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(getModes().work, true);
+  assert.equal(globalThis.localStorage.getItem(WORK_KEY), '1');
 });
