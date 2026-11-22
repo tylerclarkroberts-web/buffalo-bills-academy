@@ -280,13 +280,20 @@ function Mines({ data, pick }) {
           <Panel title="Outcomes"><HBars rows={m.outcomes.map((o) => ({ key: o.outcome, label: o.outcome, value: o.n, color: '#8dff5a' }))} fmt={(v) => v} /></Panel>
           <Panel title="Shifts per day" right={<small className="muted">30 days</small>}><Bars data={m.byDay.map((d) => ({ label: d.day.slice(8), value: d.n }))} height={110} every={5} color="#8dff5a" /></Panel>
           <Panel title="Encounters" right={<small className="muted">from {t.recordedStarts} tracked clock-ins</small>}>
-            <ul className="bo-subs">
-              <li><span>Nosferatu (the visitor)</span><b className="num">{t.scare} · {pct(t.scare, t.recordedStarts)}</b></li>
-              <li><span>Faun follows</span><b className="num">{t.faun} · {pct(t.faun, t.recordedStarts)}</b></li>
-              <li><span>Other faun skims the cheque</span><b className="num">{t.twin}</b></li>
-              <li><span>Cave-ins</span><b className="num">{t.caveIns}</b></li>
-              <li><span>Ambushes / bug battles</span><b className="num">{m.raids.length}</b></li>
-            </ul>
+            <div data-test="bo-encounters">
+              <ul className="bo-subs">
+                <li><span>Nosferatu (the visitor)</span><b className="num">{t.scare} · {pct(t.scare, t.recordedStarts)}</b></li>
+                <li><span>Faun follows</span><b className="num">{t.faun} · {pct(t.faun, t.recordedStarts)}</b></li>
+                <li>
+                  <span>Heeshee Mazode</span>
+                  <b className="num" style={{ textAlign: 'right' }}>{t.heeshee} · {pct(t.heeshee, t.heesheeTracked)}{(t.heesheeStolen || t.heesheeReturned) ? <small className="muted" style={{ display: 'block', fontWeight: 400 }}>{t.heesheeStolen || 0} snatched · {t.heesheeReturned || 0} returned</small> : null}</b>
+                </li>
+                <li><span>Other faun skims the cheque</span><b className="num">{t.twin}</b></li>
+                <li><span>Cave-ins</span><b className="num">{t.caveIns}</b></li>
+                <li><span>Ambushes / bug battles</span><b className="num">{m.raids.length}</b></li>
+              </ul>
+              {t.heesheeTracked < t.recordedStarts ? <p className="muted small" style={{ margin: '8px 0 0' }}>Heeshee from this deploy.</p> : null}
+            </div>
           </Panel>
         </div>
       </>}
@@ -303,7 +310,7 @@ function Mines({ data, pick }) {
         { k: 'pvpc', label: 'PvP $', r: 1, val: (r) => r.pvp.cashWon - r.pvp.cashLost, fmt: (v, r) => <Sg v={r.pvp.cashWon - r.pvp.cashLost} /> },
         { k: 'quits', label: 'Quits', r: 1, val: (r) => r.recorded.quits, fmt: (v, r) => r.recorded.quits },
         { k: 'full', label: 'Full buckets', r: 1, val: (r) => r.recorded.full, fmt: (v, r) => `${r.recorded.full}/${r.recorded.ends}` },
-        { k: 'enc', label: 'Nosf. · faun', r: 1, val: (r) => r.recorded.scare + r.recorded.faun, fmt: (v, r) => `${r.recorded.scare} · ${r.recorded.faun}` },
+        { k: 'enc', label: 'Nosf. · faun · Heeshee', r: 1, val: (r) => r.recorded.scare + r.recorded.faun + (r.recorded.heeshee || 0), fmt: (v, r) => `${r.recorded.scare} · ${r.recorded.faun} · ${r.recorded.heeshee || 0}` },
       ]} />}
       {sub === 'pvp' && <div className="bo-cols">
         <Panel title="Underground right now">{m.active.length ? <ul className="bo-feed">{m.active.map((a) => <li key={a.id} onClick={() => pick(a.id)}><span className="muted num">{ago(a.startedAt)}</span><span className="ell"><b>{a.name}</b> · shaft {a.shaft}</span><span className="num">{a.cap ? `${Math.round((100 * a.collected) / a.cap)}%` : ''}</span></li>)}</ul> : <p className="muted small bo-empty">Nobody.</p>}</Panel>
@@ -415,7 +422,7 @@ function Drill({ id, onClose, players }) {
                 <Kpi label="PvP" value={`${d.mines.pvp.won}–${d.mines.pvp.lost}`} sub={`${$(d.mines.pvp.cashWon)} won · ${$(d.mines.pvp.cashLost)} lost`} />
               </div>
               <ul className="bo-feed">{d.mines.list.map((s, i) => <li key={i}><span className="muted num">{when(s.t)}</span>
-                <span className="ell">{s.outcome || s.reason || 'shift'}{s.ms ? ` · ${dur(s.ms)}` : ''}{s.cap ? ` · ${s.collected}/${s.cap}` : ''}{s.scare ? ' · Nosferatu' : ''}{s.faun ? ' · faun' : ''}{s.twin ? ` · faun took ${$(s.twin)}` : ''}{s.spill ? ' · cave-in' : ''}{s.r ? <small className="muted"> ~</small> : null}</span>
+                <span className="ell">{s.outcome || s.reason || 'shift'}{s.ms ? ` · ${dur(s.ms)}` : ''}{s.cap ? ` · ${s.collected}/${s.cap}` : ''}{s.scare ? ' · Nosferatu' : ''}{s.faun ? ' · faun' : ''}{s.heeshee ? (s.heesheeStolen ? (s.heesheeReturned ? ' · Heeshee snatched, returned' : ' · Heeshee snatched') : ' · Heeshee') : ''}{s.twin ? ` · faun took ${$(s.twin)}` : ''}{s.spill ? ' · cave-in' : ''}{s.r ? <small className="muted"> ~</small> : null}</span>
                 <span className="num">{$(s.amt || 0)}</span></li>)}</ul>
             </>}
             {sub === 'games' && <div className="bo-cols">

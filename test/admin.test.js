@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Mines, MAX_SHIFT_MS } from '../server/mines.js';
+import { Mines, MAX_SHIFT_MS, SCARE_CHANCE, FAUN_CHANCE } from '../server/mines.js';
 import { Telemetry, areaOf, deviceOf, clientIp, VISIT_GAP_MS, CREDIT_CAP_MS } from '../server/admin/telemetry.js';
 import { Geo, privateIp, geoLabel } from '../server/admin/geo.js';
 import { buildReport, playerDetail, classify, denverDay, denverHour } from '../server/admin/report.js';
@@ -226,7 +226,7 @@ test('mine clock-ins and settlements are recorded with encounters and time', (t)
   mines.stateFor(p);
   const ev = tel.readEvents();
   assert.deepEqual(ev.map((e) => e.k), ['shift-start', 'shift-end']);
-  assert.equal(ev[0].faun, true); assert.equal(ev[0].scare, false);
+  assert.equal(ev[0].faun, true); assert.equal(ev[0].scare, false); assert.equal(ev[0].heeshee, false);
   assert.equal(ev[1].reason, 'quit'); assert.equal(ev[1].ms, MAX_SHIFT_MS + 1);
 });
 
@@ -259,6 +259,11 @@ test('report: money sources, blackjack side and sneak bets, mines, usage in Denv
     { t: now - 3000, k: 'shift-start', p: 'a', shift: 's1', scare: true, faun: false, fare: 20 },
     { t: now - 2000, k: 'shift-end', p: 'a', shift: 's1', ms: 200e3, outcome: 'normal', amt: 90, collected: 100, cap: 100, reason: null, scare: true },
     { t: now - 1500, k: 'shift-end', p: 'b', shift: 's2', ms: 50e3, outcome: null, amt: 0, collected: 0, cap: 100, reason: 'quit' },
+    { t: now - 1400, k: 'shift-start', p: 'c', shift: 's3', scare: false, faun: false, heeshee: true, fare: 0 },
+    { t: now - 1300, k: 'shift-end', p: 'c', shift: 's3', ms: 100e3, outcome: 'normal', amt: 80, collected: 100, cap: 100, reason: null, scare: false, faun: false, heeshee: true, heesheeStolen: true, heesheeReturned: true },
+    { t: now - 1200, k: 'shift-start', p: 'c', shift: 's4', scare: false, faun: false, heeshee: true, fare: 0 },
+    { t: now - 1100, k: 'shift-end', p: 'c', shift: 's4', ms: 40e3, outcome: null, amt: 0, collected: 0, cap: 100, reason: 'quit', heeshee: true, heesheeStolen: true, heesheeReturned: false },
+    { t: now - 1000, k: 'shift-start', p: 'c', shift: 's5', scare: false, faun: false, heeshee: false, fare: 0 },
   ];
   const access = { since: now - 86400e3, players: {
     a: { last: now - 60e3, logins: 2, ips: { '203.0.113.5': { first: now - 9e6, last: now - 60e3, n: 9 } }, devices: { 'Mac · Chrome': { first: 1, last: now, n: 9 } }, visits: [{ s: now - 3600e3, e: now - 60e3, ip: '203.0.113.5', dev: 'Mac · Chrome', n: 9, areas: { poker: 600e3, mines: 300e3 } }], areas: { poker: 600e3, mines: 300e3 } },
@@ -290,7 +295,16 @@ test('report: money sources, blackjack side and sneak bets, mines, usage in Denv
   assert.equal(connorMine.recorded.scare, 1);
   assert.equal(connorMine.recorded.full, 1);
   assert.equal(connorMine.pvp.won, 1); assert.equal(connorMine.pvp.cashWon, 66);
-  assert.equal(rep.mines.totals.quits, 1);
+  assert.equal(rep.mines.totals.quits, 2);
+  assert.equal(rep.mines.totals.recordedStarts, 4);
+  assert.equal(rep.mines.totals.heesheeTracked, 3, 'pre-tracking clock-ins are omitted from the Heeshee denominator');
+  assert.equal(rep.mines.totals.heeshee, 2);
+  assert.equal(rep.mines.totals.heesheeStolen, 2);
+  assert.equal(rep.mines.totals.heesheeReturned, 1);
+  const joeMine = rep.mines.players.find((x) => x.id === 'c');
+  assert.equal(joeMine.recorded.heeshee, 2);
+  assert.equal(joeMine.recorded.heesheeStolen, 2);
+  assert.equal(joeMine.recorded.heesheeReturned, 1);
   assert.ok(connorMine.perHour > 0);
 
   assert.equal(rep.usage.areas[0].area, 'poker');
@@ -405,3 +419,75 @@ test('only the owner can open the dealer POV preview; it writes no game data', a
     assert.equal(tips.length, 0, 'no real tip ledger rows');
   }
 });
+
+
+test('Heeshee Mazode clock-ins are recorded, and a steal records snatched vs returned', (t) => {
+  const store = new Store(tmp(t)); const clock = { now: 1_800_000_000_000 };
+  const accounts = new Accounts({ store, now: () => clock.now });
+  const tel = new Telemetry({ store, now: () => clock.now }); t.after(() => tel.shutdown());
+  const pen = { stage: 'creature', species: 'candela', name: 'Pip', speciesName: 'candela' };
+  const barn = {
+    view: () => ({ pen: { ...pen } }),
+    isHeesheeHeld: (p) => !!(p && (p.heesheeHeld || p.heesheeHeldAt)),
+    heesheeHoldOf() { return (pen.heesheeHeld || pen.heesheeHeldAt) ? { name: pen.name, species: pen.species } : null; },
+    holdHeeshee(_id, { shiftId, at } = {}) {
+      Object.assign(pen, { heesheeHeld: true, heesheeHeldAt: at || clock.now, heesheeHeldFromShift: shiftId || null });
+      return this.heesheeHoldOf();
+    },
+    releaseHeeshee() {
+      if (!pen.heesheeHeld) return [];
+      const out = [{ name: pen.name, species: pen.species }];
+      delete pen.heesheeHeld; delete pen.heesheeHeldAt; delete pen.heesheeHeldFromShift;
+      return out;
+    },
+    foundAcid() {},
+    rollEgg() { return false; },
+    rollPurple() { return false; },
+    has() { return true; },
+  };
+  const mines = new Mines({
+    store, accounts, now: () => clock.now, barn,
+    randInt: (n) => (n === 100000 ? 50000 : 0),
+    scareInt: () => SCARE_CHANCE + FAUN_CHANCE,
+    poolInt: () => 30000,
+    vein: () => ({ veinMs: 60000, cells: 7 }),
+  });
+  mines.onShiftStart = (id, s, fare) => tel.shiftStart(id, s, fare);
+  mines.onShiftEnd = (id, s, r) => tel.shiftEnd(id, s, r);
+  const p = store.players.m = { id: 'm', name: 'Miner' }; accounts.ensure(p);
+
+  const seen = mines.start(p, { rulesVersion: 2 });
+  const start = tel.readEvents().at(-1);
+  assert.equal(start.k, 'shift-start');
+  assert.equal(start.heeshee, true);
+  assert.equal(start.scare, false);
+  assert.equal(start.faun, false);
+  mines.quit(p, seen.shiftId, { rulesVersion: 2 });
+  const missed = tel.readEvents().filter((e) => e.k === 'shift-end').at(-1);
+  assert.equal(missed.heeshee, true);
+  assert.equal(missed.heesheeStolen, false);
+  assert.equal(missed.heesheeReturned, false);
+
+  const snatched = mines.start(p, { rulesVersion: 2 });
+  mines.stealBug(p, snatched.shiftId);
+  mines.quit(p, snatched.shiftId, { rulesVersion: 2 });
+  const held = tel.readEvents().filter((e) => e.k === 'shift-end').at(-1);
+  assert.equal(held.heeshee, true);
+  assert.equal(held.heesheeStolen, true);
+  assert.equal(held.heesheeReturned, false);
+  assert.equal(held.reason, 'quit');
+
+  // Acid on a later shift returns a leftover hold (Foreman), without counting a second snatch.
+  const later = mines.start(p, { rulesVersion: 2 });
+  let shift = mines.publicShift(mines.doc.active[p.id], true, p.id, mines.guideBug(p.id));
+  const poolId = shift.currentPoolId;
+  mines.probe(p, later.shiftId, { rulesVersion: 2, poolId });
+  mines.extract(p, later.shiftId, { rulesVersion: 2, poolId, action: 'start' });
+  clock.now += 1000;
+  const drawn = mines.extract(p, later.shiftId, { rulesVersion: 2, poolId, action: 'stop' });
+  if (!drawn.result) mines.quit(p, later.shiftId, { rulesVersion: 2 });
+  const back = tel.readEvents().filter((e) => e.k === 'shift-end').at(-1);
+  assert.equal(back.heesheeReturned, true);
+  assert.equal(back.heesheeStolen, false, 'the snatch already counted on the earlier shift');
+});
+
