@@ -16,7 +16,7 @@ function setup(t) {
   const clock = { now: 1_800_000_000_000 }, now = () => clock.now;
   const store = new Store(dir), accounts = new Accounts({ store, now });
   for (const [id, name] of [['a', 'Connor'], ['b', 'Tyler']]) store.players[id] = { id, name, bankroll: 100 };
-  const boot = () => new Barn({ store, accounts, now, incubateMs: 1 });
+  const boot = () => new Barn({ store, accounts, now, incubateMs: 1, eggInt: () => 0 }); // always the first common, so an egg never hatches one of the species named below
   return { clock, store, accounts, now, boot, barn: boot() };
 }
 const dex = (barn, id) => barn.view(id).dex.toSorted();
