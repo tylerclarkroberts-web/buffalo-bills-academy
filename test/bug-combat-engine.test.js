@@ -14,7 +14,11 @@ test('every species has five distinct moves at 1/1/4/7/10 and retains its three 
     assert.deepEqual(moves.map(move => move.id), MOVE_IDS);
     assert.deepEqual(moves.slice(0, 3).map(move => move.name), bug.abilities);
     assert.equal(new Set(moves.map(move => move.name)).size, 5);
-    assert.equal(new Set(moves.map(move => move.effect)).size, 5);
+    if (bug.id === 'steeze') {
+      assert.ok(moves.every((move) => move.effect === 'flourish' && move.power === 0 && move.flourish), 'STEEZE only flourishes, and never deals damage');
+    } else {
+      assert.equal(new Set(moves.map(move => move.effect)).size, 5);
+    }
     for (let level = 1; level <= 10; level++) assert.deepEqual(movesFor(bug.id, level).map(move => move.unlocked), ABILITY_LEVELS.map(at => level >= at));
     assert.ok(moves.every(move => move.description && Number.isFinite(move.power) && Number.isFinite(move.cooldown)));
     assert.deepEqual(movesFor(bug.id, 3, 3).map(move => move.unlocked), [true, true, true, false, false]);

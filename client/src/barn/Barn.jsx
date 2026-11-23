@@ -60,6 +60,7 @@ function Notes({ bug }) {
     : <p key={key} className="barn-src muted">Sources: {bug.sources.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer">{host(u)}</a>)}</p>;
   return (
     <div className="barn-notes" id="barn-panel-notes" role="tabpanel" aria-labelledby="barn-tab-notes" data-test="barn-notes">
+      <p className="barn-ledger-kicker small" data-test="bug-ledger-kicker">Bug Ledger{rarityOf(bug.id) === 4 ? ' · Legendary' : ''}</p>
       <p className="barn-sci small"><i>{bug.sci}</i>{bug.genus ? ' (genus)' : ''} · {bug.order}</p>
       <div className="barn-page" ref={box} data-test="notes-page">
         {cur.map((i) => one(items[i], i))}
@@ -89,6 +90,12 @@ function HpTag({ pen }) {
   </span>;
 }
 
+function SteezePic({ className, label }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return <div className={`${className} steeze-missing`} aria-label={label}>STEEZE</div>;
+  return <img className={`${className} steeze-art`} src="/api/steeze.png" alt={label || ''} onError={() => setOk(false)} />;
+}
+
 function Stage({ pen, poke, reduced }) {
   const ref = useRef(null);
   const pokeAt = useRef(-1e9); // not 0: performance.now() starts near 0, which read as a fresh poke on load
@@ -116,8 +123,12 @@ function Stage({ pen, poke, reduced }) {
     id = requestAnimationFrame(draw);
     return () => { cancelAnimationFrame(id); unsub(); };
   }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
+  const label = pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`;
+  if (pen.stage === 'creature' && pen.species === 'steeze') {
+    return <div className="barn-canvas steeze-art-wrap" data-test="barn-canvas"><SteezePic className="steeze-art" label={label} /></div>;
+  }
   const hiRes = (pen.stage === 'creature' && isHiResSprite(BY_ID[pen.species], pen.style, pen.level)) || (pen.stage === 'egg' && hasStage1Egg());
-  return <canvas ref={ref} className={`barn-canvas${hiRes ? ' hi-res' : ''}`} data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
+  return <canvas ref={ref} className={`barn-canvas${hiRes ? ' hi-res' : ''}`} data-test="barn-canvas" aria-label={label} />;
 }
 
 const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -134,6 +145,7 @@ function BugThumb({ bug }) {
     paint();
     return onSpriteReady(paint);
   }, [bug.species, bug.level, JSON.stringify(bug.style || null)]);
+  if (bug.species === 'steeze') return <SteezePic className="barn-thumb" label="" />;
   const hiRes = isHiResSprite(BY_ID[bug.species], bug.style, bug.level);
   return <canvas ref={ref} className={`barn-thumb${hiRes ? ' hi-res' : ''}`} aria-hidden="true" />;
 }
@@ -257,7 +269,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   </div>;
 }
 
-const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Field notes']];
+const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Bug Ledger']];
 const WHERE = { ring: 'in the ring', circuit: 'on the circuit', mines: 'in the mines' };
 
 /** Combat: its numbers, the stance it fights with when left to itself, and its moves. Type, trait and perk are on the card. */
@@ -294,7 +306,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
     const k = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length;
     setTab(ids[k]); e.currentTarget.querySelectorAll('[role="tab"]')[k].focus();
   };
-  return <div className="bs" data-test="barn-creature" data-species={pen.species}>
+  return <div className={`bs${tab === 'notes' ? ' bs-ledger' : ''}`} data-test="barn-creature" data-species={pen.species}>
     <div className="bs-top">
       <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
@@ -305,13 +317,14 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
         : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
     </div>
     {pen.sick && <p className="barn-warn small" role="status" data-test="barn-sick">{pen.name} drank something purple in the mines. Feeding it will not help. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> might.</p>}
-    {pen.fainted && !pen.sick && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
+    {pen.taken && <p className="barn-warn small" role="status" data-test="barn-taken">{pen.name} left with someone at the mine lift. There is a ticket in its stall. Take it to the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</p>}
+    {pen.fainted && !pen.sick && !pen.taken && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
     {pen.heesheeHeld && <p className="barn-warn small" role="status" data-test="barn-heeshee-held">Your bug is nowhere to be found. The Heeshee Mazode took it.</p>}
     {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
     <div className="bs-grid">
-      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}${pen.sick ? ' sick' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
+      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}${pen.sick ? ' sick' : ''}${pen.taken ? ' taken' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
         <Stage pen={pen} poke={poke} reduced={reduced} />
-        {pen.heesheeHeld ? <span className="barn-mood m-fainted" data-test="barn-heeshee-chip">missing</span> : pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">{pen.sick ? 'not well' : 'fainted'}</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
+        {pen.heesheeHeld ? <span className="barn-mood m-fainted" data-test="barn-heeshee-chip">missing</span> : pen.taken ? <span className="barn-mood m-fainted" data-test="barn-taken-chip">ticket no. 2</span> : pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">{pen.sick ? 'not well' : 'fainted'}</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
         {pen.maxHp > 0 && <HpTag pen={pen} />}
       </div>
       <div className="bs-care" data-test="barn-progress">
@@ -319,7 +332,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
           {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
         <div className="barn-acts">
-          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
+          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
         </div>
         <div className="bs-xp">
           <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : ' · top level, for now'}</span>
@@ -336,7 +349,9 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
         </div> : <div className="barn-row bs-more">
           <button className="btn small" onClick={toRing}>Find a bout</button>
           {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
-          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span> : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
+          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span>
+            : pen.species === 'steeze' ? <span className="small muted" data-test="no-release">STEEZE? Leave? He just unpacked his golf bag. The stall is his now.</span>
+            : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
         </div>}
       </div>
       <div className="bs-info">

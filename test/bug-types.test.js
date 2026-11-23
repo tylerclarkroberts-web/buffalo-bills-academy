@@ -37,8 +37,9 @@ test('in the ring the type that beats the other wins about four fights in five, 
   const fighter = (bug) => ({ species: bug.id, name: bug.id, level: 5, mood: 60 }), SEEDS = 20;
   const favoured = [0, 0], byType = Object.fromEntries(LIVE_TYPES.map((type) => [type, [0, 0]]));
   for (const mine of ROSTER) {
+    if (mine.id === 'steeze') continue; // a gag: his moves do no damage, so he is not on the type-balance card
     let won = 0, fought = 0;
-    for (const theirs of ROSTER) if (theirs !== mine) {
+    for (const theirs of ROSTER) if (theirs !== mine && theirs.id !== 'steeze') {
       let w = 0;
       for (let s = 0; s < SEEDS; s++) { const o = simulateBout(fighter(mine), fighter(theirs), `types:${s}`).winner; w += o === 0 ? 1 : o === null ? 0.5 : 0; }
       won += w; fought += SEEDS;

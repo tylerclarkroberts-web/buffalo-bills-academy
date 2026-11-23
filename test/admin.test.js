@@ -397,6 +397,13 @@ test('only the owner can open the dealer POV preview; it writes no game data', a
   assert.equal(ok.body.path, '/admin/bj-preview');
   assert.equal(ok.body.label, 'Preview: not a real game');
   assert.equal(ok.headers.get('cache-control'), 'no-store');
+  assert.equal((await other.get('/api/admin/mine-preview')).status, 403);
+  assert.equal((await anon.get('/api/admin/mine-preview')).status, 403);
+  const mine = await owner.get('/api/admin/mine-preview');
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.preview, true);
+  assert.equal(mine.body.path, '/admin/mine-preview');
+  assert.equal(mine.headers.get('cache-control'), 'no-store');
   await owner.get('/api/admin/bj/pov-preview');
   const posted = await owner.post('/api/admin/bj/pov-preview', { amount: 25, enabled: true });
   assert.ok([403, 404, 405].includes(posted.status), `stray POST status ${posted.status}`);

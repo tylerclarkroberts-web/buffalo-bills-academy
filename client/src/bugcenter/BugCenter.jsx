@@ -6,7 +6,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, RECEIPT, BACK, STAGE, after } from './script.js';
+import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, after } from './script.js';
 import { healChime, podBlip, drill } from './chime.js';
 import { drawBug, isHiResSprite, onSpriteReady } from '../barn/sprite.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -155,12 +155,24 @@ function Panel({ i }) {
 const rect = (x, y, w, h, f, extra = {}) => <rect x={x} y={y} width={w} height={h} fill={f} {...extra} />;
 
 function Receipt({ evolved }) {
+  if (evolved.donor) { // paid in parts: no money moved, and the receipt says whose
+    const Line = ({ k, v, className = '' }) => <div className={`bc-rrow ${className}`}><span><span lang="ja">{RECEIPT[k].ja}</span> <small>{RECEIPT[k].en}</small></span><b>{v}</b></div>;
+    return (
+      <div className="bc-receipt" data-test="bc-receipt" lang="en">
+        <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small></h2>
+        <Line k="body" v={RECEIPT.included.en} /><Line k="labour" v={RECEIPT.included.en} />
+        {evolved.botched && <Line k="wrong" v={RECEIPT.free.en} />}
+        <Line k="parts" v={evolved.donor.name} className="total" />
+        <p className="bc-rfoot"><span lang="ja">{RECEIPT.foot.ja}</span> {RECEIPT.foot.en}</p>
+      </div>
+    );
+  }
   const { had, took, left } = evolved.bill, arm = Math.round(took * 40) / 100, labour = Math.round(took * 35) / 100, hush = Math.round((took - arm - labour) * 100) / 100;
   const Row = ({ k, v, className = '' }) => <div className={`bc-rrow ${className}`}><span><span lang="ja">{RECEIPT[k].ja}</span> <small>{RECEIPT[k].en}</small></span><b>{v}</b></div>;
   return (
     <div className="bc-receipt" data-test="bc-receipt" lang="en">
       <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small></h2>
-      <Row k="arm" v={money(arm)} /><Row k="labour" v={money(labour)} /><Row k="hush" v={money(hush)} />
+      <Row k={evolved.stage === 2 ? 'body' : 'arm'} v={money(arm)} /><Row k="labour" v={money(labour)} /><Row k="hush" v={money(hush)} />
       {evolved.botched && <Row k="wrong" v={RECEIPT.free.en} />}
       <Row k="total" v={money(took)} className="total" />
       <Row k="had" v={money(had)} /><Row k="left" v={money(left)} />
@@ -180,11 +192,11 @@ function Reveal({ evolved, pen, en }) {
     paint();
     return onSpriteReady(paint);
   }, [evolved, pen]);
-  const back = BACK(evolved.name), stage = STAGE(evolved.botched);
+  const back = BACK(evolved.name), stage = STAGE(evolved.botched, evolved.stage);
   const hiRes = isHiResSprite(BY_ID[evolved.species], pen?.style, evolved.levelAfter);
   return (
     <div className="bc-reveal" data-test="bc-reveal">
-      <canvas ref={ref} width={512} height={512} className={hiRes ? 'hi-res' : ''} role="img" aria-label={`${evolved.name}, with a mechanical arm`} />
+      <canvas ref={ref} width={512} height={512} className={hiRes ? 'hi-res' : ''} role="img" aria-label={`${evolved.name}, rebuilt`} />
       <p className="bc-cap">{back.ja}{en && <small lang="en">{back.en}</small>}</p>
       <p className="bc-stage" data-test="bc-stage">{stage.ja} · Lv {evolved.levelBefore} → {evolved.levelAfter}{en && <small lang="en">{stage.en}</small>}</p>
     </div>
@@ -193,18 +205,18 @@ function Reveal({ evolved, pen, en }) {
 
 /** The specialist's visit: four still panels, the receipt, then the curtain opens. Tap (or Enter) to go on. */
 function Operation({ op, pen, en, onNext }) {
-  const evolved = op.r?.evolved, shown = op.r ? op.step : Math.min(op.step, PANELS.length - 1);
+  const P = op.panels, evolved = op.r?.evolved, shown = op.r ? op.step : Math.min(op.step, P.length - 1);
   const newPen = op.r?.stable?.bugs.find((bug) => bug.id === evolved?.id) || pen;
-  const cap = PANELS[shown];
+  const cap = P[shown];
   return (
     <div className="bc-op" data-test="bc-op" data-step={shown} role="button" tabIndex={0} aria-label="Next"
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNext(); } }}>
-      {shown < PANELS.length && <>
-        <Panel key={shown} i={shown} />
+      {shown < P.length && <>
+        <Panel key={shown} i={cap.art ?? shown} />
         <p className="bc-cap" aria-live="polite">{cap.ja}{en && <small lang="en">{cap.en}</small>}</p>
       </>}
-      {shown === PANELS.length && evolved && <Receipt evolved={evolved} />}
-      {shown > PANELS.length && evolved && <Reveal evolved={evolved} pen={newPen} en={en} />}
+      {shown === P.length && evolved && <Receipt evolved={evolved} />}
+      {shown > P.length && evolved && <Reveal evolved={evolved} pen={newPen} en={en} />}
       <span className="bc-next bc-op-next" aria-hidden="true">{op.waiting ? '…' : '▼'}</span>
     </div>
   );
@@ -251,29 +263,30 @@ export default function BugCenter() {
     on(); const ro = new ResizeObserver(on); ro.observe(el); return () => ro.disconnect();
   }, [b !== null]);
   const bugs = b?.stable?.bugs || [];
-  const pen = bugs.find((bug) => bug.sick) || bugs.find((bug) => bug.fainted) || b?.pen || null;
+  const pen = bugs.find((bug) => bug.sick) || bugs.find((bug) => bug.taken) || bugs.find((bug) => bug.fainted) || b?.pen || null;
   const line = talk ? talk.lines[talk.i] : null;
   const [typed, full, finish] = useTyped(line?.ja || '');
   const start = () => { if (!talk) setTalk({ lines: greeting(pen), i: 0, mode: 'talk' }); };
   const next = () => {
     if (!talk || talk.mode === 'heal') return;
     if (!full) return finish();
-    if (line.ask) return; // waiting for はい / いいえ
-    if (line.call) { setTalk(null); setOp({ step: 0, r: null }); return; }
+    if (line.ask || line.pick) return; // waiting for an answer
+    if (line.call) { setTalk(null); setOp({ step: 0, r: null, panels: pen?.taken ? PANELS2 : PANELS }); return; }
     if (line.end || talk.i + 1 >= talk.lines.length) { setTalk(null); return; }
     setTalk({ ...talk, i: talk.i + 1 });
   };
   // The bug is rebuilt and the bill taken only as the last panel is passed, so leaving before then changes nothing.
   const opNext = () => {
     if (!op || op.waiting) return;
-    if (op.step < PANELS.length - 1) { if (sound && op.step >= 1) drill(); setOp({ ...op, step: op.step + 1 }); return; }
+    const P = op.panels;
+    if (op.step < P.length - 1) { if (sound && op.step >= 1) drill(); setOp({ ...op, step: op.step + 1 }); return; }
     if (!op.r) {
       setOp({ ...op, waiting: true });
-      api('POST', '/barn/heal', { bug: pen?.id }).then((r) => { setOp({ step: PANELS.length, r }); refreshSession(); })
+      api('POST', '/barn/heal', { bug: pen?.id, ...(op.donor ? { donor: op.donor } : {}) }).then((r) => { setOp({ ...op, step: P.length, r, waiting: false }); refreshSession(); })
         .catch((e) => { setOp(null); setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }); });
       return;
     }
-    if (op.step === PANELS.length) { if (sound) healChime(); setOp({ ...op, step: op.step + 1 }); return; }
+    if (op.step === P.length) { if (sound) healChime(); setOp({ ...op, step: op.step + 1 }); return; }
     const { healed: _h, cost: _c, evolved, ...view } = op.r;
     setB(view); setOp(null); setTalk({ lines: after(evolved), i: 0, mode: 'talk' });
   };
@@ -300,14 +313,19 @@ export default function BugCenter() {
       <div className="bc-fit" ref={fit}>
         <div className={`bc-scene${op ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
-          {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : 'fainted'}</small>}</div>}
+          {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
           {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
             <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>
               <span className="bc-who" title={NURSE.en}><ruby>{NURSE.ja}<rt>{NURSE.kana}</rt></ruby></span>
-              <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && <span className="bc-next" aria-hidden="true">▼</span>}</p>
+              <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && !line.pick && <span className="bc-next" aria-hidden="true">▼</span>}</p>
               {en && full && <p className="bc-en" lang="en">{line.en}</p>}
+              {line.pick && full && <div className="bc-ask bc-pick" data-test="bc-pick">
+                {pen.donors.map((d) => <button key={d.id} className="bc-choice" lang="en" onClick={(e) => { e.stopPropagation(); setTalk(null); setOp({ step: 0, r: null, panels: PANELS2, donor: d.id }); }} data-test="bc-donor">{d.name} · Lv {d.level}</button>)}
+                <button className="bc-choice ghost" onClick={(e) => { e.stopPropagation(); setTalk({ lines: [NO], i: 0, mode: 'talk' }); }} data-test="bc-pick-no" title={PICK.not.en}>{PICK.not.ja}</button>
+                <p className="bc-pick-warn"><span lang="ja">{PICK.warn.ja}</span> <span lang="en">{PICK.warn.en}</span></p>
+              </div>}
               {line.ask && full && <div className="bc-ask">
                 <button className="bc-choice" onClick={(e) => { e.stopPropagation(); heal(line.pay); }} data-test="bc-yes" title="Yes">はい</button>
                 <button className="bc-choice ghost" onClick={(e) => { e.stopPropagation(); setTalk({ lines: [line.pay ? REST : NO], i: 0, mode: 'talk' }); }} data-test="bc-no" title="No">いいえ</button>

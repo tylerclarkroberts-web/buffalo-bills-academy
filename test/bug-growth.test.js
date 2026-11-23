@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ROSTER } from '../server/engine/creatures.js';
-import { bugScale, drawBug, fineFor, spriteCanvas, spriteGrid, youngForm, FINE, SPRITE } from '../client/src/barn/sprite.js';
+import { bugScale, drawBug, fineFor, isHiResSprite, spriteCanvas, spriteGrid, youngForm, FINE, HI_COARSE, SPRITE } from '../client/src/barn/sprite.js';
 import { RoomScene } from '../client/src/room/scene.js';
 
 function context() {
@@ -52,10 +52,11 @@ test('all species use their appropriate young form and switch cached art at leve
   const nymphs = ['bocydium', 'phrictus', 'pyrops', 'graphocephala', 'umbonia', 'platymeris', 'acanthaspis', 'heteropteryx', 'pseudocreobotra', 'deroplatys', 'empusa', 'lethocerus', 'sphaerocoris',
     'pyrrhocoris', 'brevisana', 'micronecta', 'gromphadorhina', 'gryllotalpa', 'notonecta', 'halobates', 'peruphasma', 'dryococelus', 'meganeura'];
   const larvaeForLife = ['phrixothrix', 'arachnocampa', 'myrmeleon']; // drawn as the larva at every level
+  const cameos = ['steeze']; // not an insect: no larval form, same picture at every level
   assert.equal(Object.keys(expected).length, 29);
-  assert.equal(ROSTER.length, Object.keys(expected).length + nymphs.length + larvaeForLife.length);
+  assert.equal(ROSTER.length, Object.keys(expected).length + nymphs.length + larvaeForLife.length + cameos.length);
   for (const bug of ROSTER) {
-    if (!expected[bug.id]) assert.ok(nymphs.includes(bug.id) || larvaeForLife.includes(bug.id));
+    if (!expected[bug.id]) assert.ok(nymphs.includes(bug.id) || larvaeForLife.includes(bug.id) || cameos.includes(bug.id));
     assert.equal(youngForm(bug, 1), expected[bug.id], bug.id);
     assert.equal(youngForm(bug, 2), expected[bug.id], bug.id);
     for (const level of [3, 10, undefined]) assert.equal(youngForm(bug, level), undefined, bug.id);
@@ -85,8 +86,9 @@ test('skins and fitted accessories survive both life stages without reusing the 
     const plain = spriteCanvas(bug, undefined, level), skin = spriteCanvas(bug, { bugskin: style.bugskin }, level), dressed = spriteCanvas(bug, style, level);
     assert.notDeepEqual(skin.context.pixels, plain.context.pixels, `${bug.id}/${level} applies its skin`);
     assert.ok(dressed.context.pixels.length > skin.context.pixels.length, `${bug.id}/${level} includes accessories`);
-    assert.equal(dressed.width, 256);
-    assert.equal(dressed.height, 256);
+    const expectedSize = isHiResSprite(bug, style, level) ? HI_COARSE : SPRITE;
+    assert.equal(dressed.width, expectedSize);
+    assert.equal(dressed.height, expectedSize);
     assert.ok(dressed.context.pixels.every(([color, x, y, w, h]) => /^#[0-9a-f]{6}$/i.test(color) && x >= 0 && y >= 0 && x + w <= dressed.width && y + h <= dressed.height));
     assert.equal(spriteCanvas(bug, style, level === 1 ? 2 : 10), dressed);
     const otherStage = spriteCanvas(bug, style, level === 1 ? 3 : 1);

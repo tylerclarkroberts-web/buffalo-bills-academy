@@ -27,7 +27,7 @@ const STAGE1_SPECIES_OVERRIDE = {
   gyrinus: 'aquatic',
 };
 
-const MANTIS_KINDS = new Set(['mantis', 'stick']);
+const MANTIS_KINDS = new Set(['mantis', 'stick', 'tree-lobster']);
 const FLIER_KINDS = new Set(['dragonfly', 'lacewing', 'moth', 'cicada', 'caddis']);
 const AQUATIC_KINDS = new Set(['waterbug', 'skater']);
 const HOPPER_KINDS = new Set(['treehopper', 'leafhopper', 'lanternfly', 'frogleg', 'cricket']);
@@ -41,10 +41,11 @@ const STAGE1_FALLBACK_KEY = {
   'stage1-larva': 'stage1-grub',
 };
 
-/** Choose the Stage I organic miniature archetype matching a species' natural body plan. */
+/** Choose the Stage I organic miniature archetype matching a species' natural body plan, or null for photo cameos. */
 export function stage1ArchetypeOf(bug) {
-  if (bug?.id && STAGE1_SPECIES_OVERRIDE[bug.id]) return STAGE1_SPECIES_OVERRIDE[bug.id];
-  const kind = bug?.look?.kind;
+  if (!bug || bug.id === 'steeze' || bug.look?.kind === 'photo') return null;
+  if (bug.id && STAGE1_SPECIES_OVERRIDE[bug.id]) return STAGE1_SPECIES_OVERRIDE[bug.id];
+  const kind = bug.look?.kind;
   if (MANTIS_KINDS.has(kind)) return 'mantis';
   if (FLIER_KINDS.has(kind)) return 'flier';
   if (AQUATIC_KINDS.has(kind)) return 'aquatic';
@@ -56,9 +57,10 @@ export function stage1ArchetypeOf(bug) {
   return 'beetle';
 }
 
-/** Resolve the Stage I WebP metadata for a species (or young larva form), or null src if not enabled. */
+/** Resolve the Stage I WebP metadata for a species (or young larva form), or null for cameos / disabled keys. */
 export function stage1Meta(bug, young = undefined, enabled = STAGE1_ENABLED_KEYS) {
   const archetype = stage1ArchetypeOf(bug);
+  if (!archetype) return null;
   const preferred = young ? 'stage1-grub' : `stage1-${archetype}`;
   const key = enabled.has(preferred)
     ? preferred

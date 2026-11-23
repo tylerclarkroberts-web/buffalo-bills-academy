@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as THREE from 'three';
-import { ROSTER } from '../server/engine/creatures.js';
+import { BY_ID, ROSTER } from '../server/engine/creatures.js';
 import {
   ALL_STAGE1_ASSETS, STAGE1_ARCHETYPES, STAGE1_EGG_SRC,
   hasStage1Egg, stage1ArchetypeOf, stage1Meta, tintImageData,
@@ -11,6 +11,8 @@ import {
 import {
   bugTexture, isHiResSprite, onSpriteReady, spriteCanvas, youngForm,
 } from '../client/src/barn/sprite.js';
+
+const INSECTS = ROSTER.filter((b) => b.look?.kind !== 'photo');
 
 function context() {
   return {
@@ -39,14 +41,14 @@ function mockCanvas(t) {
   });
 }
 
-test('all 55 species map to a Stage I archetype and support adult + young larva forms', () => {
-  assert.equal(ROSTER.length, 55);
+test('all 55 species map to a Stage I archetype and support adult + young larva forms, while photo cameos opt out', () => {
+  assert.equal(INSECTS.length, 55);
   const full = new Set([
     ...STAGE1_ARCHETYPES.map((a) => `stage1-${a}`),
     'stage1-grub',
     'stage1-egg',
   ]);
-  for (const bug of ROSTER) {
+  for (const bug of INSECTS) {
     const arch = stage1ArchetypeOf(bug);
     assert.ok(STAGE1_ARCHETYPES.includes(arch), `${bug.id} -> ${arch}`);
     const adult = stage1Meta(bug, undefined, full);
@@ -63,6 +65,10 @@ test('all 55 species map to a Stage I archetype and support adult + young larva 
       assert.equal(lv1.key, `stage1-${arch}`);
     }
   }
+  assert.equal(stage1ArchetypeOf(BY_ID.dryococelus), 'mantis');
+  assert.equal(stage1ArchetypeOf(BY_ID.steeze), null);
+  assert.equal(stage1Meta(BY_ID.steeze, undefined, full), null);
+  assert.equal(isHiResSprite(BY_ID.steeze, null, 5), false);
 });
 
 test('stage1Meta fallback chain maps omitted weevil/larva cleanly to beetle/grub', () => {
@@ -120,7 +126,7 @@ test('all 55 species resolve to enabled WebP assets at levels 1 and 10', () => {
   }
   assert.equal(STAGE1_EGG_SRC, '/barn/stage1/stage1-egg.webp');
   assert.ok(ALL_STAGE1_ASSETS.includes(STAGE1_EGG_SRC));
-  for (const bug of ROSTER) for (const level of [1, 10]) {
+  for (const bug of INSECTS) for (const level of [1, 10]) {
     const { src } = stage1Meta(bug, youngForm(bug, level));
     assert.ok(src && ALL_STAGE1_ASSETS.includes(src), `${bug.id}/${level} resolves to a validated WebP`);
   }

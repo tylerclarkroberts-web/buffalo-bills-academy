@@ -1132,6 +1132,11 @@ input, select { background: rgba(0, 0, 0, .28); }
 .say-bubble.below::after { top: auto; bottom: 100%; transform: translate(-50%, 5px) rotate(-135deg); }
 .say-bubble.al-l { left: -6px; transform: none; } .say-bubble.al-l::after { left: 18px; }
 .say-bubble.al-r { left: auto; right: -6px; transform: none; } .say-bubble.al-r::after { left: auto; right: 8px; }
+/* Beside the avatar (SCUM top seats): never drop into the pile under a card fan. */
+.say-bubble.al-sl { left: auto; right: calc(100% + 8px); top: 4px; bottom: auto; transform: none; }
+.say-bubble.al-sl::after { left: auto; right: -6px; top: 14px; bottom: auto; transform: translate(0, 0) rotate(-45deg); }
+.say-bubble.al-sr { left: calc(100% + 8px); right: auto; top: 4px; bottom: auto; transform: none; }
+.say-bubble.al-sr::after { left: -6px; right: auto; top: 14px; bottom: auto; transform: translate(0, 0) rotate(135deg); }
 .say-bubble .sb-txt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .say-bubble.open { z-index: 30; max-width: clamp(140px, calc(var(--bust) * 4.6), 220px); }
 .seat.has-say { z-index: 6; } .seat:has(.say-bubble.open) { z-index: 8; } .say-bubble.open .sb-txt { -webkit-line-clamp: 5; }
@@ -1139,7 +1144,7 @@ input, select { background: rgba(0, 0, 0, .28); }
 .seat-top[role=button] { cursor: pointer; }
 .seat-top[role=button]::after { content: ''; position: absolute; left: min(-6px, calc(50% - 24px)); right: min(-6px, calc(50% - 24px)); top: min(-8px, calc(50% - 24px)); bottom: min(-8px, calc(50% - 24px)); }
 @keyframes say-pop { from { transform: translateX(-50%) scale(.6); opacity: 0; } }
-.say-bubble.al-l, .say-bubble.al-r { animation: none; }
+.say-bubble.al-l, .say-bubble.al-r, .say-bubble.al-sl, .say-bubble.al-sr { animation: none; }
 .say-btn { min-width: 36px; padding: 5px 9px; gap: 5px; color: var(--paper-2); }
 .say-btn.live { color: var(--amber); border-color: rgba(242, 198, 90, .6); }
 .say-box { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 60; width: min(440px, calc(100% - 16px)); display: grid; gap: 4px; padding: 8px 10px; background: #24091a; border: 1px solid var(--gold); border-radius: 14px; box-shadow: 0 12px 30px rgba(0, 0, 0, .6); }

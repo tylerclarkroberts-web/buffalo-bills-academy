@@ -10,6 +10,7 @@ import { voice, sfx, music, announce } from './sfx.js';
 import { navigate } from '../App.jsx';
 import { TypeChip } from './BugCard.jsx';
 import { TYPES, typeOf, edge, perkFor } from '../../../server/engine/bug-types.js';
+import SteezeShow from './SteezeShow.jsx';
 import './barn.css';
 
 const EXTRA = { pierce: 'pierce', guard: 'guard', venom: 'venom', weaken: 'weaken' };
@@ -122,6 +123,16 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   useEffect(() => { clock.current.rate = fast ? FAST : 1; }, [fast]);
   const now = useRef({ plan, bout }); now.current = { plan, bout };
   const [pos, setPos] = useState(() => (reduced && !plan.open ? { i: plan.beats.length, phase: 'done' } : { i: -1, phase: 'intro' }));
+  const [forcedShow, setForcedShow] = useState(null);
+  useEffect(() => {
+    const tick = () => {
+      const v = typeof window !== 'undefined' ? window.__steezeShow || null : null;
+      setForcedShow((cur) => (cur === v ? cur : v));
+    };
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, []);
   const [quit, setQuit] = useState(false);
   const [toss, setToss] = useState(null); // a jar in the air, rocking, shut or burst open
   const done = pos.phase === 'done', live = !!bout.live;
@@ -217,6 +228,11 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
       <div className="bout-ring">
         <canvas ref={ref} className={`barn-canvas${boutHiRes ? ' hi-res' : ''}`} data-test="bout-canvas" />
         <div className="bout-fx" aria-hidden="true">
+          {(() => {
+            const forced = forcedShow;
+            const move = forced || ((beat?.kind === 'flourish' || beat?.r?.effect === 'flourish') && beat.r.flourish);
+            return move && move !== 'pose' ? <SteezeShow key={String(move)} move={move} /> : null;
+          })()}
           {pos.phase === 'intro' && (
             <div className="bout-vs">
               {fighters.map((f, i) => <div key={i} className={`bout-plate s${i}`}><b>{f.name}</b><small><span>{BY_ID[f.species]?.name}</span><span>{TYPES[typeOf(f.species)]?.name || STYLES[styleOf(f.species)].name} · Lv {f.level}</span></small></div>)}

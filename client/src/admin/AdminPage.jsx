@@ -281,6 +281,13 @@ function Mines({ data, pick }) {
           <Panel title="Shifts per day" right={<small className="muted">30 days</small>}><Bars data={m.byDay.map((d) => ({ label: d.day.slice(8), value: d.n }))} height={110} every={5} color="#8dff5a" /></Panel>
           <Panel title="Encounters" right={<small className="muted">from {t.recordedStarts} tracked clock-ins</small>}>
             <div data-test="bo-encounters">
+              {t.stickDay ? <p className="bo-stick-day" data-test="bo-stick-day" style={{ margin: '0 0 8px' }}>
+                {t.stickDay.rolled
+                  ? <><b>Legendary day.</b> The Lord Howe Island stick insect {t.stickDay.present ? 'is in the mines today' : 'would be, but someone already holds it'} ({t.stickDay.tierName}).</>
+                  : t.stickDay.hard
+                    ? <>Hard day ({t.stickDay.tierName}), but the stick insect did not roll in today.</>
+                    : <>Not a hard mining day ({t.stickDay.tierName || 'easier tiers'}). The stick insect stays hidden.</>}
+              </p> : null}
               <ul className="bo-subs">
                 <li><span>Nosferatu (the visitor)</span><b className="num">{t.scare} · {pct(t.scare, t.recordedStarts)}</b></li>
                 <li><span>Faun follows</span><b className="num">{t.faun} · {pct(t.faun, t.recordedStarts)}</b></li>
@@ -291,8 +298,15 @@ function Mines({ data, pick }) {
                 <li><span>Other faun skims the cheque</span><b className="num">{t.twin}</b></li>
                 <li><span>Cave-ins</span><b className="num">{t.caveIns}</b></li>
                 <li><span>Ambushes / bug battles</span><b className="num">{m.raids.length}</b></li>
+                <li>
+                  <span>Lord Howe Island Stick Insect</span>
+                  <b className="num" style={{ textAlign: 'right' }} data-test="bo-stick-counts">{t.stickSightings || 0} sighted
+                    <small className="muted" style={{ display: 'block', fontWeight: 400 }}>{t.stickBattles || 0} battles · {t.stickCatches || 0} caught · {t.stickEscapes || 0} escaped</small>
+                  </b>
+                </li>
               </ul>
               {t.heesheeTracked < t.recordedStarts ? <p className="muted small" style={{ margin: '8px 0 0' }}>Heeshee from this deploy.</p> : null}
+              <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-mines" onClick={() => navigate('/admin/mine-preview?shot=stick-wall')} style={{ marginTop: 10 }}>Preview legends</button>
             </div>
           </Panel>
         </div>
