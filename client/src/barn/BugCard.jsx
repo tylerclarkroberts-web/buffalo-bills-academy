@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from 'react';
 import { BY_ID, ROSTER } from '../../../server/engine/creatures.js';
 import { movesFor, traitFor, combatStats } from '../../../server/engine/bug-combat.js';
 import { TYPES, RARITY, LIVE_TYPES, typeOf, rarityOf, weakTo, perkFor } from '../../../server/engine/bug-types.js';
-import { drawBug, isHiResSprite, onSpriteReady } from './sprite.js';
+import { drawBug } from './sprite.js';
 import './bugcard.css';
 
 const GLYPH = { // 16 x 16, one filled path each
@@ -29,15 +29,10 @@ function Art({ bug, style, level }) {
   const ref = useRef(null);
   const [photo, setPhoto] = React.useState(bug.id === 'steeze' ? '/api/steeze.png' : null);
   useEffect(() => {
-    if (photo) return undefined;
-    const paint = () => {
-      const c = ref.current; if (!c) return;
-      c.width = 448; c.height = 252;
-      const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
-      drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 1, style, level });
-    };
-    paint();
-    return onSpriteReady(paint);
+    const c = ref.current; if (!c || photo) return;
+    c.width = 448; c.height = 252;
+    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+    drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 1, style, level });
   }, [bug.id, level, JSON.stringify(style || null), photo]);
   if (bug.id === 'steeze' && photo) {
     return (
@@ -46,7 +41,7 @@ function Art({ bug, style, level }) {
       </div>
     );
   }
-  return <canvas ref={ref} className={`bc-art${isHiResSprite(bug, style, level) ? ' hi-res' : ''}`} aria-hidden="true" />;
+  return <canvas ref={ref} className="bc-art" aria-hidden="true" />;
 }
 
 export default function BugCard({ species, bug = null }) {

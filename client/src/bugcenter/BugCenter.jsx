@@ -8,7 +8,7 @@ import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
 import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after } from './script.js';
 import { healChime, podBlip, drill } from './chime.js';
-import { drawBug, isHiResSprite, onSpriteReady } from '../barn/sprite.js';
+import { drawBug } from '../barn/sprite.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import './bugcenter.css';
 
@@ -184,19 +184,14 @@ function Receipt({ evolved }) {
 function Reveal({ evolved, pen, en }) {
   const ref = useRef(null);
   useEffect(() => {
-    const paint = () => {
-      const c = ref.current, bug = BY_ID[evolved.species]; if (!c || !bug) return;
-      const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
-      drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style: pen?.style, level: evolved.levelAfter });
-    };
-    paint();
-    return onSpriteReady(paint);
+    const c = ref.current, bug = BY_ID[evolved.species]; if (!c || !bug) return;
+    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+    drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style: pen?.style, level: evolved.levelAfter });
   }, [evolved, pen]);
   const back = BACK(evolved.name), stage = STAGE(evolved.botched, evolved.stage);
-  const hiRes = isHiResSprite(BY_ID[evolved.species], pen?.style, evolved.levelAfter);
   return (
     <div className="bc-reveal" data-test="bc-reveal">
-      <canvas ref={ref} width={512} height={512} className={hiRes ? 'hi-res' : ''} role="img" aria-label={`${evolved.name}, rebuilt`} />
+      <canvas ref={ref} width={192} height={192} role="img" aria-label={`${evolved.name}, rebuilt`} />
       <p className="bc-cap">{back.ja}{en && <small lang="en">{back.en}</small>}</p>
       <p className="bc-stage" data-test="bc-stage">{stage.ja} · Lv {evolved.levelBefore} → {evolved.levelAfter}{en && <small lang="en">{stage.en}</small>}</p>
     </div>
@@ -344,7 +339,7 @@ export default function BugCenter() {
   return (
     <div className="screen bc" data-test="bug-center" lang="ja">
       <div className="bc-fit" ref={fit}>
-        <div className={`bc-scene${op || counter ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px`, '--sh': `${box.h}px` }} onClick={talk ? next : op ? opNext : undefined}>
+        <div className={`bc-scene${op || counter ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
           {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
           {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
