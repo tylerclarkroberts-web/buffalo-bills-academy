@@ -28,7 +28,7 @@ export function isAdmin(req, cfg) {
   return !!(email && cfg.emails.has(email));
 }
 
-export function mountAdmin({ api, wrap, telemetry, geo, cfg, getCtx, cacheMs = 5000 }) {
+export function mountAdmin({ api, wrap, telemetry, geo, cfg, getCtx, mines = null, cacheMs = 5000 }) {
   const requireAdmin = (req, res, next) => {
     if (!isAdmin(req, cfg)) return res.status(403).json({ error: 'Not found' });
     res.set('Cache-Control', 'no-store');
@@ -50,6 +50,7 @@ export function mountAdmin({ api, wrap, telemetry, geo, cfg, getCtx, cacheMs = 5
   const strip = (rep) => { const { _detail, ...rest } = rep; void _detail; return rest; };
 
   api.get('/admin/me', requireAdmin, wrap(() => ({ admin: true })));
+  if (mines) api.post('/admin/legend-force', requireAdmin, wrap((req) => mines.forceStick(req.player.id, req.body?.on)));
   api.get('/admin/report', requireAdmin, wrap(async () => strip((await report()).rep)));
   for (const tab of ['overview', 'players', 'money', 'mines', 'usage', 'anomalies']) api.get(`/admin/${tab}`, requireAdmin, wrap(async () => ({ [tab]: (await report()).rep[tab] })));
   api.get('/admin/players/:id', requireAdmin, wrap(async (req, res) => {

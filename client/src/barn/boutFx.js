@@ -17,6 +17,7 @@ export const STYLES = {
   sprayer: { name: 'Sprayer', approach: 640, sound: 'spray' },
   roller: { name: 'Roller', approach: 580, sound: 'roll' },
   wriggler: { name: 'Wriggler', approach: 600, sound: 'wriggle' },
+  showman: { name: 'Showman', approach: 720, sound: 'dash' },
 };
 const BY_STYLE = {
   flyer: ['phrictus', 'pyrops', 'nemoptera', 'chrysochroa', 'mantispa', 'polyphylla', 'melanophila', 'brevisana', 'bertholdia', 'photuris', 'ampulex', 'megachile', 'meganeura'],
@@ -26,10 +27,11 @@ const BY_STYLE = {
   sprayer: ['brachinus', 'pheropsophus', 'peruphasma'],
   roller: ['eupholus', 'pachyrhynchus', 'sphaerocoris', 'helicopsyche', 'gyrinus'],
   wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa', 'dryococelus'],
+  showman: ['steeze'],
 };
 export const STYLE_OF = Object.fromEntries(Object.entries(BY_STYLE).flatMap(([style, ids]) => ids.map((id) => [id, style])));
 export const styleOf = (species) => STYLE_OF[species] || 'charger';
-export const EFFECT_COLOR = { strike: '#ffe27a', pierce: '#9ff3ff', guard: '#ffcf5a', venom: '#8cff5a', heal: '#7dffb0', weaken: '#c58bff' };
+export const EFFECT_COLOR = { strike: '#ffe27a', pierce: '#9ff3ff', guard: '#ffcf5a', venom: '#8cff5a', heal: '#7dffb0', weaken: '#c58bff', flourish: '#ffd24a' };
 
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 export function rng(seed) {
@@ -60,11 +62,11 @@ export function planBout(bout) {
   const beats = []; let at = INTRO_MS;
   rounds.forEach((r, i) => {
     const special = r.type === 'move' && !!r.moveId && r.moveId !== 'basic';
-    const kind = r.type === 'venom' ? 'tick' : r.skipped ? 'skip' : r.effect === 'heal' ? 'heal' : 'attack';
+    const kind = r.type === 'venom' ? 'tick' : r.skipped ? 'skip' : r.effect === 'heal' ? 'heal' : r.effect === 'flourish' ? 'flourish' : 'attack';
     const charge = special ? (r.tier >= 4 ? 950 : 700) : 0;
-    const impactAt = kind === 'tick' || kind === 'skip' ? 220 : charge + (kind === 'heal' ? 320 : STYLES[styleOf(fighters[r.by]?.species)].approach);
+    const impactAt = kind === 'tick' || kind === 'skip' ? 220 : charge + (kind === 'heal' ? 320 : kind === 'flourish' ? 480 : STYLES[styleOf(fighters[r.by]?.species)].approach);
     const stop = kind !== 'attack' || !r.hit || !(r.dmg > 0) ? 0 : r.critical ? 280 : special ? 120 : 70;
-    const dur = impactAt + stop + (kind === 'tick' || kind === 'skip' ? 520 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
+    const dur = impactAt + stop + (kind === 'tick' || kind === 'skip' ? 520 : kind === 'flourish' ? 1100 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
     const before = copy(), me = r.by, foe = 1 - r.by;
     if (kind === 'tick') { if (!r.pop) status[foe].poison = Math.max(0, status[foe].poison - 1); } // a venom round's `by` is the poisoner
     else if (kind === 'attack') {
@@ -239,8 +241,37 @@ function arena(fx, W, H, seed, kind) {
   return c;
 }
 
+const steezePhotos = { img: null, tried: false };
+function steezePhoto() {
+  if (typeof Image === 'undefined') return null;
+  if (!steezePhotos.tried) {
+    steezePhotos.tried = true;
+    const im = new Image();
+    im.onload = () => { steezePhotos.img = im; };
+    im.onerror = () => { steezePhotos.img = null; };
+    im.src = '/api/steeze.png';
+  }
+  return steezePhotos.img;
+}
 function drawFighter(x, f, p, size, face) {
   const bug = BY_ID[f?.species]; if (!bug) return;
+  if (bug.id === 'steeze') {
+    const photo = steezePhoto();
+    const s = size * 1.35 * (1 + (p.alt / size) * 0.25);
+    x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
+    x.fillStyle = 'rgba(0,0,0,.4)';
+    x.beginPath(); x.ellipse(0, s * 0.48, s * 0.22, s * 0.06, 0, 0, Math.PI * 2); x.fill();
+    if (photo) {
+      x.filter = 'brightness(0.86) sepia(0.2) saturate(0.9)';
+      const aspect = photo.width / photo.height;
+      x.drawImage(photo, -s * aspect / 2, -s * 0.95, s * aspect, s);
+      x.filter = 'none';
+    } else {
+      x.fillStyle = '#c9a050'; x.font = `bold ${Math.max(12, size * 0.14)}px sans-serif`; x.textAlign = 'center'; x.fillText('STEEZE', 0, 0);
+    }
+    x.restore();
+    return;
+  }
   const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
   const s = grown * (1 + (p.alt / size) * 0.25);
   x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy); x.imageSmoothingEnabled = false;
@@ -283,7 +314,7 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
     else {
       const a = r.by, d = 1 - a, p = P[a], q = P[d], [tx, ty] = toward(a); attacker = a;
       if (lt < A) { p.sy *= 0.92; p.x += (R() - 0.5) * size * 0.012; p.aura = clamp01(lt / 220); dim = 0.5 * clamp01(lt / 160) * clamp01((A - lt) / 160 + 0.2); }
-      else if (beat.kind === 'heal') { const k = clamp01((lt - A) / (I - A + 380)); p.alt += Math.sin(Math.PI * k) * size * 0.12; if (lt >= I && lt < I + 320) p.flash = Math.floor((lt - I) / 70) % 2 ? null : '#7dffb0'; }
+      else if (beat.kind === 'heal' || beat.kind === 'flourish') { const k = clamp01((lt - A) / (I - A + 380)); p.alt += Math.sin(Math.PI * k) * size * 0.08; if (lt >= I && lt < I + 320) p.flash = Math.floor((lt - I) / 70) % 2 ? null : (beat.kind === 'flourish' ? '#ffd24a' : '#7dffb0'); }
       else {
         const m = motion(ST[a], lt, A, I, Rr), reach = Math.max(0, dist - size * 0.62);
         p.x += tx * reach * m.f; p.y += ty * reach * m.f; if (m.alt != null) p.alt = m.alt * size;

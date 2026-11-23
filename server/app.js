@@ -126,6 +126,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   telemetry.backfill(service.store.players);
   mines.onShiftStart = (id, s, fare) => telemetry.shiftStart(id, s, fare);
   mines.onShiftEnd = (id, s, receipt) => telemetry.shiftEnd(id, s, receipt);
+  mines.onLegend = (id, kind, data) => telemetry.event('legend-stick', id, { kind, ...data });
   slack.sweep();
 
   const api = express.Router();
@@ -475,6 +476,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/slots/end', needPlayer, wrap((req) => slots.end(req.player)));
   // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
+  if (barnTest) api.post('/dev/legend', needPlayer, wrap((req) => mines.forceStick(req.player.id, req.body?.on)));
+  if (barnTest) api.post('/dev/steeze', needPlayer, wrap((req) => mines.forceSteeze(req.player.id, req.body?.on)));
   if (barnTest) api.post('/dev/heeshee', needPlayer, wrap((req) => {
     const v = req.body?.on; mines.heesheeForce = v === true || v === false ? v : null;
     let bug = null;
@@ -566,6 +569,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // The dealer: a low-poly cut-out made from a photo Tyler supplied. Only the low-poly version is deployed.
   const dealerPath = dealerFile || path.join(import.meta.dirname, 'assets', 'dealer.png');
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
+  const steezePath = path.join(import.meta.dirname, 'assets', 'steeze.png');
+  api.get('/steeze.png', (req, res) => (fs.existsSync(steezePath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(steezePath) : res.status(404).json({ error: 'No STEEZE' })));
 
   const geo = new Geo({ store: service.store, now: service.now, fetchImpl: geoFetch !== undefined ? geoFetch : (env.ADMIN_GEO === '0' ? null : globalThis.fetch) });
   api.get('/admin/bj/pov-preview', (req, res) => {
@@ -607,9 +612,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     }
   });
 
-  mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, getCtx: () => ({
+  mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, mines, getCtx: () => ({
     now: service.now(), players: service.store.players, ledger: telemetry.readLedger(), events: telemetry.readEvents(), access: telemetry.doc, worth: netWorth,
-    docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc } }) });
+    docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc },
+    stickDay: mines.stickDayInfo() }) });
   mountConquest({ app, api, conquest, auth, wrap });
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);

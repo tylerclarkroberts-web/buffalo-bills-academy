@@ -52,10 +52,11 @@ test('all species use their appropriate young form and switch cached art at leve
   const nymphs = ['bocydium', 'phrictus', 'pyrops', 'graphocephala', 'umbonia', 'platymeris', 'acanthaspis', 'heteropteryx', 'pseudocreobotra', 'deroplatys', 'empusa', 'lethocerus', 'sphaerocoris',
     'pyrrhocoris', 'brevisana', 'micronecta', 'gromphadorhina', 'gryllotalpa', 'notonecta', 'halobates', 'peruphasma', 'dryococelus', 'meganeura'];
   const larvaeForLife = ['phrixothrix', 'arachnocampa', 'myrmeleon']; // drawn as the larva at every level
+  const cameos = ['steeze']; // not an insect: no larval form, same picture at every level
   assert.equal(Object.keys(expected).length, 29);
-  assert.equal(ROSTER.length, Object.keys(expected).length + nymphs.length + larvaeForLife.length);
+  assert.equal(ROSTER.length, Object.keys(expected).length + nymphs.length + larvaeForLife.length + cameos.length);
   for (const bug of ROSTER) {
-    if (!expected[bug.id]) assert.ok(nymphs.includes(bug.id) || larvaeForLife.includes(bug.id));
+    if (!expected[bug.id]) assert.ok(nymphs.includes(bug.id) || larvaeForLife.includes(bug.id) || cameos.includes(bug.id));
     assert.equal(youngForm(bug, 1), expected[bug.id], bug.id);
     assert.equal(youngForm(bug, 2), expected[bug.id], bug.id);
     for (const level of [3, 10, undefined]) assert.equal(youngForm(bug, level), undefined, bug.id);

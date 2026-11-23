@@ -59,6 +59,7 @@ function Notes({ bug }) {
     : <p key={key} className="barn-src muted">Sources: {bug.sources.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer">{host(u)}</a>)}</p>;
   return (
     <div className="barn-notes" id="barn-panel-notes" role="tabpanel" aria-labelledby="barn-tab-notes" data-test="barn-notes">
+      <p className="barn-ledger-kicker small" data-test="bug-ledger-kicker">Bug Ledger{rarityOf(bug.id) === 4 ? ' · Legendary' : ''}</p>
       <p className="barn-sci small"><i>{bug.sci}</i>{bug.genus ? ' (genus)' : ''} · {bug.order}</p>
       <div className="barn-page" ref={box} data-test="notes-page">
         {cur.map((i) => one(items[i], i))}
@@ -88,6 +89,12 @@ function HpTag({ pen }) {
   </span>;
 }
 
+function SteezePic({ className, label }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return <div className={`${className} steeze-missing`} aria-label={label}>STEEZE</div>;
+  return <img className={`${className} steeze-art`} src="/api/steeze.png" alt={label || ''} onError={() => setOk(false)} />;
+}
+
 function Stage({ pen, poke, reduced }) {
   const ref = useRef(null);
   const pokeAt = useRef(-1e9); // not 0: performance.now() starts near 0, which read as a fresh poke on load
@@ -114,7 +121,11 @@ function Stage({ pen, poke, reduced }) {
     id = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(id);
   }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
-  return <canvas ref={ref} className="barn-canvas" data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
+  const label = pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`;
+  if (pen.stage === 'creature' && pen.species === 'steeze') {
+    return <div className="barn-canvas steeze-art-wrap" data-test="barn-canvas"><SteezePic className="steeze-art" label={label} /></div>;
+  }
+  return <canvas ref={ref} className="barn-canvas" data-test="barn-canvas" aria-label={label} />;
 }
 
 const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -127,6 +138,7 @@ function BugThumb({ bug }) {
     const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
     drawBug(x, kind, { w: c.width, h: c.height, still: true, style: bug.style, level: bug.level });
   }, [bug.species, bug.level, JSON.stringify(bug.style || null)]);
+  if (bug.species === 'steeze') return <SteezePic className="barn-thumb" label="" />;
   return <canvas ref={ref} className="barn-thumb" aria-hidden="true" />;
 }
 
@@ -249,7 +261,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   </div>;
 }
 
-const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Field notes']];
+const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Bug Ledger']];
 const WHERE = { ring: 'in the ring', circuit: 'on the circuit', mines: 'in the mines' };
 
 /** Combat: its numbers, the stance it fights with when left to itself, and its moves. Type, trait and perk are on the card. */
@@ -328,7 +340,9 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
         </div> : <div className="barn-row bs-more">
           <button className="btn small" onClick={toRing}>Find a bout</button>
           {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
-          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span> : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
+          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span>
+            : pen.species === 'steeze' ? <span className="small muted" data-test="no-release">STEEZE? Leave? He just unpacked his golf bag. The stall is his now.</span>
+            : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
         </div>}
       </div>
       <div className="bs-info">

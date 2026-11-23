@@ -470,5 +470,23 @@ export class MineAudio {
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.35);
     this.noise(0.18, 900, 180, 0.45, 'lowpass');
   }
+  /** Ceiling scratches and a low swell for the stick-insect intro. */
+  stickScratch() {
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime;
+    for (let k = 0; k < 7; k++) {
+      const start = t + k * (0.22 + Math.random() * 0.18);
+      const buf = c.createBuffer(1, Math.ceil(c.sampleRate * 0.16), c.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 1.4;
+      const s = c.createBufferSource(); s.buffer = buf;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800 + Math.random() * 1400; bp.Q.value = 3.2;
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, start); g.gain.exponentialRampToValueAtTime(0.22, start + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+      s.connect(bp); bp.connect(g); g.connect(this.master); s.start(start);
+    }
+    const o = c.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(48, t); o.frequency.exponentialRampToValueAtTime(36, t + 1.8);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 2.3);
+  }
   dispose() { clearInterval(this.danceTimer); clearTimeout(this.dripTimer); try { this._heeDrone?.oscs.forEach((o) => o.stop()); this.ctx?.close(); } catch { /* ignore */ } }
 }

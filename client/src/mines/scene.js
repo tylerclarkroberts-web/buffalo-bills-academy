@@ -4,6 +4,9 @@ import { rng, distFrom, pathSteps, geigerFacing, RUBBLE } from '../../../server/
 import { MIN_GAP, lineOfSight } from './stalker.js';
 import { buildFaun, trotFaun } from './faunMesh.js';
 import { buildHeeshee, poseHeeshee } from './heesheeMesh.js';
+import { buildStick, poseStick } from './stickMesh.js';
+import { buildSteeze } from './steezeMesh.js';
+if (typeof window !== 'undefined') window.__poseStick = poseStick;
 import { proximity } from './heeshee.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -497,18 +500,34 @@ export class MineScene {
   setWilds(wilds) {
     const ids = new Set(wilds.map(wild => wild.id));
     for (const [id, wild] of this.wilds) if (!ids.has(id)) {
-      this.scene.remove(wild.group); disposeMeshes(wild.group); this.wilds.delete(id);
+      this.scene.remove(wild.group); wild.stick?.dispose?.(); wild.steeze?.dispose?.(); disposeMeshes(wild.group); this.wilds.delete(id);
     }
     for (const wild of wilds) if (!this.wilds.has(wild.id)) {
       // by rarity, like its card: a rare glows a soft gold, a legendary shifts through the rainbow with sparks rising off it
       const rarity = rarityOf(wild.species), legend = rarity === 4;
-      const sprite = this.bugBillboard(BY_ID[wild.species], null, legend ? '#b48cff' : rarity === 3 ? '#ffd84a' : '#ff5a3a');
-      if (legend) sprite.sparks = this.legendSparks(sprite.group);
-      if (rarity === 3) sprite.gold = true;
       const at = wildAt(wild, Date.now() + (this.clockSkew || 0));
-      sprite.group.position.set(at.x * TILE, 0, at.y * TILE);
-      sprite.group.visible = true;
-      this.wilds.set(wild.id, { ...wild, ...at, ...sprite });
+      if (wild.species === 'steeze') {
+        const steeze = buildSteeze();
+        steeze.group.position.set(at.x * TILE, 0, at.y * TILE);
+        this.scene.add(steeze.group);
+        this.wilds.set(wild.id, { ...wild, ...at, group: steeze.group, mesh: steeze.mesh, glow: null, steeze, heading: 0 });
+      } else if (wild.species === 'dryococelus') {
+        const stick = buildStick();
+        const glow = new THREE.PointLight('#b48cff', BUG_GLOW * 2.2, 5.4);
+        glow.position.set(0, 0.15, 0.1);
+        stick.group.add(glow);
+        const sparks = this.legendSparks(stick.group);
+        stick.group.position.set(at.x * TILE, 0.2, at.y * TILE);
+        this.scene.add(stick.group);
+        this.wilds.set(wild.id, { ...wild, ...at, group: stick.group, mesh: stick.hit, glow, sparks, stick, heading: 0 });
+      } else {
+        const sprite = this.bugBillboard(BY_ID[wild.species], null, legend ? '#b48cff' : rarity === 3 ? '#ffd84a' : '#ff5a3a');
+        if (legend) sprite.sparks = this.legendSparks(sprite.group);
+        if (rarity === 3) sprite.gold = true;
+        sprite.group.position.set(at.x * TILE, 0, at.y * TILE);
+        sprite.group.visible = true;
+        this.wilds.set(wild.id, { ...wild, ...at, ...sprite });
+      }
     }
   }
   nearestWild() {
@@ -747,14 +766,21 @@ export class MineScene {
     if (this.bugGuide) this.updateBugGuide(now, dt);
     const serverNow = Date.now() + (this.clockSkew || 0); // a wild bug is where the server's clock says it has roamed to
     for (const wild of this.wilds.values()) {
+      const wasX = wild.x, wasY = wild.y;
       if (wild.id !== this.heldWild) Object.assign(wild, wildAt(wild, serverNow)); // one its miner has squared up to waits where it is; let go, it is back on its route
-      wild.group.position.set(wild.x * TILE, this.reduce ? 0 : Math.sin(now / 300) * 0.05, wild.y * TILE); wild.group.rotation.y = this.yaw;
-      wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
+      if (wild.stick) {
+        if (wild.x !== wasX || wild.y !== wasY) wild.heading = Math.atan2(wild.x - wasX, wild.y - wasY);
+        poseStick(wild.stick, { grid: this.maze.grid, x: wild.x * TILE, z: wild.y * TILE, heading: wild.heading || 0, now, reduce: this.reduce, tile: TILE, wallH: WALL_H, surface: wild.freezeSurface || null });
+      } else {
+        wild.group.position.set(wild.x * TILE, (wild.steeze || this.reduce) ? 0 : Math.sin(now / 300) * 0.05, wild.y * TILE); wild.group.rotation.y = this.yaw;
+      }
+      if (wild.glow) wild.glow.intensity = BUG_GLOW * (1 - 0.35 * (this.horror?.dark || 0)); // Horror Night: its light goes down with the acid's
       if (wild.gold) wild.glow.intensity *= this.reduce ? 1.5 : 1.5 + Math.sin(now / 520) * 0.2; // a rare: a soft gold light, barely breathing
       if (wild.sparks) { // a legendary: its light runs through the rainbow and pulses, and sparks rise off it (one still colour under reduced motion)
         wild.glow.intensity *= this.reduce ? 2.2 : 2.2 + Math.sin(now / 260) * 0.9;
         if (!this.reduce) wild.glow.color.setHSL((now / 3600) % 1, 0.85, 0.62);
-        wild.sparks.forEach((spark, k) => { const u = this.reduce ? k / wild.sparks.length : ((now / 1400 + k / wild.sparks.length) % 1); spark.position.set(Math.cos(k * 2.4 + u * 3) * 0.26, 0.3 + u * 0.75, Math.sin(k * 2.4 + u * 3) * 0.26); spark.material.opacity = Math.sin(u * Math.PI); });
+        const reach = wild.stick ? 0.55 : 0.26, rise = wild.stick ? 1.15 : 0.75;
+        wild.sparks.forEach((spark, k) => { const u = this.reduce ? k / wild.sparks.length : ((now / 1400 + k / wild.sparks.length) % 1); spark.position.set(Math.cos(k * 2.4 + u * 3) * reach, 0.15 + u * rise, Math.sin(k * 2.4 + u * 3) * reach); spark.material.opacity = Math.sin(u * Math.PI); });
       }
     }
     if (this.horror) this.updateHorror(now, dt);
@@ -784,6 +810,16 @@ export class MineScene {
     } else {
       this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
       this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+      if (this.introLook) {
+        const stick = [...this.wilds.values()].find((w) => w.stick);
+        if (stick) {
+          const q0 = this.camera.quaternion.clone();
+          this.camera.lookAt(stick.group.position);
+          this.camera.quaternion.copy(q0.slerp(this.camera.quaternion, this.reduce ? 1 : 0.18));
+        } else {
+          this.camera.rotation.set(this.pitch - 0.7, this.yaw, 0, 'YXZ');
+        }
+      }
     }
     if (this.shake > 0 && !this.reduce && !this.danceBlend) {
       const s = this.shake;
@@ -808,6 +844,7 @@ export class MineScene {
       else heeFlicker = (Math.random() - 0.5) * 3 * hee;
     }
     this.lamp.intensity = Math.max(1.2, (16 + Math.sin(now / 90) * 0.6 + dip + sput + jitter + heeFlicker) * this.lampPower); // a tired headlamp (more tired when he's near)
+    if (this.introFlicker && !this.reduce) this.lamp.intensity *= Math.random() < 0.4 ? 0.12 : 0.65;
 
     if (this.horror?.target) this.lamp.intensity = Math.max(0.25, this.lamp.intensity * (0.08 + 0.92 * this.horror.lamp)); // Horror Night: it barely holds on
     if (this.purpleLight) { // it breathes, slower than the acid does

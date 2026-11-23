@@ -11,6 +11,7 @@ import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
 import { roamRoute } from './engine/wild-roam.js';
 import { rarityOf, WILD_ODDS, RARE_TIER, LEGENDARY } from './engine/bug-types.js';
 import { HEESHEE_RETURN } from './foreman.js';
+import { STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, isSteeze } from './engine/steeze.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -178,6 +179,9 @@ export class Mines {
     // test route in app.js ever sets it, and that route is never mounted in production.
     this.horrorForce = null;
     this.heesheeForce = null;
+    // Per-player only: a forced stick insect never joins the shared daily roster.
+    this.stickForce = new Map();
+    this.steezeForce = new Map();
   }
   /** Is it Horror Night right now? Cosmetic only: nothing that pays, times or rolls a shift reads it. */
   horrorOn(now = this.now()) { return this.horrorForce ?? inHorrorWindow(now); }
@@ -293,6 +297,7 @@ export class Mines {
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
     this.store.commitPlayerDrafts([draft]);
+    if (this.wildsFor(shift).some((w) => w.species === STICK_ID)) shift.stick = true;
     this.commit(player.id, shift); this.holds.delete(player.id);
     try { this.onShiftStart?.(player.id, shift, shaft.fare || 0); } catch { /* admin stats only */ }
     return this.publicShift(shift, false, player.id, this.guideBug(player.id));
@@ -383,7 +388,7 @@ export class Mines {
     const taken = !!(s.heesheeStolen || guide?.held);
     const bug = guide?.fainted || taken ? null : (guide ? { ...guide, ...(this.shakenUntil(playerId) ? { shaken: true } : {}) } : guide);
 
-    const wilds = this.wildsFor(s);
+    const wilds = this.wildsFor(s, playerId);
     const egg = this.eggAvailable(s, playerId);
     return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(taken ? { bugStolen: { name: guide?.name || 'Your bug', line: HEESHEE_GONE } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
@@ -462,7 +467,7 @@ export class Mines {
   }
 
   /** All shafts share the day's roster. Catches retire a bug for everyone; other encounters end for this shift. */
-  wildsFor(shift) {
+  wildsFor(shift, playerId = null) {
     if (shift?.rulesVersion !== 2) return [];
     const day = shift.day || mineDay(shift.startedAt);
     const key = `${day}:${shift.seed}:${shift.cells}:${shift.tier || 0}:${shift.shaft || '7'}`;
@@ -471,7 +476,41 @@ export class Mines {
       if (this.wildRosters.size > 8) this.wildRosters.delete(this.wildRosters.keys().next().value);
     }
     // Every one of the day's bugs is down here at once. A catch retires one for everyone; a fight that ends any other way ends it for this shift.
-    return this.wildRosters.get(key).filter(({ id }) => !this.barn?.wildCaught?.(id) && !shift.wildsGone?.includes(id));
+    let list = this.wildRosters.get(key).filter(({ id }) => !this.barn?.wildCaught?.(id) && !shift.wildsGone?.includes(id));
+    if (playerId && this.stickForce.get(playerId) === true && !list.some((w) => w.species === STICK_ID)) {
+      const forced = placeStick(shift, `legend:${STICK_ID}:force:${playerId}`);
+      list = [...list, { ...forced, force: true }];
+    }
+    if (playerId && this.stickForce.get(playerId) === false) list = list.filter((w) => w.species !== STICK_ID);
+    // STEEZE is not unique: each miner can catch their own. Hide him from a miner who already has one,
+    // and give each viewer their own wild id so one catch does not retire him for everyone.
+    if (playerId && this.barn?.ownerHolds?.(playerId, STEEZE_ID)) list = list.filter((w) => w.species !== STEEZE_ID);
+    else if (playerId) list = list.map((w) => isSteeze(w.species) && !w.force ? { ...w, id: `${w.id}:${playerId}` } : w);
+    if (playerId && this.steezeForce.get(playerId) === true && !this.barn?.ownerHolds?.(playerId, STEEZE_ID) && !list.some((w) => w.species === STEEZE_ID)) {
+      list = [...list, placeSteeze(shift, `steeze:force:${playerId}`)];
+    }
+    if (playerId && this.steezeForce.get(playerId) === false) list = list.filter((w) => w.species !== STEEZE_ID);
+    return list;
+  }
+  /** Dev/admin screenshot hook: only this miner sees STEEZE. Unlike the stick, he can still be jarred. */
+  forceSteeze(playerId, on) {
+    if (on === true || on === false) this.steezeForce.set(playerId, on);
+    else this.steezeForce.delete(playerId);
+    return { force: this.steezeForce.has(playerId) ? this.steezeForce.get(playerId) : null };
+  }
+  /** Today's stick-insect roll: hard days only, 50%, its own seed. Does not look at a per-player force. */
+  stickDayInfo(today = null) {
+    const day = today || this.layout(this.now(), SHAFTS[0]);
+    const t = tierInfo(day.tier), hard = isHardTier(day.tier), rolled = stickToday(day.day, day.tier);
+    const held = !!this.barn?.holds?.(STICK_ID);
+    return { hard, rolled, present: rolled && !held, held, stickName: 'Lord Howe Island Stick Insect',
+      tierName: t?.name || null, tier: day.tier, day: day.day };
+  }
+  /** Dev/admin screenshot hook: only this miner sees the insect. It cannot be jarred, and it never writes the shared roster. */
+  forceStick(playerId, on) {
+    if (on === true || on === false) this.stickForce.set(playerId, on);
+    else this.stickForce.delete(playerId);
+    return { force: this.stickForce.has(playerId) ? this.stickForce.get(playerId) : null, ...this.stickDayInfo() };
   }
   wildGone(playerId, shiftId, wildId) {
     const cur = this.doc.active[playerId];
@@ -626,6 +665,16 @@ export const STRAY_DAYS = 3, STRAYS_A_DAY = 3;
 // one too. It is at level LEGEND_LEVEL, and only a species nobody in the Academy holds: jarred, it is gone until its
 // holder parts with it.
 export const LEGEND_DAYS = 120, LEGEND_GROWTH = 1.5, LEGEND_LEVEL = 10;
+// The Lord Howe Island stick insect is not on that shared roll. It only appears on hard mining days — The Badlands
+// (tier 4) and Dead Man's Dig (tier 5) — and then only if a 50% roll for that Mountain-time date comes up. The roll
+// has its own seed, so it never touches payouts, scares or the other two legendaries. When the day has it, it is in
+// every shaft, at level STICK_LEVEL, the same insect for every miner, until someone jars it.
+export { STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS } from './engine/steeze.js';
+export const STICK_ID = 'dryococelus', STICK_LEVEL = 30, STICK_DAY_CHANCE = 0.5, HARD_TIERS = [4, 5];
+export const isHardTier = (tier) => HARD_TIERS.includes(Number(tier));
+export const stickToday = (day, tier = 1) => isHardTier(tier) && rng(daySeed(`legend:stick:${day}`))() < STICK_DAY_CHANCE;
+/** One day in STEEZE_DAYS, any tier, its own seed. */
+export const steezeToday = (day) => Math.floor(rng(daySeed(`steeze:${day}`))() * STEEZE_DAYS) === 0;
 const SHAFT_DEPTH = ['7', '8', '12', 'earl']; // each permit shaft below Shaft 7 holds one more bug than the one above, and a better one
 export const depthOf = (shaft) => Math.max(0, SHAFT_DEPTH.indexOf(String(shaft || '7')));
 export const legendChance = (tier = 1, depth = 0) => Math.min(1, LEGEND_GROWTH ** (Math.max(1, tier) - 1 + depth) / LEGEND_DAYS);
@@ -643,7 +692,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   const random = rng(daySeed(`wild:${day}`)), pick = (n) => Math.floor(random() * n);
   const count = Math.min(WILDS_A_DAY[0] + pick(WILDS_A_DAY[1] - WILDS_A_DAY[0] + 1), spots.length), tier = shift.tier || 1;
   // First how rare (WILD_ODDS; a rare only on a day rough enough), then a species of that rarity not yet out today.
-  const left = Object.fromEntries([1, 2, 3].map((rarity) => [rarity, ROSTER.filter((bug) => rarityOf(bug.id) === rarity)]));
+  const left = Object.fromEntries([1, 2, 3].map((rarity) => [rarity, ROSTER.filter((bug) => rarityOf(bug.id) === rarity && bug.id !== STEEZE_ID)]));
   const species = (at = tier, roll01 = random, choose = pick) => {
     const odds = wildOdds(at), open = [1, 2, 3].filter((rarity) => left[rarity].length && odds[rarity] > 0);
     let roll = roll01() * open.reduce((sum, rarity) => sum + odds[rarity], 0);
@@ -676,11 +725,46 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
     const level = wildLevel(at, choose);
     deep.push(route({ id: `${day}:deep${k}`, species: species(at, roll, choose), level, ...spotFor(level) }));
   }
-  // Which legendary: one of those nobody holds, picked by the day.
-  const free = ROSTER.filter((bug) => rarityOf(bug.id) === LEGENDARY && !held(bug.id)), legends = [];
+  // Which of the other two legendaries: one of those nobody holds, picked by the day. The stick insect has its own roll.
+  const free = ROSTER.filter((bug) => rarityOf(bug.id) === LEGENDARY && bug.id !== STICK_ID && !held(bug.id)), legends = [];
   if (free.length && spots.length && legendToday(day, tier, depthOf(shift.shaft))) {
     const bug = free[Math.floor(rng(daySeed(`legend:which:${day}`))() * free.length)];
     legends.push(route({ id: `legend:${bug.id}:${day}`, species: bug.id, level: LEGEND_LEVEL, ...spotFor(LEGEND_LEVEL) }));
   }
+  if (!held(STICK_ID) && stickToday(day, tier)) {
+    const at = spots.length ? spotFor(STICK_LEVEL) : { x: 1, y: 1 };
+    legends.push(route({ id: `legend:${STICK_ID}:${day}`, species: STICK_ID, level: STICK_LEVEL, ...at }));
+  }
+  if (steezeToday(day) && spots.length) {
+    legends.push(route({ id: `steeze:${day}`, species: STEEZE_ID, level: STEEZE_LEVEL, ...spotFor(STEEZE_LEVEL) }));
+  }
   return [...loose, ...out, ...deep, ...legends];
+}
+
+/** A per-player forced stick: deepest open tile, its own path, never the day's shared id. */
+function placeStick(shift, id) {
+  const maze = shiftMaze(shift), spots = [];
+  const pool = (p) => (shift.pools || []).some((q) => q.x === p.x && q.y === p.y);
+  const depth = (p) => maze.dist[p.y]?.[p.x] ?? -1;
+  for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
+    if (depth({ x, y }) >= 6 && !pool({ x, y })) spots.push({ x, y });
+  }
+  spots.sort((a, b) => depth(b) - depth(a));
+  const start = spots[0] || { x: Math.max(1, (maze.size >> 1)), y: Math.max(1, (maze.size >> 1)) };
+  const pick = (n) => Math.floor(rng(daySeed(id))() * n);
+  return { id, species: STICK_ID, level: STICK_LEVEL, ...start, path: roamRoute({ ...start }, 8, (p) => depth(p) >= Math.max(3, depth(start) - 3) && !pool(p), pick) };
+}
+
+/** Mid-tunnel, feet on the floor, a short roam so he stays findable. */
+function placeSteeze(shift, id) {
+  const maze = shiftMaze(shift), spots = [];
+  const pool = (p) => (shift.pools || []).some((q) => q.x === p.x && q.y === p.y);
+  const depth = (p) => maze.dist[p.y]?.[p.x] ?? -1;
+  for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
+    if (depth({ x, y }) >= 4 && !pool({ x, y })) spots.push({ x, y });
+  }
+  spots.sort((a, b) => depth(a) - depth(b));
+  const start = spots[Math.floor(spots.length * 0.35)] || spots[0] || { x: Math.max(1, (maze.size >> 1)), y: Math.max(1, (maze.size >> 1)) };
+  const pick = (n) => Math.floor(rng(daySeed(id))() * n);
+  return { id, species: STEEZE_ID, level: STEEZE_LEVEL, ...start, path: roamRoute({ ...start }, 6, (p) => depth(p) >= Math.max(3, depth(start) - 3) && !pool(p), pick) };
 }

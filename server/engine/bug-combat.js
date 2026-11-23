@@ -63,6 +63,7 @@ const KITS = {
   dryococelus: ['guard', 'pierce', 'Ball\'s Pyramid', 'heal', 'Twenty-Four Left', 'weaken'],
   megachile: ['pierce', 'weaken', 'Sealed With Resin', 'guard', 'Bacan Nectar', 'heal'],
   meganeura: ['pierce', 'weaken', 'Stephanian Rest', 'heal', 'Seventy Centimetres', 'guard'],
+  steeze: ['flourish', 'flourish', 'Flex his big calves', 'flourish', 'Order chicken fingers at a restaurant', 'flourish'],
   colobopsis: ['venom', 'guard', 'Epiphyte Graze', 'heal', 'Sixty Metres Up', 'pierce'],
 };
 
@@ -73,6 +74,7 @@ const EFFECTS = {
   pierce: { power: 20, accuracy: 0.88, cooldown: 3, description: 'Ignore armour and half of any guard. Stance protection still applies.' },
   heal: { power: 0, accuracy: 1, cooldown: 4, heal: 22, description: 'Recover HP instead of attacking. Left alone, a bug waits until 65% HP or lower.' },
   weaken: { power: 14, accuracy: 0.9, cooldown: 3, weaken: 0.65, description: 'On hit, reduce the next enemy attack by 35%. Does not stack.' },
+  flourish: { power: 0, accuracy: 1, cooldown: 2, description: 'A short show. It does no damage.' },
 };
 
 export function movesFor(species, level, legacyAbilities = 0) {
@@ -80,11 +82,12 @@ export function movesFor(species, level, legacyAbilities = 0) {
   if (!bug) throw new RangeError('Unknown bug species.');
   const [technique, signature, tacticName, tactic, capstoneName, capstone] = KITS[species];
   const names = [...bug.abilities, tacticName, capstoneName];
-  const effects = ['strike', technique, signature, tactic, capstone];
+  const effects = species === 'steeze' ? ['flourish', 'flourish', 'flourish', 'flourish', 'flourish'] : ['strike', technique, signature, tactic, capstone];
   return MOVE_IDS.map((id, tier) => {
     const effect = effects[tier], base = EFFECTS[effect], extra = Math.max(0, tier - 1) * 2;
+    const flourish = effect === 'flourish' ? ['pose', 'wealth', 'golf', 'calves', 'chicken'][tier] : null;
     return { id, name: names[tier], level: ABILITY_LEVELS[tier], unlocked: level >= ABILITY_LEVELS[tier] || tier < Math.min(3, legacyAbilities),
-      tier, effect, ...base, power: base.power ? base.power + extra : 0, ...(base.heal ? { heal: base.heal + extra } : {}),
+      tier, effect, ...base, power: base.power ? base.power + extra : 0, ...(base.heal ? { heal: base.heal + extra } : {}), ...(flourish ? { flourish } : {}),
       ...(id === 'capstone' && effect === 'pierce' ? { criticalChance: 0.05, description: `${base.description} On a nonlethal hit, 5% chance to leave the opponent at 1 HP.` } : {}) };
   });
 }
@@ -167,6 +170,7 @@ const TRAITS = {
   megachile: ['Largest Living Bee', () => `Every hit it lands is ${pct(TRAIT.giant)} harder.`],
   ampulex: ['Second Sting', () => `Once it has landed two hits, the opponent's hits do ${pct(TRAIT.sting)} less for the rest of the fight. Twice that on a cockroach.`],
   colobopsis: ['Yellow Goo', () => `Its hits do ${pct(TRAIT.minor)} less. The blow that would knock it out sets it off instead: ${TRAIT.goo} damage to the opponent, and if that finishes the opponent it is left standing on 1 HP.`],
+  steeze: ['The Stall Is His Now', () => 'Once he is in a stall, he stays. The calves are not going anywhere.'],
 };
 // The line and what follows it. `p` is a bug's chance by the line (engine/bout.js).
 /** What the other corner puts up against `stake` from a bug the line gives `p`: fair odds, so the favourite risks more. To the whole dollar: bout money never has cents. */

@@ -193,6 +193,7 @@ export function odds(S, i) {
   const s = S.side[i], target = S.side[1 - i];
   return Object.fromEntries(s.moves.filter(move => move.unlocked).map(move => {
     if (move.effect === 'heal') return [move.id, { heal: Math.min(S.maxHp[i] - S.hp[i], Math.round(move.heal * s.stats.damageMultiplier)) }];
+    if (move.effect === 'flourish') return [move.id, { hit: 1, dmg: [0, 0], flourish: move.flourish }];
     return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move, s.attacks + 1, S.turn + 1))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
       ...(move.criticalChance ? { crit: move.criticalChance } : {}),
       ...(move.effect === 'venom' ? { venom: [venomOf(s, target, move), move.duration] } : taints(s, target, move) ? { venom: [venomOf(s, target, TAINT), TAINT.duration] } : {}),
@@ -333,7 +334,16 @@ export function stepBout(S, choice) {
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
   let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false, mulligan = false;
   const encore = target.c.rule === 'encore' && s.prev === move.id && move.effect !== 'heal';
-  if (move.effect === 'heal') {
+  if (move.effect === 'flourish') {
+    hit = true; dmg = 0;
+    detail = {
+      pose: 'strikes a pose. Nobody is hurt',
+      wealth: 'hordes wealth. Coins pile up. Nobody is hurt',
+      golf: 'takes a swing. The ball flies. The other bug is only impressed',
+      calves: 'flexes his big calves. The ring takes a moment',
+      chicken: 'flags down a waiter and orders chicken fingers',
+    }[move.flourish] || 'shows off. No damage';
+  } else if (move.effect === 'heal') {
     healed = Math.min(maxHp[by] - hp[by], Math.round(move.heal * s.stats.damageMultiplier)); hp[by] += healed;
     detail = `recovers ${healed} HP`;
     if (s.t === 'helicopsyche') { s.guard = TRAIT.caseGuard; s.guardLeft = 1; detail += ' and coils into its case'; }
@@ -381,7 +391,7 @@ export function stepBout(S, choice) {
   }
   s.prev = move.id;
   if (encore && hit) detail += '; the judge has seen that one';
-  rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
+  rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(move.flourish ? { flourish: move.flourish } : {}), ...(poisons ? { poisons } : {}),
     line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : mulligan ? (s.c.rule === 'mulligan' ? 'takes a mulligan and uses' : 'says that one did not count, and retakes') : 'uses'} ${move.name}: ${detail}.${spots()}` });
   pop(foe); bursts();
   return done();
