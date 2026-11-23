@@ -146,7 +146,8 @@ test('spriteCanvas and bugTexture upgrade asynchronously once WebP loads and cle
   const beetle = ROSTER.find((b) => stage1ArchetypeOf(b) === 'beetle');
   const style = { bugskin: { id: 'stage1-async-test', pal: ['#100400', '#3a0a04', '#8a1a08', '#ff5a10', '#ffd040'] } };
   assert.equal(isHiResSprite(beetle, style, 10), true);
-  assert.equal(isHiResSprite(beetle, { ...style, evo: 1 }, 10), false);
+  assert.equal(isHiResSprite(beetle, { ...style, evo: 1 }, 10), true);
+  assert.equal(isHiResSprite(BY_ID.steeze, { evo: 1 }, 10), false);
 
   const canvas = spriteCanvas(beetle, style, 10, 2);
   assert.equal(canvas.width, 512);

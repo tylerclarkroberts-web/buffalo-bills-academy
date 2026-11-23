@@ -3,16 +3,18 @@
 // one-pixel outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
-import { drawEvolution } from './evolutionArt.js';
+import { drawEvolution, evolutionMeta } from './evolutionArt.js';
 import { loadSpriteImage, notifySpriteReady, onSpriteReady } from './spriteLoader.js';
 import { stage1Meta, tintImageData } from './stage1Art.js';
-export { onSpriteReady, stage1Meta };
+export { evolutionMeta, onSpriteReady, stage1Meta };
 export const SPRITE = 64;
 // Big sprites are drawn on a grid FINE times as dense: the same shapes, written in the same 64-grid coordinates, with
 // smoother edges, a thinner outline and two more tones of shading. Small ones (thumbnails, far-off billboards) keep 64.
 export const FINE = 2;
 export const HI_COARSE = 256;
 export const HI_FINE = 512;
+export const EVO_COARSE = HI_COARSE;
+export const EVO_FINE = HI_FINE;
 /** The grid to draw a sprite on when it will be shown `s` pixels across: the fine one once each of its pixels gets a whole screen pixel. */
 export const fineFor = (s) => (s >= SPRITE * FINE ? FINE : 1);
 
@@ -579,16 +581,22 @@ function paintWearScaled(ctx, wear, body, outline, N, fine) {
   }
 }
 
+/** True when an evolved bug/style resolves to a pre-rendered Stage II/III/Botched WebP sprite. */
+export function isHiResEvo(bug, style) {
+  const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
+  return stage > 0 && !!evolutionMeta(bug, stage, !!style?.botched)?.src;
+}
+
 /** True when this bug/style/level resolves to an enabled pre-rendered high-res WebP sprite. */
 export function isHiResSprite(bug, style, level) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
-  if (stage !== 0 || !bug) return false;
-  return !!stage1Meta(bug, youngForm(bug, level))?.src;
+  if (stage === 0) return !!(bug && stage1Meta(bug, youngForm(bug, level))?.src);
+  return isHiResEvo(bug, style);
 }
 
 /**
  * The bug's sprite, cached by species, life stage and look, with its accessories: 64x64, or 64 x `fine` a side for
- * a big drawing (fineFor); high-res Stage I bugs upgrade cleanly to tinted 256/512 WebPs once loaded.
+ * a big drawing (fineFor); high-res Stage I (tinted) and evolved Stage II/III WebPs upgrade cleanly once loaded.
  */
 export function spriteCanvas(bug, style, level, fine = 1) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
@@ -596,8 +604,10 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   const artLevel = stage ? undefined : level;
   const young = youngForm(bug, artLevel);
   const s1 = stage === 0 ? stage1Meta(bug, young) : null;
-  const hiAsset = !!s1?.src;
-  const key = `${bug.id}|${young || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${hiAsset ? s1.key : ''}|${fine}`;
+  const evo = stage > 0 ? evolutionMeta(bug, stage, botched) : null;
+  const hiMeta = s1?.src ? s1 : evo?.src ? evo : null;
+  const hiAsset = !!hiMeta;
+  const key = `${bug.id}|${young || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${hiAsset ? hiMeta.key : ''}|${fine}`;
   if (cache.has(key)) return cache.get(key);
   const L = lookOf(bug, artLevel), pal = style?.bugskin?.pal ?? L.pal ?? DEFAULT_PAL, R = ramps(pal);
   const art = spriteArt(L, fine, stage, botched), N = hiAsset ? (fine > 1 ? HI_FINE : HI_COARSE) : SPRITE * fine;
@@ -636,36 +646,42 @@ export function spriteCanvas(bug, style, level, fine = 1) {
       if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, N, N);
       ctx.restore?.();
-      const anchors = STAGE1_WEAR_ANCHORS[s1.key];
       let artMask;
-      if (typeof ctx.getImageData === 'function') {
-        const imgData = ctx.getImageData(0, 0, N, N);
-        tintImageData(imgData.data, pal);
-        ctx.putImageData(imgData, 0, 0);
-        if (hasWear && anchors) {
-          const step = N / SPRITE, half = step / 2;
-          artMask = Array.from({ length: SPRITE }, (_, row) => Array.from({ length: SPRITE }, (_, col) => (
-            imgData.data[((row * step + half) * N + col * step + half) * 4 + 3] >= 128
-          )));
+      if (stage === 0) {
+        const anchors = STAGE1_WEAR_ANCHORS[hiMeta.key];
+        if (typeof ctx.getImageData === 'function') {
+          const imgData = ctx.getImageData(0, 0, N, N);
+          tintImageData(imgData.data, pal);
+          ctx.putImageData(imgData, 0, 0);
+          if (hasWear && anchors) {
+            const step = N / SPRITE, half = step / 2;
+            artMask = Array.from({ length: SPRITE }, (_, row) => Array.from({ length: SPRITE }, (_, col) => (
+              imgData.data[((row * step + half) * N + col * step + half) * 4 + 3] >= 128
+            )));
+          }
         }
+        if (artMask) {
+          const [left, right, y] = anchors.eyes;
+          paintOverlays(artMask, { x: (left + right) / 2, left, right, y }, anchors.crown, true);
+        } else if (hasWear) {
+          paintOverlays(grid, proceduralEye, undefined, true);
+        }
+      } else if (hasWear) {
+        paintOverlays(grid, proceduralEye, undefined, true);
       }
-      if (artMask) {
-        const [left, right, y] = anchors.eyes;
-        paintOverlays(artMask, { x: (left + right) / 2, left, right, y }, anchors.crown, true);
-      } else if (hasWear) paintOverlays(grid, proceduralEye, undefined, true);
       c._hiRes = true;
       c._rev = (c._rev || 0) + 1;
       if (notify) notifySpriteReady(c);
     };
     let sync = true;
-    loadSpriteImage(s1.src, (img) => paintHiRes(img, !sync));
+    loadSpriteImage(hiMeta.src, (img) => paintHiRes(img, !sync));
     sync = false;
   }
   return c;
 }
 /**
- * A three.js texture of the bug for a 3D scene (pass the THREE module): procedural stages use pixel-crisp mipmaps
- * (`NearestFilter`); high-res WebP sprites use smooth mipmapped filtering and refresh automatically when loaded.
+ * A three.js texture of the bug for a 3D scene (pass the THREE module): procedural sprites/cameos use pixel-crisp
+ * mipmaps (`NearestFilter`); high-res WebP sprites use smooth mipmapped filtering and refresh automatically on load.
  */
 export function bugTexture(THREE, bug, style, level) {
   if (!isHiResSprite(bug, style, level)) {
