@@ -20,7 +20,7 @@ export default function MinePreviewPage() {
   const [gate, setGate] = useState({ loading: true, data: null, error: null });
   const params = new URLSearchParams(window.location.search);
   const shot = SHOTS.includes(params.get('shot')) ? params.get('shot') : 'stick-wall';
-  const battle = shot.includes('battle') || shot === 'steeze-golf' || shot === 'steeze-chicken';
+  const battle = shot.includes('battle') || Boolean(flourishOf(shot));
   const canvas = useRef(null);
   const [ready, setReady] = useState(false);
 

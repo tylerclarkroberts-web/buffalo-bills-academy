@@ -89,7 +89,7 @@ async function previewShot(browser, sid, device, query, name, { animations, extr
   if (query === 'stick-intro') {
     await p.locator('[data-test=stick-intro-title]').waitFor({ timeout: 4000 });
     await p.waitForTimeout(200);
-  } else if (query.includes('battle') || query === 'steeze-golf' || query === 'steeze-chicken') {
+  } else if (query.includes('battle') || query.startsWith('steeze-') && query !== 'steeze-tunnel') {
     await p.locator('.bout').waitFor({ timeout: 5000 });
     await waitReady(p, extra ?? 400);
   } else {
@@ -99,7 +99,7 @@ async function previewShot(browser, sid, device, query, name, { animations, extr
     const body = document.body.innerText || '';
     return { title: body.includes('LEGENDARY') || body.includes('Lord Howe'), steeze: body.includes('STEEZE'), ready: document.querySelector('[data-test=mine-preview]')?.getAttribute('data-ready') };
   });
-  if (!query.includes('battle') && query !== 'steeze-golf' && query !== 'steeze-chicken') {
+  if (query === 'stick-wall' || query === 'stick-ceiling' || query === 'stick-intro' || query === 'steeze-tunnel') {
     const avg = await p.evaluate(() => {
       const c = document.querySelector('[data-test=mine-preview-canvas]');
       if (!c) return 0;
@@ -192,10 +192,16 @@ async function main() {
 
     await previewShot(browser, sid, null, 'steeze-tunnel', 'steeze-desktop-1280-tunnel', { extra: 400 });
     await previewShot(browser, sid, null, 'steeze-battle', 'steeze-desktop-1280-battle', { extra: 400 });
-    await previewShot(browser, sid, null, 'steeze-golf', 'steeze-desktop-1280-move-golf', { animations: 'allow', extra: 700 });
-    await previewShot(browser, sid, null, 'steeze-chicken', 'steeze-desktop-1280-move-chicken', { animations: 'allow', extra: 700 });
+    await previewShot(browser, sid, null, 'steeze-golf', 'steeze-desktop-1280-move-golf', { animations: 'allow', extra: 400 });
+    await previewShot(browser, sid, null, 'steeze-chicken', 'steeze-desktop-1280-move-chicken', { animations: 'allow', extra: 400 });
+    await previewShot(browser, sid, null, 'steeze-calves', 'steeze-desktop-1280-move-calves', { animations: 'allow', extra: 400 });
+    await previewShot(browser, sid, null, 'steeze-wealth', 'steeze-desktop-1280-move-wealth', { animations: 'allow', extra: 400 });
     await previewShot(browser, sid, phone, 'steeze-tunnel', 'steeze-iphone-15-tunnel', { extra: 400 });
-    await previewShot(browser, sid, phone, 'steeze-golf', 'steeze-iphone-15-move-golf', { animations: 'allow', extra: 700 });
+    await previewShot(browser, sid, phone, 'steeze-battle', 'steeze-iphone-15-battle', { extra: 400 });
+    await previewShot(browser, sid, phone, 'steeze-golf', 'steeze-iphone-15-move-golf', { animations: 'allow', extra: 400 });
+    await previewShot(browser, sid, phone, 'steeze-chicken', 'steeze-iphone-15-move-chicken', { animations: 'allow', extra: 400 });
+    await previewShot(browser, sid, phone, 'steeze-calves', 'steeze-iphone-15-move-calves', { animations: 'allow', extra: 400 });
+    await previewShot(browser, sid, phone, 'steeze-wealth', 'steeze-iphone-15-move-wealth', { animations: 'allow', extra: 400 });
 
     await barnShot(browser, sid, cookie, null, 'dryococelus', 'notes', 'desktop-1280-ledger');
     await barnShot(browser, sid, cookie, phone, 'dryococelus', 'notes', 'iphone-15-ledger');

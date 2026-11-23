@@ -835,7 +835,7 @@ export const BUGS = [
     ],
     sources: [W('Dryococelus_australis')],
     stats: { atk: 4, def: 4, spd: 3 }, abilities: ['Lobster Clamp', 'Hind Leg Spur', 'One Shrub'],
-    look: { kind: 'stick', pal: ['#0a0604', '#24140c', '#4a2a18', '#7a4a2c', '#c89a5a'] },
+    look: { kind: 'tree-lobster', pal: ['#050302', '#140c08', '#2a1a10', '#5a3a22', '#c8a060'] },
     voice: { wave: 'triangle', base: 120, glide: -20, pattern: [0, 7] } },
   { id: 'megachile', sci: 'Megachile pluto', name: 'Wallace\'s Giant Bee', order: 'Bee · Megachilidae',
     range: 'Three islands of the North Moluccas in Indonesia: Bacan, Halmahera and Tidore.', size: 'Females up to 38 mm long, with a wingspan of 63.5 mm. Males about 23 mm.',

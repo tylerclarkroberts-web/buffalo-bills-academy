@@ -18,3 +18,7 @@
 .mine-preview-stage.m-play { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .mine-preview-stage .m-top { position: absolute; top: 0; left: 0; right: 0; }
 .mine-preview.clean .mine-preview-banner { display: none; }
+
+.mine-preview .steeze-show.calves .zoom { animation: none; transform: scale(1.08) translateY(-4%); }
+.mine-preview .steeze-show.wealth .coin, .mine-preview .steeze-show.wealth .bill { animation: none; transform: translateY(72px) rotate(32deg); opacity: 1; }
+.mine-preview .steeze-show.wealth .pile { animation: none; opacity: .95; transform: none; }

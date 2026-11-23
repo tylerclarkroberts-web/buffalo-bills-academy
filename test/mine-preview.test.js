@@ -24,11 +24,13 @@ test('the mine preview is labeled and bookmarked at /admin/mine-preview', () => 
 });
 
 test('preview shots cover the stick insect on a wall and ceiling, the intro, the level-30 battle, and STEEZE', () => {
-  for (const s of ['stick-wall', 'stick-ceiling', 'stick-intro', 'stick-battle', 'steeze-tunnel', 'steeze-battle', 'steeze-golf', 'steeze-chicken']) {
+  for (const s of ['stick-wall', 'stick-ceiling', 'stick-intro', 'stick-battle', 'steeze-tunnel', 'steeze-battle', 'steeze-golf', 'steeze-chicken', 'steeze-calves', 'steeze-wealth']) {
     assert.ok(SHOTS.includes(s), s);
   }
   assert.equal(flourishOf('steeze-golf'), 'golf');
   assert.equal(flourishOf('steeze-chicken'), 'chicken');
+  assert.equal(flourishOf('steeze-calves'), 'calves');
+  assert.equal(flourishOf('steeze-wealth'), 'wealth');
 });
 
 test('the preview battle names the stick insect at level 30 and STEEZE as STEEZE', () => {

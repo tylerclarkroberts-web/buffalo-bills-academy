@@ -164,3 +164,15 @@ test('a caught stick insect is labeled Lord Howe Island Stick Insect, not a genu
   assert.equal(givenName('steeze', 'Bocydium'), 'STEEZE');
   assert.equal(givenName('lamprima', 'Lamprima'), 'Lamprima');
 });
+
+test('the battle sprite is a long thin tree lobster, clearly larger than a regular bug at level 30', async () => {
+  const { spriteGrid, bugScale } = await import('../client/src/barn/sprite.js');
+  assert.ok(bugScale(30, 'dryococelus') > bugScale(10, 'lamprima') * 1.35, `legendary scale ${bugScale(30, 'dryococelus')} vs regular ${bugScale(10, 'lamprima')}`);
+  assert.equal(BY_ID.dryococelus.look.kind, 'tree-lobster');
+  const g = spriteGrid(BY_ID.dryococelus, 30, 1);
+  let minX = 64, maxX = 0, minY = 64, maxY = 0, n = 0;
+  g.forEach((row, y) => row.forEach((c, x) => { if (c) { n++; minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); } }));
+  const w = maxX - minX + 1, h = maxY - minY + 1;
+  assert.ok(n > 80, 'the sprite has a body');
+  assert.ok(h > w * 1.2, `should be longer than wide, got ${w}×${h}`);
+});

@@ -11,7 +11,7 @@ export const MINE_PREVIEW_LABEL = 'Preview: not a real shift';
 
 export const SHOTS = [
   'stick-wall', 'stick-ceiling', 'stick-intro', 'stick-battle',
-  'steeze-tunnel', 'steeze-battle', 'steeze-golf', 'steeze-chicken',
+  'steeze-tunnel', 'steeze-battle', 'steeze-golf', 'steeze-chicken', 'steeze-calves', 'steeze-wealth',
 ];
 
 const TILE = STICK_TILE, WALL_H = STICK_WALL_H;
@@ -168,14 +168,15 @@ function corridorGrid() {
 function placeStick(scene, surface) {
   const built = buildStick();
   built.group.scale.set(1.25, 1.25, 1.25);
-  if (built.fill) { built.fill.intensity = 4.2; built.fill.distance = 8; }
+  // A modest key, not a copper wash: the shell should stay glossy black-brown.
+  if (built.fill) { built.fill.intensity = 1.55; built.fill.distance = 6; built.fill.color.set(0x9a7a55); }
   built.group.traverse((o) => {
     if (o.isMesh && o.material && o.material.emissive) {
-      o.material.emissive = new THREE.Color(0x3a2414);
-      o.material.emissiveIntensity = 0.55;
+      o.material.emissive = new THREE.Color(0x120c08);
+      o.material.emissiveIntensity = 0.16;
     }
   });
-  const heading = surface.kind === 'wall' ? Math.PI / 2 : 0;
+  const heading = surface.kind === 'wall' ? Math.PI : 0;
   poseStick(built, {
     grid: corridorGrid(),
     x: 0, z: 0, heading, now: 800,
@@ -207,11 +208,15 @@ function placeSteeze(scene) {
 
 function frameCamera(camera, shot, target) {
   if (shot === 'stick-wall' || shot === 'stick-intro') {
-    camera.position.set(-0.15, 1.25, 2.35);
-    camera.lookAt(target.x, 1.05, 0.1);
+    // Stand in the shaft and look at the right-hand wall so the long body reads in profile,
+    // not as a head-on bundle of antennae.
+    // 3/4 from slightly behind the head, looking along the wall so the full
+    // animal (head, long thorax, tapered abdomen) fits on a tall phone too.
+    camera.position.set(-0.7, 1.24, -2.0);
+    camera.lookAt(0.5, 0.95, -0.3);
   } else if (shot === 'stick-ceiling') {
-    camera.position.set(0.1, 1.05, 1.85);
-    camera.lookAt(0, WALL_H - 0.15, 0);
+    camera.position.set(0.4, 0.95, 2.2);
+    camera.lookAt(0, WALL_H - 0.32, -0.25);
   } else {
     // STEEZE mid-tunnel: stand a couple of metres in front, eye height.
     camera.position.set(0.18, 1.32, 2.55);
@@ -319,5 +324,7 @@ export function previewBout(kind) {
 export function flourishOf(shot) {
   if (shot === 'steeze-golf') return 'golf';
   if (shot === 'steeze-chicken') return 'chicken';
+  if (shot === 'steeze-calves') return 'calves';
+  if (shot === 'steeze-wealth') return 'wealth';
   return null;
 }

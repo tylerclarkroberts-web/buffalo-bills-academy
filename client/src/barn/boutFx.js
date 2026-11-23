@@ -257,24 +257,42 @@ function drawFighter(x, f, p, size, face) {
   const bug = BY_ID[f?.species]; if (!bug) return;
   if (bug.id === 'steeze') {
     const photo = steezePhoto();
-    const s = size * 1.35 * (1 + (p.alt / size) * 0.25);
-    x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
-    x.fillStyle = 'rgba(0,0,0,.4)';
-    x.beginPath(); x.ellipse(0, s * 0.48, s * 0.22, s * 0.06, 0, 0, Math.PI * 2); x.fill();
+    const s = size * (1 + (p.alt / size) * 0.12);
+    // Billboard: always upright in the ring, feet on the boards, a contact shadow, a slight
+    // inward face. Ignore the top-down `face` rotation that laid the standing photo flat.
+    const inward = face > Math.PI / 2 && face < Math.PI * 1.5 ? -1 : 1;
+    x.save();
+    x.translate(p.x, p.y);
+    x.scale((p.sx || 1) * inward, p.sy || 1);
+    const h = Math.min(s * 1.02, Math.max(48, p.y - 10));
+    const aspect = photo ? (photo.width / photo.height) : 0.48;
+    const w = h * aspect;
+    x.fillStyle = 'rgba(0,0,0,.5)';
+    x.beginPath(); x.ellipse(0, 2, w * 0.42, Math.max(6, h * 0.06), 0, 0, Math.PI * 2); x.fill();
     if (photo) {
       x.filter = 'brightness(0.86) sepia(0.2) saturate(0.9)';
-      const aspect = photo.width / photo.height;
-      x.drawImage(photo, -s * aspect / 2, -s * 0.95, s * aspect, s);
+      x.drawImage(photo, -w / 2, -h - p.alt, w, h);
       x.filter = 'none';
     } else {
-      x.fillStyle = '#c9a050'; x.font = `bold ${Math.max(12, size * 0.14)}px sans-serif`; x.textAlign = 'center'; x.fillText('STEEZE', 0, 0);
+      x.fillStyle = '#c9a050'; x.font = `bold ${Math.max(12, h * 0.12)}px sans-serif`; x.textAlign = 'center';
+      x.fillText('STEEZE', 0, -h * 0.5);
     }
     x.restore();
     return;
   }
-  const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
+  const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level, f.species), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
   const s = grown * (1 + (p.alt / size) * 0.25);
   x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy); x.imageSmoothingEnabled = false;
+  if (bug.id === 'dryococelus') {
+    const glow = x.createRadialGradient(0, 0, s * 0.18, 0, 0, s * 0.62);
+    glow.addColorStop(0, 'rgba(232, 196, 96, 0.28)');
+    glow.addColorStop(0.55, 'rgba(200, 150, 50, 0.1)');
+    glow.addColorStop(1, 'rgba(200, 150, 50, 0)');
+    x.fillStyle = glow;
+    x.beginPath(); x.ellipse(0, 0, s * 0.38, s * 0.58, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = 'rgba(0,0,0,.32)';
+    x.beginPath(); x.ellipse(0, s * 0.42, s * 0.22, s * 0.07, 0, 0, Math.PI * 2); x.fill();
+  }
   x.drawImage(p.flash ? tinted(img, p.flash) : img, -s / 2, -s / 2, s, s);
   if (p.tint) { x.globalAlpha = p.tint[1]; x.drawImage(tinted(img, p.tint[0]), -s / 2, -s / 2, s, s); }
   x.restore();
