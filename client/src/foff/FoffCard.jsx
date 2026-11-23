@@ -44,8 +44,8 @@ function FoffUnlock({ layout }) {
   const [open, setOpen] = useState(false);
   const bare = layout === 'card';
   const body = on
-    ? <UnlockedPromo bare={bare} reveal={reveal} />
-    : <WatchPromo bare={bare} onWatch={() => setOpen(true)} />;
+    ? <UnlockedPromo bare={bare} reveal={reveal} title={title} />
+    : <WatchPromo bare={bare} onWatch={() => setOpen(true)} title={title} />;
   return (
     <>
       {layout === 'card' ? (
@@ -56,12 +56,12 @@ function FoffUnlock({ layout }) {
       ) : (
         <div data-test="foff-card">{body}</div>
       )}
-      {open && !on && <FilmModal onClose={() => setOpen(false)} onWatched={async () => { if (await unlock()) setOpen(false); }} />}
+      {open && !on && <FilmModal title={title} onClose={() => setOpen(false)} onWatched={async () => { if (await unlock()) setOpen(false); }} />}
     </>
   );
 }
 
-function WatchPromo({ bare, onWatch }) {
+function WatchPromo({ bare, onWatch, title }) {
   return (
     <div className={`slots-promo foff-watch ${bare ? 'bare' : ''}`}>
       <button type="button" className="foff-thumb" onClick={onWatch} aria-label="Watch the film" data-test="foff-thumb">
@@ -77,7 +77,7 @@ function WatchPromo({ bare, onWatch }) {
   );
 }
 
-function UnlockedPromo({ bare, reveal }) {
+function UnlockedPromo({ bare, reveal, title }) {
   return (
     <div className={`slots-promo foff-promo ${bare ? 'bare' : ''}${reveal ? ' reveal' : ''}`} data-test="foff-tile">
       {reveal && <span className="foff-confetti" aria-hidden="true">{CONFETTI.map(([bg, left, spin], i) => (
@@ -108,7 +108,7 @@ function FoffArt() {
   );
 }
 
-function FilmModal({ onClose, onWatched }) {
+function FilmModal({ title, onClose, onWatched }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
