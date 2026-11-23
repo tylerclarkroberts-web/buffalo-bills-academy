@@ -59,6 +59,7 @@
     "e2e:horror": "node scripts/e2e-horror.mjs",
     "e2e:scum-royal": "node scripts/e2e-scum-royal.mjs",
     "e2e:scum-song": "node scripts/e2e-scum-song.mjs",
+    "e2e:scum-bubbles": "node scripts/e2e-scum-chat-bubbles.mjs",
     "e2e:kash": "node scripts/e2e-kash-bet.mjs",
     "e2e:dealer": "node scripts/e2e-dealer-presence.mjs",
     "e2e:pitboss": "node scripts/e2e-pitboss.mjs",

@@ -9,12 +9,13 @@
 // so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, levelFor, rawLevel, xpFor, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
+import { ROSTER, BY_ID, givenName, levelFor, rawLevel, xpFor, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { QUIRKS, MAN_QUIRKS } from './engine/bout.js';
 import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
+import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
@@ -97,7 +98,7 @@ export function strengthOf(pen) {
   const xp = Math.max(0, Number(pen.xp) || 0);
   const rec = pen.record || {};
   return {
-    name: pen.name || 'A bug',
+    name: givenName(pen.species, pen.name),
     species: pen.species || '',
     speciesName: BY_ID[pen.species]?.name || pen.species || '',
     level: levelFor(xp, pen.cap),
@@ -152,6 +153,9 @@ export class Barn {
         pen.legacyAbilities = [1, 3, 5].filter((level) => levelFor(pen.xp, pen.cap) >= level).length;
         pen.combatVersion = 1; n++;
       }
+      if (pen.stage === 'creature' && BY_ID[pen.species]?.fixedName && pen.name !== BY_ID[pen.species].name) {
+        pen.name = BY_ID[pen.species].name; n++;
+      }
       if (BY_ID[pen.species]) continue;
       const bug = ROSTER[this.eggInt(ROSTER.length)];
       pen.oldSpecies = pen.species; pen.species = bug.id; pen.migratedAt = now; n++;
@@ -164,6 +168,10 @@ export class Barn {
     return n;
   }
   newName(playerId, bug, records = this.doc) {
+    if (bug?.fixedName) {
+      records.count[bug.id] = (records.count[bug.id] || 0) + 1;
+      return bug.name;
+    }
     const nick = bug.sci.split(' ')[0];
     const n = (records.count[bug.id] || 0) + 1;
     let name = `${nick} ${roman(n)}`.trim();
@@ -246,7 +254,7 @@ export class Barn {
     let at = now; while (this.bugs(playerId).some((pen) => idOf(pen) === at || pen.bornAt === at)) at++; // its id, and the bornAt its fight receipts go by
     const changes = { names: { ...this.doc.names }, count: { ...this.doc.count }, wildCatches: { ...this.doc.wildCatches, [wildId]: battleId } };
     if (name) changes.names[name.toLowerCase()] = playerId;
-    const pen = { stage: 'creature', species, name: name || this.newName(playerId, BY_ID[species], changes), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
+    const pen = { stage: 'creature', species, name: givenName(species, name || this.newName(playerId, BY_ID[species], changes)), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 60, at: now }])), ...(stalled ? { benchedAt: now } : {}) };
     if (stalled) changes.bench = { ...this.doc.bench, [playerId]: [...(this.doc.bench[playerId] || []), pen] };
     else changes.pens = { ...this.doc.pens, [playerId]: pen };
@@ -400,12 +408,12 @@ export class Barn {
     const which = { id: idOf(pen), partner: pen === this.doc.pens[playerId] };
     if (pen.stage === 'egg') return { pen: { ...which, stage: 'egg', eggAt: pen.eggAt, hatchAt: pen.hatchAt, warmCoolMs: Math.max(0, (pen.warmedAt || 0) + CARE.play.cooldownMs - now) }, serverNow: now };
     const c = BY_ID[pen.species];
-    if (pen.stage === 'dead') return { pen: { ...which, stage: 'dead', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt, diedAt: pen.diedAt, level: levelFor(pen.xp, pen.cap), record: pen.record || { w: 0, l: 0, d: 0 } }, serverNow: now };
+    if (pen.stage === 'dead') return { pen: { ...which, stage: 'dead', species: c.id, speciesName: c.name, sci: c.sci, name: givenName(pen.species, pen.name), bornAt: pen.bornAt, diedAt: pen.diedAt, level: levelFor(pen.xp, pen.cap), record: pen.record || { w: 0, l: 0, d: 0 } }, serverNow: now };
     const level = levelFor(pen.xp, pen.cap);
     const needs = this.needs(pen, now);
     const cool = Object.fromEntries(Object.entries(CARE).map(([k, a]) => [k, Math.max(0, (pen.cool[k] || 0) + a.cooldownMs - now)]));
     const dies = this.deathAt(pen); const warn = this.starving(pen, now);
-    return { pen: { ...which, stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt,
+    return { pen: { ...which, stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: givenName(pen.species, pen.name), bornAt: pen.bornAt,
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen) || null, gearBonus: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= (pen.cap || PAUSED_AT) ? null : xpFor(level + 1), cap: pen.cap || PAUSED_AT,
       evo: pen.evo || 0, ...(pen.botched ? { botched: pen.botched } : {}), ...(pen.sick ? { sick: true } : {}), ...(pen.taken ? { taken: true, donors: this.donors(playerId, pen).map((d) => ({ id: idOf(d), name: d.name, species: d.species, level: levelFor(d.xp, d.cap) })) } : {}),
@@ -477,7 +485,7 @@ export class Barn {
 
   fighter(playerId, pen) {
     const level = levelFor(pen.xp, pen.cap);
-    return { species: pen.species, name: pen.name, level, health: healthOf(pen),
+    return { species: pen.species, name: givenName(pen.species, pen.name), level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
       gear: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, defense: this.styleOf?.(playerId, idOf(pen)).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen),
       legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle), ...(pen.botched ? { botched: pen.botched } : {}) };
@@ -970,6 +978,7 @@ export class Barn {
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
     if (pen.taken) throw new GameError(`${pen.name} is not here to let go.`, 409);
     if (rarityOf(pen.species) === LEGENDARY) throw new GameError('A legendary cannot be let go. There is only the one.', 409);
+    if (isSteeze(pen.species)) throw new GameError(STEEZE_STUCK, 409);
     const stray = { id: `stray:${playerId}:${pen.bornAt}`, species: pen.species, name: pen.name, level: levelFor(pen.xp, pen.cap), owner: this.store.players[playerId]?.name || 'Somebody', at: this.now() };
     const changes = { strays: [...(this.doc.strays || []), stray].slice(-STRAYS_KEPT) };
     if (pen === this.doc.pens[playerId]) { changes.pens = { ...this.doc.pens }; delete changes.pens[playerId]; }
@@ -982,6 +991,10 @@ export class Barn {
   holds(species) {
     const kept = (pen) => pen?.species === species && pen.stage !== 'dead';
     return Object.values(this.doc.pens).some(kept) || Object.values(this.doc.bench || {}).some((bench) => bench.some(kept)) || this.strays().some((stray) => stray.species === species);
+  }
+  /** Whether this miner already has a living STEEZE (or any named species) in a stall. Others can still catch their own. */
+  ownerHolds(playerId, species) {
+    return this.bugs(playerId).some((pen) => pen?.species === species && pen.stage !== 'dead');
   }
   /** Released bugs nobody has caught yet. */
   strays() { return (this.doc.strays || []).filter((stray) => !this.wildCaught(stray.id)); }

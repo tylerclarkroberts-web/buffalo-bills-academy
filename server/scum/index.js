@@ -6,7 +6,7 @@
 // bot King). Humans need $10 (the worst dues) to be dealt in; below that the seat is saved and they sit out until
 // the Acid Mines pay for their way back. Bots never touch money.
 import crypto from 'node:crypto';
-import { GameError } from '../engine/game.js';
+import { GameError, cleanSay } from '../engine/game.js';
 import { attachSeatBugs, tableBugOf } from '../tableBug.js';
 import * as S from './rules.js';
 import * as Royal from './royal.js';
@@ -32,6 +32,7 @@ export class Scum {
     this.payouts = !!(payouts && accounts);
     this.doc = store.loadDoc('scum', { tables: {} }); this.doc.tables ||= {};
     this.seen = new Map(); // `${code}:${playerId}` -> last time their table page was in front (memory only)
+    this.sayLog = new Map(); // playerId -> recent bubble timestamps (10 a minute, memory only)
     if (tickMs) { this.timer = setInterval(() => this.tick(), tickMs); this.timer.unref?.(); }
   }
   stop() { clearInterval(this.timer); }
@@ -160,7 +161,12 @@ export class Scum {
       this.clock(t);
     }
   }
-  clock(t) { const r = t.round; r.turnAt = this.now(); r.deadline = this.now() + t.turnSec * 1000; }
+  clock(t) {
+    const r = t.round;
+    // a speech bubble lasts until its owner's next turn begins
+    if (r.turn != null && t.seats[r.turn]?.say) delete t.seats[r.turn].say;
+    r.turnAt = this.now(); r.deadline = this.now() + t.turnSec * 1000;
+  }
 
   // ---------------------------------------------------------------- play
   mySeat(t, p) { const i = t.seats.findIndex((s) => s && !s.left && s.id === p.id); if (i < 0) throw new GameError('Take a seat first.', 409); return i; }
@@ -323,7 +329,7 @@ export class Scum {
   leave(p, code) {
     const t = this.table(code);
     return this.mutate(t, p.id, () => {
-      const i = this.mySeat(t, p); const s = t.seats[i];
+      const i = this.mySeat(t, p); const s = t.seats[i]; if (s.say) delete s.say;
       if (t.status === 'lobby') { t.seats[i] = null; this.log(t, `${s.name} gets up.`, { k: 'leave', seat: i }); }
       else {
         s.left = true;
@@ -397,6 +403,26 @@ export class Scum {
     return this.viewOf(t, p.id);
   }
 
+  /** Speech bubble: seated players only, 10 edits a minute each (in memory; resets on restart, which is fine). */
+  say(p, code, text) {
+    const t = this.table(code);
+    const i = t.seats.findIndex((s) => s && !s.left && s.id === p.id);
+    if (i < 0) throw new GameError('Take a seat to talk at this table.', 403);
+    cleanSay(text); // reject too-long text before it costs a rate-limit slot
+    const now = this.now();
+    const recent = (this.sayLog.get(p.id) || []).filter((x) => now - x < 60000);
+    if (recent.length >= 10) throw new GameError('Easy, partner. Too many bubbles: try again in a minute.', 429);
+    recent.push(now); this.sayLog.set(p.id, recent);
+    return this.mutate(t, p.id, () => {
+      const clean = cleanSay(text);
+      const prev = t.seats[i].say?.text || '';
+      if (clean) t.seats[i].say = { text: clean, at: this.now() };
+      else delete t.seats[i].say;
+      if (clean && clean !== prev) this.log(t, `${t.seats[i].name}: ${clean}`, { k: 'say', from: p.id, fromName: t.seats[i].name, seat: i, text: clean });
+      else t.seq = (t.seq || 0) + 1; // pollers still see a clear or a no-op edit
+    });
+  }
+
   // ---------------------------------------------------------------- the view (never another player's cards)
   view(p, code, { away = false } = {}) {
     const t = this.table(code);
@@ -413,7 +439,7 @@ export class Scum {
       const pl = s.bot ? null : this.getPlayer(s.id);
       const avatar = s.bot ? { kind: 'gen', seed: `scumbot:${s.name}`, bot: true } : this.avatars && pl ? this.avatars.info(pl) : { kind: 'gen', seed: s.id };
       return { i, id: s.bot ? null : s.id, name: s.name, me: i === me, bot: !!s.bot, left: !!s.left, waiting: !!s.waiting, count: r?.hands?.[i]?.length ?? 0,
-        title: t.titles?.[i] || null, broke: !!s.broke, pay: (t.lastRound?.finish || []).find((x) => x.seat === i)?.net ?? null, place: r ? r.finished.indexOf(i) + 1 || null : null, here: !s.bot && here.includes(s.id), turn: waiting.includes(i), passed: !!(r?.passed || []).includes(i), skipped: r?.skipped === i, avatar, stats: s.stats };
+        title: t.titles?.[i] || null, broke: !!s.broke, pay: (t.lastRound?.finish || []).find((x) => x.seat === i)?.net ?? null, place: r ? r.finished.indexOf(i) + 1 || null : null, here: !s.bot && here.includes(s.id), turn: waiting.includes(i), passed: !!(r?.passed || []).includes(i), skipped: r?.skipped === i, avatar, stats: s.stats, say: s.say ? { text: s.say.text, at: s.say.at } : null };
     });
     attachSeatBugs(seats, this.barn, (s) => s?.id);
     let round = null;

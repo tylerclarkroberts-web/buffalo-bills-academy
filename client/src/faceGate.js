@@ -10,7 +10,7 @@ export function faceRedirect({ me, path, loc }) {
   if (!me) return null;
   const onWelcome = path.startsWith('/welcome');
   if (!me.hasAvatar) {
-    if (onWelcome || path.startsWith('/mines') || path.startsWith('/profile/face')) return null;
+    if (onWelcome || path.startsWith('/mines') || path.startsWith('/admin') || path.startsWith('/profile/face')) return null;
     return `/welcome?next=${encodeURIComponent(loc)}`;
   }
   // Already has a face: the first-time step is done, never show it again (back button, reloads, old links).

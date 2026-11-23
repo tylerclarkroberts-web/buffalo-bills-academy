@@ -15,3 +15,6 @@ backups/
 *.log
 *.tmp
 .DS_Store
+
+# STEEZE portrait is a private overlay, never committed.
+server/assets/steeze.png

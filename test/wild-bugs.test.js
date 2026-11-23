@@ -62,7 +62,7 @@ test('a Denver mine day has a shared roster even for a miner with no bug, and th
   assert.ok(shift.wilds.length >= WILDS_A_DAY[0] && shift.wilds.length <= WILDS_A_DAY[1], 'all of the day\'s bugs are out at once');
   assert.equal(new Set(shift.wilds.map(w => w.x + ',' + w.y)).size, shift.wilds.length);
   for (const w of shift.wilds) {
-    assert.ok(w.level >= 1 && w.level <= 10 && BY_ID[w.species]);
+    assert.ok(BY_ID[w.species] && (w.species === 'dryococelus' ? w.level === 30 : w.level >= 1 && w.level <= 10));
     assert.ok(distance[w.y][w.x] >= 6 && !shift.pools.some(p => p.x === w.x && p.y === w.y));
     // it roams: a route of neighbouring tunnel tiles from its spot, out of the acid and no more than 3 tiles nearer the lift
     assert.deepEqual(w.path[0], [w.x, w.y]);
