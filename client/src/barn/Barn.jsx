@@ -9,7 +9,8 @@ import { goToMines } from '../App.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { movesFor, STANCES, riskFor } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
-import { drawBug, drawGrave, youngForm } from './sprite.js';
+import { drawBug, drawGrave, isHiResSprite, onSpriteReady, youngForm } from './sprite.js';
+import { hasStage1Egg } from './stage1Art.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip } from './BugCard.jsx';
@@ -118,14 +119,16 @@ function Stage({ pen, poke, reduced }) {
       id = requestAnimationFrame(draw);
     };
     if (ref.current) delete ref.current.dataset.drawn;
+    const unsub = onSpriteReady(() => { if (ref.current) delete ref.current.dataset.drawn; });
     id = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(id);
+    return () => { cancelAnimationFrame(id); unsub(); };
   }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
   const label = pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`;
   if (pen.stage === 'creature' && pen.species === 'steeze') {
     return <div className="barn-canvas steeze-art-wrap" data-test="barn-canvas"><SteezePic className="steeze-art" label={label} /></div>;
   }
-  return <canvas ref={ref} className="barn-canvas" data-test="barn-canvas" aria-label={label} />;
+  const hiRes = (pen.stage === 'creature' && isHiResSprite(BY_ID[pen.species], pen.style, pen.level)) || (pen.stage === 'egg' && hasStage1Egg());
+  return <canvas ref={ref} className={`barn-canvas${hiRes ? ' hi-res' : ''}`} data-test="barn-canvas" aria-label={label} />;
 }
 
 const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -133,13 +136,18 @@ const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now
 function BugThumb({ bug }) {
   const ref = useRef(null);
   useEffect(() => {
-    const c = ref.current, kind = BY_ID[bug.species]; if (!c || !kind) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1); c.width = 56 * dpr; c.height = 46 * dpr;
-    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
-    drawBug(x, kind, { w: c.width, h: c.height, still: true, style: bug.style, level: bug.level });
+    const paint = () => {
+      const c = ref.current, kind = BY_ID[bug.species]; if (!c || !kind) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1); c.width = 56 * dpr; c.height = 46 * dpr;
+      const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+      drawBug(x, kind, { w: c.width, h: c.height, still: true, style: bug.style, level: bug.level });
+    };
+    paint();
+    return onSpriteReady(paint);
   }, [bug.species, bug.level, JSON.stringify(bug.style || null)]);
   if (bug.species === 'steeze') return <SteezePic className="barn-thumb" label="" />;
-  return <canvas ref={ref} className="barn-thumb" aria-hidden="true" />;
+  const hiRes = isHiResSprite(BY_ID[bug.species], bug.style, bug.level);
+  return <canvas ref={ref} className={`barn-thumb${hiRes ? ' hi-res' : ''}`} aria-hidden="true" />;
 }
 
 /** Your stalls: every bug you keep, the partner starred. Picking one shows it below; the last slot builds another. */

@@ -58,9 +58,9 @@ test('certificates and labels use crisp paint textures that are disposed when re
   scene.wallMaterial.dispose();
 });
 
-test('living room pets retain nearest-neighbor pixel art', t => {
+test('evolved room pets retain nearest-neighbor pixel art', t => {
   const scene = fixture(t); scene.furniture = defaultFurniture();
-  RoomScene.prototype.pet.call(scene, { stage: 'creature', species: 'ceroplophana', level: 4 });
+  RoomScene.prototype.pet.call(scene, { stage: 'creature', species: 'ceroplophana', level: 10, style: { evo: 1 } });
   const map = scene.dynamic.children.find(object => object.isSprite)?.material.map;
   assert.ok(map);
   assert.equal(map.magFilter, THREE.NearestFilter);

@@ -115,6 +115,7 @@
 
 /* v33: bugs, field notes, warnings, gravestone. All fixed-size pages, never a scrollbar. */
 .barn-canvas { image-rendering: pixelated; }
+.barn-canvas.hi-res, .barn-thumb.hi-res, .cc-thumb.hi-res { image-rendering: auto; }
 .barn-tabs { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.15); }
 .barn-tabs button { background: none; border: 0; color: var(--paper-2); font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 6px 10px; min-height: 32px; cursor: pointer; border-bottom: 2px solid transparent; }
 .barn-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }

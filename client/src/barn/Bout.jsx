@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, verdictLine } from './boutFx.js';
+import { isHiResSprite, onSpriteReady } from './sprite.js';
 import { voice, sfx, music, announce } from './sfx.js';
 import { navigate } from '../App.jsx';
 import { TypeChip } from './BugCard.jsx';
@@ -170,8 +171,9 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
       }
       id = requestAnimationFrame(frame);
     };
+    const unsub = onSpriteReady(() => { drawn = ''; });
     id = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(id);
+    return () => { cancelAnimationFrame(id); unsub(); };
   }, [reduced]);
 
   const beat = pos.i >= 0 && pos.i < plan.beats.length ? plan.beats[pos.i] : null;
@@ -205,6 +207,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const status = beat ? (landed ? beat.after : beat.before) : pos.phase === 'wait' && plan.beats.length ? plan.beats[plan.beats.length - 1].after : null;
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
+  const boutHiRes = fighters.some((f) => isHiResSprite(BY_ID[f?.species], f?.style, f?.level));
   return (
     <dialog ref={dialog} className={`bout${live ? ' live' : ''}${legendary ? ' legendary' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
       <div className="bout-top">
@@ -223,7 +226,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
         })}
       </div>
       <div className="bout-ring">
-        <canvas ref={ref} className="barn-canvas" data-test="bout-canvas" />
+        <canvas ref={ref} className={`barn-canvas${boutHiRes ? ' hi-res' : ''}`} data-test="bout-canvas" />
         <div className="bout-fx" aria-hidden="true">
           {(() => {
             const forced = forcedShow;

@@ -7,17 +7,21 @@ import { navigate } from '../App.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { typeOf, edge } from '../../../server/engine/bug-types.js';
 import { TypeChip } from './BugCard.jsx';
-import { drawBug } from './sprite.js';
+import { drawBug, isHiResSprite, onSpriteReady } from './sprite.js';
 
 function Thumb({ species, level, style, w = 52, h = 42 }) {
   const ref = useRef(null);
   useEffect(() => {
-    const c = ref.current, kind = BY_ID[species]; if (!c || !kind) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1); c.width = w * dpr; c.height = h * dpr;
-    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
-    drawBug(x, kind, { w: c.width, h: c.height, still: true, style, level });
+    const paint = () => {
+      const c = ref.current, kind = BY_ID[species]; if (!c || !kind) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1); c.width = w * dpr; c.height = h * dpr;
+      const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+      drawBug(x, kind, { w: c.width, h: c.height, still: true, style, level });
+    };
+    paint();
+    return onSpriteReady(paint);
   }, [species, level, JSON.stringify(style || null)]);
-  return <canvas ref={ref} className="cc-thumb" style={{ width: w, height: h }} aria-hidden="true" />;
+  return <canvas ref={ref} className={`cc-thumb${isHiResSprite(BY_ID[species], style, level) ? ' hi-res' : ''}`} style={{ width: w, height: h }} aria-hidden="true" />;
 }
 
 /** A fair ribbon: a rosette with its number, coloured once won. */

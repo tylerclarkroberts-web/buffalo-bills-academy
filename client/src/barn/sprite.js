@@ -1,13 +1,18 @@
-// Barn bugs (v33): original pixel-art sprites, drawn procedurally from each bug's `look` (no image assets).
+// Barn bugs: palette-tinted Stage I WebPs with procedural pixel art for evolutions and loading fallbacks.
 // GBA-era style: a 64x64 grid, a small palette per bug (outline, dark, base, light, accent + eye/glint), a dark
 // one-pixel outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
 import { drawEvolution } from './evolutionArt.js';
+import { loadSpriteImage, notifySpriteReady, onSpriteReady } from './spriteLoader.js';
+import { stage1Meta, tintImageData } from './stage1Art.js';
+export { onSpriteReady, stage1Meta };
 export const SPRITE = 64;
 // Big sprites are drawn on a grid FINE times as dense: the same shapes, written in the same 64-grid coordinates, with
 // smoother edges, a thinner outline and two more tones of shading. Small ones (thumbnails, far-off billboards) keep 64.
 export const FINE = 2;
+export const HI_COARSE = 256;
+export const HI_FINE = 512;
 /** The grid to draw a sprite on when it will be shown `s` pixels across: the fine one once each of its pixels gets a whole screen pixel. */
 export const fineFor = (s) => (s >= SPRITE * FINE ? FINE : 1);
 
@@ -452,6 +457,19 @@ const WEARPIX = {
   scarf: { at: 'mid', p: ['tttttttttttt', 'tttttttttttt', '........tt..', '........tt..', '........tt..'], k: { t: '#21a7a0' } },
   dapper: { at: 'lip', with: 'monocle', p: ['kk..kkkk..kk', '.kkkk..kkkk.'], k: { k: '#f0e6d0' } }, // the monocle, and a moustache under the eyes (pale: a dark one vanishes into the outline)
 };
+// Hat brim [x, y] and eye centers [left x, right x, y] on the WebPs' equivalent 64-pixel grid.
+const STAGE1_WEAR_ANCHORS = {
+  'stage1-aquatic': { crown: [32, 9], eyes: [28, 36, 12] },
+  'stage1-beetle': { crown: [32, 16], eyes: [26, 38, 20] },
+  'stage1-crawler': { crown: [32, 8], eyes: [27, 37, 11] },
+  'stage1-flier': { crown: [32, 13], eyes: [29, 35, 15] },
+  'stage1-grub': { crown: [32, 6], eyes: [27, 38, 10] },
+  'stage1-hopper': { crown: [32, 13], eyes: [27, 37, 17] },
+  'stage1-larva': { crown: [33, 6], eyes: [30, 35, 9] },
+  'stage1-mantis': { crown: [32, 8], eyes: [29, 35, 10] },
+  'stage1-shield': { crown: [32, 10], eyes: [27, 37, 13] },
+  'stage1-weevil': { crown: [32, 13], eyes: [29, 35, 15] },
+};
 function bounds(grid) {
   const n = grid.length;
   let top = n, bot = 0, l = n, r = 0;
@@ -459,22 +477,35 @@ function bounds(grid) {
   let tl = n, tr = 0; for (let y = top; y < top + 4 && y < n; y++) for (let x = 0; x < n; x++) if (grid[y][x]) { tl = Math.min(tl, x); tr = Math.max(tr, x); }
   return { top, bot, l, r, cx: Math.round((tl + tr) / 2) };
 }
-function overlay(ctx, grid, shape, eye) {
+function overlay(ctx, grid, shape, eye, crown) {
   const w = WEARPIX[shape]; if (!w) return;
-  if (w.with) overlay(ctx, grid, w.with, eye);
+  if (w.with) overlay(ctx, grid, w.with, eye, crown);
   const b = bounds(grid); const pw = Math.max(...w.p.map((r) => r.length)), ph = w.p.length;
   const hgt = b.bot - b.top;
-  let x = b.cx - Math.floor(pw / 2), y = b.top - ph + 1;
-  if (w.at === 'topside') { x = b.cx + 2; y = b.top - 2; }
+  const [headX, headY] = crown ?? [b.cx, b.top];
+  let x = headX - Math.floor(pw / 2), y = headY - ph + 1;
+  let scaleX = 1;
+  if (w.at === 'topside') { x = headX + 2; y = headY - 2; }
   // by the eyes (a bug that shows none: about where a face would be). A wide piece (shades) goes across both, a narrow
   // one (a monocle) on the right-hand eye, each with its lens on its second row; 'lip' is centred a little below them.
   const E = eye || { x: b.cx, y: b.top + Math.round(hgt * 0.22) + 1, right: b.cx + 4 };
-  if (w.at === 'eye') { y = E.y - 1; x = pw > 6 ? E.x - Math.floor(pw / 2) : E.right - 1; }
+  if (w.at === 'eye') {
+    // The wide frame has seven cells between its lens centers.
+    if (pw > 6 && E.left !== undefined) scaleX = Math.max(0.5, (E.right - E.left) / 7);
+    y = E.y - 1;
+    x = pw > 6 ? E.x - Math.floor(pw * scaleX / 2) : E.right - 1;
+  }
   if (w.at === 'lip') { x = E.x - Math.floor(pw / 2); y = E.y + 4; }
   if (w.at === 'mid') y = b.top + Math.round(hgt * 0.42);
   if (w.at === 'back') { x = b.l - 2; y = b.top + Math.round(hgt * 0.3); }
-  x = Math.max(0, Math.min(SPRITE - pw, x)); y = Math.max(0, Math.min(SPRITE - ph, y));
-  w.p.forEach((row, r) => [...row].forEach((ch, c) => { if (ch !== '.') { ctx.fillStyle = w.k[ch]; ctx.fillRect(x + c, y + r, 1, 1); } }));
+  x = Math.max(0, Math.min(SPRITE - Math.round(pw * scaleX), Math.round(x)));
+  y = Math.max(0, Math.min(SPRITE - ph, y));
+  w.p.forEach((row, r) => [...row].forEach((ch, c) => {
+    if (ch === '.') return;
+    const left = Math.round(c * scaleX), right = Math.round((c + 1) * scaleX);
+    ctx.fillStyle = w.k[ch];
+    ctx.fillRect(x + left, y + r, right - left, 1);
+  }));
 }
 // v35: battle gear shows too, fitted to the sprite's own body (its centre run of pixels) and leg tips.
 const bodyRun = (grid, y) => { if (!grid[y]?.[31]) return null; let a = 31, b = 32; while (a > 0 && grid[y][a - 1]) a--; while (b < SPRITE - 1 && grid[y][b + 1]) b++; return [a, b]; };
@@ -483,9 +514,11 @@ function stamp(ctx, p, k, x, y, mirror = false) {
   p.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === '.') return; ctx.fillStyle = k[ch]; ctx.fillRect(x + c, y + r, 1, 1); if (mirror) ctx.fillRect(SPRITE - 1 - x - c, y + r, 1, 1); }));
 }
 export const GEAR_SHAPES = ['shell', 'claws', 'boots', 'helmet', 'shield', 'mandibles', 'armor', 'bandage'];
-function gearOverlay(ctx, grid, shape, evolved) {
+function gearOverlay(ctx, grid, shape, evolved, crown) {
   const b = bounds(grid), h = b.bot - b.top, at = (f) => b.top + Math.round(h * f);
-  let head = b.top; while (head < b.bot && (bodyRun(grid, head)?.reduce((l, r) => r - l) ?? 0) < 5) head++;
+  let head = crown?.[1] ?? b.top;
+  if (!crown) while (head < b.bot && (bodyRun(grid, head)?.reduce((l, r) => r - l) ?? 0) < 5) head++;
+  const headX = crown?.[0] ?? 32;
   switch (shape) {
     case 'armor': { // legs join the body run on some rows, so plates stop at the body's usual width
       const widths = []; for (let y = at(0.35); y <= at(0.85); y++) { const run = bodyRun(grid, y); if (run) widths.push(run[1] - run[0]); }
@@ -500,8 +533,8 @@ function gearOverlay(ctx, grid, shape, evolved) {
     case 'shell': [[-6, 0.46], [5, 0.6], [-3, 0.78]].forEach(([dx, f]) => { const x = 32 + dx, y = at(f); if (grid[y]?.[x]) stamp(ctx, ['..w..', '..w..', 'wwyww', '..w..', '..w..'], { w: '#fff2b0', y: '#ffffff' }, x - 2, y - 2); }); break;
     case 'boots': (evolved ? [[0.86, 1]] : [[0.22, 0.45], [0.46, 0.68], [0.69, 1]]).forEach(([f0, f1]) => { const t = legTip(grid, at(f0), at(f1)); if (t) stamp(ctx, ['.BB', '.Bb', 'bbb', 'sss'], { B: '#d08848', b: '#9a5226', s: '#3a2010' }, t[0] - 1, t[1] - 2, true); }); break;
     case 'claws': { const t = legTip(grid, b.top, at(0.42)); if (t) stamp(ctx, ['s...', 'ss..', '.sS.', '.sSS', '..SS'], { s: '#f4f8fc', S: '#8a929c' }, t[0] - 2, t[1] - 3, true); break; }
-    case 'mandibles': stamp(ctx, ['g..........g', 'gg........gg', 'Ggg......ggG', '.GGg....gGG.', '..GGg..gGG..'], { g: '#ffe070', G: '#b08a20' }, 26, head - 4); break;
-    case 'helmet': stamp(ctx, ['.....ss.....', '...kkkkkk...', '.kkKkKkKkkk.', 'kKkKkKkKkKkk', 'kkkkkkkkkkkk', '.hhhhhhhhhh.'], { k: '#9a6e40', K: '#5c4028', s: '#4a3018', h: '#c89a5a' }, 26, head - 3); break;
+    case 'mandibles': stamp(ctx, ['g..........g', 'gg........gg', 'Ggg......ggG', '.GGg....gGG.', '..GGg..gGG..'], { g: '#ffe070', G: '#b08a20' }, headX - 6, head - 4); break;
+    case 'helmet': stamp(ctx, ['.....ss.....', '...kkkkkk...', '.kkKkKkKkkk.', 'kKkKkKkKkKkk', 'kkkkkkkkkkkk', '.hhhhhhhhhh.'], { k: '#9a6e40', K: '#5c4028', s: '#4a3018', h: '#c89a5a' }, headX - 6, head - 3); break;
     case 'shield': { const t = legTip(grid, at(0.38), at(0.52)) || [b.l, at(0.42)];
       stamp(ctx, ['...gg...', '..gggg..', '.ggVggg.', 'gggVgggG', 'ggggVggG', 'gggVgggG', '.ggVggG.', '..gVgG..', '...gG...', '...s....', '...s....'], { g: '#7cc050', G: '#3e7a2a', V: '#d8f0b0', s: '#5c4028' }, Math.max(0, t[0] - 5), t[1] - 4); break; }
     case 'bandage': stamp(ctx, ['......ww', '.....wpw', '....wppw', '...wrrw.', '..wrrw..', '.wppw...', 'wpw.....', 'ww......'], { w: '#f4ecdc', p: '#e0b098', r: '#c8433e' }, 33, at(0.48)); break;
@@ -535,51 +568,125 @@ function paintWear(ctx, wear, body, outline) {
     ctx.fillRect(x, y, 1, 1);
   }
 }
+function paintWearScaled(ctx, wear, body, outline, N, fine) {
+  const big = fine !== 1 ? scale2x(wear) : wear, M = big.length, step = N / M, on = (x, y) => !!big[y]?.[x];
+  for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) {
+    const v = big[y][x];
+    if (v) ctx.fillStyle = !on(x, y - 1) || !on(x - 1, y) ? mix(v, '#ffffff', 0.3) : !on(x, y + 1) || !on(x + 1, y) ? mix(v, '#000000', 0.3) : v;
+    else if (!body?.[y]?.[x] && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1))) ctx.fillStyle = outline;
+    else continue;
+    ctx.fillRect(x * step, y * step, step, step);
+  }
+}
+
+/** True when this bug/style/level resolves to an enabled pre-rendered high-res WebP sprite. */
+export function isHiResSprite(bug, style, level) {
+  const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
+  if (stage !== 0 || !bug) return false;
+  return !!stage1Meta(bug, youngForm(bug, level))?.src;
+}
+
 /**
  * The bug's sprite, cached by species, life stage and look, with its accessories: 64x64, or 64 x `fine` a side for
- * a big drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
+ * a big drawing (fineFor); high-res Stage I bugs upgrade cleanly to tinted 256/512 WebPs once loaded.
  */
 export function spriteCanvas(bug, style, level, fine = 1) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
   const botched = stage > 0 && !!style?.botched;
   const artLevel = stage ? undefined : level;
-  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}`;
+  const young = youngForm(bug, artLevel);
+  const s1 = stage === 0 ? stage1Meta(bug, young) : null;
+  const hiAsset = !!s1?.src;
+  const key = `${bug.id}|${young || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${hiAsset ? s1.key : ''}|${fine}`;
   if (cache.has(key)) return cache.get(key);
-  const L = lookOf(bug, artLevel), R = ramps(style?.bugskin?.pal ?? L.pal ?? DEFAULT_PAL);
-  const art = spriteArt(L, fine, stage, botched), N = SPRITE * fine;
+  const L = lookOf(bug, artLevel), pal = style?.bugskin?.pal ?? L.pal ?? DEFAULT_PAL, R = ramps(pal);
+  const art = spriteArt(L, fine, stage, botched), N = hiAsset ? (fine > 1 ? HI_FINE : HI_COARSE) : SPRITE * fine;
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : Object.assign(document.createElement('canvas'), { width: N, height: N });
   const ctx = c.getContext('2d'), body = shade(art.g, R, art.part, art.etch);
   paintSprite(ctx, body, 0, 0, N);
-  if (!style?.defense?.shape && !style?.gear?.shape && !style?.bugacc?.shape && !style?.bughat?.shape) {
-    cache.set(key, c);
-    return c;
+  const hasWear = !!(style?.defense?.shape || style?.gear?.shape || style?.bugacc?.shape || style?.bughat?.shape);
+  const paintOverlays = (grid, eye, crown, loaded = false) => {
+    // Overlays write 64-grid pixels, then scale to the fine or hi-res layer.
+    const direct = !hiAsset && fine === 1;
+    const wear = direct ? null : Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null));
+    let ink = null;
+    const x = direct ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
+    if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape, stage, crown); // defense gear goes on first, the attack item over it
+    if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape, stage, crown);
+    if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eye, crown);
+    if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape, eye, crown);
+    if (hiAsset) paintWearScaled(ctx, wear, loaded ? null : body, R.o, N, fine);
+    else if (fine !== 1) paintWear(ctx, wear, body, R.o);
+  };
+  let grid, proceduralEye;
+  if (hasWear) {
+    const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched);
+    grid = fine === 1 ? body : shade(coarse.g, R, coarse.part, coarse.etch);
+    proceduralEye = style?.bugacc?.shape ? eyeSpot(coarse.g) : null;
+    paintOverlays(grid, proceduralEye);
   }
-  // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
-  const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched);
-  const grid = fine === 1 ? body : shade(coarse.g, R, coarse.part, coarse.etch);
-  const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
-  const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
-  if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape, stage); // defense gear goes on first, the attack item over it
-  if (style?.gear?.shape) gearOverlay(x, grid, style.gear.shape, stage);
-  if (style?.bugacc?.shape) overlay(x, grid, style.bugacc.shape, eyeSpot(coarse.g));
-  if (style?.bughat?.shape) overlay(x, grid, style.bughat.shape);
-  if (fine !== 1) paintWear(ctx, wear, body, R.o);
+  c._rev = 0;
+  c._hiRes = false;
   cache.set(key, c);
+  if (hiAsset) {
+    const paintHiRes = (img, notify) => {
+      ctx.clearRect(0, 0, N, N);
+      ctx.save?.();
+      ctx.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, N, N);
+      ctx.restore?.();
+      const anchors = STAGE1_WEAR_ANCHORS[s1.key];
+      let artMask;
+      if (typeof ctx.getImageData === 'function') {
+        const imgData = ctx.getImageData(0, 0, N, N);
+        tintImageData(imgData.data, pal);
+        ctx.putImageData(imgData, 0, 0);
+        if (hasWear && anchors) {
+          const step = N / SPRITE, half = step / 2;
+          artMask = Array.from({ length: SPRITE }, (_, row) => Array.from({ length: SPRITE }, (_, col) => (
+            imgData.data[((row * step + half) * N + col * step + half) * 4 + 3] >= 128
+          )));
+        }
+      }
+      if (artMask) {
+        const [left, right, y] = anchors.eyes;
+        paintOverlays(artMask, { x: (left + right) / 2, left, right, y }, anchors.crown, true);
+      } else if (hasWear) paintOverlays(grid, proceduralEye, undefined, true);
+      c._hiRes = true;
+      c._rev = (c._rev || 0) + 1;
+      if (notify) notifySpriteReady(c);
+    };
+    let sync = true;
+    loadSpriteImage(s1.src, (img) => paintHiRes(img, !sync));
+    sync = false;
+  }
   return c;
 }
 /**
- * A three.js texture of the bug for a 3D scene (pass the THREE module): the fine sprite up close, with the 64 one
- * as its only smaller level, so a bug drawn small or far off looks exactly as it always did. Both stay pixel-crisp.
+ * A three.js texture of the bug for a 3D scene (pass the THREE module): procedural stages use pixel-crisp mipmaps
+ * (`NearestFilter`); high-res WebP sprites use smooth mipmapped filtering and refresh automatically when loaded.
  */
 export function bugTexture(THREE, bug, style, level) {
-  const levels = [spriteCanvas(bug, style, level, FINE), spriteCanvas(bug, style, level)], map = new THREE.CanvasTexture(levels[0]);
-  map.mipmaps = levels; map.generateMipmaps = false; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter;
-  map.colorSpace = THREE.SRGBColorSpace;
+  if (!isHiResSprite(bug, style, level)) {
+    const levels = [spriteCanvas(bug, style, level, FINE), spriteCanvas(bug, style, level)], map = new THREE.CanvasTexture(levels[0]);
+    map.mipmaps = levels; map.generateMipmaps = false; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter;
+    map.colorSpace = THREE.SRGBColorSpace;
+    return map;
+  }
+  const img = spriteCanvas(bug, style, level, FINE), map = new THREE.CanvasTexture(img);
+  map.magFilter = THREE.LinearFilter; map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.generateMipmaps = true; map.colorSpace = THREE.SRGBColorSpace;
+  const unsub = onSpriteReady((ready) => { if (ready === img) map.needsUpdate = true; });
+  map.addEventListener('dispose', unsub);
   return map;
 }
-/** Draws a growing bug with nearest-neighbour pixels, a little idle bob and a hop when poked. */
+/** Draws a growing bug (nearest-neighbour for procedural pixel art, high-quality smoothed for hi-res WebPs). */
 export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip = false, fill = 0.82, style = null, level }) {
-  const adultSize = Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)) * SPRITE;
+  const hiRes = isHiResSprite(bug, style, level);
+  const adultSize = hiRes
+    ? Math.max(SPRITE, Math.round(Math.min(w, h) * fill))
+    : Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)) * SPRITE;
   const s = Math.round(adultSize * bugScale(level, bug.id)), px = s / SPRITE;
   const bob = still ? 0 : Math.round(Math.sin(t / 420) * px * 1.2);
   const hop = Math.round(Math.sin(Math.min(1, poke) * Math.PI) * px * 6);
@@ -587,7 +694,8 @@ export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip =
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,.35)';
   ctx.beginPath(); ctx.ellipse(w / 2, (h + adultSize) / 2 + h * 0.02, s * 0.36 * (1 - hop / (s || 1)), s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = hiRes;
+  if (hiRes && 'imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
   if (flip) { ctx.translate(w, 0); ctx.scale(-1, 1); }
   ctx.drawImage(spriteCanvas(bug, style, level, fineFor(s)), ox, oy, s, s);
   ctx.restore();
