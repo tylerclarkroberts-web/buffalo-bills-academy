@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
-import { Barn, BOUT_WIN_XP, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG } from '../server/barn.js';
+import { Barn, BOUT_WIN_XP, BOUT_XP, CHALLENGE_OPEN_MS, FIGHT_LOG, rivalBusyMessage, HEESHEE_NO_BATTLE } from '../server/barn.js';
 import { Store } from '../server/store.js';
 import { ROSTER, xpFor } from '../server/engine/creatures.js';
 import { riskFor, fightXp } from '../server/engine/bug-combat.js';
@@ -553,12 +553,14 @@ test('accepting a challenge takes both stakes then, settles once and puts the fi
   assert.equal(blocked.status, 409); assert.match(blocked.body.error, /BugOwner has a bout posted/); await cancel(owner, theirs.body.openBout.id);
   // Either side short of the stake, or the challenger's bug fainted since.
   f.service.getPlayer(owner.id).bankroll = 50;
-  const broke = await accept(other, id); assert.equal(broke.status, 409); assert.match(broke.body.error, /BugOwner can no longer cover/);
+  const broke = await accept(other, id); assert.equal(broke.status, 409); assert.equal(broke.body.error, "BugOwner can't cover $100 right now.");
   f.service.getPlayer(owner.id).bankroll = 1000; f.service.getPlayer(other.id).bankroll = 5; // less than the line can ask against $100 ($11 for a 90% favourite's opponent): the two species are random
   assert.equal((await accept(other, id)).status, 402);
   f.service.getPlayer(other.id).bankroll = 1000;
   barn.doc.pens[owner.id].faintedAt = clock.now; barn.save();
-  const resting = await accept(other, id); assert.equal(resting.status, 409); assert.match(resting.body.error, /BugOwner's bug is not ready/);
+  const resting = await accept(other, id); assert.equal(resting.status, 409);
+  assert.match(resting.body.error, /BugOwner's .+ fainted — they need the Bug Center first/);
+  assert.doesNotMatch(resting.body.error, /\byour\b/i);
   delete barn.doc.pens[owner.id].faintedAt; barn.save();
   assert.equal(balance(f, owner) + balance(f, other), 2000); assert.equal(barn.doc.challenges.length, 1, 'a refused accept leaves the challenge standing');
 
@@ -607,4 +609,88 @@ test('posted bouts reach the public record too, which keeps only the latest twen
   assert.equal(joined.body.fights[0].id, opened.body.openBout.id);
   assert.deepEqual(joined.body.fights[0].sides.map(side => side.ownerId), [owner.id, other.id], 'the host is in the first corner');
   assert.equal(joined.body.fights.at(-1).id, `old-${FIGHT_LOG - 2}`);
+});
+
+
+test('accept errors name the other player, and incoming challenges carry a wait without being dropped', async t => {
+  const f = await fixture(t); const { owner, other, barn, hatch, login } = f;
+  const third = await login('ThirdRancher');
+  hatch(owner.id, 6); hatch(other.id, 6); hatch(third.id, 4);
+  const id = (await challenge(owner, other.id, 100)).body.challenges.outgoing[0].id;
+
+  f.service.getPlayer(owner.id).bankroll = 50;
+  const brokeView = (await other.api('GET', '/api/barn')).body.challenges.incoming[0];
+  assert.equal(brokeView.wait, "Waiting — BugOwner can't cover $100");
+  f.service.getPlayer(owner.id).bankroll = 1000;
+
+  barn.doc.pens[owner.id].faintedAt = 1; barn.save();
+  const faintView = (await other.api('GET', '/api/barn')).body.challenges.incoming[0];
+  assert.match(faintView.wait, /Waiting — BugOwner's .+ needs the Bug Center/);
+  delete barn.doc.pens[owner.id].faintedAt; barn.save();
+
+  const listed = await post(third, 0);
+  const going = await owner.api('POST', `/api/barn/bouts/${listed.body.openBout.id}/join`, {});
+  assert.equal(going.status, 200, JSON.stringify(going.body));
+  assert.ok(barn.fights.fightOf(owner.id), 'the challenger is in a live fight');
+  const incoming = (await other.api('GET', '/api/barn')).body.challenges.incoming[0];
+  assert.equal(incoming.wait, 'Waiting — BugOwner is in a fight');
+  const ownerRow = (await other.api('GET', '/api/barn')).body.roster.find((bug) => bug.ownerId === owner.id);
+  assert.equal(ownerRow.inRing, true);
+  const blocked = await other.api('POST', `/api/barn/challenges/${id}/accept`, {});
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.error, 'BugOwner is already in a fight with ThirdRancher.');
+  assert.doesNotMatch(blocked.body.error, /\byour\b/i);
+  assert.equal(barn.doc.challenges.length, 1, 'a live fight does not drop the waiting challenge');
+});
+
+test('a challenge refuses a fainted target, and expireBouts only drops dead or lapsed ones', async t => {
+  const f = await fixture(t); const { owner, other, barn, hatch, clock } = f;
+  hatch(owner.id, 6); hatch(other.id, 6);
+  barn.doc.pens[other.id].faintedAt = clock.now; barn.save();
+  const refused = await challenge(owner, other.id, 0);
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error, /fainted\. They need the Bug Center first/);
+  delete barn.doc.pens[other.id].faintedAt; barn.save();
+
+  const sent = await challenge(owner, other.id, 0);
+  assert.equal(sent.status, 200);
+  assert.equal(barn.doc.challenges.length, 1);
+  barn.doc.pens[owner.id].faintedAt = clock.now; barn.save();
+  barn.expireBouts();
+  assert.equal(barn.doc.challenges.length, 1, 'a faint does not lapse the challenge');
+  delete barn.doc.pens[owner.id].faintedAt; barn.save();
+
+  barn.doc.pens[other.id].stage = 'dead'; barn.save();
+  barn.expireBouts();
+  assert.equal(barn.doc.challenges.length, 0, 'a dead bug lapses the challenge');
+
+  barn.doc.pens[other.id].stage = 'creature'; barn.save();
+  const again = await challenge(owner, other.id, 0);
+  assert.equal(again.status, 200);
+  clock.now += CHALLENGE_OPEN_MS + 1;
+  barn.expireBouts();
+  assert.equal(barn.doc.challenges.length, 0, 'a day-old challenge lapses');
+});
+
+test('rivalBusyMessage never says your to mean the other player', () => {
+  const rival = { name: 'KeetchBeast' };
+  assert.equal(rivalBusyMessage(rival, { message: 'One of your bugs is in the ring right now.' }, { opponent: 'Christopher' }),
+    'KeetchBeast is already in a fight with Christopher.');
+  assert.equal(rivalBusyMessage(rival, { message: 'One of your bugs is in the ring right now.' }),
+    'KeetchBeast is already in a fight.');
+  assert.equal(rivalBusyMessage(rival, { message: 'Polyphylla fainted. Take it to the Bug Center first.' }),
+    "KeetchBeast's Polyphylla fainted — they need the Bug Center first.");
+  assert.equal(rivalBusyMessage(rival, { message: HEESHEE_NO_BATTLE }),
+    "KeetchBeast's bug is with the Heeshee Mazode.");
+  for (const msg of [
+    'One of your bugs is in the ring right now.',
+    'Polyphylla fainted. Take it to the Bug Center first.',
+    HEESHEE_NO_BATTLE,
+    'It is resting. For good.',
+    'Eggs do not fight. Mostly.',
+    'Bouts open at level 1.',
+    'Your barn is empty. Keep an eye out in the mines.',
+  ]) {
+    assert.doesNotMatch(rivalBusyMessage(rival, { message: msg }, { opponent: 'Christopher' }), /\byour\b/i, msg);
+  }
 });

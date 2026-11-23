@@ -82,6 +82,33 @@ export function healthOf(pen) {
   return pen && !pen.faintedAt ? 100 : 0;
 }
 export const CHALLENGE_OPEN_MS = 24 * 3600e3; // a challenge waits a day: nothing is held, so it can afford to
+
+/** Whole-dollar stakes as $100, otherwise two decimals. */
+export const stakeText = (n) => {
+  const v = cents(n);
+  return `$${v % 1 ? v.toFixed(2) : String(Math.round(v))}`;
+};
+
+/**
+ * Turn a ready() error about `rival` into a third-person line for the player who is accepting.
+ * Never uses "your" to mean the other owner.
+ */
+export function rivalBusyMessage(rival, error, { opponent } = {}) {
+  const name = rival?.name || 'Someone';
+  const msg = error?.message || '';
+  if (msg === 'One of your bugs is in the ring right now.') {
+    return opponent ? `${name} is already in a fight with ${opponent}.` : `${name} is already in a fight.`;
+  }
+  const fainted = /^(.+) fainted\./.exec(msg);
+  if (fainted) return `${name}'s ${fainted[1]} fainted — they need the Bug Center first.`;
+  if (msg === HEESHEE_NO_BATTLE) return `${name}'s bug is with the Heeshee Mazode.`;
+  if (msg.includes('It is resting. For good')) return `${name}'s bug is gone.`;
+  if (msg.includes('Eggs do not fight')) return `${name}'s bug has not hatched yet.`;
+  if (msg.includes('Bouts open at level') || msg.includes('too young')) return `${name}'s bug is too young to fight.`;
+  if (msg.includes('barn is empty')) return `${name} has no bug to fight.`;
+  return `${name}'s bug is not ready.`;
+}
+
 export const FIGHT_LOG = 20;                  // recent fights anyone can watch
 const RING_KINDS = ['barn', 'circuit'];        // fights the Barn page follows live (the circuit's are played from its tab)
 const STATS = ['hunger', 'mood', 'clean'];
@@ -371,14 +398,16 @@ export class Barn {
       // What a visitor to the owner's room could already see, plus the record: never needs, XP or care history.
       return [{ id: idOf(pen), ownerId, owner: owner.name, name: pen.name, species: pen.species, level, style: this.looksOf(ownerId, pen) || null,
         record: pen.record || { w: 0, l: 0, d: 0 }, fights: level >= BOUT_LEVEL && !isHeesheeHeld(pen), health: healthOf(pen), fainted: !!pen.faintedAt, ...(isHeesheeHeld(pen) ? { heesheeHeld: true } : {}),
+        ...(this.fights.fightOf(ownerId) ? { inRing: true } : {}),
         ...(theirs ? { line: Object.fromEntries(corner.map(([id, mine]) => [id, line(mine, theirs)])) } : {}) }];
     })).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
     // A challenge names both bugs (one sent before stalls means each owner's partner).
     const named = c => { const mine = this.penOf(c.from, c.fromBug), theirs = this.penOf(c.to, c.toBug);
       // `line` is the challenger's chance as the two stand now; `risk` what the challenged would put up against the stake
       const p = mine?.stage === 'creature' && theirs?.stage === 'creature' ? line(this.fighter(c.from, mine), this.fighter(c.to, theirs)) : null;
+      const wait = this.challengeWait(c);
       return { ...c, fromName: players[c.from]?.name || 'Someone', toName: players[c.to]?.name || 'Someone', fromBug: mine ? idOf(mine) : null, toBug: theirs ? idOf(theirs) : null, fromBugName: mine?.name || 'A bug', toBugName: theirs?.name || 'a bug',
-        ...(p ? { line: p, risk: riskFor(c.stake, p) } : {}) }; };
+        ...(p ? { line: p, risk: riskFor(c.stake, p) } : {}), ...(wait ? { wait } : {}) }; };
     return { roster,
       challenges: { incoming: this.doc.challenges.filter(c => c.to === playerId).map(named), outgoing: this.doc.challenges.filter(c => c.from === playerId).map(named) },
       fights: this.doc.fights.map(({ id, at, stake, pot, winner, sides }) => ({ id, at, pot: pot ?? cents(stake * 2), winner, sides: sides.map(({ ownerId, owner, fighter }) => ({ ownerId, owner, name: fighter.name, species: fighter.species, level: fighter.level })) })) };
@@ -572,6 +601,30 @@ export class Barn {
     this.store.commitPlayerDrafts([draft]);
   }
 
+  /** The other owner in this player's unfinished fight, if they have a name. */
+  fightOpponentName(playerId) {
+    const fight = this.fights.fightOf(playerId);
+    if (!fight) return null;
+    const otherId = (fight.players || []).find((id) => id && id !== playerId);
+    return (otherId && this.store.players[otherId]?.name) || null;
+  }
+
+  /**
+   * Why an incoming challenge cannot be accepted right now, as a short chip, or null if it can.
+   * A temporary block (already in a fight, a posted bout, a faint, a short bankroll) is only a wait: the challenge stays.
+   */
+  challengeWait(c) {
+    const from = this.store.players?.[c.from], name = from?.name || 'Someone';
+    const mine = this.penOf(c.from, c.fromBug);
+    if (!from || !mine || mine.stage !== 'creature' || this.now() >= this.deathAt(mine)) return 'That challenge has expired.';
+    if (this.fights.fightOf(c.from)) return `Waiting — ${name} is in a fight`;
+    if (from.barnBouts?.open) return `Waiting — ${name} has a bout posted`;
+    if (mine.faintedAt) return `Waiting — ${name}'s ${mine.name} needs the Bug Center`;
+    if (isHeesheeHeld(mine) || bugLostToHeeshee(this, c.from)) return `Waiting — ${name}'s bug is with the Heeshee`;
+    if ((from.bankroll ?? 0) + 1e-9 < (c.stake || 0)) return `Waiting — ${name} can't cover ${stakeText(c.stake)}`;
+    return null;
+  }
+
   expireBouts() {
     for (const player of Object.values(this.store.players || {})) {
       const live = player.barnBouts?.live;
@@ -581,7 +634,8 @@ export class Barn {
       const pen = this.bugs(player.id).find((kept) => kept.bornAt === open.petBornAt);
       if (this.now() >= open.expiresAt || !pen || pen.stage !== 'creature' || pen.faintedAt || this.now() >= this.deathAt(pen)) this.refundOpen(player);
     }
-    // Challenges hold no money, so a stale one is simply dropped: past its day, or either bug gone.
+    // Challenges hold no money. Drop only what can never start: past its day, or either bug gone or dead.
+    // A fight, a faint or a short bankroll is temporary, so those challenges stay and the ring shows a wait instead.
     const alive = (id, bug) => { const pen = this.penOf(id, bug); return !!this.store.players?.[id] && pen?.stage === 'creature' && this.now() < this.deathAt(pen); };
     const kept = this.doc.challenges.filter(c => this.now() < c.expiresAt && alive(c.from, c.fromBug) && alive(c.to, c.toBug));
     if (kept.length !== this.doc.challenges.length) this.commitDoc({ challenges: kept });
@@ -598,6 +652,8 @@ export class Barn {
     if (body.to === playerId) throw new GameError('Your bug cannot fight itself. It has tried.', 409);
     const theirs = target && !target.hidden ? this.penOf(body.to, body.their) : null;
     if (!theirs || theirs.stage !== 'creature' || this.now() >= this.deathAt(theirs)) throw new GameError('There is no bug there to challenge.', 404);
+    if (theirs.faintedAt) throw new GameError(`${theirs.name} fainted. They need the Bug Center first.`, 409);
+    if (isHeesheeHeld(theirs)) throw new GameError('That bug is with the Heeshee Mazode.', 409);
     if (levelFor(theirs.xp, theirs.cap) < BOUT_LEVEL) throw new GameError(`That bug is too young. Bouts open at level ${BOUT_LEVEL}.`, 409);
     const pen = this.ready(playerId, body.bug);
     const mine = this.doc.challenges.filter(c => c.from === playerId), same = mine.find(c => c.to === body.to && this.penOf(c.to, c.toBug) === theirs);
@@ -642,12 +698,12 @@ export class Barn {
     let rivalPen;
     try { rivalPen = this.ready(found.from, found.fromBug); } catch (error) {
       if (!(error instanceof GameError)) throw error;
-      throw new GameError(`${rival.name}'s bug is not ready. ${error.message}`, error.status);
+      throw new GameError(rivalBusyMessage(rival, error, { opponent: this.fightOpponentName(found.from) }), error.status);
     }
     const pen = this.ready(playerId, found.toBug);
     const fighters = [this.fighter(found.from, rivalPen), this.fighter(playerId, pen)], stakes = this.terms(found.stake, fighters, body.risk);
     this.accounts.requireFunds(player, stakes[1], 'this bout');
-    if (rival.bankroll + 1e-9 < found.stake) throw new GameError(`${rival.name} can no longer cover that stake.`, 409);
+    if (rival.bankroll + 1e-9 < found.stake) throw new GameError(`${rival.name} can't cover ${stakeText(found.stake)} right now.`, 409);
     this.startFight(id, [{ player: rival, pen: rivalPen, fighter: fighters[0] }, { player, pen, fighter: fighters[1] }], stakes, false, playerId);
     return this.view(playerId);
   }

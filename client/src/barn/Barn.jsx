@@ -157,7 +157,7 @@ function Stalls({ stable, sel, onPick }) {
 /** What the ? button says in each room: the rules the screens themselves no longer spell out. */
 const HELP = {
   stalls: ['Feed, Play and Mist are free, each on its own cooldown. Each gives 9 XP up to level 5, then less every level, down to 2 XP from level 10.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Release lets a bug go. It wanders into the mines as a stray, where anyone can catch it, you included.','Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
-  ring: ['Challenge any bug, or post a bout for whoever joins first.', 'You name your stake; the other corner puts up fair odds by the line, each bug\'s chance from 400 practice fights.', 'The winner takes the pot. A draw refunds both stakes.', 'A win pays more XP the higher the level you beat, and very little for beating a lower one. Losing pays less the higher your own level.', 'Bugs still standing recover fully; a knockout means the Bug Center.'],
+  ring: ['Accept a challenge, challenge someone, or post a bout.', 'One fight at a time. A challenge waits if they are already in the ring.', 'The winner takes the pot. A knockout goes to the Bug Center.'],
   circuit: ['Beat the stops in order. A win pays XP and a one-time purse; a loss pays nothing.', 'Legendary bugs turn up in the mine a few times a year, one of each in the whole Academy.', 'Circuit bugs are drilled: tougher than a barn bug of the same level. Bring a type edge or a level or two.', 'Every ribbon raises the top level your bugs can reach by one.', 'After eight ribbons come the Fairgrounds: four judges, then the Grand Champion. The champion is a copy of the bug that last won the circuit. Take the rosette and yours defends it.', 'A stop marked ! is an errand: somebody wants something. Bring it and they pay. None of them are needed.', 'Your first ribbon and your first card each put something on the wall of My House.', 'Some stops hold a rare wild bug. Knock it out and you get three throws of a jar, as in the mine.', 'Every leader hands over a prize with the ribbon. Prizes work in circuit fights only.', 'Each area has a feature presentation after its ribbon: a one-of-a-kind bug with its own trick. Beat it for its card. You never have to.', 'After ribbon 2, the next four areas can be won in any order. Each ribbon you hold makes the ones you left tougher.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
 };
 
@@ -195,16 +195,20 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         : !grown ? `Bouts unlock at level ${mine.arenaLevel}.`
         : mine.fainted ? <>{mine.name} fainted: <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</>
         : unsaved ? 'Save or discard your Combat changes first.' : ''}</p>
+      <ul className="ring-how" data-test="ring-how">{HELP.ring.map((line) => <li key={line}>{line}</li>)}</ul>
     </div>
     {challenges.incoming.length > 0 && <section className="ring-calls" aria-label="Challenges for you">
-      {challenges.incoming.map((c) => { const bug = roster.find((entry) => entry.ownerId === c.from && entry.id === c.fromBug), called = fighters.find((entry) => entry.id === c.toBug), risk = c.risk ?? c.stake; return <div key={c.id} className="ring-call" data-test="challenge-incoming">
+      {challenges.incoming.map((c) => { const bug = roster.find((entry) => entry.ownerId === c.from && entry.id === c.fromBug), called = fighters.find((entry) => entry.id === c.toBug), risk = c.risk ?? c.stake, wait = c.wait, blocked = busy || unsaved || lost || !called || called.fainted || called.heesheeHeld || !!openBout || risk > b.bankroll || !!wait; return <div key={c.id} className="ring-call" data-test="challenge-incoming">
         <p><b>{c.fromName}</b> calls out {c.toBugName} with <b>{c.fromBugName}</b>{bug ? ` (Lv ${bug.level})` : ''}</p>
         <p className="small" data-test="challenge-terms">{c.line ? `${chance(c.toBugName, 1 - c.line)} · ` : ''}{c.stake ? `risk ${money(risk)} to win ${money(c.stake)}` : 'for the grudge'} · {left(c.expiresAt - now)} left</p>
         <div className="barn-row">
-          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || lost || !called || called.fainted || called.heesheeHeld || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
+          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={blocked} data-test="challenge-accept">{risk > b.bankroll && !wait ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
           <button className="btn ghost" onClick={() => drop(c.id)} disabled={busy} data-test="challenge-decline">Decline</button>
-          {openBout && <span className="small muted">Cancel your open bout to accept.</span>}
         </div>
+        {wait ? <p className="small muted" data-test="challenge-wait">{wait}</p>
+          : openBout ? <p className="small muted">Cancel your open bout to accept.</p>
+          : called?.fainted ? <p className="small muted">{called.name} fainted: take it to the Bug Center first.</p>
+          : null}
       </div>; })}
     </section>}
     <div className="barn-tabs ring-tabs" role="tablist" aria-label="The ring">
@@ -213,14 +217,14 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
     {pane === 'players' && (players.length ? <ul className="ring-players" role="tabpanel">{players.map((p) => { const out = challenges.outgoing.filter((c) => c.to === p.id).length, isOpen = opened === p.id; return <li key={p.id} className={isOpen ? 'open' : ''}>
       <button className="ring-player" aria-expanded={isOpen} onClick={() => setOpened(isOpen ? null : p.id)} data-test="ring-player">
         <span className="ring-thumbs" aria-hidden="true">{p.bugs.slice(0, 4).map((bug) => <BugThumb key={bug.id} bug={bug} />)}</span>
-        <span className="ring-who"><b>{p.name}</b><small>{p.bugs.length} bug{p.bugs.length === 1 ? '' : 's'} · {levels(p.bugs)}{out ? ` · ${out} challenge${out === 1 ? '' : 's'} sent` : ''}</small></span>
+        <span className="ring-who"><b>{p.name}</b><small>{p.bugs.length} bug{p.bugs.length === 1 ? '' : 's'} · {levels(p.bugs)}{p.bugs.some((bug) => bug.inRing) ? ' · in the ring' : ''}{out ? ` · ${out} challenge${out === 1 ? '' : 's'} sent` : ''}</small></span>
         <span className="ring-chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
       </button>
       {isOpen && <ul className="barn-roster">{p.bugs.map((bug) => { const key = `${bug.ownerId}:${bug.id}`, sent = challenges.outgoing.find((c) => c.to === bug.ownerId && c.toBug === bug.id); return <li key={key} data-test="roster-bug">
         <BugThumb bug={bug} />
         <div>
           <b>{bug.name}</b>
-          <p className="small"><TypeChip type={typeOf(bug.species)} small /> Lv {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{!bug.fights ? ' · too young' : bug.fainted ? ' · fainted' : ''}</p>
+          <p className="small"><TypeChip type={typeOf(bug.species)} small /> Lv {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{!bug.fights ? ' · too young' : bug.fainted ? ' · fainted' : bug.inRing ? ' · in the ring' : ''}</p>
           {mine && bug.line?.[mine.id] ? <p className="small ring-odds" data-test="roster-line">{chance(mine.name, bug.line[mine.id])}{matchup(mine.species, bug.species)}</p> : null}
         </div>
         {sent ? <div className="barn-row"><span className="small">Called out{sent.stake ? stakeLabel(sent.stake) : ''} · {left(sent.expiresAt - now)} left</span><button className="btn ghost small" onClick={() => drop(sent.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
@@ -230,7 +234,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
             {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">{bug.owner} would put up {money(riskFor(Number(callStake), bug.line[mine.id]))}.</p>}
           </form>
-          : grown && bug.fights && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted || lost} data-test="challenge-open">Challenge</button>}
+          : grown && bug.fights && !bug.fainted && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted || lost} data-test="challenge-open">Challenge</button>}
       </li>; })}</ul>}
     </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>)}
     {pane === 'bouts' && <div className="ring-pane" role="tabpanel">

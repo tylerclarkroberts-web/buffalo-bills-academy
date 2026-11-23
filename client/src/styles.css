@@ -243,6 +243,8 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .tp-bottom:empty { display: none; }
 .bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(36, 9, 26, .7); font-size: 13.5px; }
 .bar p { flex: 1 1 200px; }
+.rebuybar { justify-content: center; padding: 6px 12px; }
+.rebuybar p { flex: 1 1 auto; margin: 0; text-align: center; }
 .lobbybar .lb-code { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
 .room-code { font: 400 30px/1 var(--display); letter-spacing: .08em; color: var(--amber); text-shadow: 0 0 12px rgba(242, 198, 90, .4); }
 .felt-box { position: relative; flex: 1; min-height: 0; min-width: 0; }

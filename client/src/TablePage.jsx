@@ -422,6 +422,12 @@ function Bottom({ blocked, replaying, view, me, seated, myTurn, now, code, invit
     );
   }
   if (myTurn && view.legal) out.push(<ActionBar key="a" view={view} onAct={(a) => post('action', { ...a, handNumber: hand.number })} />);
+  // Buy back in lives here, not only in the You tab: after a bust the felt is what people are looking at.
+  if (view.me.canRebuy) {
+    out.push(<div key="rb" className="bar rebuybar" data-test="table-rebuy-bar"><button className="btn primary" onClick={() => post('rebuy')} data-test="table-rebuy">Buy back in {money(view.settings.buyIn)}</button></div>);
+  } else if (seated && view.status !== 'closed' && view.settings.maxRebuys === 0 && myP && (myP.busted || (myP.stack < view.settings.buyIn && !myP.inHand))) {
+    out.push(<div key="rb" className="bar rebuybar" data-test="table-rebuys-off"><p className="small">Rebuys are off at this table — leave and sit down again.</p></div>);
+  }
   // while the fight prompt is up, the bottom stays readable (the clock keeps ticking) but can't be tapped
   return <div className="tp-bottom" inert={blocked ? '' : undefined} aria-hidden={blocked || undefined}>{out}</div>;
 }
