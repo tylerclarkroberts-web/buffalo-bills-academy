@@ -243,7 +243,7 @@ function drawFighter(x, f, p, size, face) {
   const bug = BY_ID[f?.species]; if (!bug) return;
   const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
   const s = grown * (1 + (p.alt / size) * 0.25);
-  x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy); x.imageSmoothingEnabled = false;
+  x.save(); x.translate(p.x, p.y - p.alt); x.rotate((f.style?.evo ? 0 : face) + p.rot + (p.turn || 0) + (p.spin || 0)); // a bug is seen from above and turns to face its opponent; a rebuilt one stands up x.scale(p.sx, p.sy); x.imageSmoothingEnabled = false;
   x.drawImage(p.flash ? tinted(img, p.flash) : img, -s / 2, -s / 2, s, s);
   if (p.tint) { x.globalAlpha = p.tint[1]; x.drawImage(tinted(img, p.tint[0]), -s / 2, -s / 2, s, s); }
   x.restore();
