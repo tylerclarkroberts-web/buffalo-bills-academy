@@ -174,6 +174,7 @@ export class Blackjack {
         const actor = playing && hand && !hand.done ? t.seats[hand.seat] : null;
         const turnLabel = t.status === 'over' ? 'Over'
           : t.status === 'lobby' ? t.hostId === p.id && t.seats.some((s) => s && !s.left) && (t.house.mode === 'guntrad' || t.house.id) ? 'Ready to start' : 'Not started'
+          : t.status === 'playing' && !G.seatedHumans(t) ? 'Waiting for players'
           : t.house.id === p.id && t.status === 'playing'
             ? (Kash.housePresent(t, this.now()) ? "You're dealing" : 'Jump in to deal')
           : lane?.status === 'over' ? 'Cash out'
@@ -208,6 +209,9 @@ export class Blackjack {
     t.seats[i] = { id: p.id, name: p.name, chips: t.settings.buyIn, startChips: t.settings.buyIn, stats: stats0() };
     G.log(t, this.now(), `${p.name} sits down with $${t.settings.buyIn}.`, { k: 'sit', seat: i });
     if (C.isContinuous(t) && t.status === 'playing') C.openLane(t, i, this.now(), this.rng);
+    else if (!C.isContinuous(t) && t.status === 'playing' && (!t.round || ['done', 'over'].includes(t.round.phase))) {
+      G.startRound(t, this.now(), this.rng);
+    }
   }
   join(p, code, ack) {
     const t = this.table(code);
@@ -344,7 +348,15 @@ export class Blackjack {
       if (r?.bets[i] && !r.bets[i].out) { t.seats[i].chips += r.bets[i].bet + (r.bets[i].side.match || 0) + (r.bets[i].side.pairs || 0); delete r.bets[i]; }
       const s = t.seats[i]; this.cashOut(t, s);
       G.log(t, this.now(), `${s.name} cashes out $${s.cashedOut}.`, { k: 'leave', seat: i });
-      if (t.status === 'playing' && !t.seats.some((x) => x && !x.left && !x.bot)) this.endTable(t, 'Everyone left.');
+      if (t.status === 'playing' && !G.seatedHumans(t)) {
+        // A player-dealt table stays open while the house can still cover the min, so a new player can sit.
+        // Guntrad (or a broke human house) still ends when everyone leaves.
+        if (t.house.mode === 'player' && t.house.id && !G.houseBroke(t)) {
+          G.log(t, this.now(), 'The table stays open, waiting for someone to sit down.', { k: 'wait' });
+          if (C.isContinuous(t)) C.check(t, this.now());
+          else G.advance(t, this.now(), this.rng);
+        } else this.endTable(t, 'Everyone left.');
+      }
       else if (C.isContinuous(t)) C.check(t, this.now());
       else G.advance(t, this.now(), this.rng);
       return this.viewOf(t, p.id);

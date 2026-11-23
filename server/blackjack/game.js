@@ -88,6 +88,10 @@ function draw(t, now, rng) {
 }
 
 export const houseCanPay = (t) => t.house.mode === 'guntrad' || t.house.bank > 0;
+/** A human house that cannot cover the minimum bet (Guntrad is never broke). */
+export function houseBroke(t) {
+  return t.house.mode !== 'guntrad' && (t.house.bank <= 0 || t.house.bank < t.limits.min || maxBetNow(t) < t.limits.min);
+}
 /** Biggest main bet this round: the table max, and with a human house never more than a tenth of the bank. */
 export function maxBetNow(t) {
   let m = t.limits.max;
@@ -95,13 +99,15 @@ export function maxBetNow(t) {
   return Math.max(0, m);
 }
 const active = (t) => t.seats.map((s, i) => [s, i]).filter(([s]) => s && !s.left);
+export const seatedHumans = (t) => t.seats.some((s) => s && !s.left && !s.bot);
 
 export function startRound(t, now, rng) {
   if (t.status === 'over') return;
-  if (t.house.mode !== 'guntrad' && (t.house.bank < t.limits.min || maxBetNow(t) < t.limits.min)) return endGame(t, now, 'The house is out of money.');
+  if (houseBroke(t)) return endGame(t, now, 'The house is out of money.');
   // v57 hotfix: a human still seated but under the minimum must not let bots auto-deal forever
   // (settle → startRound → deal → settle → … blew the call stack on live).
   const humans = active(t).filter(([s]) => !s.bot);
+  if (!humans.length) return; // player-dealt tables wait for the next sitter; never auto-deal bots alone
   if (humans.length && !humans.some(([s]) => s.chips >= t.limits.min)) {
     return endGame(t, now, 'No one can cover the minimum bet.');
   }
