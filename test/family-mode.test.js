@@ -9,7 +9,7 @@ import {
 import {
   FAMILY_KEY, WORK_KEY, FAMILY_COOKIE, WORK_COOKIE,
   loadModes, getModes, setFamily, setWork, setModes,
-  handleWorkHotkey, isTypingTarget, isElHaloScreen,
+  handleWorkHotkey, isTypingTarget, isElHaloScreen, isMinesScreen,
 } from '../client/src/modes/store.js';
 
 test('familyTableNumber is a stable 4-digit value derived from the table code', () => {
@@ -226,6 +226,82 @@ test('pressing W inside El Halo never turns Work Mode on, on any of its screens'
 
   // Once El Halo is gone, bare W on a normal page still arms Work Mode.
   assert.equal(isElHaloScreen('/', empty), false);
+  assert.equal(handleWorkHotkey(keyEvent('w'), '/', empty), true);
+  assert.equal(getModes().work, true);
+  setWork(false);
+});
+
+function mineDoc(hit) {
+  // A stub document: either body.in-mines (covers tunnels, battles, and every overlay
+  // while the Mines page is mounted) or a single mounted marker the helper looks for.
+  return {
+    body: { classList: { contains: (c) => hit === 'in-mines' && c === 'in-mines' } },
+    querySelector: (sel) => {
+      if (!hit || hit === 'in-mines') return null;
+      return String(sel).includes(hit) ? { test: hit } : null;
+    },
+  };
+}
+
+test('pressing W inside the Acid Mines never turns Work Mode on, on any of its screens', () => {
+  setWork(false);
+  const empty = mineDoc(null);
+
+  // The /mines route, with or without a trailing slash, query, or hash, and the admin preview.
+  for (const path of ['/mines', '/mines/', '/mines?shaft=7', '/mines#lift', '/admin/mine-preview', '/admin/mine-preview?shot=stick-wall']) {
+    assert.equal(isMinesScreen(path, empty), true, path);
+    assert.equal(handleWorkHotkey(keyEvent('w'), path, empty), false, path);
+    assert.equal(handleWorkHotkey(keyEvent('W'), path, empty), false, path);
+  }
+  assert.equal(getModes().work, false);
+
+  // Mounted screens, including overlays where W is not a walk key (a bug fight, prompts, the map).
+  const mounted = [
+    'in-mines',          // body class while Mines is mounted: tunnels, battles, lectures
+    'mine-today',        // orientation / clock-in
+    'm-play',            // in-shift tunnels
+    'm-result',          // shift report
+    'sick',              // purple-acid / Heeshee end
+    'wild-prompt',       // "a wild bug" modal
+    'door-hall',         // Hall of Doors
+    'doom-room',
+    'nano-room',
+    'stick-intro',
+    'mine-map',
+    'dance-picker',
+    'bug-orders',
+    'ambush-prompt',
+    'lift-prompt',
+    'door-prompt',
+    'egg-prompt',
+    'mine-preview',
+    'fm-q',              // Foreman's quiz
+  ];
+  for (const hit of mounted) {
+    const doc = mineDoc(hit);
+    assert.equal(isMinesScreen('/', doc), true, hit);
+    assert.equal(handleWorkHotkey(keyEvent('w'), '/', doc), false, hit);
+  }
+  assert.equal(getModes().work, false);
+
+  // A barn fight is not a mine fight: W still arms Work Mode there.
+  const barnBout = {
+    body: { classList: { contains: () => false } },
+    querySelector: (sel) => (String(sel).includes('data-test=bout') && !String(sel).includes('mine') ? { test: 'bout' } : null),
+  };
+  assert.equal(isMinesScreen('/barn', barnBout), false);
+  assert.equal(handleWorkHotkey(keyEvent('w'), '/barn', barnBout), true);
+  assert.equal(getModes().work, true);
+  setWork(false);
+
+  // Bug Center is a Barn page, even when a mine shift report links there.
+  assert.equal(isMinesScreen('/barn/center', empty), false);
+  assert.equal(handleWorkHotkey(keyEvent('w'), '/barn/center', empty), true);
+  assert.equal(getModes().work, true);
+  setWork(false);
+
+  // Once the mine is gone, bare W on a normal page still arms Work Mode.
+  assert.equal(isMinesScreen('/', empty), false);
   assert.equal(handleWorkHotkey(keyEvent('w'), '/', empty), true);
   assert.equal(getModes().work, true);
   setWork(false);
