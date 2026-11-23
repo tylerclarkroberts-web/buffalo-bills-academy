@@ -37,3 +37,21 @@ test('the film still has to play to the end before the trip opens; there is no s
   assert.equal(/\bskip\b/i.test(jsx) && /I've watched it/i.test(jsx), false);
   assert.doesNotMatch(jsx, /I've watched it/);
 });
+
+test('phone Games-tab Foff promo and the film modal receive the game title as a prop', () => {
+  // A missing title on the promo layout (bare=false) used to throw `title is not defined`
+  // and blank the whole iPhone lobby, so Play blackjack was unreachable until a refresh
+  // of a different route.
+  const watch = jsx.slice(jsx.indexOf('function WatchPromo'), jsx.indexOf('function UnlockedPromo'));
+  const unlocked = jsx.slice(jsx.indexOf('function UnlockedPromo'), jsx.indexOf('function FoffArt'));
+  const modal = jsx.slice(jsx.indexOf('function FilmModal'), jsx.indexOf('export function FilmPlayer'));
+  assert.match(watch, /function WatchPromo\(\{ bare, onWatch, title \}\)/);
+  assert.match(unlocked, /function UnlockedPromo\(\{ bare, reveal, title \}\)/);
+  assert.match(modal, /function FilmModal\(\{ title, onClose, onWatched \}\)/);
+  assert.match(jsx, /<WatchPromo bare=\{bare\} onWatch=\{[^}]+\} title=\{title\} \/>/);
+  assert.match(jsx, /<UnlockedPromo bare=\{bare\} reveal=\{reveal\} title=\{title\} \/>/);
+  assert.match(jsx, /<FilmModal title=\{title\} onClose=/);
+  assert.match(watch, /\{title\}/);
+  assert.match(unlocked, /\{title\}/);
+  assert.match(modal, /\{title\}/);
+});
