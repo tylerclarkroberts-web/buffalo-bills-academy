@@ -1,15 +1,17 @@
 // Barn bugs (v33): original pixel-art sprites, drawn procedurally from each bug's `look` (no image assets).
 // GBA-era style: a 64x64 grid, a small palette per bug (outline, dark, base, light, accent + eye/glint), a dark
-// one-pixel outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
+// outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
 import { drawEvolution } from './evolutionArt.js';
 export const SPRITE = 64;
-// Big sprites are drawn on a grid FINE times as dense: the same shapes, written in the same 64-grid coordinates, with
-// smoother edges, a thinner outline and two more tones of shading. Small ones (thumbnails, far-off billboards) keep 64.
-export const FINE = 2;
-/** The grid to draw a sprite on when it will be shown `s` pixels across: the fine one once each of its pixels gets a whole screen pixel. */
-export const fineFor = (s) => (s >= SPRITE * FINE ? FINE : 1);
+// Bigger sprites are drawn on a denser grid, up to FINE times: the same shapes, written in the same 64-grid coordinates,
+// with smoother edges, a thinner outline and two more tones of shading. From three times up there is room for detail:
+// knees, spurs, jointed feelers, more grooves and a glint on the shell. Small ones (thumbnails, far-off billboards) keep 64.
+export const FINE = 4;
+const DETAIL = 3;
+/** The grid to draw a sprite on when it will be shown `s` pixels across: the densest that still gives each of its pixels a whole screen pixel. */
+export const fineFor = (s) => Math.max(1, Math.min(FINE, Math.floor(s / SPRITE)));
 
 // Missing levels keep the existing adult presentation for older callers and replays.
 export function bugScale(level = MAX_LEVEL, species) {
@@ -59,8 +61,9 @@ function canvas(f = 1) {
   // which shape each pixel came from (0: a loose pixel), so the fine grid can crease where one body part overlaps another
   const part = Array.from({ length: N }, () => new Array(N).fill(0)); let shape = 0, cur = 0;
   const etch = Array.from({ length: N }, () => new Array(N).fill(false)); // 'T': a faint line engraved on whatever is there
+  const shine = Array.from({ length: N }, () => new Array(N).fill(0)); // the shape a glint sits on, where the light catches it
   const at = (X) => (X + 0.5) / f - 0.5; // a grid pixel's centre, in 64-grid coordinates
-  const one = (X, Y, m) => { if (X < 0 || X >= N) return; if (m === 'T') { etch[Y][X] = g[Y][X] !== null; return; } g[Y][X] = m; part[Y][X] = cur; etch[Y][X] = false; };
+  const one = (X, Y, m) => { if (X < 0 || X >= N) return; if (m === 'T') { etch[Y][X] = g[Y][X] !== null; return; } g[Y][X] = m; part[Y][X] = cur; etch[Y][X] = false; shine[Y][X] = 0; };
   const set = (X, Y, m, mirror) => { if (Y < 0 || Y >= N) return; one(X, Y, m); if (mirror) one(N - 1 - X, Y, m); };
   // one whole 64-grid pixel (an eye glint, a seam, a stripe): an f-by-f block
   const put = (x, y, m) => { cur = 0; const X = Math.round(x * f), Y = Math.round(y * f); for (let a = 0; a < f; a++) for (let b = 0; b < f; b++) set(X + a, Y + b, m); };
@@ -70,12 +73,25 @@ function canvas(f = 1) {
     for (let Y = Math.floor((cy - ry) * f) - f; Y <= Math.ceil((cy + ry) * f) + f; Y++) for (let X = Math.floor((cx - rx) * f) - f; X <= Math.ceil((cx + rx) * f) + f; X++) {
       const dx = (at(X) - cx) / rx, dy = (at(Y) - cy) / ry; if (dx * dx + dy * dy <= 1.0) set(X, Y, m, mirror);
     }
+    // a streak of light on the upper left of anything round and big enough to carry one
+    const r = Math.min(rx, ry); if (f < DETAIL || r < 4.5 || !'BAL'.includes(m)) return;
+    for (const mx of mirror && Math.abs(cx - 31.5) > rx ? [cx, SPRITE - 1 - cx] : [cx]) { // a pair either side of the middle gets one each
+      const gx = mx - rx * 0.44, gy = cy - ry * 0.44;
+      for (let Y = Math.floor((gy - r) * f); Y <= Math.ceil((gy + r) * f); Y++) for (let X = Math.floor((gx - r) * f); X <= Math.ceil((gx + r) * f); X++) {
+        const dx = at(X) - gx, dy = at(Y) - gy, along = (dx - dy) / (r * 0.34), across = (dx + dy) / (r * 0.13);
+        if (along * along + across * across <= 1 && part[Y]?.[X] === cur) shine[Y][X] = cur;
+      }
+    }
   };
   const line = (x0, y0, x1, y1, m, w = 1, mirror = true) => {
     cur = ++shape;
     const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1) * 2 * f, k = w >> 1;
     for (let i = 0; i <= n; i++) { const u = (x0 + ((x1 - x0) * i) / n - k) * f, v = (y0 + ((y1 - y0) * i) / n - k) * f;
       for (let a = 0; a < w * f; a++) for (let b = 0; b < w * f; b++) { const Y = Math.round(v + b); set(Math.round(u + a), Y, m); if (mirror) set(Math.round(N - 1 - u - a), Y, m); } }
+    // a thin dark limb (a shin, a feeler) is jointed: a ring across it every couple of pixels
+    const len = Math.hypot(x1 - x0, y1 - y0); if (f < DETAIL || m !== 'D' || w !== 1 || len < 4) return;
+    const nx = ((y1 - y0) / len) * 0.75, ny = (-(x1 - x0) / len) * 0.75;
+    for (let d = 2.5; d < len - 1; d += 2.5) { const px = x0 + ((x1 - x0) * d) / len, py = y0 + ((y1 - y0) * d) / len; hair([[px - nx, py - ny], [px + nx, py + ny]], 'S', mirror); }
   };
   // a line one grid pixel wide, through 64-grid points: only the fine grid has room for it (grooves, claws, veins)
   const hair = (pts, m, mirror = true) => {
@@ -92,13 +108,17 @@ function canvas(f = 1) {
         if ((ay <= y && by > y) || (by <= y && ay > y)) xs.push(ax + ((y - ay) / (by - ay)) * (bx - ax)); }
       xs.sort((a, b) => a - b); for (let i = 0; i + 1 < xs.length; i += 2) for (let X = Math.ceil((xs[i] + 0.5) * f - 0.5); X <= Math.floor((xs[i + 1] + 0.5) * f - 0.5); X++) set(X, Y, m, mirror); }
   };
-  return { g, f, part, etch, put, sym, ell, line, hair, poly };
+  return { g, f, part, etch, shine, put, sym, ell, line, hair, poly };
 }
 
 // Six legs, drawn first so the body sits on top. `spread` widens them; `long` stretches them.
 function legs(c, { y = 34, spread = 1, long = 1, m = 'D', fore = null } = {}) {
   const L = (x0, y0, x1, y1, x2, y2) => { c.line(x0, y0, x1, y1, m, 2); c.line(x1, y1, x2, y2, m, 1);
-    const up = y2 < y1 ? -1 : 1; c.hair([[x2 - 1.4, y2 + 1.6 * up], [x2, y2 + 0.4 * up], [x2 + 1.2, y2 + 1.8 * up]], m); }; // two claws
+    const up = y2 < y1 ? -1 : 1; c.hair([[x2 - 1.4, y2 + 1.6 * up], [x2, y2 + 0.4 * up], [x2 + 1.2, y2 + 1.8 * up]], m); // two claws
+    if (c.f < DETAIL) return;
+    c.ell(x1 - 0.2, y1 - 0.2, 1.5, 1.5, m); // a knee
+    const len = Math.hypot(x2 - x1, y2 - y1), dx = (x2 - x1) / len, dy = (y2 - y1) / len, out = dy > 0 ? 1 : -1; // and two spurs on the outside of the shin
+    for (const t of [0.4, 0.68]) { const px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t; c.hair([[px, py], [px - dy * out * 1.7 + dx, py + dx * out * 1.7 + dy]], m); } };
   const s = spread, k = long;
   if (fore !== 'raptor') L(26, y - 6, 26 - 9 * s, y - 12 * k, 26 - 11 * s, y - 18 * k);
   L(25, y, 25 - 12 * s, y + 2, 25 - 15 * s, y + 9 * k);
@@ -111,7 +131,7 @@ function antennae(c, { x = 29, y = 14, len = 10, bend = 4, m = 'D', fan = false,
 }
 /** Grooves down a wing case, following its curve (the fine grid only). */
 function grooves(c, cy, rx, ry) {
-  for (const t of [0.36, 0.68]) { const pts = [];
+  for (const t of c.f < DETAIL ? [0.36, 0.68] : [0.2, 0.36, 0.52, 0.68, 0.84]) { const pts = [];
     for (let y = cy - ry * 0.72; y <= cy + ry * 0.86; y += 1) pts.push([31.5 - rx * t * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2)) - 0.5, y]);
     c.hair(pts, 'T'); }
 }
@@ -162,7 +182,7 @@ function spriteArt(L, fine, stage = 0, botched = false) {
 export function spriteGrid(bug, level, fine = 1) {
   const L = lookOf(bug, level);
   const c = spriteArt(L, fine);
-  return shade(c.g, ramps(L.pal ?? DEFAULT_PAL), c.part, c.etch);
+  return shade(c, ramps(L.pal ?? DEFAULT_PAL));
 }
 
 const DEFAULT_PAL = ['#111111', '#333333', '#666666', '#999999', '#cc3333'];
@@ -389,13 +409,14 @@ function band(c, cy, rx, ry, rows) {
   for (const y of rows) { const w = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2)); for (let x = Math.ceil(33 - w); x <= 31; x++) c.sym(x, y, 'S'); }
 }
 
-function shade(g, R, part, etch) {
-  const N = g.length, fine = N > SPRITE; const out = Array.from({ length: N }, () => new Array(N).fill(null));
+function shade({ g, part, etch, shine }, R) {
+  // `k`: how many grid pixels deep a one-pixel rim is drawn, so outlines and shading weigh the same on every fine grid
+  const N = g.length, fine = N > SPRITE, k = N / SPRITE / 2, rim = Math.max(1, Math.round(k)); const out = Array.from({ length: N }, () => new Array(N).fill(null));
   const filled = (x, y) => x >= 0 && y >= 0 && x < N && y < N && g[y][x] !== null;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const m = g[y][x];
-    if (m === null) { // outline any empty pixel touching the sprite
-      if (filled(x - 1, y) || filled(x + 1, y) || filled(x, y - 1) || filled(x, y + 1)) out[y][x] = R.o;
+    if (m === null) { // outline any empty pixel within a rim of the sprite
+      for (let dy = -rim; dy <= rim && !out[y][x]; dy++) for (let dx = Math.abs(dy) - rim; dx <= rim - Math.abs(dy); dx++) if (filled(x + dx, y + dy)) { out[y][x] = R.o; break; }
       continue;
     }
     if (m === 'o') { out[y][x] = R.o; continue; }
@@ -412,17 +433,20 @@ function shade(g, R, part, etch) {
       out[y][x] = ramp[lvl];
       continue;
     }
-    // The fine grid: the same top-left light, its rims twice as many pixels deep so they weigh what they did, a
+    // A fine grid: the same top-left light, its rims as many pixels deep as it takes to weigh what they did, a
     // half-tone easing each rim into the base, and a crease where one part of the body overlaps another.
-    const lit = !same(-1, -1) || !same(-2, -2) || !same(0, -2) || !same(0, -3), dim = !same(1, 1) || !same(2, 2) || !same(0, 3) || !same(3, 0);
+    const edge = (dx, dy, n) => { for (let i = 1, to = Math.round(n * k); i <= to; i++) if (!same(dx * i, dy * i)) return true; return false; };
+    const lit = edge(-1, -1, 2) || edge(0, -1, 3), dim = edge(1, 1, 2) || edge(0, 1, 3) || edge(1, 0, 3);
     const p = part[y][x], over = (dx, dy) => same(dx, dy) && part[y + dy][x + dx] && part[y + dy][x + dx] !== p;
+    let crease = false; for (let i = 1; p && i <= rim && !crease; i++) crease = over(0, i) || over(i, 0);
     if (m === 'E') out[y][x] = ramp[dim && !lit ? 0 : 1];
     else if (lit) out[y][x] = ramp[2];
-    else if (dim || (p && (over(0, 1) || over(1, 0)))) out[y][x] = ramp[0];
-    else if (!same(-3, -3) || !same(-4, -4) || !same(0, -5) || !same(-5, -1)) out[y][x] = mix(ramp[1], ramp[2], 0.5);
-    else if (!same(3, 3) || !same(4, 4) || !same(0, 5) || !same(5, 0) || !same(5, 2)) out[y][x] = mix(ramp[1], ramp[0], 0.5);
+    else if (dim || crease) out[y][x] = ramp[0];
+    else if (edge(-1, -1, 4) || edge(0, -1, 5) || edge(-1, 0, 5)) out[y][x] = mix(ramp[1], ramp[2], 0.5);
+    else if (edge(1, 1, 4) || edge(0, 1, 5) || edge(1, 0, 5)) out[y][x] = mix(ramp[1], ramp[0], 0.5);
     else out[y][x] = ramp[1];
     if (etch[y][x] && !lit) out[y][x] = mix(out[y][x], ramp[0], 0.45);
+    if (shine[y][x] && shine[y][x] === p && !dim) out[y][x] = mix(ramp[2], '#ffffff', 0.5);
   }
   return out;
 }
@@ -521,23 +545,26 @@ function scale2x(src) {
   return out;
 }
 /**
- * Hats and gear on the fine sprite. They are 64-grid pixel art (`wear`, one colour or null a cell): doubled with
- * their diagonals rounded, lit from the top left like the bug, and outlined wherever they stand clear of it.
- * ponytail: Scale2x doubles, so this is for FINE = 2 only; another factor needs another scaler.
+ * Hats and gear on a fine sprite. They are 64-grid pixel art (`wear`, one colour or null a cell): doubled with
+ * their diagonals rounded as often as fits the grid, lit from the top left like the bug, and outlined wherever they
+ * stand clear of it.
+ * ponytail: Scale2x only doubles, so on the three-times grid the doubled layer is stretched by half again and its
+ * pixels come out uneven. A Scale3x would fix that if it ever shows.
  */
 function paintWear(ctx, wear, body, outline) {
-  const big = scale2x(wear), N = big.length, on = (x, y) => !!big[y]?.[x];
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+  const N = body.length; let big = wear; while (big.length * 2 <= N) big = scale2x(big);
+  const M = big.length, step = N / M, rim = M / SPRITE / 2, at = (v) => Math.round(v * step), on = (x, y) => !!big[y]?.[x];
+  for (let y = 0; y < M; y++) for (let x = 0; x < M; x++) {
     const v = big[y][x];
-    if (v) ctx.fillStyle = !on(x, y - 1) || !on(x - 1, y) ? mix(v, '#ffffff', 0.3) : !on(x, y + 1) || !on(x + 1, y) ? mix(v, '#000000', 0.3) : v;
-    else if (!body[y][x] && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1))) ctx.fillStyle = outline;
+    if (v) ctx.fillStyle = !on(x, y - rim) || !on(x - rim, y) ? mix(v, '#ffffff', 0.3) : !on(x, y + rim) || !on(x + rim, y) ? mix(v, '#000000', 0.3) : v;
+    else if (!body[at(y)][at(x)] && [1, rim].some((d) => on(x - d, y) || on(x + d, y) || on(x, y - d) || on(x, y + d))) ctx.fillStyle = outline;
     else continue;
-    ctx.fillRect(x, y, 1, 1);
+    ctx.fillRect(at(x), at(y), at(x + 1) - at(x), at(y + 1) - at(y));
   }
 }
 /**
  * The bug's sprite, cached by species, life stage and look, with its accessories: 64x64, or 64 x `fine` a side for
- * a big drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
+ * bigger drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
  */
 export function spriteCanvas(bug, style, level, fine = 1) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
@@ -548,7 +575,7 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   const L = lookOf(bug, artLevel), R = ramps(style?.bugskin?.pal ?? L.pal ?? DEFAULT_PAL);
   const art = spriteArt(L, fine, stage, botched), N = SPRITE * fine;
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : Object.assign(document.createElement('canvas'), { width: N, height: N });
-  const ctx = c.getContext('2d'), body = shade(art.g, R, art.part, art.etch);
+  const ctx = c.getContext('2d'), body = shade(art, R);
   paintSprite(ctx, body, 0, 0, N);
   if (!style?.defense?.shape && !style?.gear?.shape && !style?.bugacc?.shape && !style?.bughat?.shape) {
     cache.set(key, c);
@@ -556,7 +583,7 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   }
   // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
   const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched);
-  const grid = fine === 1 ? body : shade(coarse.g, R, coarse.part, coarse.etch);
+  const grid = fine === 1 ? body : shade(coarse, R);
   const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
   const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
   if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape, stage); // defense gear goes on first, the attack item over it
@@ -568,11 +595,11 @@ export function spriteCanvas(bug, style, level, fine = 1) {
   return c;
 }
 /**
- * A three.js texture of the bug for a 3D scene (pass the THREE module): the fine sprite up close, with the 64 one
- * as its only smaller level, so a bug drawn small or far off looks exactly as it always did. Both stay pixel-crisp.
+ * A three.js texture of the bug for a 3D scene (pass the THREE module): the finest sprite up close, stepping down to
+ * the 64 one, so a bug drawn small or far off looks exactly as it always did. Every level stays pixel-crisp.
  */
 export function bugTexture(THREE, bug, style, level) {
-  const levels = [spriteCanvas(bug, style, level, FINE), spriteCanvas(bug, style, level)], map = new THREE.CanvasTexture(levels[0]);
+  const levels = [FINE, 2, 1].map((fine) => spriteCanvas(bug, style, level, fine)), map = new THREE.CanvasTexture(levels[0]);
   map.mipmaps = levels; map.generateMipmaps = false; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter;
   map.colorSpace = THREE.SRGBColorSpace;
   return map;
