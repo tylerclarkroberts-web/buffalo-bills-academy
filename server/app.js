@@ -5,7 +5,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { GameError, recordTableMoment } from './engine/game.js';
-import { BUGS } from './engine/bugs.js';
+import { BUGS, givenName } from './engine/bugs.js';
 import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
@@ -452,7 +452,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest && Number(env.SMOKE_TEST_GAP_MS) > 0) SMOKE.gapMs = Number(env.SMOKE_TEST_GAP_MS); // e2e only: shorter tobacco queue gap
   if (barnTest && env.SHOP_TEST_CASH === '1') api.post('/dev/cash', needPlayer, wrap((req) => { const p = accounts.ensure(req.player); const want = Math.max(0, Math.floor(Number(req.body?.to) || 0)); accounts.change(p, want - p.bankroll, 'dev', 'e2e cash'); return { bankroll: p.bankroll }; }));
   // test hook (local dev server only, BARN_TEST_SPECIES=1): swap your own hatched bug's species, so the e2e can page every Field notes sheet
-  if (barnTest && env.BARN_TEST_SPECIES === '1') api.post('/dev/species', needPlayer, wrap((req) => { const pen = barn.doc.pens[req.player.id]; const id = String(req.body?.id || ''); if (!pen || !BUGS.some((b) => b.id === id)) throw new GameError('no', 400); pen.species = id; barn.save(); return { species: id }; }));
+  if (barnTest && env.BARN_TEST_SPECIES === '1') api.post('/dev/species', needPlayer, wrap((req) => { const pen = barn.doc.pens[req.player.id]; const id = String(req.body?.id || ''); if (!pen || !BUGS.some((b) => b.id === id)) throw new GameError('no', 400); pen.species = id; if (pen.stage === 'creature') pen.name = givenName(id, pen.name); barn.save(); return { species: id, name: pen.name }; }));
   api.get('/bj', needPlayer, wrap((req) => ({ ...bj.info(), tables: bj.list(req.player) })));
   api.post('/bj/preview', needPlayer, wrap((req) => bj.preview(req.body?.settings || {})));
   api.post('/bj/tables', needPlayer, wrap((req) => bj.create(req.player, req.body || {})));
@@ -577,6 +577,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
     res.set('Cache-Control', 'no-store');
     res.json({ preview: true, label: 'Preview: not a real game', path: '/admin/bj-preview' });
+  });
+  api.get('/admin/mine-preview', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ preview: true, label: 'Preview: not a real shift', path: '/admin/mine-preview' });
   });
   api.get('/admin/bj/pov', needPlayer, (req, res) => {
     if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });

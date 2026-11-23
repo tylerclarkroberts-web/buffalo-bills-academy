@@ -298,7 +298,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
     const k = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length;
     setTab(ids[k]); e.currentTarget.querySelectorAll('[role="tab"]')[k].focus();
   };
-  return <div className="bs" data-test="barn-creature" data-species={pen.species}>
+  return <div className={`bs${tab === 'notes' ? ' bs-ledger' : ''}`} data-test="barn-creature" data-species={pen.species}>
     <div className="bs-top">
       <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>

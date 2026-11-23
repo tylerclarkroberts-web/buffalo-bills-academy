@@ -155,3 +155,12 @@ test('other legendaries still use the old chance formula, not the stick insect\'
   assert.equal(STICK_JAR_CHANCE, 0.01);
   assert.ok(jarChance(4, 0) !== STICK_JAR_CHANCE);
 });
+
+test('a caught stick insect is labeled Lord Howe Island Stick Insect, not a genus nickname', async () => {
+  const { givenName } = await import('../server/engine/bugs.js');
+  const { BY_ID } = await import('../server/engine/creatures.js');
+  assert.equal(BY_ID.dryococelus.fixedName, true);
+  assert.equal(givenName('dryococelus', 'Sphaerocoris'), 'Lord Howe Island Stick Insect');
+  assert.equal(givenName('steeze', 'Bocydium'), 'STEEZE');
+  assert.equal(givenName('lamprima', 'Lamprima'), 'Lamprima');
+});

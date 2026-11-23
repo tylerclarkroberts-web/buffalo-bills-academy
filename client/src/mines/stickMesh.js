@@ -103,7 +103,7 @@ export function buildStick() {
   }
 
   // A soft fill so the silhouette reads in a dark tunnel, plus a tight hit mesh for seeing / clicking.
-  const fill = new THREE.PointLight(0xc49a5a, 2.4, 5.5, 1.6);
+  const fill = new THREE.PointLight(0xc49a5a, 3.4, 6.4, 1.45);
   fill.position.set(0, 0.2, 0.1);
   body.add(fill);
   const hit = add(body, 'box', new THREE.MeshBasicMaterial({ visible: false }), 0, 0.02, 0.05, 0.55, 0.35, 1.7);
@@ -150,7 +150,7 @@ export function poseStick(built, { grid, x, z, heading, now, reduce = false, til
   const g = built.group;
   const tileX = x / tile, tileY = z / tile;
   const surf = surface || stickSurface(grid, tileX, tileY, now);
-  const stand = 0.12; // body clear of the rock
+  const stand = 0.2; // body clear of the rock, enough to avoid z-fighting the brick
   const half = tile * 0.46;
   let px = x, py = stand, pz = z;
   if (surf.kind === 'floor') { _up.set(0, 1, 0); py = stand; }

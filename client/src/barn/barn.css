@@ -98,6 +98,7 @@
 .bout-top { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .bout-side { min-width: 0; display: grid; grid-template-columns: minmax(0, auto) 1fr; align-items: baseline; gap: 2px 8px; }
 .bout-side b { font-family: var(--display); color: var(--gold); font-size: clamp(15px, 2vw, 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) { .bout-side b { white-space: normal; line-height: 1.1; font-size: 14px; text-overflow: unset; overflow: visible; } }
 .bout-side .barn-bar { grid-column: 1 / -1; height: 12px; }
 .bout-side.s1 { text-align: right; } .bout-side.s1 .barn-bar { transform: scaleX(-1); }
 .bout-hp { grid-column: 1 / -1; }
@@ -274,7 +275,7 @@
   .bout-vs { grid-template-columns: 1fr; grid-template-rows: 1fr auto 1fr; padding: 0; }
   .bout-plate { justify-self: stretch; margin: 0; padding: 6px 12px; }
   .bout-plate.s0 { grid-column: 1; grid-row: 3; align-self: end; } .bout-plate.s1 { grid-column: 1; grid-row: 1; align-self: start; }
-  .bout-plate b { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+  .bout-plate b { font-size: 16px; white-space: normal; overflow: hidden; text-overflow: unset; overflow-wrap: anywhere; line-height: 1.1; }
   .bout-plate small { font-size: 9.5px; } .bout-plate small span { display: inline; } .bout-plate small span + span::before { content: ' · '; }
   .bout-vs-mark { grid-column: 1; grid-row: 2; justify-self: center; } .bout-vs > .bout-fight { grid-area: 1 / 1 / 4 / 2; }
 }
@@ -533,8 +534,10 @@
 .steeze-show.wealth .pile { left: 50%; bottom: 12%; width: 120px; height: 36px; margin-left: -60px; background: radial-gradient(ellipse at 50% 80%, #d4a017, #7a4a00 70%, transparent); opacity: 0; animation: steeze-pile 1.2s .2s ease-out both; }
 @keyframes steeze-coin { from { transform: translateY(-80%) rotate(0); opacity: 0; } 15% { opacity: 1; } to { transform: translateY(var(--drop, 220px)) rotate(220deg); opacity: 1; } }
 @keyframes steeze-pile { from { opacity: 0; transform: scaleX(.4) scaleY(.2); } to { opacity: .95; transform: scaleX(1) scaleY(1); } }
-.steeze-show.golf .club-arc { position: absolute; left: 42%; bottom: 28%; width: 70px; height: 70px; border: 3px solid transparent; border-right-color: #d8d0c4; border-radius: 50%; transform-origin: 50% 80%; animation: steeze-swing .45s ease-in both; }
-.steeze-show.golf .ball { width: 12px; height: 12px; border-radius: 50%; background: #f4f0e8; box-shadow: inset -2px -2px 0 #c8c0b4, 0 0 0 1px #888; offset-path: path('M 0 0 C 80 -90, 160 -40, 230 20'); animation: steeze-ball 1s .25s ease-out both; left: 48%; bottom: 36%; }
+.steeze-show.golf .club-arc { position: absolute; left: 54%; bottom: 22%; width: 130px; height: 130px; border: 6px solid transparent; border-right-color: #f4ead6; border-bottom-color: #c8b898; border-radius: 50%; transform-origin: 50% 80%; animation: steeze-swing .55s ease-in both; filter: drop-shadow(0 0 4px #fff); }
+.steeze-show.golf .ball { width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: inset -3px -3px 0 #c8c0b4, 0 0 0 2px #444, 0 2px 6px rgba(0,0,0,.45); offset-path: path('M 0 0 C 90 -110, 180 -50, 260 30'); animation: steeze-ball 1.05s .15s ease-out both; left: 62%; bottom: 40%; }
+.mine-preview .steeze-show.golf .club-arc, .steeze-show.golf.is-hold .club-arc { animation: none; transform: rotate(-18deg); }
+.mine-preview .steeze-show.golf .ball, .steeze-show.golf.is-hold .ball { animation: none; offset-distance: 32%; opacity: 1; }
 @keyframes steeze-swing { from { transform: rotate(50deg); } to { transform: rotate(-70deg); } }
 @keyframes steeze-ball { from { offset-distance: 0%; opacity: 1; } to { offset-distance: 100%; opacity: .2; } }
 .steeze-show.calves .zoom { position: absolute; left: 50%; bottom: 8%; width: 46%; height: 48%; margin-left: -23%; border: 3px solid rgba(255, 210, 90, .85); border-radius: 18px 18px 40px 40px; box-shadow: 0 0 24px rgba(255, 180, 40, .35); animation: steeze-calf 0.9s ease-in-out infinite alternate; }
@@ -545,3 +548,23 @@
 .steeze-show.chicken .basket::before { content: ''; position: absolute; left: 8px; top: -10px; width: 48px; height: 18px; background: repeating-linear-gradient(90deg, #e8b060 0 8px, #d49030 8px 12px); border-radius: 8px 8px 2px 2px; }
 @keyframes steeze-waiter { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes steeze-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Ledger tab on a phone: shrink the portrait, hide care, keep the notes + pager on screen. History is paged inside the panel. */
+@media (max-width: 760px) {
+  .barn-wrap:has(.bs-ledger) { max-height: calc(100dvh - 108px); overflow: hidden; }
+  .bs.bs-ledger { overflow: hidden; min-height: 0; }
+  .bs.bs-ledger .bs-stage { display: none; }
+  .bs.bs-ledger .bs-care { display: none; }
+  .bs.bs-ledger .bs-info { min-height: 0; }
+  .bs.bs-ledger .bs-info .barn-notes {
+    min-height: 0;
+    height: min(52dvh, calc(100dvh - 250px));
+    max-height: calc(100dvh - 230px);
+  }
+}
+@media (max-width: 1099px) {
+  .bs.bs-ledger .bs-info, .bs.bs-ledger .bs-pane { min-height: 0; }
+}
+.barn-name { overflow-wrap: anywhere; }
+.barn-stall-pick { max-width: 14rem; }
+.barn-stall-pick .barn-name, .barn-stall-pick { overflow: hidden; text-overflow: ellipsis; }

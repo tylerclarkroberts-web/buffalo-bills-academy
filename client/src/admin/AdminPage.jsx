@@ -306,6 +306,7 @@ function Mines({ data, pick }) {
                 </li>
               </ul>
               {t.heesheeTracked < t.recordedStarts ? <p className="muted small" style={{ margin: '8px 0 0' }}>Heeshee from this deploy.</p> : null}
+              <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-mines" onClick={() => navigate('/admin/mine-preview?shot=stick-wall')} style={{ marginTop: 10 }}>Preview legends</button>
             </div>
           </Panel>
         </div>

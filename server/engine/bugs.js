@@ -817,7 +817,7 @@ export const BUGS = [
     look: { kind: 'ant', pal: ['#100604', '#4a2010', '#8a4420', '#c88050', '#f0d83a'], goo: true },
     voice: { wave: 'square', base: 240, glide: -200, pattern: [0, 0, 12] } },
   // Legendary: thought extinct, then found again. Never in an egg; one of each in the whole Academy at a time.
-  { id: 'dryococelus', sci: 'Dryococelus australis', name: 'Lord Howe Island Stick Insect', order: 'Stick insect · Phasmatidae',
+  { id: 'dryococelus', sci: 'Dryococelus australis', name: 'Lord Howe Island Stick Insect', fixedName: true, order: 'Stick insect · Phasmatidae',
     range: 'Lord Howe Island, off eastern Australia. In the wild today, only the sea stack Ball\'s Pyramid, 23 km away.', size: 'About 12 to 15 cm long; large females can be longer. About 25 g. Females are larger than males.',
     diet: 'On Ball\'s Pyramid, the leaves of a single kind of Melaleuca shrub (Melaleuca howeana).', life: 'Adults are nocturnal and flightless. Females can lay fertile eggs without a male.', conservation: 'Critically Endangered (IUCN).',
     facts: [
@@ -869,7 +869,7 @@ export const BUGS = [
     stats: { atk: 4, def: 3, spd: 4 }, abilities: ['Wing Clip', 'Coal Forest Dive', 'Large Veins'],
     look: { kind: 'dragonfly', pal: ['#061008', '#143820', '#2a6a3a', '#bfe8d0', '#e8b83a'] },
     voice: { wave: 'sawtooth', base: 90, glide: 30, pattern: [0, 0, 0, 0] } },
-  { id: 'steeze', sci: 'STEEZE', name: 'STEEZE', order: 'In the mines · somehow',
+  { id: 'steeze', sci: 'STEEZE', name: 'STEEZE', fixedName: true, order: 'In the mines · somehow',
     range: 'The Acid Mines of Buffalo Bill\'s Academy, usually standing in a tunnel as if he had always been there.',
     size: 'Person-sized. The calves are the first thing you notice. Then the golf club.',
     diet: 'Chicken fingers, ordered at a restaurant. He does not eat acid.',
@@ -890,3 +890,10 @@ export const BUGS = [
     voice: { wave: 'sine', base: 160, glide: 8, pattern: [0, 3, 0] } },
 ];
 export const BUG_BY_ID = Object.fromEntries(BUGS.map((b) => [b.id, b]));
+
+/** Official stall/battle/card name. Species with fixedName keep that name; everyone else can have a nickname. */
+export function givenName(species, stored = '') {
+  const bug = BUG_BY_ID[species];
+  if (bug?.fixedName) return bug.name;
+  return stored || bug?.name || 'A bug';
+}

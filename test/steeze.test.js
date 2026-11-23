@@ -185,3 +185,21 @@ test('the portrait is gitignored and the species sheet is honest about being a c
   const gi = fs.readFileSync(new URL('../.gitignore', import.meta.url), 'utf8');
   assert.match(gi, /server\/assets\/steeze\.png/);
 });
+
+test('STEEZE keeps the name STEEZE in the stall, the ring and the card, never a genus nickname', (t) => {
+  const { barn } = fixture(t);
+  const pen = barn.adopt('ann', { wildId: 'w-steeze', battleId: 'b-steeze', species: STEEZE_ID, level: 5, name: 'Bocydium' });
+  assert.equal(pen.name, 'STEEZE');
+  assert.equal(barn.petView('ann').pen.name, 'STEEZE');
+  assert.equal(barn.fighter('ann', barn.doc.pens.ann).name, 'STEEZE');
+  assert.equal(barn.newName('ann', BY_ID.steeze), 'STEEZE');
+});
+
+test('a saved STEEZE nicknamed like a hatch is corrected on migrate', (t) => {
+  const { barn } = fixture(t);
+  barn.adopt('ann', { wildId: 'w-steeze-2', battleId: 'b-steeze-2', species: STEEZE_ID, level: 5 });
+  barn.doc.pens.ann.name = 'Bocydium';
+  barn.save();
+  assert.ok(barn.migrate() >= 1);
+  assert.equal(barn.doc.pens.ann.name, 'STEEZE');
+});
