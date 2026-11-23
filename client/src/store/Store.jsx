@@ -7,7 +7,7 @@ import { SignIn } from '../Home.jsx';
 import { navigate } from '../App.jsx';
 import { Bust } from '../avatar/Bust.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { drawBug, isHiResSprite, onSpriteReady } from '../barn/sprite.js';
+import { drawBug } from '../barn/sprite.js';
 import { PixIcon, LowPoly } from './PixIcon.jsx';
 import { FitControls, useFitSaver } from '../avatar/FitEditor.jsx';
 import { DEPARTMENTS, categoriesFor } from './departments.js';
@@ -27,15 +27,11 @@ const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 
 function BugThumb({ species, style, size, level }) {
   const ref = useRef(null);
   useEffect(() => {
-    const paint = () => {
-      const c = ref.current; const bug = BY_ID[species]; if (!c || !bug) return;
-      const d = Math.min(2, window.devicePixelRatio || 1); c.width = c.height = Math.round(size * d);
-      const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style, level });
-    };
-    paint();
-    return onSpriteReady(paint);
+    const c = ref.current; const bug = BY_ID[species]; if (!c || !bug) return;
+    const d = Math.min(2, window.devicePixelRatio || 1); c.width = c.height = Math.round(size * d);
+    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 0.9, style, level });
   }, [species, JSON.stringify(style), size, level]);
-  return <canvas ref={ref} className={`st-bug${isHiResSprite(BY_ID[species], style, level) ? ' hi-res' : ''}`} style={{ width: size, height: size }} aria-hidden="true" />;
+  return <canvas ref={ref} className="st-bug" style={{ width: size, height: size }} aria-hidden="true" />;
 }
 
 /** The little picture on a card or on the counter. Avatar items are shown on your own bust. */
