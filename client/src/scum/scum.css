@@ -41,6 +41,8 @@
   box-shadow: 0 2px 0 #8a5a10, 0 4px 12px rgba(0, 0, 0, .35); pointer-events: none;
 }
 .sc-seat.turn.me .sc-turnlbl { background: #fff3b0; }
+/* Top seats: keep the chip on the avatar, not floating up into the status line. */
+.sc-seat.north .sc-turnlbl { bottom: auto; top: 0; transform: translate(-50%, -70%); }
 .sc-status.mine { color: #ffd166; font-weight: 700; text-shadow: 0 0 10px rgba(255, 209, 102, .35); }
 .sc-seatbadge {
   position: absolute; left: 50%; top: calc(100% - 2px); transform: translate(-50%, 0);
@@ -139,8 +141,19 @@
   .sc-seat.turn .bust, .sc-seatbadge { animation: none !important; }
   .sc-fly, .sc-fly.to { transition: none !important; transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1); opacity: 0; }
 }
+/* Keep the header compact so the table name truncates less and the arena keeps its height. */
+.sc-felt > .bj-head { gap: 6px; }
+.sc-felt > .bj-head h1 { flex: 1 1 auto; min-width: 0; }
+.sc-felt > .bj-head-r { gap: 2px; }
+.sc-felt > .bj-head-r .say-btn { min-width: 0; min-height: 0; padding: 4px 6px; gap: 3px; }
+@media (pointer: coarse) {
+  .sc-felt > .bj-head-r .btn { min-height: 32px; }
+  .sc-felt > .bj-head-r .say-btn { min-width: 32px; min-height: 32px; width: 32px; height: 32px; padding: 2px; }
+}
 @media (max-width: 520px) {
-  .sc-felt .bj-head-r .btn { padding-inline: 7px; }
+  .sc-felt .bj-head-r .btn { padding-inline: 5px; min-height: 32px; }
+  .sc-felt > .bj-head-r { gap: 1px; }
+  .sc-felt > .bj-head-r .say-btn { min-width: 32px; min-height: 32px; width: 32px; height: 32px; padding: 2px; }
   .sc-pile-cards .card { --w: 42px; }
   .sc-title { font-size: 9px; padding: 0 5px; }
   .sc-turnlbl { font-size: 9px; padding: 0 6px; }

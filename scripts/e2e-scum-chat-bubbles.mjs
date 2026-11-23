@@ -132,17 +132,43 @@ try {
   const started = await call(cookies.Ann, 'POST', `/api/scum/tables/${code}/start`);
   check(started.body.status === 'playing', `dealt a 4-player table (${started.body.status})`);
 
-  // Post bubbles after the deal so only the current leader loses theirs on turn start; then they can say again.
+  // Rotate until the player opposite Ann (top/north seat) is to act, so shots cover the status-vs-turn-pill case.
   const view0 = await call(cookies.Ann, 'GET', `/api/scum/tables/${code}`);
-  const leader = view0.body.seats.find((s) => s && s.turn);
+  const ringOf = (v) => {
+    const r = v.round;
+    const order = (r?.order || v.seats.map((s, i) => (s ? i : -1)).filter((i) => i >= 0)).filter((i) => v.seats[i]);
+    const extra = v.seats.map((s, i) => (s && !order.includes(i) ? i : -1)).filter((i) => i >= 0);
+    const ring = [...order, ...extra];
+    const meAt = Math.max(0, ring.indexOf(v.mySeat));
+    return [...ring.slice(meAt), ...ring.slice(0, meAt)];
+  };
+  const topSeat = ringOf(view0.body)[2];
+  check(topSeat != null && view0.body.seats[topSeat], `top seat is ${view0.body.seats[topSeat]?.name || topSeat}`);
+  for (let i = 0; i < 12 && (await call(cookies.Ann, 'GET', `/api/scum/tables/${code}`)).body.round?.turn !== topSeat; i++) {
+    const v = (await call(cookies.Ann, 'GET', `/api/scum/tables/${code}`)).body;
+    const actor = v.seats[v.round.turn];
+    if (!actor) throw new Error(`no actor at seat ${v.round.turn}`);
+    if (v.round.leading || !v.round.pile) {
+      const av = (await call(cookies[actor.name], 'GET', `/api/scum/tables/${code}`)).body;
+      const card = av.round?.hand?.[0];
+      if (!card) throw new Error(`${actor.name} has no card to lead`);
+      await call(cookies[actor.name], 'POST', `/api/scum/tables/${code}/play`, { cards: [card] });
+    } else {
+      await call(cookies[actor.name], 'POST', `/api/scum/tables/${code}/pass`);
+    }
+  }
+  const ready = (await call(cookies.Ann, 'GET', `/api/scum/tables/${code}`)).body;
+  const leader = ready.seats[ready.round?.turn];
+  check(ready.round?.turn === topSeat, `turn is on the top seat (${leader?.name}, seat ${ready.round?.turn})`);
+
+  // Post bubbles after the deal (and after any rotation) so the current actor can still say.
   for (const u of people) {
     await call(cookies[u.name], 'POST', `/api/scum/tables/${code}/say`, { text: u.line });
   }
-  // If the leader's first post was cleared... it wasn't, because they posted after their turn had already started.
   const checkView = await call(cookies.Ann, 'GET', `/api/scum/tables/${code}`);
   const withSay = (checkView.body.seats || []).filter((s) => s && s.say?.text);
   check(withSay.length >= 3, `at least 3 seat bubbles in the view (got ${withSay.length})`);
-  console.log('bubbles', withSay.map((s) => `${s.name}: ${s.say.text}`).join(' | '), 'leader', leader?.name);
+  console.log('bubbles', withSay.map((s) => `${s.name}: ${s.say.text}`).join(' | '), 'leader', leader?.name, 'top', ready.seats[topSeat]?.name);
 
   const browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox'] });
 
@@ -167,6 +193,7 @@ try {
       };
       const vp = { x: 0, y: 0, width: innerWidth, height: innerHeight };
       const bubbles = [...document.querySelectorAll('[data-test=say-bubble]')].map((el) => box(el));
+      const title = document.querySelector('.sc-felt .bj-head h1');
       return {
         vp,
         bubbles,
@@ -175,6 +202,10 @@ try {
         pass: box(document.querySelector('[data-test=scum-pass]')),
         hand: box(document.querySelector('[data-test=scum-hand]')),
         pile: box(document.querySelector('[data-test=scum-pile]')),
+        status: box(document.querySelector('[data-test=scum-status]')),
+        turn: box(document.querySelector('[data-test=scum-turn-label]')),
+        turnNorth: !!document.querySelector('.sc-seat.north [data-test=scum-turn-label], .sc-seat.north .sc-turnlbl'),
+        title: title ? { box: box(title), text: title.textContent, shown: title.innerText, scroll: title.scrollWidth, client: title.clientWidth } : null,
       };
     });
     const inView = (b) => b && b.x >= -4 && b.y >= -4 && b.x + b.width <= boxes.vp.width + 4 && b.y + b.height <= boxes.vp.height + 4;
@@ -188,6 +219,14 @@ try {
     covers('Play', boxes.play);
     covers('Pass', boxes.pass);
     covers('your hand', boxes.hand);
+    check(boxes.status && boxes.status.height > 0, `${tag}: status line is visible`);
+    check(boxes.turnNorth, `${tag}: turn pill is on the north seat`);
+    check(boxes.turn && !overlap(boxes.status, boxes.turn), `${tag}: turn pill does not cover the status line`);
+    if (boxes.status && boxes.turn) {
+      const gap = boxes.turn.y - (boxes.status.y + boxes.status.height);
+      console.log(tag, 'status/turn gap', gap.toFixed(1), 'px');
+    }
+    if (boxes.title) console.log(tag, 'title:', JSON.stringify(boxes.title.shown), 'scroll', boxes.title.scroll, 'client', boxes.title.client);
     // The pile is in the middle; a small overlap with a far bubble is still a miss, so only fail if a bubble covers its center.
     if (boxes.pile) {
       const c = { x: boxes.pile.x + boxes.pile.width * 0.25, y: boxes.pile.y + boxes.pile.height * 0.25, width: boxes.pile.width * 0.5, height: boxes.pile.height * 0.5 };

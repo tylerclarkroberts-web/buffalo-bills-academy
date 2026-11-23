@@ -15,7 +15,7 @@ import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
 import { NextTablePill } from '../turns/TurnsPill.jsx';
 import '../bj/bj.css';
 import './scum.css';
-import { canDealNow, canStartDeal } from './setup.js';
+import { canDealNow, canStartDeal, seatXY } from './setup.js';
 import { publicTitle } from '../../../server/pageMeta.js';
 import { RoyalPicker, RoyalPlay, RoyalRewatch, seatRoyalClass } from './Royal.jsx';
 import { useModes } from '../modes/Modes.jsx';
@@ -216,12 +216,6 @@ function usePlayback(v, code) {
   const skip = () => { setQueue([]); setCatching(0); };
   const next = useCallback(() => setQueue((q) => { const r = q.slice(1); if (!r.length) setCatching(0); return r; }), []);
   return { step: queue[0] || null, pending: queue.length, catching, skip, next };
-}
-
-function seatXY(k, n, tall) {
-  const ang = ((90 + (360 * k) / n) * Math.PI) / 180;
-  const rx = tall ? 40 : 43, ry = tall ? 36 : 37;
-  return { x: 50 + rx * Math.cos(ang), y: (tall ? 46 : 48) + ry * Math.sin(ang) };
 }
 
 function ScumTable({ code, me }) {
@@ -465,7 +459,7 @@ function ScumTable({ code, me }) {
               const topMid = p.y < 34 && p.x >= 24 && p.x <= 76; // a "below" bubble here would cover the pile
               const sayAlign = topMid ? (p.x <= 50 ? 'sr' : 'sl') : p.x < 24 ? 'l' : p.x > 76 ? 'r' : 'c';
               return (
-                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${s.say?.text ? 'has-say' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(canSay ? { role: 'button', tabIndex: 0, onClick: () => setSayOpen(true), onKeyDown: (e) => e.key === 'Enter' && setSayOpen(true), 'aria-label': 'Your seat: say something', title: 'Say something' } : s.me || s.bot ? {} : who.seat(s.id, s.name))}>
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${s.say?.text ? 'has-say' : ''} ${p.y < 34 ? 'north' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(canSay ? { role: 'button', tabIndex: 0, onClick: () => setSayOpen(true), onKeyDown: (e) => e.key === 'Enter' && setSayOpen(true), 'aria-label': 'Your seat: say something', title: 'Say something' } : s.me || s.bot ? {} : who.seat(s.id, s.name))}>
                   {s.say?.text && <SayBubble text={family ? familyMask(s.say.text) : s.say.text} name={handle(s.name)} below={!topMid && p.y < 34} align={sayAlign} />}
                   {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${handle(s.name)}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canDealNow, canStartDeal } from '../client/src/scum/setup.js';
+import { canDealNow, canStartDeal, seatXY } from '../client/src/scum/setup.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -126,4 +126,15 @@ test('SCUM reuses Hold\'em speech bubbles: composer, Family masking, and a Say c
   const felt = read('client/src/TablePage.jsx');
   assert.match(felt, /import \{ SayBox, SayBubble \} from '.\/table\/Say.jsx'/);
   assert.doesNotMatch(felt, /function SayBubble/);
+});
+
+test('the north seat leaves room above for the turn chip so it does not cover the status line', () => {
+  const topTall = seatXY(2, 4, true).y;
+  const topWide = seatXY(2, 4, false).y;
+  assert.ok(topTall >= 18 && topTall <= 21, `tall north y should sit below the status line and above the pile, got ${topTall}`);
+  assert.ok(topWide >= 18, `wide north y should sit well below the status line, got ${topWide}`);
+  const botTall = seatXY(0, 4, true).y;
+  const botWide = seatXY(0, 4, false).y;
+  assert.ok(botTall <= 86, `tall south y should stay above the hand, got ${botTall}`);
+  assert.ok(botWide <= 88, `wide south y should stay above the hand, got ${botWide}`);
 });
