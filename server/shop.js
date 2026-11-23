@@ -29,6 +29,7 @@ export const WORN = BUG_SLOTS.filter((s) => s !== 'toy');
 /** Copies of a worn bug item you can hold: one for every stall a barn can have. */
 export const BUG_COPIES = STALLS + STALL_COSTS.length;
 const CONSUMABLE = (x) => !!x.use;
+const NO_PART = 'He only fits parts to a bug he has already worked on.';
 /** One-time-use items (gags, tobacco): you can hold at most one of each, and using it uses it up. */
 export const ONCE = (x) => !!x?.once;
 /** The shop's calendar runs on Mountain time, so Halloween stock lasts through Halloween night. */
@@ -90,7 +91,7 @@ export class Shop {
     const iv = this.inv(p.id); const hatched = this.hatched(p.id);
     const month = shopMonth(this.now());
     const items = CATALOG.filter((x) => (hatched || x.kind !== 'bug') && (!x.month || x.month === month || iv.own[x.id]) && ((!x.award && !x.retired) || iv.own[x.id]));
-    const tabs = TABS.filter((t) => (hatched || !t.bug) && (t.id !== 'seasonal' || items.some((x) => x.cat === 'seasonal')));
+    const tabs = TABS.filter((t) => !t.hidden && (hatched || !t.bug) && (t.id !== 'seasonal' || items.some((x) => x.cat === 'seasonal')));
     this.accounts.ensure(p);
     // who holds each one-of-a-kind item (a name only; hidden and departed owners stay anonymous)
     const taken = Object.fromEntries(Object.entries(this.doc.unique).map(([id, pid]) => { const o = this.store.players?.[pid]; return [id, o && !o.hidden ? o.name : 'somebody']; }));
@@ -103,6 +104,7 @@ export class Shop {
     if (x.retired) throw new GameError('The shopkeeper stopped stocking those.', 409); // off the shelf for good; what you hold still works
     const iv = this.inv(p.id);
     if (x.kind === 'bug' && !this.hatched(p.id)) throw new GameError('Bug supplies are for folks with a hatched bug.', 409);
+    if (x.slot === 'part' && !this.barn.penOf(p.id, bug)?.evo) throw new GameError(NO_PART, 409);
     if (ONCE(x)) { if (iv.own[id]) throw new GameError('One at a time: use the one you have first.', 409); }
     else if (CONSUMABLE(x)) { if ((iv.own[id] || 0) >= MAX_STACK) throw new GameError(`You can only hold ${MAX_STACK} of those.`, 409); }
     else if (WORN.includes(x.slot)) { if ((iv.own[id] || 0) >= BUG_COPIES) throw new GameError('You have one for every stall already.', 409); } // one bug wears one: a second bug needs its own
@@ -133,6 +135,7 @@ export class Shop {
       const pen = this.barn.penOf(p.id, bug), worn = this.worn(p.id);
       if (pen?.stage !== 'creature') { if (x) throw new GameError('You need a hatched bug for that.', 409); }
       else if (!x) delete iv.bugEq[idOf(pen)]?.[to];
+      else if (to === 'part' && !pen.evo) throw new GameError(NO_PART, 409);
       else {
         // every copy is on another bug: it comes off the first of them. Buy another to dress both.
         const others = Object.keys(worn).filter((b) => Number(b) !== idOf(pen) && worn[b][to] === id);

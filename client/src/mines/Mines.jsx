@@ -574,6 +574,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (state.spill && state.spill.poolId !== previous.spill?.poolId) {
       setStatus('CAVE-IN.'); setLine('THE ROOF CAME DOWN. A QUARTER OF YOUR BUCKET IS NOW FLOOR. THE REST IS STILL YOURS.');
     }
+    // mech parts (server/catalog/mine.js): what the bug's part just did
+    const bugName = String(shift.bug?.name || 'YOUR BUG').toUpperCase();
+    if (state.caught && state.caught !== previous.caught) { setStatus('CAVE-IN.'); setLine(`THE ROOF CAME DOWN. ${bugName} HELD THE BUCKET UP OUT OF IT. NOT A DROP.`); }
+    if (state.plunged && state.plunged !== previous.plunged) setLine(`NEARLY DRY. ${bugName} PLUNGED IT AND HALF A BUCKET CAME UP. DO NOT LOOK AT THE PLUNGER.`);
   };
   const fail = error => {
     errorRef.current = error; setMineError(error); hold(false);
@@ -1149,6 +1153,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       <div className="m-hud tr">
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
+        {bucket.peek != null && <div className="m-rod" data-test="peek">NEXT POOL <b>{Math.round(bucket.peek)}</b></div>}
         {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
           <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}{bucket.rich > 1.004 && <span className="m-rich" data-test="bucket-rich"> · ACID ×{bucket.rich.toFixed(2)}</span>}</span>
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>

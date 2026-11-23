@@ -63,6 +63,9 @@ export function after(evolved) {
   return [...(evolved.botched ? [L(`あら……${n}ちゃんの腕、逆ですね。`, `Oh... ${n}'s arm is on backwards.`), ...(QUIRK_LINE[evolved.botched] ? [QUIRK_LINE[evolved.botched]] : []), L('でも、元気ですよ♡', 'But it is healthy ♡')] : [L(`${n}ちゃんは……元気です。たぶん。`, `${n} is... healthy. Probably.`)]),
     L('あの方のことは、聞かないでくださいね♡', 'Please do not ask me about that person ♡'), L('お大事に♡', 'Take care ♡', { end: true })];
 }
+/** His counter (mech parts, server/catalog/mine.js). Prices and what a part does are in English whatever the 訳 button says. */
+export const COUNTER = { title: L('部品', 'Parts'), hand: L('カーテンのうしろから、手が出てきた。値段表を持っている。', 'A hand comes out from behind the curtain. It is holding a price list.'),
+  none: L('あの方は、手がけた子にしか部品をつけません。', 'He only fits parts to a bug he has already worked on.'), one: L('一匹に、ひとつ。', 'One part a bug.'), close: L('とじる', 'Close') };
 export const NO = L('わかりました。またいつでもどうぞ♡', 'Understood. Drop by any time ♡', { end: true });
 export const REST = L('わかりました。ゆっくり休ませてあげましょうね♡', "Understood. We'll let it rest ♡", { end: true });
 export const OOPS = (msg) => L('あら？機械の調子が……もう一度お願いします。', `Oh? The machine is acting up... please try again. (${msg})`, { end: true });
