@@ -144,8 +144,35 @@ export function isElHaloScreen(path = globalThis.location?.pathname || '', doc =
   return false;
 }
 
+/** Mounted Acid Mines screens, including overlays where W is not a walk key (battles, prompts, the map). */
+const MINE_MOUNTED = [
+  '[data-test=mine-today]', '[data-test=mine-pad]', '[data-test=mine-map]', '[data-test=mine-tilt]',
+  '[data-test=mine-preview]', '[data-test=sick]', '[data-test=wild-prompt]', '[data-test=door-hall]',
+  '[data-test=doom-room]', '[data-test=nano-room]', '[data-test=stick-intro]', '[data-test=ambush-prompt]',
+  '[data-test=egg-prompt]', '[data-test=lift-prompt]', '[data-test=door-prompt]', '[data-test=dance-picker]',
+  '[data-test=bug-orders]', '[data-test=heeshee-stolen]', '[data-test=fm-q]',
+  '.m-play', '.m-intro', '.m-result', '.fm',
+].join(', ');
+
+/**
+ * True on every Acid Mines screen: the /mines route, any /mines/... path, the
+ * admin mine preview, and whenever a mine screen is mounted (tunnels, orientation,
+ * shift report, a bug fight, the Hall of Doors, and other overlays), even if the
+ * pathname is stale. Bug Center is a Barn page (/barn/center) and is not included.
+ */
+export function isMinesScreen(path = globalThis.location?.pathname || '', doc = globalThis.document) {
+  const p = workHotkeyPath(path);
+  if (p === '/mines' || p.startsWith('/mines/')) return true;
+  if (p === '/admin/mine-preview' || p.startsWith('/admin/mine-preview/')) return true;
+  if (doc?.body?.classList?.contains?.('in-mines')) return true;
+  if (doc && typeof doc.querySelector === 'function') {
+    if (doc.querySelector(MINE_MOUNTED)) return true;
+  }
+  return false;
+}
+
 function isWalkScreen(path = globalThis.location?.pathname || '', doc = globalThis.document) {
-  if (isElHaloScreen(path, doc)) return true;
+  if (isElHaloScreen(path, doc) || isMinesScreen(path, doc)) return true;
   const p = workHotkeyPath(path);
   return W_WALKS.some((game) => p === game || p.startsWith(`${game}/`));
 }
