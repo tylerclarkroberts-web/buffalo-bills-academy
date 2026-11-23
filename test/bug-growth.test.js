@@ -85,7 +85,9 @@ test('skins and fitted accessories survive both life stages without reusing the 
     const plain = spriteCanvas(bug, undefined, level), skin = spriteCanvas(bug, { bugskin: style.bugskin }, level), dressed = spriteCanvas(bug, style, level);
     assert.notDeepEqual(skin.context.pixels, plain.context.pixels, `${bug.id}/${level} applies its skin`);
     assert.ok(dressed.context.pixels.length > skin.context.pixels.length, `${bug.id}/${level} includes accessories`);
-    assert.ok(dressed.context.pixels.every(([color, x, y, w, h]) => /^#[0-9a-f]{6}$/i.test(color) && x >= 0 && y >= 0 && x + w <= 64 && y + h <= 64));
+    assert.equal(dressed.width, 256);
+    assert.equal(dressed.height, 256);
+    assert.ok(dressed.context.pixels.every(([color, x, y, w, h]) => /^#[0-9a-f]{6}$/i.test(color) && x >= 0 && y >= 0 && x + w <= dressed.width && y + h <= dressed.height));
     assert.equal(spriteCanvas(bug, style, level === 1 ? 2 : 10), dressed);
     const otherStage = spriteCanvas(bug, style, level === 1 ? 3 : 1);
     if (youngForm(bug, 1)) assert.notEqual(dressed, otherStage); else assert.equal(dressed, otherStage);
@@ -104,7 +106,7 @@ test('canvas bugs grow every level without moving the floor or rebuilding their 
       const ctx = context(), drawn = drawBug(ctx, bug, { w, h, level, still: true, style });
       assert.ok(drawn.s > previous, `level ${level} grows even in the ${w}px preview`);
       assert.equal(Number.isInteger(drawn.s), true);
-      assert.equal(ctx.imageSmoothingEnabled, false);
+      assert.equal(ctx.imageSmoothingEnabled, true);
       assert.equal(ctx.images[0][0], spriteCanvas(bug, style, level, fineFor(drawn.s)), 'body and accessories use the correctly staged cached image, on the finer grid once it is big enough');
       floor ??= drawn.oy + drawn.s; shadow ??= ctx.shadows[0][1];
       assert.equal(drawn.oy + drawn.s, floor);
@@ -112,7 +114,7 @@ test('canvas bugs grow every level without moving the floor or rebuilding their 
       previous = drawn.s;
     }
     const adult = drawBug(context(), bug, { w, h, level: 10, still: true, style });
-    assert.equal(adult.s, Math.max(1, Math.floor(Math.min(w, h) * 0.82 / 64)) * 64, 'adult keeps the previous maximum size');
+    assert.equal(adult.s, Math.max(SPRITE, Math.round(Math.min(w, h) * 0.82)), 'the adult sprite uses the full preview size');
   }
 });
 
@@ -128,11 +130,11 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
     assert.equal(sprite.position.x, 2); assert.equal(sprite.position.z, -1);
     const bottom = sprite.position.y - sprite.scale.y / 2;
     floor ??= bottom; assert.ok(Math.abs(bottom - floor) < 1e-12);
-    assert.equal(sprite.material.map.magFilter, THREE.NearestFilter);
     const map = sprite.material.map;
+    assert.equal(map.magFilter, THREE.LinearFilter);
     assert.equal(map.image, spriteCanvas(ROSTER[0], undefined, level, FINE), 'room texture follows the same larval transition, on the fine grid up close');
-    assert.deepEqual(map.mipmaps, [map.image, spriteCanvas(ROSTER[0], undefined, level)], 'and falls back to the 64 sprite when the bug is drawn small');
-    assert.deepEqual([map.minFilter, map.generateMipmaps], [THREE.NearestMipmapNearestFilter, false]);
+    assert.equal(map.minFilter, THREE.LinearMipmapLinearFilter);
+    assert.equal(map.generateMipmaps, true);
   }
   for (const stage of ['egg', 'dead']) {
     RoomScene.prototype.pet.call(scene, { stage, level: 1 });
@@ -167,8 +169,10 @@ test('shades and monocles sit on the eyes of every bug, long snouts included', (
     assert.ok(grid.some((row, y) => row.some((_, x) => eye(x, y))), `${bug.id} has eyes to find`);
     const body = spriteCanvas(bug, undefined, level).getContext().pixels.length;
     for (const shape of ['shades', 'monocle', 'dapper']) {
-      const worn = spriteCanvas(bug, { bugacc: { shape } }, level).getContext().pixels.slice(body); // what the accessory painted
-      assert.ok(worn.some(([, x, y]) => eye(x, y)), `${shape} covers an eye on ${bug.id} at level ${level}`);
+      const dressed = spriteCanvas(bug, { bugacc: { shape } }, level);
+      const step = dressed.width / SPRITE;
+      const worn = dressed.getContext().pixels.slice(body); // what the accessory painted
+      assert.ok(worn.some(([, x, y]) => eye(x / step, y / step)), `${shape} covers an eye on ${bug.id} at level ${level}`);
     }
   }
 });

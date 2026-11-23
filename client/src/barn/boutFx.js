@@ -2,7 +2,7 @@
 // entrance, per-species fighting styles, special-move charge-ups, effects, statuses and a finish. planBout() and
 // locate() are pure (and tested); drawBout() paints one frame for a time. Nothing here can change a result.
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { spriteCanvas, bugScale, fineFor, SPRITE } from './sprite.js';
+import { spriteCanvas, bugScale, fineFor, isHiResSprite, SPRITE } from './sprite.js';
 
 export const INTRO_MS = 2600, FINISH_MS = 1800;
 const RECOVER = 440;
@@ -96,8 +96,9 @@ const makeCanvas = (w, h) => (typeof OffscreenCanvas !== 'undefined' ? new Offsc
 const tints = new WeakMap();
 function tinted(img, color) {
   let m = tints.get(img); if (!m) tints.set(img, (m = new Map()));
-  if (!m.has(color)) { const c = makeCanvas(img.width, img.height), g = c.getContext('2d'); g.drawImage(img, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height); m.set(color, c); }
-  return m.get(color);
+  const key = `${color}|${img._rev || 0}`;
+  if (!m.has(key)) { const c = makeCanvas(img.width, img.height), g = c.getContext('2d'); g.drawImage(img, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height); m.set(key, c); }
+  return m.get(key);
 }
 
 export function layout(W, H) {
@@ -242,8 +243,11 @@ function arena(fx, W, H, seed, kind) {
 function drawFighter(x, f, p, size, face) {
   const bug = BY_ID[f?.species]; if (!bug) return;
   const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
+  const hiRes = isHiResSprite(bug, f.style, f.level);
   const s = grown * (1 + (p.alt / size) * 0.25);
-  x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy); x.imageSmoothingEnabled = false;
+  x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
+  x.imageSmoothingEnabled = hiRes;
+  if (hiRes && 'imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
   x.drawImage(p.flash ? tinted(img, p.flash) : img, -s / 2, -s / 2, s, s);
   if (p.tint) { x.globalAlpha = p.tint[1]; x.drawImage(tinted(img, p.tint[0]), -s / 2, -s / 2, s, s); }
   x.restore();
