@@ -5,13 +5,13 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { GameError, recordTableMoment } from './engine/game.js';
-import { BUGS } from './engine/bugs.js';
+import { BUGS, givenName } from './engine/bugs.js';
 import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
-import { Barn } from './barn.js';
+import { Barn, strongestTrainers } from './barn.js';
 import { Circuit } from './circuit.js';
 import { Shop, SMOKE } from './shop.js';
 import { ITEM } from './catalog/index.js';
@@ -36,6 +36,7 @@ import { Telemetry, watchBlackjack } from './admin/telemetry.js';
 import { Geo } from './admin/geo.js';
 import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
 import { listTurns, registerTurnSource, scumSource } from './turns.js';
+import { WantedShame, SAMPLE_NAME } from './wanted.js';
 import { applyHtmlMeta } from './pageMeta.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
@@ -78,6 +79,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
   circuit.shop = shop; // jars for the circuit's wild bugs
   mines.owned = (id) => shop.doc.inv[id]?.own;
+  barn.mines = mines; // so a mid-shift steal is visible to barn/circuit fight gates
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
@@ -101,6 +103,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
   service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.circuit = circuit; service.sessions = sessions;
+  try {
+    const mig = mines.migrateHeesheeSteals();
+    if (mig.activeStolen || mig.stamped) console.log('[heeshee] mid-shift steals', mig);
+  } catch (e) { console.error('[heeshee] migrate', e); }
   const guestAllowed = config.allowGuest;
   const slack = new SlackAlerts({ service, publicUrl: env.PUBLIC_URL || 'https://buffalobillsacademy.com',
     client: new SlackClient({ token: env.SLACK_BOT_TOKEN, baseUrl: env.SLACK_API_URL || undefined, fetchImpl: slackFetch || fetchImpl || globalThis.fetch, retryDelayMs: slackRetryMs ?? 1500 }), ...(slackSendRetryMs ? { retryMs: slackSendRetryMs } : {}) });
@@ -113,10 +119,14 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   bj.onChange = (t, actorId) => slack.bjChanged(t, actorId);
   slack.scumSource = { all: () => Object.values(scum.doc?.tables || {}) };
   scum.onChange = (t, actorId) => slack.scumChanged(t, actorId);
+  const wanted = new WantedShame({ service, slack, env });
+  slack.wanted = wanted;
+  service.wanted = wanted;
   watchBlackjack(bj, telemetry);
   telemetry.backfill(service.store.players);
   mines.onShiftStart = (id, s, fare) => telemetry.shiftStart(id, s, fare);
   mines.onShiftEnd = (id, s, receipt) => telemetry.shiftEnd(id, s, receipt);
+  mines.onLegend = (id, kind, data) => telemetry.event('legend-stick', id, { kind, ...data });
   slack.sweep();
 
   const api = express.Router();
@@ -303,7 +313,13 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
         const value = (r) => sort === 'wealth' ? r.total : r.earnings[sort === 'earnings' ? 'total' : sort];
         return (direction === 'asc' ? 1 : -1) * (value(a) - value(b)) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
       });
-    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction };
+    const bugTrainers = strongestTrainers(barn, {
+      eligible: (p) => typeof p.bankroll === 'number' && (googleOn ? !!(p.google || p.login) : true),
+    }).map((row) => {
+      const { xp: _xp, ...bug } = row.bug;
+      return { id: row.id, name: row.name, picture: row.picture, avatar: avatars.info(row.player), bug };
+    });
+    return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction, bugTrainers };
   }));
 
   // Room views are permission-checked snapshots, never reusable public profile/store responses.
@@ -355,9 +371,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
-  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug }))); // the Bug Center nurse: free after an hour's rest, or paid now
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
+  api.post('/mines/bug/order', needPlayer, wrap((req) => mines.orderBug(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
@@ -435,13 +452,13 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest && Number(env.SMOKE_TEST_GAP_MS) > 0) SMOKE.gapMs = Number(env.SMOKE_TEST_GAP_MS); // e2e only: shorter tobacco queue gap
   if (barnTest && env.SHOP_TEST_CASH === '1') api.post('/dev/cash', needPlayer, wrap((req) => { const p = accounts.ensure(req.player); const want = Math.max(0, Math.floor(Number(req.body?.to) || 0)); accounts.change(p, want - p.bankroll, 'dev', 'e2e cash'); return { bankroll: p.bankroll }; }));
   // test hook (local dev server only, BARN_TEST_SPECIES=1): swap your own hatched bug's species, so the e2e can page every Field notes sheet
-  if (barnTest && env.BARN_TEST_SPECIES === '1') api.post('/dev/species', needPlayer, wrap((req) => { const pen = barn.doc.pens[req.player.id]; const id = String(req.body?.id || ''); if (!pen || !BUGS.some((b) => b.id === id)) throw new GameError('no', 400); pen.species = id; barn.save(); return { species: id }; }));
+  if (barnTest && env.BARN_TEST_SPECIES === '1') api.post('/dev/species', needPlayer, wrap((req) => { const pen = barn.doc.pens[req.player.id]; const id = String(req.body?.id || ''); if (!pen || !BUGS.some((b) => b.id === id)) throw new GameError('no', 400); pen.species = id; if (pen.stage === 'creature') pen.name = givenName(id, pen.name); barn.save(); return { species: id, name: pen.name }; }));
   api.get('/bj', needPlayer, wrap((req) => ({ ...bj.info(), tables: bj.list(req.player) })));
   api.post('/bj/preview', needPlayer, wrap((req) => bj.preview(req.body?.settings || {})));
   api.post('/bj/tables', needPlayer, wrap((req) => bj.create(req.player, req.body || {})));
   api.get('/bj/tables/:code', needPlayer, wrap((req) => bj.view(req.player, req.params.code)));
   for (const [path, fn] of Object.entries({ join: (p, c, b) => bj.join(p, c, b?.ack === true), start: (p, c) => bj.start(p, c), leave: (p, c) => bj.leave(p, c), close: (p, c) => bj.close(p, c), sitout: (p, c) => bj.sitOut(p, c),
-    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId), 'kash-catch': (p, c) => bj.kashCatch(p, c), 'kash-hit': (p, c, b) => bj.kashHit(p, c, b), 'kash-finish': (p, c, b) => bj.kashFinish(p, c, b), 'kash-dismiss': (p, c) => bj.kashDismiss(p, c) })) {
+    bet: (p, c, b) => bj.bet(p, c, b), sneak: (p, c, b) => bj.sneak(p, c, b), insure: (p, c, b) => bj.insure(p, c, b?.yes), act: (p, c, b) => bj.act(p, c, b?.action), house: (p, c, b) => bj.setHouse(p, c, b?.playerId), 'kash-catch': (p, c) => bj.kashCatch(p, c), 'kash-hit': (p, c, b) => bj.kashHit(p, c, b), 'kash-finish': (p, c, b) => bj.kashFinish(p, c, b), 'kash-dismiss': (p, c) => bj.kashDismiss(p, c), autopilot: (p, c, b) => bj.setAutopilot(p, c, b?.on), deal: (p, c, b) => bj.dealerAct(p, c, b?.action), tip: (p, c, b) => bj.tip(p, c, b), say: (p, c, b) => bj.say(p, c, b?.text), presence: (p, c, b) => bj.presence(p, c, b) })) {
     api.post(`/bj/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   // Async Scum: /scum (your tables) and /scum/CODE (invite link)
@@ -449,7 +466,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/scum/tables', needPlayer, wrap((req) => scum.create(req.player, req.body || {})));
   api.get('/scum/tables/:code', needPlayer, wrap((req) => scum.view(req.player, req.params.code, { away: 'away' in req.query })));
   for (const [path, fn] of Object.entries({ join: (p, c) => scum.join(p, c), start: (p, c) => scum.start(p, c), leave: (p, c) => scum.leave(p, c), close: (p, c) => scum.close(p, c),
-    play: (p, c, b) => scum.play(p, c, b.cards), pass: (p, c) => scum.pass(p, c), tribute: (p, c, b) => scum.tribute(p, c, b.beg), give: (p, c, b) => scum.give(p, c, b.cards) })) {
+    play: (p, c, b) => scum.play(p, c, b.cards), pass: (p, c) => scum.pass(p, c), tribute: (p, c, b) => scum.tribute(p, c, b.beg), give: (p, c, b) => scum.give(p, c, b.cards),
+    say: (p, c, b) => scum.say(p, c, typeof b.text === 'string' ? b.text : '') })) {
     api.post(`/scum/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   api.post('/scum/tables/:code/royal', needPlayer, wrap((req) => scum.command(req.player, req.params.code, req.body || {})));
@@ -459,6 +477,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/slots/end', needPlayer, wrap((req) => slots.end(req.player)));
   // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
+  if (barnTest) api.post('/dev/legend', needPlayer, wrap((req) => mines.forceStick(req.player.id, req.body?.on)));
+  if (barnTest) api.post('/dev/steeze', needPlayer, wrap((req) => mines.forceSteeze(req.player.id, req.body?.on)));
   if (barnTest) api.post('/dev/heeshee', needPlayer, wrap((req) => {
     const v = req.body?.on; mines.heesheeForce = v === true || v === false ? v : null;
     let bug = null;
@@ -486,8 +506,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest) api.post('/dev/bj-rig', needPlayer, wrap((req) => {
     const t = bj.table(req.body?.code); if (t.hostId !== req.player.id && t.house.id !== req.player.id) throw new GameError('no', 403);
     const deck = req.body?.deck; if (!Array.isArray(deck) || deck.length < 4) throw new GameError('Need a deck.', 400);
-    t.deck = deck; bj.save(); return { ok: true, left: t.deck.length };
+    t.deck = deck.slice();
+    if (t.lanes) for (const l of Object.values(t.lanes)) l.deck = deck.slice();
+    bj.save(); return { ok: true, left: t.deck.length };
   }));
+  if (barnTest) api.post('/dev/bj-pit', needPlayer, wrap((req) => bj.forcePit(req.player, req.body?.code, req.body || {})));
   api.get('/shop', needPlayer, wrap((req) => shop.view(req.player)));
   api.post('/shop/buy', needPlayer, wrap((req) => shop.buy(req.player, String(req.body?.id || ''), { confirm: req.body?.confirm === true, bug: req.body?.bug ?? null })));
   api.post('/shop/equip', needPlayer, wrap((req) => shop.equip(req.player, { id: req.body?.id == null ? null : String(req.body.id), slot: String(req.body?.slot || ''), bug: req.body?.bug ?? null })));
@@ -547,15 +570,68 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // The dealer: a low-poly cut-out made from a photo Tyler supplied. Only the low-poly version is deployed.
   const dealerPath = dealerFile || path.join(import.meta.dirname, 'assets', 'dealer.png');
   api.get('/dealer.png', (req, res) => (fs.existsSync(dealerPath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(dealerPath) : res.status(404).json({ error: 'No dealer' })));
+  const steezePath = path.join(import.meta.dirname, 'assets', 'steeze.png');
+  api.get('/steeze.png', (req, res) => (fs.existsSync(steezePath) ? res.set('cache-control', 'public, max-age=86400').type('png').sendFile(steezePath) : res.status(404).json({ error: 'No STEEZE' })));
 
   const geo = new Geo({ store: service.store, now: service.now, fetchImpl: geoFetch !== undefined ? geoFetch : (env.ADMIN_GEO === '0' ? null : globalThis.fetch) });
-  mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, getCtx: () => ({
+  api.get('/admin/bj/pov-preview', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ preview: true, label: 'Preview: not a real game', path: '/admin/bj-preview' });
+  });
+  api.get('/admin/mine-preview', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ preview: true, label: 'Preview: not a real shift', path: '/admin/mine-preview' });
+  });
+  api.get('/admin/bj/pov', needPlayer, (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ enabled: !bj.povDisabled() });
+  });
+  api.post('/admin/bj/pov', needPlayer, wrap((req) => {
+    if (!isAdmin(req, adminCfg)) { const e = new GameError('Not found', 403); throw e; }
+    if (typeof req.body?.enabled !== 'boolean') throw new GameError('enabled must be true or false', 400);
+    return bj.setPovEnabled(req.body.enabled);
+  }));
+  api.get('/admin/wanted', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    res.json(wanted.status());
+  });
+  api.post('/admin/wanted', needPlayer, wrap((req) => {
+    if (!isAdmin(req, adminCfg)) { const e = new GameError('Not found', 403); throw e; }
+    const body = req.body || {};
+    const patch = {};
+    if (body.enabled !== undefined) patch.enabled = !!body.enabled;
+    if (body.channel !== undefined) patch.channel = String(body.channel);
+    return wanted.setConfig(patch);
+  }));
+  api.get('/admin/wanted-poster', (req, res) => {
+    if (!isAdmin(req, adminCfg)) return res.status(403).json({ error: 'Not found' });
+    try {
+      const name = String(req.query.name || SAMPLE_NAME).slice(0, 40);
+      const png = wanted.previewPng({ name });
+      res.set('Cache-Control', 'no-store');
+      res.type('image/png').end(png);
+    } catch (e) {
+      res.status(500).json({ error: 'Could not render the sample poster' });
+    }
+  });
+
+  mountAdmin({ api, wrap, telemetry, geo, cfg: adminCfg, mines, getCtx: () => ({
     now: service.now(), players: service.store.players, ledger: telemetry.readLedger(), events: telemetry.readEvents(), access: telemetry.doc, worth: netWorth,
-    docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc } }) });
+    docs: { mines: mines.doc, pvp: pvp.doc, fawn: fawn.doc, foff: foff.doc, slots: slots.doc, blackjack: bj.doc, sessions: sessions.doc },
+    stickDay: mines.stickDayInfo() }) });
   mountConquest({ app, api, conquest, auth, wrap });
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
 
+  app.get('/wanted/:id.png', (req, res) => {
+    const png = wanted.readPublic(req.params.id);
+    if (!png) return res.status(404).type('text').send('Not found');
+    res.set({ 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+    res.type('image/png').end(png);
+  });
   app.get('/privacy', (req, res) => res.type('html').send(PRIVACY_HTML));
   app.get('/terms', (req, res) => res.type('html').send(TERMS_HTML));
   if (staticDir && fs.existsSync(path.join(staticDir, 'index.html'))) {
@@ -611,6 +687,6 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
   }
-  const shutdown = () => { elhalo.shutdown(); unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); };
+  const shutdown = () => { elhalo.shutdown(); unregisterScumTurns(); scum.stop(); telemetry.shutdown(); clearInterval(pvpSweep); conquest.shutdown(); service.shutdown(); market.shutdown(); slack.shutdown(); wanted.shutdown(); };
   return { app, service, shutdown, bj, scum, telemetry, elhalo };
 }

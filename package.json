@@ -59,13 +59,19 @@
     "e2e:horror": "node scripts/e2e-horror.mjs",
     "e2e:scum-royal": "node scripts/e2e-scum-royal.mjs",
     "e2e:scum-song": "node scripts/e2e-scum-song.mjs",
+    "e2e:scum-bubbles": "node scripts/e2e-scum-chat-bubbles.mjs",
     "e2e:kash": "node scripts/e2e-kash-bet.mjs",
     "e2e:dealer": "node scripts/e2e-dealer-presence.mjs",
-    "e2e:heeshee": "node scripts/e2e-heeshee.mjs"
+    "e2e:pitboss": "node scripts/e2e-pitboss.mjs",
+    "e2e:ios": "node scripts/e2e-ios-webkit.mjs",
+    "e2e:pov-stress": "node scripts/e2e-pov-stress.mjs",
+    "e2e:heeshee": "node scripts/e2e-heeshee.mjs",
+    "e2e:equity": "node scripts/e2e-holdem-equity.mjs"
   },
   "dependencies": {
     "@fontsource/monoton": "^5.3.0",
     "@fontsource/rye": "^5.3.0",
+    "@resvg/resvg-js": "^2.6.2",
     "express": "^5.3.0"
   },
   "devDependencies": {

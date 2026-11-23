@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn } from '../server/barn.js';
-import { Mines, LEGEND_DAYS, LEGEND_LEVEL, legendToday, legendChance, wildOdds } from '../server/mines.js';
+import { Mines, LEGEND_DAYS, LEGEND_LEVEL, legendToday, legendChance, wildOdds, stickToday, isHardTier, HARD_TIERS, STICK_ID, STICK_LEVEL, STICK_DAY_CHANCE } from '../server/mines.js';
 import { ROSTER } from '../server/engine/creatures.js';
 import { rarityOf, LEGENDARY, RARITY, RARE_TIER } from '../server/engine/bug-types.js';
 
@@ -62,4 +62,54 @@ test('rarer bugs are likelier on a rougher day, and each deeper shaft holds one 
     assert.equal(wilds.length, top.length + k + 1);
     assert.ok(wilds.at(-1).level >= 1 + Math.floor((3 + k) / 2), 'and its own runs a little stronger');
   });
+});
+
+test('the stick insect only rolls on hard days, half of them, on its own seed', () => {
+  assert.deepEqual(HARD_TIERS, [4, 5]);
+  assert.equal(isHardTier(3), false);
+  assert.equal(isHardTier(4), true);
+  assert.equal(isHardTier(5), true);
+  assert.equal(STICK_DAY_CHANCE, 0.5);
+  const days = Array.from({ length: 4000 }, (_, n) => dayOf(n));
+  for (const tier of [1, 2, 3]) assert.equal(days.filter((d) => stickToday(d, tier)).length, 0, `never on tier ${tier}`);
+  for (const tier of HARD_TIERS) {
+    const hit = days.filter((d) => stickToday(d, tier));
+    assert.ok(hit.length > 1800 && hit.length < 2200, `tier ${tier}: ${hit.length} of 4000`);
+    assert.ok(hit.every((d) => stickToday(d, tier)), 'the same date always agrees');
+  }
+  // The hard-day roll is the same on The Badlands and Dead Man's Dig, and it is not the bee/Meganeura roll.
+  const d = days[100];
+  assert.equal(stickToday(d, 4), stickToday(d, 5));
+  assert.equal(stickToday(d, 5), stickToday(d, 5));
+});
+
+test('on a hard legendary day the stick roams at level 30 in every shaft, and not while somebody holds it', (t) => {
+  const { barn, mines, shift } = setup(t);
+  let day = null;
+  for (let n = 0; n < 500 && !day; n++) if (stickToday(dayOf(n), 5)) day = dayOf(n);
+  assert.ok(day);
+  const wild = mines.wildsFor(shift(day, '7', 5)).find((w) => w.species === STICK_ID);
+  assert.ok(wild);
+  assert.deepEqual([wild.level, wild.id], [STICK_LEVEL, `legend:${STICK_ID}:${day}`]);
+  assert.ok(mines.wildsFor(shift(day, 'earl', 5)).some((w) => w.id === wild.id), 'the same one, down every deeper shaft');
+  assert.equal(mines.wildsFor(shift(day, '7', 3)).some((w) => w.species === STICK_ID), false, 'an Honest Work day never has it');
+  barn.adopt('a', { wildId: wild.id, battleId: 'jar', species: STICK_ID, level: 12 });
+  mines.wildRosters.clear();
+  assert.equal(mines.wildsFor(shift(day, '7', 5)).some((w) => w.species === STICK_ID), false, 'the only one is in a barn');
+});
+
+test('a forced stick is only in that miner\'s tunnels and cannot be jarred', (t) => {
+  const { mines, shift, barn } = setup(t);
+  const day = '2031-01-01';
+  const easy = shift(day, '7', 1);
+  assert.equal(mines.wildsFor(easy).some((w) => w.species === STICK_ID), false);
+  mines.forceStick('a', true);
+  const forA = mines.wildsFor(easy, 'a').find((w) => w.species === STICK_ID);
+  assert.ok(forA?.force && forA.level === STICK_LEVEL);
+  assert.equal(mines.wildsFor(easy, 'b').some((w) => w.species === STICK_ID), false, 'the other miner is unaffected');
+  assert.equal(mines.wildsFor(easy).some((w) => w.species === STICK_ID), false, 'the shared roster is untouched');
+  const info = mines.stickDayInfo({ day, tier: 1 });
+  assert.equal(info.hard, false);
+  assert.equal(info.rolled, false);
+  assert.equal(info.present, false);
 });

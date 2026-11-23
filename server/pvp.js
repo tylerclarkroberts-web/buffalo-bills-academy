@@ -16,7 +16,9 @@ import { sees, touching, behind, onTunnel, lineOfSight } from './engine/pvp-geom
 import { wildAt } from './engine/wild-roam.js';
 import { BY_ID, levelFor, xpFor, PAUSED_AT } from './engine/creatures.js';
 import { rarityOf } from './engine/bug-types.js';
+import { isSteeze, STEEZE_JAR_CHANCE, STEEZE_JAR_SIDES } from './engine/steeze.js';
 import { ITEM } from './catalog/index.js';
+import { isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
 import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
 import { healthOf } from './barn.js';
@@ -54,14 +56,17 @@ export const WILD = {
 export const jarChance = (rarity = 1, above = 0) => WILD.jarBase * (WILD.jarRarity[rarity] ?? 1) * Math.max(WILD.jarLeast, 1 - WILD.jarPerLevel * Math.max(0, above));
 /** The level a caught bug arrives at: its own, but no more than WILD.keepAbove over the bug that caught it. */
 export const caughtLevel = (wildLevel, catcherLevel) => Math.min(wildLevel, catcherLevel + WILD.keepAbove);
+// The Lord Howe Island stick insect, once knocked out, is a flat 1% a throw. Own stream (jarInt), never randInt.
+export const STICK_ID = 'dryococelus', STICK_JAR_CHANCE = 0.01, STICK_JAR_SIDES = 10000;
 
 const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const LOANER = { species: 'onymacris', name: 'Gerald', level: 1 }; // the Foreman's lunchbox beetle
 
 export class Pvp {
-  constructor({ store, accounts, mines, shop, barn, avatars, now, randInt, fights }) {
+  constructor({ store, accounts, mines, shop, barn, avatars, now, randInt, jarInt, fights }) {
     this.store = store; this.accounts = accounts; this.mines = mines; this.shop = shop; this.barn = barn; this.avatars = avatars;
     this.now = now; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.fights = fights || barn.fights;
+    this.jarInt = jarInt || ((n) => crypto.randomInt(n)); // wild-jar rolls, kept off the payout stream
     this.doc = store.loadDoc('pvp', { raids: {}, pairs: {}, losses: {} });
     this.doc.raids ||= {}; this.doc.pairs ||= {}; this.doc.losses ||= {};
     this.presence = new Map(); // playerId -> { shiftId, key, x, y, yaw, at, startedAt, seen: Map(otherId -> at), notice }
@@ -91,9 +96,11 @@ export class Pvp {
     const s = this.mines.doc.active[playerId];
     return s && s.rulesVersion === 2 && !s.settlement ? s : null;
   }
-  wildsFor(shift) {
-    return shift && this.now() - shift.startedAt < MAX_SHIFT_MS ? this.mines.wildsFor(shift) : [];
+  wildsFor(shift, playerId = null) {
+    return shift && this.now() - shift.startedAt < MAX_SHIFT_MS ? this.mines.wildsFor(shift, playerId) : [];
   }
+  isStick(wild) { return wild?.species === STICK_ID; }
+  legend(playerId, kind, data = {}) { try { this.mines.onLegend?.(playerId, kind, data); } catch { /* admin stats only */ } }
   /** Greenhorns can't be robbed and can't rob: guests, accounts under a day old, fewer than three finished shifts. */
   greenhorn(p) {
     if (!p || p.kind === 'guest' || !(p.google || p.login)) return true;
@@ -133,6 +140,7 @@ export class Pvp {
     const A = this.fresh(a), B = this.fresh(b);
     if (!A || !B || A.key !== B.key || a === b) return false;
     if (this.shield(a) || this.shield(b) || this.cooling(a, b)) return false;
+    if (this.bugLost(a) || this.bugLost(b)) return false;
     return touching(A, B) && this.aware(a, b) && this.aware(b, a);
   }
 
@@ -200,8 +208,8 @@ export class Pvp {
     const notice = pr?.notice || null; if (pr) pr.notice = null;
     const bid = this.inBattle.get(player.id) || pr?.lastBattle;
     const battle = bid && this.battles.has(bid) ? this.battleView(this.battles.get(bid), player.id, have) : null;
-    const shift = this.shiftOf(player.id), wilds = this.wildsFor(shift);
-    const canFightWild = wilds.length > 0 && !this.fights.fightOf(player.id) && (!!this.bugOf(player.id, false) || (this.barn?.bugs?.(player.id) || []).some((pen) => this.fit(pen))); // the partner (an egg due to hatch counts), or any other bug of theirs
+    const shift = this.shiftOf(player.id), wilds = this.wildsFor(shift, player.id);
+    const canFightWild = !this.bugLost(player.id) && wilds.length > 0 && !this.fights.fightOf(player.id) && (!!this.bugOf(player.id, false) || (this.barn?.bugs?.(player.id) || []).some((pen) => this.fit(pen))); // the partner (an egg due to hatch counts), or any other bug of theirs
     return { serverNow: this.now(), others, wilds, canFightWild, ambush: target ? { id: target.id, name: target.name } : null, shield: this.shield(player.id), dance: pr?.dance || null,
       ...(shift?.egg ? { egg: this.mines.eggAvailable(shift, player.id) } : {}),
       ...(snap ? { snap: { x: pr.x, y: pr.y } } : {}), ...(battle ? { battle } : {}),
@@ -237,13 +245,15 @@ export class Pvp {
    * the Foreman's beetle like anyone without a bug: being fainted is never a shield. `benched` names the fainted one.
    */
   /** Hatched, alive and standing. */
-  fit(pen) { return pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen)) && !pen.faintedAt; }
+  fit(pen) { return pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen)) && !pen.faintedAt && !isHeesheeHeld(pen); }
+  /** Stolen this shift or held on the barn row: no fights, and no Foreman loaner in its place. */
+  bugLost(playerId) { return bugLostToHeeshee(this.barn, playerId, this.mines); }
   /** The bug a miner fights with: the partner, or one of their others by id (`bug`). The Foreman's loaner when that one cannot. */
   bugOf(id, full = true, bug = null) {
     let pen = bug == null ? this.barn?.doc?.pens?.[id] : this.barn?.penOf?.(id, bug);
     if (pen?.stage === 'egg' && this.now() >= pen.hatchAt) pen = this.barn.refresh(id, bug ?? undefined);
     const alive = pen?.stage === 'creature' && !(this.barn.deathAt && this.now() >= this.barn.deathAt(pen));
-    const fit = alive && !pen.faintedAt;
+    const fit = alive && !pen.faintedAt && !isHeesheeHeld(pen);
     const p = this.store.players[id];
     if (!fit) return full ? { ...LOANER, loaner: true, ownerName: p?.name, ...(alive ? { benched: pen.name } : {}) } : null;
     const view = { species: pen.species, name: pen.name };
@@ -264,6 +274,7 @@ export class Pvp {
     return { xp, level, from: xpFor(level), to: level >= (cap || PAUSED_AT) ? null : xpFor(level + 1) };
   }
   startBattle(a, b) {
+    if (this.bugLost(a) || this.bugLost(b)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url');
     // A bug already in a Barn bout cannot be in two rings at once: its miner borrows Gerald, like anyone without one.
     const pick = (pid) => (this.fights.fightOf(pid) ? { ...LOANER, loaner: true, ownerName: this.store.players[pid]?.name } : this.bugOf(pid));
@@ -287,9 +298,10 @@ export class Pvp {
    */
   meetWild(player, body = {}) {
     this.touch(player.id); this.sweep();
+    if (this.bugLost(player.id)) throw new GameError(HEESHEE_NO_BATTLE, 409);
     const shift = this.shiftOf(player.id), pr = this.fresh(player.id);
     if (this.inBattle.has(player.id)) return this.view(player);
-    const wilds = shift?.id === body.shiftId ? this.wildsFor(shift) : [];
+    const wilds = shift?.id === body.shiftId ? this.wildsFor(shift, player.id) : [];
     const now = this.now(), met = Math.min(now, Math.max(now - WILD.holdMs, Number(body.at) || now));
     const distance = (bug) => { const at = wildAt(bug, met); return pr ? Math.hypot(pr.x - at.x, pr.y - at.y) : Infinity; }; // where it had roamed to when they met
     const wild = body.wildId == null ? wilds.toSorted((a, b) => distance(a) - distance(b))[0] : wilds.find(bug => bug.id === body.wildId);
@@ -303,17 +315,19 @@ export class Pvp {
     return this.view(player);
   }
   startWild(a, shift, wild, bug = null) {
+    if (this.bugLost(a)) return null;
     const mine = this.bugOf(a, true, bug);
     if (mine.loaner || this.fights.fightOf(a)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
     // a stray (a released bug) fights under its own name and says whose it was
-    const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: wild.stray?.name || BY_ID[species].name, ...(wild.stray ? { stray: wild.stray } : {}) }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
+    const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: wild.stray?.name || BY_ID[species].name, ...(wild.stray ? { stray: wild.stray } : {}), ...(wild.force ? { force: true } : {}) }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
       bugs: { a: { bornAt: mine.bornAt, xp: mine.xp, cap: mine.cap }, b: null }, benched: { a: null, b: null } };
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
       fighters: [{ ...this.barn.fighter(a, this.barn.penOf(a, bug)), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true, ...(wild.stray ? { owner: `abandoned by ${wild.stray.owner}` } : {}) }],
       onFinish: (fight) => this.fought(battle, fight) });
     this.battles.set(id, battle); this.inBattle.set(a, id);
     this.mines.holds.delete(a); const pr = this.presence.get(a); if (pr) pr.lastBattle = id;
+    if (this.isStick(wild)) this.legend(a, 'battle', { wildId: wild.id, force: !!wild.force });
     return battle;
   }
   /**
@@ -321,8 +335,9 @@ export class Pvp {
    * leaves the shift. A verdict pays battle XP either way.
    */
   wildOver(battle, winnerSide, reason, fight) {
-    if (winnerSide === 'a' && reason === 'fainted') battle.over.jars = WILD.throws;
+    if (winnerSide === 'a' && reason === 'fainted' && !battle.wild.force) battle.over.jars = WILD.throws;
     else this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
+    if (this.isStick(battle.wild) && !battle.wild.force) this.legend(battle.a, winnerSide === 'a' ? 'win' : 'loss', { reason });
     if (reason === 'fainted' || reason === 'decision') {
       battle.over.bug = this.barn.battleResult(battle.a, { battleId: battle.id, bornAt: battle.bugs.a.bornAt,
         won: winnerSide === 'a', fainted: fight.S.hp[0] === 0, foeLevel: battle.wild.level, foeName: battle.wild.stray ? `${battle.wild.stray.owner}'s abandoned ${battle.wild.name}` : `a wild ${battle.wild.name}`, odds: fight.line });
@@ -331,7 +346,10 @@ export class Pvp {
   /** What a throw at this knocked-out bug is worth: the chance it holds and the level it would arrive at. */
   jarOdds(battle) {
     const mine = battle.fight.fighters[0].level;
-    return { chance: jarChance(rarityOf(battle.wild.species), battle.wild.level - mine), keeps: caughtLevel(battle.wild.level, mine) };
+    const keeps = caughtLevel(battle.wild.level, mine);
+    if (this.isStick(battle.wild)) return { chance: STICK_JAR_CHANCE, keeps };
+    if (isSteeze(battle.wild.species)) return { chance: STEEZE_JAR_CHANCE, keeps };
+    return { chance: jarChance(rarityOf(battle.wild.species), battle.wild.level - mine), keeps };
   }
   /**
    * Throw a jar at the wild bug your bug has just knocked out. You need a jar (General Store) and a free stall, and you
@@ -340,21 +358,31 @@ export class Pvp {
   jar(player, body = {}) {
     this.touch(player.id); this.sweep();
     const battle = this.battles.get(String(body.battleId || ''));
+    if (battle?.wild?.force) throw new GameError('This one is only here for you to see. It cannot be jarred.', 409);
     if (!battle?.wild || battle.a !== player.id || !battle.over?.jars) throw new GameError(battle?.wild && battle.a === player.id && !battle.over ? 'Knock it out first. It is far too lively for a jar.' : 'It is gone.', 409);
     if (!this.barn.room(player.id)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
-    const { chance, keeps } = this.jarOdds(battle), held = this.randInt(1000) < Math.round(chance * 1000);
+    const { chance, keeps } = this.jarOdds(battle);
+    const held = this.isStick(battle.wild)
+      ? this.jarInt(STICK_JAR_SIDES) < Math.round(STICK_JAR_CHANCE * STICK_JAR_SIDES)
+      : isSteeze(battle.wild.species)
+        ? this.jarInt(STEEZE_JAR_SIDES) < Math.round(STEEZE_JAR_CHANCE * STEEZE_JAR_SIDES)
+        : this.randInt(1000) < Math.round(chance * 1000);
     const wildId = battle.wild.id, battleId = battle.id;
     if (!this.shop.takeJar(player.id, held ? { wildId, battleId } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {
       const caught = this.barn.adopt(player.id, { wildId, battleId, species: battle.wild.species, level: keeps, name: battle.wild.stray?.name });
       Object.assign(battle.over, { jars: 0, reason: 'jarred', caught: caught.name });
+      if (this.isStick(battle.wild)) this.legend(player.id, 'catch', { wildId, battleId });
     } else if (--battle.over.jars <= 0) this.wildAwake(battle);
+    else if (this.isStick(battle.wild)) this.legend(player.id, 'miss', { wildId, battleId, left: battle.over.jars });
     return { held, battle: this.battleView(battle, player.id, body.have) };
   }
   /** Out of throws, or nobody came back to it: it comes to and leaves the shift. */
   wildAwake(battle) {
+    const already = battle.over.awake;
     battle.over.jars = 0; battle.over.awake = true;
     this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
+    if (!already && this.isStick(battle.wild) && !battle.over.caught) this.legend(battle.a, 'escape', { wildId: battle.wild.id, timeout: true });
   }
   /** The fight ran its course. A draw at the bell is no contest: nobody is robbed. */
   fought(battle, fight) {
@@ -420,7 +448,7 @@ export class Pvp {
     for (const battle of this.battles.values()) {
       if (!battle.wild || battle.over) continue;
       const shift = this.shiftOf(battle.a);
-      if (shift?.id !== battle.shiftId || !this.wildsFor(shift).some(bug => bug.id === battle.wild.id)) this.finish(battle, 'b', 'forfeit');
+      if (shift?.id !== battle.shiftId || !this.wildsFor(shift, battle.a).some(bug => bug.id === battle.wild.id)) this.finish(battle, 'b', 'forfeit');
       else if (now - battle.lastSeen[battle.a] > PVP.disconnectMs) this.finish(battle, 'b', 'disconnect');
     }
     this.fights.sweep();

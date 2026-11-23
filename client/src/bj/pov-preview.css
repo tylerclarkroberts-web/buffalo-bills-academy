@@ -1,0 +1,36 @@
+/* Admin dealer-POV preview: tight, no page scroll, 44px controls, safe-area aware. */
+.screen.bj.bj-t.pov.bj-preview {
+  display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh);
+  max-height: 100vh; max-height: 100dvh; max-height: var(--app-h, 100dvh);
+  overflow: hidden; overscroll-behavior: none; touch-action: manipulation;
+  padding: 0; background: #12060d;
+}
+.bj-preview-banner {
+  display: flex; align-items: center; gap: 10px; flex: none;
+  min-height: 44px;
+  padding: calc(6px + env(safe-area-inset-top, 0px)) 12px 6px;
+  background: #3a1020; color: #fbf4ea; z-index: 5;
+}
+.bj-preview-banner b {
+  font: 600 13px/1.2 Inter, system-ui, sans-serif;
+  letter-spacing: .02em;
+  color: #f2c65a;
+}
+.bj-preview-banner .btn { min-height: 44px; min-width: 44px; touch-action: manipulation; }
+.bj-preview-felt { flex: 1; min-height: 0; position: relative; overflow: hidden; margin: 0; border: 0; border-radius: 0; padding: 0; }
+.bj-preview-felt .bj-pov { position: absolute; inset: 0; }
+.bj-preview-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  flex: none; min-height: 44px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(23, 8, 18, .94); z-index: 5;
+}
+.bj-preview-controls .btn {
+  min-height: 44px; min-width: 44px; padding: 0 12px;
+  touch-action: manipulation; user-select: none;
+}
+@media (max-width: 480px) {
+  .bj-preview-banner b { font-size: 12px; }
+  .bj-preview-controls { gap: 6px; }
+  .bj-preview-controls .btn { flex: 1 1 auto; }
+}

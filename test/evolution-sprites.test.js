@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as THREE from 'three';
-import { ROSTER } from '../server/engine/creatures.js';
+import { BY_ID, ROSTER } from '../server/engine/creatures.js';
 import {
   ALL_EVO_ASSETS, STAGE2_ARCHETYPES, STAGE3_CULTURES, SPECIES_CULTURE,
   evolutionMeta, stage2ArchetypeOf, stage3CultureOf,
@@ -12,6 +12,8 @@ import {
   EVO_COARSE, EVO_FINE, FINE, SPRITE,
   bugTexture, isHiResEvo, onSpriteReady, spriteCanvas, spriteGrid,
 } from '../client/src/barn/sprite.js';
+
+const INSECTS = ROSTER.filter((b) => b.look?.kind !== 'photo');
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 
@@ -43,11 +45,11 @@ function mockCanvas(t) {
   return calls;
 }
 
-test('every species maps to a valid Stage II archetype and Stage III culture, and all cultures are used', () => {
+test('every insect species maps to a valid Stage II archetype and Stage III culture, and all cultures are used', () => {
   const usedCultures = new Set();
   const usedArchetypes = new Set();
-  assert.equal(Object.keys(SPECIES_CULTURE).length, ROSTER.length, 'SPECIES_CULTURE covers exactly the roster');
-  for (const bug of ROSTER) {
+  assert.equal(Object.keys(SPECIES_CULTURE).length, INSECTS.length, 'SPECIES_CULTURE covers every insect species');
+  for (const bug of INSECTS) {
     assert.ok(SPECIES_CULTURE[bug.id], `${bug.id} has an explicit Stage III culture`);
     const culture = stage3CultureOf(bug);
     assert.ok(STAGE3_CULTURES[culture], `${bug.id} culture ${culture} exists in STAGE3_CULTURES`);
@@ -56,6 +58,9 @@ test('every species maps to a valid Stage II archetype and Stage III culture, an
     assert.ok(STAGE2_ARCHETYPES.includes(arch), `${bug.id} archetype ${arch} is valid`);
     usedArchetypes.add(arch);
   }
+  assert.equal(stage2ArchetypeOf(BY_ID.dryococelus), 'mantis');
+  assert.equal(evolutionMeta(BY_ID.steeze, 1, false), null);
+  assert.equal(isHiResEvo(BY_ID.steeze, { evo: 1 }), false);
   assert.deepEqual([...usedCultures].sort(), Object.keys(STAGE3_CULTURES).sort(), 'every Stage III culture is represented');
   assert.deepEqual([...usedArchetypes].sort(), [...STAGE2_ARCHETYPES].sort(), 'every Stage II archetype is represented');
 });
@@ -137,7 +142,7 @@ test('evolutionMeta resolves distinct Stage III cultures, all nine Stage II arch
   assert.equal(isHiResEvo(sampleBug, { evo: 2 }), true);
 });
 
-test('Stage I sprites stay 64/128 procedural pixel art, while evolved WebPs upgrade async and refresh Three textures', (t) => {
+test('Stage I and evolved WebPs upgrade async and refresh Three textures while spriteGrid stays 64x64', (t) => {
   const calls = mockCanvas(t);
   const oldImage = globalThis.Image;
   const created = [];
@@ -151,7 +156,7 @@ test('Stage I sprites stay 64/128 procedural pixel art, while evolved WebPs upgr
 
   const bug = ROSTER[0];
   const s1 = spriteCanvas(bug, null, 10, 1);
-  assert.deepEqual([s1.width, s1.height], [SPRITE, SPRITE]);
+  assert.deepEqual([s1.width, s1.height], [EVO_COARSE, EVO_COARSE]);
   assert.equal(spriteGrid(bug, 10).length, SPRITE);
 
   // Use a unique bugskin id so cache key is fresh for this mocked Image test
@@ -173,16 +178,17 @@ test('Stage I sprites stay 64/128 procedural pixel art, while evolved WebPs upgr
   t.after(unsub);
 
   // Both fine & coarse requested the same URL, deduplicated into one Image load
-  assert.equal(created.length, 1);
-  assert.equal(created[0].src, evolutionMeta(bug, 2, false).src);
-  created[0].onload();
+  const evoUrl = evolutionMeta(bug, 2, false).src;
+  const evoCreated = created.filter((im) => im.src === evoUrl);
+  assert.equal(evoCreated.length, 1);
+  evoCreated[0].onload();
 
   assert.equal(s3Coarse._hiRes, true);
   assert.equal(s3Fine._hiRes, true);
   assert.equal(s3Fine._rev, 1);
   assert.ok(readySeen.includes(s3Fine));
   assert.ok(readySeen.includes(s3Coarse));
-  assert.ok(calls.some((c) => c[0] === 'drawImage' && c[1] === s3Fine && c[2] === created[0]));
+  assert.ok(calls.some((c) => c[0] === 'drawImage' && c[1] === s3Fine && c[2] === evoCreated[0]));
 
   // Three.js texture marks needsUpdate on async upgrade and stops once disposed
   const beforeVer = map.version;

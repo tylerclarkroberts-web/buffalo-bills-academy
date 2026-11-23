@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canDealNow, canStartDeal } from '../client/src/scum/setup.js';
+import { canDealNow, canStartDeal, seatXY } from '../client/src/scum/setup.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -25,7 +25,7 @@ test('house rules spell out pass vs skip: pass locks you out, a skip does not', 
 test('the current seat has a pulsing ring and a Your turn / X\'s turn label', () => {
   const page = read('client/src/scum/ScumPage.jsx');
   assert.match(page, /data-test="scum-turn-label"/);
-  assert.match(page, /s\.me \? \(fly \? 'Playing' : 'Your turn'\) : `\$\{s\.name\}'s turn`/);
+  assert.match(page, /s\.me \? \(fly \? 'Playing' : 'Your turn'\) : `\$\{handle\(s\.name\)\}'s turn`/);
   const css = read('client/src/scum/scum.css');
   assert.match(css, /\.sc-seat\.turn \.bust/);
   assert.match(css, /sc-turnpulse/);
@@ -106,4 +106,35 @@ test('the lobby Deal button actually deals, and a server rejection stays on scre
   assert.match(post, /setActErr\(e\.message/);
   assert.doesNotMatch(post, /setErr\(/);
   assert.match(page, /\(actErr \|\| err\) && <p className="error bj-err" role="alert"/);
+});
+
+test('SCUM reuses Hold\'em speech bubbles: composer, Family masking, and a Say control', () => {
+  const page = read('client/src/scum/ScumPage.jsx');
+  assert.match(page, /import \{ SayBox, SayBubble \} from '..\/table\/Say.jsx'/);
+  assert.match(page, /data-test="scum-say-btn"/);
+  assert.match(page, /<SayBubble text=\{family \? familyMask\(s\.say\.text\) : s\.say\.text\}/);
+  assert.match(page, /<SayBox current=\{mine\.say\?\.text \|\| ''\}/);
+  assert.match(page, /post\('say', \{ text \}\)/);
+  const css = read('client/src/scum/scum.css');
+  assert.match(css, /\.sc-felt > \.say-box/);
+  assert.match(css, /position: relative/);
+  assert.match(css, /\.sc-seat\.has-say/);
+  const shared = read('client/src/table/Say.jsx');
+  assert.match(shared, /export function SayBubble/);
+  assert.match(shared, /export function SayBox/);
+  assert.match(shared, /Stays up until your next turn/);
+  const felt = read('client/src/TablePage.jsx');
+  assert.match(felt, /import \{ SayBox, SayBubble \} from '.\/table\/Say.jsx'/);
+  assert.doesNotMatch(felt, /function SayBubble/);
+});
+
+test('the north seat leaves room above for the turn chip so it does not cover the status line', () => {
+  const topTall = seatXY(2, 4, true).y;
+  const topWide = seatXY(2, 4, false).y;
+  assert.ok(topTall >= 18 && topTall <= 21, `tall north y should sit below the status line and above the pile, got ${topTall}`);
+  assert.ok(topWide >= 18, `wide north y should sit well below the status line, got ${topWide}`);
+  const botTall = seatXY(0, 4, true).y;
+  const botWide = seatXY(0, 4, false).y;
+  assert.ok(botTall <= 86, `tall south y should stay above the hand, got ${botTall}`);
+  assert.ok(botWide <= 88, `wide south y should stay above the hand, got ${botWide}`);
 });

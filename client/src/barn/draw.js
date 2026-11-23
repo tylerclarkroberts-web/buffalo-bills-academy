@@ -1,5 +1,6 @@
-// The Barn (v30): procedural low-poly creatures. Flat facets, lopsided eyes, warts, drool: hideous on purpose,
-// cartoon only (no blood, no gore). One function per body plan returns anchor points; accessories hang off those.
+// The Barn (v30): procedural low-poly creatures and egg hatch animations (with hi-res WebP egg support).
+import { loadSpriteImage, notifySpriteReady } from './spriteLoader.js';
+import { STAGE1_EGG_SRC, hasStage1Egg } from './stage1Art.js';
 const TAU = Math.PI * 2;
 function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
@@ -272,13 +273,46 @@ function accessories(ctx, L, a, k) {
   ctx.restore();
 }
 
+let eggImg = null;
+let eggLoading = false;
+
 /** The egg: speckled, wobbling, cracking more as hatch time nears (`p` 0..1). */
 export function drawEgg(ctx, { w, h, t = 0, p = 0, still = false, poke = 0 }) {
   const u = Math.min(w, h) / 220, T = still ? 0 : t / 1000;
   const cx = w / 2, base = h * 0.86;
   const wob = (still ? 0 : Math.sin(T * (1.5 + p * 4)) * (0.03 + p * 0.08)) + (poke ? Math.sin(poke * 25) * poke * 0.25 : 0);
+  if (hasStage1Egg() && !eggImg && !eggLoading) {
+    eggLoading = true;
+    loadSpriteImage(STAGE1_EGG_SRC, (img) => {
+      eggImg = img;
+      eggLoading = false;
+      notifySpriteReady('egg');
+    });
+  }
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(cx, base + 2 * u, 50 * u, 9 * u, 0, 0, Math.PI * 2); ctx.fill();
+  if (hasStage1Egg() && eggImg) {
+    ctx.translate(cx, base - 6 * u); ctx.rotate(wob);
+    const size = Math.min(w, h) * 0.84;
+    ctx.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(eggImg, -size / 2, -size * 0.92, size, size);
+    // Live organic vein shimmer, progressive cracks, and a blinking peek-eye when almost hatched
+    ctx.strokeStyle = `rgba(170,70,105,${0.22 + (still ? 0 : Math.sin(T * 2.4) * 0.12)})`; ctx.lineWidth = 2.2 * u;
+    ctx.beginPath(); ctx.moveTo(-16 * u, -42 * u); ctx.bezierCurveTo(-6 * u, -62 * u, 12 * u, -52 * u, 16 * u, -82 * u); ctx.stroke();
+    const cracks = Math.floor(p * 5);
+    ctx.strokeStyle = '#2d1e12'; ctx.lineWidth = 2.2 * u;
+    for (let c = 0; c < cracks; c++) { const sx = (-22 + c * 11) * u, sy = (-82 + (c % 2) * 18) * u; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 6 * u, sy + 6 * u); ctx.lineTo(sx + 2 * u, sy + 12 * u); ctx.lineTo(sx + 9 * u, sy + 18 * u); ctx.stroke(); }
+    if (p > 0.6 && (still || (T % 3) > 0.15)) {
+      // The eye peeks through the bend of the third crack.
+      const eyeX = 2 * u, eyeY = -70 * u;
+      ctx.fillStyle = '#2d1e12'; ctx.beginPath(); ctx.ellipse(eyeX, eyeY, 7 * u, 4.5 * u, -0.25, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffef8a'; ctx.beginPath(); ctx.arc(eyeX, eyeY, 3.2 * u, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#2d1e12'; ctx.beginPath(); ctx.arc(eyeX + u, eyeY, 1.4 * u, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
   // straw nest
   ctx.strokeStyle = '#c8a04a'; ctx.lineWidth = 2 * u; for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI; ctx.beginPath(); ctx.moveTo(cx - 60 * u + i * 4.6 * u, base); ctx.lineTo(cx - 54 * u + i * 4.6 * u + Math.cos(a * 7) * 8 * u, base - 14 * u - Math.sin(a) * 6 * u); ctx.stroke(); }
   ctx.translate(cx, base - 6 * u); ctx.rotate(wob);

@@ -58,9 +58,9 @@ test('certificates and labels use crisp paint textures that are disposed when re
   scene.wallMaterial.dispose();
 });
 
-test('living room pets retain nearest-neighbor pixel art', t => {
+test('procedural room pets retain nearest-neighbor pixel art while hi-res pets use smooth mipmaps', t => {
   const scene = fixture(t); scene.furniture = defaultFurniture();
-  RoomScene.prototype.pet.call(scene, { stage: 'creature', species: 'ceroplophana', level: 4 });
+  RoomScene.prototype.pet.call(scene, { stage: 'creature', species: 'steeze', level: 5 });
   const map = scene.dynamic.children.find(object => object.isSprite)?.material.map;
   assert.ok(map);
   assert.equal(map.magFilter, THREE.NearestFilter);
@@ -68,5 +68,12 @@ test('living room pets retain nearest-neighbor pixel art', t => {
   assert.equal(map.minFilter, THREE.NearestMipmapNearestFilter);
   assert.deepEqual([map.mipmaps.length, map.mipmaps[0].width, map.mipmaps[1].width], [2, 128, 64]);
   assert.equal(map.generateMipmaps, false);
+
+  RoomScene.prototype.pet.call(scene, { stage: 'creature', species: 'ceroplophana', level: 10, style: { evo: 1 } });
+  const evoMap = scene.dynamic.children.at(-1)?.material.map;
+  assert.ok(evoMap);
+  assert.equal(evoMap.magFilter, THREE.LinearFilter);
+  assert.equal(evoMap.minFilter, THREE.LinearMipmapLinearFilter);
+  assert.equal(evoMap.generateMipmaps, true);
   scene.update({ shelves: [], placements: [] }); scene.wallMaterial.dispose();
 });

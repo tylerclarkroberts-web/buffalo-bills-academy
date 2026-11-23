@@ -4,7 +4,7 @@
 // with the viewer's action or a reveal. CSS-only motion; the sprite is painted once.
 import React, { useEffect, useRef, useState } from 'react';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { spriteCanvas, isHiResEvo, onSpriteReady } from '../barn/sprite.js';
+import { spriteCanvas, isHiResSprite, onSpriteReady } from '../barn/sprite.js';
 import Dizzy from '../barn/Dizzy.jsx';
 import {
   MASSAGE_ANIM_MS, MASSAGE_RETRY_MS, canStartMassage, initialMassageDelay,
@@ -92,7 +92,6 @@ export function TableBugSprite({ bug, massaging = false, reduced = false, size =
   if (!showTableBug(bug)) return null;
   const label = bug.name || bug.speciesName || 'Bug';
   const shades = !bug.fainted && bug.style?.bugacc?.shape !== 'shades';
-  const hiRes = isHiResEvo(BY_ID[bug.species], bug.style);
   return (
     <div
       className={`tb-bug ${bug.fainted ? 'is-fainted' : massaging ? 'is-massage' : 'is-idle'} ${reduced ? 'still' : ''}`}
@@ -101,7 +100,7 @@ export function TableBugSprite({ bug, massaging = false, reduced = false, size =
       title={bug.fainted ? `${label} fainted. The Bug Center in the Barn heals it.` : `${label} is hanging out`}
       aria-hidden="true"
     >
-      {url ? <img src={url} alt="" draggable="false" className={`tb-sprite${hiRes ? ' hi-res' : ''}`} /> : <span className="tb-sprite tb-ph" />}
+      {url ? <img src={url} alt="" draggable="false" className={`tb-sprite${isHiResSprite(BY_ID[bug.species], bug.style, bug.level) ? ' hi-res' : ''}`} /> : <span className="tb-sprite tb-ph" />}
       {shades && <span className="tb-shades" />}
       {bug.fainted && <Dizzy size={Math.max(16, Math.round(size * 0.7))} className="tb-dizzy" label={`${label} fainted`} />}
     </div>

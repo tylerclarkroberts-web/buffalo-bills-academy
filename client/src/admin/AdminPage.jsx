@@ -73,11 +73,47 @@ function Grid({ cols, rows, onRow, initial, empty = 'Nothing yet.', rowKey = (r)
   );
 }
 
+
+function WantedAdmin() {
+  const { data, error, reload } = useLoad('/admin/wanted');
+  const [busy, setBusy] = useState(false);
+  const [channel, setChannel] = useState('');
+  useEffect(() => { if (data?.channel != null) setChannel(data.channel); }, [data]);
+  const save = async (patch) => {
+    setBusy(true);
+    try { await api('POST', '/admin/wanted', patch); await reload(); } finally { setBusy(false); }
+  };
+  return (
+    <div className="bo-panel bo-pov-card" data-test="bo-wanted">
+      <header><h3>Wanted posters</h3></header>
+      <p className="bo-note">When a human player is on turn in four or more games at once (not blackjack, and not at tables with bots), Guntrad posts a WANTED poster as an @channel announcement in the Academy Slack channel. Default is <code>#buffalo-bills-academy</code>, overridable here or with <code>SLACK_ACADEMY_CHANNEL</code>. The bot needs <code>chat:write</code> and <code>files:write</code>, and must be invited to the channel. Pasting a channel C-ID here or in <code>SLACK_ACADEMY_CHANNEL</code> makes <code>channels:read</code> optional (still needed to resolve a #name; plus <code>groups:read</code> if the channel is private). After adding scopes and reinstalling the Slack app, set the new bot token on Fly (<code>SLACK_BOT_TOKEN</code>); a reinstall issues a new token and the old one keeps only its original scopes. If the file upload fails, the fallback text includes a public poster link. At most one poster is sent every ten minutes; the rest are queued.</p>
+      {error && <p className="muted small">Could not load the wanted-poster settings.</p>}
+      {data && (
+        <>
+          <p className="small" data-test="bo-wanted-status">{data.envKill ? 'Killed by SLACK_WANTED_POSTERS=0.' : data.toggle ? (data.channelSet ? `On · posting to ${data.channel}` : 'On · no channel configured, so nothing will post.') : 'Off (admin toggle).'}</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="bo-btn bo-pov-btn" disabled={busy || data.envKill} data-test="bo-wanted-toggle" onClick={() => save({ enabled: !data.toggle })}>{data.toggle ? 'Turn posters off' : 'Turn posters on'}</button>
+            <input aria-label="Slack channel" data-test="bo-wanted-channel" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="#channel or C…" style={{ minHeight: 44, minWidth: 180, padding: '0 10px' }}/>
+            <button type="button" className="bo-btn bo-pov-btn" disabled={busy} data-test="bo-wanted-channel-save" onClick={() => save({ channel })}>Save channel</button>
+            <a className="bo-btn bo-pov-btn" data-test="bo-wanted-preview" href="/api/admin/wanted-poster" target="_blank" rel="noreferrer">Sample poster</a>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ Overview
 function Overview({ data, pick }) {
   const o = data.overview;
   return (
     <div className="bo-tab">
+      <div className="bo-panel bo-pov-card">
+        <header><h3>Dealer view</h3></header>
+        <p className="bo-note">Preview the 3D dealer table with mock players, cards, and tips. Nothing here is a real game, and nothing is written to the ledger.</p>
+        <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-pov-card" onClick={() => navigate('/admin/bj-preview')}>Preview dealer view</button>
+      </div>
+      <WantedAdmin />
       <div className="bo-kpis">
         <Kpi label="Players" value={o.players} sub={`${o.signedIn} signed in`} />
         <Kpi label="Active" value={`${o.active.today} · ${o.active.d7} · ${o.active.d30}`} sub="today · 7d · 30d" />
@@ -244,13 +280,34 @@ function Mines({ data, pick }) {
           <Panel title="Outcomes"><HBars rows={m.outcomes.map((o) => ({ key: o.outcome, label: o.outcome, value: o.n, color: '#8dff5a' }))} fmt={(v) => v} /></Panel>
           <Panel title="Shifts per day" right={<small className="muted">30 days</small>}><Bars data={m.byDay.map((d) => ({ label: d.day.slice(8), value: d.n }))} height={110} every={5} color="#8dff5a" /></Panel>
           <Panel title="Encounters" right={<small className="muted">from {t.recordedStarts} tracked clock-ins</small>}>
-            <ul className="bo-subs">
-              <li><span>Nosferatu (the visitor)</span><b className="num">{t.scare} · {pct(t.scare, t.recordedStarts)}</b></li>
-              <li><span>Faun follows</span><b className="num">{t.faun} · {pct(t.faun, t.recordedStarts)}</b></li>
-              <li><span>Other faun skims the cheque</span><b className="num">{t.twin}</b></li>
-              <li><span>Cave-ins</span><b className="num">{t.caveIns}</b></li>
-              <li><span>Ambushes / bug battles</span><b className="num">{m.raids.length}</b></li>
-            </ul>
+            <div data-test="bo-encounters">
+              {t.stickDay ? <p className="bo-stick-day" data-test="bo-stick-day" style={{ margin: '0 0 8px' }}>
+                {t.stickDay.rolled
+                  ? <><b>Legendary day.</b> The Lord Howe Island stick insect {t.stickDay.present ? 'is in the mines today' : 'would be, but someone already holds it'} ({t.stickDay.tierName}).</>
+                  : t.stickDay.hard
+                    ? <>Hard day ({t.stickDay.tierName}), but the stick insect did not roll in today.</>
+                    : <>Not a hard mining day ({t.stickDay.tierName || 'easier tiers'}). The stick insect stays hidden.</>}
+              </p> : null}
+              <ul className="bo-subs">
+                <li><span>Nosferatu (the visitor)</span><b className="num">{t.scare} · {pct(t.scare, t.recordedStarts)}</b></li>
+                <li><span>Faun follows</span><b className="num">{t.faun} · {pct(t.faun, t.recordedStarts)}</b></li>
+                <li>
+                  <span>Heeshee Mazode</span>
+                  <b className="num" style={{ textAlign: 'right' }}>{t.heeshee} · {pct(t.heeshee, t.heesheeTracked)}{(t.heesheeStolen || t.heesheeReturned) ? <small className="muted" style={{ display: 'block', fontWeight: 400 }}>{t.heesheeStolen || 0} snatched · {t.heesheeReturned || 0} returned</small> : null}</b>
+                </li>
+                <li><span>Other faun skims the cheque</span><b className="num">{t.twin}</b></li>
+                <li><span>Cave-ins</span><b className="num">{t.caveIns}</b></li>
+                <li><span>Ambushes / bug battles</span><b className="num">{m.raids.length}</b></li>
+                <li>
+                  <span>Lord Howe Island Stick Insect</span>
+                  <b className="num" style={{ textAlign: 'right' }} data-test="bo-stick-counts">{t.stickSightings || 0} sighted
+                    <small className="muted" style={{ display: 'block', fontWeight: 400 }}>{t.stickBattles || 0} battles · {t.stickCatches || 0} caught · {t.stickEscapes || 0} escaped</small>
+                  </b>
+                </li>
+              </ul>
+              {t.heesheeTracked < t.recordedStarts ? <p className="muted small" style={{ margin: '8px 0 0' }}>Heeshee from this deploy.</p> : null}
+              <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-mines" onClick={() => navigate('/admin/mine-preview?shot=stick-wall')} style={{ marginTop: 10 }}>Preview legends</button>
+            </div>
           </Panel>
         </div>
       </>}
@@ -267,7 +324,7 @@ function Mines({ data, pick }) {
         { k: 'pvpc', label: 'PvP $', r: 1, val: (r) => r.pvp.cashWon - r.pvp.cashLost, fmt: (v, r) => <Sg v={r.pvp.cashWon - r.pvp.cashLost} /> },
         { k: 'quits', label: 'Quits', r: 1, val: (r) => r.recorded.quits, fmt: (v, r) => r.recorded.quits },
         { k: 'full', label: 'Full buckets', r: 1, val: (r) => r.recorded.full, fmt: (v, r) => `${r.recorded.full}/${r.recorded.ends}` },
-        { k: 'enc', label: 'Nosf. · faun', r: 1, val: (r) => r.recorded.scare + r.recorded.faun, fmt: (v, r) => `${r.recorded.scare} · ${r.recorded.faun}` },
+        { k: 'enc', label: 'Nosf. · faun · Heeshee', r: 1, val: (r) => r.recorded.scare + r.recorded.faun + (r.recorded.heeshee || 0), fmt: (v, r) => `${r.recorded.scare} · ${r.recorded.faun} · ${r.recorded.heeshee || 0}` },
       ]} />}
       {sub === 'pvp' && <div className="bo-cols">
         <Panel title="Underground right now">{m.active.length ? <ul className="bo-feed">{m.active.map((a) => <li key={a.id} onClick={() => pick(a.id)}><span className="muted num">{ago(a.startedAt)}</span><span className="ell"><b>{a.name}</b> · shaft {a.shaft}</span><span className="num">{a.cap ? `${Math.round((100 * a.collected) / a.cap)}%` : ''}</span></li>)}</ul> : <p className="muted small bo-empty">Nobody.</p>}</Panel>
@@ -379,7 +436,7 @@ function Drill({ id, onClose, players }) {
                 <Kpi label="PvP" value={`${d.mines.pvp.won}–${d.mines.pvp.lost}`} sub={`${$(d.mines.pvp.cashWon)} won · ${$(d.mines.pvp.cashLost)} lost`} />
               </div>
               <ul className="bo-feed">{d.mines.list.map((s, i) => <li key={i}><span className="muted num">{when(s.t)}</span>
-                <span className="ell">{s.outcome || s.reason || 'shift'}{s.ms ? ` · ${dur(s.ms)}` : ''}{s.cap ? ` · ${s.collected}/${s.cap}` : ''}{s.scare ? ' · Nosferatu' : ''}{s.faun ? ' · faun' : ''}{s.twin ? ` · faun took ${$(s.twin)}` : ''}{s.spill ? ' · cave-in' : ''}{s.r ? <small className="muted"> ~</small> : null}</span>
+                <span className="ell">{s.outcome || s.reason || 'shift'}{s.ms ? ` · ${dur(s.ms)}` : ''}{s.cap ? ` · ${s.collected}/${s.cap}` : ''}{s.scare ? ' · Nosferatu' : ''}{s.faun ? ' · faun' : ''}{s.heeshee ? (s.heesheeStolen ? (s.heesheeReturned ? ' · Heeshee snatched, returned' : ' · Heeshee snatched') : ' · Heeshee') : ''}{s.twin ? ` · faun took ${$(s.twin)}` : ''}{s.spill ? ' · cave-in' : ''}{s.r ? <small className="muted"> ~</small> : null}</span>
                 <span className="num">{$(s.amt || 0)}</span></li>)}</ul>
             </>}
             {sub === 'games' && <div className="bo-cols">
@@ -433,6 +490,7 @@ export default function AdminPage() {
         <button className="bo-home" onClick={() => navigate('/')} aria-label="Back to the Academy">←</button>
         <h1>Back office</h1>
         <nav className="bo-tabs" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}{k === 'anomalies' && data?.anomalies.length ? <i className="bo-count">{data.anomalies.length}</i> : null}</button>)}</nav>
+        <button type="button" className="bo-btn bo-pov-btn" data-test="bo-preview-pov" onClick={() => navigate('/admin/bj-preview')}>Preview dealer view</button>
         <button className="bo-btn bo-refresh" onClick={reload} disabled={loading} aria-label="Refresh">{loading ? '…' : '↻'}</button>
       </header>
       {o && <div className="bo-since small muted">Denver time · tracking since {o.since ? when(o.since) : 'this deploy'}: IPs, devices, visits and shift details exist only from then. Older money is rebuilt from each player's last 200 transactions (marked ~).</div>}

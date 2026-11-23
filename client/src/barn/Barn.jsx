@@ -9,7 +9,8 @@ import { goToMines } from '../App.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { movesFor, STANCES, riskFor } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
-import { drawBug, drawGrave, youngForm, evolutionMeta, isHiResEvo, onSpriteReady } from './sprite.js';
+import { drawBug, drawGrave, isHiResSprite, onSpriteReady, youngForm } from './sprite.js';
+import { hasStage1Egg } from './stage1Art.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip } from './BugCard.jsx';
@@ -59,6 +60,7 @@ function Notes({ bug }) {
     : <p key={key} className="barn-src muted">Sources: {bug.sources.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer">{host(u)}</a>)}</p>;
   return (
     <div className="barn-notes" id="barn-panel-notes" role="tabpanel" aria-labelledby="barn-tab-notes" data-test="barn-notes">
+      <p className="barn-ledger-kicker small" data-test="bug-ledger-kicker">Bug Ledger{rarityOf(bug.id) === 4 ? ' · Legendary' : ''}</p>
       <p className="barn-sci small"><i>{bug.sci}</i>{bug.genus ? ' (genus)' : ''} · {bug.order}</p>
       <div className="barn-page" ref={box} data-test="notes-page">
         {cur.map((i) => one(items[i], i))}
@@ -88,6 +90,12 @@ function HpTag({ pen }) {
   </span>;
 }
 
+function SteezePic({ className, label }) {
+  const [ok, setOk] = useState(true);
+  if (!ok) return <div className={`${className} steeze-missing`} aria-label={label}>STEEZE</div>;
+  return <img className={`${className} steeze-art`} src="/api/steeze.png" alt={label || ''} onError={() => setOk(false)} />;
+}
+
 function Stage({ pen, poke, reduced }) {
   const ref = useRef(null);
   const pokeAt = useRef(-1e9); // not 0: performance.now() starts near 0, which read as a fresh poke on load
@@ -115,8 +123,12 @@ function Stage({ pen, poke, reduced }) {
     id = requestAnimationFrame(draw);
     return () => { cancelAnimationFrame(id); unsub(); };
   }, [pen.stage, pen.species, pen.level, reduced, poke, JSON.stringify(pen.style || null)]);
-  const hiRes = pen.stage === 'creature' && isHiResEvo(BY_ID[pen.species], pen.style);
-  return <canvas ref={ref} className={`barn-canvas${hiRes ? ' hi-res' : ''}`} data-test="barn-canvas" aria-label={pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`} />;
+  const label = pen.stage === 'egg' ? 'A speckled egg in a straw nest' : pen.stage === 'dead' ? `A small headstone for ${pen.name}` : `${pen.name}, a ${pen.speciesName}`;
+  if (pen.stage === 'creature' && pen.species === 'steeze') {
+    return <div className="barn-canvas steeze-art-wrap" data-test="barn-canvas"><SteezePic className="steeze-art" label={label} /></div>;
+  }
+  const hiRes = (pen.stage === 'creature' && isHiResSprite(BY_ID[pen.species], pen.style, pen.level)) || (pen.stage === 'egg' && hasStage1Egg());
+  return <canvas ref={ref} className={`barn-canvas${hiRes ? ' hi-res' : ''}`} data-test="barn-canvas" aria-label={label} />;
 }
 
 const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`; };
@@ -133,7 +145,8 @@ function BugThumb({ bug }) {
     paint();
     return onSpriteReady(paint);
   }, [bug.species, bug.level, JSON.stringify(bug.style || null)]);
-  const hiRes = isHiResEvo(BY_ID[bug.species], bug.style);
+  if (bug.species === 'steeze') return <SteezePic className="barn-thumb" label="" />;
+  const hiRes = isHiResSprite(BY_ID[bug.species], bug.style, bug.level);
   return <canvas ref={ref} className={`barn-thumb${hiRes ? ' hi-res' : ''}`} aria-hidden="true" />;
 }
 
@@ -157,6 +170,7 @@ const HELP = {
 };
 
 /** The ring: other players and their bugs, bouts open to anyone, and recent fights. Anyone can look; fighting needs a bug. */
+const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
 function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel, call, accept, drop, watch }) {
   const { openBout, roster, challenges } = b;
   // Any of your hatched bugs can fight: the partner unless you choose another, or the first one standing.
@@ -166,7 +180,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   const step = b.stakeStep || 10, opening = String(Math.max(0, Math.min(100, Math.floor(Math.min(b.maxStake, b.bankroll ?? 0) / step) * step)));
   const [calling, setCalling] = useState(null), [typedCall, setCallStake] = useState(null), callStake = typedCall ?? opening, posting = stake ?? opening;
   const [pane, setPane] = useState('players'), [opened, setOpened] = useState(null);
-  const grown = !!mine?.arena, fainted = !!mine?.fainted, locked = busy || unsaved || !grown || fainted;
+  const grown = !!mine?.arena, fainted = !!mine?.fainted, lost = !!(mine?.heesheeHeld || (b.stable?.bugs || []).some((bug) => bug.heesheeHeld)), locked = busy || unsaved || !grown || fainted || lost;
   // Other players, each with their bugs: the list opens on a player, the bugs are a tap away.
   const players = [];
   for (const bug of roster.filter((entry) => entry.ownerId !== meId)) {
@@ -184,7 +198,8 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
     <div className="ring-bar">
       {fighters.length > 0 && <label className="barn-with">Fighting with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · {TYPES[typeOf(bug.species)]?.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}
       <span className="small num muted">{money(b.bankroll)} available</span>
-      <p className="small barn-ring-note" role="status">{!mine ? 'You need a living bug to fight. Watching is free.'
+      <p className="small barn-ring-note" role="status" data-test={lost ? 'barn-heeshee-no-battle' : undefined}>{!mine ? 'You need a living bug to fight. Watching is free.'
+        : lost ? HEESHEE_NO_BATTLE
         : !grown ? `Bouts unlock at level ${mine.arenaLevel}.`
         : mine.fainted ? <>{mine.name} fainted: <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</>
         : unsaved ? 'Save or discard your Combat changes first.' : ''}</p>
@@ -194,7 +209,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
         <p><b>{c.fromName}</b> calls out {c.toBugName} with <b>{c.fromBugName}</b>{bug ? ` (Lv ${bug.level})` : ''}</p>
         <p className="small" data-test="challenge-terms">{c.line ? `${chance(c.toBugName, 1 - c.line)} · ` : ''}{c.stake ? `risk ${money(risk)} to win ${money(c.stake)}` : 'for the grudge'} · {left(c.expiresAt - now)} left</p>
         <div className="barn-row">
-          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || !called || called.fainted || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
+          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={busy || unsaved || lost || !called || called.fainted || called.heesheeHeld || !!openBout || risk > b.bankroll} data-test="challenge-accept">{risk > b.bankroll ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
           <button className="btn ghost" onClick={() => drop(c.id)} disabled={busy} data-test="challenge-decline">Decline</button>
           {openBout && <span className="small muted">Cancel your open bout to accept.</span>}
         </div>
@@ -223,7 +238,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
             <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
             {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">{bug.owner} would put up {money(riskFor(Number(callStake), bug.line[mine.id]))}.</p>}
           </form>
-          : grown && bug.fights && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted} data-test="challenge-open">Challenge</button>}
+          : grown && bug.fights && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted || lost} data-test="challenge-open">Challenge</button>}
       </li>; })}</ul>}
     </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>)}
     {pane === 'bouts' && <div className="ring-pane" role="tabpanel">
@@ -254,7 +269,7 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   </div>;
 }
 
-const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Field notes']];
+const PANES = [['card', 'Card'], ['combat', 'Combat'], ['notes', 'Bug Ledger']];
 const WHERE = { ring: 'in the ring', circuit: 'on the circuit', mines: 'in the mines' };
 
 /** Combat: its numbers, the stance it fights with when left to itself, and its moves. Type, trait and perk are on the card. */
@@ -291,26 +306,25 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
     const k = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length;
     setTab(ids[k]); e.currentTarget.querySelectorAll('[role="tab"]')[k].focus();
   };
-  return <div className="bs" data-test="barn-creature" data-species={pen.species}>
+  return <div className={`bs${tab === 'notes' ? ' bs-ledger' : ''}`} data-test="barn-creature" data-species={pen.species}>
     <div className="bs-top">
       <h2 className="barn-name" data-test="creature-name">{pen.name}</h2>
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
       <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
       {pen.title && <span className="small barn-title">{pen.title}</span>}
-      {pen.evo > 0 && (() => {
-        const meta = evolutionMeta(BY_ID[pen.species], pen.evo, !!pen.botched);
-        return <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : meta?.cultureLabel ? ` · ${meta.cultureLabel}` : ''}</span>;
-      })()}
+      {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : ''}</span>}
       {stable.bugs.length > 1 && (pen.partner ? <span className="bs-partner small" data-test="barn-partner">★ Partner</span>
         : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
     </div>
     {pen.sick && <p className="barn-warn small" role="status" data-test="barn-sick">{pen.name} drank something purple in the mines. Feeding it will not help. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> might.</p>}
-    {pen.fainted && !pen.sick && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
+    {pen.taken && <p className="barn-warn small" role="status" data-test="barn-taken">{pen.name} left with someone at the mine lift. There is a ticket in its stall. Take it to the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</p>}
+    {pen.fainted && !pen.sick && !pen.taken && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
+    {pen.heesheeHeld && <p className="barn-warn small" role="status" data-test="barn-heeshee-held">Your bug is nowhere to be found. The Heeshee Mazode took it.</p>}
     {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
     <div className="bs-grid">
-      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}${pen.sick ? ' sick' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
+      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}${pen.sick ? ' sick' : ''}${pen.taken ? ' taken' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
         <Stage pen={pen} poke={poke} reduced={reduced} />
-        {pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">{pen.sick ? 'not well' : 'fainted'}</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
+        {pen.heesheeHeld ? <span className="barn-mood m-fainted" data-test="barn-heeshee-chip">missing</span> : pen.taken ? <span className="barn-mood m-fainted" data-test="barn-taken-chip">ticket no. 2</span> : pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">{pen.sick ? 'not well' : 'fainted'}</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
         {pen.maxHp > 0 && <HpTag pen={pen} />}
       </div>
       <div className="bs-care" data-test="barn-progress">
@@ -318,7 +332,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
           {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
         <div className="barn-acts">
-          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
+          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
         </div>
         <div className="bs-xp">
           <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : ' · top level, for now'}</span>
@@ -335,7 +349,9 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
         </div> : <div className="barn-row bs-more">
           <button className="btn small" onClick={toRing}>Find a bout</button>
           {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
-          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span> : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
+          {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span>
+            : pen.species === 'steeze' ? <span className="small muted" data-test="no-release">STEEZE? Leave? He just unpacked his golf bag. The stall is his now.</span>
+            : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
         </div>}
       </div>
       <div className="bs-info">

@@ -1,6 +1,7 @@
 // The Heeshee Mazode in real browsers, forced on through the dev-login-only override (POST /api/dev/heeshee).
-// Desktop: a hunched silhouette in the dark, feathers that snap when you look, a freeze, a lunge that takes the
-// bug (no gore, no full-screen flash), a stolen banner, then the Foreman returns it after you clock out with acid.
+// Desktop: a hunched silhouette, a freeze and feather snap, a lunge that grabs the bug and walks off down the
+// tunnel with it struggling in its hand (and squealing), a "nowhere to be found" banner, a blocked recall,
+// then the Foreman returns the bug after you clock out with acid on the same shift.
 // Phone: the same scare, tight no-scroll HUD.
 //   npm run build && PLAYWRIGHT_DIR=/path/with/playwright-core OUT=dir GIF=1 npm run e2e:heeshee
 import { spawn, execFileSync } from 'node:child_process';
@@ -71,33 +72,44 @@ async function walk(p, g, to, yaw) {
   await wait(400);
 }
 
-async function hush(p, { keepHeeshee = false } = {}) {
-  // Keep the Heeshee off-stage until we place it, and hide every bug billboard so the scare is readable.
-  // PvP ticks re-send the day's wilds; the guide's update also un-hides its mesh — both get pinned.
-  await p.evaluate((keep) => {
+async function hush(p, { keepHeeshee = false, keepGuide = false } = {}) {
+  // Keep the Heeshee off-stage until we place it, and hide wild bug billboards so the scare is readable.
+  // Never hide the guide once it is clutched in the Heeshee's hand — that is the steal.
+  // PvP ticks re-send the day's wilds; both get pinned.
+  await p.evaluate(({ keep, keepGuide }) => {
     const s = window.__acidMine, h = s.heeshee;
     if (h && !keep) { h.state = 'dormant'; h.afterMs = 1e9; }
+    const isGuideMesh = (o) => !!(s.bugMesh && (o === s.bugMesh.group || o === s.bugMesh.mesh || o?.parent === s.bugMesh.group));
     const hideBugs = () => {
-      if (s.bugMesh?.group) s.bugMesh.group.visible = false;
       if (s.wilds) {
         for (const w of s.wilds.values()) { if (w.group) { w.group.visible = false; s.scene.remove(w.group); } }
         s.wilds.clear();
       }
       try { s.setOthers?.([]); s.miners?.set?.([]); } catch { /* */ }
       s.scene.traverse((o) => {
+        if (s.bugCarried && isGuideMesh(o)) return;
         const geo = o.geometry;
         if (o.isMesh && geo?.type === 'PlaneGeometry' && Math.abs((geo.parameters?.width || 0) - 0.55) < 0.01) {
+          if (s.bugCarried && isGuideMesh(o)) return;
           (o.parent || o).visible = false;
         }
       });
+      if (!keepGuide && !s.bugCarried && s.bugMesh?.group) s.bugMesh.group.visible = false;
     };
     try { s.setWilds([]); } catch { /* may already be pinned */ }
     s.setWilds = () => {};
     s.setOthers = () => {};
-    s.updateBugGuide = function () { if (this.bugMesh?.group) this.bugMesh.group.visible = false; };
+    const prev = s._realUpdateBugGuide || s.updateBugGuide.bind(s);
+    s._realUpdateBugGuide = prev;
+    s.updateBugGuide = function (...args) {
+      if (this.bugCarried) return prev.call(this, ...args);
+      if (!keepGuide && this.bugMesh?.group) this.bugMesh.group.visible = false;
+    };
+    s.hideHands = true;
+    if (s.hands?.group) s.hands.group.visible = false;
     hideBugs();
     s._hideBugs = hideBugs;
-  }, keepHeeshee);
+  }, { keep: keepHeeshee, keepGuide });
 }
 async function fillAcid(cookie) {
   const headers = { 'content-type': 'application/json', cookie };
@@ -166,22 +178,43 @@ try {
   check(froze === 'frozen' || froze === 'wandering' || froze === 'lunging', `desktop: it reacts when looked at (state=${froze})`);
   await shot(D, 'desktop-2-feather-stare'); await frame(D, 5, 120);
 
-  // The lunge: put it just out of grab range and uncoil.
+  // The lunge: put the guide at the miner's side, the Heeshee just out of grab range, and uncoil.
+  await hush(D, { keepHeeshee: true, keepGuide: true });
   await H(D, () => {
     const s = window.__acidMine, d = 2.15;
     const hx = s.pos.x - Math.sin(s.yaw) * d, hz = s.pos.y - Math.cos(s.yaw) * d;
+    if (s.bugGuide) { s.bugGuide.state = 'guiding'; s.bugGuide.x = s.pos.x; s.bugGuide.z = s.pos.y; }
+    if (s.bugMesh?.group) { s.bugMesh.group.visible = true; s.bugMesh.group.position.set(s.pos.x, 0, s.pos.y); }
     window.__acidHeeshee.place(hx, hz, Math.atan2(s.pos.x - hx, s.pos.y - hz));
     s.heeshee.hasBug = true;
     window.__acidHeeshee.lunge();
   });
-  await frame(D, 10, 70);
-  const stolen = await until(async () => H(D, () => !!(document.querySelector('[data-test=heeshee-stolen]') || window.__acidHeeshee.state === 'fleeing' || window.__acidHeeshee.state === 'gone')), 4000);
+  await frame(D, 8, 70);
+  const stolen = await until(async () => H(D, () => !!(document.querySelector('[data-test=heeshee-stolen]') || window.__acidHeeshee.carrying || window.__acidHeeshee.state === 'fleeing' || window.__acidHeeshee.state === 'gone')), 4000);
   check(!!stolen, 'desktop: it lunges and takes the bug');
-  await wait(250);
-  check(await D.isVisible('[data-test=heeshee-stolen]'), 'desktop: YOUR BUG IS GONE banner');
+  const clutched = await until(async () => H(D, () => !!(window.__acidMine.bugCarried && window.__acidHeeshee.carrying && window.__acidHeeshee.present)), 2000);
+  check(!!clutched, 'desktop: the bug is clutched in its hand and still on camera');
+  // Still while the grab is unmistakable: bug glowing in its grip, creature turning to walk off.
+  await frame(D, 3, 110);
+  await shot(D, 'desktop-3-lunge-steal');
+  // Then stay with the walk down the tunnel until it is swallowed by the dark.
+  await frame(D, 16, 160);
+  const banner = ((await D.textContent('[data-test=heeshee-stolen]')) || '');
+  check(/nowhere to be found/i.test(banner) && /Heeshee Mazode took it/i.test(banner), `desktop: stolen banner wording (${banner.trim() || 'missing'})`);
   check(!(await D.$('[data-test=jump-scare]')), 'desktop: no full-screen flash-scare');
   check(!(await D.$('[data-test=bug-btn]')), 'desktop: the guide button is gone');
-  await shot(D, 'desktop-3-lunge-steal');
+  // Recall (V / COME HERE) must not bring it back.
+  await D.keyboard.press('v');
+  await wait(300);
+  const afterRecall = await H(D, () => ({
+    state: window.__acidMine.bugGuide?.state || 'none',
+    present: !!window.__acidMine.bugGuide?.present,
+    line: document.body.innerText,
+  }));
+  check(afterRecall.state === 'stolen' || afterRecall.state === 'none', `desktop: recall leaves the guide stolen (state=${afterRecall.state})`);
+  check(!afterRecall.present, 'desktop: the guide does not come back when called');
+  check(/nowhere to be found/i.test(afterRecall.line), 'desktop: recall says the Heeshee Mazode took it');
+
 
   // Lamp flicker when it is close.
   const lamps = [];
@@ -191,6 +224,28 @@ try {
   });
   for (let i = 0; i < 30; i++) { lamps.push(await H(D, () => window.__acidMine.lamp.intensity)); await wait(50); }
   check(Math.max(...lamps) - Math.min(...lamps) > 0.4, `desktop: the lamp flickers when it is near (${Math.min(...lamps).toFixed(2)}–${Math.max(...lamps).toFixed(2)})`);
+
+  // A wild bug underfoot must not open a fight or a versus prompt.
+  // Stub nearestWild only — do not plant a dummy in scene.wilds (the draw loop
+  // writes group.rotation.y and glow.intensity on every wild).
+  await H(D, () => {
+    const s = window.__acidMine, x = s.pos.x / 2.2, y = s.pos.y / 2.2;
+    s._nearestWild = s.nearestWild.bind(s);
+    s._seesWild = s.seesWild.bind(s);
+    s.seesWild = () => false;
+    s.nearestWild = () => ({ wild: { id: 'lost-wild', species: 'candela', level: 3, x, y }, tiles: 0.4 });
+  });
+  await wait(600);
+  const noBattle = ((await D.textContent('body')) || '');
+  check(/You can't battle a bug, your bug is lost/.test(noBattle), 'desktop: a wild encounter is refused while the bug is lost');
+  check(!(await D.$('[data-test=wild-prompt]')), 'desktop: no versus intro');
+  await shot(D, 'desktop-7-no-battle');
+  await H(D, () => {
+    const s = window.__acidMine;
+    if (s._nearestWild) s.nearestWild = s._nearestWild;
+    if (s._seesWild) s.seesWild = s._seesWild;
+  });
+
 
   // Find a little acid without the guide, then clock out so the Foreman can return the bug.
   const pool = await H(D, () => { const s = window.__acidMine; return { x: s.poolPos.x / 2.2, y: s.poolPos.z / 2.2 }; });
@@ -236,9 +291,12 @@ try {
   });
   await wait(400);
   await shot(P, 'phone-1-silhouette');
-  await H(P, () => { window.__acidMine.heeshee.hasBug = true; window.__acidHeeshee.lunge(); });
-  await wait(500);
+  await hush(P, { keepHeeshee: true, keepGuide: true });
+  await H(P, () => { window.__acidMine.hideHands = true; window.__acidMine.heeshee.hasBug = true; window.__acidHeeshee.lunge(); });
   check(await until(async () => P.$('[data-test=heeshee-stolen]'), 4000), 'phone: the steal banner shows');
+  await wait(400);
+  const phoneBanner = ((await P.textContent('[data-test=heeshee-stolen]')) || '');
+  check(/nowhere to be found/i.test(phoneBanner), `phone: banner wording (${phoneBanner.trim() || 'missing'})`);
   await shot(P, 'phone-2-scare');
   check(!(await P.$('[data-test=jump-scare]')), 'phone: no full-screen flash-scare');
   check(await noScroll(P), 'phone: no scroll');
@@ -247,8 +305,10 @@ try {
   check(P.errs.length === 0, `phone: no page errors ${P.errs.join(' | ')}`);
 
   if (GIF && OUT && frames.length) {
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '8', '-i', path.join(frameDir, 'f%04d.png'), '-vf', 'scale=640:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer', path.join(OUT, 'heeshee-scare.gif')]);
-    console.log(`     GIF: ${path.join(OUT, 'heeshee-scare.gif')} (${frames.length} frames)`);
+    const vf = 'scale=640:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer';
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '8', '-i', path.join(frameDir, 'f%04d.png'), '-vf', vf, path.join(OUT, 'heeshee-scare.gif')]);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '8', '-i', path.join(frameDir, 'f%04d.png'), '-vf', vf, path.join(OUT, 'heeshee-carry.gif')]);
+    console.log(`     GIF: ${path.join(OUT, 'heeshee-scare.gif')} and heeshee-carry.gif (${frames.length} frames)`);
   }
 } catch (e) { console.error(e); fails.push(String(e.message || e)); }
 finally {

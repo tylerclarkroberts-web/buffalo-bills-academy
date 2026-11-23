@@ -17,6 +17,8 @@ import { markWild, readExploration, rememberExploration, revealExploration } fro
 import { TYPES, typeOf, edge } from '../../../server/engine/bug-types.js';
 
 // The BUG menu: what you can tell your guide. It leads to the acid unasked; the rest are orders.
+const HEESHEE_GONE = 'Your bug is nowhere to be found. The Heeshee Mazode took it.';
+const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
 const BUG_ORDERS = [
   { id: 'come', icon: '🫳', name: 'COME HERE', line: (n) => `${n} TURNS ROUND AND COMES TO HEEL.` },
   { id: 'acid', icon: '🧪', name: 'FIND ACID', line: (n) => `${n} IS AFTER THE ACID AGAIN. FOLLOW IT.` },
@@ -26,6 +28,7 @@ const BUG_ORDERS = [
 const EGG_MS = 30000; // an egg (when the server put one in this shift) lies near the start for the first 30 s
 import { MineScene, TILE } from './scene.js';
 import { MineAudio } from './audio.js';
+import StickIntro, { stickIntroSeen } from './StickIntro.jsx';
 import { Stalker } from './stalker.js';
 import { FaunFollower } from './faunFollower.js';
 import { BugGuide } from './bugGuide.js';
@@ -228,9 +231,9 @@ export default function Mines() {
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
   useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
   function complete(v, toSurface = false) {
-    if (v.sick) { // whichever way the shift ended, this comes first
+    if (v.sick || v.taken) { // whichever way the shift ended, this comes first
       rememberMineReceipt(me?.id, v.result?.shiftId);
-      setSick({ name: v.sick, result: v.result || null }); setPhase('sick'); refreshSession(); return;
+      setSick({ name: v.sick || v.taken, taken: !!v.taken, result: v.result || null }); setPhase('sick'); refreshSession(); return;
     }
     if (toSurface && (v.result || Object.hasOwn(v, 'pending'))) {
       rememberMineReceipt(me?.id, v.result?.shiftId);
@@ -436,12 +439,19 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const giveOrder = (id) => {
     showBugMenu(false);
     const order = BUG_ORDERS.find((o) => o.id === id), guide = guideRef.current;
+    if (stolenRef.current || guide?.state === 'stolen') {
+      setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
+      api('POST', '/mines/bug/order', { shiftId: shift.shiftId, order: id, rulesVersion: 2 }).catch(() => {});
+      return;
+    }
     if (order && guide?.order(id)) { setBugOrder(id); setLine(order.line((shift.bug?.name || 'Your bug').toUpperCase())); }
   };
-  const canFightWild = useRef(!!shift.bug);
+  const canFightWild = useRef(!!shift.bug && !shift.bugStolen);
   // A wild bug within reach: the miner is asked before anything starts, and picks which bug goes in. It waits meanwhile.
   const [wildAsk, setWildAsk] = useState(null);
   const wildAskRef = useRef(null), wildActs = useRef(null), wildBugs = useRef([]);
+  const [stickIntro, setStickIntro] = useState(null);
+  const stickIntroRef = useRef(null);
   function stopDance() {
     if (!danceRef.current) return;
     danceRef.current = null; setDance(null); sceneRef.current?.stopDance(); audio?.danceBeat(false);
@@ -461,8 +471,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const [purple, setPurple] = useState(false); // the partner has found the purple acid; the shift ends a few seconds on
   const purpleRef = useRef(false);
   // A fainted bug stays home until the Bug Center heals it (and the Foreman lends you Gerald if you meet someone).
-  const [line, setLine] = useState(shift.bugStolen ? 'THE HEESHEE MAZODE TOOK YOUR BUG. FIND THE ACID WITHOUT IT.' : shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
-  const [status, setStatus] = useState(shift.bugStolen ? 'YOUR BUG IS GONE. FIND THE ACID.' : 'FIND THE ACID POOL');
+  const [line, setLine] = useState(shift.bugStolen ? HEESHEE_GONE : shift.bugFainted ? `${String(shift.bugFainted.name).toUpperCase()} IS FAINTED AND STAYED IN THE BARN. THE BUG CENTER HAS A BED FOR IT.` : LINES[shift.seed % LINES.length]);
+  const [status, setStatus] = useState(shift.bugStolen ? HEESHEE_GONE : 'FIND THE ACID POOL');
   const [stolen, setStolen] = useState(!!shift.bugStolen);
   const stolenRef = useRef(!!shift.bugStolen);
   const done = useRef(false);
@@ -618,6 +628,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       eggRef.current = 'gone'; sceneRef.current?.removeEgg('sink'); setEggNear(false);
     }
     if (typeof v.canFightWild === 'boolean') canFightWild.current = v.canFightWild;
+    if (stolenRef.current || shift.bugStolen) canFightWild.current = false;
     const p = ambushBusy.current ? null : v.ambush;
     if ((p?.id || null) !== (preyRef.current?.id || null)) { preyRef.current = p; setPrey(p); }
     if (v.snap && sceneRef.current) sceneRef.current.pos.set(v.snap.x * TILE, v.snap.y * TILE);
@@ -776,12 +787,16 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           stolenRef.current = true; setStolen(true); showBugMenu(false);
           bugGuide?.steal();
           audio?.heesheeSting();
-          const nm = (shift.bug?.name || 'YOUR BUG').toUpperCase();
-          setLine(`THE HEESHEE MAZODE TOOK ${nm}. FIND THE ACID WITHOUT IT.`);
-          setStatus('YOUR BUG IS GONE. FIND THE ACID.');
+          const hm = sceneRef.current?.heeshee, pos = sceneRef.current?.pos;
+          if (hm && pos) audio?.heesheeSqueal({ dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.9 });
+          setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
           api('POST', '/mines/heeshee/steal', { shiftId: shift.shiftId, rulesVersion: 2 }).catch(() => {});
         }
-        if (e === 'heeshee-gone') setLine(stolenRef.current ? 'IT RAN OFF WITH YOUR BUG. KEEP LOOKING FOR THE ACID.' : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
+        if (e === 'heeshee-squeal') {
+          const hm = sceneRef.current?.heeshee, pos = sceneRef.current?.pos;
+          if (hm && pos) audio?.heesheeSqueal({ dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.7 });
+        }
+        if (e === 'heeshee-gone') setLine(stolenRef.current ? HEESHEE_GONE : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
 
       },
     });
@@ -797,13 +812,27 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     scene.setWilds(shift.wilds || []);
     const wildRetryAt = new Map();
     let askingWild = false;
+    window.__forceAskSteeze = () => {
+      const w = [...scene.wilds.values()].find((x) => x.species === 'steeze');
+      if (w) askWild(w);
+    };
     const askWild = (wild) => {
       showPicker(false); showBugMenu(false); scene.heldWild = wild.id;
-      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, stray: wild.stray, legendary: wild.legendary, at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
+      if (wild.species === 'dryococelus' && !stickIntroRef.current) {
+        const short = stickIntroSeen();
+        stickIntroRef.current = { id: wild.id, short };
+        scene.introLook = true;
+        setStickIntro({ wild, short });
+        return;
+      }
+      wildAskRef.current = { id: wild.id, species: wild.species, level: wild.level, stray: wild.stray, legendary: wild.legendary || wild.species === 'dryococelus', at: Date.now() + (scene.clockSkew || 0) }; setWildAsk(wildAskRef.current);
     };
     const leaveWild = (retryMs) => {
-      const ask = wildAskRef.current; if (!ask) return;
-      wildRetryAt.set(ask.id, Date.now() + retryMs); wildAskRef.current = null; setWildAsk(null); if (scene.heldWild === ask.id) scene.heldWild = null;
+      const ask = wildAskRef.current || stickIntroRef.current; if (!ask) return;
+      wildRetryAt.set(ask.id, Date.now() + retryMs); wildAskRef.current = null; setWildAsk(null);
+      stickIntroRef.current = null; setStickIntro(null);
+      scene.introLook = false; scene.introFlicker = false;
+      if (scene.heldWild === ask.id) scene.heldWild = null;
     };
     const meetWild = async (id, bug, at) => {
       askingWild = true;
@@ -812,13 +841,22 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         if (sceneRef.current === scene) onPvp(view);
       } catch (e) {
         if (sceneRef.current !== scene || done.current) return;
-        if (!wildRetryAt.has(id)) setLine(String(e.message).toUpperCase());
+        if (!wildRetryAt.has(id)) setLine(e.message === HEESHEE_NO_BATTLE ? HEESHEE_NO_BATTLE : String(e.message).toUpperCase());
         wildRetryAt.set(id, Date.now() + (/another miner is fighting/i.test(e.message) ? 5000 : 1500));
       } finally { askingWild = false; if (scene.heldWild === id) scene.heldWild = null; }
     };
     wildActs.current = {
       fight: (bug) => { const ask = wildAskRef.current; if (!ask) return; wildAskRef.current = null; setWildAsk(null); meetWild(ask.id, bug, ask.at); },
       leave: () => leaveWild(10000), // long enough to walk on past it
+      finishStickIntro: () => {
+        const intro = stickIntroRef.current, held = intro && scene.wilds.get(intro.id);
+        stickIntroRef.current = null; setStickIntro(null);
+        scene.introLook = false; scene.introFlicker = false;
+        if (held) {
+          wildAskRef.current = { id: held.id, species: held.species, level: held.level, stray: held.stray, legendary: true, at: Date.now() + (scene.clockSkew || 0) };
+          setWildAsk(wildAskRef.current);
+        } else if (scene.heldWild === intro?.id) scene.heldWild = null;
+      },
     };
     grabEgg.current = async () => {
       if (eggRef.current !== 'there') return;
@@ -860,6 +898,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (heeshee) window.__acidHeeshee = {
       get state() { return heeshee.state; },
       get present() { return heeshee.present; },
+      get carrying() { return !!heeshee.carrying; },
+      get bugCarried() { return !!scene.bugCarried; },
       get pos() { return { x: heeshee.x, z: heeshee.z }; },
       place(x, z, yaw) { heeshee.state = 'wandering'; heeshee.x = x; heeshee.z = z; if (Number.isFinite(yaw)) heeshee.facing = yaw; heeshee.pause = 0; if (scene.heesheeMesh) scene.heesheeMesh.group.visible = true; },
       lookAt() { /* put it in front of the lamp, a few tiles out */ const d = 3.4; heeshee.x = scene.pos.x - Math.sin(scene.yaw) * d; heeshee.z = scene.pos.y - Math.cos(scene.yaw) * d; heeshee.facing = Math.atan2(scene.pos.x - heeshee.x, scene.pos.y - heeshee.z); heeshee.state = 'wandering'; heeshee.pause = 0.2; if (scene.heesheeMesh) scene.heesheeMesh.group.visible = true; },
@@ -890,12 +930,20 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
       if (k === 'x' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
+      if (stickIntroRef.current && k === 'escape') { wildActs.current?.finishStickIntro(); return; }
       if (wildAskRef.current && (k === 'escape' || /^[1-9]$/.test(k))) { // the wild bug's question: a number sends that bug in, Escape leaves it
         if (k === 'escape') wildActs.current?.leave(); else if (!e.repeat && wildBugs.current[Number(k) - 1]) wildActs.current?.fight(wildBugs.current[Number(k) - 1].id);
         return;
       }
       if (k === 'b' && !e.repeat) { showPicker(!pickerRef.current); return; }
-      if (k === 'v' && !e.repeat && guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
+      if (k === 'v' && !e.repeat) {
+        if (stolenRef.current || guideRef.current?.state === 'stolen') {
+          showBugMenu(false); setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
+          api('POST', '/mines/bug/order', { shiftId: shift.shiftId, order: 'come', rulesVersion: 2 }).catch(() => {});
+          return;
+        }
+        if (guideRef.current) { showBugMenu(!bugMenuRef.current); return; }
+      }
       if (k === 'escape' && bugMenuRef.current) { showBugMenu(false); return; }
       if (bugMenuRef.current && /^[1-4]$/.test(k)) { giveOrder(BUG_ORDERS[Number(k) - 1].id); return; }
       if (k === 'escape' && pickerRef.current) { showPicker(false); return; }
@@ -928,7 +976,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (pp && !purpleRef.current && !battleRef.current && !doomRef.current && !done.current) {
         const by = Math.hypot(scene.pos.x / TILE - pp.x, scene.pos.y / TILE - pp.y) < 1.7, name = String(shift.bug?.name || 'YOUR BUG').toUpperCase();
         if (shift.purple && (by || Date.now() - shift.localStart >= shift.purple.afterMs)) {
-          purpleRef.current = true; setPurple(true); hold(false); bugGuide?.setPool(pp); // it walks in
+          purpleRef.current = true; setPurple(1); hold(false); bugGuide?.setPool(pp); // it walks in and drinks,
+          setTimeout(() => { if (bugGuide) { bugGuide.slow = 0.4; bugGuide.order('come'); } setPurple(2); }, PURPLE_MS * 0.35); // comes back to you, slowly,
+          setTimeout(() => { if (bugGuide) bugGuide.down = true; setPurple(3); }, PURPLE_MS * 0.75); // and falls over
           setLine(by ? `${name} IS HEADING STRAIGHT FOR THE PURPLE STUFF.` : `${name} HAS WANDERED OFF AND FOUND SOMETHING PURPLE.`);
           setTimeout(() => exitShift.current?.(), PURPLE_MS);
         } else if (by && !shift.purple) {
@@ -977,9 +1027,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           const lean = shift.bug ? edge(typeOf(shift.bug.species), typeOf(sighting.species)) : 0; // your partner's type against its
           setLine(`${sighting.stray ? '' : 'A '}${wildWhat(sighting)} (${TYPES[typeOf(sighting.species)]?.name || 'BUG'}), LEVEL ${sighting.level}, IS IN THE TUNNEL.${lean > 0 ? ' YOUR BUG\'S TYPE BEATS IT.' : lean < 0 ? ' ITS TYPE BEATS YOUR BUG\'S.' : ''}`.toUpperCase());
         }
-        const asked = wildAskRef.current && scene.wilds.get(wildAskRef.current.id);
-        if (wildAskRef.current) { if (!asked || Math.hypot(scene.pos.x / TILE - asked.x, scene.pos.y / TILE - asked.y) > 2.2) leaveWild(3000); } // walked off: that is a no
-        else if (tiles <= 1 && canFightWild.current && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) askWild(wild);
+        const asked = (wildAskRef.current && scene.wilds.get(wildAskRef.current.id)) || (stickIntroRef.current && scene.wilds.get(stickIntroRef.current.id));
+        if (wildAskRef.current || stickIntroRef.current) { if (!asked || Math.hypot(scene.pos.x / TILE - asked.x, scene.pos.y / TILE - asked.y) > 2.2) leaveWild(3000); } // walked off: that is a no
+        else if (tiles <= 1 && !askingWild && nowMs >= (wildRetryAt.get(wild.id) || 0)) {
+          if (stolenRef.current || shift.bugStolen) {
+            setLine(HEESHEE_NO_BATTLE); setStatus(HEESHEE_NO_BATTLE);
+            wildRetryAt.set(wild.id, nowMs + 4000);
+          } else if (canFightWild.current) askWild(wild);
+        }
       }
       if (eggRef.current === 'there') {
         if (Date.now() - shift.localStart > EGG_MS) { eggRef.current = 'gone'; scene.removeEgg('sink'); setEggNear(false); }
@@ -1113,7 +1168,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
       </div>}
-      {stolen && <div className="m-stolen" data-test="heeshee-stolen" role="status">YOUR BUG IS GONE</div>}
+      {stolen && <div className="m-stolen" data-test="heeshee-stolen" role="status">Your bug is nowhere to be found. The Heeshee Mazode took it.</div>}
       <div className="m-ticker" aria-live="polite">{line}</div>
       {prey && !battle && !doom && !mapOpen && (
         <div className="m-door-prompt m-stab" data-test="ambush-prompt">
@@ -1157,7 +1212,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
-      {purple && <div className={`m-purple${lowFlash ? ' calm' : ''}`} role="status" data-test="purple"><p>{String(shift.bug?.name || 'Your bug').toUpperCase()} IS DRINKING IT.</p></div>}
+      {purple && <div className={`m-purple${lowFlash ? ' calm' : ''}`} role="status" data-test="purple"><p>{String(shift.bug?.name || 'Your bug').toUpperCase()} {[, 'IS DRINKING IT.', 'IS COMING BACK. SLOWLY.', 'HAS FALLEN OVER.'][purple]}</p></div>}
       {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} wilds={[...explored.current.wilds].map(id => sceneRef.current?.wilds.get(id)).filter(Boolean)}
         pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
@@ -1168,7 +1223,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       </div>
     </div>
     {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}
-    {wildAsk && !doom && !battle && <WildPrompt wild={wildAsk} bugsRef={wildBugs} onFight={(bug) => wildActs.current?.fight(bug)} onLeave={() => wildActs.current?.leave()} />}</>
+    {stickIntro && !doom && !battle && <StickIntro short={stickIntro.short} onDone={() => wildActs.current?.finishStickIntro()} onScratch={() => audio?.stickScratch()} onFlicker={(on) => { if (sceneRef.current) sceneRef.current.introFlicker = on; }} />}
+    {wildAsk && !stickIntro && !doom && !battle && <WildPrompt wild={wildAsk} bugsRef={wildBugs} onFight={(bug) => wildActs.current?.fight(bug)} onLeave={() => wildActs.current?.leave()} />}</>
   );
 }
 
@@ -1262,7 +1318,7 @@ function MovePad({ apply }) {
   );
 }
 
-const PURPLE_MS = 6000; // from the bug going for the purple acid to the shift ending
+const PURPLE_MS = 8000; // from the bug going for the purple acid to the shift ending
 
 /** The shift ended because the partner drank purple acid. One way out. */
 function Sick({ sick }) {
@@ -1271,9 +1327,9 @@ function Sick({ sick }) {
     <main className="m-result m-sick" data-test="sick">
       <div className="hazard-bar" />
       <p className="m-sub">SHIFT REPORT</p>
-      <h1 className="m-title">{String(sick.name).toUpperCase()} IS NOT WELL</h1>
-      <p className="m-story">It drank something purple. The shift is over.</p>
-      {r && <p className="m-dim">THE ACID YOU HAD STILL PAID +${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>}
+      <h1 className="m-title">{String(sick.name).toUpperCase()} {sick.taken ? 'LEFT WITH SOMEONE' : 'IS NOT WELL'}</h1>
+      <p className="m-story">{sick.taken ? 'He was waiting at the lift. It went without being asked. He left a ticket.' : 'It drank something purple. The shift is over.'}</p>
+      {r && <p className="m-dim">{sick.taken ? 'THE SHIFT PAID' : 'THE ACID YOU HAD STILL PAID'} +${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>}
       <div className="m-actions">
         <button className="m-btn" onClick={() => navigate('/barn/center')}>[ BUG CENTER ]</button>
       </div>

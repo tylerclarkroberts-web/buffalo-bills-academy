@@ -12,6 +12,10 @@ import * as C from './continuous.js';
 import { GUNTRAD_RULES, RULE_CHOICES, LIMITS, ROYAL } from './rules.js';
 import { attachSeatBugs, tableBugOf } from '../tableBug.js';
 import * as Kash from './kash.js';
+import { isManual, dealerPrompt } from './pace.js';
+import * as Tips from './tips.js';
+import * as Pit from './pitboss.js';
+import { isPovDisabled, setPovEnabled } from './povFlag.js';
 
 const edgeSummary = (t) => { const e = tableEdge(t); return { main: { edge: e.main.edge, tone: e.main.tone }, side: Object.fromEntries(Object.entries(e.side).map(([k, v]) => [k, { edge: v.edge, tone: v.tone }])), needsAck: e.needsAck, grandfathered: !!e.grandfathered }; };
 export const cryptoRng = (n) => crypto.randomInt(n);
@@ -46,7 +50,8 @@ export class Blackjack {
     for (const t of Object.values(this.doc.tables)) {
       if (t.status !== 'playing') continue;
       const seq = t.seq; try { if (C.isContinuous(t)) C.advanceAll(t, now, this.rng); else G.advance(t, now, this.rng); } catch { /* keep ticking */ }
-      if (t.seq !== seq) { this.settleMoney(t); dirty = true; (this._tickChanged ||= []).push(t); }
+      try { Pit.tickPit(t, now, this.rng, { lastViews: t.watchers }); } catch { /* flavor must never break play */ }
+      if (t.seq !== seq || t.pit?.visit) { this.settleMoney(t); dirty = true; (this._tickChanged ||= []).push(t); }
     }
     if (dirty) this.save();
     for (const t of this._tickChanged || []) this.changed(t, null); this._tickChanged = null;
@@ -106,6 +111,24 @@ export class Blackjack {
       const cp = this.getPlayer(cid);
       v.kashRoom.avatar = this.avatars && cp ? this.avatars.info(cp) : { kind: 'gen', seed: cid };
     }
+    if (v.house && t.house.mode === 'player') {
+      v.house.autopilot = t.house.autopilot !== false; // default on, so existing tables keep automatic dealing
+      v.house.pov = t.house.id === viewerId && t.status === 'playing' && !isPovDisabled(this.store?.dir);
+      if (t.house.id === viewerId) {
+        v.dealer = dealerPrompt(t);
+        // Presentation only, and only on the house view: a stale / hidden tab reads as away.
+        const now = this.now();
+        v.seats = v.seats.map((s) => {
+          if (!s || s.bot) return s;
+          if (!Pit.isPhoneStale(t, s.id, now, t.watchers)) return s;
+          return { ...s, away: true };
+        });
+      }
+    }
+    v.canTip = Tips.canTip(t, viewerId);
+    v.tip = Tips.tipView(t, this.now());
+    v.pit = Pit.pitView(t, this.now());
+    v.chat = (t.chat || []).slice(-8);
     return v;
   }
   /** Continuous play: you see your own game (deck, round, last hand) and a card-free line for everyone else's. */
@@ -226,6 +249,10 @@ export class Blackjack {
         t.seats[i] = { id: `bot-${b}`, name: ['Dusty', 'Slim', 'Ma Barker'][b], bot: true, chips: t.settings.buyIn, startChips: t.settings.buyIn, stats: stats0() };
       }
       t.status = 'playing'; t.startedAt = this.now();
+      if (t.house.mode === 'player') {
+        if (t.house.autopilot == null) t.house.autopilot = true;
+        Pit.schedulePit(t, this.now(), this.rng);
+      }
       if (C.isContinuous(t)) { t.lanes = {}; t.seats.forEach((s, i) => { if (s && !s.left && !s.bot) C.openLane(t, i, this.now(), this.rng); }); }
       else G.startRound(t, this.now(), this.rng);
       return this.viewOf(t, p.id);
@@ -330,4 +357,77 @@ export class Blackjack {
   }
   endTable(t, why) { if (C.isContinuous(t) && t.status === 'playing') C.endTable(t, this.now(), why); else G.endGame(t, this.now(), why); }
   seatedOpen(pid) { return Object.values(this.doc.tables).some((t) => (t.status === 'playing' || t.status === 'lobby') && (t.house.id === pid || t.seats.some((s) => s && !s.left && s.id === pid))); }
+
+  setAutopilot(p, code, on) {
+    const t = this.table(code);
+    if (t.house.mode !== 'player' || t.house.id !== p.id) throw new GameError('Only the dealer can set autopilot.', 403);
+    return this.mutate(t, p.id, () => { G.setAutopilot(t, on !== false, this.now(), this.rng); return this.viewOf(t, p.id); });
+  }
+  dealerAct(p, code, action) {
+    const t = this.table(code);
+    if (t.house.mode !== 'player' || t.house.id !== p.id) throw new GameError('Only the dealer can deal.', 403);
+    return this.mutate(t, p.id, () => { G.advance(t, this.now(), this.rng); G.dealerAct(t, action, this.now(), this.rng); return this.viewOf(t, p.id); });
+  }
+  tip(p, code, body = {}) {
+    const t = this.table(code);
+    this.accounts.ensure(p);
+    return this.mutate(t, p.id, () => {
+      const rec = Tips.tip(t, { from: p, accounts: this.accounts, getPlayer: this.getPlayer, amount: body.amount, id: body.id, now: this.now() });
+      if (rec.amount >= Tips.BIG_TIP && !rec.replay) try { Pit.remarkBigTip(t, this.now()); } catch { /* flavor */ }
+      return this.viewOf(t, p.id);
+    });
+  }
+  povDisabled() { return isPovDisabled(this.store?.dir); }
+  setPovEnabled(on) { return setPovEnabled(this.store.dir, on !== false); }
+
+    /** iOS Safari fires pagehide / visibilitychange on an app switch. Mark the player paused so
+   *  the pit boss does not treat that lag as a phone, then clear it when they come back. */
+  presence(p, code, body = {}) {
+    const t = this.table(code);
+    if (!p?.id) return this.viewOf(t, p?.id);
+    t.backgrounded ||= {};
+    const state = String(body.state || '');
+    if (state === 'paused' || state === 'hidden') {
+      if (!t.backgrounded[p.id]) t.backgrounded[p.id] = this.now();
+    } else {
+      delete t.backgrounded[p.id];
+    }
+    return this.viewOf(t, p.id);
+  }
+  forcePit(p, code, body = {}) {
+
+    const t = this.table(code);
+    if (t.hostId !== p.id && t.house.id !== p.id) throw new GameError('no', 403);
+    return this.mutate(t, p.id, () => {
+      t.pit ||= { name: Pit.PIT_NAME, visits: 0, max: 4, nextAt: 0, visit: null, lastPhone: {} };
+      t.pit.nextAt = 0;
+      t.pit.visit = null;
+      t.pit.visits = Math.min(t.pit.visits || 0, Math.max(0, (t.pit.max || 4) - 1));
+      if (body.hiddenId && t.watchers) {
+        t.watchers[body.hiddenId] = this.now() - Pit.PHONE_MS - 1;
+        if (t.backgrounded) delete t.backgrounded[body.hiddenId];
+      }
+      Pit.tickPit(t, this.now(), () => 0, { lastViews: t.watchers });
+      if (body.line && t.pit.visit) t.pit.visit.line = String(body.line);
+      if (body.loom && t.pit.visit) {
+        const now = this.now();
+        t.pit.visit.approachUntil = now - 1;
+        t.pit.visit.loomUntil = now + 4000;
+        t.pit.visit.until = now + 6000;
+      }
+      return this.viewOf(t, p.id);
+    });
+  }
+  say(p, code, text) {
+    const t = this.table(code);
+    if (t.status === 'closed') throw new GameError('This table is closed.', 409);
+    const seated = t.seats.some((s) => s && !s.left && s.id === p.id) || (t.house.mode === 'player' && t.house.id === p.id);
+    if (!seated) throw new GameError('Take a seat to talk at this table.', 403);
+    return this.mutate(t, p.id, () => {
+      const heard = Pit.hearSay(t, p, text, this.now());
+      t.chat = [...(t.chat || []), { id: p.id, name: p.name, text: heard.text, at: this.now(), swear: heard.warned }].slice(-20);
+      G.log(t, this.now(), `${p.name}: ${heard.text}`, { k: 'say', from: p.id, text: heard.text });
+      return this.viewOf(t, p.id);
+    });
+  }
 }

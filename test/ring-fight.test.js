@@ -42,6 +42,7 @@ test('the odds shown for a move are what the fight then does with it', () => {
       const by = S.by, shown = odds(S, by);
       for (const o of Object.values(shown)) {
         if ('heal' in o) { assert.ok(o.heal >= 0 && o.heal <= S.maxHp[by] - S.hp[by]); continue; }
+        if (o.flourish) { assert.deepEqual(o.dmg, [0, 0]); assert.equal(o.hit, 1); continue; }
         assert.ok(o.hit >= 0 && o.hit <= 1 && o.dmg[0] >= 1 && o.dmg[0] <= o.dmg[1], JSON.stringify(o));
       }
       const events = stepBout(S), act = events[0];

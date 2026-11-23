@@ -10,6 +10,9 @@ import { Card, cardText, EmptyCard } from './Card.jsx';
 import { chips, formatDuration, formatLeft, signed, money } from './util.js';
 import { ChipStack, VENUE } from './theme.jsx';
 import { publicTitle, holdemShareText, holdemNotifyTitle } from '../../server/pageMeta.js';
+import { useModes } from './modes/Modes.jsx';
+import WorkTable from './modes/WorkTable.jsx';
+import { displayTableName, familyHandle, familyMask, familyNotifyTitle, familyShareText, familyTableLabel } from './modes/family.js';
 import { SignIn } from './Home.jsx';
 import { Link } from './Shell.jsx';
 import { Bust } from './avatar/Bust.jsx';
@@ -21,6 +24,8 @@ import { ShowButton } from './table/Spectacle.jsx';
 import { Dealer, DealerPlate } from './table/Dealer.jsx';
 import { AllInBit } from './table/AllInBit.jsx';
 import { TableSweep } from './table/TableSweep.jsx';
+import { useHandEquity } from './table/useEquity.js';
+import { EquityBar } from './table/EquityBar.jsx';
 import { Showdown } from './table/Showdown.jsx';
 import { useReplay, ReplayLayer } from './table/Replay.jsx';
 import { REPLAY_ON, cinematicPlays } from './table/replay.js';
@@ -34,7 +39,7 @@ import { useTurnAdvance, refreshTurns } from './turns/useTurns.js';
 import { NextTablePill } from './turns/TurnsPill.jsx';
 import { FightScreen, useFightWatchPill } from './fight/FightScreen.jsx';
 import { FightOffer } from './fight/FightOffer.jsx';
-import { isPracticePhrase } from '../../server/engine/fight.js';
+import { SayBox, SayBubble } from './table/Say.jsx';
 import { useActiveTheme, TEA_NOW } from './themes/store.js';
 import { emotesFor, teaDue, THEMES } from './themes/theme-core.js';
 import { Emotes, GeishaTea, FeltConsoles } from './themes/decor.jsx';
@@ -57,6 +62,8 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const [fightMode, setFightMode] = useState(null); // null | 'play' | 'watch' | 'practice'
   const [resultSeen, setResultSeen] = useState(() => new Set());
   const { me } = useSession();
+  const { safe: family, work } = useModes();
+  const tableName = displayTableName(code, view?.name, family);
   const wide = useWide();
   const land = useShortLand();
   const skew = useRef(0);
@@ -151,19 +158,19 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   useEffect(() => {
     if (!view || pane) return undefined;
     let flip = false;
-    const label = `Hold'em table ${code}`;
+    const label = family ? familyTableLabel(code) : `Hold'em table ${code}`;
     const base = publicTitle(label);
     if (!myTurn) { document.title = base; wasMyTurn.current = false; return undefined; }
     if (!wasMyTurn.current) {
       wasMyTurn.current = true;
       if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-        try { new Notification(holdemNotifyTitle(code), { body: 'Tap to make your move.', tag: `poker-${code}` }); } catch { /* ignore */ }
+        try { new Notification(family ? familyNotifyTitle(code) : holdemNotifyTitle(code), { body: 'Tap to make your move.', tag: `poker-${code}` }); } catch { /* ignore */ }
       }
     }
     document.title = publicTitle(label, { myTurn: true });
     const id = setInterval(() => { flip = !flip; document.title = publicTitle(label, { myTurn: true, blink: flip }); }, 1200);
     return () => clearInterval(id);
-  }, [myTurn, view?.hand?.number, code]);
+  }, [myTurn, view?.hand?.number, code, family]);
 
   async function post(path, body) {
     if (rp.pending) rp.skip();
@@ -184,7 +191,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   }
   const inviteUrl = `${window.location.origin}/t/${code}`;
   async function copyInvite() {
-    const text = holdemShareText(code, inviteUrl);
+    const text = family ? familyShareText(code, inviteUrl) : holdemShareText(code, inviteUrl);
     try {
       if (navigator.share && /Mobi/i.test(navigator.userAgent)) await navigator.share({ title: `${VENUE.name} card room`, text, url: inviteUrl });
       else { await navigator.clipboard.writeText(inviteUrl); setToast('Invite link copied!'); setTimeout(() => setToast(''), 2500); }
@@ -231,7 +238,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
     <div className={`tp-head ${compact ? 'compact' : ''}`}>
       <div className="tp-title">
         <p className="kicker"><Link to="/?tab=tables">← Tables</Link> / <span className="mono">{code}</span>{!compact && <>{kind && <span className="tp-botlabel"> · {kind}</span>}{rules}</>}</p>
-        <h1 className="display">{view.name}</h1>
+        <h1 className="display">{tableName}</h1>
         {!compact && access && <p className="small muted">{access}</p>}
       </div>
       {!compact && <p className="meta hide-s">{stakes}</p>}
@@ -250,7 +257,9 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
   const stage = (
     <div className="tp-stage">
       {sdPlay && <Showdown key={`${sdPlay.number}:${sdPlay._k || 0}`} sd={sdPlay} avatars={view.avatars} onDone={() => { rp.afterShowdown(); setSdPlay(null); }} />}
-      <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSweep={setSweepBusy} sweepLate={sweepLate} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+      {work
+        ? <WorkTable view={rp.view} now={now} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />
+        : <TableFelt code={code} view={rp.view} now={now} rp={rp} hold={!!sdPlay || rp.pending || !tableVisible || !rp.visible || !!fightMode} onSweep={setSweepBusy} sweepLate={sweepLate} onSit={!rp.pending && !seated && me && view.status !== 'closed' ? join : null} onSay={!rp.pending && seated && view.status !== 'closed' ? () => setSayOpen(true) : null} />}
       <FightPills view={view} myId={myId} watch={watch} now={now} seen={resultSeen} onSeen={(id) => setResultSeen(new Set([...resultSeen, id]))} onWatch={() => setFightMode('watch')} onForfeit={() => post('fight/forfeit', { id: view.fight.id })} />
       {sayOpen && seated && <SayBox current={view.seats[mySeat]?.say?.text || ''} onClose={() => setSayOpen(false)} onSave={(text) => post('say', { text })} onPractice={() => { setSayOpen(false); setFightMode('practice'); }} />}
       {errBox}
@@ -282,7 +291,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
       <div className={`tp tp-pane-mode ${focused ? 'focused' : 'unfocused'} ${myTurn ? 'my-turn' : ''}`} data-code={code}>
         <div className="pane-inner" ref={innerRef}>
           <div className="pane-head">
-            <b className="pane-name">{view.name}</b><span className="mono pane-code">{code}</span>
+            <b className="pane-name">{tableName}</b><span className="mono pane-code">{code}</span>
             {myTurn ? <span className={`pane-turn ${left < 60000 ? 'urgent' : ''}`}>Your turn · {formatLeft(left)}</span>
               : hand ? <span className="pane-wait">Hand #{hand.number}</span> : <span className="pane-wait">{view.status === 'lobby' ? 'Lobby' : view.status === 'closed' ? 'Closed' : 'Between hands'}</span>}
             {offerOpen && !offerTurn && <span className="pane-offer" title="Guntrad's fight offer is waiting: it opens after the current one">⚔ Fight offer · next</span>}
@@ -292,7 +301,7 @@ export default function TablePage({ code, pane = false, focused = true, onFocus,
           {stage}
           {bottom}
         </div>
-        {!focused && <button className="pane-cover" onClick={onFocus} aria-label={`Play at ${view.name}${myTurn ? ' (your turn)' : ''}`}><span>{myTurn ? 'Your turn · tap to play' : 'Tap to play here'}</span></button>}
+        {!focused && <button className="pane-cover" onClick={onFocus} aria-label={`Play at ${tableName}${myTurn ? ' (your turn)' : ''}`}><span>{myTurn ? 'Your turn · tap to play' : 'Tap to play here'}</span></button>}
         {fightLayer}
       </div>
     );
@@ -443,12 +452,16 @@ function seatDeg(pos, N) {
 }
 
 export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, onSweep, sweepLate }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
+  const bubble = (t) => (family ? familyMask(t) : t);
   // v42: a quick "✓ auto-check" pop over a seat for checks the table made in the last few seconds
   const autoPops = {};
   for (const e of view.log || []) { const m = / checks \(auto-check\)$/.exec(e.text); if (m && e.t > (view.serverNow || 0) - 3000) autoPops[e.text.slice(0, m.index)] = e.t; }
   const N = view.settings.maxPlayers;
   const hand = view.hand;
   const mySeat = view.me.seat ?? 0;
+  const equity = useHandEquity(view, { paused: !!hold || !!rp?.pending || !!rp?.on });
   const shown = (!hand && view.lastHand?.shown) || {};
   const winners = new Set((!hand && view.lastHand?.winners?.filter((w) => w.playerId === view.seats[w.seat]?.playerId).map((w) => w.seat)) || []);
   const button = hand ? hand.buttonSeat : view.buttonSeat;
@@ -613,20 +626,21 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, on
           return (
             <React.Fragment key={seat}>
               <div data-pid={s.playerId} className={`seat ${bit && !hold && bit.seat === seat && bit.playerId === s.playerId ? 'in-bit' : ''} ${isMe ? 'me' : ''} ${toAct ? 'toact' : ''} ${s.folded ? 'folded' : ''} ${winners.has(seat) ? 'winner' : ''} ${s.say?.text ? 'has-say' : ''}`} style={style}>
-                {s.say?.text && <SayBubble text={s.say.text} name={s.name} below={y < 34} align={x < 24 ? 'l' : x > 76 ? 'r' : 'c'} />}
+                {s.say?.text && <SayBubble text={bubble(s.say.text)} name={handle(s.name)} below={y < 34} align={x < 24 ? 'l' : x > 76 ? 'r' : 'c'} />}
                 <div className="seat-top" {...(isMe && onSay ? { role: 'button', tabIndex: 0, onClick: onSay, onKeyDown: (e) => e.key === 'Enter' && onSay(), 'aria-label': 'Your seat: say something', title: 'Say something' } : isMe || s.bot ? {} : who.seat(s.playerId, s.name))}>
                   <SeatBuddy bug={s.bug} playerId={s.playerId} size={Math.round(bust * 0.52)} myAction={!!(isMe && toAct)} busy={!!hold} pose={bugPose}>
-                    <Bust id={s.playerId} avatar={view.avatars?.[s.playerId]} size={bust} state={state} title={s.name} />
+                    <Bust id={s.playerId} avatar={view.avatars?.[s.playerId]} size={bust} state={state} title={handle(s.name)} />
                   </SeatBuddy>
                   <Emotes kinds={emotes[seat]} />
                   <div className="seat-cards">
                     {cards ? cards.map((c) => <Card key={c} card={c} size="sm" />)
                       : s.hasCards ? <><Card faceDown size="sm" /><Card faceDown size="sm" /></> : null}
+                    {isMe && equity && <EquityBar equity={equity} />}
                   </div>
                   {button === seat && <div className="dealer-btn" title="Dealer button">D</div>}
                 </div>
                 <div className="seat-plate">
-                  <div className="seat-name">{view.here?.includes(s.playerId) && <HereDot />}{s.name}{isMe && !crowd ? ' · you' : ''}</div>
+                  <div className="seat-name">{view.here?.includes(s.playerId) && <HereDot />}{handle(s.name)}{isMe && !crowd ? ' · you' : ''}</div>
                   <div className="seat-stack">{s.bot && <span className="bot-tag" title="A bot (always plays strong)">BOT</span>}{chips(s.stack)}</div>
                 </div>
                 {autoPops[s.name] && <span key={autoPops[s.name]} className="auto-pop" data-test="auto-pop">✓ auto-check</span>}
@@ -662,7 +676,7 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, on
         {bit && !hold && (() => {
           const seated = view.seats[bit.seat]?.playerId === bit.playerId;
           const loser = { ...bit, ...(seated ? xy(bit.seat) : { x: geo.cx, y: 100 }) };
-          const punchers = view.seats.map((s, i) => (s && s.playerId !== bit.playerId ? { playerId: s.playerId, name: s.name, ...xy(i) } : null)).filter(Boolean);
+          const punchers = view.seats.map((s, i) => (s && s.playerId !== bit.playerId ? { playerId: s.playerId, name: handle(s.name), ...xy(i) } : null)).filter(Boolean);
           const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
           return <AllInBit key={`${bit.number}:${bit.seat}`} loser={loser} punchers={punchers} stage={{ x: geo.cx, y: geo.cy + geo.fry * 0.72 }} w={w} h={h} size={bust} avatars={view.avatars} reduced={reduced} onDone={() => setBit(null)} />;
         })()}
@@ -678,44 +692,6 @@ export function TableFelt({ code, view, now, onSit, onSay, hold, rp, bugPose, on
         })()}
       </>}
     </div>
-  );
-}
-
-/** A player's speech bubble over their seat. Two lines; tap to read all of it (max 80 characters). React escapes the text. */
-function SayBubble({ text, name, below, align }) {
-  const [open, setOpen] = useState(false);
-  return (
-    // a note, not a control: the full text is in its label; tapping it just un-truncates it on screen
-    <div role="note" className={`say-bubble ${below ? 'below' : ''} al-${align} ${open ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setOpen(!open); }} aria-label={`${name} says: ${text}`} title={text}>
-      <span className="sb-txt" aria-hidden="true">{text}</span>
-    </div>
-  );
-}
-
-const SAY_MAX = 80;
-/** Tiny composer for your one bubble: it stays up until your next turn starts. Edit or clear any time. */
-// typing the secret phrase (isPracticePhrase) opens a no-money practice fight instead of posting a bubble
-function SayBox({ current, onClose, onSave, onPractice }) {
-  const [text, setText] = useState(current);
-  const [busy, setBusy] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  useEffect(() => { const esc = (e) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', esc); return () => window.removeEventListener('keydown', esc); }, [onClose]);
-  const save = async (v) => { setBusy(true); const ok = await onSave(v); setBusy(false); if (ok) onClose(); };
-  const left = SAY_MAX - Array.from(text).length;
-  return (
-    <form className="say-box" role="dialog" aria-label="Say something" onSubmit={(e) => { e.preventDefault(); if (isPracticePhrase(text)) { setText(current); onPractice(); return; } save(text); }}>
-      <div className="say-row">
-        <input ref={ref} value={text} maxLength={SAY_MAX} onChange={(e) => setText(e.target.value)} placeholder="Say something to the table…" aria-label="Your speech bubble" enterKeyHint="send" />
-        <button className="btn small primary" disabled={busy || !text.trim() || left < 0}>Say</button>
-        <button type="button" className="btn small ghost say-x" onClick={onClose} aria-label="Close">✕</button>
-      </div>
-      <div className="say-meta small muted">
-        <span>Stays up until your next turn.</span>
-        <span className={left < 10 ? 'warn' : ''}>{left}</span>
-        {current && <button type="button" className="linkish" disabled={busy} onClick={() => save('')}>Clear bubble</button>}
-      </div>
-    </form>
   );
 }
 
@@ -870,12 +846,14 @@ function HereDot() {
 }
 
 function Standings({ view }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   return (
     <Paged items={view.standings} rowH={44} className="standings"
       header={<div className="st-row st-head"><span>Name</span><span>Chips</span><span>In</span><span>Net</span></div>}
       render={(p) => (
         <div className={`st-row ${p.seated ? '' : 'muted'}`}>
-          <span className="st-name"><Bust id={p.playerId} avatar={view.avatars?.[p.playerId]} size={26} still />{p.seated && view.here?.includes(p.playerId) && <HereDot />}<span className="st-who" title={p.name}>{p.name}</span>{p.playerId === view.hostId ? <i className="muted"> · host</i> : ''}{!p.seated ? <i className="muted"> (left)</i> : ''}</span>
+          <span className="st-name"><Bust id={p.playerId} avatar={view.avatars?.[p.playerId]} size={26} still />{p.seated && view.here?.includes(p.playerId) && <HereDot />}<span className="st-who" title={handle(p.name)}>{handle(p.name)}</span>{p.playerId === view.hostId ? <i className="muted"> · host</i> : ''}{!p.seated ? <i className="muted"> (left)</i> : ''}</span>
           <span className="num">{chips(p.seated ? p.stack : p.cashOut)}</span>
           <span className="num">{chips(p.buyIn)}</span>
           <span className={`num ${p.net >= 0 ? 'pos' : 'neg'}`}>{signed(p.net)}</span>
@@ -885,6 +863,8 @@ function Standings({ view }) {
 }
 
 function HandLog({ view }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const items = view.log.filter((e) => !(e.ev?.k === 'win' && e.ev.showdown)).reverse(); // v43: the silent pot-push event is for the replay only
   return (
     <Paged items={items} rowH={40} className="log" resetKey={view.log.length}
@@ -899,18 +879,20 @@ function HandLog({ view }) {
 }
 
 function LastHand({ view }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const lh = view.lastHand;
   return (
     <div className="lasthand">
       <h3>Hand {lh.number} result</h3>
       <ul>
-        {lh.winners.map((w) => <li key={w.seat}><b>{w.name}</b> won {chips(w.amount)}{w.hand ? ` with ${w.hand}` : ''}</li>)}
+        {lh.winners.map((w) => <li key={w.seat}><b>{handle(w.name)}</b> won {chips(w.amount)}{w.hand ? ` with ${w.hand}` : ''}</li>)}
       </ul>
       {Object.keys(lh.shown || {}).length > 0 && (
         <div className="shown">
           {Object.entries(lh.shown).map(([seat, s]) => (
             <div key={seat} className="shown-row">
-              <span className="shown-name">{s.name || view.seats[seat]?.name || `Seat ${+seat + 1}`}</span>
+              <span className="shown-name">{handle(s.name || view.seats[seat]?.name) || `Seat ${+seat + 1}`}</span>
               {s.cards.map((c) => <Card key={c} card={c} size="sm" />)}
               <span className="muted small">{s.hand}</span>
             </div>
@@ -974,12 +956,14 @@ export function MusicButton() {
 
 /** Over the felt: "X is fighting Guntrad: Watch", your own unfinished fight, and the latest fight's result. */
 function FightPills({ view, myId, watch, now, seen, onSeen, onWatch, onForfeit }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const f = view.fight;
   if (!f) return null;
   if (watch.live) {
     return (
       <div className="fight-pill" role="status">
-        <span>⚔ <b>{f.name}</b> is fighting Guntrad!</span>
+        <span>⚔ <b>{handle(f.name)}</b> is fighting Guntrad!</span>
         <button className="btn small primary" onClick={onWatch}>Watch</button>
         <button className="x" onClick={() => watch.hide(f.id)} aria-label="Dismiss">✕</button>
       </div>
@@ -994,7 +978,7 @@ function FightPills({ view, myId, watch, now, seen, onSeen, onWatch, onForfeit }
     );
   }
   if ((f.status === 'won' || f.status === 'lost') && f.endedAt && now - f.endedAt < 45000 && !seen.has(f.id)) {
-    const who = f.playerId === myId ? 'You' : f.name;
+    const who = f.playerId === myId ? 'You' : handle(f.name);
     return (
       <div className="fight-pill done" role="status">
         <span>{f.status === 'won' ? `🏆 ${who} beat Guntrad! Big blind covered.` : `${who === 'You' ? 'You' : who} lost to Guntrad: ${money(f.stake || 0)} ${f.into === 'house' ? 'to the house' : 'dead money in the pot'}.`}</span>

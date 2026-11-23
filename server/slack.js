@@ -25,7 +25,7 @@ export class SlackClient {
   }
   get enabled() { return !!this.token; }
   /** One Slack Web API call. Returns the parsed body; `ok:false` is returned, not thrown. Retries once on transient failures. */
-  async call(method, params = {}, { get = false } = {}) {
+  async call(method, params = {}, { get = false, form = false } = {}) {
     if (!this.enabled) return { ok: false, error: 'not_configured' };
     for (let attempt = 0; ; attempt++) {
       let body;
@@ -33,6 +33,13 @@ export class SlackClient {
         const headers = { authorization: `Bearer ${this.token}` };
         let url = `${this.baseUrl}/${method}`; let init = { method: 'POST', headers };
         if (get) { url += `?${new URLSearchParams(params)}`; init = { method: 'GET', headers }; }
+        else if (form) {
+          // files.getUploadURLExternal rejects JSON with invalid_arguments (missing length/filename).
+          headers['content-type'] = 'application/x-www-form-urlencoded; charset=utf-8';
+          init.body = new URLSearchParams(
+            Object.fromEntries(Object.entries(params).map(([k, v]) => [k, v == null ? '' : String(v)])),
+          ).toString();
+        }
         else { headers['content-type'] = 'application/json; charset=utf-8'; init.body = JSON.stringify(params); }
         const r = await this.fetch(url, init);
         body = r.status === 429 ? { ok: false, error: 'ratelimited' } : r.status >= 500 ? { ok: false, error: 'http_error' } : await r.json();
@@ -47,6 +54,71 @@ export class SlackClient {
     const open = await this.call('conversations.open', { users: userId });
     if (!open.ok) return open;
     return this.call('chat.postMessage', { channel: open.channel.id, text, ...(blocks ? { blocks } : {}), unfurl_links: false, unfurl_media: false });
+  }
+  /** Post to a public channel the bot is in. `channel` is a channel id (C…) or #name. */
+  postChannel(channel, { text, blocks } = {}) {
+    if (!channel) return Promise.resolve({ ok: false, error: 'no_channel' });
+    return this.call('chat.postMessage', { channel, text, ...(blocks ? { blocks } : {}), unfurl_links: false, unfurl_media: false });
+  }
+  /**
+   * Turn a #name or C-ID into a channel id. files.completeUploadExternal wants a C-ID.
+   * Public channels: conversations.list needs channels:read. Private: also groups:read.
+   * Cached for the life of this client. Returns null if the name cannot be resolved.
+   */
+  async resolveChannelId(channel) {
+    const raw = String(channel || '').trim();
+    if (!raw) return null;
+    if (/^[CGD][A-Z0-9]{8,}$/i.test(raw)) return raw;
+    const name = raw.replace(/^#/, '').toLowerCase();
+    this._chanIds ||= new Map();
+    if (this._chanIds.has(name)) return this._chanIds.get(name);
+    let cursor = '';
+    do {
+      const params = { types: 'public_channel,private_channel', limit: 200, exclude_archived: true };
+      if (cursor) params.cursor = cursor;
+      const r = await this.call('conversations.list', params);
+      if (!r.ok) return null;
+      for (const ch of r.channels || []) {
+        if (ch?.name && String(ch.name).toLowerCase() === name && ch.id) {
+          this._chanIds.set(name, ch.id);
+          return ch.id;
+        }
+      }
+      cursor = r.response_metadata?.next_cursor || '';
+    } while (cursor);
+    return null;
+  }
+  /**
+   * Upload a PNG (or other file) to a channel with an initial comment.
+   * Uses Slack's files.getUploadURLExternal + files.completeUploadExternal flow.
+   * getUploadURLExternal is form-urlencoded (JSON is rejected with invalid_arguments).
+   * Resolves #name to a C-ID first (completeUploadExternal does not accept #name).
+   */
+  async uploadImage({ channel, filename, buffer, title, comment } = {}) {
+    if (!channel) return { ok: false, error: 'no_channel', method: 'uploadImage' };
+    const channelId = await this.resolveChannelId(channel);
+    if (!channelId) return { ok: false, error: 'channel_not_resolved', method: 'conversations.list' };
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+    const length = buf.byteLength;
+    const up = await this.call('files.getUploadURLExternal', { filename: filename || 'image.png', length }, { form: true });
+    if (!up.ok) return { ...up, method: 'files.getUploadURLExternal' };
+    try {
+      const put = await this.fetch(up.upload_url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: buf,
+      });
+      if (!put.ok) return { ok: false, error: 'upload_failed', method: 'files.upload', status: put.status };
+    } catch {
+      return { ok: false, error: 'upload_failed', method: 'files.upload' };
+    }
+    const done = await this.call('files.completeUploadExternal', {
+      files: [{ id: up.file_id, title: title || filename || 'image.png' }],
+      channel_id: channelId,
+      initial_comment: comment || '',
+    });
+    if (!done.ok) return { ...done, method: 'files.completeUploadExternal' };
+    return done;
   }
 }
 
@@ -360,7 +432,7 @@ export class SlackAlerts {
       const p = this.service.store.players[f.playerId];
       if (!this.mayAlert(p)) return;
       this.send(p, turnMessage(f, { publicUrl: this.publicUrl }), 'turn', { code: t.code, key: f.key });
-    } catch (e) { this.warn('turn', e.message); } finally { this.reschedule(); }
+    } catch (e) { this.warn('turn', e.message); } finally { this.reschedule(); this.wanted?.scan(); }
   }
   /** A Barn challenge was just sent. One message and no reminder: the Barn shows it for its whole day. Never throws, never awaits Slack. */
   challenged(f) {
@@ -404,7 +476,7 @@ export class SlackAlerts {
         this.send(p, scumMessage(f, { publicUrl: this.publicUrl }), 'scum-turn', { scum: true, code: t.code, key: f.key, seat: f.seat });
       }
       if (dirty) this.save();
-    } catch (e) { this.warn('scum-turn', e.message); } finally { this.reschedule(); }
+    } catch (e) { this.warn('scum-turn', e.message); } finally { this.reschedule(); this.wanted?.scan(); }
   }
   scumTables() { try { return this.scumSource?.all() || []; } catch { return []; } }
   bjTables() { try { return this.bjSource?.all() || []; } catch { return []; } }
@@ -445,7 +517,7 @@ export class SlackAlerts {
         if (!this.mayAlert(p)) continue;
         this.send(p, gameMessage(f, { publicUrl: this.publicUrl, reminder: true }), f.game === 'scum' ? 'scum-reminder' : 'bj-reminder', { [f.game === 'scum' ? 'scum' : 'bj']: true, code: f.code, key: f.key, seat: f.seat });
       }
-    } catch (e) { this.warn('sweep', e.message); } finally { this.reschedule(); }
+    } catch (e) { this.warn('sweep', e.message); } finally { this.reschedule(); this.wanted?.scan(); }
   }
   /**
    * Start nudges. A record per table, persisted with the rest of the Slack state on the volume:

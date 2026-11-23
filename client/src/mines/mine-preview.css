@@ -1,0 +1,24 @@
+.mine-preview { position: relative; height: 100dvh; min-height: 100dvh; margin: 0; padding: 0; background: #050804; color: #e8f0c8; display: flex; flex-direction: column; align-items: stretch; }
+.mine-preview-banner { display: flex; align-items: center; gap: 12px; padding: 6px 12px; background: rgba(8, 10, 4, .88); border-bottom: 1px solid rgba(180, 200, 80, .35); font: 600 12px/1.3 ui-monospace, monospace; z-index: 3; }
+.mine-preview-banner b { letter-spacing: .04em; }
+.mine-preview-shot { margin-left: auto; opacity: .7; }
+.mine-preview-stage, .mine-preview-bout { position: relative; flex: 1 1 auto; min-height: 0; }
+.mine-preview-canvas { position: absolute; inset: 0; display: block; width: 100% !important; height: 100% !important; background: #1a2210; }
+.mine-preview-bout { display: flex; align-items: stretch; justify-content: center; background: #140c08; }
+.mine-preview-bout .bout { position: relative; inset: auto; width: min(1280px, 100%); height: calc(100dvh - 36px); max-height: none; margin: 0; }
+.mine-preview.is-intro .m-stick-intro { position: absolute; }
+.mine-preview.is-intro .m-stick-intro.is-hold .m-stick-flicker { animation: none; opacity: .32; background:
+  linear-gradient(180deg, rgba(0,0,0,.55), transparent 40%, rgba(0,0,0,.5)),
+  repeating-linear-gradient(90deg, transparent 0 18px, rgba(255, 230, 140, .09) 18px 19px); }
+@media (max-width: 760px) {
+  .mine-preview-banner { font-size: 11px; padding: 5px 8px; }
+  .mine-preview-bout .bout { height: calc(100dvh - 32px); width: 100%; }
+}
+
+.mine-preview-stage.m-play { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.mine-preview-stage .m-top { position: absolute; top: 0; left: 0; right: 0; }
+.mine-preview.clean .mine-preview-banner { display: none; }
+
+.mine-preview .steeze-show.calves .zoom { animation: none; transform: scale(1.08) translateY(-4%); }
+.mine-preview .steeze-show.wealth .coin, .mine-preview .steeze-show.wealth .bill { animation: none; transform: translateY(72px) rotate(32deg); opacity: 1; }
+.mine-preview .steeze-show.wealth .pile { animation: none; opacity: .95; transform: none; }

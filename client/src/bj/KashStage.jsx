@@ -94,11 +94,17 @@ export function KashButtons({ v, r, post }) {
   const b = r?.bets?.[v.mySeat];
   if (!r?.sneak || !b?.bet) return null;
   const amt = Math.min(v.limits.royalMax, b.bet);
-  return ['match', 'pairs'].filter((k) => r.sneak[k]).map((k) => (
-    <button key={k} type="button" className="bj-kash" data-test={`bj-kash-${k}`}
-      aria-label={`Kash Bet, ${k === 'match' ? 'Royal Match' : 'Royal Pairs'} $${amt}`}
-      onClick={() => post('sneak', { royal: { [k]: amt } })}>
-      {k === 'match' ? '♛' : '♚'}<span>Kash</span><small>${amt}</small>
-    </button>
-  ));
+  const keys = ['match', 'pairs'].filter((k) => r.sneak[k]);
+  if (!keys.length) return null;
+  return (
+    <div className="bj-sides" data-test="bj-sides">
+      {keys.map((k) => (
+        <button key={k} type="button" className="bj-kash" data-test={`bj-kash-${k}`}
+          aria-label={`Kash Bet, ${k === 'match' ? 'Royal Match' : 'Royal Pairs'} $${amt}`}
+          onClick={() => post('sneak', { royal: { [k]: amt } })}>
+          {k === 'match' ? '♛' : '♚'}<span>{k === 'match' ? 'Royal Match' : 'Royal Pairs'}</span><small>${amt}</small>
+        </button>
+      ))}
+    </div>
+  );
 }

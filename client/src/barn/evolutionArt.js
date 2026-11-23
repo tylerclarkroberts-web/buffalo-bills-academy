@@ -121,7 +121,7 @@ const STAGE2_SPECIES_OVERRIDE = {
   gyrinus: 'aquatic',
 };
 
-const MANTIS_KINDS = new Set(['mantis', 'stick']);
+const MANTIS_KINDS = new Set(['mantis', 'stick', 'tree-lobster']);
 const FLIER_KINDS = new Set(['dragonfly', 'lacewing', 'moth', 'cicada', 'caddis']);
 const AQUATIC_KINDS = new Set(['waterbug', 'skater']);
 const HOPPER_KINDS = new Set(['treehopper', 'leafhopper', 'lanternfly', 'frogleg', 'cricket']);
@@ -150,9 +150,9 @@ export function stage3CultureOf(bug) {
   return SPECIES_CULTURE[bug?.id] || 'bavarian';
 }
 
-/** Describe the evolved sprite asset & cultural metadata for a bug, or null for Stage I. */
+/** Describe the evolved sprite asset & cultural metadata for a bug, or null for Stage I / cameos. */
 export function evolutionMeta(bug, stage, botched = false) {
-  if (!stage) return null;
+  if (!stage || !bug || bug.id === 'steeze' || bug.look?.kind === 'photo') return null;
   const archetype = stage2ArchetypeOf(bug);
   const cultureId = stage3CultureOf(bug);
   const culture = STAGE3_CULTURES[cultureId] || STAGE3_CULTURES.bavarian;

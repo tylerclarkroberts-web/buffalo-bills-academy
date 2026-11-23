@@ -2,7 +2,7 @@
 // entrance, per-species fighting styles, special-move charge-ups, effects, statuses and a finish. planBout() and
 // locate() are pure (and tested); drawBout() paints one frame for a time. Nothing here can change a result.
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { spriteCanvas, bugScale, fineFor, isHiResEvo, SPRITE } from './sprite.js';
+import { spriteCanvas, bugScale, fineFor, isHiResSprite, SPRITE } from './sprite.js';
 
 export const INTRO_MS = 2600, FINISH_MS = 1800;
 const RECOVER = 440;
@@ -17,6 +17,7 @@ export const STYLES = {
   sprayer: { name: 'Sprayer', approach: 640, sound: 'spray' },
   roller: { name: 'Roller', approach: 580, sound: 'roll' },
   wriggler: { name: 'Wriggler', approach: 600, sound: 'wriggle' },
+  showman: { name: 'Showman', approach: 720, sound: 'dash' },
 };
 const BY_STYLE = {
   flyer: ['phrictus', 'pyrops', 'nemoptera', 'chrysochroa', 'mantispa', 'polyphylla', 'melanophila', 'brevisana', 'bertholdia', 'photuris', 'ampulex', 'megachile', 'meganeura'],
@@ -26,10 +27,11 @@ const BY_STYLE = {
   sprayer: ['brachinus', 'pheropsophus', 'peruphasma'],
   roller: ['eupholus', 'pachyrhynchus', 'sphaerocoris', 'helicopsyche', 'gyrinus'],
   wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa', 'dryococelus'],
+  showman: ['steeze'],
 };
 export const STYLE_OF = Object.fromEntries(Object.entries(BY_STYLE).flatMap(([style, ids]) => ids.map((id) => [id, style])));
 export const styleOf = (species) => STYLE_OF[species] || 'charger';
-export const EFFECT_COLOR = { strike: '#ffe27a', pierce: '#9ff3ff', guard: '#ffcf5a', venom: '#8cff5a', heal: '#7dffb0', weaken: '#c58bff' };
+export const EFFECT_COLOR = { strike: '#ffe27a', pierce: '#9ff3ff', guard: '#ffcf5a', venom: '#8cff5a', heal: '#7dffb0', weaken: '#c58bff', flourish: '#ffd24a' };
 
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 export function rng(seed) {
@@ -60,11 +62,11 @@ export function planBout(bout) {
   const beats = []; let at = INTRO_MS;
   rounds.forEach((r, i) => {
     const special = r.type === 'move' && !!r.moveId && r.moveId !== 'basic';
-    const kind = r.type === 'venom' ? 'tick' : r.skipped ? 'skip' : r.effect === 'heal' ? 'heal' : 'attack';
+    const kind = r.type === 'venom' ? 'tick' : r.skipped ? 'skip' : r.effect === 'heal' ? 'heal' : r.effect === 'flourish' ? 'flourish' : 'attack';
     const charge = special ? (r.tier >= 4 ? 950 : 700) : 0;
-    const impactAt = kind === 'tick' || kind === 'skip' ? 220 : charge + (kind === 'heal' ? 320 : STYLES[styleOf(fighters[r.by]?.species)].approach);
+    const impactAt = kind === 'tick' || kind === 'skip' ? 220 : charge + (kind === 'heal' ? 320 : kind === 'flourish' ? 480 : STYLES[styleOf(fighters[r.by]?.species)].approach);
     const stop = kind !== 'attack' || !r.hit || !(r.dmg > 0) ? 0 : r.critical ? 280 : special ? 120 : 70;
-    const dur = impactAt + stop + (kind === 'tick' || kind === 'skip' ? 520 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
+    const dur = impactAt + stop + (kind === 'tick' || kind === 'skip' ? 520 : kind === 'flourish' ? 1100 : RECOVER + 160) + (r.critical ? 650 : 0) + BREATH;
     const before = copy(), me = r.by, foe = 1 - r.by;
     if (kind === 'tick') { if (!r.pop) status[foe].poison = Math.max(0, status[foe].poison - 1); } // a venom round's `by` is the poisoner
     else if (kind === 'attack') {
@@ -240,17 +242,62 @@ function arena(fx, W, H, seed, kind) {
   return c;
 }
 
+const steezePhotos = { img: null, tried: false };
+function steezePhoto() {
+  if (typeof Image === 'undefined') return null;
+  if (!steezePhotos.tried) {
+    steezePhotos.tried = true;
+    const im = new Image();
+    im.onload = () => { steezePhotos.img = im; };
+    im.onerror = () => { steezePhotos.img = null; };
+    im.src = '/api/steeze.png';
+  }
+  return steezePhotos.img;
+}
 function drawFighter(x, f, p, size, face) {
   const bug = BY_ID[f?.species]; if (!bug) return;
-  const hiRes = isHiResEvo(bug, f.style);
-  const grown = hiRes
-    ? Math.max(SPRITE, Math.round(size * bugScale(f.level)))
-    : Math.max(1, Math.floor(size / SPRITE)) * SPRITE * bugScale(f.level);
-  const img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
+  if (bug.id === 'steeze') {
+    const photo = steezePhoto();
+    const s = size * (1 + (p.alt / size) * 0.12);
+    // Billboard: always upright in the ring, feet on the boards, a contact shadow, a slight
+    // inward face. Ignore the top-down `face` rotation that laid the standing photo flat.
+    const inward = face > Math.PI / 2 && face < Math.PI * 1.5 ? -1 : 1;
+    x.save();
+    x.translate(p.x, p.y);
+    x.scale((p.sx || 1) * inward, p.sy || 1);
+    const h = Math.min(s * 1.02, Math.max(48, p.y - 10));
+    const aspect = photo ? (photo.width / photo.height) : 0.48;
+    const w = h * aspect;
+    x.fillStyle = 'rgba(0,0,0,.5)';
+    x.beginPath(); x.ellipse(0, 2, w * 0.42, Math.max(6, h * 0.06), 0, 0, Math.PI * 2); x.fill();
+    if (photo) {
+      x.filter = 'brightness(0.86) sepia(0.2) saturate(0.9)';
+      x.drawImage(photo, -w / 2, -h - p.alt, w, h);
+      x.filter = 'none';
+    } else {
+      x.fillStyle = '#c9a050'; x.font = `bold ${Math.max(12, h * 0.12)}px sans-serif`; x.textAlign = 'center';
+      x.fillText('STEEZE', 0, -h * 0.5);
+    }
+    x.restore();
+    return;
+  }
+  const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level, f.species), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
+  const hiRes = isHiResSprite(bug, f.style, f.level);
   const s = grown * (1 + (p.alt / size) * 0.25);
-  x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
+  // A bug is seen from above and turns to face its opponent; a rebuilt one stands up.
+  x.save(); x.translate(p.x, p.y - p.alt); x.rotate((f.style?.evo ? 0 : face) + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
   x.imageSmoothingEnabled = hiRes;
   if (hiRes && 'imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
+  if (bug.id === 'dryococelus') {
+    const glow = x.createRadialGradient(0, 0, s * 0.18, 0, 0, s * 0.62);
+    glow.addColorStop(0, 'rgba(232, 196, 96, 0.28)');
+    glow.addColorStop(0.55, 'rgba(200, 150, 50, 0.1)');
+    glow.addColorStop(1, 'rgba(200, 150, 50, 0)');
+    x.fillStyle = glow;
+    x.beginPath(); x.ellipse(0, 0, s * 0.38, s * 0.58, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = 'rgba(0,0,0,.32)';
+    x.beginPath(); x.ellipse(0, s * 0.42, s * 0.22, s * 0.07, 0, 0, Math.PI * 2); x.fill();
+  }
   x.drawImage(p.flash ? tinted(img, p.flash) : img, -s / 2, -s / 2, s, s);
   if (p.tint) { x.globalAlpha = p.tint[1]; x.drawImage(tinted(img, p.tint[0]), -s / 2, -s / 2, s, s); }
   x.restore();
@@ -290,7 +337,7 @@ export function drawBout(x, { W, H, bout, plan, t, reduced, fx }) {
     else {
       const a = r.by, d = 1 - a, p = P[a], q = P[d], [tx, ty] = toward(a); attacker = a;
       if (lt < A) { p.sy *= 0.92; p.x += (R() - 0.5) * size * 0.012; p.aura = clamp01(lt / 220); dim = 0.5 * clamp01(lt / 160) * clamp01((A - lt) / 160 + 0.2); }
-      else if (beat.kind === 'heal') { const k = clamp01((lt - A) / (I - A + 380)); p.alt += Math.sin(Math.PI * k) * size * 0.12; if (lt >= I && lt < I + 320) p.flash = Math.floor((lt - I) / 70) % 2 ? null : '#7dffb0'; }
+      else if (beat.kind === 'heal' || beat.kind === 'flourish') { const k = clamp01((lt - A) / (I - A + 380)); p.alt += Math.sin(Math.PI * k) * size * 0.08; if (lt >= I && lt < I + 320) p.flash = Math.floor((lt - I) / 70) % 2 ? null : (beat.kind === 'flourish' ? '#ffd24a' : '#7dffb0'); }
       else {
         const m = motion(ST[a], lt, A, I, Rr), reach = Math.max(0, dist - size * 0.62);
         p.x += tx * reach * m.f; p.y += ty * reach * m.f; if (m.alt != null) p.alt = m.alt * size;

@@ -1,4 +1,6 @@
 // v52: Hold'em-style oval felt for blackjack — seats with Bust avatars, Guntrad dealing (or the player who is the house).
+import { useModes } from '../modes/Modes.jsx';
+import { familyHandle } from '../modes/family.js';
 import React, { useRef } from 'react';
 import { Bust } from '../avatar/Bust.jsx';
 import { SeatBuddy } from '../table/TableBug.jsx';
@@ -52,6 +54,8 @@ export function BjArena({
   v, dealerCards, dealerTotal, handsOf, turnSeat, fxFor, shown, dealing, onTap, reduced, onSit, bugPose, kashTell, now,
 }) {
   const box = useRef(null);
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const { w, h } = useSize(box);
   const who = usePlayerCard();
   const N = v.seats.length;
@@ -161,10 +165,10 @@ export function BjArena({
                 {s ? (
                   <>
                     <SeatBuddy bug={s.bug} playerId={s.id || `bj-seat-${i}`} size={Math.round(bust * 0.52)} reduced={reduced} myAction={!!(s.me && turnSeat === i)} busy={!!dealing} pose={bugPose}>
-                      <Bust id={s.id || `bj-seat-${i}`} avatar={av} size={bust} state={turnSeat === i ? 'toact' : ''} still={reduced} title={s.name} />
+                      <Bust id={s.id || `bj-seat-${i}`} avatar={av} size={bust} state={turnSeat === i ? 'toact' : ''} still={reduced} title={handle(s.name)} />
                     </SeatBuddy>
                     <div className="bj-pill">
-                      <b>{s.bot ? '🤖 ' : ''}{s.name}</b>
+                      <b>{s.bot ? '🤖 ' : ''}{handle(s.name)}</b>
                       <span className="mono">{money(s.chips)}</span>
                     </div>
                     <div className="bj-hands">
@@ -181,6 +185,7 @@ export function BjArena({
                           >
                             <HandCards cards={cards} small freshFrom={fresh} reduced={reduced} />
                             <div className="bj-hand-f">
+                              {hs.length > 1 && v.round?.phase === 'play' && v.round.turn === h.i && <span className="bj-hand-now" data-test="bj-hand-now">This hand</span>}
                               <span className="bj-bet">{money(h.bet)}</span>
                               {h.total != null && n >= h.cards.length && <span className="bj-tot">{h.total}</span>}
                               {out && n >= h.cards.length && <span className={`bj-stamp ${out}`} data-test={`bj-out-${out}`}>{out === 'blackjack' ? 'BLACKJACK' : out.toUpperCase()}</span>}

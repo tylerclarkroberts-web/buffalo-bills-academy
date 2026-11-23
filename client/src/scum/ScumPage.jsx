@@ -15,9 +15,12 @@ import { useTurnAdvance, refreshTurns } from '../turns/useTurns.js';
 import { NextTablePill } from '../turns/TurnsPill.jsx';
 import '../bj/bj.css';
 import './scum.css';
-import { canDealNow, canStartDeal } from './setup.js';
+import { canDealNow, canStartDeal, seatXY } from './setup.js';
 import { publicTitle } from '../../../server/pageMeta.js';
 import { RoyalPicker, RoyalPlay, RoyalRewatch, seatRoyalClass } from './Royal.jsx';
+import { useModes } from '../modes/Modes.jsx';
+import { displayTableName, familyHandle, familyMask, FAMILY_TITLES, FAMILY_GAME, familyTableLabel } from '../modes/family.js';
+import { SayBox, SayBubble } from '../table/Say.jsx';
 
 const RK = '23456789TJQKA';
 const rk = (c) => RK.indexOf(c[0]) + 2;
@@ -28,6 +31,7 @@ const RN = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
 const rn = (r) => (r === 10 ? '10' : RN[r] || String(r));
 const SET = ['', 'single', 'pair', 'three', 'four'];
 const TITLE = { king: 'King', queen: 'Queen', commoner: 'Commoner', babyScum: 'Baby Scum', scum: 'Scum' };
+const titleOf = (family, k) => (family ? { ...TITLE, ...FAMILY_TITLES } : TITLE)[k] || k;
 const CROWN = { king: '♚', queen: '♛', commoner: '', babyScum: '🪣', scum: '🪣' };
 const TURN = { 30: '30 s', 120: '2 min', 600: '10 min', 3600: '1 hour', 86400: '1 day' };
 const left = (ms) => { if (ms <= 0) return '0s'; const s = Math.ceil(ms / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.ceil(s / 60)}m` : s < 86400 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`; };
@@ -66,8 +70,10 @@ const PAY_RULES = [
 
 export default function ScumPage({ code }) {
   const { me } = useSession();
-  useEffect(() => { if (!code) document.title = publicTitle('SCUM'); }, [code]);
-  if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">SCUM</h2><SignIn compact next={code ? `/scum/${code}` : '/scum'} /></div></div>;
+  const { safe: family } = useModes();
+  const gameName = family ? FAMILY_GAME.scum : 'SCUM';
+  useEffect(() => { if (!code) document.title = publicTitle(gameName); }, [code, gameName]);
+  if (!me) return <div className="screen bj"><div className="panel bj-empty"><h2 className="western">{gameName}</h2><SignIn compact next={code ? `/scum/${code}` : '/scum'} /></div></div>;
   return code ? <ScumTable code={code} me={me} /> : <ScumLobby me={me} />;
 }
 
@@ -84,6 +90,8 @@ function RulesPop({ onClose, pay }) {
 
 // ---------------------------------------------------------------- lobby + setup
 function ScumLobby({ me }) {
+  const { safe: family } = useModes();
+  const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   const [info, setInfo] = useState(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState('new');
@@ -106,9 +114,9 @@ function ScumLobby({ me }) {
     <div className="bj-list sc-list" data-test="scum-tables">
       {info.tables.length ? info.tables.map((t) => (
         <button key={t.code} className="bj-row" onClick={() => navigate(`/scum/${t.code}`)}>
-          <b>{t.name}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats}{t.round ? ` · round ${t.round}` : ''}{t.title ? ` · ${TITLE[t.title]}` : ''}</span>
+          <b>{displayTableName(t, t.name, family)}</b><span className="mono">{t.code} · {t.players}/{t.maxSeats}{t.round ? ` · round ${t.round}` : ''}{t.title ? ` · ${titleOf(family, t.title)}` : ''}</span>
           <span className={`badge ${t.myTurn ? 'hot' : ''}`}>{t.turnLabel}</span>
-        </button>)) : <p className="small dim">No scum tables yet.</p>}
+        </button>)) : <p className="small dim">No {gameName.toLowerCase()} tables yet.</p>}
     </div>
   );
   const canDeal = canDealNow(st.bots);
@@ -210,14 +218,12 @@ function usePlayback(v, code) {
   return { step: queue[0] || null, pending: queue.length, catching, skip, next };
 }
 
-function seatXY(k, n, tall) {
-  const ang = ((90 + (360 * k) / n) * Math.PI) / 180;
-  const rx = tall ? 40 : 43, ry = tall ? 36 : 37;
-  return { x: 50 + rx * Math.cos(ang), y: (tall ? 46 : 48) + ry * Math.sin(ang) };
-}
-
 function ScumTable({ code, me }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
+  const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   const [v, setV, err] = useView(code);
+  const tableName = displayTableName(code, v?.name, family);
   const who = usePlayerCard();
   const [sel, setSel] = useState([]);
   const [beg, setBeg] = useState('');
@@ -232,6 +238,7 @@ function ScumTable({ code, me }) {
   const [bugNote, setBugNote] = useState(null);
   const [muted, setMute] = useState(isMuted());
   const [copied, setCopied] = useState(false);
+  const [sayOpen, setSayOpen] = useState(false);
   const [royalPlay, setRoyalPlay] = useState(null); // { ev, ack: bool } ack=false means rewatch, do not mark seen
   const [royalStep, setRoyalStep] = useState('pick');
   const royalSeen = useRef(new Set());
@@ -263,7 +270,7 @@ function ScumTable({ code, me }) {
     handRect.current = next;
   });
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
-  useEffect(() => { document.title = publicTitle(v?.code ? `SCUM table ${v.code}` : 'SCUM', { myTurn: !!v?.round?.myTurn }); }, [v?.code, v?.round?.myTurn]);
+  useEffect(() => { document.title = publicTitle(v?.code ? (family ? familyTableLabel(v.code) : `SCUM table ${v.code}`) : gameName, { myTurn: !!v?.round?.myTurn }); }, [v?.code, v?.round?.myTurn, family, gameName]);
   const r = v?.round;
   const handKey = (r?.hand || []).join(',');
   useEffect(() => { setSel((s) => s.filter((c) => r?.hand?.includes(c))); }, [handKey, r?.phase]);
@@ -330,7 +337,7 @@ function ScumTable({ code, me }) {
     blocked: !!pb.pending || !!blast || !!crown || !!fly || !!royalPlay,
     enabled: true,
   });
-  if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/scum')}>Back to scum</button>}</div></div>;
+  if (!v) return <div className="screen bj"><div className="panel bj-empty">{err || 'Shuffling…'}{err && <button className="btn small" onClick={() => navigate('/scum')}>Back to {gameName.toLowerCase()}</button>}</div></div>;
   const post = async (path, body) => {
     setBusy(true); setActErr('');
     try { const nv = await api('POST', `/scum/tables/${code}/${path}`, body); if (nv?.closed) { navigate('/scum'); return null; } setV(nv); refreshTurns(); return nv; } catch (e) { setActErr(e.message || 'Something went wrong. Try again.'); return null; } finally { setBusy(false); }
@@ -407,10 +414,16 @@ function ScumTable({ code, me }) {
       <div className="panel bj-felt sc-felt" data-test="scum-table">
         <div className="bj-head">
           <button className="btn ghost small" onClick={() => navigate('/scum')} aria-label="Back to scum">←</button>
-          <h1 className="western">{v.name}</h1>
+          <h1 className="western">{tableName}</h1>
           {r && <span className="bj-sub mono">R{r.no}</span>}
           <div className="bj-head-r">
             <button className="btn ghost small" onClick={invite} data-test="scum-invite" title="Copy the invite link" aria-label="Copy the invite link">{copied ? 'Copied!' : tiny ? '🔗' : 'Invite'}</button>
+            {mine && v.status !== 'closed' && v.status !== 'over' && (
+              <button className={`btn ghost small say-btn ${mine.say?.text ? 'live' : ''}`} onClick={() => setSayOpen((o) => !o)} aria-expanded={sayOpen} aria-label="Say something (speech bubble)" title="Say something" data-test="scum-say-btn">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+                {tiny ? null : <span>Say</span>}
+              </button>
+            )}
             <button className="btn ghost small" onClick={() => setShow(show === 'log' ? null : 'log')} data-test="scum-log-btn" aria-label="Table log">{tiny ? '☰' : 'Log'}</button>
             <RoyalRewatch history={v.royal?.history} onRewatch={(ev) => setRoyalPlay({ ev, ack: false })} />
             <button className="btn ghost small" onClick={() => setShow(show === 'rules' ? null : 'rules')} data-test="scum-rules" aria-label="Rules">{tiny ? '?' : 'Rules'}</button>
@@ -420,6 +433,9 @@ function ScumTable({ code, me }) {
           </div>
         </div>
         <div className={`bj-status sc-status ${!fly && r?.myTurn ? 'mine' : ''}`} data-test="scum-status"><span>{status}</span>{clockLeft && v.status === 'playing' && r?.phase === 'play' && <span className="mono">⏱ {clockLeft}</span>}</div>
+        {sayOpen && mine && v.status !== 'closed' && v.status !== 'over' && (
+          <SayBox current={mine.say?.text || ''} onClose={() => setSayOpen(false)} onSave={async (text) => !!(await post('say', { text }))} />
+        )}
 
         <div className="sc-arena" ref={arena} style={{ '--bust': `${bust}px` }} data-test="scum-arena">
           {w > 0 && <>
@@ -433,26 +449,30 @@ function ScumTable({ code, me }) {
                 <div className="sc-pile-txt small">{pileTxt}</div>
                 {bugNote && <div className={`sc-bugnote ${bugNote.me ? 'me' : ''}`} key={bugNote.seq} data-test="scum-bugnote" role="status">
         {bugNote.bug.generic ? <span className="sc-bug-ic" aria-hidden="true">🐞</span> : <TableBugSprite bug={bugNote.bug} size={30} reduced={reduced} />}
-        <span>{bugNote.me ? 'Your bug played for you' : `${bugNote.name}'s bug played for them`}<small>{bugNote.pass ? 'Nothing beat it: pass' : 'Always the highest card'}</small></span>
+        <span>{bugNote.me ? 'Your bug played for you' : `${handle(bugNote.name)}'s bug played for them`}<small>{bugNote.pass ? 'Nothing beat it: pass' : 'Always the highest card'}</small></span>
       </div>}
               </>}
             </div>
             {disp.map((i) => {
               const s = v.seats[i]; const p = pos[i]; const isTurn = i === turnSeat;
+              const canSay = !!(s.me && v.status !== 'closed' && v.status !== 'over');
+              const topMid = p.y < 34 && p.x >= 24 && p.x <= 76; // a "below" bubble here would cover the pile
+              const sayAlign = topMid ? (p.x <= 50 ? 'sr' : 'sl') : p.x < 24 ? 'l' : p.x > 76 ? 'r' : 'c';
               return (
-                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(s.me || s.bot ? {} : who.seat(s.id, s.name))}>
-                  {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${s.name}'s turn`}</span>}
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${s.say?.text ? 'has-say' : ''} ${p.y < 34 ? 'north' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(canSay ? { role: 'button', tabIndex: 0, onClick: () => setSayOpen(true), onKeyDown: (e) => e.key === 'Enter' && setSayOpen(true), 'aria-label': 'Your seat: say something', title: 'Say something' } : s.me || s.bot ? {} : who.seat(s.id, s.name))}>
+                  {s.say?.text && <SayBubble text={family ? familyMask(s.say.text) : s.say.text} name={handle(s.name)} below={!topMid && p.y < 34} align={sayAlign} />}
+                  {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${handle(s.name)}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
-                    <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={s.name} />
+                    <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={handle(s.name)} />
                   </SeatBuddy>
                   {s.passed && <span className="sc-seatbadge pass" data-test="scum-passed">Out</span>}
                   {s.skipped && <span className="sc-seatbadge skip" data-test="scum-skipped">Skipped</span>}
-                  {s.title && <span className={`sc-title t-${s.title}`} data-test="scum-title">{CROWN[s.title]} {TITLE[s.title]}</span>}
+                  {s.title && <span className={`sc-title t-${s.title}`} data-test="scum-title">{CROWN[s.title]} {titleOf(family, s.title)}</span>}
                   {v.payouts && s.broke ? <span className="sc-paychip broke" data-test="scum-minechip" title="Off to the Acid Mines">⛏ mines</span>
                     : v.payouts && s.pay ? <span className={`sc-paychip ${s.pay > 0 ? 'up' : 'down'}`} data-test="scum-paychip" title={s.bot ? 'House money (bots never touch a bankroll)' : 'This round’s title pay'}>{cash(s.pay)}</span> : null}
                   {r && !s.me && !s.waiting && !s.left && !s.broke && (s.count > 0 || r.order.includes(i)) && <Fan n={s.count} bust={bust} />}
                   <div className="bj-pill sc-pill">
-                    <b>{s.here && <i className="here-dot" data-test="here-dot" title="At the table now" />}{s.bot ? '🤖 ' : ''}{s.name}</b>
+                    <b>{s.here && <i className="here-dot" data-test="here-dot" title="At the table now" />}{s.bot ? '🤖 ' : ''}{handle(s.name)}</b>
                     {r && !s.waiting && !s.left && !s.broke && <span className="mono sc-count" title={`${s.count} cards`}>{s.place ? `out ${['', '1st', '2nd', '3rd'][s.place] || `${s.place}th`}` : s.count}</span>}
                     {s.waiting && <span className="mono dim">next round</span>}{s.left && <span className="mono dim">left</span>}
                   </div>
@@ -558,21 +578,24 @@ function FlyBatch({ cards, seatEl, pileEl, handRects, mine, reduced, onDone }) {
 
 /** Center of the felt during the exchange: last round's titles and who still owes whom. */
 function Court({ v }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
   const pairs = v.round?.exchange?.pairs || [];
   return (
     <div className="sc-court" data-test="scum-court">
       <b className="western">Round {v.lastRound?.no} standings</b>
-      <ol className="sc-stand">{(v.lastRound?.finish || []).map((x) => <li key={x.seat} className={`t-${x.title}`}><span>{CROWN[x.title]} {TITLE[x.title]}</span><b>{x.name}</b>{v.payouts && <i className={`mono sc-pay ${x.net > 0 ? 'up' : x.net < 0 ? 'down' : ''}`} data-test="scum-standpay" title={x.house ? 'House money' : x.short ? 'Paid what they had' : ''}>{x.net ? cash(x.net) : '$0'}</i>}</li>)}</ol>
-      {v.lastRound?.s2k?.amt > 0 && <div className="sc-s2k small" data-test="scum-s2k-line">♚ From Scum to King: {v.lastRound.s2k.name} took {cash(v.lastRound.s2k.amt).slice(1)} of {v.lastRound.s2k.fromName}'s King pay</div>}
-      {v.hold && <div className="sc-owes small" data-test="scum-hold">⛏ Waiting for {v.seats.filter((s) => s?.broke).map((s) => s.name).join(' & ') || 'players'} to earn {cash(v.payouts?.need || 10).slice(1)} in the Acid Mines</div>}
-      <div className="sc-owes small">{pairs.map((p) => <span key={p.from}>{v.seats[p.from]?.name} → {v.seats[p.to]?.name}: {p.given ? 'done' : p.paid ? `${v.seats[p.to]?.name} picking` : 'owes'}</span>)}</div>
+      <ol className="sc-stand">{(v.lastRound?.finish || []).map((x) => <li key={x.seat} className={`t-${x.title}`}><span>{CROWN[x.title]} {titleOf(family, x.title)}</span><b>{handle(x.name)}</b>{v.payouts && <i className={`mono sc-pay ${x.net > 0 ? 'up' : x.net < 0 ? 'down' : ''}`} data-test="scum-standpay" title={x.house ? 'House money' : x.short ? 'Paid what they had' : ''}>{x.net ? cash(x.net) : '$0'}</i>}</li>)}</ol>
+      {v.lastRound?.s2k?.amt > 0 && <div className="sc-s2k small" data-test="scum-s2k-line">♚ From {titleOf(family, 'scum')} to King: {handle(v.lastRound.s2k.name)} took {cash(v.lastRound.s2k.amt).slice(1)} of {handle(v.lastRound.s2k.fromName)}'s King pay</div>}
+      {v.hold && <div className="sc-owes small" data-test="scum-hold">⛏ Waiting for {v.seats.filter((s) => s?.broke).map((s) => handle(s.name)).join(' & ') || 'players'} to earn {cash(v.payouts?.need || 10).slice(1)} in the Acid Mines</div>}
+      <div className="sc-owes small">{pairs.map((p) => <span key={p.from}>{handle(v.seats[p.from]?.name)} → {handle(v.seats[p.to]?.name)}: {p.given ? 'done' : p.paid ? `${handle(v.seats[p.to]?.name)} picking` : 'owes'}</span>)}</div>
     </div>
   );
 }
 
 /** Your part of the exchange: hand over (with a beg), wait, or pick what to give back. */
 function Exchange({ v, owe, gets, giving, sel, beg, setBeg, busy, post, onSent }) {
-  const nm = (s) => v.seats[s]?.name || 'them';
+  const { safe: family } = useModes();
+  const nm = (s) => { const n = v.seats[s]?.name || 'them'; return family ? familyHandle(n) : n; };
   if (owe && !owe.paid) return (
     <form className="sc-ex" data-test="scum-beg" onSubmit={async (e) => { e.preventDefault(); if (await post('tribute', { beg })) onSent(); }}>
       <span className="small"><b>{owe.n === 2 ? 'Your 2 best cards' : 'Your best card'}</b> go to {nm(owe.to)}:</span>
@@ -595,10 +618,13 @@ function Exchange({ v, owe, gets, giving, sel, beg, setBeg, busy, post, onSent }
 }
 
 function Final({ v }) {
+  const { safe: family } = useModes();
+  const handle = (n) => (family ? familyHandle(n) : n);
+  const gameName = family ? FAMILY_GAME.scum : 'SCUM';
   const rows = v.seats.filter(Boolean).filter((s) => !s.bot || true).sort((a, b) => (b.stats?.king || 0) - (a.stats?.king || 0) || (a.stats?.scum || 0) - (b.stats?.scum || 0));
   return (
     <div className="bj-pop final" data-test="scum-final"><div className="panel"><h3 className="western">Final court</h3>
-      <ol className="bj-stand sc-final">{rows.map((s) => <li key={s.i}><b>{s.name}</b><span className="mono">♚ {s.stats?.king || 0}</span><span className="mono">🪣 {s.stats?.scum || 0}</span><span className="mono">skips {s.stats?.skips || 0}</span>{v.payouts && !s.bot && <span className={`mono sc-pay ${(s.stats?.cash || 0) > 0 ? 'up' : (s.stats?.cash || 0) < 0 ? 'down' : ''}`}>{cash(s.stats?.cash || 0)}</span>}</li>)}</ol>
+      <ol className="bj-stand sc-final">{rows.map((s) => <li key={s.i}><b>{handle(s.name)}</b><span className="mono">♚ {s.stats?.king || 0}</span><span className="mono">🪣 {s.stats?.scum || 0}</span><span className="mono">skips {s.stats?.skips || 0}</span>{v.payouts && !s.bot && <span className={`mono sc-pay ${(s.stats?.cash || 0) > 0 ? 'up' : (s.stats?.cash || 0) < 0 ? 'down' : ''}`}>{cash(s.stats?.cash || 0)}</span>}</li>)}</ol>
       <button className="btn primary small" onClick={() => navigate('/scum')}>Back to scum</button></div></div>
   );
 }

@@ -3,15 +3,19 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, useSession } from '../api.js';
 import { navigate } from '../App.jsx';
+import { useModes } from '../modes/Modes.jsx';
+import { familyHandle } from '../modes/family.js';
 
 /** `seat(id, name)` gives the props that make a seat open the card; render `card` once anywhere in the component. */
 export function usePlayerCard() {
+  const { safe: family } = useModes();
   const [open, setOpen] = useState(null);
   const seat = (id, name) => {
     if (!id) return {};
-    const show = (e) => setOpen({ id, name, from: e.currentTarget });
+    const shown = family ? familyHandle(name) : name;
+    const show = (e) => setOpen({ id, name: shown, from: e.currentTarget });
     return {
-      role: 'button', tabIndex: 0, 'aria-haspopup': 'dialog', 'aria-label': `${name}: visit their house or see their profile`,
+      role: 'button', tabIndex: 0, 'aria-haspopup': 'dialog', 'aria-label': `${shown}: visit their house or see their profile`,
       onClick: show, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(e); } },
     };
   };

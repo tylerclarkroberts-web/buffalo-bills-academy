@@ -1,7 +1,7 @@
 // v60: deal-reveal must not replay a finished hand when settle → next betting round.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { targetFrom, plan } from '../client/src/bj/useDealReveal.js';
+import { targetFrom, plan, shouldSnapToServer, snapShown } from '../client/src/bj/useDealReveal.js';
 
 test('targetFrom: showLast keeps the same key as the live round (no r:N → last:N reset)', () => {
   const live = {
@@ -40,4 +40,24 @@ test('plan: from empty deals interlaced; from partial only appends new cards (no
   assert.deepEqual(hit, [{ k: 'h', hand: 0, n: 3 }]);
   const dealerHit = plan({ d: 3, hands: { 0: 2 } }, { d: 2, hands: { 0: 2 } });
   assert.deepEqual(dealerHit, [{ k: 'd', n: 3 }]);
+});
+
+
+test('shouldSnapToServer: a remount mid-play snaps instead of replaying the deal', () => {
+  const mid = {
+    round: { no: 3, phase: 'play', holeShown: false, dealer: ['Ah', null], hands: [{ i: 0, cards: ['Td', '7c'] }] },
+    last: null,
+  };
+  assert.equal(shouldSnapToServer(mid, false, { key: 'none', d: 0, hands: {} }, false), true);
+  assert.equal(shouldSnapToServer(mid, false, { key: 'r:3', d: 1, hands: { 0: 1 } }, false), false, 'an already-open client keeps pacing');
+  const freshDeal = {
+    round: { no: 4, phase: 'betting', bets: {}, hands: [], dealer: [] },
+    last: null,
+  };
+  assert.equal(shouldSnapToServer(freshDeal, false, { key: 'none', d: 0, hands: {} }, false), false);
+  assert.equal(shouldSnapToServer(mid, false, { key: 'r:3', d: 2, hands: { 0: 2 } }, true), true, 'visibility/reconnect resync always snaps');
+  const snap = snapShown(targetFrom(mid, false));
+  assert.equal(snap.key, 'r:3');
+  assert.equal(snap.d, 2);
+  assert.equal(snap.hands[0], 2);
 });

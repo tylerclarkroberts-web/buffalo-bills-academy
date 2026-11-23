@@ -184,12 +184,12 @@ export class Telemetry {
 
   /** Acid Mines clock-in and settlement (see server/mines.js hooks). */
   shiftStart(playerId, s, fare = 0) {
-    this.event('shift-start', playerId, { shift: s.id, shaft: s.shaft || '7', cells: s.cells, ...(s.tier ? { tier: s.tier } : {}), cap: s.capacity ? s.capacity / 1000 : null, fare, scare: !!(s.scare || s.scareAt), faun: !!s.faun, twin: !!s.twin, egg: !!s.egg }, { t: s.startedAt });
+    this.event('shift-start', playerId, { shift: s.id, shaft: s.shaft || '7', cells: s.cells, ...(s.tier ? { tier: s.tier } : {}), cap: s.capacity ? s.capacity / 1000 : null, fare, scare: !!(s.scare || s.scareAt), faun: !!s.faun, heeshee: !!s.heeshee, stick: !!s.stick, twin: !!s.twin, egg: !!s.egg }, { t: s.startedAt });
   }
   shiftEnd(playerId, s, receipt) {
     const r = receipt?.result;
     this.event('shift-end', playerId, { shift: s.id, shaft: s.shaft || '7', ms: receipt?.ms, outcome: r?.outcome || null, amt: r?.amount || 0, collected: r?.collected ?? 0, cap: r?.capacity ?? (s.capacity ? s.capacity / 1000 : null),
-      reason: receipt?.reason || null, scare: !!(s.scare || s.scareAt), faun: !!s.faun, twin: r?.twin?.took || 0, spill: s.spill ? s.spill.lost / 1000 : 0, pvp: r?.pvp?.kind || null }, { t: receipt?.at });
+      reason: receipt?.reason || null, scare: !!(s.scare || s.scareAt), faun: !!s.faun, heeshee: !!s.heeshee, heesheeStolen: !!s.heesheeStolen, heesheeReturned: !!receipt?.heeshee, twin: r?.twin?.took || 0, spill: s.spill ? s.spill.lost / 1000 : 0, pvp: r?.pvp?.kind || null }, { t: receipt?.at });
   }
 }
 /** Feed blackjack into the telemetry: backfill every table once, scan each change, and note each Kash Bet

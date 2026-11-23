@@ -7,7 +7,7 @@ import { SignIn } from '../Home.jsx';
 import { navigate } from '../App.jsx';
 import { Bust } from '../avatar/Bust.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { drawBug, isHiResEvo, onSpriteReady } from '../barn/sprite.js';
+import { drawBug, isHiResSprite, onSpriteReady } from '../barn/sprite.js';
 import { PixIcon, LowPoly } from './PixIcon.jsx';
 import { FitControls, useFitSaver } from '../avatar/FitEditor.jsx';
 import { DEPARTMENTS, categoriesFor } from './departments.js';
@@ -35,7 +35,7 @@ function BugThumb({ species, style, size, level }) {
     paint();
     return onSpriteReady(paint);
   }, [species, JSON.stringify(style), size, level]);
-  return <canvas ref={ref} className={`st-bug${isHiResEvo(BY_ID[species], style) ? ' hi-res' : ''}`} style={{ width: size, height: size }} aria-hidden="true" />;
+  return <canvas ref={ref} className={`st-bug${isHiResSprite(BY_ID[species], style, level) ? ' hi-res' : ''}`} style={{ width: size, height: size }} aria-hidden="true" />;
 }
 
 /** The little picture on a card or on the counter. Avatar items are shown on your own bust. */

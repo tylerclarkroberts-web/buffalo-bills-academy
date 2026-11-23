@@ -12,7 +12,11 @@ export const GEAR_CAP = 0.06;
 // then it does not take its turn. Berserk: it hits harder, is hit harder, and will not stop to heal. Haywire: its hits
 // land anywhere from a tap to a wallop, and now and then the arm goes for its owner instead.
 export const QUIRKS = ['lazy', 'berserk', 'haywire'];
-export const QUIRK = { lazy: { skip: 0.08 }, berserk: { power: 0.3, open: 0.18 }, haywire: { low: 0.4, span: 1.5, self: 0.06, hp: 0.06 } };
+// A second rebuild that goes wrong leaves the bug sure it is a man. Polite: half the time it lets the other one go
+// first. Salaried: after six turns it is on overtime, unpaid, and hits like it. Squeamish: it pulls its punches on anything already losing.
+export const MAN_QUIRKS = ['polite', 'salaried', 'squeamish'];
+export const QUIRK = { lazy: { skip: 0.08 }, berserk: { power: 0.3, open: 0.18 }, haywire: { low: 0.4, span: 1.5, self: 0.06, hp: 0.06 },
+  polite: { chance: 0.5 }, salaried: { after: 6, power: 0.9 }, squeamish: { below: 0.5, pull: 0.5 } };
 // HP: the most a packed lunch (store food) gives back, once a fight. Measured over every species pair, 10 HP moves an
 // even fight to about 65% (60% at level 10), level with the best armour; 15 HP made it 72%, more than any gear.
 export const LUNCH_CAP = 10;
@@ -148,6 +152,8 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
   if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
   if (target.c.botched === 'berserk') mult *= 1 + QUIRK.berserk.open; // it does not look where it is going
+  if (s.c.botched === 'squeamish' && theirs < QUIRK.squeamish.below) mult *= QUIRK.squeamish.pull; // it cannot watch
+  if (s.c.botched === 'salaried' && turnNo > QUIRK.salaried.after) mult *= QUIRK.salaried.power;
   if (target.c.rule === 'web') mult *= 1 - RULES.web.power;
   if (target.c.rule === 'encore' && s.prev === move.id) mult *= 1 - RULES.encore.power; // the judge has seen that one
   if (target.c.rule === 'inspect') mult *= RULES.inspect.low + RULES.inspect.span * Math.max(0, Math.min(100, s.c.mood ?? 60)) / 100;
@@ -193,6 +199,7 @@ export function odds(S, i) {
   const s = S.side[i], target = S.side[1 - i];
   return Object.fromEntries(s.moves.filter(move => move.unlocked).map(move => {
     if (move.effect === 'heal') return [move.id, { heal: Math.min(S.maxHp[i] - S.hp[i], Math.round(move.heal * s.stats.damageMultiplier)) }];
+    if (move.effect === 'flourish') return [move.id, { hit: 1, dmg: [0, 0], flourish: move.flourish }];
     return [move.id, { hit: Math.max(0, Math.min(1, aim(S, i, move, s.attacks + 1, S.turn + 1))), dmg: [0.8, 1.25].map(roll => blow(S, i, move, roll, s.attacks + 1, s.turn + 1)),
       ...(move.criticalChance ? { crit: move.criticalChance } : {}),
       ...(move.effect === 'venom' ? { venom: [venomOf(s, target, move), move.duration] } : taints(s, target, move) ? { venom: [venomOf(s, target, TAINT), TAINT.duration] } : {}),
@@ -318,6 +325,12 @@ export function stepBout(S, choice) {
       line: `${s.c.name} cannot be bothered and loses the turn.` });
     return done();
   }
+  const off = s.c.botched === 'polite' && s.turn === 1 && R() < QUIRK.polite.chance && 'holds the door. After you.';
+  if (off) {
+    rounds.push({ by, type: 'move', skipped: true, effect: 'strike', moveId: 'basic', ability: s.moves[0].name, tier: 0, hit: false, critical: false, dmg: 0, healed: 0, hp: [...hp], turn, ownTurn: s.turn,
+      line: `${s.c.name} ${off}` });
+    return done();
+  }
   if (s.c.botched === 'haywire' && R() < QUIRK.haywire.self) {
     const dmg = hurt(by, Math.max(1, Math.round(maxHp[by] * QUIRK.haywire.hp)));
     rounds.push({ by: foe, type: 'venom', effect: 'weaken', moveId: 'rule', ability: 'Loose Wiring', tier: 0, hit: true, dmg, hp: [...hp], turn,
@@ -333,7 +346,16 @@ export function stepBout(S, choice) {
   if (move.id !== 'basic') { s.readyAt[move.id] = s.turn + move.cooldown; s.usedAt[move.id] = s.turn; s.lastSpecial = move.id; }
   let dmg = 0, healed = 0, hit = true, critical = false, detail = '', poisons = false, mulligan = false;
   const encore = target.c.rule === 'encore' && s.prev === move.id && move.effect !== 'heal';
-  if (move.effect === 'heal') {
+  if (move.effect === 'flourish') {
+    hit = true; dmg = 0;
+    detail = {
+      pose: 'strikes a pose. Nobody is hurt',
+      wealth: 'hordes wealth. Coins pile up. Nobody is hurt',
+      golf: 'takes a swing. The ball flies. The other bug is only impressed',
+      calves: 'flexes his big calves. The ring takes a moment',
+      chicken: 'flags down a waiter and orders chicken fingers',
+    }[move.flourish] || 'shows off. No damage';
+  } else if (move.effect === 'heal') {
     healed = Math.min(maxHp[by] - hp[by], Math.round(move.heal * s.stats.damageMultiplier)); hp[by] += healed;
     detail = `recovers ${healed} HP`;
     if (s.t === 'helicopsyche') { s.guard = TRAIT.caseGuard; s.guardLeft = 1; detail += ' and coils into its case'; }
@@ -381,7 +403,7 @@ export function stepBout(S, choice) {
   }
   s.prev = move.id;
   if (encore && hit) detail += '; the judge has seen that one';
-  rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(poisons ? { poisons } : {}),
+  rounds.push({ by, type: 'move', effect: move.effect, moveId: move.id, ability: move.name, tier: move.tier, hit, critical, dmg, healed, hp: [...hp], turn, ownTurn: s.turn, ...(move.flourish ? { flourish: move.flourish } : {}), ...(poisons ? { poisons } : {}),
     line: `${s.c.name} ${thrown ? 'throws a DODGEBALL with' : mulligan ? (s.c.rule === 'mulligan' ? 'takes a mulligan and uses' : 'says that one did not count, and retakes') : 'uses'} ${move.name}: ${detail}.${spots()}` });
   pop(foe); bursts();
   return done();

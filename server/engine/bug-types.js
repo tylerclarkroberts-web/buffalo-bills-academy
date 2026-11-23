@@ -61,6 +61,7 @@ const SPECIES = {
   phloeodes: ['shell', 3], photuris: ['dazzle', 2], arachnocampa: ['dazzle', 3], myrmeleon: ['ambush', 1], odontomachus: ['brawler', 2],
   dasymutilla: ['toxic', 2], peruphasma: ['toxic', 3], ampulex: ['toxic', 3], colobopsis: ['toxic', 3],
   dryococelus: ['shell', 4], megachile: ['flier', 4], meganeura: ['ambush', 4],
+  steeze: ['dazzle', 2],
 };
 // 4 legendary: thought extinct and found again. Two more stat points than a common, never in an egg or the day's
 // ordinary wild bugs, and only one of each alive in the whole Academy at a time (server/mines.js LEGEND_DAYS).
