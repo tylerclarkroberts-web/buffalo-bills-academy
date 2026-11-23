@@ -374,6 +374,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
+  api.post('/mines/heeshee/seen', needPlayer, wrap((req) => mines.seeHeeshee(accounts.ensure(req.player), req.body?.shiftId)));
   api.post('/mines/bug/order', needPlayer, wrap((req) => mines.orderBug(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
@@ -387,6 +388,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   elhalo.mount(api, needPlayer);
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
+  api.post('/mines/foreman/typing/start', needPlayer, wrap((req) => foreman.startTyping(accounts.ensure(req.player), String(req.body?.id || ''))));
+  api.post('/mines/foreman/typing/submit', needPlayer, wrap((req) => foreman.gradeTyping(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.text)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
 
   // ----- investing (play money) -----

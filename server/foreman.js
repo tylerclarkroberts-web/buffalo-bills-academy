@@ -5,6 +5,10 @@
 // pays a $5 "can count" bonus, at most 3 times an hour; right after a miss pays nothing. No timer.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
+import {
+  TYPING_PROMPT, TYPING_WPM, TYPING_ACCURACY, TYPING_RANTS, TYPING_JABS, TYPING_PRAISE,
+  typingStats, publicTypingStats,
+} from './foremanTyping.js';
 
 export const BONUS = 5, BONUS_PER_HOUR = 3;
 // Farmer swears only. test/foreman.test.js checks every line against a list of real profanity.
@@ -292,7 +296,44 @@ export class Foreman {
   }
   view(playerId) {
     const p = this.doc.pending[playerId]; if (!p) return { pending: null };
+    if (p.kind === 'typing') {
+      return { pending: { id: p.id, kind: 'typing', reason: p.reason, lines: p.lines, prompt: p.prompt || TYPING_PROMPT, wpm: TYPING_WPM, accuracy: TYPING_ACCURACY, started: !!p.attemptStartedAt, misses: p.misses || 0 } };
+    }
     return { pending: { id: p.id, reason: p.reason, lines: p.lines, problem: publicProblem(p.problem), misses: p.misses } };
+  }
+  /** Extra-mad lock: saw the Heeshee Mazode and bailed before it took the bug. Kept until they pass. */
+  scoldTyping(playerId, shiftId) {
+    const cur = this.doc.pending[playerId];
+    if (cur?.kind === 'typing') return this.view(playerId);
+    const lines = TYPING_RANTS[this.r(TYPING_RANTS.length)] || TYPING_RANTS[0];
+    const next = { ...this.doc, pending: { ...this.doc.pending, [playerId]: { id: crypto.randomBytes(9).toString('base64url'), kind: 'typing', reason: 'heeshee-quit', lines, prompt: TYPING_PROMPT, misses: 0, attemptStartedAt: null, at: this.now() } },
+      ...(shiftId ? { lastMineShift: { ...this.doc.lastMineShift, [playerId]: shiftId } } : {}) };
+    this.store.saveDoc('foreman', next); this.doc = next;
+    return this.view(playerId);
+  }
+  startTyping(player, id) {
+    const p = this.doc.pending[player.id];
+    if (!p || p.kind !== 'typing' || p.id !== id) throw new GameError('The foreman is not waiting on a typing test.', 409);
+    p.attemptStartedAt = this.now();
+    this.save();
+    return { started: true, startedAt: p.attemptStartedAt };
+  }
+  gradeTyping(player, id, raw) {
+    const p = this.doc.pending[player.id];
+    if (!p || p.kind !== 'typing' || p.id !== id) throw new GameError('The foreman is not waiting on a typing test.', 409);
+    if (!p.attemptStartedAt) throw new GameError('Start typing first, sport.', 400);
+    const elapsed = this.now() - p.attemptStartedAt;
+    const stats = typingStats(raw, elapsed, p.prompt || TYPING_PROMPT);
+    const pub = publicTypingStats(stats);
+    if (stats.passed) {
+      delete this.doc.pending[player.id];
+      this.save();
+      return { ...pub, line: TYPING_PRAISE, misses: p.misses || 0, bankroll: player.bankroll };
+    }
+    p.misses = (p.misses || 0) + 1;
+    p.attemptStartedAt = null;
+    this.save();
+    return { ...pub, jab: TYPING_JABS[stats.fail] || TYPING_JABS.accuracy, misses: p.misses };
   }
   answer(player, id, raw) {
     const p = this.doc.pending[player.id];
