@@ -241,10 +241,11 @@ export class Mines {
   }
   completionView(player, receipt) {
     const pending = this.foreman?.doc.lastMineShift?.[player.id] === receipt.shiftId ? this.foreman.view(player.id).pending : null;
-    if (!receipt.result) return { pending, ...(receipt.sick ? { sick: receipt.sick } : {}) };
+    const gone = { ...(receipt.sick ? { sick: receipt.sick } : {}), ...(receipt.taken ? { taken: receipt.taken } : {}) };
+    if (!receipt.result) return { pending, ...gone };
     const heeshee = receipt.heeshee ? { id: `heeshee-${receipt.shiftId}`, reason: 'heeshee', lines: HEESHEE_RETURN } : null;
     const foreman = heeshee || (receipt.reason === 'mud' && pending ? pending : null);
-    return { ...(receipt.sick ? { sick: receipt.sick } : {}), result: { ...receipt.result, bankroll: player.bankroll, ...(foreman ? { foreman } : {}), ...(receipt.heeshee ? { bugReturned: true, bugShaken: true } : {}) } };
+    return { ...gone, result: { ...receipt.result, bankroll: player.bankroll, ...(foreman ? { foreman } : {}), ...(receipt.heeshee ? { bugReturned: true, bugShaken: true } : {}) } };
   }
 
   start(player, request = {}) {
@@ -289,6 +290,7 @@ export class Mines {
     // Everyone sees the purple pool. Only a partner due to evolve (server/barn.js), on a shift that rolled for it, drinks: when its miner
     // walks past, or PURPLE_AFTER_MS in at the latest. The shift ends there.
     if (shift.purplePool && this.barn?.rollPurple?.(player.id)) shift.purple = { afterMs: PURPLE_AFTER_MS[0] + this.scareInt(PURPLE_AFTER_MS[1] - PURPLE_AFTER_MS[0]) };
+    if (!shift.purple && this.barn?.rollCollect?.(player.id)) shift.collect = true; // the second evolution: he is waiting at the lift when this shift ends
     // The fare and the clock-in are one write; it is never refunded (a crash right here costs the fare, not a payout).
     const draft = { ...player, mining: { ...player.mining, recentStarts: [...recent, now] } };
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
@@ -541,11 +543,13 @@ export class Mines {
       // However a purple shift ends, the bug drank: it goes home sick. The acid already in the bucket is paid as usual.
       // A held bug was not in the tunnels to drink; skip sickness so the hold is not also a health penalty.
       let sick = null; if (cur.purple && !cur.heesheeStolen && !this.barn?.heesheeHoldOf?.(player.id)) try { sick = this.barn?.fallSick?.(player.id) || null; } catch { /* the pay must not wait on the barn */ }
+      // A stage two bug that was due leaves with him at the lift, whatever the shift made. Not one the Heeshee has.
+      let taken = null; if (cur.collect && !sick && !cur.heesheeStolen && !this.barn?.heesheeHoldOf?.(player.id)) try { taken = this.barn?.collect?.(player.id) || null; } catch { /* the pay must not wait on the barn */ }
       // Return the bug only after a successful acid find (this steal shift, or a later one that still has a leftover hold).
       // Quitting, disconnecting, or settling empty must not hand it back free.
       const leftover = !!this.barn?.heesheeHoldOf?.(player.id);
       const shouldReturn = !!result && !!(cur.heesheeStolen || leftover);
-      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}), ...(shouldReturn ? { heeshee: true } : {}) } };
+      cur = { ...cur, settlement: { shiftId: cur.id, result, reason: sick || taken ? null : result ? (r.outcome === 'dud' ? 'mud' : null) : 'quit', at: this.now(), ms: this.now() - cur.startedAt, ...(sick ? { sick } : {}), ...(taken ? { taken } : {}), ...(shouldReturn ? { heeshee: true } : {}) } };
       this.commit(player.id, cur);
       if (shouldReturn) {
         try { this.barn?.releaseHeeshee?.(player.id); } catch { /* the receipt still returns it visually */ }

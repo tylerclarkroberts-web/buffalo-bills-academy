@@ -12,7 +12,11 @@ export const GEAR_CAP = 0.06;
 // then it does not take its turn. Berserk: it hits harder, is hit harder, and will not stop to heal. Haywire: its hits
 // land anywhere from a tap to a wallop, and now and then the arm goes for its owner instead.
 export const QUIRKS = ['lazy', 'berserk', 'haywire'];
-export const QUIRK = { lazy: { skip: 0.08 }, berserk: { power: 0.3, open: 0.18 }, haywire: { low: 0.4, span: 1.5, self: 0.06, hp: 0.06 } };
+// A second rebuild that goes wrong leaves the bug sure it is a man. Polite: half the time it lets the other one go
+// first. Salaried: after six turns it is on overtime, unpaid, and hits like it. Squeamish: it pulls its punches on anything already losing.
+export const MAN_QUIRKS = ['polite', 'salaried', 'squeamish'];
+export const QUIRK = { lazy: { skip: 0.08 }, berserk: { power: 0.3, open: 0.18 }, haywire: { low: 0.4, span: 1.5, self: 0.06, hp: 0.06 },
+  polite: { chance: 0.5 }, salaried: { after: 6, power: 0.9 }, squeamish: { below: 0.5, pull: 0.5 } };
 // HP: the most a packed lunch (store food) gives back, once a fight. Measured over every species pair, 10 HP moves an
 // even fight to about 65% (60% at level 10), level with the best armour; 15 HP made it 72%, more than any gear.
 export const LUNCH_CAP = 10;
@@ -148,6 +152,8 @@ function blow(S, by, move, roll, attacks, turnNo) {
   if (s.c.rule === 'grill') mult *= (s.ty === 'fire' && mine >= 0.5 ? 1 + PERK.flare : 1) * (turnNo % RULES.grill.every === 0 ? 1 + RULES.grill.power : 1); // the grill is always lit, and every fourth is an order up
   if (s.c.rule === 'rage' && mine < 0.5) mult *= 1 + RULES.rage.power;
   if (target.c.botched === 'berserk') mult *= 1 + QUIRK.berserk.open; // it does not look where it is going
+  if (s.c.botched === 'squeamish' && theirs < QUIRK.squeamish.below) mult *= QUIRK.squeamish.pull; // it cannot watch
+  if (s.c.botched === 'salaried' && turnNo > QUIRK.salaried.after) mult *= QUIRK.salaried.power;
   if (target.c.rule === 'web') mult *= 1 - RULES.web.power;
   if (target.c.rule === 'encore' && s.prev === move.id) mult *= 1 - RULES.encore.power; // the judge has seen that one
   if (target.c.rule === 'inspect') mult *= RULES.inspect.low + RULES.inspect.span * Math.max(0, Math.min(100, s.c.mood ?? 60)) / 100;
@@ -316,6 +322,12 @@ export function stepBout(S, choice) {
   if (s.c.botched === 'lazy' && R() < QUIRK.lazy.skip) {
     rounds.push({ by, type: 'move', skipped: true, effect: 'strike', moveId: 'basic', ability: s.moves[0].name, tier: 0, hit: false, critical: false, dmg: 0, healed: 0, hp: [...hp], turn, ownTurn: s.turn,
       line: `${s.c.name} cannot be bothered and loses the turn.` });
+    return done();
+  }
+  const off = s.c.botched === 'polite' && s.turn === 1 && R() < QUIRK.polite.chance && 'holds the door. After you.';
+  if (off) {
+    rounds.push({ by, type: 'move', skipped: true, effect: 'strike', moveId: 'basic', ability: s.moves[0].name, tier: 0, hit: false, critical: false, dmg: 0, healed: 0, hp: [...hp], turn, ownTurn: s.turn,
+      line: `${s.c.name} ${off}` });
     return done();
   }
   if (s.c.botched === 'haywire' && R() < QUIRK.haywire.self) {

@@ -297,13 +297,14 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
         : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
     </div>
     {pen.sick && <p className="barn-warn small" role="status" data-test="barn-sick">{pen.name} drank something purple in the mines. Feeding it will not help. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> might.</p>}
-    {pen.fainted && !pen.sick && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
+    {pen.taken && <p className="barn-warn small" role="status" data-test="barn-taken">{pen.name} left with someone at the mine lift. There is a ticket in its stall. Take it to the <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</p>}
+    {pen.fainted && !pen.sick && !pen.taken && <p className="barn-warn small" role="status" data-test="barn-fainted">Fainted {WHERE[pen.faintedIn] || 'in the mines'}{pen.faintedBy ? `, beaten by ${pen.faintedBy}` : ''}. The <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button> fixes it free in an hour, or now for ${pen.healCost}.</p>}
     {pen.heesheeHeld && <p className="barn-warn small" role="status" data-test="barn-heeshee-held">Your bug is nowhere to be found. The Heeshee Mazode took it.</p>}
     {pen.starving > 0 && <p className={`barn-warn w${pen.starving} small`} role="status" data-test="barn-warn">{pen.name} {WARN[pen.starving]}</p>}
     <div className="bs-grid">
-      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}${pen.sick ? ' sick' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
+      <div className={`barn-stage bs-stage${pen.fainted ? ' fainted' : ''}${pen.sick ? ' sick' : ''}${pen.taken ? ' taken' : ''}`} onClick={() => { setPoke((n) => n + 1); if (!pen.fainted) voice(BY_ID[pen.species]?.voice, pen.needs.mood / 100); }}>
         <Stage pen={pen} poke={poke} reduced={reduced} />
-        {pen.heesheeHeld ? <span className="barn-mood m-fainted" data-test="barn-heeshee-chip">missing</span> : pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">{pen.sick ? 'not well' : 'fainted'}</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
+        {pen.heesheeHeld ? <span className="barn-mood m-fainted" data-test="barn-heeshee-chip">missing</span> : pen.taken ? <span className="barn-mood m-fainted" data-test="barn-taken-chip">ticket no. 2</span> : pen.fainted ? <><span className="barn-mood m-fainted" data-test="barn-fainted-chip">{pen.sick ? 'not well' : 'fainted'}</span><Dizzy size={64} className="barn-dizzy" label={`${pen.name} fainted`} /></> : <span className={`barn-mood m-${pen.mood}`}>{pen.mood}</span>}
         {pen.maxHp > 0 && <HpTag pen={pen} />}
       </div>
       <div className="bs-care" data-test="barn-progress">
@@ -311,7 +312,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
           {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
         <div className="barn-acts">
-          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
+          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
         </div>
         <div className="bs-xp">
           <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : ' · top level, for now'}</span>

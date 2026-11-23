@@ -12,7 +12,7 @@ import { GameError } from './engine/game.js';
 import { ROSTER, BY_ID, levelFor, rawLevel, xpFor, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
-import { QUIRKS } from './engine/bout.js';
+import { QUIRKS, MAN_QUIRKS } from './engine/bout.js';
 import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { cents } from './accounts.js';
@@ -70,7 +70,12 @@ export const FAST_HEAL_COST = 50;
 // first, certain by EVOLVE_BY. It comes home sick, and the Bug Center visit that follows rebuilds it for BILL_SHARE of
 // its owner's cash. One rebuild in BOTCH_ODDS goes wrong: the bug still evolves, with one of the QUIRKS (engine/bout.js) for good.
 export const EVOLVE_FROM = 10, EVOLVE_BY = 13, BILL_SHARE = 0.5, BOTCH_ODDS = 15;
-export const purpleChance = (xp) => Math.max(0, Math.min(1, (rawLevel(xp) - EVOLVE_FROM + 1) / (EVOLVE_BY - EVOLVE_FROM + 1)));
+// The second evolution. A stage two partner with the XP for MECH_FROM may leave a mine shift with the specialist:
+// one shift in four at first, certain by MECH_BY. It is gone until its owner claims it at the Bug Center, where the
+// rebuild costs one of their other bugs for parts (or BILL_SHARE of their cash if they keep no other). Same odds of a botch.
+export const MECH_FROM = 23, MECH_BY = 26;
+const RANGES = [[EVOLVE_FROM, EVOLVE_BY], [MECH_FROM, MECH_BY]];
+export const purpleChance = (xp, stage = 0) => Math.max(0, Math.min(1, (rawLevel(xp) - RANGES[stage][0] + 1) / (RANGES[stage][1] - RANGES[stage][0] + 1)));
 /** Outside a fight only a knockout persists. Older standing bugs with saved damage recover here too. */
 export function healthOf(pen) {
   return pen && !pen.faintedAt ? 100 : 0;
@@ -403,7 +408,7 @@ export class Barn {
     return { pen: { ...which, stage: 'creature', species: c.id, speciesName: c.name, sci: c.sci, name: pen.name, bornAt: pen.bornAt,
       fedAt: pen.fedAt, feederUntil: pen.feederUntil || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen) || null, gearBonus: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, starving: warn, diesInMs: warn ? Math.max(0, dies - now) : null,
       level, xp: pen.xp, xpThis: xpFor(level), xpNext: level >= (pen.cap || PAUSED_AT) ? null : xpFor(level + 1), cap: pen.cap || PAUSED_AT,
-      evo: pen.evo || 0, ...(pen.botched ? { botched: pen.botched } : {}), ...(pen.sick ? { sick: true } : {}),
+      evo: pen.evo || 0, ...(pen.botched ? { botched: pen.botched } : {}), ...(pen.sick ? { sick: true } : {}), ...(pen.taken ? { taken: true, donors: this.donors(playerId, pen).map((d) => ({ id: idOf(d), name: d.name, species: d.species, level: levelFor(d.xp, d.cap) })) } : {}),
       needs: Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Math.round(v)])), cool,
       abilities: movesFor(c.id, level, pen.legacyAbilities || 0), trait: traitFor(c.id),
       battle: battleFor(c.id, level, pen.legacyAbilities || 0, pen.battle),
@@ -440,6 +445,7 @@ export class Barn {
     if (pen.stage === 'dead') throw new GameError('It is past caring now.', 409);
     if (isHeesheeHeld(pen)) throw new GameError(`Your bug is nowhere to be found. The Heeshee Mazode took it.`, 409);
     if (pen.sick) throw new GameError(`${pen.name} is not well. The Bug Center, now.`, 409);
+    if (pen.taken) throw new GameError(`${pen.name} is not here. There is a ticket. The Bug Center has the rest.`, 409);
     if (now - (pen.cool[action] || 0) < a.cooldownMs) throw new GameError(`You just ${a.word} it. Give it a minute.`, 429);
     const n = this.needs(pen, now), own = this.own(pen, now); // needs and feeds are kept on the bug's own clock; cooldowns on the wall's
     for (const s of STATS) pen.stats[s] = { v: n[s], at: own }; // re-base all three, then bump one
@@ -803,10 +809,53 @@ export class Barn {
     }
     return released;
   }
-  /** Is the partner due an evolution? Hatched, well, not yet evolved, with the XP for EVOLVE_FROM. */
-  due(playerId) {
+  /** Is the partner due an evolution out of `stage`? Hatched, well, at that stage, with the XP for the range's first level. */
+  due(playerId, stage = 0) {
     const pen = this.doc.pens[playerId];
-    return this.fit(playerId) && !pen.evo && !pen.sick && rawLevel(pen.xp || 0) >= EVOLVE_FROM ? pen : null;
+    return this.fit(playerId) && (pen.evo || 0) === stage && !pen.sick && !pen.taken && rawLevel(pen.xp || 0) >= RANGES[stage][0] ? pen : null;
+  }
+  /** Rolled at clock-in, from evolution's own source: does the specialist come for the partner at the end of this shift? */
+  rollCollect(playerId) {
+    const pen = this.due(playerId, 1);
+    return !!pen && this.evoInt(1000) < Math.round(1000 * purpleChance(pen.xp, 1));
+  }
+  /** It left with him. Out like a knockout, with a ticket in its stall, until the Bug Center. Returns its name, or null if it was never due. */
+  collect(playerId) {
+    const pen = this.due(playerId, 1);
+    if (!pen) return null;
+    this.commitPen(playerId, { ...pen, taken: this.now(), faintedAt: this.now(), faintedBy: null, faintedIn: 'collected' });
+    return pen.name;
+  }
+  /** The bugs he would take for parts: the owner's other living, hatched bugs that are home. Never a legendary: there is only the one. */
+  donors(playerId, pen) {
+    return this.bugs(playerId).filter((d) => d !== pen && d.stage === 'creature' && !d.taken && !d.sick && !isHeesheeHeld(d) && rarityOf(d.species) !== LEGENDARY);
+  }
+  /**
+   * The Bug Center visit for a collected bug: stage three. He is paid in parts, one of the owner's other bugs, which does
+   * not come back. An owner with no other bug pays BILL_SHARE of their cash. No refusing, no refund.
+   */
+  rebuild(playerId, pen, donorId) {
+    if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
+    const donors = this.donors(playerId, pen), donor = donors.find((d) => idOf(d) === Number(donorId)) || null;
+    if (donors.length && !donor) throw new GameError('He does not want money. He wants parts. Pick one of your other bugs.', 409);
+    const player = this.accounts.ensure(this.store.players[playerId]);
+    const had = cents(player.bankroll), took = donor ? 0 : Math.floor(had * 100 * BILL_SHARE) / 100;
+    const botched = this.evoInt(BOTCH_ODDS) === 0 ? MAN_QUIRKS[this.evoInt(MAN_QUIRKS.length)] : null;
+    const levelBefore = levelFor(pen.xp, pen.cap);
+    const { taken: _t, faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, ...rest } = pen;
+    const next = { ...rest, evo: 2, evolvedAt: this.now(), ...(botched ? { botched } : {}), ...(donor ? { parts: donor.name } : {}) };
+    // The rebuilt bug and the missing donor are one write, and the cash (if any) is taken after it: a crash costs the house.
+    const changes = { ...this.slot(playerId, next) };
+    if (donor) {
+      changes.bench = { ...(changes.bench || this.doc.bench), [playerId]: (changes.bench || this.doc.bench)[playerId].filter((kept) => idOf(kept) !== idOf(donor)) };
+      const grave = { name: donor.name, species: donor.species, bornAt: donor.bornAt, diedAt: this.now(), level: levelFor(donor.xp, donor.cap), parts: pen.name };
+      changes.graves = { ...this.doc.graves, [playerId]: [...(this.doc.graves[playerId] || []), grave].slice(-10) };
+    }
+    this.commitDoc(changes);
+    if (took > 0) this.accounts.change(player, -took, 'barn-evolve', 'Bug Center: the specialist');
+    const view = this.view(playerId), now = view.stable.bugs.find((bug) => bug.id === idOf(pen));
+    return { ...view, healed: true, cost: took, evolved: { id: idOf(pen), stage: 2, name: pen.name, species: pen.species, botched, levelBefore, levelAfter: now?.level ?? levelBefore,
+      donor: donor ? { name: donor.name, species: donor.species } : null, bill: { had, took, left: cents(had - took) } } };
   }
   /** Rolled at clock-in, from evolution's own source: does this shift have purple acid in it? */
   rollPurple(playerId) {
@@ -869,12 +918,13 @@ export class Barn {
     return { levelBefore, levelAfter: levelFor((pen.xp || 0) + xp, pen.cap) };
   }
   /** The nurse treats a knockout for free after RECOVER_MS or immediately for FAST_HEAL_COST. */
-  heal(playerId, { pay = false, bug } = {}) {
+  heal(playerId, { pay = false, bug, donor } = {}) {
     const pen = this.refresh(playerId, bug);
     if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
     if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
     if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
     if (pen.sick) return this.evolve(playerId, pen);
+    if (pen.taken) return this.rebuild(playerId, pen, donor);
     const was = !!pen.faintedAt;
     const waitMs = pen.faintedAt ? pen.faintedAt + RECOVER_MS - this.now() : 0;
     let cost = 0;
@@ -918,6 +968,7 @@ export class Barn {
     const pen = this.refresh(playerId, bug);
     if (!pen || pen.stage !== 'creature') throw new GameError('Only a hatched, living bug can be let go.', 409);
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
+    if (pen.taken) throw new GameError(`${pen.name} is not here to let go.`, 409);
     if (rarityOf(pen.species) === LEGENDARY) throw new GameError('A legendary cannot be let go. There is only the one.', 409);
     const stray = { id: `stray:${playerId}:${pen.bornAt}`, species: pen.species, name: pen.name, level: levelFor(pen.xp, pen.cap), owner: this.store.players[playerId]?.name || 'Somebody', at: this.now() };
     const changes = { strays: [...(this.doc.strays || []), stray].slice(-STRAYS_KEPT) };
