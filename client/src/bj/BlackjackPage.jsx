@@ -349,8 +349,10 @@ function BjTable({ code, me }) {
   const turnSeat = r?.phase === 'play' ? r.hands[r.turn]?.seat : null;
   const dealingNow = !!(v.house?.isMe && v.house?.present && v.status === 'playing');
   const showPov = !!(v.house?.pov && !povCrashed);
+  const emptyTable = v.status === 'playing' && !v.seats.some(Boolean);
   const status = v.status === 'lobby' ? 'Waiting for the host to start'
     : v.status !== 'playing' ? 'Game over'
+    : emptyTable ? 'Waiting for players to sit down'
     : v.laneOver ? 'Your game is done'
     : dealingNow && !r ? `You're dealing: ${Object.values(v.lanes || {}).filter((l) => l.bet > 0).length} hands in play`
     : !r ? (v.house.isMe ? `You're the house: ${Object.values(v.lanes || {}).filter((l) => l.bet > 0).length} hands in play` : 'Watching')
@@ -454,7 +456,7 @@ function BjTable({ code, me }) {
           {v.status === 'lobby' ? <Lobby v={v} me={me} post={post} onSit={() => setShow('sit')} />
             : v.status !== 'playing' ? <span className="small">Game over. <button className="btn small" onClick={() => navigate('/bj')}>Back to blackjack</button></span>
             : v.laneOver ? <span className="small" data-test="bj-lane-over">{v.laneOver} <button className="btn small" onClick={() => post('leave')}>Cash out</button></span>
-            : !mine ? <span className="small dim">{v.house.isMe ? (dealingNow ? "You're dealing. Watch the felt — a Kash Bet will light up here." : 'You are the house: open this table to deal and catch Kash Bets.') : 'Watching.'} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
+            : !mine ? <span className="small dim">{v.house.isMe ? (emptyTable ? 'Waiting for players to sit down.' : dealingNow ? "You're dealing. Watch the felt — a Kash Bet will light up here." : 'You are the house: open this table to deal and catch Kash Bets.') : 'Watching.'} {!v.house.isMe && canSit && <button className="btn small" onClick={sit} data-test="bj-sit">Sit down</button>}</span>
             : ins && ready ? <div className="bj-acts"><span className="small">Insurance costs {money(Math.floor((r.hands.find((h) => h.seat === v.mySeat)?.bet || 0) / 2))}, pays 2:1</span><button className="btn" onClick={() => post('insure', { yes: true })} data-test="bj-ins-yes">Insure</button><button className="btn ghost" onClick={() => post('insure', { yes: false })} data-test="bj-ins-no">No thanks</button></div>
             : r.myTurn && ready ? <div className="bj-acts" data-test="bj-acts">
                 <div className="bj-acts-main">
