@@ -4,7 +4,7 @@ import { GameError } from './engine/game.js';
 import { bucketChain, rng, farthest } from './engine/maze.js';
 import { shiftMaze, tierInfo } from './engine/mine-tiers.js';
 import { ROSTER, PAUSED_AT } from './engine/creatures.js';
-import { MINE_ITEMS, SHAFTS } from './catalog/mine.js';
+import { MINE_ITEMS, SHAFTS, PART_ITEMS, PLUNGER, DRILL } from './catalog/mine.js';
 import { dayKey } from './fawn.js';
 import { mineDay, daySeed, dailyLayout } from './engine/daily-maze.js';
 import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
@@ -198,6 +198,10 @@ export class Mines {
     return { rate: Math.max(1, ...has.map((x) => x.rate || 0)),
       lamp: has.some((x) => x.lamp), rod: has.some((x) => x.rod), nephew: has.some((x) => x.nephew), shafts: SHAFTS.filter((s) => !s.permit || own[s.permit]) };
   }
+  /** The mech part on the partner, if it is evolved and fit to come down: 'lamp', 'plunger', 'hoist' or 'drill' (catalog/mine.js). */
+  part(playerId) {
+    try { return this.barn?.fit?.(playerId) && this.barn.doc.pens[playerId].evo ? PART_ITEMS.find((x) => x.id === this.barn.styleOf?.(playerId)?.part)?.part || null : null; } catch { return null; }
+  }
   /** The shift office: what you would clock in with, and every shaft with whether your permit opens it. */
   office(player) {
     const g = this.gear(player.id);
@@ -283,7 +287,7 @@ export class Mines {
     const maze = shiftMaze(shift);
     const chain = bucketChain(maze, shift.seed, pinned?.cells ? 8 : day.pools || 8), far = farthest(maze), out = (p) => maze.dist[p.y][p.x];
     Object.assign(shift, { rulesVersion: 2, shaft: shaft.id, capacity: CAPACITY, rate: EXTRACTION_RATE * gear.rate,
-      ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}),
+      ...(gear.lamp ? { lamp: true } : {}), ...(gear.rod ? { rod: true } : {}), ...(this.part(player.id) ? { part: this.part(player.id) } : {}),
       ...(shaft.twin && this.twinInt(100) < shaft.twin ? { twin: true } : {}), collected: 0, worth: 0, index: 0, outcome: rollOutcome(this.randInt),
       // The roof is looser the farther out a pool is: nothing at the lift, the shaft's rate halfway, double it at the far end.
       pools: chain.map((p, i) => ({ id: `p${i}`, x: p.x, y: p.y, rich: richAt(out(p), shaft.quality), roll: this.poolInt(100000), quantity: null, remaining: null,
@@ -393,7 +397,8 @@ export class Mines {
     const wilds = this.wildsFor(s, playerId);
     const egg = this.eggAvailable(s, playerId);
     return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(taken ? { bugStolen: { name: guide?.name || 'Your bug', line: HEESHEE_GONE } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
-      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
+      ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.part ? { part: s.part } : {}), ...(s.plunged ? { plunged: s.plunged } : {}), ...(s.caught ? { caught: s.caught } : {}),
+        ...(s.part === 'lamp' && s.pools[s.index].quantity === null ? { peek: acidFillAmount(cap(s), s.pools[s.index].roll, cap(s) - s.collected) / 1000 } : {}), ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })) } : {}) };
   }
 
@@ -418,12 +423,18 @@ export class Mines {
       const i = this.target(cur, request.poolId);
       if (i < cur.index || cur.pools[i].quantity !== null) return this.publicShift(cur, true, player.id);
       const next = structuredClone(cur), pool = next.pools[i];
-      if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the fill roll is then clamped to what's left
+      if (pool.cave && next.collected > 0 && next.part === 'hoist') next.caught = pool.id; // the roof comes down and the bug holds the bucket out of it
+      else if (pool.cave && next.collected > 0) { // the roof comes down as you arrive; the fill roll is then clamped to what's left
         const lost = Math.floor(next.collected * CAVE_IN_SPILL);
         next.worth = worthOf(next) * (next.collected - lost) / next.collected; next.collected -= lost; next.spill = { poolId: pool.id, lost };
       }
       // Acid fill is a share of this shift's bucket, not the old time-based sizes or shaft scale.
       pool.quantity = pool.remaining = acidFillAmount(cap(next), pool.roll, cap(next) - next.collected);
+      // The plunger, once a shift: a pool that rolled nearly dry gives half a bucket (or whatever room is left).
+      if (next.part === 'plunger' && !next.plunged && acidFillAmount(cap(next), pool.roll) < cap(next) * PLUNGER.under) {
+        const more = Math.min(cap(next) * PLUNGER.gives, cap(next) - next.collected);
+        if (more > pool.quantity) { pool.quantity = pool.remaining = more; next.plunged = pool.id; }
+      }
       this.advance(next); this.commit(player.id, next);
       // the shift is already saved, so a barn hiccup costs the bug 2 XP, not the miner a pool
       if (pool.quantity > 0) try { this.barn?.foundAcid?.(player.id); } catch { /* XP only */ }
@@ -459,7 +470,7 @@ export class Mines {
     if (now > hold.at) {
       next = structuredClone(cur);
       const amount = Math.min((now - hold.at) * rate(next), next.pools[i].remaining, cap(next) - next.collected);
-      next.worth = worthOf(next) + amount * (next.pools[i].rich || 1000) / 1000; next.collected += amount; next.pools[i].remaining -= amount;
+      next.worth = worthOf(next) + amount * (next.pools[i].rich || 1000) / 1000 * (next.part === 'drill' ? 1 + DRILL : 1); next.collected += amount; next.pools[i].remaining -= amount;
       this.advance(next); this.commit(player.id, next);
     }
     if (request.action === 'stop' || next.index !== i || next.collected >= cap(next)) this.holds.delete(player.id);

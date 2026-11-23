@@ -21,6 +21,19 @@ Mine gear and shaft permits are General Store items (`server/catalog/mine.js`, t
 | The Foreman's Nephew | `POST /api/mines/nephew` once a UTC day (the faun's day) pays the owner $40 to $90, fixed by player and day, plus $1 for each day he has already worked (up to $30). His record (days, total, best day and a tally of what he did instead) is kept in `mines.json`. It is not a shift: no shift count, history or mining earnings. |
 | Dowsing Rod | An arrow along the shortest walk to the current pool. It does not change how much an acid deposit fills the bucket. |
 
+### Mech parts
+
+Four parts for an evolved bug (`PART_ITEMS` in `server/catalog/mine.js`). They are catalog items in a hidden `parts` tab: the General Store does not list them, and the specialist's counter in the Bug Center sells and fits them through the ordinary `/api/shop/buy` and `/api/shop/equip` calls (slot `part`). Buying or fitting one for a bug that has not evolved is refused. A bug wears one part; like battle gear, a copy is on one bug at a time.
+
+The mine reads the partner's part at clock-in (`Mines.part`), only if the partner is evolved and fit to come down, and the shift keeps it as `part`.
+
+| Part | Price | Effect |
+| --- | --- | --- |
+| Lamp Eye | $5,000 | Public state carries `peek`: what the current pool will hold, while it is still uninspected. |
+| Plunger Arm | $10,000 | Once a shift, a pool whose own roll is under 25% of the bucket gives 50% of it instead (or the room left). State carries `plunged` (the pool id). It is not spent on a pool that is only small because the bucket is nearly full. |
+| Hoist Claw | $15,000 | A cave-in spills nothing. State carries `caught` (the pool id) and no `spill`. Shaft 7 has no cave-ins, so it does nothing there. |
+| Drill Arm | $25,000 | Each unit collected adds 10% more to the shift's `worth` (`DRILL`), so ordinary acid pays a tenth more and the bucket's `rich` reads 1.1 times higher. Mud and the rare finds are unchanged. |
+
 | Shaft | Permit | Acid quality | Fare | Cave-in per pool (average) | Bigger than the day's size by | Acid spots |
 | --- | --- | --- | --- | --- |
 | Shaft 7 | none | ×1 | free | never | 2 cells a side | 8 |

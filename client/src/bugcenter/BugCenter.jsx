@@ -6,7 +6,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, after } from './script.js';
+import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after } from './script.js';
 import { healChime, podBlip, drill } from './chime.js';
 import { drawBug, isHiResSprite, onSpriteReady } from '../barn/sprite.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -222,6 +222,38 @@ function Operation({ op, pen, en, onNext }) {
   );
 }
 
+/** His parts counter: a price list for the partner, if he has rebuilt it. Buying asks twice; the first part bought goes straight on. */
+function Counter({ pen, en, onClose }) {
+  const [v, setV] = useState(null);
+  const [sure, setSure] = useState(null); // the part whose price was tapped once
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { api('GET', '/shop').then(setV).catch((e) => setErr(e.message)); }, []);
+  const run = (path, body) => { setBusy(true); setErr(''); api('POST', path, body).then((r) => { setV(r); setSure(null); refreshSession(); }).catch((e) => setErr(e.message)).finally(() => setBusy(false)); };
+  const parts = v?.items.filter((x) => x.cat === 'parts') || [], on = v?.bugEq?.[pen?.id]?.part;
+  const dollars = (n) => `$${n.toLocaleString('en-US')}`;
+  return (
+    <div className="bc-counter" data-test="bc-counter" role="dialog" aria-label={COUNTER.title.en} lang="en" onClick={(e) => e.stopPropagation()}>
+      <h2><span lang="ja">{COUNTER.title.ja}</span> <small>{COUNTER.title.en}</small></h2>
+      <p className="bc-counter-note"><span lang="ja">{COUNTER.hand.ja}</span>{en && <small> {COUNTER.hand.en}</small>}</p>
+      {!pen?.evo ? <p className="bc-counter-note" data-test="bc-counter-none"><span lang="ja">{COUNTER.none.ja}</span> <small>{COUNTER.none.en}</small></p> : <>
+        {parts.map((x) => (
+          <div className="bc-part" key={x.id} data-test="bc-part">
+            <div><b>{x.emoji} {x.name}</b>{on === x.id && <small data-test="bc-part-on"> · on {pen.name}</small>}<p>{x.desc}</p></div>
+            {on === x.id ? <button className="bc-choice ghost" disabled={busy} onClick={() => run('/shop/equip', { id: null, slot: 'part', bug: pen.id })}>Take off</button>
+              : v.own[x.id] ? <button className="bc-choice" disabled={busy} onClick={() => run('/shop/equip', { id: x.id, bug: pen.id })}>Fit</button>
+                : sure === x.id ? <button className="bc-choice" disabled={busy} onClick={() => run('/shop/buy', { id: x.id, confirm: true, bug: pen.id })} data-test="bc-part-confirm">Pay {dollars(x.price)}</button>
+                  : <button className="bc-choice ghost" disabled={busy || x.price > v.bankroll} onClick={() => setSure(x.id)} data-test="bc-part-buy">{dollars(x.price)}</button>}
+          </div>
+        ))}
+        {v && <p className="bc-counter-note"><span lang="ja">{COUNTER.one.ja}</span> <small>{COUNTER.one.en} You have {dollars(Math.floor(v.bankroll))}.</small></p>}
+      </>}
+      {err && <p className="bc-counter-note" role="alert">{err}</p>}
+      <button className="bc-choice ghost" onClick={onClose} data-test="bc-counter-close" title={COUNTER.close.en}>{COUNTER.close.ja}{en && <small lang="en"> {COUNTER.close.en}</small>}</button>
+    </div>
+  );
+}
+
 /** Typewriter text: tap once to finish the line, again to go on. */
 function useTyped(text, speed = 34) {
   const [n, setN] = useState(0);
@@ -242,6 +274,7 @@ export default function BugCenter() {
   // talk: null (looking around) | { lines, i, mode: 'talk' | 'ask' | 'heal' }
   const [talk, setTalk] = useState(null);
   const [op, setOp] = useState(null); // the specialist's visit: { step, r (the server's answer, once billed), waiting }
+  const [counter, setCounter] = useState(false); // his parts counter is open
   const [lit, setLit] = useState(false);
   const [pod, setPod] = useState(false);
   const fit = useRef(null); const [box, setBox] = useState({ w: 0, h: 0, H: H0 });
@@ -311,10 +344,11 @@ export default function BugCenter() {
   return (
     <div className="screen bc" data-test="bug-center" lang="ja">
       <div className="bc-fit" ref={fit}>
-        <div className={`bc-scene${op ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px`, '--sh': `${box.h}px` }} onClick={talk ? next : op ? opNext : undefined}>
+        <div className={`bc-scene${op || counter ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px`, '--sh': `${box.h}px` }} onClick={talk ? next : op ? opNext : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
           {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
           {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
+          {counter && <Counter pen={b.pen} en={en} onClose={() => setCounter(false)} />}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
             <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>
@@ -337,7 +371,8 @@ export default function BugCenter() {
       </div>
       <nav className="bc-bar">
         <button className="btn ghost small" onClick={() => navigate('/barn')} title="Back to the Barn" data-test="bc-back">◀ 牧場へ{en && <small lang="en"> Barn</small>}</button>
-        <button className="btn" onClick={start} disabled={!!talk || !!op} title="Talk to the nurse" data-test="bc-talk">話しかける{en && <small lang="en"> Talk</small>}</button>
+        <button className="btn ghost small" onClick={() => setCounter(!counter)} disabled={!!talk || !!op} aria-pressed={counter} title="Parts counter" data-test="bc-parts">{COUNTER.title.ja}{en && <small lang="en"> {COUNTER.title.en}</small>}</button>
+        <button className="btn" onClick={start} disabled={!!talk || !!op || counter} title="Talk to the nurse" data-test="bc-talk">話しかける{en && <small lang="en"> Talk</small>}</button>
         <button className={`btn ghost small ${en ? 'on' : ''}`} onClick={() => setEn(!en)} aria-pressed={en} title="Show English" data-test="bc-en">訳</button>
         <button className="btn ghost small" onClick={() => setSound(!sound)} aria-pressed={sound} title="Jingle on/off">{sound ? '🔊' : '🔈'}</button>
       </nav>

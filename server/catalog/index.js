@@ -6,9 +6,9 @@ import { BUG_ITEMS } from './bug.js';
 import { TOBACCO_ITEMS } from './tobacco.js';
 export { TOBACCO_NOTICE } from './tobacco.js';
 import { SPECTACLE_ITEMS } from './spectacles.js';
-import { MINE_ITEMS } from './mine.js';
+import { MINE_ITEMS, PART_ITEMS } from './mine.js';
 
-export const CATALOG = [...AVATAR_ITEMS, ...GAG_ITEMS, ...SPECTACLE_ITEMS, ...ABSURD_ITEMS, ...FURNITURE_ITEMS, ...MINE_ITEMS, ...TOBACCO_ITEMS, ...BUG_ITEMS];
+export const CATALOG = [...AVATAR_ITEMS, ...GAG_ITEMS, ...SPECTACLE_ITEMS, ...ABSURD_ITEMS, ...FURNITURE_ITEMS, ...MINE_ITEMS, ...TOBACCO_ITEMS, ...BUG_ITEMS, ...PART_ITEMS];
 /** The most anything in the store can cost: the Deed to the Moon. */
 export const MAX_PRICE = 2000000;
 export const ITEM = Object.fromEntries(CATALOG.map((x) => [x.id, x]));
@@ -18,9 +18,10 @@ export const TABS = [
   { id: 'extras', label: 'Extras' }, { id: 'gags', label: 'Gags' }, { id: 'spectacles', label: 'Spectacles' }, { id: 'oddities', label: 'Oddities' }, { id: 'furnishings', label: 'Furnishings' }, { id: 'unique', label: 'One of a kind' }, { id: 'seasonal', label: 'Seasonal' },{ id: 'mine', label: 'Mine gear' }, { id: 'tobacco', label: 'Smoke Shop', adult: true },
   { id: 'food', label: 'Bug food', bug: true }, { id: 'toys', label: 'Bug toys', bug: true }, { id: 'bugstyle', label: 'Bug style', bug: true },
   { id: 'bugcare', label: 'Bug care', bug: true }, { id: 'gear', label: 'Battle gear', bug: true },
+  { id: 'parts', label: 'Mech parts', bug: true, hidden: true }, // not a store tab: the specialist sells these at the Bug Center
 ];
 export const AVATAR_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'skin', 'acc'];
-export const BUG_SLOTS = ['toy', 'bugskin', 'bughat', 'bugacc', 'gear', 'defense']; // 'gear' is the attack item
+export const BUG_SLOTS = ['toy', 'bugskin', 'bughat', 'bugacc', 'gear', 'defense', 'part']; // 'gear' is the attack item, 'part' a mech part (catalog/mine.js)
 export const tier = (price) => (price >= 20000 ? 'crazy' : price >= 1500 ? 'expensive' : price >= 300 ? 'medium' : 'cheap');
 
 const ids = new Set();

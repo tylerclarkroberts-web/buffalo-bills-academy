@@ -17,6 +17,20 @@ export const MINE_ITEMS = [
   { id: 'mine-permitearl', name: 'Earl\'s Level Permit', price: 100000, emoji: '🗝️', desc: 'Nobody has met Earl. This is his level, and nobody has found the end of it. The acid down there pays ×16. $160 a ride. Wipe your feet.' },
 ].map(item);
 
+// Mech parts. Sold by the specialist at the Bug Center, not on the store's shelves, and fitted to a bug he has already
+// rebuilt (one part a bug). The Acid Mines read the partner's part at clock-in (server/mines.js):
+//   lamp     the next pool's amount shows before you reach it
+//   plunger  once a shift, a pool that comes up under PLUNGER.under of the bucket gives PLUNGER.gives of it instead
+//   hoist    a cave-in spills nothing
+//   drill    every unit of acid collected is worth DRILL more
+export const PLUNGER = { under: 0.25, gives: 0.5 }, DRILL = 0.1;
+export const PART_ITEMS = [
+  { id: 'part-lamp', part: 'lamp', name: 'Lamp Eye', price: 5000, emoji: '🔦', desc: 'A hard-hat lamp where an eye was. Your bug sees how much acid the next pool holds before you walk there. It does not blink any more.' },
+  { id: 'part-plunger', part: 'plunger', name: 'Plunger Arm', price: 10000, emoji: '🪠', desc: 'Once a shift, when a pool comes up nearly dry, your bug plunges it and half a bucket comes up. Do not ask what it was blocked with.' },
+  { id: 'part-hoist', part: 'hoist', name: 'Hoist Claw', price: 15000, emoji: '🏗️', desc: 'When the roof comes down, your bug holds the bucket up out of it and nothing spills. Only matters where there is a roof to come down: Shaft 8 and deeper.' },
+  { id: 'part-drill', part: 'drill', name: 'Drill Arm', price: 25000, emoji: '🛠️', desc: 'Your bug drills alongside you. Every unit of acid you collect is worth a tenth more. It does not stop when you do.' },
+].map((x) => ({ ...x, kind: 'bug', cat: 'parts', slot: 'part' }));
+
 /** Shafts in elevator order. `quality` is what its acid is worth next to Shaft 7's (it multiplies every pool's richness,
  *  see richAt in server/mines.js; the bucket is 100 units everywhere),
  *  `fare` is charged at clock-in and never refunded, `caveIn` is the percent chance that reaching a pool brings the

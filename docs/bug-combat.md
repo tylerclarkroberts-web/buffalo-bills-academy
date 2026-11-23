@@ -67,7 +67,9 @@ Stage two to stage three. The constants sit beside the first evolution's in `ser
 - **Stage three.** `evo: 2`, a ceiling of level 30.
 - **Botched.** The same one in fifteen. It replaces any earlier quirk with one of `MAN_QUIRKS`: **polite** (half the time it gives up its first turn), **salaried** (its hits do 90% after its sixth turn) or **squeamish** (its hits do half against a foe under half health). Against the same bug unbotched they win roughly 25% to 45%.
 
-Not built yet: arm upgrades, who the specialist is, and new story panels for the second visit (it reuses the tools and the curtain).
+Mech parts for an evolved bug are sold at his counter in the Bug Center and work in the mine: see [Acid Mines](acid-mines.md#mech-parts).
+
+Not built yet: who the specialist is, and new story panels for the second visit (it reuses the tools and the curtain).
 
 Bugs grow slightly through level 10, with shared size and equipped-art scaling across the Barn, room, shop and bouts. Young forms become adults at level 3 where appropriate; some species retain a similar form. These are stylized life stages, not exact biology. Replays use the historical level/form rather than today's pet.
 
