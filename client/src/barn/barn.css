@@ -516,5 +516,6 @@
 .bs-cardpane { grid-auto-rows: max-content; } .bs-cardpane .bugcard { height: max-content; } /* a card taller than its panel scrolls; it is never squeezed */
 
 /* a bug that drank purple acid: out cold, and the wrong colour */
+.bs-stage.taken canvas { visibility: hidden; } /* it is not here: the stall is empty but for the ticket */
 .bs-stage.sick { box-shadow: inset 0 0 46px rgba(160, 60, 255, .6); }
 .bs-stage.sick canvas { filter: grayscale(1) sepia(1) hue-rotate(215deg) saturate(3.5); }

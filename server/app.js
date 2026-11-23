@@ -370,7 +370,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
-  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug }))); // the Bug Center nurse: free after an hour's rest, or paid now
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor }))); // the Bug Center nurse: free after an hour's rest, or paid now
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
   api.post('/mines/bug/order', needPlayer, wrap((req) => mines.orderBug(accounts.ensure(req.player), req.body?.shiftId, req.body)));

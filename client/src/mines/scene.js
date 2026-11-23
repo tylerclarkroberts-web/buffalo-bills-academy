@@ -540,12 +540,13 @@ export class MineScene {
     if (this.bugCarried) return;
     if (!bg.present) { g.visible = false; return; }
     g.visible = true;
-    const bob = this.reduce ? 0 : Math.sin(bg.bob) * 0.06;
+    const bob = this.reduce || bg.down ? 0 : Math.sin(bg.bob) * 0.06;
     g.position.set(bg.x, bob, bg.z);
     // billboard: face the camera so the pixel bug stays readable on phones
     g.rotation.y = this.yaw;
     m.glow.intensity = 1.2 + (this.reduce ? 0 : 0.5 * Math.sin(now / 280));
-    if (!this.reduce && bg.moving) m.mesh.rotation.z = Math.sin(now / 90) * 0.18;
+    if (bg.down) m.mesh.rotation.z = Math.PI / 2; // on its side
+    else if (!this.reduce && bg.moving) m.mesh.rotation.z = Math.sin(now / 90) * (bg.slow < 1 ? 0.5 : 0.18); // purple: it sways
     else m.mesh.rotation.z *= 0.85;
   }
   /** The day's purple pool (server/mines.js, purpleSpot): there for every miner, mined by none. A dark rim, the liquid, a paler eye, and its own light. */

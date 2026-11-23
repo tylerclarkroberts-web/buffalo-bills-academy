@@ -68,6 +68,8 @@ export class BugGuide {
     this.moving = false;
     this.events = [];
     this.bob = 0;
+    this.slow = 1;     // purple acid: it walks at this share of its pace
+    this.down = false; // and then it does not walk at all
   }
 
   get present() { return this.state === 'guiding'; }
@@ -135,6 +137,7 @@ export class BugGuide {
       if (p.elapsedMs >= this.afterMs || this.mode !== 'acid') this.appear(p);
       return;
     }
+    if (this.down) { this.moving = false; return; }
     if (this.state === 'done') return;
     const [ptx, pty] = tileOf(p.x, p.z);
     const [btx, bty] = tileOf(this.x, this.z);
@@ -177,7 +180,7 @@ export class BugGuide {
     const tx = this.next[0] * TILE, tz = this.next[1] * TILE;
     const vx = tx - this.x, vz = tz - this.z, len = Math.hypot(vx, vz);
     if (len < 1e-4) { this.moving = false; return; }
-    const step = Math.min(WALK_SPEED * dt, len);
+    const step = Math.min(WALK_SPEED * this.slow * dt, len);
     this.x += (vx / len) * step; this.z += (vz / len) * step;
     this.moving = step > 0;
     this.facing = Math.atan2(vx, vz);

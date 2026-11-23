@@ -230,9 +230,9 @@ export default function Mines() {
   useEffect(() => { if (me) api('GET', '/mines/foreman').then((v) => v?.pending && setLecture(v.pending)).catch(() => {}); }, [!!me]);
   useEffect(() => { if (phase === 'result') rememberMineReceipt(me?.id, result?.shiftId); }, [phase, me?.id, result?.shiftId]);
   function complete(v, toSurface = false) {
-    if (v.sick) { // whichever way the shift ended, this comes first
+    if (v.sick || v.taken) { // whichever way the shift ended, this comes first
       rememberMineReceipt(me?.id, v.result?.shiftId);
-      setSick({ name: v.sick, result: v.result || null }); setPhase('sick'); refreshSession(); return;
+      setSick({ name: v.sick || v.taken, taken: !!v.taken, result: v.result || null }); setPhase('sick'); refreshSession(); return;
     }
     if (toSurface && (v.result || Object.hasOwn(v, 'pending'))) {
       rememberMineReceipt(me?.id, v.result?.shiftId);
@@ -949,7 +949,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (pp && !purpleRef.current && !battleRef.current && !doomRef.current && !done.current) {
         const by = Math.hypot(scene.pos.x / TILE - pp.x, scene.pos.y / TILE - pp.y) < 1.7, name = String(shift.bug?.name || 'YOUR BUG').toUpperCase();
         if (shift.purple && (by || Date.now() - shift.localStart >= shift.purple.afterMs)) {
-          purpleRef.current = true; setPurple(true); hold(false); bugGuide?.setPool(pp); // it walks in
+          purpleRef.current = true; setPurple(1); hold(false); bugGuide?.setPool(pp); // it walks in and drinks,
+          setTimeout(() => { if (bugGuide) { bugGuide.slow = 0.4; bugGuide.order('come'); } setPurple(2); }, PURPLE_MS * 0.35); // comes back to you, slowly,
+          setTimeout(() => { if (bugGuide) bugGuide.down = true; setPurple(3); }, PURPLE_MS * 0.75); // and falls over
           setLine(by ? `${name} IS HEADING STRAIGHT FOR THE PURPLE STUFF.` : `${name} HAS WANDERED OFF AND FOUND SOMETHING PURPLE.`);
           setTimeout(() => exitShift.current?.(), PURPLE_MS);
         } else if (by && !shift.purple) {
@@ -1183,7 +1185,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
       {scare > 0 && <JumpScare key={scare} calm={lowFlash} />}
-      {purple && <div className={`m-purple${lowFlash ? ' calm' : ''}`} role="status" data-test="purple"><p>{String(shift.bug?.name || 'Your bug').toUpperCase()} IS DRINKING IT.</p></div>}
+      {purple && <div className={`m-purple${lowFlash ? ' calm' : ''}`} role="status" data-test="purple"><p>{String(shift.bug?.name || 'Your bug').toUpperCase()} {[, 'IS DRINKING IT.', 'IS COMING BACK. SLOWLY.', 'HAS FALLEN OVER.'][purple]}</p></div>}
       {mapOpen && <MineMap maze={maze} explored={explored.current} pools={mapPools()} wilds={[...explored.current.wilds].map(id => sceneRef.current?.wilds.get(id)).filter(Boolean)}
         pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
@@ -1288,7 +1290,7 @@ function MovePad({ apply }) {
   );
 }
 
-const PURPLE_MS = 6000; // from the bug going for the purple acid to the shift ending
+const PURPLE_MS = 8000; // from the bug going for the purple acid to the shift ending
 
 /** The shift ended because the partner drank purple acid. One way out. */
 function Sick({ sick }) {
@@ -1297,9 +1299,9 @@ function Sick({ sick }) {
     <main className="m-result m-sick" data-test="sick">
       <div className="hazard-bar" />
       <p className="m-sub">SHIFT REPORT</p>
-      <h1 className="m-title">{String(sick.name).toUpperCase()} IS NOT WELL</h1>
-      <p className="m-story">It drank something purple. The shift is over.</p>
-      {r && <p className="m-dim">THE ACID YOU HAD STILL PAID +${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>}
+      <h1 className="m-title">{String(sick.name).toUpperCase()} {sick.taken ? 'LEFT WITH SOMEONE' : 'IS NOT WELL'}</h1>
+      <p className="m-story">{sick.taken ? 'He was waiting at the lift. It went without being asked. He left a ticket.' : 'It drank something purple. The shift is over.'}</p>
+      {r && <p className="m-dim">{sick.taken ? 'THE SHIFT PAID' : 'THE ACID YOU HAD STILL PAID'} +${r.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>}
       <div className="m-actions">
         <button className="m-btn" onClick={() => navigate('/barn/center')}>[ BUG CENTER ]</button>
       </div>
