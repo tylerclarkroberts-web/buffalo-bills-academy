@@ -284,7 +284,8 @@ function drawFighter(x, f, p, size, face) {
   const px = Math.max(1, Math.floor(size / SPRITE)), grown = px * SPRITE * bugScale(f.level, f.species), img = spriteCanvas(bug, f.style, f.level, fineFor(grown));
   const hiRes = isHiResSprite(bug, f.style, f.level);
   const s = grown * (1 + (p.alt / size) * 0.25);
-  x.save(); x.translate(p.x, p.y - p.alt); x.rotate(face + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
+  // A bug is seen from above and turns to face its opponent; a rebuilt one stands up.
+  x.save(); x.translate(p.x, p.y - p.alt); x.rotate((f.style?.evo ? 0 : face) + p.rot + (p.turn || 0) + (p.spin || 0)); x.scale(p.sx, p.sy);
   x.imageSmoothingEnabled = hiRes;
   if (hiRes && 'imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
   if (bug.id === 'dryococelus') {

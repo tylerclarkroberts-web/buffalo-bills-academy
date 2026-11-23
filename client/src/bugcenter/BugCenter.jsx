@@ -311,7 +311,7 @@ export default function BugCenter() {
   return (
     <div className="screen bc" data-test="bug-center" lang="ja">
       <div className="bc-fit" ref={fit}>
-        <div className={`bc-scene${op ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : undefined}>
+        <div className={`bc-scene${op ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px`, '--sh': `${box.h}px` }} onClick={talk ? next : op ? opNext : undefined}>
           <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
           {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
           {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
