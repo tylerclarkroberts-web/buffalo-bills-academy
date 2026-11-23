@@ -11,6 +11,7 @@ test('new player without a face is sent to the photo step once, keeping where th
   assert.equal(faceRedirect({ me: fresh, path: '/t/ABC123', loc: '/t/ABC123' }), '/welcome?next=%2Ft%2FABC123');
   assert.equal(faceRedirect({ me: fresh, path: '/welcome', loc: '/welcome?next=%2F' }), null, 'already there: no re-redirect');
   assert.equal(faceRedirect({ me: fresh, path: '/mines', loc: '/mines' }), null);
+  assert.equal(faceRedirect({ me: fresh, path: '/admin/mine-preview', loc: '/admin/mine-preview?shot=stick-wall' }), null, 'admin preview does not demand a face');
   assert.equal(faceRedirect({ me: null, path: '/', loc: '/' }), null, 'signed out: nothing');
 });
 

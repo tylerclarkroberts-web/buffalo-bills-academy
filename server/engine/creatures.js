@@ -1,6 +1,7 @@
 // The Barn: the roster. Since v33 the residents are real, little-known bugs (server/engine/bugs.js); the v30
 // cryptid x historical-figure hybrids are retired. Their ids are kept only so old barn rows can be migrated.
-import { BUGS, BUG_BY_ID } from './bugs.js';
+import { BUGS, BUG_BY_ID, givenName } from './bugs.js';
+export { givenName };
 
 export const ROSTER = BUGS;
 export const BY_ID = BUG_BY_ID;

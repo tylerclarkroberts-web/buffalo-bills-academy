@@ -12,8 +12,11 @@ export const FINE = 2;
 export const fineFor = (s) => (s >= SPRITE * FINE ? FINE : 1);
 
 // Missing levels keep the existing adult presentation for older callers and replays.
-export function bugScale(level = MAX_LEVEL) {
-  const bounded = Number.isFinite(level) ? Math.max(1, Math.min(MAX_LEVEL, Math.floor(level))) : MAX_LEVEL;
+export function bugScale(level = MAX_LEVEL, species) {
+  const n = Number.isFinite(level) ? Math.floor(level) : MAX_LEVEL;
+  // The Lord Howe Island stick insect is a level-30 legendary: clearly larger than a regular bug.
+  if (species === 'dryococelus') return 1.15 + Math.min(20, Math.max(0, n - 10)) * 0.03;
+  const bounded = Math.max(1, Math.min(MAX_LEVEL, n));
   return 1 - (MAX_LEVEL - bounded) * 0.025;
 }
 
@@ -260,6 +263,38 @@ function draw(head, L, headOnly = false) {
     head.ell(32, 10, 6, 4, 'B'); eyes(head, 29, 10, 1);
     if (L.threads) c.ell(32, 55, 5, 4.5, 'A'); // its one light, at the tail
     else { head.ell(28, 7, 1.5, 1.5, 'A'); for (let i = 1; i < 10; i++) c.ell(25, 14 + i * 4.6, 1.5, 1, 'L'); } // a railroad worm's red head lamps, and the row down each side
+  } else if (k === 'tree-lobster') {
+    // Top-down Dryococelus australis, after the dorsal museum reference: a long thin segmented
+    // body, a small head, long antennae, slim fore/mid legs, and thick curved spiny hind femora.
+    const joint = (x0, y0, x1, y1, x2, y2, w1 = 2, w2 = 1) => {
+      c.line(x0, y0, x1, y1, 'D', w1); c.line(x1, y1, x2, y2, 'D', w2);
+      c.hair([[x2 - 1.2, y2 + 1.4], [x2, y2 + 0.2], [x2 + 1.1, y2 + 1.6]], 'D');
+    };
+    joint(29, 20, 24, 14, 21, 8, 1, 1);           // fore
+    joint(29, 28, 22, 30, 16, 34, 2, 1);           // mid
+    c.line(29, 36, 20, 42, 'D', 4);                // hind femur, swollen
+    c.line(20, 42, 15, 50, 'D', 3);
+    c.line(15, 50, 13, 58, 'D', 2);                // hind tibia
+    c.hair([[12, 59.5], [13, 58.2], [14.2, 59.7]], 'D');
+    c.put(22, 40, 'A'); c.put(20, 43, 'A'); c.put(18, 46, 'A'); // femoral spines
+    // Body: small head, long thorax, eight tapering abdominal segments.
+    head.ell(32, 8, 3.4, 3.6, 'B');
+    eyes(head, 29, 8, 1);
+    head.line(31, 5, 28, 1, 'D', 1);
+    antennae(head, { x: 30, y: 5, len: 10, bend: 2 });
+    c.ell(32, 13, 3.2, 3.2, 'B');                  // prothorax
+    c.ell(32, 20.5, 4.2, 5.6, 'B');                // mesothorax
+    c.ell(32, 28, 4.6, 3.8, 'B');                  // metathorax
+    const abs = [4.6, 4.8, 4.6, 4.2, 3.7, 3.1, 2.4, 1.7];
+    let ay = 32.2;
+    abs.forEach((rx, i) => {
+      const ry = 2.15;
+      c.ell(32, ay, rx, ry, i % 2 ? 'B' : 'D');
+      ay += 3.15;
+    });
+    c.line(31, 56, 31, 61, 'D', 1); c.line(33, 56, 33, 61, 'D', 1); // cerci
+    // A short glossy gleam on the thorax only — a full-length zipper reads as a skeleton.
+    for (let y = 16; y < 30; y += 2) c.put(32, y, 'L');
   } else if (k === 'mantis' || k === 'stick') {
     const wide = L.leaf;
     if (L.eyespot) { c.ell(19, 44, 10, 13, 'L'); c.ell(19, 44, 4, 4, 'A'); c.ell(19, 44, 2, 2, 'S'); }
@@ -545,7 +580,7 @@ export function bugTexture(THREE, bug, style, level) {
 /** Draws a growing bug with nearest-neighbour pixels, a little idle bob and a hop when poked. */
 export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip = false, fill = 0.82, style = null, level }) {
   const adultSize = Math.max(1, Math.floor((Math.min(w, h) * fill) / SPRITE)) * SPRITE;
-  const s = Math.round(adultSize * bugScale(level)), px = s / SPRITE;
+  const s = Math.round(adultSize * bugScale(level, bug.id)), px = s / SPRITE;
   const bob = still ? 0 : Math.round(Math.sin(t / 420) * px * 1.2);
   const hop = Math.round(Math.sin(Math.min(1, poke) * Math.PI) * px * 6);
   const ox = Math.round((w - s) / 2), oy = Math.round((h - adultSize) / 2 + h * 0.03) + adultSize - s + bob - hop;

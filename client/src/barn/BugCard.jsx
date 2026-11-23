@@ -15,7 +15,7 @@ const GLYPH = { // 16 x 16, one filled path each
   fire: 'M8 1Q13 6 11 9 14 9 12 13A5 5 0 0 1 4 12Q3 8 6 7 6 4 8 1Z', sonic: 'M1 6h2v4H1zM5 3h2v10H5zM9 5h2v6H9zM13 7h2v2h-2z',
   water: 'M1 5q3.5-4 7 0t7 0v3q-3.5-4-7 0t-7 0zM1 10q3.5-4 7 0t7 0v3q-3.5-4-7 0t-7 0z',
 };
-const DOES = { strike: '', guard: 'and guards', venom: 'and poisons', pierce: 'through armour', heal: 'heals', weaken: 'and weakens' };
+const DOES = { strike: '', guard: 'and guards', venom: 'and poisons', pierce: 'through armour', heal: 'heals', weaken: 'and weakens', flourish: 'shows off. No damage' };
 
 /** The types some species has that `type` beats, and the ones that beat it. */
 export const matchups = (type) => ({ beats: (TYPES[type]?.beats || []).filter((t) => LIVE_TYPES.includes(t)), weak: weakTo(type).filter((t) => LIVE_TYPES.includes(t)) });
@@ -27,12 +27,20 @@ export function TypeChip({ type, small = false }) {
 
 function Art({ bug, style, level }) {
   const ref = useRef(null);
+  const [photo, setPhoto] = React.useState(bug.id === 'steeze' ? '/api/steeze.png' : null);
   useEffect(() => {
-    const c = ref.current; if (!c) return;
+    const c = ref.current; if (!c || photo) return;
     c.width = 448; c.height = 252;
     const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
     drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 1, style, level });
-  }, [bug.id, level, JSON.stringify(style || null)]);
+  }, [bug.id, level, JSON.stringify(style || null), photo]);
+  if (bug.id === 'steeze' && photo) {
+    return (
+      <div className="steeze-art-wrap" aria-hidden="true">
+        <img className="steeze-art" src={photo} alt="" onError={() => setPhoto(null)} />
+      </div>
+    );
+  }
   return <canvas ref={ref} className="bc-art" aria-hidden="true" />;
 }
 
