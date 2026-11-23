@@ -150,7 +150,7 @@ const MINE_MOUNTED = [
   '[data-test=mine-preview]', '[data-test=sick]', '[data-test=wild-prompt]', '[data-test=door-hall]',
   '[data-test=doom-room]', '[data-test=nano-room]', '[data-test=stick-intro]', '[data-test=ambush-prompt]',
   '[data-test=egg-prompt]', '[data-test=lift-prompt]', '[data-test=door-prompt]', '[data-test=dance-picker]',
-  '[data-test=bug-orders]', '[data-test=heeshee-stolen]', '[data-test=fm-q]',
+  '[data-test=bug-orders]', '[data-test=heeshee-stolen]', '[data-test=fm-q]', '[data-test=fm-typing]',
   '.m-play', '.m-intro', '.m-result', '.fm',
 ].join(', ');
 

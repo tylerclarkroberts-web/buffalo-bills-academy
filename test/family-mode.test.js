@@ -276,6 +276,7 @@ test('pressing W inside the Acid Mines never turns Work Mode on, on any of its s
     'egg-prompt',
     'mine-preview',
     'fm-q',              // Foreman's quiz
+    'fm-typing',          // extra-mad Foreman typing test
   ];
   for (const hit of mounted) {
     const doc = mineDoc(hit);

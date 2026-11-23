@@ -733,6 +733,17 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
     // One exclusive slot: the Heeshee never shares a shift with the visitor or the faun (server/mines.js rollScare).
     const heeshee = (shift.heeshee && !shift.scare && !shift.faun) ? new HeesheeMazode(maze, { armed: true, hasBug: !!(shift.bug && !shift.bugStolen), rand: rng((shift.seed ^ 0x4ee5) >>> 0) }) : null;
+    const reportHeesheeSeen = () => {
+      if (!shift.heeshee || shift.bugStolen) return;
+      const body = JSON.stringify({ shiftId: shift.shiftId });
+      const headers = { 'content-type': 'application/json' };
+      try {
+        if (typeof fetch === 'function') fetch('/api/mines/heeshee/seen', { method: 'POST', credentials: 'same-origin', headers, body, keepalive: true }).catch(() => {});
+      } catch { /* leaving the page */ }
+    };
+    const onPageHide = () => { if (heeshee?.present || heeshee?.state === 'wandering') reportHeesheeSeen(); };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onPageHide);
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = (shift.bug && !shift.bugStolen) ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
     guideRef.current = bugGuide;
@@ -780,7 +791,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         }
         if (e === 'faun-appear') setLine('A FAUN TROTTED IN BEHIND YOU. HE IS BLEATING.');
         if (e === 'faun-bleat') audio?.bleat();
-        if (e === 'heeshee-appear') setLine('SOMETHING IS MOVING IN THE DARK. IT DOES NOT WALK RIGHT.');
+        if (e === 'heeshee-appear') {
+          setLine('SOMETHING IS MOVING IN THE DARK. IT DOES NOT WALK RIGHT.');
+          api('POST', '/mines/heeshee/seen', { shiftId: shift.shiftId }).catch(() => {});
+        }
         if (e === 'heeshee-noise') {
           const hm = sceneRef.current?.heeshee; const pos = sceneRef.current?.pos;
           if (hm && pos) audio?.heesheeNoise({ kind: ['breath', 'click', 'warble'][Math.floor(Math.random() * 3)], dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.55 });
@@ -1049,6 +1063,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidHeeshee; delete window.__acidWorms; window.removeEventListener('resize', onResize);
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onPageHide);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor); clearTimeout(lightsTimer); delete window.__acidHorror; audio?.danceBeat(false);

@@ -19,3 +19,57 @@
 .fm-line { min-height: 3.9em; overflow-wrap: anywhere; }
 .fm-q.word { flex: 1 1 100%; font-size: clamp(13px, 2.2vw, 17px); line-height: 1.3; letter-spacing: 0; overflow-wrap: anywhere; }
 @media (max-height: 420px) { .fm-line { min-height: 2.6em; font-size: 14px; } .fm-q.word { font-size: 13px; } }
+
+/* Extra-mad Heeshee-quit typing test: shrink the portrait so the prompt, live stats, and
+   input all fit on an iPhone 15 with no scrolling. */
+.fm[data-stage=typing] .fm-stage,
+.fm[data-stage=done].fm-mad .fm-stage { flex: 0 0 auto; height: min(26vh, 200px); max-height: 200px; cursor: default; }
+.fm[data-stage=typing] .fm-box,
+.fm[data-stage=done].fm-mad .fm-box { margin-bottom: 8px; padding: 8px 10px 10px; }
+.fm[data-stage=typing] .fm-line,
+.fm[data-stage=done].fm-mad .fm-line { min-height: 0; margin: 4px 0 6px; font-size: clamp(13px, 3.2vw, 16px); }
+.fm-mad .fm-who { color: #ffb020; }
+.fm-type { display: flex; flex-direction: column; gap: 6px; }
+.fm-prompt {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: clamp(12px, 3.05vw, 14px);
+  line-height: 1.28;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  background: #1b150e;
+  border: 1px solid #8a7d64;
+  padding: 6px 8px;
+}
+.fm-prompt i { font-style: normal; }
+.fm-prompt i.ok { color: #8fde6e; }
+.fm-prompt i.bad { color: #ff6b5a; background: rgba(255, 80, 60, .16); }
+.fm-prompt i.wait { color: #8a7d64; }
+.fm-type textarea {
+  width: 100%; box-sizing: border-box; resize: none;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: clamp(12px, 3.05vw, 14px); line-height: 1.28;
+  padding: 6px 8px; background: #140f0a; color: #f2ead8;
+  border: 1px solid #8a7d64; min-height: 3.9em;
+}
+.fm-stats { display: flex; align-items: baseline; gap: 12px; font-size: 12px; letter-spacing: .06em; color: #8a7d64; }
+.fm-stats b { font-weight: 700; color: #e8b81e; }
+.fm-stats b.ok { color: #8fde6e; }
+.fm-stats .fm-need { margin-left: auto; }
+.fm-jab { margin: 0; font-size: 13px; line-height: 1.25; color: #ffb0a4; overflow-wrap: anywhere; }
+.fm-type-actions { display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-height: 500px) {
+  .fm[data-stage=typing], .fm[data-stage=done].fm-mad { flex-direction: row; }
+  .fm[data-stage=typing] .fm-stage,
+  .fm[data-stage=done].fm-mad .fm-stage { height: 100%; max-height: none; flex: 0 0 30%; width: 30%; min-width: 0; }
+  .fm[data-stage=typing] .fm-box,
+  .fm[data-stage=done].fm-mad .fm-box { align-self: stretch; flex: 1 1 0; min-width: 0; margin: 8px 8px 8px 0; overflow: hidden; }
+  .fm-prompt, .fm-type textarea { font-size: 12px; padding: 4px 6px; min-height: 2.8em; }
+  .fm[data-stage=typing] .fm-line { font-size: 13px; }
+}
+
+@media (max-width: 430px) {
+  .fm-type-actions { flex-direction: column-reverse; }
+  .fm-type-actions .m-btn { width: 100%; text-align: center; }
+  .fm[data-stage=done].fm-mad .fm-math { flex-direction: column; align-items: stretch; }
+  .fm[data-stage=done].fm-mad .fm-math .m-btn { margin-left: 0; width: 100%; }
+}

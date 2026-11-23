@@ -11,6 +11,7 @@ import { inHorrorWindow, lightsOutMs } from './engine/horror.js';
 import { roamRoute } from './engine/wild-roam.js';
 import { rarityOf, WILD_ODDS, RARE_TIER, LEGENDARY } from './engine/bug-types.js';
 import { HEESHEE_RETURN } from './foreman.js';
+import { HEESHEE_APPEAR_MS } from './foremanTyping.js';
 import { STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, isSteeze } from './engine/steeze.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
@@ -268,7 +269,7 @@ export class Mines {
       this.requireVersion(request); return this.completionView(player, last);
     }
     if (this.foreman?.pending(player.id)) { const e = new GameError('The foreman is waiting on an answer before you clock in again.', 409); e.code = 'foreman'; throw e; }
-    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); return this.publicShift(cur, true, player.id, this.guideBug(player.id)); }
+    if (cur && now - cur.startedAt < MAX_SHIFT_MS) { this.holds.delete(player.id); const live = this.noteHeesheeAppearance(cur, player.id); return this.publicShift(live, true, player.id, this.guideBug(player.id)); }
     this.requireVersion(request);
     const recent = (player.mining?.recentStarts || []).filter((t) => now - t < 3600e3);
     if (recent.length >= MAX_SHIFTS_PER_HOUR) throw new GameError('The foreman says you have worked enough shifts this hour. Come back later.', 429);
@@ -304,9 +305,11 @@ export class Mines {
     if (shaft.fare) this.accounts.change(draft, -shaft.fare, 'mine', `Acid Mines: elevator fare, ${shaft.name.toLowerCase()}`, { save: false });
     this.store.commitPlayerDrafts([draft]);
     if (this.wildsFor(shift).some((w) => w.species === STICK_ID)) shift.stick = true;
+    const guide = this.guideBug(player.id);
+    if (shift.heeshee && this.livingGuide(player.id, guide)) shift.heesheeHadBug = true;
     this.commit(player.id, shift); this.holds.delete(player.id);
     try { this.onShiftStart?.(player.id, shift, shaft.fare || 0); } catch { /* admin stats only */ }
-    return this.publicShift(shift, false, player.id, this.guideBug(player.id));
+    return this.publicShift(shift, false, player.id, guide);
   }
   /** Living hatched Barn bug the player can bring into the tunnels as a guide (v64). */
   guideBug(playerId) {
@@ -332,6 +335,38 @@ export class Mines {
     } catch { return null; }
   }
   shakenUntil(playerId) { return (this.doc.shaken?.[playerId] || 0) > this.now(); }
+  livingGuide(playerId, guide = this.guideBug(playerId)) {
+    return !!(guide && !guide.fainted && !guide.held);
+  }
+  /**
+   * Stamp that the Heeshee has appeared on this shift. `force` is the client reporting
+   * first sight; otherwise the server stamps once the appear delay has elapsed so a
+   * refresh, tab close, or quick quit after spawn cannot dodge the record.
+   */
+  noteHeesheeAppearance(cur, playerId, { force = false } = {}) {
+    if (!cur?.heeshee || cur.settlement) return cur;
+    if (!force && !cur.heesheeSeen && (this.now() - cur.startedAt < HEESHEE_APPEAR_MS)) return cur;
+    const had = cur.heesheeHadBug || this.livingGuide(playerId);
+    if (cur.heesheeSeen && !!cur.heesheeHadBug === !!had) return cur;
+    const next = { ...cur, heesheeSeen: true, heesheeSeenAt: cur.heesheeSeenAt || this.now(), ...(had ? { heesheeHadBug: true } : {}) };
+    this.commit(playerId, next);
+    return next;
+  }
+  seeHeeshee(player, shiftId) {
+    const cur = this.current(player, shiftId);
+    if (cur.settlement) throw new GameError('That shift has already ended.', 409);
+    if (!cur.heeshee) throw new GameError('There is no Heeshee Mazode on this shift.', 409);
+    const next = this.noteHeesheeAppearance(cur, player.id, { force: true });
+    return this.publicShift(next, true, player.id, this.guideBug(player.id));
+  }
+  /** Saw the Heeshee, then bailed (empty quit / expire) before a steal or a paid finish. */
+  shouldTypingTest(cur, receipt) {
+    if (!this.foreman?.scoldTyping || !cur?.heeshee || cur.heesheeStolen) return false;
+    if (receipt?.result || receipt?.heeshee) return false;
+    const appeared = !!(cur.heesheeSeen || (this.now() - cur.startedAt >= HEESHEE_APPEAR_MS));
+    return !!(appeared && cur.heesheeHadBug);
+  }
+
   /**
    * The Heeshee grabbed the guide. The barn row is never deleted: a hold is stamped so a quit or disconnect
    * cannot hand the bug back free. Finding acid on this same shift (or a later completed acid shift) releases
@@ -612,7 +647,8 @@ export class Mines {
     }
     const receipt = cur.settlement;
     if (receipt.result) this.accounts.recordShift(player, { ...receipt.result, at: receipt.at, ms: receipt.ms });
-    if (receipt.reason) this.foreman?.scold(player.id, receipt.reason, cur.id);
+    if (this.shouldTypingTest(cur, receipt)) this.foreman.scoldTyping(player.id, cur.id);
+    else if (receipt.reason) this.foreman?.scold(player.id, receipt.reason, cur.id);
     this.commit(player.id, null, receipt);
     return this.completionView(player, receipt);
   }
@@ -622,7 +658,8 @@ export class Mines {
     const cur = this.doc.active[player.id];
     if (!cur || cur.rulesVersion !== 2) return null;
     if (cur.settlement || cur.collected >= cap(cur) || this.now() - cur.startedAt >= MAX_SHIFT_MS) return this.settle(player, cur);
-    return this.publicShift(cur, true, player.id, this.guideBug(player.id));
+    const live = this.noteHeesheeAppearance(cur, player.id);
+    return this.publicShift(live, true, player.id, this.guideBug(player.id));
   }
 
   /**
