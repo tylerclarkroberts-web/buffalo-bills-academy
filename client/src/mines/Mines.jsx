@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Bout, { mergeFight } from '../barn/Bout.jsx';
 import BugCard from '../barn/BugCard.jsx';
-import { createPvpClient, minerHint, pvpAmbush, pvpForfeit, pvpMove, pvpWild, pvpJar } from './pvpClient.js';
+import { createPvpClient, minerHint, pvpAmbush, pvpForfeit, pvpMove, pvpWild, pvpJar, pvpSaw } from './pvpClient.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { api, useSession, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
@@ -1023,6 +1023,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         for (const bug of scene.wilds.values()) {
           if (!explored.current.wilds.has(bug.id) && scene.seesWild(bug)) {
             markWild(explored.current, bug);
+            pvpSaw(pvpSend, bug.id).catch(() => {}); // a fight with it counts too, so a lost request costs nothing
             sighting ??= bug;
           }
         }

@@ -1,8 +1,9 @@
 // A bug's trading card: what it is, what it does, what beats it. Everything on it comes from the species' sheet and
 // the fight rules (server/engine); nothing is typed in here. Pass `bug` for one of your own: its name, level, record
-// and what it is wearing. Without one it is the species' card, at level 1 strength.
+// and what it is wearing. Without one it is the species' card, at level 1 strength; with `evo` (1 or 2), the card of
+// that evolved stage, at the strength it starts with.
 import React, { useEffect, useRef } from 'react';
-import { BY_ID, ROSTER } from '../../../server/engine/creatures.js';
+import { BY_ID, ROSTER, PAUSED_AT, STAGE_CAPS } from '../../../server/engine/creatures.js';
 import { movesFor, traitFor, combatStats } from '../../../server/engine/bug-combat.js';
 import { TYPES, RARITY, LIVE_TYPES, typeOf, rarityOf, weakTo, perkFor } from '../../../server/engine/bug-types.js';
 import { drawBug, isHiResSprite, onSpriteReady } from './sprite.js';
@@ -15,6 +16,8 @@ const GLYPH = { // 16 x 16, one filled path each
   fire: 'M8 1Q13 6 11 9 14 9 12 13A5 5 0 0 1 4 12Q3 8 6 7 6 4 8 1Z', sonic: 'M1 6h2v4H1zM5 3h2v10H5zM9 5h2v6H9zM13 7h2v2h-2z',
   water: 'M1 5q3.5-4 7 0t7 0v3q-3.5-4-7 0t-7 0zM1 10q3.5-4 7 0t7 0v3q-3.5-4-7 0t-7 0z',
 };
+export const STAGES = ['', 'Stage II', 'Stage III'];
+const FROM = [1, PAUSED_AT + 1, STAGE_CAPS[1]]; // the level each stage starts at: hatched, evolved, rebuilt (EVOLVE_FROM and MECH_FROM in server/barn.js)
 const DOES = { strike: '', guard: 'and guards', venom: 'and poisons', pierce: 'through armour', heal: 'heals', weaken: 'and weakens', flourish: 'shows off. No damage' };
 
 /** The types some species has that `type` beats, and the ones that beat it. */
@@ -49,21 +52,21 @@ function Art({ bug, style, level }) {
   return <canvas ref={ref} className={`bc-art${isHiResSprite(bug, style, level) ? ' hi-res' : ''}`} aria-hidden="true" />;
 }
 
-export default function BugCard({ species, bug = null }) {
+export default function BugCard({ species, bug = null, evo = 0 }) {
   const b = BY_ID[species]; if (!b) return null;
   const type = typeOf(species), rarity = RARITY[rarityOf(species)], level = bug?.level ?? 10, { beats, weak } = matchups(type);
   const moves = movesFor(species, 10), trait = traitFor(species), perk = perkFor(type), no = ROSTER.indexOf(b) + 1;
   const record = bug?.record ? `${bug.record.w}–${bug.record.l}` : null;
   return (
-    <article className={`bugcard r${rarityOf(species)}`} style={{ '--tc': TYPES[type]?.color || '#c8b888' }} data-test="bug-card" aria-label={`${bug?.name || b.name}, ${TYPES[type]?.name} type`}>
+    <article className={`bugcard r${rarityOf(species)}`} style={{ '--tc': TYPES[type]?.color || '#c8b888' }} data-test="bug-card" aria-label={`${bug?.name || b.name}${!bug && evo ? `, ${STAGES[evo]}` : ''}, ${TYPES[type]?.name} type`}>
       <header>
         <small>{b.order}{bug ? ` · ${b.name}` : ''}</small>
         <h3>{bug?.name || b.name}</h3>
-        <b className="bc-hp num">{bug?.maxHp || combatStats(bug?.level ?? 1).maxHp}<i>HP</i></b>
+        <b className="bc-hp num">{bug?.maxHp || combatStats(bug?.level ?? FROM[evo]).maxHp}<i>HP</i></b>
         <TypeChip type={type} />
       </header>
-      <div className="bc-window"><Art bug={b} style={bug?.style} level={level} /><i className="bc-foil" aria-hidden="true" /></div>
-      <p className="bc-strip"><i>{b.sci}{b.genus ? ' (genus)' : ''}</i>{b.size ? ` · ${b.size.replace(/\.$/, '')}` : ''}{bug ? ` · Lv ${level}${record ? ` · ${record}` : ''}` : ''}</p>
+      <div className="bc-window"><Art bug={b} style={bug ? bug.style : evo ? { evo } : null} level={level} /><i className="bc-foil" aria-hidden="true" /></div>
+      <p className="bc-strip"><i>{b.sci}{b.genus ? ' (genus)' : ''}</i>{b.size ? ` · ${b.size.replace(/\.$/, '')}` : ''}{bug ? ` · Lv ${level}${record ? ` · ${record}` : ''}` : evo ? ` · ${STAGES[evo]} · Lv ${FROM[evo]}–${STAGE_CAPS[evo]}` : ''}</p>
       <ul className="bc-moves">
         {moves.map((m) => (
           <li key={m.id} className={bug && level < m.level ? 'locked' : ''}>

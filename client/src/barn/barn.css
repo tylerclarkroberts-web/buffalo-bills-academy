@@ -572,3 +572,30 @@
 .barn-name { overflow-wrap: anywhere; }
 .barn-stall-pick { max-width: 14rem; }
 .barn-stall-pick .barn-name, .barn-stall-pick { overflow: hidden; text-overflow: ellipsis; }
+
+/* The Bugdex (Barn.jsx): every species in card order. A bug you have met wears its type's colour and opens its card. */
+.barn-wrap > .dex { flex: 1 1 0; min-height: 0; }
+.dex { display: grid; align-content: start; gap: 8px; overflow-y: auto; }
+.dex-count { margin: 0; }
+.dex-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.dex-fam { display: grid; grid-template-columns: minmax(0, 1fr) 48px; gap: 4px; } /* the bug as hatched, and its two evolved stages stacked beside it */
+.dex-evos { display: grid; grid-template-rows: 1fr 1fr; gap: 4px; }
+.dex-tile { position: relative; box-sizing: border-box; width: 100%; height: 100%; min-height: 100px; display: grid; justify-items: center; align-content: center; gap: 3px; padding: 16px 4px 6px;
+  border: 1px solid #7a4a2a; border-bottom: 3px solid var(--tc, #7a4a2a); border-radius: 10px; background: rgba(0,0,0,.22); color: var(--paper); font: inherit; text-align: center; cursor: pointer; }
+.dex-tile:hover, .dex-tile:focus-visible { border-color: var(--gold); }
+.dex-tile .num { position: absolute; top: 4px; left: 7px; font-size: 10px; color: var(--mute); }
+.dex-tile b { font: 600 11px/1.15 var(--sans); overflow-wrap: anywhere; }
+.dex-tile.unmet { border-style: dashed; background: none; color: var(--mute); cursor: default; }
+.dex-tile.unmet i { font: 400 28px/46px var(--display); }
+.dex-kind { font: 600 9.5px/1.2 var(--mono); letter-spacing: .03em; text-transform: uppercase; color: var(--mute); } /* how rare, then its type in the type's colour */
+.dex-kind span { color: var(--tc); }
+.dex-kind.r2 { color: #c9d0d8; } .dex-kind.r3 { color: var(--gold); } .dex-kind.r4 { color: #e7b8ff; letter-spacing: .08em; }
+.dex-tile.evo { min-height: 48px; padding: 12px 2px 2px; border-radius: 8px; }
+.dex-tile.evo .num { top: 2px; left: 5px; font-size: 8.5px; }
+.dex-tile.evo .barn-thumb { width: 38px; height: 31px; }
+.dex-tile.evo.unmet i { font-size: 15px; line-height: 22px; }
+.dex-card[open] { display: grid; justify-items: center; gap: 10px; padding: 0; border: 0; background: none; max-width: none; max-height: calc(100dvh - 16px); overflow: visible auto; }
+.dex-card::backdrop { background: rgba(0,0,0,.72); }
+.dex-card .btn { --bg: rgba(48, 22, 14, .96); }
+@media (max-height: 620px) { .dex-card .barn-row { position: sticky; bottom: 0; padding: 8px 12px 4px; border-radius: 12px 12px 0 0; background: rgba(0,0,0,.72); } } /* a phone on its side: the card scrolls, Close stays put */
+@media (min-width: 1100px) and (min-height: 860px) { .dex-card .bugcard { zoom: 1.2; } .dex-grid { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); } }

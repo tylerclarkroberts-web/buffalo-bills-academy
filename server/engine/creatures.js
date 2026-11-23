@@ -20,3 +20,5 @@ export const STAGE_CAPS = [PAUSED_AT, 23, LEVEL_CAP];
 export const rawLevel = (xp) => 1 + Math.floor(Math.sqrt(Math.max(0, xp) / 40));
 export const levelFor = (xp, cap = PAUSED_AT) => Math.min(Math.max(PAUSED_AT, Math.min(LEVEL_CAP, cap || 0)), 1 + Math.floor(Math.sqrt(Math.max(0, xp) / 40)));
 export const xpFor = (level) => 40 * (level - 1) ** 2;
+/** A Bugdex entry: a species as hatched (`evo` 0), or evolved once or twice. Each form is met on its own. */
+export const formOf = (species, evo = 0) => (evo ? `${species}:${evo}` : species);

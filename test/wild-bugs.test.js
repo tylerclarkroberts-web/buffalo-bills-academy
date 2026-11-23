@@ -340,3 +340,12 @@ test('a packed lunch eaten against a wild bug is gone; one the partner never nee
   assert.deepEqual(run(45), [1, null], 'already below half: it eats, and the lunch is used up');
   assert.deepEqual(run(), [0, lunch], 'at full health against one that is nearly done, it never gets that low');
 });
+
+test('catching sight of a wild bug puts it in the miner\'s Bugdex; one that is not down there does not', t => {
+  const f = fixture(t), s = f.walkUp(), [wild] = s.wilds; // no bug of her own: she can still look
+  assert.deepEqual(f.barn.view('ann').dex, []);
+  assert.deepEqual(f.pvp.sawWild(f.ann, { shiftId: s.shiftId, wildId: 'nobody' }), { seen: false });
+  assert.deepEqual(f.pvp.sawWild(f.ann, { shiftId: 'yesterday', wildId: wild.id }), { seen: false });
+  assert.deepEqual(f.pvp.sawWild(f.ann, { shiftId: s.shiftId, wildId: wild.id }), { seen: true });
+  assert.deepEqual(f.barn.view('ann').dex, [wild.species]);
+});

@@ -380,6 +380,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/pvp/ambush', needPlayer, wrap((req) => pvp.ambush(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/move', needPlayer, wrap((req) => pvp.move(accounts.ensure(req.player), req.body || {})));
   api.post('/mines/pvp/wild', needPlayer, wrap((req) => pvp.meetWild(accounts.ensure(req.player), req.body || {}))); // walked up to a wild bug
+  api.post('/mines/pvp/saw', needPlayer, wrap((req) => pvp.sawWild(req.player, req.body || {}))); // caught sight of a wild bug: one for the Bugdex
   api.post('/mines/pvp/jar', needPlayer, wrap((req) => pvp.jar(accounts.ensure(req.player), req.body || {}))); // a jar thrown at the wild bug you are fighting
   api.post('/mines/pvp/forfeit', needPlayer, wrap((req) => { const b = pvp.forfeit(req.player.id); return b ? { battle: pvp.battleView(b, req.player.id) } : { battle: null }; }));
   // EL HALO (Hall of Doors): the shared horde match. Free play; it never touches accounts.
