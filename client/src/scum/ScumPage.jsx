@@ -20,6 +20,7 @@ import { publicTitle } from '../../../server/pageMeta.js';
 import { RoyalPicker, RoyalPlay, RoyalRewatch, seatRoyalClass } from './Royal.jsx';
 import { useModes } from '../modes/Modes.jsx';
 import { displayTableName, familyHandle, familyMask, FAMILY_TITLES, FAMILY_GAME, familyTableLabel } from '../modes/family.js';
+import { SayBox, SayBubble } from '../table/Say.jsx';
 
 const RK = '23456789TJQKA';
 const rk = (c) => RK.indexOf(c[0]) + 2;
@@ -243,6 +244,7 @@ function ScumTable({ code, me }) {
   const [bugNote, setBugNote] = useState(null);
   const [muted, setMute] = useState(isMuted());
   const [copied, setCopied] = useState(false);
+  const [sayOpen, setSayOpen] = useState(false);
   const [royalPlay, setRoyalPlay] = useState(null); // { ev, ack: bool } ack=false means rewatch, do not mark seen
   const [royalStep, setRoyalStep] = useState('pick');
   const royalSeen = useRef(new Set());
@@ -422,6 +424,12 @@ function ScumTable({ code, me }) {
           {r && <span className="bj-sub mono">R{r.no}</span>}
           <div className="bj-head-r">
             <button className="btn ghost small" onClick={invite} data-test="scum-invite" title="Copy the invite link" aria-label="Copy the invite link">{copied ? 'Copied!' : tiny ? '🔗' : 'Invite'}</button>
+            {mine && v.status !== 'closed' && v.status !== 'over' && (
+              <button className={`btn ghost small say-btn ${mine.say?.text ? 'live' : ''}`} onClick={() => setSayOpen((o) => !o)} aria-expanded={sayOpen} aria-label="Say something (speech bubble)" title="Say something" data-test="scum-say-btn">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+                {tiny ? null : <span>Say</span>}
+              </button>
+            )}
             <button className="btn ghost small" onClick={() => setShow(show === 'log' ? null : 'log')} data-test="scum-log-btn" aria-label="Table log">{tiny ? '☰' : 'Log'}</button>
             <RoyalRewatch history={v.royal?.history} onRewatch={(ev) => setRoyalPlay({ ev, ack: false })} />
             <button className="btn ghost small" onClick={() => setShow(show === 'rules' ? null : 'rules')} data-test="scum-rules" aria-label="Rules">{tiny ? '?' : 'Rules'}</button>
@@ -431,6 +439,9 @@ function ScumTable({ code, me }) {
           </div>
         </div>
         <div className={`bj-status sc-status ${!fly && r?.myTurn ? 'mine' : ''}`} data-test="scum-status"><span>{status}</span>{clockLeft && v.status === 'playing' && r?.phase === 'play' && <span className="mono">⏱ {clockLeft}</span>}</div>
+        {sayOpen && mine && v.status !== 'closed' && v.status !== 'over' && (
+          <SayBox current={mine.say?.text || ''} onClose={() => setSayOpen(false)} onSave={async (text) => !!(await post('say', { text }))} />
+        )}
 
         <div className="sc-arena" ref={arena} style={{ '--bust': `${bust}px` }} data-test="scum-arena">
           {w > 0 && <>
@@ -450,8 +461,12 @@ function ScumTable({ code, me }) {
             </div>
             {disp.map((i) => {
               const s = v.seats[i]; const p = pos[i]; const isTurn = i === turnSeat;
+              const canSay = !!(s.me && v.status !== 'closed' && v.status !== 'over');
+              const topMid = p.y < 34 && p.x >= 24 && p.x <= 76; // a "below" bubble here would cover the pile
+              const sayAlign = topMid ? (p.x <= 50 ? 'sr' : 'sl') : p.x < 24 ? 'l' : p.x > 76 ? 'r' : 'c';
               return (
-                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(s.me || s.bot ? {} : who.seat(s.id, s.name))}>
+                <div key={i} ref={(el) => { if (el) seatEls.current[i] = el; else delete seatEls.current[i]; }} className={`bj-rail sc-seat ${s.me ? 'me' : ''} ${isTurn ? 'turn' : ''} ${s.place ? 'out' : ''} ${s.left ? 'gone' : ''} ${s.passed ? 'passed' : ''} ${s.skipped ? 'skipped' : ''} ${s.say?.text ? 'has-say' : ''} ${p.x > 68 ? 'east' : ''} ${seatRoyalClass(royalPlay?.ev, i)}`} style={{ left: `${p.x}%`, top: `${p.y}%`, '--sx': p.x, '--sy': p.y }} data-test={`scum-seat-${i}`} {...(canSay ? { role: 'button', tabIndex: 0, onClick: () => setSayOpen(true), onKeyDown: (e) => e.key === 'Enter' && setSayOpen(true), 'aria-label': 'Your seat: say something', title: 'Say something' } : s.me || s.bot ? {} : who.seat(s.id, s.name))}>
+                  {s.say?.text && <SayBubble text={family ? familyMask(s.say.text) : s.say.text} name={handle(s.name)} below={!topMid && p.y < 34} align={sayAlign} />}
                   {isTurn && <span className="sc-turnlbl" data-test="scum-turn-label">{s.me ? (fly ? 'Playing' : 'Your turn') : `${handle(s.name)}'s turn`}</span>}
                   <SeatBuddy bug={s.bug} playerId={s.id || `scum-seat-${i}`} size={Math.round(bust * 0.5)} reduced={reduced} myAction={!!(s.me && s.turn)} busy={false}>
                     <Bust id={s.id || `scum-seat-${i}`} avatar={s.avatar} size={bust} state={s.turn ? 'toact' : ''} still={reduced} title={handle(s.name)} />

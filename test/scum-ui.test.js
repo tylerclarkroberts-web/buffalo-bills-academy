@@ -107,3 +107,23 @@ test('the lobby Deal button actually deals, and a server rejection stays on scre
   assert.doesNotMatch(post, /setErr\(/);
   assert.match(page, /\(actErr \|\| err\) && <p className="error bj-err" role="alert"/);
 });
+
+test('SCUM reuses Hold\'em speech bubbles: composer, Family masking, and a Say control', () => {
+  const page = read('client/src/scum/ScumPage.jsx');
+  assert.match(page, /import \{ SayBox, SayBubble \} from '..\/table\/Say.jsx'/);
+  assert.match(page, /data-test="scum-say-btn"/);
+  assert.match(page, /<SayBubble text=\{family \? familyMask\(s\.say\.text\) : s\.say\.text\}/);
+  assert.match(page, /<SayBox current=\{mine\.say\?\.text \|\| ''\}/);
+  assert.match(page, /post\('say', \{ text \}\)/);
+  const css = read('client/src/scum/scum.css');
+  assert.match(css, /\.sc-felt > \.say-box/);
+  assert.match(css, /position: relative/);
+  assert.match(css, /\.sc-seat\.has-say/);
+  const shared = read('client/src/table/Say.jsx');
+  assert.match(shared, /export function SayBubble/);
+  assert.match(shared, /export function SayBox/);
+  assert.match(shared, /Stays up until your next turn/);
+  const felt = read('client/src/TablePage.jsx');
+  assert.match(felt, /import \{ SayBox, SayBubble \} from '.\/table\/Say.jsx'/);
+  assert.doesNotMatch(felt, /function SayBubble/);
+});
