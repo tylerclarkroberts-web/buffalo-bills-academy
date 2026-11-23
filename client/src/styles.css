@@ -243,6 +243,8 @@ input[type=range] { border: 0; padding: 0; background: none; accent-color: var(-
 .tp-bottom:empty { display: none; }
 .bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(36, 9, 26, .7); font-size: 13.5px; }
 .bar p { flex: 1 1 200px; }
+.rebuybar { justify-content: center; padding: 6px 12px; }
+.rebuybar p { flex: 1 1 auto; margin: 0; text-align: center; }
 .lobbybar .lb-code { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
 .room-code { font: 400 30px/1 var(--display); letter-spacing: .08em; color: var(--amber); text-shadow: 0 0 12px rgba(242, 198, 90, .4); }
 .felt-box { position: relative; flex: 1; min-height: 0; min-width: 0; }
@@ -1744,6 +1746,20 @@ button, .btn, [role=button], label { touch-action: manipulation; }
 @media (max-width: 520px) { .legal { font: 500 10px/1.3 var(--sans); gap: 0 8px; padding-top: 3px; } }
 /* your own countdown is already in the turn bar right below; on a phone the seat tag only collided with it */
 .felt-box.tall .seat.me .tag.gold { display: none; }
+/* Out of chips / hand tags used to hang below the me seat into the waiting bar on an iPhone 15. Keep them
+   beside the plate, stacked, so the felt does not grow and the turn bar stays readable. */
+.felt-box.tall .seat.me .seat-tags {
+  top: auto;
+  left: 100%;
+  bottom: 0;
+  transform: translate(6px, -70%);
+  margin-top: 0;
+  justify-content: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+.felt-box.tall .seat.me .tag { zoom: 1; } /* tscale zoom was blowing the tags down into the turn bar */
 /* phone on its side: the raise panel has three rows and very little height, so it borrows the turn bar's and the tab row's
    space until you confirm or go back (the countdown stays on your seat) and uses slightly shorter rows */
 @media (orientation: landscape) and (max-height: 520px) {
