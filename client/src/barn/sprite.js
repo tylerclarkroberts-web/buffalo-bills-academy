@@ -279,7 +279,7 @@ function draw(head, L, headOnly = false) {
     c.put(22, 40, 'A'); c.put(20, 43, 'A'); c.put(18, 46, 'A'); // femoral spines
     // Body: small head, long thorax, eight tapering abdominal segments.
     head.ell(32, 8, 3.4, 3.6, 'B');
-    head.put(29, 8, 'D');
+    eyes(head, 29, 8, 1);
     head.line(31, 5, 28, 1, 'D', 1);
     antennae(head, { x: 30, y: 5, len: 10, bend: 2 });
     c.ell(32, 13, 3.2, 3.2, 'B');                  // prothorax
