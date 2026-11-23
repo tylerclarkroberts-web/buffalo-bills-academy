@@ -122,16 +122,19 @@ export function isTypingTarget(el) {
   return false;
 }
 
+/** Screens where W walks forward: the mine (and the games behind its doors), EL HALO and the golf game. */
+const W_WALKS = ['/mines', '/elhalo', '/foff'];
 /**
- * Boss key: bare "W" turns Work Mode on. Ignored in fields, with modifiers,
+ * Boss key: bare "W" turns Work Mode on. Ignored in fields, with modifiers, on a screen where W walks,
  * or when Work Mode is already on (W never turns it off).
  * Returns true if the event was handled (Work Mode was switched on).
  */
-export function handleWorkHotkey(e) {
+export function handleWorkHotkey(e, path = globalThis.location?.pathname || '') {
   if (!e || e.defaultPrevented) return false;
   if (e.ctrlKey || e.metaKey || e.altKey) return false;
   if (e.key !== 'w' && e.key !== 'W') return false;
   if (isTypingTarget(e.target)) return false;
+  if (W_WALKS.some((game) => path === game || path.startsWith(`${game}/`))) return false;
   if (getModes().work) return false;
   if (typeof e.preventDefault === 'function') e.preventDefault();
   setWork(true);

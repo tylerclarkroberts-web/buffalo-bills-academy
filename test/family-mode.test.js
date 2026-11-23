@@ -194,6 +194,9 @@ test('pressing W turns Work Mode on and never turns it off; fields and modifiers
     assert.equal(handleWorkHotkey(ev), false, `should ignore ${ev.key} ${ev.target.tagName} ctrl=${ev.ctrlKey} meta=${ev.metaKey} alt=${ev.altKey} ce=${ev.target.isContentEditable}`);
     assert.equal(getModes().work, false);
   }
+  // W walks forward in the mine, EL HALO and the golf game: the boss key stays out of it there.
+  for (const path of ['/mines', '/mines/', '/elhalo', '/foff']) assert.equal(handleWorkHotkey(keyEvent('w'), path), false, path);
+  assert.equal(getModes().work, false);
   assert.equal(isTypingTarget(keyEvent('w', { tag: 'INPUT' }).target), true);
   assert.equal(isTypingTarget(keyEvent('w').target), false);
   // Bare W still works after those ignored presses, and still persists.
