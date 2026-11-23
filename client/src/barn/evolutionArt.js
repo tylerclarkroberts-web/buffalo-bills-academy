@@ -2,7 +2,9 @@
 // material lighting as instant fallbacks, while high-resolution pre-rendered WebPs provide the full cyberpunk and
 // cultural detail in the browser.
 
-export const STAGE2_ARCHETYPES = ['beetle', 'mantis', 'crawler']; // Drop-in: add 'flier' here once stage2-flier.webp is added
+export const STAGE2_ARCHETYPES = [
+  'beetle', 'mantis', 'crawler', 'flier', 'aquatic', 'hopper', 'weevil', 'shield', 'larva',
+];
 
 export const STAGE3_CULTURES = {
   bavarian: { id: 'bavarian', label: 'Bavarian', src: '/barn/evo/stage3-bavarian.webp' },
@@ -112,15 +114,33 @@ export const BOTCHED_ASSETS = {
   2: '/barn/evo/botched-stage3.webp',
 };
 
-const MANTIS_KINDS = new Set([
-  'mantis', 'stick', 'dragonfly', 'lacewing', 'moth', 'lanternfly', 'cicada', 'treehopper', 'leafhopper', 'caddis',
-]);
-const CRAWLER_KINDS = new Set(['ant', 'assassin', 'waterbug', 'skater', 'roach', 'cricket', 'larva', 'antlion']);
+const STAGE2_SPECIES_OVERRIDE = {
+  ampulex: 'flier',
+  megachile: 'flier',
+  dytiscus: 'aquatic',
+  gyrinus: 'aquatic',
+};
+
+const MANTIS_KINDS = new Set(['mantis', 'stick']);
+const FLIER_KINDS = new Set(['dragonfly', 'lacewing', 'moth', 'cicada', 'caddis']);
+const AQUATIC_KINDS = new Set(['waterbug', 'skater']);
+const HOPPER_KINDS = new Set(['treehopper', 'leafhopper', 'lanternfly', 'frogleg', 'cricket']);
+const WEEVIL_KINDS = new Set(['weevil']);
+const SHIELD_KINDS = new Set(['shield', 'ground']);
+const LARVA_KINDS = new Set(['larva']);
+const CRAWLER_KINDS = new Set(['ant', 'assassin', 'roach', 'antlion']);
 
 /** Choose the Stage II mining-cyborg silhouette that matches a species' body plan. */
 export function stage2ArchetypeOf(bug) {
+  if (bug?.id && STAGE2_SPECIES_OVERRIDE[bug.id]) return STAGE2_SPECIES_OVERRIDE[bug.id];
   const kind = bug?.look?.kind;
   if (MANTIS_KINDS.has(kind)) return 'mantis';
+  if (FLIER_KINDS.has(kind)) return 'flier';
+  if (AQUATIC_KINDS.has(kind)) return 'aquatic';
+  if (HOPPER_KINDS.has(kind)) return 'hopper';
+  if (WEEVIL_KINDS.has(kind)) return 'weevil';
+  if (SHIELD_KINDS.has(kind)) return 'shield';
+  if (LARVA_KINDS.has(kind)) return 'larva';
   if (CRAWLER_KINDS.has(kind)) return 'crawler';
   return 'beetle';
 }

@@ -61,7 +61,7 @@ test('every species maps to a valid Stage II archetype and Stage III culture, an
 });
 
 test('all evolved sprite and Bug Center story panel WebP assets exist and are valid WebP files', () => {
-  assert.equal(ALL_EVO_ASSETS.length, 19);
+  assert.equal(ALL_EVO_ASSETS.length, 25);
   for (const url of ALL_EVO_ASSETS) {
     const filePath = path.join(ROOT, 'client/public', url);
     assert.ok(fs.existsSync(filePath), `missing asset ${url}`);
@@ -74,12 +74,34 @@ test('all evolved sprite and Bug Center story panel WebP assets exist and are va
   }
 });
 
-test('evolutionMeta resolves distinct Stage III cultures, Stage II archetypes, and high-res botched sprites', () => {
+test('evolutionMeta resolves distinct Stage III cultures, all nine Stage II archetypes, and high-res botched sprites', () => {
   assert.equal(evolutionMeta(ROSTER[0], 0, false), null);
   const s2 = evolutionMeta(ROSTER[0], 1, false);
   assert.equal(s2.key, 'stage2-beetle');
   assert.equal(s2.src, '/barn/evo/stage2-beetle.webp');
   assert.equal(s2.culture, null);
+
+  const expectedStage2 = [
+    ['ceroplophana', 'stage2-beetle', '/barn/evo/stage2-beetle.webp'],
+    ['pseudocreobotra', 'stage2-mantis', '/barn/evo/stage2-mantis.webp'],
+    ['gromphadorhina', 'stage2-crawler', '/barn/evo/stage2-crawler.webp'],
+    ['meganeura', 'stage2-flier', '/barn/evo/stage2-flier.webp'],
+    ['ampulex', 'stage2-flier', '/barn/evo/stage2-flier.webp'],
+    ['lethocerus', 'stage2-aquatic', '/barn/evo/stage2-aquatic.webp'],
+    ['dytiscus', 'stage2-aquatic', '/barn/evo/stage2-aquatic.webp'],
+    ['bocydium', 'stage2-hopper', '/barn/evo/stage2-hopper.webp'],
+    ['gryllotalpa', 'stage2-hopper', '/barn/evo/stage2-hopper.webp'],
+    ['trachelophorus', 'stage2-weevil', '/barn/evo/stage2-weevil.webp'],
+    ['brachinus', 'stage2-shield', '/barn/evo/stage2-shield.webp'],
+    ['sphaerocoris', 'stage2-shield', '/barn/evo/stage2-shield.webp'],
+    ['phrixothrix', 'stage2-larva', '/barn/evo/stage2-larva.webp'],
+  ];
+  for (const [id, key, src] of expectedStage2) {
+    const bug = ROSTER.find((b) => b.id === id);
+    const meta = evolutionMeta(bug, 1, false);
+    assert.equal(meta.key, key, `${id} Stage II key`);
+    assert.equal(meta.src, src, `${id} Stage II src`);
+  }
 
   const expectedCultures = [
     ['ceroplophana', 'Thai'],
