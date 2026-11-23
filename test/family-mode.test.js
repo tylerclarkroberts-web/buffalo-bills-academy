@@ -9,7 +9,7 @@ import {
 import {
   FAMILY_KEY, WORK_KEY, FAMILY_COOKIE, WORK_COOKIE,
   loadModes, getModes, setFamily, setWork, setModes,
-  handleWorkHotkey, isTypingTarget,
+  handleWorkHotkey, isTypingTarget, isElHaloScreen,
 } from '../client/src/modes/store.js';
 
 test('familyTableNumber is a stable 4-digit value derived from the table code', () => {
@@ -205,4 +205,28 @@ test('pressing W turns Work Mode on and never turns it off; fields and modifiers
   assert.equal(ev.defaultPrevented, true);
   assert.equal(getModes().work, true);
   assert.equal(globalThis.localStorage.getItem(WORK_KEY), '1');
+});
+
+test('pressing W inside El Halo never turns Work Mode on, on any of its screens', () => {
+  setWork(false);
+  const empty = { querySelector: () => null };
+  // The first-class route, with or without a trailing slash, query, or hash.
+  for (const path of ['/elhalo', '/elhalo/', '/elhalo?wave=3', '/elhalo#lobby']) {
+    assert.equal(isElHaloScreen(path, empty), true, path);
+    assert.equal(handleWorkHotkey(keyEvent('w'), path, empty), false, path);
+    assert.equal(handleWorkHotkey(keyEvent('W'), path, empty), false, path);
+  }
+  assert.equal(getModes().work, false);
+
+  // The mounted room (Hall of Doors, or a stale pathname) is enough to keep the boss key out.
+  const mounted = { querySelector: (sel) => (String(sel).includes('elhalo-room') ? { test: 'elhalo-room' } : null) };
+  assert.equal(isElHaloScreen('/', mounted), true);
+  assert.equal(handleWorkHotkey(keyEvent('w'), '/', mounted), false);
+  assert.equal(getModes().work, false);
+
+  // Once El Halo is gone, bare W on a normal page still arms Work Mode.
+  assert.equal(isElHaloScreen('/', empty), false);
+  assert.equal(handleWorkHotkey(keyEvent('w'), '/', empty), true);
+  assert.equal(getModes().work, true);
+  setWork(false);
 });

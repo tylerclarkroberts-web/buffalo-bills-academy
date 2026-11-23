@@ -124,17 +124,43 @@ export function isTypingTarget(el) {
 
 /** Screens where W walks forward: the mine (and the games behind its doors), EL HALO and the golf game. */
 const W_WALKS = ['/mines', '/elhalo', '/foff'];
+
+/** Pathname only, so a query or hash cannot sneak the boss key back onto a walk screen. */
+export function workHotkeyPath(path = globalThis.location?.pathname || '') {
+  return String(path || '').split('?')[0].split('#')[0];
+}
+
+/**
+ * True on every El Halo screen: the /elhalo route, any /elhalo/... path, and the
+ * mounted room itself (the Hall of Doors still lives under /mines, but also if
+ * the pathname is stale or missing).
+ */
+export function isElHaloScreen(path = globalThis.location?.pathname || '', doc = globalThis.document) {
+  const p = workHotkeyPath(path);
+  if (p === '/elhalo' || p.startsWith('/elhalo/')) return true;
+  if (doc && typeof doc.querySelector === 'function') {
+    if (doc.querySelector('[data-test=elhalo-page], [data-test=elhalo-room], [data-test=elhalo-loading]')) return true;
+  }
+  return false;
+}
+
+function isWalkScreen(path = globalThis.location?.pathname || '', doc = globalThis.document) {
+  if (isElHaloScreen(path, doc)) return true;
+  const p = workHotkeyPath(path);
+  return W_WALKS.some((game) => p === game || p.startsWith(`${game}/`));
+}
+
 /**
  * Boss key: bare "W" turns Work Mode on. Ignored in fields, with modifiers, on a screen where W walks,
  * or when Work Mode is already on (W never turns it off).
  * Returns true if the event was handled (Work Mode was switched on).
  */
-export function handleWorkHotkey(e, path = globalThis.location?.pathname || '') {
+export function handleWorkHotkey(e, path = globalThis.location?.pathname || '', doc = globalThis.document) {
   if (!e || e.defaultPrevented) return false;
   if (e.ctrlKey || e.metaKey || e.altKey) return false;
   if (e.key !== 'w' && e.key !== 'W') return false;
   if (isTypingTarget(e.target)) return false;
-  if (W_WALKS.some((game) => path === game || path.startsWith(`${game}/`))) return false;
+  if (isWalkScreen(path, doc)) return false;
   if (getModes().work) return false;
   if (typeof e.preventDefault === 'function') e.preventDefault();
   setWork(true);
