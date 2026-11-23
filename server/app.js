@@ -465,7 +465,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/scum/tables', needPlayer, wrap((req) => scum.create(req.player, req.body || {})));
   api.get('/scum/tables/:code', needPlayer, wrap((req) => scum.view(req.player, req.params.code, { away: 'away' in req.query })));
   for (const [path, fn] of Object.entries({ join: (p, c) => scum.join(p, c), start: (p, c) => scum.start(p, c), leave: (p, c) => scum.leave(p, c), close: (p, c) => scum.close(p, c),
-    play: (p, c, b) => scum.play(p, c, b.cards), pass: (p, c) => scum.pass(p, c), tribute: (p, c, b) => scum.tribute(p, c, b.beg), give: (p, c, b) => scum.give(p, c, b.cards) })) {
+    play: (p, c, b) => scum.play(p, c, b.cards), pass: (p, c) => scum.pass(p, c), tribute: (p, c, b) => scum.tribute(p, c, b.beg), give: (p, c, b) => scum.give(p, c, b.cards),
+    say: (p, c, b) => scum.say(p, c, typeof b.text === 'string' ? b.text : '') })) {
     api.post(`/scum/tables/:code/${path}`, needPlayer, wrap((req) => fn(req.player, req.params.code, req.body || {})));
   }
   api.post('/scum/tables/:code/royal', needPlayer, wrap((req) => scum.command(req.player, req.params.code, req.body || {})));
