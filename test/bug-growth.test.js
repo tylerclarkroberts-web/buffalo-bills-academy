@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ROSTER } from '../server/engine/creatures.js';
-import { bugScale, drawBug, fineFor, spriteCanvas, spriteGrid, youngForm, FINE, SPRITE } from '../client/src/barn/sprite.js';
+import { BY_ID, ROSTER } from '../server/engine/creatures.js';
+import { bugScale, drawBug, fineFor, spriteCanvas, spriteGrid, youngForm, FINE, TEXTURE_FINE, SPRITE } from '../client/src/barn/sprite.js';
 import { RoomScene } from '../client/src/room/scene.js';
 
 function context() {
@@ -131,8 +131,8 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
     floor ??= bottom; assert.ok(Math.abs(bottom - floor) < 1e-12);
     assert.equal(sprite.material.map.magFilter, THREE.NearestFilter);
     const map = sprite.material.map;
-    assert.equal(map.image, spriteCanvas(ROSTER[0], undefined, level, FINE), 'room texture follows the same larval transition, on the fine grid up close');
-    assert.deepEqual(map.mipmaps, [map.image, spriteCanvas(ROSTER[0], undefined, level)], 'and falls back to the 64 sprite when the bug is drawn small');
+    assert.equal(map.image, spriteCanvas(ROSTER[0], undefined, level, TEXTURE_FINE),'room texture follows the same larval transition, on the finest grid up close');
+    assert.deepEqual(map.mipmaps, [TEXTURE_FINE, 2, 1].map((fine) => spriteCanvas(ROSTER[0], undefined, level, fine)), 'and steps down to the coarser sprites as the bug is drawn smaller');
     assert.deepEqual([map.minFilter, map.generateMipmaps], [THREE.NearestMipmapNearestFilter, false]);
   }
   for (const stage of ['egg', 'dead']) {
@@ -144,21 +144,23 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
   scene.dynamic.children.forEach(sprite => { sprite.material.map.dispose(); sprite.material.dispose(); });
 });
 
-test('big sprites are drawn on a finer grid: the same bug, twice the pixels, more tones; small ones are left alone', () => {
-  assert.deepEqual([fineFor(SPRITE), fineFor(SPRITE * FINE - 1), fineFor(SPRITE * FINE), fineFor(640)], [1, 1, FINE, FINE]);
-  for (const bug of ROSTER) for (const level of [1, 10]) {
-    const coarse = spriteGrid(bug, level), fine = spriteGrid(bug, level, FINE);
-    assert.deepEqual([coarse.length, coarse[0].length, fine.length, fine[0].length], [SPRITE, SPRITE, SPRITE * FINE, SPRITE * FINE]);
+test('bigger sprites are drawn on finer grids: the same bug, more pixels, more tones; small ones are left alone', () => {
+  assert.deepEqual([64, 127, 128, 192, 255, 256, 320, 384, 640].map(fineFor), [1, 1, 2, 3, 3, 4, 5, FINE, FINE],'each grid pixel gets at least one screen pixel');
+  const tones = (grid) => new Set(grid.flat().filter(Boolean)).size;
+  for (const bug of ROSTER) for (const level of [1, 10]) for (let f = 2; f <= FINE; f++) {
+    const coarse = spriteGrid(bug, level), fine = spriteGrid(bug, level, f), cells = Array.from({ length: f }, (_, i) => i);
+    assert.deepEqual([coarse.length, coarse[0].length, fine.length, fine[0].length], [SPRITE, SPRITE, SPRITE * f, SPRITE * f]);
     // the same silhouette: nearly every 64-grid pixel has ink under it on the fine grid, and nearly nowhere else does
+    // (the denser grids grow knees and spurs, which is most of the difference)
     let both = 0, either = 0;
     for (let y = 0; y < SPRITE; y++) for (let x = 0; x < SPRITE; x++) {
-      const a = !!coarse[y][x], b = [0, 1].some((dy) => [0, 1].some((dx) => fine[y * FINE + dy][x * FINE + dx]));
+      const a = !!coarse[y][x], b = cells.some((dy) => cells.some((dx) => fine[y * f + dy][x * f + dx]));
       if (a && b) both++; if (a || b) either++;
     }
-    assert.ok(both / either > 0.9, `${bug.id} at level ${level} keeps its shape (${(both / either).toFixed(2)})`);
-    const tones = (grid) => new Set(grid.flat().filter(Boolean)).size;
+    assert.ok(both / either > 0.85, `${bug.id} at level ${level} keeps its shape on the ${f}x grid (${(both / either).toFixed(2)})`);
     assert.ok(tones(fine) > tones(coarse), `${bug.id} at level ${level} gains half-tones`);
   }
+  assert.ok(tones(spriteGrid(BY_ID.solenopsis, 10, FINE)) > tones(spriteGrid(BY_ID.solenopsis, 10, 2)), 'the densest grid has room for a glint where the light catches an ant');
 });
 
 test('shades and monocles sit on the eyes of every bug, long snouts included', (t) => {
@@ -171,5 +173,14 @@ test('shades and monocles sit on the eyes of every bug, long snouts included', (
       const worn = spriteCanvas(bug, { bugacc: { shape } }, level).getContext().pixels.slice(body); // what the accessory painted
       assert.ok(worn.some(([, x, y]) => eye(x, y)), `${shape} covers an eye on ${bug.id} at level ${level}`);
     }
+  }
+});
+
+test('an evolved bug is rebuilt around its own body, not one machine shared by all', () => {
+  const grey = ['#111111', '#333333', '#666666', '#999999', '#cc3333'], bugs = ROSTER.filter((bug) => bug.look?.kind !== 'photo'), kinds = new Set(bugs.map((bug) => bug.look.kind)).size;
+  for (const evo of [1, 2]) for (const botched of [false, true]) {
+    // painted the same grey and cut off at the neck, so neither its colours nor its head can tell two species apart
+    const below = new Set(bugs.map((bug) => spriteGrid({ ...bug, look: { ...bug.look, pal: grey } }, undefined, 1, evo, botched).slice(23).map((row) => row.join()).join('|')));
+    assert.ok(below.size >= kinds, `stage ${evo + 1}${botched ? ', botched' : ''}: ${below.size} different bodies for ${kinds} kinds of bug`);
   }
 });
