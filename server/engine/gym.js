@@ -17,6 +17,12 @@ export const DECAY_PER_HOUR = { roid: 0.75, strain: 1.5 }; // a full load is gon
 export const STRAIN_LIMIT = 90;         // past this it will not lift for overtime
 export const HUNGER_FLOOR = 10;         // nor train at all on an empty stomach
 export const RAGE_CAP = 0.85;
+// One workout a day: each bug picks ONE of the five paths per rolling 24 hours, counted from when that workout started.
+// The stamp lives on the bug (`pen.gymLastAt`); a bug that has none (every bug before this rule) may train right away.
+// The per-path cooldowns below still apply, but the daily lock always outlasts them.
+export const DAILY_MS = 24 * 3600e3;
+/** When a bug last stamped at `lastAt` may train again: 0 when it never has (or the stamp is junk). */
+export const gymReadyAt = (lastAt) => { const at = Number(lastAt); return Number.isFinite(at) && at > 0 ? at + DAILY_MS : 0; };
 export const SLOWEST = 0.4;             // a mine guide never drops below this share of its pace
 
 /**

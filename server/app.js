@@ -134,7 +134,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const needPlayer = (req, res, next) => (req.player ? next() : res.status(401).json({ error: 'Please sign in first' }));
   const wrap = (fn) => async (req, res) => {
     try { res.json((await fn(req, res)) ?? { ok: true }); } catch (e) {
-      if (e instanceof GameError) res.status(e.status).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
+      if (e instanceof GameError) res.status(e.status).json({ ...(e.data || {}), error: e.message, ...(e.code ? { code: e.code } : {}) });
       else { console.error(e); res.status(500).json({ error: 'Something went wrong' }); }
     }
   };
