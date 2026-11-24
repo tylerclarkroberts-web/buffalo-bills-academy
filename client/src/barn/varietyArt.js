@@ -139,10 +139,10 @@ const FRUIT = {
  * The species' mining tool (server/engine/tools.js), held in its right hand: the handle at the hand, the business end
  * up and out to the right. Bold materials and whole-pixel shapes, so it reads at thumbnail size.
  */
-export function drawTool(c, S, tool) {
+export function drawTool(c, S, tool, hand = null) {
   const D = TOOL_ART[tool]; if (!D) return;
   const h = Math.max(10, S.bottom - S.top), row = Math.round(S.top + h * 0.2);
-  const hx = Math.max(38, Math.min(47, S.rows[row].r + 2)), hy = Math.max(17, Math.min(40, row)), k = 1.2; // a touch bigger than life, to read small
+  const hx = hand ? hand.x : Math.max(38, Math.min(47, S.rows[row].r + 2)), hy = hand ? hand.y : Math.max(17, Math.min(40, row)), k = hand ? 1 : 1.2; // a touch bigger than life, to read small (life-size in a machine's hand, to stay in the frame)
   const P = (dx, dy) => [hx + dx * k, hy - dy * k];
   const line = (a, b, m, w = 1) => c.line(...P(...a), ...P(...b), m, w, false);
   const ell = (a, rx, ry, m) => c.ell(...P(...a), rx, ry, m, false);

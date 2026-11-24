@@ -1,8 +1,10 @@
-// Bug variety: every bug gets its own base, ailments, faint fruit and colouring, once, from its id, and keeps it.
+// Bug variety: every bug gets its own base, ailments, faint fruit and colouring, once, from its id, and keeps it, and
+// wears it (with its species' mining tool) once it is a Stage II bug. Stage I and Stage III are drawn exactly as before.
 // Cosmetic only: fights read none of it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
@@ -34,7 +36,7 @@ test('variety is decided by the bug alone: the same id and species always give t
     assert.ok(Math.abs(v.hue) <= 70 && Math.abs(v.tone) <= 9); if (Math.abs(v.hue) >= 40) seen.morphs++;
     seen.base.add(v.base); v.ail.forEach((a) => seen.ail.add(a)); seen.fruit.add(v.fruit); seen.pat.add(v.pat);
   }
-  assert.deepEqual([...seen.base].sort(), Object.keys(BASES).sort(), 'legs, wheels, rotor, tracks and slug all turn up');
+  assert.deepEqual([...seen.base].sort(), Object.keys(BASES).sort(), 'wheels, rotor, tracks and slug all turn up: no Stage II bug keeps plain legs');
   assert.deepEqual([...seen.ail].sort(), Object.keys(AILMENTS).sort());
   assert.deepEqual([...seen.fruit].sort(), Object.keys(FRUITS).sort());
   assert.deepEqual([...seen.pat].sort(), [...PATTERNS].sort());
@@ -44,6 +46,8 @@ test('variety is decided by the bug alone: the same id and species always give t
 
 test('a stored or sent variety is cleaned: unknown values never reach the drawing', () => {
   assert.equal(cleanVariety(null), null); assert.equal(cleanVariety({ base: 'jetpack' }), null); assert.equal(cleanVariety('legs'), null);
+  assert.ok(BASES[cleanVariety({ seed: 5, base: 'legs' }).base], 'a look stored with legs gets a real base');
+  assert.equal(BASES.legs, undefined);
   assert.deepEqual(cleanVariety({ base: 'slug', ail: ['pox', 'pox', 'plague', 'grin', 'cloud'], fruit: 'durian', hue: 999, tone: -999, pat: '<script>', seed: -5 }),
     { v: 1, seed: 0, base: 'slug', ail: ['pox', 'grin'], fruit: null, hue: 90, tone: -12, pat: 'plain' });
   const labels = varietyLabels({ base: 'rotor', ail: ['nightowl'], fruit: 'pea' });
@@ -107,34 +111,54 @@ test('variety is cosmetic: the odds and the fight come out the same with or with
   assert.deepEqual(strip(simulateBout(wheels(a), b, 'seed-2')), strip(simulateBout(plain(a), b, 'seed-2')));
 });
 
-test('every species draws with every base, ailment and fruit, as hatched and evolved, on every grid', () => {
+test('every species draws with every base, ailment and fruit, at every stage, on every grid', () => {
   const ails = Object.keys(AILMENTS), fruits = Object.keys(FRUITS), bases = Object.keys(BASES);
   ROSTER.forEach((bug, i) => {
-    for (const [fine, evo] of [[1, 0], [2, 0], [1, 1], [1, 2]]) {
+    for (const [fine, evo, botched] of [[1, 0], [2, 0], [1, 1], [2, 1], [1, 1, true], [1, 2]]) {
       const v = { seed: i + 1, base: bases[i % bases.length], ail: [ails[i % ails.length], ails[(i + 5) % ails.length]], fruit: fruits[i % fruits.length], hue: 10, tone: -4, pat: PATTERNS[i % 3] };
-      const g = spriteGrid(bug, 10, fine, evo, false, v);
+      const g = spriteGrid(bug, 10, fine, evo, !!botched, v);
       assert.equal(g.length, 64 * fine); assert.ok(g.every((row) => row.length === 64 * fine && row.every((px) => px === null || /^#[0-9a-f]{6}$/.test(px))), `${bug.id} ${fine} ${evo}`);
     }
   });
 });
 
-test('the drawing is stable, a base replaces the legs, and fruit stays a whisper', () => {
-  const bug = ROSTER.find((b) => b.id === 'lamprima'), v = { seed: 9, base: 'legs', ail: [], fruit: null, hue: 0, tone: 0, pat: 'plain' };
-  assert.deepEqual(spriteGrid(bug, 10, 1, 0, false, v), spriteGrid(bug, 10, 1, 0, false, v), 'same look, same pixels');
-  assert.deepEqual(spriteGrid(bug, 10, 1, 0, false, v), spriteGrid(bug, 10, 1), 'plain legs, no marks, no shift: the species sprite');
-  for (const evo of [1, 2]) assert.deepEqual(spriteGrid(bug, 10, 1, evo, false, { ...v, base: 'wheels' }), spriteGrid(bug, 10, 1, evo), 'an evolved body keeps its own legs and kit');
-  const legs = spriteGrid(bug, 10, 1, 0, false, v);
-  for (const base of ['wheels', 'rotor', 'tracks', 'slug']) assert.ok(differ(legs, spriteGrid(bug, 10, 1, 0, false, { ...v, base })) > 40, `${base} looks clearly different`);
-  for (const fruit of Object.keys(FRUITS)) { const n = differ(legs, spriteGrid(bug, 10, 1, 0, false, { ...v, fruit })); assert.ok(n <= 16, `${fruit}: ${n} pixels at most a handful`); }
-  for (const ail of Object.keys(AILMENTS)) assert.ok(differ(legs, spriteGrid(bug, 10, 1, 0, false, { ...v, ail: [ail] })) > 0, `${ail} shows`);
+test('Stage I is untouched: larvae and grown Stage I bugs draw exactly as before, whatever their variety', () => {
+  const bases = Object.keys(BASES), ails = Object.keys(AILMENTS), fruits = Object.keys(FRUITS);
+  ROSTER.forEach((bug, i) => {
+    const v = { seed: i + 3, base: bases[i % 4], ail: [ails[i % ails.length]], fruit: fruits[i % fruits.length], hue: 60, tone: 9, pat: 'freckles' };
+    for (const level of [1, 3, 10]) for (const fine of [1, 2]) assert.deepEqual(spriteGrid(bug, level, fine, 0, false, v), spriteGrid(bug, level, fine), `${bug.id} Lv ${level} x${fine}`);
+    // Stage III is left as it was too
+    assert.deepEqual(spriteGrid(bug, 10, 1, 2, false, v), spriteGrid(bug, 10, 1, 2), `${bug.id} Stage III`);
+  });
+  // and pixel for pixel the art from before variety (the #223 sprites, commit 1cdbec9). If Stage I art is ever changed
+  // on purpose, this fingerprint is the one line to update.
+  const h = crypto.createHash('sha256');
+  for (const bug of ROSTER) for (const lv of [1, 3, 10]) for (const fine of [1, 2, 4]) h.update(JSON.stringify(spriteGrid(bug, lv, fine)));
+  assert.equal(h.digest('hex'), 'dc65641db1b1385369a82822851c79a8b68f7889f5cfc77721b436005b668fc4');
+});
+
+test('every Stage II bug changes: a base instead of legs, its ailments, a whisper of fruit, its colouring', () => {
+  const bug = ROSTER.find((b) => b.id === 'lamprima'), v = { seed: 9, base: 'wheels', ail: [], fruit: null, hue: 0, tone: 0, pat: 'plain' };
+  const own = spriteGrid(bug, 10, 1, 1), wheels = spriteGrid(bug, 10, 1, 1, false, v);
+  assert.deepEqual(wheels, spriteGrid(bug, 10, 1, 1, false, v), 'same look, same pixels');
+  const grids = Object.keys(BASES).map((base) => spriteGrid(bug, 10, 1, 1, false, { ...v, base }));
+  grids.forEach((g, i) => { assert.ok(differ(own, g) > 40, `${Object.keys(BASES)[i]} replaces the iron legs`); grids.slice(i + 1).forEach((o) => assert.ok(differ(g, o) > 40, 'and each base looks like itself')); });
+  let shown = 0;
+  for (const fruit of Object.keys(FRUITS)) { const n = differ(wheels, spriteGrid(bug, 10, 1, 1, false, { ...v, fruit })); if (n) shown++; assert.ok(n <= 16, `${fruit}: ${n} pixels, a handful at most`); }
+  assert.ok(shown >= 6, `faint, but there: ${shown} of 8 fruits show on this body`);
+  for (const ail of Object.keys(AILMENTS)) assert.ok(differ(wheels, spriteGrid(bug, 10, 1, 1, false, { ...v, ail: [ail] })) > 0, `${ail} shows`);
+  assert.ok(differ(wheels, spriteGrid(bug, 10, 1, 1, false, { ...v, hue: 60 })) > 100, 'a colour morph recolours it');
+  // every species, botched or not, with any variety at all, looks different from the plain Stage II art
+  for (const b of ROSTER) for (const botched of [false, true]) {
+    const n = differ(spriteGrid(b, 10, 1, 1, botched), spriteGrid(b, 10, 1, 1, botched, varietyFor(7, b.id)));
+    if (b.id === 'steeze') assert.equal(n, 0, 'the photo bug is left alone'); else assert.ok(n > 40, `${b.id}${botched ? ' botched' : ''}: ${n}`);
+  }
   // two bugs of a species with different seeds look different
-  assert.notDeepEqual(spriteGrid(bug, 10, 1, 0, false, varietyFor(1, 'lamprima')), spriteGrid(bug, 10, 1, 0, false, varietyFor(2, 'lamprima')));
-  // young bugs keep their grub bodies: no base yet
-  const grub = spriteGrid(bug, 1, 1, 0, false, { ...v, base: 'wheels' }); assert.equal(differ(grub, spriteGrid(bug, 1, 1, 0, false, v)), 0);
+  assert.notDeepEqual(spriteGrid(bug, 10, 1, 1, false, varietyFor(1, 'lamprima')), spriteGrid(bug, 10, 1, 1, false, varietyFor(2, 'lamprima')));
   assert.notEqual(varietyKey(varietyFor(1, 'x')), varietyKey(varietyFor(2, 'x')));
 });
 
-test('every species has its own mining tool, with a name and a line, drawn in its hand', async () => {
+test('every species has its own mining tool, with a name and a line, held by its Stage II body', async () => {
   const { TOOLS, SPECIES_TOOL, toolFor } = await import('../server/engine/tools.js');
   const obscure = ['spoon', 'gad', 'moil', 'singlejack', 'doublejack', 'tamper', 'canary', 'carbide', 'scaling', 'dolly', 'pollpick', 'davy', 'riffle', 'rocker', 'drillsteel'];
   for (const bug of ROSTER) {
@@ -144,11 +168,11 @@ test('every species has its own mining tool, with a name and a line, drawn in it
   }
   assert.deepEqual(new Set(Object.values(SPECIES_TOOL)), new Set(Object.keys(TOOLS)), 'every tool is somebody\'s');
   for (const id of obscure) assert.ok(TOOLS[id], id);
-  // the tool is in the picture: the same bug with and without it differs, on the right-hand side only
+  // every tool is drawn from the machine's free right hand, up and out to its right, clear of the body
   const { drawTool } = await import('../client/src/barn/varietyArt.js');
-  assert.equal(typeof drawTool, 'function');
-  const lamprima = ROSTER.find((b) => b.id === 'lamprima'), g = spriteGrid(lamprima, 10, 1);
-  const plain = spriteGrid({ ...lamprima, id: 'lamprima-no-tool' }, 10, 1);
-  let left = 0, right = 0; g.forEach((row, y) => row.forEach((px, x) => { if (px !== plain[y][x]) (x < 32 ? left++ : right++); }));
-  assert.ok(right > 10 && left === 0, `tool pixels: ${right} right, ${left} left`);
+  for (const id of Object.keys(TOOLS)) {
+    const xs = [], c = { put: (x) => xs.push(x), line: (x0, y0, x1) => xs.push(x0, x1), ell: (x, y, rx) => xs.push(x - rx, x + rx), hair: (pts) => pts.forEach(([x]) => xs.push(x)) };
+    drawTool(c, { top: 10, bottom: 60, rows: [] }, id, { x: 50.5, y: 39 });
+    assert.ok(xs.length > 2 && Math.min(...xs) >= 44 && Math.max(...xs) <= 64, `${id}: x ${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}`);
+  }
 });

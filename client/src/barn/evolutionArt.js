@@ -377,3 +377,13 @@ export function drawEvolution(c, stage, botched, L, kit) {
   if (botched) porcelainHead(c);
   else if (stage === 2 && seat && !kit.capless) { const at = crownOf(L, kit, seat); if (at) outfitOf(L.id).hat?.(solo(c), at.x, at.y, at.w); } // a hat it was sold goes on instead
 }
+
+/**
+ * For bug variety (varietyArt.js), Stage II only: just the bug's own body as the machine carries it, placed exactly as
+ * drawEvolution places it (to find where its base goes), and the right hand a tool can be put in (null: none free).
+ */
+export function stageTwoBody(c, botched, L, kit) {
+  if (botched) ownBody(c, L, kit, { w: 40, h: 30, mid: 33, limb: 'none', most: 0.7 });
+  else ownBody(c, L, kit, { w: 58, h: 37, bottom: 62.4, limb: 'M', most: 0.9 });
+}
+export const stageTwoHand = (L, botched) => (botched || RIG[planOf(L)].scythes ? null : { x: 50.5, y: 39 });

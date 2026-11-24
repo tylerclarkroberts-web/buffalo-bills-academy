@@ -1,21 +1,20 @@
-// Bug variety: what makes one bug of a species look like itself and not its stall-mate. Purely cosmetic: nothing
+// Bug variety: what makes one Stage II bug look like itself and not its stall-mate (Stage I and III are drawn as
+// they always were; the client only draws this on an evolved, Stage II bug). Purely cosmetic: nothing
 // here is read by a fight, the gym or the mines. Each bug gets its set once, from its own id (stable), and keeps it
 // on its pen (`pen.variety`), so a later change to these lists never redraws a bug anyone already has.
-//   base:    what it gets about on: its own legs, or wheels, a rotor it hovers on, tank tracks or a slug's foot
+//   base:    what its Stage II body gets about on instead of legs: wheels, a rotor it hovers on, tank tracks or a slug's foot
 //   ail:     one or two ailments, bodily or of the mind, each with its own little visual: cartoon, never cruel
 //   fruit:   a very faint fruit or vegetable touch, a few pixels you would only notice up close
 //   hue, tone, pat: a small palette shift and a shell pattern, so two of a kind are not twins
 export const VARIETY_VERSION = 1;
 
 export const BASES = {
-  legs: { name: 'Legs', line: 'Six legs, the old-fashioned way.' },
   wheels: { name: 'Wheels', line: 'Rolls everywhere. Hates stairs.' },
   rotor: { name: 'Hover Rotor', line: 'Hovers an inch off the straw on a little rotor.' },
   tracks: { name: 'Tank Tracks', line: 'Treads over anything. Slowly. Loudly.' },
   slug: { name: 'Slug Foot', line: 'One big foot and a shiny trail.' },
 };
-// legs stay the most common, so not every bug in the barn changed overnight
-const BASE_ODDS = [['legs', 30], ['wheels', 17], ['rotor', 17], ['tracks', 18], ['slug', 18]];
+const BASE_ODDS = [['wheels', 25], ['rotor', 25], ['tracks', 25], ['slug', 25]];
 
 /** `mind`: a quirk of temperament; otherwise something it caught. `spot`: where its visual sits, so two never clash. */
 export const AILMENTS = {
@@ -51,7 +50,7 @@ const pick = (R, list) => list[Math.floor(R() * list.length) % list.length];
 /** A bug's variety, from its id (a pen's eggAt/bornAt) and species: the same inputs always give the same bug. */
 export function varietyFor(id, species = '') {
   const seed = hash(`${id}|${species}|variety`), R = rng(seed);
-  let roll = R() * 100, base = 'legs';
+  let roll = R() * 100, base = 'wheels';
   for (const [k, w] of BASE_ODDS) { if (roll < w) { base = k; break; } roll -= w; }
   const ids = Object.keys(AILMENTS), first = pick(R, ids), ail = [first];
   if (R() < 0.3) { // a second one, somewhere the first is not
@@ -68,9 +67,10 @@ export function varietyFor(id, species = '') {
 const int = (n, lo, hi) => Number.isFinite(Number(n)) ? Math.max(lo, Math.min(hi, Math.round(Number(n)))) : 0;
 /** Only known values, so a stored or sent variety can never draw something unexpected. Null if it is not one. */
 export function cleanVariety(v) {
-  if (!v || typeof v !== 'object' || !BASES[v.base]) return null;
+  if (!v || typeof v !== 'object' || !(BASES[v.base] || v.base === 'legs')) return null;
+  const base = BASES[v.base] ? v.base : Object.keys(BASES)[int(v.seed, 0, 0xffffffff) % 4]; // an early 'legs' gets a base: every Stage II bug has one
   const ail = (Array.isArray(v.ail) ? v.ail : []).filter((k, i, all) => AILMENTS[k] && all.indexOf(k) === i).slice(0, 2);
-  return { v: int(v.v, 1, 99) || VARIETY_VERSION, seed: int(v.seed, 0, 0xffffffff), base: v.base, ail,
+  return { v: int(v.v, 1, 99) || VARIETY_VERSION, seed: int(v.seed, 0, 0xffffffff), base, ail,
     fruit: FRUITS[v.fruit] ? v.fruit : null, hue: int(v.hue, -90, 90), tone: int(v.tone, -12, 12), pat: PATTERNS.includes(v.pat) ? v.pat : 'plain' };
 }
 /** For a card: the base and each ailment, with their names and one-line flavour. */

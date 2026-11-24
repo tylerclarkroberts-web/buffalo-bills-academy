@@ -9,6 +9,7 @@ import { TYPES, RARITY, LIVE_TYPES, typeOf, rarityOf, weakTo, perkFor } from '..
 import { drawBug } from './sprite.js';
 import { varietyLabels } from '../../../server/engine/variety.js';
 import { toolFor } from '../../../server/engine/tools.js';
+import { varietyFor } from '../../../server/engine/variety.js';
 import './bugcard.css';
 
 const GLYPH = { // 16 x 16, one filled path each
@@ -61,6 +62,7 @@ export default function BugCard({ species, bug = null, evo = 0 }) {
   const type = typeOf(species), rarity = RARITY[rarityOf(species)], level = bug?.level ?? 10, { beats, weak } = matchups(type);
   const moves = movesFor(species, 10), trait = traitFor(species), perk = perkFor(type), no = ROSTER.indexOf(b) + 1;
   const record = bug?.record ? `${bug.record.w}–${bug.record.l}` : null;
+  const stageTwo = bug ? bug.style?.evo === 1 : evo === 1; // only a Stage II bug has a base, quirks and a mining tool
   return (
     <article className={`bugcard r${rarityOf(species)}`} style={{ '--tc': TYPES[type]?.color || '#c8b888' }} data-test="bug-card" aria-label={`${bug?.name || b.name}${!bug && evo ? `, ${STAGES[evo]}` : ''}, ${TYPES[type]?.name} type`}>
       <header>
@@ -69,7 +71,7 @@ export default function BugCard({ species, bug = null, evo = 0 }) {
         <b className="bc-hp num">{bug?.maxHp || combatStats(bug?.level ?? FROM[evo]).maxHp}<i>HP</i></b>
         <TypeChip type={type} />
       </header>
-      <div className="bc-window"><Art bug={b} style={bug ? bug.style : evo ? { evo } : null} level={level} /><i className="bc-foil" aria-hidden="true" /></div>
+      <div className="bc-window"><Art bug={b} style={bug ? bug.style : evo === 1 ? { evo, variety: varietyFor(species, species) } : evo ? { evo } : null} level={level} /><i className="bc-foil" aria-hidden="true" /></div>
       <p className="bc-strip"><i>{b.sci}{b.genus ? ' (genus)' : ''}</i>{b.size ? ` · ${b.size.replace(/\.$/, '')}` : ''}{bug ? ` · Lv ${level}${record ? ` · ${record}` : ''}` : evo ? ` · ${STAGES[evo]} · Lv ${FROM[evo]}–${STAGE_CAPS[evo]}` : ''}</p>
       <ul className="bc-moves">
         {moves.map((m) => (
@@ -82,8 +84,8 @@ export default function BugCard({ species, bug = null, evo = 0 }) {
         ))}
       </ul>
       {trait && <p className="bc-trait"><b>{trait.name}.</b> {trait.description}</p>}
-      {!evo && !bug?.style?.evo && toolFor(species) && <p className="bc-trait bc-tool" data-test="bug-tool" title={toolFor(species).line}><b>Tool: {toolFor(species).name}.</b> {toolFor(species).line}</p>}
-      {bug?.style?.variety && <VarietyNote variety={bug.style.variety} />}
+      {stageTwo && toolFor(species) && <p className="bc-trait bc-tool" data-test="bug-tool" title={toolFor(species).line}><b>Tool: {toolFor(species).name}.</b> {toolFor(species).line}</p>}
+      {stageTwo && bug?.style?.variety && <VarietyNote variety={bug.style.variety} />}
       {perk && <p className="bc-trait bc-perk"><b>{TYPES[type].name}: {perk.name}.</b> {perk.description}</p>}
       <dl className="bc-match">
         <div><dt>weak to</dt><dd>{weak.map((t) => <TypeChip key={t} type={t} small />)}</dd></div>

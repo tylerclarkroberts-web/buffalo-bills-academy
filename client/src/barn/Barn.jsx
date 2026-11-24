@@ -13,6 +13,7 @@ import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip, STAGES, VarietyNote } from './BugCard.jsx';
+import { varietyFor } from '../../../server/engine/variety.js';
 import { TYPES, RARITY, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
@@ -280,7 +281,7 @@ function Bugdex({ seen }) {
     const rarity = rarityOf(bug.id), type = TYPES[typeOf(bug.id)]?.name, kind = !evo && <small className={`dex-kind r${rarity}`} aria-hidden={!seen.includes(key)}>{RARITY[rarity].name} <span>{type}</span></small>;
     return seen.includes(key)
       ? <button key={key} className={`dex-tile${evo ? ' evo' : ''}`} onClick={() => setOpen(key)} aria-label={evo ? `${bug.name}, ${STAGES[evo]}` : undefined} data-test="dex-met">
-        <span className="num">{evo ? STAGES[evo].slice(6) : no}</span><BugThumb bug={{ species: bug.id, level: 10, style: evo ? { evo } : null }} />{!evo && <b>{bug.name}</b>}{kind}
+        <span className="num">{evo ? STAGES[evo].slice(6) : no}</span><BugThumb bug={{ species: bug.id, level: 10, style: evo === 1 ? { evo, variety: varietyFor(bug.id, bug.id) } : evo ? { evo } : null }} />{!evo && <b>{bug.name}</b>}{kind}
       </button>
       : <span key={key} role="img" className={`dex-tile unmet${evo ? ' evo' : ''}`} aria-label={`Number ${no}${evo ? `, ${STAGES[evo]}` : ''}: not met yet. ${RARITY[rarity].name} ${type}.`} data-test="dex-unmet"><span className="num">{evo ? STAGES[evo].slice(6) : no}</span><i aria-hidden="true">?</i>{kind}</span>;
   };
@@ -344,7 +345,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
       <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
       {pen.title && <span className="small barn-title">{pen.title}</span>}
-      {pen.style?.variety && <VarietyNote variety={pen.style.variety} short />}
+      {pen.style?.evo === 1 && pen.style?.variety && <VarietyNote variety={pen.style.variety} short />}
       {pen.gym?.juiced ? <span className="bs-gym" data-test="barn-juiced" title={`Unruly ${pen.gym.unruly} · mine pace ${Math.round(pen.gym.mineSpeed * 100)}% · roid rage ${Math.round(pen.gym.rage * 100)}%`}>💉 JUICED · RAGE {Math.round(pen.gym.rage * 100)}%</span>
         : pen.gym?.strain >= 40 ? <span className="bs-gym strain" data-test="barn-overworked">OVERWORKED</span> : null}
       {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : ''}</span>}

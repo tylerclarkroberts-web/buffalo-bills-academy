@@ -3,7 +3,7 @@
 // outline and simple top-left lighting, then scaled up with nearest-neighbour so the pixels stay crisp.
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
-import { drawEvolution } from './evolutionArt.js';
+import { drawEvolution, stageTwoBody, stageTwoHand } from './evolutionArt.js';
 import { cleanVariety, varietyKey } from '../../../server/engine/variety.js';
 import { drawBase, drawMarks, drawTool, shiftPal, survey, varietyRamps } from './varietyArt.js';
 import { toolFor } from '../../../server/engine/tools.js';
@@ -192,37 +192,41 @@ function under(c, u) {
     c.g[y][x] = u.g[y][x]; c.part[y][x] = u.part[y][x] ? u.part[y][x] + 100000 : 0; c.etch[y][x] = u.etch[y][x]; c.shine[y][x] = u.shine[y][x] ? u.shine[y][x] + 100000 : 0;
   }
 }
-/** `v`: the bug's own variety (server/engine/variety.js). A grown bug as hatched gets its base; any bug its marks. */
+/**
+ * `v`: the bug's own variety (server/engine/variety.js). Only a Stage II bug wears it: a base instead of its legs, its
+ * ailments, a faint fruit, its colouring, and its species' mining tool in its free hand. Stage I (larva or grown) and
+ * Stage III are drawn exactly as they always were.
+ */
 function spriteArt(L, fine, stage = 0, botched = false, capless = false, v = null, frame = 0) {
-  if (PHOTO.has(L.id)) v = null;
-  const based = !!v && v.base !== 'legs' && !stage && !L.young;
-  // a grown bug as hatched carries its species' mining tool (an evolved one has its own arms and kit)
-  const tool = !stage && !L.young && !PHOTO.has(L.id) ? toolFor(L.id) : null;
-  const paint = (f) => {
-    const c = canvas(f); NOLEGS = based;
+  if (stage !== 1 || PHOTO.has(L.id)) v = null;
+  const tool = v ? toolFor(L.id) : null;
+  const paint = (f, only) => {
+    const c = canvas(f); NOLEGS = !!v;
     try {
-      if (stage) drawEvolution(c, stage, botched, L, { draw, capless });
+      if (only) stageTwoBody(c, botched, L, { draw, capless });
+      else if (stage) drawEvolution(c, stage, botched, L, { draw, capless });
       else draw(c, L);
     } finally { NOLEGS = false; }
     return c;
   };
   const c = paint(fine);
-  if (!v && !tool) return c;
-  const S = survey(fine === 1 ? c : paint(1)); // placed by the 64 grid, so every size has them in the same spots
-  if (based) { const u = canvas(fine); drawBase(u, S, v.base, frame); under(c, u); }
-  if (v) drawMarks(c, S, v);
-  if (tool) drawTool(c, S, tool.id);
+  if (!v) return c;
+  // placed by the 64 grid, so every size has them in the same spots: the base by the bug's own body, the rest by the whole machine
+  const S = survey(fine === 1 ? c : paint(1)), body = survey(paint(1, true));
+  const u = canvas(fine); drawBase(u, body, v.base, frame); under(c, u);
+  drawMarks(c, S, v);
+  if (tool) drawTool(c, S, tool.id, stageTwoHand(L, botched));
   return c;
 }
 const varietyOf = (style) => (style?.variety ? cleanVariety(style.variety) : null);
-const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT_PAL, v); // a bought skin is worn as sold
+const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT_PAL, PHOTO.has(L.id) ? null : v); // a bought skin is worn as sold
 
 /**
  * Builds the natural sprite grid: rows of hex colours (or null for transparent), 64 x `fine` a side. `evo` (1 or 2)
  * gives the evolved body instead, `botched` the one that went wrong.
  */
 export function spriteGrid(bug, level, fine = 1, evo = 0, botched = false, variety = null, frame = 0) {
-  const L = lookOf(bug, evo ? undefined : level), v = variety ? cleanVariety(variety) : null;
+  const L = lookOf(bug, evo ? undefined : level), v = variety && evo === 1 ? cleanVariety(variety) : null; // Stage II only
   const c = spriteArt(L, fine, evo, botched, false, v, frame);
   return shade(c, ramps(palFor(L, null, v)));
 }
@@ -599,10 +603,10 @@ export function spriteCanvas(bug, style, level, fine = 1, frame = 0) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
   const botched = stage > 0 && !!style?.botched;
   const artLevel = stage ? undefined : level;
-  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}|${varietyKey(varietyOf(style))}|${frame}`;
+  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}|${stage === 1 ? varietyKey(varietyOf(style)) : ''}|${stage === 1 ? frame : 0}`;
   if (cache.has(key)) return cache.get(key);
-  const v = varietyOf(style), L = lookOf(bug, artLevel), R = ramps(palFor(L, style, v));
-  if (v?.base !== 'rotor') frame = 0;
+  const v = stage === 1 ? varietyOf(style) : null, L = lookOf(bug, artLevel), R = ramps(palFor(L, style, v)); // only a Stage II bug wears its variety
+  if (v?.base !== 'rotor' || stage !== 1) frame = 0;
   const capless = !!style?.bughat?.shape || style?.gear?.shape === 'helmet' || style?.defense?.shape === 'helmet'; // one hat at a time: a bought one goes on instead of its own
   const art = spriteArt(L, fine, stage, botched, capless, v, frame), N = SPRITE * fine;
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : Object.assign(document.createElement('canvas'), { width: N, height: N });
@@ -647,7 +651,7 @@ export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip =
   ctx.beginPath(); ctx.ellipse(w / 2, (h + adultSize) / 2 + h * 0.02, s * 0.36 * (1 - hop / (s || 1)), s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
   if (flip) { ctx.translate(w, 0); ctx.scale(-1, 1); }
-  const frame = still || style?.evo || style?.variety?.base !== 'rotor' ? 0 : Math.floor(t / 90) % 2; // a rotor turns while it hovers
+  const frame = still || style?.evo !== 1 || style?.variety?.base !== 'rotor' ? 0 : Math.floor(t / 90) % 2; // a Stage II rotor turns while it hovers
   ctx.drawImage(spriteCanvas(bug, style, level, fineFor(s), frame), ox, oy, s, s);
   ctx.restore();
   return { px, s, ox, oy };
