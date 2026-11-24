@@ -685,11 +685,20 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       fs.createReadStream(hit.gz).on('error', () => res.destroy()).pipe(res);
     });
     const appHtml = () => fs.readFileSync(path.join(staticDir, 'index.html'), 'utf8');
-    const sendApp = (req, res) => res.type('html').send(applyHtmlMeta(appHtml(), req.path));
+    // The SPA shell names this deploy's hashed bundles, so it must never be cached: a stale
+    // index.html on iOS Safari/Chrome would keep loading the previous deploy's JS.
+    const NO_CACHE = 'no-cache, no-store, must-revalidate';
+    const noCacheHtml = (res) => res.set({ 'Cache-Control': NO_CACHE, Pragma: 'no-cache', Expires: '0' });
+    const sendApp = (req, res) => { noCacheHtml(res); res.type('html').send(applyHtmlMeta(appHtml(), req.path)); };
     // /elhalo is the game route. public/elhalo/ holds musica and the lobby thumb, and express.static
     // would 301 /elhalo to /elhalo/ (a path the client treats as the lobby). Serve the app instead.
     app.get(['/elhalo', '/elhalo/'], sendApp);
-    app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
+    app.use(express.static(staticDir, {
+      index: false,
+      maxAge: '1h',
+      // a direct /index.html (or any other .html) hit gets the same no-cache treatment as the shell
+      setHeaders: (res, file) => { if (file.endsWith('.html')) noCacheHtml(res); },
+    }));
     app.get('/{*splat}', sendApp);
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
