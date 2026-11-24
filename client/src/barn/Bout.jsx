@@ -206,7 +206,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
   return (
-    <dialog ref={dialog} className={`bout${live ? ' live' : ''}${legendary ? ' legendary' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
+    <dialog ref={dialog} className={`bout${live ? ' live' : ''}${legendary ? ' legendary' : ''}${done && bout.rage && !reduced ? ' raging' : ''}`} data-test="bout" data-kind={bout.kind || 'barn'} data-live={live ? '1' : '0'} data-result={bout.result} data-done={done ? '1' : '0'} aria-label={replay ? 'Bug fight replay' : 'Bug fight'} onCancel={(e) => { e.preventDefault(); if (!live) onClose(); }}>
       <div className="bout-top">
         {fighters.map((c, i) => {
           const hidden = i === 1 && bout.dark && live; // too dark to see how hurt it is
@@ -242,6 +242,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
           {pos.phase === 'finish' && <strong className="bout-stamp end">{jarred ? 'CAUGHT!' : plan.ending === 'ko' ? 'K.O.' : 'TIME!'}</strong>}
         </div>
         {toss && <Toss toss={toss} />}
+        {done && bout.rage && <div className={`bout-rage${reduced ? ' still' : ''}`} role="alert" data-test="bout-rage"><strong>ROID RAGE</strong><span>{bout.you.name} went berserk</span><small>The {bout.rage.killed} is not getting up. Ever.</small></div>}
         {done && bout.jar && onJar && <Jar jar={bout.jar} level={bout.them.level} onJar={onJar} setToss={setToss} reduced={reduced} />}
       </div>
       <div className="bout-line" aria-live="polite" data-test="bout-line">{done ? <>

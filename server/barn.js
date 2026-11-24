@@ -17,6 +17,7 @@ import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
+import { PATHS, gymAt, gymEffects, gymView, gymFighter, trainStep } from './engine/gym.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
@@ -164,13 +165,14 @@ export function strongestTrainers(barn, { players = barn?.store?.players, limit 
 }
 
 export class Barn {
-  constructor({ store, accounts, now, incubateMs, eggInt, evoInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
+  constructor({ store, accounts, now, incubateMs, eggInt, evoInt, gymInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
     this.starveMs = Number(starveMs) > 0 ? Number(starveMs) : STARVE_MS; this.k = this.starveMs / STARVE_MS;
     this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
     this.incubateMs = Number(incubateMs) > 0 ? Number(incubateMs) : DEFAULT_INCUBATE_MS;
     this.eggInt = eggInt || ((n) => crypto.randomInt(n)); // its own random source: never the mine's pay or vein ones
     this.evoInt = evoInt || ((n) => crypto.randomInt(n)); // evolution's own source, for the same reason
+    this.gymInt = gymInt || ((n) => crypto.randomInt(n)); // the sparring pit's
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
     this.doc.pens ||= {}; this.doc.names ||= {}; this.doc.count ||= {}; this.doc.graves ||= {};
     this.doc.challenges ||= []; this.doc.fights ||= []; this.doc.bench ||= {}; this.doc.stalls ||= {};
@@ -463,6 +465,7 @@ export class Barn {
       ...(isHeesheeHeld(pen) ? { heesheeHeld: true, heesheeHeldAt: pen.heesheeHeldAt || null } : {}),
       ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
+      gym: gymView(pen.gym, now),
       lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -502,6 +505,42 @@ export class Barn {
     return this.view(playerId);
   }
 
+  /** One bug's gym loads and what they do, now (all zeros for a bug that never trained). Pvp reads `rage` from here. */
+  gymOf(pen) { return gymEffects(gymAt(pen?.gym, this.now())); }
+  /**
+   * The Bug Gym (engine/gym.js): one session on one path for a living, standing bug. Needs move by the path's deltas
+   * (re-based on the bug's own clock, as care does), XP fades by level, and the vial costs cash. Returns the barn view
+   * plus `gym`: the session's outcome with before/after numbers, for the page's result card.
+   */
+  train(playerId, path, bug) {
+    const p = PATHS[path];
+    if (!p) throw new GameError('The gym does not have that machine.', 400);
+    const pen = this.refresh(playerId, bug);
+    if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
+    if (pen.stage === 'egg') throw new GameError('Eggs do not lift. Mostly.', 409);
+    if (pen.stage === 'dead') throw new GameError('It is past training now.', 409);
+    if (isHeesheeHeld(pen) || (pen === this.doc.pens[playerId] && bugLostToHeeshee(this, playerId))) throw new GameError('Your bug is nowhere to be found. The Heeshee Mazode took it.', 409);
+    if (pen.sick) throw new GameError(`${pen.name} is not well. The Bug Center, now.`, 409);
+    if (pen.taken) throw new GameError(`${pen.name} is not here. There is a ticket. The Bug Center has the rest.`, 409);
+    if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
+    if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
+    const now = this.now(), own = this.own(pen, now), n = this.needs(pen, now), level = levelFor(pen.xp, pen.cap);
+    let step;
+    try { step = trainStep(path, { gym: pen.gym, needs: n, now, roll: (k) => this.gymInt(k) }); } catch (e) { throw new GameError(e.message, e.status || 409); }
+    const player = step.cost ? this.accounts.ensure(this.store.players[playerId]) : null;
+    if (player) this.accounts.requireFunds(player, step.cost, p.name.toLowerCase());
+    const before = { needs: Object.fromEntries(STATS.map((s) => [s, Math.round(n[s])])), ...gymView(pen.gym, now) };
+    const next = structuredClone(pen);
+    for (const s of STATS) next.stats[s] = { v: step.needs[s], at: own };
+    next.gym = step.gym;
+    const xp = step.xp > 0 ? fadedXp(step.xp, level) : 0;
+    next.xp += xp;
+    if (player) this.accounts.change(player, -step.cost, 'barn-gym', `Bug Gym: ${p.name}`);
+    this.commitPen(playerId, next);
+    const after = { needs: Object.fromEntries(STATS.map((s) => [s, Math.round(step.needs[s])])), ...gymView(next.gym, now) };
+    return { ...this.view(playerId), gym: { path, name: p.name, bug: idOf(next), bugName: next.name, outcome: step.outcome, xp, cost: step.cost, delta: step.delta, change: step.change, before, after } };
+  }
+
   /** Save an owned bug's unlocked moves; settings and fight rewards persist before becoming visible. */
   setBattle(playerId, settings) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)
@@ -524,7 +563,8 @@ export class Barn {
     return { species: pen.species, name: givenName(pen.species, pen.name), level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
       gear: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, defense: this.styleOf?.(playerId, idOf(pen)).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen),
-      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle), ...(pen.botched ? { botched: pen.botched } : {}) };
+      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle), ...(pen.botched ? { botched: pen.botched } : {}),
+      ...gymFighter(pen.gym, this.now()) };
   }
 
   /** Alive, standing and old enough to fight: the partner, or the bug named. One fight at a time per owner. */

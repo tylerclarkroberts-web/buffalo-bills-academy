@@ -83,7 +83,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
-  const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt });
+  // e2e only (dev login + GYM_TEST_RAGE=1): a juiced bug's roid rage always goes off, so the screenshot can show it
+  const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt, rageInt: barnTest && env.GYM_TEST_RAGE === '1' ? () => 0 : undefined });
   const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
   pvpSweep.unref?.();
   const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
@@ -350,6 +351,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''), req.body?.bug)));
   api.post('/barn/partner', needPlayer, wrap((req) => barn.setPartner(req.player.id, req.body?.bug))); // which bug comes with you
   api.post('/barn/stalls', needPlayer, wrap((req) => barn.buildStall(req.player.id)));
+  api.post('/barn/gym', needPlayer, wrap((req) => barn.train(req.player.id, String(req.body?.path || ''), req.body?.bug))); // the Bug Gym: one session on one path
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
   api.post('/barn/bouts', needPlayer, wrap((req) => barn.openBout(req.player.id, req.body)));

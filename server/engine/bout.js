@@ -4,6 +4,7 @@
 import { BY_ID } from './creatures.js';
 import { battleFor, combatStats, movesFor, STANCES, TRAIT } from './bug-combat.js';
 import { typeEdge, typeOf, PERK } from './bug-types.js';
+import { POWER_CAP } from './gym.js';
 
 export const BOUT_HP = 100;
 export const MAX_ROUNDS = 32; // actions; venom and a bombardier's pop can add events around an action
@@ -48,6 +49,10 @@ export const PRIZE = { mitt: 0.1, popcorn: 2 };
 const has = (q, prize) => !!q.c.prizes?.includes(prize);
 /** A circuit trainer's bug is drilled (`c.trained`): that share more health and damage than a barn bug of its level. */
 const trainedOf = (c) => Math.max(0, Math.min(0.5, Number(c.trained) || 0));
+/** The Bug Gym (engine/gym.js): `c.gym` more damage (clean work and roids), `c.bulk` more health (roids), `c.slow` less likely to go first (unruly). */
+const gymOf = (c) => Math.max(0, Math.min(POWER_CAP, Number(c.gym) || 0));
+const bulkOf = (c) => Math.max(0, Math.min(0.2, Number(c.bulk) || 0));
+const slowOf = (c) => Math.max(0, Math.min(0.15, Number(c.slow) || 0));
 const ball = (s, turnNo) => s.c.rule === 'dodgeball' && turnNo % RULES.dodgeball.every === 0;
 /** Whether side `i`'s next own turn is its leader's big one: what the tell is for. */
 export const tellDue = (S, i) => { const q = S.side[i], rule = q.c.rule;
@@ -68,7 +73,7 @@ export function startBout(a, b, seed) {
     const battle = battleFor(c.species, c.level, c.legacyAbilities, c.battle), stats = combatStats(c.level), stance = STANCES[battle.stance];
     // `plain` (tests, balance runs) fights without the species trait
     return { c, t: c.plain ? null : c.species, ty: c.plain ? null : typeOf(c.species), st: BY_ID[c.species].stats, battle, stats, stance, moves: movesFor(c.species, c.level, c.legacyAbilities),
-      boost: (1 + trainedOf(c)) * stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage * (c.botched === 'berserk' ? 1 + QUIRK.berserk.power : 1),
+      boost: (1 + trainedOf(c)) * (1 + gymOf(c)) * stats.damageMultiplier * (1 + Math.max(0, Math.min(100, c.mood ?? 60)) / 1000) * (1 + Math.max(0, Math.min(GEAR_CAP, Number(c.gear) || 0))) * stance.damage * (c.botched === 'berserk' ? 1 + QUIRK.berserk.power : 1),
       ward: 1 - Math.max(0, Math.min(GEAR_CAP, Number(c.defense) || 0)), // defense gear: what is left of each hit it takes
       lunch: Number(c.lunch?.heal) > 0 ? { name: String(c.lunch.name || 'packed lunch'), heal: Math.min(LUNCH_CAP, Math.round(Number(c.lunch.heal))) } : null, ate: false,
       turn: 0, readyAt: {}, usedAt: {}, guard: 0, guardLeft: 0, weaken: 1, venom: null, lastSpecial: null,
@@ -77,9 +82,9 @@ export function startBout(a, b, seed) {
   });
   for (const s of side) if (s.t === 'bocydium') { const k = ['atk', 'def', 'spd'][Math.floor(R() * 3)]; s.st = { ...s.st, [k]: s.st[k] + 1 }; s.globes = k; }
   // Fighter snapshots can specify a starting health percentage; otherwise they enter at full HP.
-  const maxHp = side.map(s => Math.round(s.stats.maxHp * (1 + trainedOf(s.c)) * (s.t === 'heteropteryx' ? 1 + TRAIT.heavy : 1)));
+  const maxHp = side.map(s => Math.round(s.stats.maxHp * (1 + trainedOf(s.c)) * (1 + bulkOf(s.c)) * (s.t === 'heteropteryx' ? 1 + TRAIT.heavy : 1)));
   const hp = side.map((s, i) => { const h = Number(s.c.health); return Number.isFinite(h) && h < 100 ? Math.max(1, Math.ceil((maxHp[i] * Math.max(0, h)) / 100)) : maxHp[i]; });
-  let by = R() < 0.5 + (side[0].st.spd - side[1].st.spd) * 0.03 ? 0 : 1;
+  let by = R() < 0.5 + (side[0].st.spd - side[1].st.spd) * 0.03 - slowOf(a) + slowOf(b) ? 0 : 1;
   const quick = side.map(s => s.t === 'mantispa'); if (quick[0] !== quick[1]) by = quick[0] ? 0 : 1;
   return { R, side, hp, maxHp, startHp: [...hp], by, turn: 0, rounds: [], over: false, winner: null };
 }
@@ -418,7 +423,7 @@ export function simulateBout(a, b, seed) {
 
 export const LINE = { fights: 200, min: 10, max: 90, step: 5 }; // percent
 const lines = new Map();
-const lineKey = (c) => JSON.stringify([c.botched || 0, c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null, c.trained || 0, (c.prizes || []).join()]);
+const lineKey = (c) => JSON.stringify([c.botched || 0, c.species, c.level, c.legacyAbilities || 0, c.battle || null, c.mood ?? 60, c.gear || 0, c.defense || 0, c.lunch?.heal || 0, c.health ?? 100, !!c.plain, c.rule || null, c.trained || 0, (c.prizes || []).join(), c.gym || 0, c.bulk || 0, c.slow || 0]);
 /**
  * The line: how often `a` beats `b` with both bugs left to themselves, as they stand (level, health, mood, attack and
  * defense gear, packed lunch, stance). Each seed is fought both ways round, so a mirror match is exactly even and line(a, b) + line(b, a) is

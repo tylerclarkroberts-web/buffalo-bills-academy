@@ -331,7 +331,9 @@ export class Mines {
       if (pen.heesheeHeld || this.barn.isHeesheeHeld?.(pen) || this.barn.heesheeHoldOf?.(playerId)) {
         return { held: true, name: pen.name, species: pen.species, speciesName: pen.speciesName || pen.species, style };
       }
-      return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style };
+      // the Bug Gym: an overworked or juiced guide walks slower, balks, and may go berserk on a knocked-out wild bug
+      const g = pen.gym, gym = g && (g.unruly > 0 || g.rage > 0) ? { unruly: g.unruly, mineSpeed: g.mineSpeed, balk: g.balk, rage: g.rage, roid: g.roid, strain: g.strain } : null;
+      return { species: pen.species, name: pen.name, speciesName: pen.speciesName || pen.species, style, ...(gym ? { gym } : {}) };
     } catch { return null; }
   }
   shakenUntil(playerId) { return (this.doc.shaken?.[playerId] || 0) > this.now(); }
