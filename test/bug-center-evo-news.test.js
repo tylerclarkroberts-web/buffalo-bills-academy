@@ -11,6 +11,7 @@ import { Accounts } from '../server/accounts.js';
 import { Barn, BOTCH_ODDS, EVO_NEWS_PLAYER, EVO_NEWS_AT, EVO_NEWS_BILL } from '../server/barn.js';
 import { xpFor } from '../server/engine/creatures.js';
 import { greeting, greetingFor, healRequest, newsGreeting, newsAfter, newsAsEvolved, RECEIPT } from '../client/src/bugcenter/script.js';
+import { showEvoNewsBanner } from '../client/src/shellNews.js';
 
 const BREIDEN = EVO_NEWS_PLAYER;
 const OTHER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -296,4 +297,75 @@ test('Bug Center client: healRequest and greetingFor prefer care over news, and 
   // The ordinary greeting is unchanged when there is no news.
   assert.equal(greetingFor({ pen: { stage: 'creature', name: 'Pip' }, stable: { bugs: [{ stage: 'creature', name: 'Pip' }] } }).kind, 'care');
   assert.match(greeting({ stage: 'creature', name: 'Pip' }).at(-1).en, /check-up/);
+});
+
+
+test('GET /me carries evoNews for Breiden before ack, drops it after, and never shows it for anyone else', async (t) => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-evo-news-me-'));
+  const now = Date.parse('2026-11-23T23:04:54Z');
+  const { app, service, shutdown } = createApp({ dataDir, devLogin: true, now: () => now, env: {} });
+  const server = await new Promise((res) => { const x = app.listen(0, '127.0.0.1', () => res(x)); });
+  const root = `http://127.0.0.1:${server.address().port}`;
+  t.after(() => { server.close(); shutdown(); fs.rmSync(dataDir, { recursive: true, force: true }); });
+
+  async function dev(name) {
+    const login = await fetch(root + '/auth/dev', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, email: `${name.toLowerCase()}@news-me.test` }) });
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    const call = async (m, u, b) => {
+      const r = await fetch(root + '/api' + u, { method: m, headers: { 'content-type': 'application/json', cookie }, body: b ? JSON.stringify(b) : undefined });
+      return { status: r.status, body: await r.json() };
+    };
+    const me = (await call('GET', '/me')).body;
+    return { cookie, id: me.id, call };
+  }
+
+  const other = await dev('Gus');
+  plantNewsEmpusa(service.barn, other.id, { bench: false });
+  const otherMe = await other.call('GET', '/me');
+  assert.equal(otherMe.status, 200);
+  assert.equal(otherMe.body.evoNews, undefined, 'another player never gets the recap flag');
+
+  const first = await dev('Breiden');
+  const p = service.store.players[first.id];
+  p.id = BREIDEN;
+  service.store.players[BREIDEN] = p;
+  delete service.store.players[first.id];
+  service.store.savePlayers();
+  service.sessions.reassign(first.id, BREIDEN);
+  if (service.barn.doc.pens[first.id]) { delete service.barn.doc.pens[first.id]; }
+  if (service.barn.doc.bench[first.id]) { delete service.barn.doc.bench[first.id]; }
+  plantNewsEmpusa(service.barn, BREIDEN, { bench: true });
+  const bank = service.store.players[BREIDEN].bankroll;
+  const txns = (service.store.players[BREIDEN].txns || []).length;
+
+  const before = await first.call('GET', '/me');
+  assert.equal(before.status, 200);
+  assert.ok(before.body.evoNews, 'pending recap is on the session payload');
+  assert.equal(before.body.evoNews.name, 'Empusa');
+  assert.equal(before.body.evoNews.species, 'empusa');
+  assert.deepEqual(before.body.evoNews.bill, EVO_NEWS_BILL);
+  assert.equal(before.body.id, BREIDEN);
+
+  const ack = await first.call('POST', '/barn/evo-news/ack');
+  assert.equal(ack.status, 200);
+  assert.equal(ack.body.evoNews, undefined);
+  assert.equal(service.store.players[BREIDEN].bankroll, bank);
+  assert.equal((service.store.players[BREIDEN].txns || []).length, txns);
+
+  const after = await first.call('GET', '/me');
+  assert.equal(after.status, 200);
+  assert.equal(after.body.evoNews, undefined, 'ack clears the session flag');
+  assert.equal(after.body.bankroll, bank);
+});
+
+test('the app-wide banner shows on the lobby, hides on the Bug Center and in Work Mode', () => {
+  const me = { evoNews: { name: 'Empusa' } };
+  assert.equal(showEvoNewsBanner(me, '/'), true);
+  assert.equal(showEvoNewsBanner(me, '/?tab=tables'), true);
+  assert.equal(showEvoNewsBanner(me, '/barn'), true);
+  assert.equal(showEvoNewsBanner(me, '/barn/center'), false);
+  assert.equal(showEvoNewsBanner(me, '/barn/center/'), false);
+  assert.equal(showEvoNewsBanner(me, '/', { work: true }), false);
+  assert.equal(showEvoNewsBanner(null, '/'), false);
+  assert.equal(showEvoNewsBanner({ id: 'x' }, '/'), false);
 });

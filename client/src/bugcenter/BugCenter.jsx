@@ -351,6 +351,7 @@ export default function BugCenter() {
       setOp({ ...op, waiting: true });
       api('POST', '/barn/evo-news/ack').then((view) => {
         setB(view);
+        refreshSession();
         setOp(null);
         setTalk({ lines: newsAfter(op.r?.evolved || talk?.news), i: 0, mode: 'talk' });
       }).catch((e) => { setOp({ ...op, waiting: false }); setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }); });

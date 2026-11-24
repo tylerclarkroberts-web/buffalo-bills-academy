@@ -152,9 +152,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   service.rooms = rooms;
   const meView = (p) => {
     accounts.ensure(p);
+    const evoNews = barn.evoNewsOf(p.id); // same helper as GET /barn: pending Stage II recap, if any
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
       username: p.login?.username || null, hasPassword: !!p.login?.hash, googleLinked: !!p.google && p.kind !== 'dev',
-      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id) };
+      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id), ...(evoNews ? { evoNews } : {}) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
   const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
