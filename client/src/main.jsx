@@ -38,6 +38,20 @@ function bindAppHeight() {
   window.addEventListener('pageshow', set);
 }
 bindAppHeight();
+
+// After a deploy, an open tab still holds the old index.html, so a lazy route's chunk hash 404s.
+// Vite fires vite:preloadError then: reload once into the new build (sessionStorage guard: at most
+// once per 30s, so a genuinely missing chunk can never put the page in a reload loop).
+window.addEventListener('vite:preloadError', (e) => {
+  const KEY = 'bba-preload-reload-at';
+  try {
+    const last = Number(sessionStorage.getItem(KEY)) || 0;
+    if (Date.now() - last < 30000) return;
+    sessionStorage.setItem(KEY, String(Date.now()));
+  } catch { return; }
+  e.preventDefault();
+  window.location.reload();
+});
 const unlock = () => { try { unlockSfx(); } catch { /* */ } };
 window.addEventListener('pointerdown', unlock, { passive: true });
 window.addEventListener('touchstart', unlock, { passive: true });
