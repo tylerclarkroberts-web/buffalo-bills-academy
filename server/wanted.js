@@ -1,4 +1,4 @@
-// Wanted-poster shame: when a human is the one everyone is waiting on in 4+ games
+// Wanted-poster shame: when a human is the one everyone is waiting on in 7+ games
 // at once (same "your turn" as Up Next, so blackjack does not count; bot tables
 // do not count), Guntrad posts a WANTED poster to the Academy Slack channel.
 // Never throws, never awaits Slack on the game path. Tests stub the Slack client.
@@ -9,7 +9,7 @@ import { listShameTurns } from './turns.js';
 import { tableHasBots, isBotPlayerId } from './slack.js';
 import { CRIME, PUNISHMENT, renderWantedPoster, sampleWantedPoster, SAMPLE_NAME } from './wantedPoster.js';
 
-export const SHAME_MIN = 4;
+export const SHAME_MIN = 7;
 export const SHAME_COOLDOWN_MS = 12 * 3600 * 1000;
 export const CHANNEL_GAP_MS = 10 * 60 * 1000;
 export const POSTER_TTL_MS = 7 * 24 * 3600 * 1000;
