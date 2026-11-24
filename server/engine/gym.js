@@ -32,11 +32,11 @@ export const CREATINE_MS = 12 * 3600e3; // creatine: the lock after one workout 
 export const GEAR = {
   salts: { name: 'Smelling Salts', emoji: '🧂', days: 14, sharpOdds: 85 },          // the Sparring Pit: 60% sharp bouts -> 85%
   prework: { name: 'Pre-Workout', emoji: '⚡', days: 21, fitMult: 1.5 },            // +50% power from Cardio, Sparring and Double Shift
-  mask: { name: 'Breathing Restriction Mask', emoji: '😷', days: 21, xpMult: 1.5, cardioFit: 0.005 }, // +50% XP everywhere, Cardio +0.5% more power
+  mask: { name: 'Breathing Mask', emoji: '😷', days: 21, xpMult: 1.5, cardioFit: 0.005 }, // +50% XP everywhere, Cardio +0.5% more power
   banana: { name: 'Banana', emoji: '🍌', days: 14, moodKeep: 0.5 },                   // mood losses halved (not the vial: nothing fixes that)
   brace: { name: 'Knee Brace', emoji: '🦵', days: 28, overworkStrain: 18, strainLimit: 100 }, // Double Shift: +18 strain, not +30, and lifts until 100
   glp1: { name: 'GLP-1', emoji: '🖊️', days: 28, fadeMult: 2, bulk: 0.05, sulk: -3 }, // loads fade twice as fast, +5% HP; it sulks (-3 mood a workout)
-  sweatband: { name: 'Terrycloth Sweatband', emoji: '🎽', days: 14, flush: 1.5 },     // Cool Down & Stretch flushes 50% more
+  sweatband: { name: 'Sweatband', emoji: '🎽', days: 14, flush: 1.5 },     // Cool Down & Stretch flushes 50% more
 };
 export const GEAR_IDS = Object.keys(GEAR);
 /** The gear still working on this bug at `now`: { id: msLeft }. */

@@ -95,3 +95,4 @@ img.lowpoly { display: block; }
 /* gym gear: what the picked bug already has on (days left / creatine) */
 .sc-gym { color: #b6ff7a; }
 .sd-gym { margin: 2px 0 6px; color: var(--paper-2); }
+.store img.gpix { image-rendering: crisp-edges; image-rendering: pixelated; display: block; flex: none; }

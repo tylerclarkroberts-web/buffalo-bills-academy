@@ -9,6 +9,7 @@ import { Bust } from '../avatar/Bust.jsx';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { drawBug } from '../barn/sprite.js';
 import { PixIcon, LowPoly } from './PixIcon.jsx';
+import { GymPix, GymPixFit } from '../barn/GymPix.jsx';
 import { FitControls, useFitSaver } from '../avatar/FitEditor.jsx';
 import { DEPARTMENTS, categoriesFor } from './departments.js';
 import './store.css';
@@ -44,6 +45,7 @@ function Thumb({ x, me, eqWear, pen, size, fit }) {
   if (BUG_LOOK.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: lookOf(x) }} size={size} level={pen.level} />;
   if (BATTLE_GEAR.includes(x.slot) && pen?.species) return <BugThumb species={pen.species} style={{ ...(pen.style || {}), [x.slot]: { id: x.id, shape: x.id.slice(5) } }} size={size} level={pen.level} />;
   if (x.pal) return <span className="st-pal">{x.pal.map((c) => <i key={c} style={{ background: c }} />)}</span>;
+  if (x.gpix) return size > 100 ? <GymPix name={x.gpix} size={size} className="st-pix" /> : <GymPixFit name={x.gpix} size={size} className="st-pix" />; // 16-bit gym gear, crisp at x16
   if (x.art) return <LowPoly art={x.art} size={size} fallback={x.emoji} className="st-pix" />;
   if (x.pix) return <PixIcon pix={x.pix} size={size} fallback={x.emoji} className="st-pix" />;
   return <span className="st-emoji" style={{ fontSize: size * 0.5 }}>{x.emoji || '🎁'}</span>;
