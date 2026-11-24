@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { BY_ID, ROSTER } from '../server/engine/creatures.js';
-import { bugScale, drawBug, fineFor, spriteCanvas, spriteGrid, youngForm, FINE, SPRITE } from '../client/src/barn/sprite.js';
+import { bugScale, drawBug, fineFor, spriteCanvas, spriteGrid, youngForm, FINE, TEXTURE_FINE, SPRITE } from '../client/src/barn/sprite.js';
 import { RoomScene } from '../client/src/room/scene.js';
 
 function context() {
@@ -131,8 +131,8 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
     floor ??= bottom; assert.ok(Math.abs(bottom - floor) < 1e-12);
     assert.equal(sprite.material.map.magFilter, THREE.NearestFilter);
     const map = sprite.material.map;
-    assert.equal(map.image, spriteCanvas(ROSTER[0], undefined, level, FINE), 'room texture follows the same larval transition, on the finest grid up close');
-    assert.deepEqual(map.mipmaps, [FINE, 2, 1].map((fine) => spriteCanvas(ROSTER[0], undefined, level, fine)), 'and steps down to the coarser sprites as the bug is drawn smaller');
+    assert.equal(map.image, spriteCanvas(ROSTER[0], undefined, level, TEXTURE_FINE),'room texture follows the same larval transition, on the finest grid up close');
+    assert.deepEqual(map.mipmaps, [TEXTURE_FINE, 2, 1].map((fine) => spriteCanvas(ROSTER[0], undefined, level, fine)), 'and steps down to the coarser sprites as the bug is drawn smaller');
     assert.deepEqual([map.minFilter, map.generateMipmaps], [THREE.NearestMipmapNearestFilter, false]);
   }
   for (const stage of ['egg', 'dead']) {
@@ -145,7 +145,7 @@ test('room pets use the same level growth and stay grounded, while eggs and grav
 });
 
 test('bigger sprites are drawn on finer grids: the same bug, more pixels, more tones; small ones are left alone', () => {
-  assert.deepEqual([64, 127, 128, 192, 255, 256, 640].map(fineFor), [1, 1, 2, 3, 3, FINE, FINE], 'each grid pixel gets at least one screen pixel');
+  assert.deepEqual([64, 127, 128, 192, 255, 256, 320, 384, 640].map(fineFor), [1, 1, 2, 3, 3, 4, 5, FINE, FINE],'each grid pixel gets at least one screen pixel');
   const tones = (grid) => new Set(grid.flat().filter(Boolean)).size;
   for (const bug of ROSTER) for (const level of [1, 10]) for (let f = 2; f <= FINE; f++) {
     const coarse = spriteGrid(bug, level), fine = spriteGrid(bug, level, f), cells = Array.from({ length: f }, (_, i) => i);
@@ -173,5 +173,14 @@ test('shades and monocles sit on the eyes of every bug, long snouts included', (
       const worn = spriteCanvas(bug, { bugacc: { shape } }, level).getContext().pixels.slice(body); // what the accessory painted
       assert.ok(worn.some(([, x, y]) => eye(x, y)), `${shape} covers an eye on ${bug.id} at level ${level}`);
     }
+  }
+});
+
+test('an evolved bug is rebuilt around its own body, not one machine shared by all', () => {
+  const grey = ['#111111', '#333333', '#666666', '#999999', '#cc3333'], bugs = ROSTER.filter((bug) => bug.look?.kind !== 'photo'), kinds = new Set(bugs.map((bug) => bug.look.kind)).size;
+  for (const evo of [1, 2]) for (const botched of [false, true]) {
+    // painted the same grey and cut off at the neck, so neither its colours nor its head can tell two species apart
+    const below = new Set(bugs.map((bug) => spriteGrid({ ...bug, look: { ...bug.look, pal: grey } }, undefined, 1, evo, botched).slice(23).map((row) => row.join()).join('|')));
+    assert.ok(below.size >= kinds, `stage ${evo + 1}${botched ? ', botched' : ''}: ${below.size} different bodies for ${kinds} kinds of bug`);
   }
 });
