@@ -1,5 +1,5 @@
 import React from 'react';
-import { useModes, ModeToggles, ModeRail } from './Modes.jsx';
+import { useModes, ModeToggles, ModeRail, useElHaloImmersive } from './Modes.jsx';
 import './work.css';
 
 const TITLE = 'How to Optimize Performance Using AI to Drive Shareholder Value';
@@ -9,6 +9,12 @@ const ROLE = 'Distinguished Fellow in Value Creation';
 
 export default function WorkShell({ children }) {
   const { work } = useModes();
+  const elhalo = useElHaloImmersive();
+
+  // FAM / WORK must not wrap El Halo: Work Mode parks the live app in a 1px
+  // box (which breaks the WebGL canvas) and Family Mode's rail covers the
+  // phone controls. The rest of the site keeps both modes.
+  if (elhalo) return children;
 
   if (!work) {
     return (

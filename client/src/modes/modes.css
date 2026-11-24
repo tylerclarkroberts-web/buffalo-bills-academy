@@ -45,3 +45,6 @@ html.family-mode .sc-royal-prop.toot-cloud, html.kosher-mode .sc-royal-prop.toot
 /* Header already has the toggles; keep the rail for pages that skip the shell (Mines, Foff, El Halo). display:none still leaves .topbar in the tree. */
 body:has(.topbar) .mode-rail { display: none; }
 html.work-mode body:has(.topbar) .mode-rail { display: none; }
+
+/* El Halo is a full-viewport game: keep the Family/Work rail off its controls. */
+html.elh-active .mode-rail { display: none; }

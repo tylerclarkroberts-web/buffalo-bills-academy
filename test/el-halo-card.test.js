@@ -25,6 +25,8 @@ test('El Halo sits directly under SCUM on the lobby and on the Games tab', () =>
 test('the El Halo blurb is exactly the line Tyler asked for', () => {
   const card = read('client/src/mines/elhalo/ElHaloCard.jsx');
   assert.match(card, /export const EL_HALO_BLURB = 'Donde esta la freaking buffadora'/);
+  assert.match(card, /\{EL_HALO_BLURB\}/);
+  assert.doesNotMatch(card, /useModes|FAMILY_GAME|modes\/family/);
   assert.equal((card.match(/Donde esta la freaking buffadora/g) || []).length, 1);
 });
 
@@ -49,4 +51,17 @@ test('App opens /elhalo as its own lazily loaded page, outside the hall', () => 
   const room = read('client/src/mines/elhalo/ElHaloRoom.jsx');
   assert.match(room, /exitLabel = '◄ BACK TO THE HALL'/);
   assert.match(room, /showShift = true/);
+});
+
+test('Work Mode and the Family rail stay off El Halo, and the room marks itself active', () => {
+  const shell = read('client/src/modes/WorkShell.jsx');
+  assert.match(shell, /useElHaloImmersive/);
+  assert.match(shell, /if \(elhalo\) return children/);
+  const modes = read('client/src/modes/Modes.jsx');
+  assert.match(modes, /if \(elhalo\) return null/);
+  const room = read('client/src/mines/elhalo/ElHaloRoom.jsx');
+  assert.match(room, /setElHaloActive\(true\)/);
+  assert.match(room, /setElHaloActive\(false\)/);
+  const css = read('client/src/modes/modes.css');
+  assert.match(css, /html\.elh-active \.mode-rail/);
 });

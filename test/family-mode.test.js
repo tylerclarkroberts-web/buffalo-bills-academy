@@ -10,6 +10,7 @@ import {
   FAMILY_KEY, WORK_KEY, FAMILY_COOKIE, WORK_COOKIE,
   loadModes, getModes, setFamily, setWork, setModes,
   handleWorkHotkey, isTypingTarget, isElHaloScreen, isMinesScreen,
+  setElHaloActive, resetElHaloActive, isElHaloActive, isElHaloImmersive,
 } from '../client/src/modes/store.js';
 
 test('familyTableNumber is a stable 4-digit value derived from the table code', () => {
@@ -86,6 +87,7 @@ function installStorage() {
 
 beforeEach(() => {
   installStorage();
+  resetElHaloActive();
   setModes({ family: false, work: false });
 });
 
@@ -306,4 +308,30 @@ test('pressing W inside the Acid Mines never turns Work Mode on, on any of its s
   assert.equal(handleWorkHotkey(keyEvent('w'), '/', empty), true);
   assert.equal(getModes().work, true);
   setWork(false);
+});
+
+test('Work Mode skin stays off while El Halo is up, then returns when you leave', () => {
+  setWork(true);
+  const root = globalThis.document.documentElement;
+  assert.equal(root.classList._on.has('work-mode'), true);
+  assert.equal(isElHaloActive(), false);
+
+  setElHaloActive(true);
+  assert.equal(isElHaloActive(), true);
+  assert.equal(isElHaloImmersive('/', { querySelector: () => null }), true);
+  assert.equal(getModes().work, true, 'the Work flag itself stays on');
+  assert.equal(root.classList._on.has('work-mode'), false, 'the memo skin does not lock the El Halo canvas');
+  assert.equal(root.classList._on.has('elh-active'), true);
+
+  setElHaloActive(false);
+  assert.equal(isElHaloActive(), false);
+  assert.equal(root.classList._on.has('work-mode'), true);
+  assert.equal(root.classList._on.has('elh-active'), false);
+});
+
+test('the /elhalo route is immersive even before the room mounts', () => {
+  const empty = { querySelector: () => null };
+  assert.equal(isElHaloImmersive('/elhalo', empty), true);
+  assert.equal(isElHaloImmersive('/elhalo?x=1', empty), true);
+  assert.equal(isElHaloImmersive('/', empty), false);
 });
