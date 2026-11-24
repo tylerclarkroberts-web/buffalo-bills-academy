@@ -478,3 +478,8 @@ body.in-mines { background: #020402; }
   .m-stick-line { font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) { .m-stick-flicker { animation: none; opacity: .35; } }
+/* The Bug Gym: an overworked or juiced guide, in the HUD. */
+.m-gym { color: #ffb37a; font-size: .8em; margin-top: 2px; letter-spacing: .04em; }
+.m-gym.hot { color: #ff5a4a; text-shadow: 0 0 6px rgba(255,40,30,.6); animation: m-gym-throb 1.2s ease-in-out infinite; }
+@keyframes m-gym-throb { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .m-gym.hot { animation: none; } }

@@ -16,6 +16,7 @@ import BugCard, { TypeChip } from './BugCard.jsx';
 import { TYPES, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
+import Gym from './Gym.jsx';
 import { navigate } from '../App.jsx';
 import './barn.css';
 
@@ -157,6 +158,7 @@ function Stalls({ stable, sel, onPick }) {
 /** What the ? button says in each room: the rules the screens themselves no longer spell out. */
 const HELP = {
   stalls: ['Feed, Play and Mist are free, each on its own cooldown. Each gives 9 XP up to level 5, then less every level, down to 2 XP from level 10.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Release lets a bug go. It wanders into the mines as a stray, where anyone can catch it, you included.','Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
+  gym: ['Cardio and sparring are honest: a little power for good, no side effects.', 'A Double Shift builds power faster but drains mood and adds strain. Strain makes a bug unruly.', 'Roids make a bug far stronger and wreck its mood. The power fades as the roid load wears off.', 'Unruly bugs drag their feet in the mines and balk. A juiced bug may go into a roid rage and kill a wild bug it knocks out before you can jar it.', 'Cool Down & Stretch flushes roid load and strain faster. Both fade on their own, slowly.'],
   ring: ['Accept a challenge, challenge someone, or post a bout.', 'One fight at a time. A challenge waits if they are already in the ring.', 'The winner takes the pot. A knockout goes to the Bug Center.'],
   circuit: ['Beat the stops in order. A win pays XP and a one-time purse; a loss pays nothing.', 'Legendary bugs turn up in the mine a few times a year, one of each in the whole Academy.', 'Circuit bugs are drilled: tougher than a barn bug of the same level. Bring a type edge or a level or two.', 'Every ribbon raises the top level your bugs can reach by one.', 'After eight ribbons come the Fairgrounds: four judges, then the Grand Champion. The champion is a copy of the bug that last won the circuit. Take the rosette and yours defends it.', 'A stop marked ! is an errand: somebody wants something. Bring it and they pay. None of them are needed.', 'Your first ribbon and your first card each put something on the wall of My House.', 'Some stops hold a rare wild bug. Knock it out and you get three throws of a jar, as in the mine.', 'Every leader hands over a prize with the ribbon. Prizes work in circuit fights only.', 'Each area has a feature presentation after its ribbon: a one-of-a-kind bug with its own trick. Beat it for its card. You never have to.', 'After ribbon 2, the next four areas can be won in any order. Each ribbon you hold makes the ones you left tougher.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
 };
@@ -308,6 +310,8 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
       <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
       {pen.title && <span className="small barn-title">{pen.title}</span>}
+      {pen.gym?.juiced ? <span className="bs-gym" data-test="barn-juiced" title={`Unruly ${pen.gym.unruly} · mine pace ${Math.round(pen.gym.mineSpeed * 100)}% · roid rage ${Math.round(pen.gym.rage * 100)}%`}>💉 JUICED · RAGE {Math.round(pen.gym.rage * 100)}%</span>
+        : pen.gym?.strain >= 40 ? <span className="bs-gym strain" data-test="barn-overworked">OVERWORKED</span> : null}
       {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : ''}</span>}
       {stable.bugs.length > 1 && (pen.partner ? <span className="bs-partner small" data-test="barn-partner">★ Partner</span>
         : <button className="btn small ghost" onClick={makePartner} disabled={busy || !!b.live} data-test="make-partner">Make partner</button>)}
@@ -325,7 +329,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
       </div>
       <div className="bs-care" data-test="barn-progress">
         <div className="barn-needs">
-          {Object.entries(NEED).map(([k, label]) => <div key={k} className="barn-need"><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
+          {Object.entries(NEED).map(([k, label]) => <div key={k} className={`barn-need${k === 'mood' && pen.gym?.juiced ? ' juiced' : ''}`} data-test={`need-${k}`}><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
         <div className="barn-acts">
           {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
@@ -389,7 +393,7 @@ function BarnHome({ me }) {
   const [tab, setTab] = useState('card');
   const [help, setHelp] = useState(false);
   // The Barn's three rooms: your stalls, the ring, the circuit. /barn?room=circuit opens on the circuit.
-  const [view, setView] = useState(() => (new URLSearchParams(window.location.search).get('room') === 'circuit' ? 'circuit' : 'stalls'));
+  const [view, setView] = useState(() => { const room = new URLSearchParams(window.location.search).get('room'); return room === 'circuit' || room === 'gym' ? room : 'stalls'; });
   const ring = view === 'ring', stalls = view === 'stalls';
   const setRing = (on) => setView(on ? 'ring' : 'stalls');
   const ringOpened = useRef(false);
@@ -496,7 +500,7 @@ function BarnHome({ me }) {
           <div className="barn-head-acts">
             {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted) || !!b.evoNews} />}
             <div className="barn-rooms" role="group" aria-label="Barn">
-              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
+              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit'], ['gym', 'Gym']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
             </div>
             <button className="btn small ghost barn-help-btn" onClick={() => setHelp(!help)} aria-expanded={help} aria-controls="barn-help" title="How the Barn works" data-test="barn-help">?</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
@@ -513,6 +517,7 @@ function BarnHome({ me }) {
           drop={(id) => act(async () => { take(await api('DELETE', `/barn/challenges/${id}`)); await refreshSession(); })}
           watch={watch} />}
         {view === 'circuit' && <Circuit b={b} busy={busy} act={act} boutOpen={!!bout} />}
+        {view === 'gym' && <Gym b={b} sel={pen?.id} busy={busy} act={act} take={take} now={now} />}
         {stalls && stable?.bugs.length > 0 && <Stalls stable={stable} sel={sel === 'build' ? sel : pen?.id} onPick={pick} />}
         {stalls && sel === 'build' && stable?.nextStall != null && (
           <div className="barn-none" data-test="barn-build">

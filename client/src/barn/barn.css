@@ -575,3 +575,14 @@
 .barn-name { overflow-wrap: anywhere; }
 .barn-stall-pick { max-width: 14rem; }
 .barn-stall-pick .barn-name, .barn-stall-pick { overflow: hidden; text-overflow: ellipsis; }
+
+/* The Bug Gym: a juiced bug's roid rage, over the ring, at the end of a mine fight it won too hard. */
+.bout.raging { animation: bout-rage-shake .09s 7 linear; }
+.bout-rage { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px; z-index: 4; pointer-events: none;
+  background: radial-gradient(70% 60% at 50% 50%, rgba(200,16,24,.55), rgba(70,0,0,.86)); animation: bout-rage-flash .7s ease-out both; }
+.bout-rage strong { font: 900 clamp(34px, 11vw, 64px)/1 Impact, 'Arial Black', sans-serif; letter-spacing: .04em; color: #ffe1c4; text-shadow: 0 0 18px #ff2a2a, 3px 3px 0 #3a0000; transform: rotate(-4deg); }
+.bout-rage span { font-weight: 800; text-transform: uppercase; color: #ffb3a8; letter-spacing: .08em; }
+.bout-rage small { color: #f3d3c9; }
+.bout-rage.still { animation: none; }
+@keyframes bout-rage-flash { 0% { opacity: 0; background-color: #fff; } 12% { opacity: 1; } 100% { opacity: 1; } }
+@keyframes bout-rage-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-6px, 3px); } 50% { transform: translate(5px, -4px); } 75% { transform: translate(-3px, -2px); } }

@@ -155,6 +155,22 @@ The Barn's Circuit room is the single-player campaign (`server/circuit.js`, `cli
 | `POST /api/circuit/toll` | `{ "stop" }` pays a toll stop's tribute and marks it done. Not a toll, not open, already through, or a fight on: 409; not enough money: 402. |
 | `POST /api/circuit/give-up` | Drops the gauntlet in progress between rounds. Mid-round: 409. |
 
+## The Bug Gym
+
+`POST /api/barn/gym { path, bug? }` runs one session for a hatched, standing bug (not fainted, sick, taken, held by the Heeshee, or while one of the owner's bugs is fighting). The rules live in `server/engine/gym.js`; the answer is the barn view plus `gym: { path, outcome, xp, cost, delta, change, before, after }`.
+
+| Path | Cooldown | Effect |
+| --- | --- | --- |
+| Cardio & Drills (`clean`) | 30 min | fit +0.01, mood +6, fed/clean −4, strain −5, 9 XP |
+| Sparring Pit (`spar`) | 45 min | fed −8, clean −10; 60% a sharp bout (fit +0.02, mood −2, 14 XP), else a rough scrap (fit +0.01, mood −6, 8 XP) |
+| Double Shift (`overwork`) | 15 min | fit +0.035, mood −20, fed −12, clean −10, strain +30, 12 XP; refused at strain 90+ |
+| Back-Alley Roids (`roids`) | 60 min | $25 (`barn-gym` ledger entry), mood −40, roid load +40 (max 100) |
+| Cool Down & Stretch (`cooldown`) | 30 min | roid −20, strain −35, mood +4 |
+
+Every path but roids and cool-down is refused below 10 Fed. `pen.gym` holds `fit` (0 to 0.2, kept for good), `roid` and `strain` (0 to 100; they fade 0.75 and 1.5 points an hour from `at`), per-path `cool` stamps, `sessions` and `last`. A bug without `gym` reads as all zeros, so older `barn.json` rows need nothing. From those: damage `fit + 0.006 × roid` (at most +80%), health `0.002 × roid` (at most +20%), unruly `0.7 × roid + 0.5 × strain` (0 to 100), mine pace `1 − 0.006 × unruly` (at least 40%), balk chance `unruly / 200` every five seconds of a guide's walking, first-strike penalty `0.15 × unruly / 100`, and roid rage `0.006 × roid + 0.004 × max(0, strain − 50)` (at most 85%, zero for a clean bug).
+
+A fighter snapshot carries `gym`, `bulk` and `slow` only when they are not zero (`engine/bout.js` multiplies damage and health by them and shifts who goes first), so an untrained bug's fights and lines are unchanged. In the Acid Mines, `guideBug` hands the page the guide's pace, balk and rage, and `Pvp.startWild` records the rage chance. When the partner knocks out a wild bug, one roll on its own stream (`rageInt`, out of 10,000) decides whether it goes berserk: the wild bug leaves the shift, `over.rage` is set, there is no jar phase and `/mines/pvp/jar` refuses. `GYM_TEST_RAGE=1` (dev login only) makes every roll a rage for screenshots.
+
 ## Sound
 
 A fight's effects and music follow the Barn's one sound switch, which is off until a player turns it on, and stop at once when it is turned off. Both are made in the browser; there are no audio files. The music plays from the first blow to the finish. Each blow is followed by a short pause so its line can be read before the next one lands.

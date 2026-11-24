@@ -63,10 +63,11 @@ const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const LOANER = { species: 'onymacris', name: 'Gerald', level: 1 }; // the Foreman's lunchbox beetle
 
 export class Pvp {
-  constructor({ store, accounts, mines, shop, barn, avatars, now, randInt, jarInt, fights }) {
+  constructor({ store, accounts, mines, shop, barn, avatars, now, randInt, jarInt, rageInt, fights }) {
     this.store = store; this.accounts = accounts; this.mines = mines; this.shop = shop; this.barn = barn; this.avatars = avatars;
     this.now = now; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.fights = fights || barn.fights;
     this.jarInt = jarInt || ((n) => crypto.randomInt(n)); // wild-jar rolls, kept off the payout stream
+    this.rageInt = rageInt || ((n) => crypto.randomInt(n)); // roid rage rolls (the Bug Gym), off both
     this.doc = store.loadDoc('pvp', { raids: {}, pairs: {}, losses: {} });
     this.doc.raids ||= {}; this.doc.pairs ||= {}; this.doc.losses ||= {};
     this.presence = new Map(); // playerId -> { shiftId, key, x, y, yaw, at, startedAt, seen: Map(otherId -> at), notice }
@@ -321,7 +322,8 @@ export class Pvp {
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
     // a stray (a released bug) fights under its own name and says whose it was
     const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: wild.stray?.name || BY_ID[species].name, ...(wild.stray ? { stray: wild.stray } : {}), ...(wild.force ? { force: true } : {}) }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
-      bugs: { a: { bornAt: mine.bornAt, xp: mine.xp, cap: mine.cap }, b: null }, benched: { a: null, b: null } };
+      bugs: { a: { bornAt: mine.bornAt, xp: mine.xp, cap: mine.cap }, b: null }, benched: { a: null, b: null },
+      rage: this.barn.gymOf?.(this.barn.penOf(a, bug))?.rage || 0 }; // the Bug Gym: its roid rage chance, as it walked in
     battle.fight = this.fights.start({ id, kind: 'mine', players: [a, null], seed: `${now}:${this.randInt(1e9)}`, watching: [a],
       fighters: [{ ...this.barn.fighter(a, this.barn.penOf(a, bug)), owner: mine.ownerName }, { species, name: battle.wild.name, level, wild: true, ...(wild.stray ? { owner: `abandoned by ${wild.stray.owner}` } : {}) }],
       onFinish: (fight) => this.fought(battle, fight) });
@@ -335,7 +337,12 @@ export class Pvp {
    * leaves the shift. A verdict pays battle XP either way.
    */
   wildOver(battle, winnerSide, reason, fight) {
-    if (winnerSide === 'a' && reason === 'fainted' && !battle.wild.force) battle.over.jars = WILD.throws;
+    const ko = winnerSide === 'a' && reason === 'fainted' && !battle.wild.force;
+    if (ko && this.roidRage(battle)) { // juiced: it finishes the job before anyone can reach for a jar
+      battle.over.rage = { killed: battle.wild.name, chance: battle.rage };
+      this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
+      console.log(`[gym] roid rage: ${battle.a}'s ${fight.fighters[0]?.name} killed the knocked-out ${battle.wild.name} (${battle.wild.id}) at ${Math.round(battle.rage * 100)}%`);
+    } else if (ko) battle.over.jars = WILD.throws;
     else this.mines.wildGone(battle.a, battle.shiftId, battle.wild.id);
     if (this.isStick(battle.wild) && !battle.wild.force) this.legend(battle.a, winnerSide === 'a' ? 'win' : 'loss', { reason });
     if (reason === 'fainted' || reason === 'decision') {
@@ -344,6 +351,11 @@ export class Pvp {
     }
   }
   /** What a throw at this knocked-out bug is worth: the chance it holds and the level it would arrive at. */
+  /** The Bug Gym's roid rage: rolled once, at the knockout, against the chance the bug walked in with. Never for a clean bug. */
+  roidRage(battle) {
+    const chance = Math.max(0, Math.min(1, Number(battle.rage) || 0));
+    return chance > 0 && this.rageInt(10000) < Math.round(chance * 10000);
+  }
   jarOdds(battle) {
     const mine = battle.fight.fighters[0].level;
     const keeps = caughtLevel(battle.wild.level, mine);
@@ -359,6 +371,7 @@ export class Pvp {
     this.touch(player.id); this.sweep();
     const battle = this.battles.get(String(body.battleId || ''));
     if (battle?.wild?.force) throw new GameError('This one is only here for you to see. It cannot be jarred.', 409);
+    if (battle?.wild && battle.a === player.id && battle.over?.rage) throw new GameError(`There is nothing left to jar. Your bug went berserk and crushed the ${battle.wild.name}.`, 409);
     if (!battle?.wild || battle.a !== player.id || !battle.over?.jars) throw new GameError(battle?.wild && battle.a === player.id && !battle.over ? 'Knock it out first. It is far too lively for a jar.' : 'It is gone.', 409);
     if (!this.barn.room(player.id)) throw new GameError('Every stall is taken. Nowhere to put it.', 409);
     const { chance, keeps } = this.jarOdds(battle);
@@ -406,7 +419,7 @@ export class Pvp {
       // against a wild bug: how many jars you carry, whether a stall is free, and the chance one holds right now (0 until it is weak enough)
       // against a wild bug; once it is knocked out: how many jars you carry, whether a stall is free, the throws left, the chance one holds and the level it would arrive at
       ...(battle.wild ? { wild: true, wildId: battle.wild.id, rarity: rarityOf(battle.wild.species), ...(battle.over?.jars ? { jar: { have: this.shop.jars(pid), room: this.barn.room(pid), left: battle.over.jars, ...this.jarOdds(battle) } } : {}) } : {}),
-      over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), ...(battle.over.awake ? { awake: true } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
+      over: battle.over ? { won: battle.over.winner === side, reason: battle.over.reason, ...(battle.over.caught ? { caught: battle.over.caught } : {}), ...(battle.over.awake ? { awake: true } : {}), ...(battle.over.rage ? { rage: battle.over.rage } : {}), raid: rec ? this.publicRaid(rec, pid) : null,
         // what happened to your own bug: XP (with the win bonus), level change, and whether it fainted
         bug: mine && !mine.skipped ? { xp: mine.xp || 0, bonus: mine.bonus || 0, fainted: !!mine.fainted, levelBefore: mine.levelBefore, levelAfter: mine.levelAfter, xpBar: this.xpBar((xpBefore || 0) + (mine.xp || 0), battle.bugs?.[side]?.cap) } : null,
         foeFainted: battle.over.winner === side && !!rec?.barn?.loser?.fainted } : null };
