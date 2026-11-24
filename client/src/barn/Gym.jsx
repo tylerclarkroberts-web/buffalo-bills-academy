@@ -1,5 +1,6 @@
 // The Bug Gym: a room of the Barn. Pick a standing bug, read its condition, pick a path. The server decides every
-// number (POST /api/barn/gym, server/engine/gym.js); this page only draws them. One screen, no scrolling, on a phone.
+// number (POST /api/barn/gym, server/engine/gym.js); this page only draws them. One screen, no scrolling, on a phone:
+// after a session its result takes the place of the machines (Back to gym brings them back), so the two never share the space.
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { money } from '../util.js';
@@ -61,10 +62,12 @@ function Meter({ label, value, max = 100, tone = '', from, text, test }) {
 
 /** The session that just happened: what it did, with the mood change as big as it deserves. */
 function Result({ r, onClose }) {
+  const back = useRef(null);
+  useEffect(() => { back.current?.focus({ preventScroll: true }); }, [r]);
   const mood = r.delta.mood, power = r.change.power, tanked = mood <= -25;
   const line = (LINES[r.outcome || r.path] || LINES.clean)(r.bugName);
   return <div className={`gym-result ${TONE[r.path]}${tanked ? ' tanked' : ''}`} role="status" data-test="gym-result" data-path={r.path}>
-    <p className="gym-result-line">{line}</p>
+    <div className="gym-result-top"><p className="gym-result-line">{line}</p><button className="btn small ghost gym-result-x" onClick={onClose} aria-label="Back to gym" data-test="gym-result-x">✕</button></div>
     <div className="gym-deltas">
       <span className={`gym-delta mood${mood < 0 ? ' down' : ' up'}`} data-test="gym-mood-delta"><small>Mood</small><b>{sign(mood)}</b><em className="num">{r.before.needs.mood} → {r.after.needs.mood}</em></span>
       <span className={`gym-delta power${power > 0 ? ' up' : power < 0 ? ' down' : ''}`} data-test="gym-power-delta"><small>Power</small><b>{power >= 0 ? '+' : '−'}{Math.abs(+(power * 100).toFixed(1))}%</b><em className="num">{plusPct(r.after.power)} dmg</em></span>
@@ -72,7 +75,7 @@ function Result({ r, onClose }) {
         : <span className="gym-delta xp up"><small>XP</small><b>+{r.xp}</b><em className="num">{r.cost ? money(r.cost) : 'free'}</em></span>}
     </div>
     {r.path === 'roids' && <p className="gym-result-warn" data-test="gym-roid-warn">Roid rage {pct(r.after.rage)}: it may kill what it knocks out in the mines before you can jar it. Mine pace {pct(r.after.mineSpeed)}.</p>}
-    <button className="btn small ghost gym-result-x" onClick={onClose} aria-label="Dismiss">✕</button>
+    <button ref={back} className="btn primary gym-back" onClick={onClose} data-test="gym-back">Back to gym</button>
   </div>;
 }
 
@@ -91,10 +94,10 @@ export default function Gym({ b, sel, busy, act, take, now }) {
     if (path === 'roids') sfx.nope?.(); else sfx.play?.();
   });
   const cdLeft = (id) => Math.max(0, b.serverNow + (g.cool?.[id] || 0) - now);
-  return <div className={`gym${g.juiced ? ' juiced' : ''}`} data-test="gym">
+  return <div className={`gym${g.juiced ? ' juiced' : ''}${fresh ? ' showing' : ''}`} data-test="gym">
     {bugs.length > 1 && <div className="gym-pick" role="group" aria-label="Who trains">
-      {bugs.map((x) => <button key={x.id} className={`gym-chip${x.id === bug.id ? ' on' : ''}${x.gym?.juiced ? ' juiced' : ''}`} aria-pressed={x.id === bug.id} onClick={() => { setPick(x.id); }} data-test="gym-pick">
-        {x.partner ? '★ ' : ''}{x.name}<small> Lv {x.level}</small>{x.gym?.juiced ? <i aria-label="juiced"> 💉</i> : null}
+      {bugs.map((x) => <button key={x.id} className={`gym-chip${x.id === bug.id ? ' on' : ''}${x.gym?.juiced ? ' juiced' : ''}`} aria-pressed={x.id === bug.id} onClick={() => { setPick(x.id); setResult(null); }} data-test="gym-pick">
+        {x.partner ? '★ ' : ''}{x.name}<small> Lv {x.level}</small>{x.gym?.juiced ? <i className="gym-chip-dot" aria-label="juiced" title="Juiced" /> : null}
       </button>)}
     </div>}
     <section className="gym-bug" data-test="gym-bug">
@@ -118,8 +121,9 @@ export default function Gym({ b, sel, busy, act, take, now }) {
         </div>
       </div>
     </section>
-    {fresh ? <Result r={fresh} onClose={() => setResult(null)} /> : <p className="gym-coach small muted">{coach}</p>}
-    <div className="gym-paths" role="group" aria-label="Training">
+    {fresh ? <Result r={fresh} onClose={() => setResult(null)} /> : <>
+    <p className="gym-coach small muted">{coach}</p>
+    <div className="gym-paths" role="group" aria-label="Training" data-test="gym-paths">
       {PATH_IDS.map((id) => { const p = PATHS[id], cd = cdLeft(id), poor = p.cost > (b.bankroll ?? 0);
         return <button key={id} className={`gym-path ${TONE[id]}`} disabled={busy || cd > 0 || poor} onClick={() => train(id)} data-test={`gym-${id}`}>
           <b>{p.name}</b>
@@ -127,5 +131,6 @@ export default function Gym({ b, sel, busy, act, take, now }) {
           <small>{cd > 0 ? `rests ${mins(cd)}` : poor ? `need ${money(p.cost)}` : p.cost ? money(p.cost) : 'free'}</small>
         </button>; })}
     </div>
+    </>}
   </div>;
 }
