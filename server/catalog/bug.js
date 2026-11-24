@@ -1,5 +1,7 @@
 // General Store catalog (v34), part 3: for your bug. Only shown, and only sold, once your egg has hatched.
 // Effects are server-side and capped (server/shop.js). Nothing here touches poker or chips at the table.
+import { GEAR as GYM_GEAR } from '../engine/gym.js';
+
 const items = [];
 const add = (o) => items.push({ kind: 'bug', ...o });
 
@@ -88,5 +90,21 @@ for (const [id, name, price, slot, bonus] of GEAR) {
   add({ id: `gear-${id}`, name, price, emoji: slot === 'gear' ? '⚔️' : '🛡️', cat: 'gear', slot, [slot]: bonus,
     desc: `${slot === 'gear' ? `Reusable attack gear: +${pct}% attack damage in bug fights.` : `Reusable defense gear: your bug takes ${pct}% less damage from each hit in bug fights.`} ${BOUT_COPY}` });
 }
+
+// gym gear (v145): for the Bug Gym behind the Barn (server/engine/gym.js GEAR has the numbers). Each goes on one bug
+// for a few weeks and cannot be doubled up; creatine is one scoop. Bought here, it lives on the bug, not in your bag.
+const GYM = [
+  ['salts', 'Smelling Salts', 1800, '🧂', 'A brown bottle from behind the Peppermill bar. One whiff and it remembers every insult.', 'Sparring Pit: sharp bouts 85% of the time instead of 60%.'],
+  ['prework', 'Pre-Workout', 3500, '⚡', 'Blue raspberry. Tastes like a battery licked a Jolly Rancher.', '+50% power gained from Cardio, Sparring and Double Shift (still tops out at +20%).'],
+  ['mask', 'Breathing Mask', 2800, '😷', 'A restriction mask that simulates altitude. Wendover is already at altitude. It does not care.', '+50% XP from every workout, and Cardio & Drills gives +1.5% power instead of +1%.'],
+  ['banana', 'Banana', 1200, '🍌', 'One banana, flown in. The shopkeeper says that is what bananas cost now.', 'Workouts cost half the mood. Not the vial: nothing fixes the vial.'],
+  ['brace', 'Knee Brace', 2400, '🦵', 'Six knees, one brace, a lot of velcro.', 'Double Shift adds +18 strain instead of +30, and it will lift all the way to 100 strain.'],
+  ['glp1', 'GLP-1', 6000, '🖊️', 'A pen from a clinic in Elko. Your bug now talks about "food noise".', 'Roid load and strain fade twice as fast, +5% HP in fights (inside the +20% ceiling). Side effect: it sulks, -3 mood a workout.'],
+  ['sweatband', 'Sweatband', 1500, '🎽', 'Terrycloth, lime green. It came with a VHS tape.', 'Cool Down & Stretch flushes 50% more roid load and strain.'],
+];
+for (const [gym, name, price, , joke, what] of GYM) add({ id: `gym-${gym}`, name, price, emoji: GYM_GEAR[gym].emoji, gpix: gym, cat: 'gymgear', slot: null, gym, days: GYM_GEAR[gym].days,
+  desc: `${joke} ${what} Lasts ${GYM_GEAR[gym].days} days on one bug; a second one can go on once it runs out.` });
+add({ id: 'gym-creatine', name: 'Creatine', price: 2000, emoji: '🥛', gpix: 'creatine', cat: 'gymgear', slot: null, gym: 'creatine',
+  desc: 'One scoop, chalky, stirred with a finger. One use: the bug\'s gym lock is 12 hours instead of 24. Buy it while the bug is resting and today\'s lock drops to 12 hours from that workout; otherwise it goes into the next one. One scoop at a time.' });
 
 export const BUG_ITEMS = items;

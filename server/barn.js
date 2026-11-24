@@ -17,7 +17,7 @@ import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
-import { PATHS, gymAt, gymEffects, gymView, gymFighter, trainStep, gymReadyAt } from './engine/gym.js';
+import { PATHS, GEAR, gymAt, gymEffects, gymView, gymFighter, trainStep, gymReadyAt, gearOn } from './engine/gym.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
@@ -465,8 +465,9 @@ export class Barn {
       ...(isHeesheeHeld(pen) ? { heesheeHeld: true, heesheeHeldAt: pen.heesheeHeldAt || null } : {}),
       ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
-      gym: { ...gymView(pen.gym, now), readyAt: gymReadyAt(pen.gymLastAt), readyIn: Math.max(0, gymReadyAt(pen.gymLastAt) - now) },
-      gymReadyAt: gymReadyAt(pen.gymLastAt),
+      gym: { ...gymView(pen.gym, now), readyAt: gymReadyAt(pen.gymLastAt, pen.gymShort), readyIn: Math.max(0, gymReadyAt(pen.gymLastAt, pen.gymShort) - now),
+        creatine: !!pen.gymCreatine, short: !!pen.gymShort && gymReadyAt(pen.gymLastAt, true) > now },
+      gymReadyAt: gymReadyAt(pen.gymLastAt, pen.gymShort),
       lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -527,7 +528,7 @@ export class Barn {
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
     const now = this.now(), own = this.own(pen, now), n = this.needs(pen, now), level = levelFor(pen.xp, pen.cap);
     // one workout per bug per 24 hours, any path (Cool Down & Stretch included). A blocked try costs nothing.
-    const readyAt = gymReadyAt(pen.gymLastAt);
+    const readyAt = gymReadyAt(pen.gymLastAt, pen.gymShort);
     if (readyAt > now) {
       const left = readyAt - now, h = Math.floor(left / 3600e3), m = Math.ceil((left % 3600e3) / 60e3);
       throw Object.assign(new GameError(`${pen.name} already trained today. Next workout in ${m === 60 ? `${h + 1}h 00m` : `${h}h ${String(m).padStart(2, '0')}m`}.`, 409), { code: 'gym_cooldown', data: { readyAt, readyIn: left } });
@@ -541,12 +542,54 @@ export class Barn {
     for (const s of STATS) next.stats[s] = { v: step.needs[s], at: own };
     next.gym = step.gym;
     next.gymLastAt = now;
+    // a creatine dose waiting in it goes into this workout: the lock after it is 12 hours
+    const creatine = !!pen.gymCreatine;
+    if (creatine) next.gymShort = true; else delete next.gymShort;
+    delete next.gymCreatine;
+    const helped = [...(step.helped || []), ...(creatine ? [{ id: 'creatine', name: 'Creatine', emoji: '🥛', what: 'next workout in 12h' }] : [])];
     const xp = step.xp > 0 ? fadedXp(step.xp, level) : 0;
     next.xp += xp;
     if (player) this.accounts.change(player, -step.cost, 'barn-gym', `Bug Gym: ${p.name}`);
     this.commitPen(playerId, next);
     const after = { needs: Object.fromEntries(STATS.map((s) => [s, Math.round(step.needs[s])])), ...gymView(next.gym, now) };
-    return { ...this.view(playerId), gym: { path, name: p.name, bug: idOf(next), bugName: next.name, outcome: step.outcome, xp, cost: step.cost, delta: step.delta, change: step.change, before, after } };
+    return { ...this.view(playerId), gym: { path, name: p.name, bug: idOf(next), bugName: next.name, outcome: step.outcome, xp, cost: step.cost, delta: step.delta, change: step.change, before, after, helped } };
+  }
+
+  /**
+   * Gym gear from the General Store (engine/gym.js GEAR, plus creatine). `gymGearFor` checks a purchase before any
+   * money moves; `fitGymGear` puts it on. Gear on a bug runs `days` and cannot be doubled up: a second one waits
+   * until the first runs out. Creatine is one dose: bought while the bug is locked, it shortens that lock to 12 hours
+   * from the workout's start (and is used up); otherwise the bug carries it into its next workout.
+   */
+  gymGearFor(playerId, bug, gear) {
+    const pen = this.penOf(playerId, bug);
+    if (!pen) throw new GameError(bug == null ? 'Your barn is empty.' : 'That bug is not in your barn.', 404);
+    if (pen.stage !== 'creature') throw new GameError(pen.stage === 'dead' ? 'It is past training now.' : 'Eggs do not lift. Mostly.', 409);
+    const now = this.now();
+    if (gear === 'creatine') {
+      if (pen.gymCreatine) throw new GameError(`${pen.name} already has a scoop waiting for its next workout.`, 409);
+      if (pen.gymShort && gymReadyAt(pen.gymLastAt, true) > now) throw new GameError(`${pen.name} is already on the 12 hour clock. One scoop at a time.`, 409);
+      return pen;
+    }
+    if (!GEAR[gear]) throw new GameError('The gym does not stock that.', 404);
+    const left = gearOn(pen.gym, now)[gear];
+    if (left) throw new GameError(`${pen.name} already has ${GEAR[gear].name}: ${Math.ceil(left / 86400e3)} days left. One at a time.`, 409);
+    return pen;
+  }
+  fitGymGear(playerId, pen, gear) {
+    const now = this.now(), next = structuredClone(pen);
+    let note;
+    if (gear === 'creatine') {
+      if (!next.gymShort && gymReadyAt(next.gymLastAt) > now) { next.gymShort = true; note = gymReadyAt(next.gymLastAt, true) > now ? 'locked' : 'ready'; } // in it now: this lock is 12h
+      else { next.gymCreatine = now; note = 'held'; }
+    } else {
+      // settle the loads first, so the gear only counts from now (GLP-1's faster fade never runs backwards)
+      const at = gymAt(pen.gym, now), gearNow = Object.fromEntries(Object.entries(pen.gym?.gear || {}).filter(([, until]) => Number(until) > now));
+      next.gym = { ...(pen.gym || {}), ...(pen.gym ? at : {}), at: now, gear: { ...gearNow, [gear]: now + GEAR[gear].days * 86400e3 } };
+      note = 'on';
+    }
+    this.commitPen(playerId, next);
+    return { bug: idOf(next), name: next.name, note };
   }
 
   /** Save an owned bug's unlocked moves; settings and fight rewards persist before becoming visible. */

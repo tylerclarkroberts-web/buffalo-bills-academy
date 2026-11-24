@@ -3,7 +3,7 @@ export const DEPARTMENTS = [
   { id: 'items', label: 'Items', categories: ['gags', 'spectacles', 'tobacco'] },
   { id: 'room', label: 'My House', categories: ['oddities', 'furnishings', 'unique', 'seasonal'] },
   { id: 'mining', label: 'Mining Gear', categories: ['mine'] },
-  { id: 'bugs', label: 'Bug Gear', categories: ['food', 'toys', 'bugstyle', 'bugcare', 'gear'] },
+  { id: 'bugs', label: 'Bug Gear', categories: ['food', 'toys', 'bugstyle', 'bugcare', 'gear', 'gymgear'] },
 ];
 
 // Use the server's visible categories so hatch and seasonal availability still apply.

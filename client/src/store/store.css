@@ -92,3 +92,7 @@
 img.lowpoly { display: block; }
 @media (max-height: 500px) { .store-counter .tob { display: none; } }
 @media (max-height: 500px) { .store-counter:has(.sd-warn) .sd-pic { min-height: 0; } .store-counter .sd-pic img.lowpoly { width: 48px; height: 48px; } .store-counter .sd-warn { font-size: 11.5px; margin: 0; } }
+/* gym gear: what the picked bug already has on (days left / creatine) */
+.sc-gym { color: #b6ff7a; }
+.sd-gym { margin: 2px 0 6px; color: var(--paper-2); }
+.store img.gpix { image-rendering: crisp-edges; image-rendering: pixelated; display: block; flex: none; }

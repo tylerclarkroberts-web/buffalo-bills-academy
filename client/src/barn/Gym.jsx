@@ -5,8 +5,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { money } from '../util.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
-import { PATHS, PATH_IDS, ROID_POWER } from '../../../server/engine/gym.js';
+import { PATHS, PATH_IDS, ROID_POWER, GEAR } from '../../../server/engine/gym.js';
 import { drawBug } from './sprite.js';
+import { GymPix } from './GymPix.jsx';
 import { sfx } from './sfx.js';
 import './gym.css';
 
@@ -83,6 +84,7 @@ function Result({ r, onClose }) {
       {r.after.rage > 0 || r.before.rage > 0 ? <span className={`gym-delta rage${r.after.rage > r.before.rage ? ' down' : ' up'}`} data-test="gym-rage-delta"><small>Rage</small><b>{pct(r.after.rage)}</b><em className="num">was {pct(r.before.rage)}</em></span>
         : <span className="gym-delta xp up"><small>XP</small><b>+{r.xp}</b><em className="num">{r.cost ? money(r.cost) : 'free'}</em></span>}
     </div>
+    {!!r.helped?.length && <p className="gym-result-gear" data-test="gym-result-gear">{r.helped.map((h) => <span key={h.id}><GymPix name={h.id} size={16} /> {h.name}: {h.what}</span>)}</p>}
     {r.path === 'roids' && <p className="gym-result-warn" data-test="gym-roid-warn">Roid rage {pct(r.after.rage)}: it may kill what it knocks out in the mines before you can jar it. Mine pace {pct(r.after.mineSpeed)}.</p>}
     <button ref={back} className="btn primary gym-back" onClick={onClose} data-test="gym-back">Back to gym</button>
   </div>;
@@ -103,8 +105,11 @@ export default function Gym({ b, sel, busy, act, take, now }) {
     if (path === 'roids') sfx.nope?.(); else sfx.play?.();
   });
   const cdLeft = (id) => Math.max(0, b.serverNow + (g.cool?.[id] || 0) - now);
-  const lock = lockOf(bug, b, now); // one workout a day, any of the five: everything waits for this
-  return <div className={`gym${g.juiced ? ' juiced' : ''}${fresh ? ' showing' : ''}`} data-test="gym">
+  const lock = lockOf(bug, b, now);
+  // gym gear on this bug: tiny icons with days left (and a creatine scoop waiting, or the 12h clock it set)
+  const gear = [...Object.entries(g.gear || {}).filter(([id, ms]) => GEAR[id] && b.serverNow + ms > now).map(([id, ms]) => [id, GEAR[id].name, `${Math.max(1, Math.ceil((b.serverNow + ms - now) / 86400e3))}d`]),
+    ...(g.creatine ? [['creatine', 'Creatine: in its next workout', 'next']] : g.short ? [['creatine', 'Creatine: 12 hour lock', '12h']] : [])]; // one workout a day, any of the five: everything waits for this
+  return <div className={`gym${g.juiced ? ' juiced' : ''}${fresh ? ' showing' : ''}${gear.length ? ' geared' : ''}`} data-test="gym">
     {bugs.length > 1 && <div className="gym-pick" role="group" aria-label="Who trains">
       {bugs.map((x) => <button key={x.id} className={`gym-chip${x.id === bug.id ? ' on' : ''}${x.gym?.juiced ? ' juiced' : ''}`} aria-pressed={x.id === bug.id} onClick={() => { setPick(x.id); setResult(null); }} data-test="gym-pick">
         {x.partner ? '★ ' : ''}{x.name}<small> Lv {x.level}</small>{x.gym?.juiced ? <i className="gym-chip-dot" aria-label="juiced" title="Juiced" /> : null}{lockOf(x, b, now) > 0 ? <i className="gym-chip-rest" aria-label="trained today" title="Trained today" data-test="gym-chip-rest" /> : null}
@@ -113,12 +118,13 @@ export default function Gym({ b, sel, busy, act, take, now }) {
     <section className="gym-bug" data-test="gym-bug">
       <div className="gym-portrait">
         <Sprite bug={bug} />
-        {g.juiced && <span className="gym-badge roid" data-test="gym-juiced">💉 JUICED</span>}
+        {g.juiced && <span className="gym-badge roid" data-test="gym-juiced"><GymPix name="roids" size={16} /> JUICED</span>}
         {!g.juiced && g.strain >= 40 && <span className="gym-badge strain">OVERWORKED</span>}
       </div>
       <div className="gym-id">
         <h2 className="gym-name" data-test="gym-name">{bug.name}</h2>
         <p className="gym-kind small">{bug.speciesName} · <b>Lv {bug.level}</b>{bug.evo ? ` · Stage ${bug.evo === 2 ? 'III' : 'II'}` : ''}</p>
+        {gear.length > 0 && <p className="gym-gear" aria-label="Gym gear" data-test="gym-gear">{gear.map(([id, name, left]) => <span key={id} title={name} aria-label={`${name}: ${left}`} data-test="gym-gear-item"><GymPix name={id} size={16} />{left}</span>)}</p>}
         <p className="gym-power" data-test="gym-power"><b className="num">{plusPct(g.power)}</b><small> damage{g.bulk ? ` · ${plusPct(g.bulk)} HP` : ''}</small></p>
       </div>
       <div className="gym-meters">
@@ -138,7 +144,7 @@ export default function Gym({ b, sel, busy, act, take, now }) {
     <div className={`gym-paths${lock > 0 ? ' locked' : ''}`} role="group" aria-label="Training" aria-disabled={lock > 0 || undefined} data-test="gym-paths">
       {PATH_IDS.map((id) => { const p = PATHS[id], cd = cdLeft(id), poor = p.cost > (b.bankroll ?? 0);
         return <button key={id} className={`gym-path ${TONE[id]}`} disabled={busy || lock > 0 || cd > 0 || poor} onClick={() => train(id)} data-test={`gym-${id}`}>
-          <b>{p.name}</b>
+          <b><GymPix name={id} size={16} />{p.name}</b>
           <span className="gym-path-fx">{EFFECT[id]()}</span>
           <small>{lock > 0 ? (p.cost ? money(p.cost) : 'free') : cd > 0 ? `rests ${mins(cd)}` : poor ? `need ${money(p.cost)}` : p.cost ? money(p.cost) : 'free'}</small>
         </button>; })}

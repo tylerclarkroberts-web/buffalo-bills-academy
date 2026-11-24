@@ -17,7 +17,7 @@ export const TABS = [
   { id: 'hats', label: 'Hats' }, { id: 'face', label: 'Eyes & face' }, { id: 'clothes', label: 'Clothes' }, { id: 'skins', label: 'Shirts' },
   { id: 'extras', label: 'Extras' }, { id: 'gags', label: 'Gags' }, { id: 'spectacles', label: 'Spectacles' }, { id: 'oddities', label: 'Oddities' }, { id: 'furnishings', label: 'Furnishings' }, { id: 'unique', label: 'One of a kind' }, { id: 'seasonal', label: 'Seasonal' },{ id: 'mine', label: 'Mine gear' }, { id: 'tobacco', label: 'Smoke Shop', adult: true },
   { id: 'food', label: 'Bug food', bug: true }, { id: 'toys', label: 'Bug toys', bug: true }, { id: 'bugstyle', label: 'Bug style', bug: true },
-  { id: 'bugcare', label: 'Bug care', bug: true }, { id: 'gear', label: 'Battle gear', bug: true },
+  { id: 'bugcare', label: 'Bug care', bug: true }, { id: 'gear', label: 'Battle gear', bug: true }, { id: 'gymgear', label: 'Gym gear', bug: true },
   { id: 'parts', label: 'Mech parts', bug: true, hidden: true }, // not a store tab: the specialist sells these at the Bug Center
 ];
 export const AVATAR_SLOTS = ['hat', 'eyes', 'face', 'neck', 'body', 'skin', 'acc'];
