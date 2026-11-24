@@ -22,6 +22,7 @@ import { isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
 import { danceId } from './engine/dances.js';
 import { cents } from './accounts.js';
 import { healthOf } from './barn.js';
+import { cleanVariety } from './engine/variety.js';
 
 export const PVP = {
   staleMs: 4000,            // a miner who has not reported in this long is not in the tunnels as far as anyone can tell
@@ -263,6 +264,7 @@ export class Pvp {
         view.style = { evo: pen.evo };
         if (pen.botched) view.style.botched = pen.botched;
       }
+      const variety = cleanVariety(pen.variety); if (variety) view.style = { ...view.style, variety }; // its own look (engine/variety.js)
       return view;
     }
     const xp = pen.xp || 0, level = levelFor(xp, pen.cap);

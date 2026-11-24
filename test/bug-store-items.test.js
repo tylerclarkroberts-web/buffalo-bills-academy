@@ -254,7 +254,7 @@ test('looks and battle gear belong to one bug: a second bug needs its own, or th
   own('gear-shield'); own('bugwear-tophat');
   shop.equip(player, { id: 'gear-shield' }); shop.equip(player, { id: 'bugwear-tophat' }); // no bug named: the partner
   assert.deepEqual(defense(), [0.04, 0], 'the stalled bug has no shield');
-  assert.equal(barn.fighter(player.id, stalled).style, undefined);
+  assert.deepEqual(Object.keys(barn.fighter(player.id, stalled).style), ['variety'], 'nothing from the store: only its own look');
   // one shield: putting it on the other bug takes it off the first
   assert.deepEqual(shop.equip(player, { id: 'gear-shield', bug: b }).bugEq, { [a]: { bughat: 'bugwear-tophat' }, [b]: { defense: 'gear-shield' } });
   assert.deepEqual(defense(), [0, 0.04]);
@@ -262,7 +262,7 @@ test('looks and battle gear belong to one bug: a second bug needs its own, or th
   shop.buy(player, 'gear-shield', { confirm: true, bug: a });
   assert.equal(shop.inv(player.id).own['gear-shield'], 2);
   assert.deepEqual(defense(), [0.04, 0.04]);
-  assert.deepEqual(barn.view(player.id).stable.bugs.map((bug) => Object.keys(bug.style).sort()), [['bughat', 'defense'], ['defense']]);
+  assert.deepEqual(barn.view(player.id).stable.bugs.map((bug) => Object.keys(bug.style).sort()), [['bughat', 'defense', 'variety'], ['defense', 'variety']]);
   shop.equip(player, { id: null, slot: 'defense', bug: b });
   assert.deepEqual(defense(), [0.04, 0], 'taking off names the bug too');
   shop.equip(player, { id: 'gear-shield', bug: b });

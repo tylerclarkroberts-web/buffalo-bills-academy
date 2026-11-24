@@ -7,6 +7,8 @@ import { BY_ID, ROSTER, PAUSED_AT, STAGE_CAPS } from '../../../server/engine/cre
 import { movesFor, traitFor, combatStats } from '../../../server/engine/bug-combat.js';
 import { TYPES, RARITY, LIVE_TYPES, typeOf, rarityOf, weakTo, perkFor } from '../../../server/engine/bug-types.js';
 import { drawBug } from './sprite.js';
+import { varietyLabels } from '../../../server/engine/variety.js';
+import { toolFor } from '../../../server/engine/tools.js';
 import './bugcard.css';
 
 const GLYPH = { // 16 x 16, one filled path each
@@ -47,6 +49,13 @@ function Art({ bug, style, level }) {
   return <canvas ref={ref} className="bc-art" aria-hidden="true" />;
 }
 
+/** One bug's own quirks (server/engine/variety.js): its ailments, each with a line, and what it gets about on. */
+export function VarietyNote({ variety, short = false }) {
+  const v = varietyLabels(variety); if (!v) return null;
+  if (short) return <span className="bs-quirk" data-test="barn-quirk" title={v.ail.map((a) => `${a.name}: ${a.line}`).join('\n')}>{v.ail.map((a) => a.name).join(' · ')}{v.base.id !== 'legs' ? ` · ${v.base.name}` : ''}</span>;
+  return <p className="bc-trait bc-quirk" data-test="bug-quirk">{v.ail.map((a) => <span key={a.id}><b>{a.name}.</b> {a.line} </span>)}{v.base.id !== 'legs' && <span className="bc-base">Gets about on {v.base.name.toLowerCase()}.</span>}</p>;
+}
+
 export default function BugCard({ species, bug = null, evo = 0 }) {
   const b = BY_ID[species]; if (!b) return null;
   const type = typeOf(species), rarity = RARITY[rarityOf(species)], level = bug?.level ?? 10, { beats, weak } = matchups(type);
@@ -73,6 +82,8 @@ export default function BugCard({ species, bug = null, evo = 0 }) {
         ))}
       </ul>
       {trait && <p className="bc-trait"><b>{trait.name}.</b> {trait.description}</p>}
+      {!evo && !bug?.style?.evo && toolFor(species) && <p className="bc-trait bc-tool" data-test="bug-tool" title={toolFor(species).line}><b>Tool: {toolFor(species).name}.</b> {toolFor(species).line}</p>}
+      {bug?.style?.variety && <VarietyNote variety={bug.style.variety} />}
       {perk && <p className="bc-trait bc-perk"><b>{TYPES[type].name}: {perk.name}.</b> {perk.description}</p>}
       <dl className="bc-match">
         <div><dt>weak to</dt><dd>{weak.map((t) => <TypeChip key={t} type={t} small />)}</dd></div>

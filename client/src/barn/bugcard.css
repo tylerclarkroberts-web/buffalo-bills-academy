@@ -60,3 +60,8 @@
 .bugcard.r4 .bc-strip { background: linear-gradient(90deg, #ffb3ec, #ffe9a0 25%, #b6ffd6 50%, #a8e2ff 75%, #d6c2ff); }
 .bugcard.r4 footer span:first-child { color: #6a2bb0; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 @keyframes bc-gold { 0% { background-position: 140% 0; } 60%, 100% { background-position: -140% 0; } }
+/* a bug's own quirks (variety): small print, under its trait */
+.bc-quirk { font-size: 8.5px; line-height: 1.25; background: rgba(255,240,245,.5); border-style: dashed; }
+.bc-quirk b { font-weight: 700; }
+.bc-quirk .bc-base { font-style: italic; opacity: .8; }
+.bc-tool { font-size: 8.5px; line-height: 1.25; background: rgba(220,230,240,.45); }

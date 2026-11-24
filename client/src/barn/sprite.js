@@ -4,6 +4,9 @@
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
 import { drawEvolution } from './evolutionArt.js';
+import { cleanVariety, varietyKey } from '../../../server/engine/variety.js';
+import { drawBase, drawMarks, drawTool, shiftPal, survey, varietyRamps } from './varietyArt.js';
+import { toolFor } from '../../../server/engine/tools.js';
 export const SPRITE = 64;
 // Bigger sprites are drawn on a denser grid, up to FINE times: the same shapes, written in the same 64-grid coordinates,
 // with smoother edges, a thinner outline and two more tones of shading. From three times up there is room for detail:
@@ -59,6 +62,7 @@ function ramps(pal) {
     // cloth and kit, for what a stage three bug wears (evolutionWear.js): red, green, blue, straw, leather
     R: ['#7a1a16', '#c8322a', '#f07458'], N: ['#1c4a24', '#3c8a3c', '#84cc62'], U: ['#1a2c66', '#3058c0', '#74a0f0'],
     F: ['#80602a', '#cca656', '#f2dc98'], Q: ['#38220f', '#6c421e', '#a87038'], Z: ['#7c8794', '#ccd5de', '#ffffff'], // and bright steel
+    ...varietyRamps({ B: [d, b, l] }), // slime, pox, sweat and the faint fruit (varietyArt.js)
   };
 }
 
@@ -120,7 +124,11 @@ function canvas(f = 1) {
 }
 
 // Six legs, drawn first so the body sits on top. `spread` widens them; `long` stretches them.
+// A bug on wheels, a rotor, tracks or a slug's foot (variety) is drawn without them: its base goes underneath instead.
+let NOLEGS = false;
+const PHOTO = new Set(['steeze']); // drawn from a photo elsewhere: never decorated
 function legs(c, { y = 34, spread = 1, long = 1, m = 'D', fore = null } = {}) {
+  if (NOLEGS) return;
   const L = (x0, y0, x1, y1, x2, y2) => { c.line(x0, y0, x1, y1, m, 2); c.line(x1, y1, x2, y2, m, 1);
     const up = y2 < y1 ? -1 : 1; c.hair([[x2 - 1.4, y2 + 1.6 * up], [x2, y2 + 0.4 * up], [x2 + 1.2, y2 + 1.8 * up]], m); // two claws
     if (c.f < DETAIL) return;
@@ -169,7 +177,7 @@ const KINDS = {
   },
 };
 
-const lookOf = (bug, level) => ({ ...(bug.look || {}), id: bug.id, kind: youngForm(bug, level) || (bug.id === 'helicopsyche' ? 'caddisfly' : bug.look?.kind) });
+const lookOf = (bug, level) => ({ ...(bug.look || {}), id: bug.id, young: !!youngForm(bug, level), kind: youngForm(bug, level) || (bug.id === 'helicopsyche' ? 'caddisfly' : bug.look?.kind) });
 /** Where the bug's eyes are on the 64 grid: the row through them, their middle, and the right-hand eye's column. Null if it shows none. */
 function eyeSpot(grid) {
   const at = []; grid.forEach((row, y) => row.forEach((m, x) => { if (m === 'E' || m === 'G') at.push([x, y]); }));
@@ -177,21 +185,46 @@ function eyeSpot(grid) {
   const mid = (list, k) => (Math.min(...list.map((p) => p[k])) + Math.max(...list.map((p) => p[k]))) / 2, x = mid(at, 0);
   return { x: Math.round(x), y: Math.round(mid(at, 1)), right: Math.round(mid(at.filter((p) => p[0] >= x), 0)) };
 }
-function spriteArt(L, fine, stage = 0, botched = false, capless = false) {
-  const c = canvas(fine);
-  if (stage) drawEvolution(c, stage, botched, L, { draw, capless });
-  else draw(c, L);
+/** Lays `u` under `c`: only where `c` has nothing. */
+function under(c, u) {
+  const N = c.g.length;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (c.g[y][x] === null && u.g[y][x] !== null) {
+    c.g[y][x] = u.g[y][x]; c.part[y][x] = u.part[y][x] ? u.part[y][x] + 100000 : 0; c.etch[y][x] = u.etch[y][x]; c.shine[y][x] = u.shine[y][x] ? u.shine[y][x] + 100000 : 0;
+  }
+}
+/** `v`: the bug's own variety (server/engine/variety.js). A grown bug as hatched gets its base; any bug its marks. */
+function spriteArt(L, fine, stage = 0, botched = false, capless = false, v = null, frame = 0) {
+  if (PHOTO.has(L.id)) v = null;
+  const based = !!v && v.base !== 'legs' && !stage && !L.young;
+  // a grown bug as hatched carries its species' mining tool (an evolved one has its own arms and kit)
+  const tool = !stage && !L.young && !PHOTO.has(L.id) ? toolFor(L.id) : null;
+  const paint = (f) => {
+    const c = canvas(f); NOLEGS = based;
+    try {
+      if (stage) drawEvolution(c, stage, botched, L, { draw, capless });
+      else draw(c, L);
+    } finally { NOLEGS = false; }
+    return c;
+  };
+  const c = paint(fine);
+  if (!v && !tool) return c;
+  const S = survey(fine === 1 ? c : paint(1)); // placed by the 64 grid, so every size has them in the same spots
+  if (based) { const u = canvas(fine); drawBase(u, S, v.base, frame); under(c, u); }
+  if (v) drawMarks(c, S, v);
+  if (tool) drawTool(c, S, tool.id);
   return c;
 }
+const varietyOf = (style) => (style?.variety ? cleanVariety(style.variety) : null);
+const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT_PAL, v); // a bought skin is worn as sold
 
 /**
  * Builds the natural sprite grid: rows of hex colours (or null for transparent), 64 x `fine` a side. `evo` (1 or 2)
  * gives the evolved body instead, `botched` the one that went wrong.
  */
-export function spriteGrid(bug, level, fine = 1, evo = 0, botched = false) {
-  const L = lookOf(bug, evo ? undefined : level);
-  const c = spriteArt(L, fine, evo, botched);
-  return shade(c, ramps(L.pal ?? DEFAULT_PAL));
+export function spriteGrid(bug, level, fine = 1, evo = 0, botched = false, variety = null, frame = 0) {
+  const L = lookOf(bug, evo ? undefined : level), v = variety ? cleanVariety(variety) : null;
+  const c = spriteArt(L, fine, evo, botched, false, v, frame);
+  return shade(c, ramps(palFor(L, null, v)));
 }
 
 const DEFAULT_PAL = ['#111111', '#333333', '#666666', '#999999', '#cc3333'];
@@ -282,6 +315,7 @@ function draw(target, L, only) {
       c.line(x0, y0, x1, y1, 'D', w1); c.line(x1, y1, x2, y2, 'D', w2);
       c.hair([[x2 - 1.2, y2 + 1.4], [x2, y2 + 0.2], [x2 + 1.1, y2 + 1.6]], 'D');
     };
+    if (!NOLEGS) { // on a base of its own (variety), it leaves its legs at home
     joint(29, 20, 24, 14, 21, 8, 1, 1);           // fore
     joint(29, 28, 22, 30, 16, 34, 2, 1);           // mid
     c.line(29, 36, 20, 42, 'D', 4);                // hind femur, swollen
@@ -289,6 +323,7 @@ function draw(target, L, only) {
     c.line(15, 50, 13, 58, 'D', 2);                // hind tibia
     c.hair([[12, 59.5], [13, 58.2], [14.2, 59.7]], 'D');
     c.put(22, 40, 'A'); c.put(20, 43, 'A'); c.put(18, 46, 'A'); // femoral spines
+    }
     // Body: small head, long thorax, eight tapering abdominal segments.
     head.ell(32, 8, 3.4, 3.6, 'B');
     eyes(head, 29, 8, 1);
@@ -364,10 +399,12 @@ function draw(target, L, only) {
     c.ell(32, 25, 10, 6, 'B'); head.ell(32, 17, 9, 4.5, 'D'); eyes(head, 26, 17, 2); // a broad head, the eyes set wide
     head.ell(32, 14, 1.5, 1.5, 'A', false); antennae(head, { x: 29, y: 13, len: 4, bend: 2 });
   } else if (k === 'skater') {
+    if (!NOLEGS) {
     c.line(29, 26, 13, 11, 'D', 1); c.line(13, 11, 5, 13, 'D', 1); // short forelegs
     c.line(28, 32, 7, 30, 'D', 1); c.line(7, 30, 1, 22, 'D', 1); // the middle legs it rows with
     c.line(28, 38, 11, 52, 'D', 1); c.line(11, 52, 5, 61, 'D', 1); // hind legs, trailing
     for (const [x, y] of [[4, 14], [2, 21], [6, 61]]) c.ell(x, y, 2.5, 1, 'W'); // dimples where its feet rest on the water
+    }
     c.ell(32, 34, 5, 9, 'B'); c.ell(32, 33, 2.5, 6, 'L'); head.ell(32, 23, 4, 3.5, 'B'); eyes(head, 28, 22, 1.5);
     antennae(head, { x: 30, y: 20, len: 8, bend: 5 });
   } else if (k === 'roach') {
@@ -558,15 +595,16 @@ function paintWear(ctx, wear, body, outline) {
  * The bug's sprite, cached by species, life stage and look, with its accessories: 64x64, or 64 x `fine` a side for
  * bigger drawing (fineFor). Hats and gear are placed by the 64-grid outline either way.
  */
-export function spriteCanvas(bug, style, level, fine = 1) {
+export function spriteCanvas(bug, style, level, fine = 1, frame = 0) {
   const stage = style?.evo === 2 ? 2 : style?.evo === 1 ? 1 : 0;
   const botched = stage > 0 && !!style?.botched;
   const artLevel = stage ? undefined : level;
-  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}`;
+  const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}|${varietyKey(varietyOf(style))}|${frame}`;
   if (cache.has(key)) return cache.get(key);
-  const L = lookOf(bug, artLevel), R = ramps(style?.bugskin?.pal ?? L.pal ?? DEFAULT_PAL);
+  const v = varietyOf(style), L = lookOf(bug, artLevel), R = ramps(palFor(L, style, v));
+  if (v?.base !== 'rotor') frame = 0;
   const capless = !!style?.bughat?.shape || style?.gear?.shape === 'helmet' || style?.defense?.shape === 'helmet'; // one hat at a time: a bought one goes on instead of its own
-  const art = spriteArt(L, fine, stage, botched, capless), N = SPRITE * fine;
+  const art = spriteArt(L, fine, stage, botched, capless, v, frame), N = SPRITE * fine;
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : Object.assign(document.createElement('canvas'), { width: N, height: N });
   const ctx = c.getContext('2d'), body = shade(art, R);
   paintSprite(ctx, body, 0, 0, N);
@@ -575,7 +613,7 @@ export function spriteCanvas(bug, style, level, fine = 1) {
     return c;
   }
   // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
-  const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched, capless);
+  const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched, capless, v, frame);
   const grid = fine === 1 ? body : shade(coarse, R);
   const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
   const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
@@ -609,7 +647,8 @@ export function drawBug(ctx, bug, { w, h, t = 0, still = false, poke = 0, flip =
   ctx.beginPath(); ctx.ellipse(w / 2, (h + adultSize) / 2 + h * 0.02, s * 0.36 * (1 - hop / (s || 1)), s * 0.07, 0, 0, Math.PI * 2); ctx.fill();
   ctx.imageSmoothingEnabled = false;
   if (flip) { ctx.translate(w, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(spriteCanvas(bug, style, level, fineFor(s)), ox, oy, s, s);
+  const frame = still || style?.evo || style?.variety?.base !== 'rotor' ? 0 : Math.floor(t / 90) % 2; // a rotor turns while it hovers
+  ctx.drawImage(spriteCanvas(bug, style, level, fineFor(s), frame), ox, oy, s, s);
   ctx.restore();
   return { px, s, ox, oy };
 }

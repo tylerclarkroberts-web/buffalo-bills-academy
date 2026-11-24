@@ -1,4 +1,5 @@
 import { GameError } from './engine/game.js';
+import { cleanVariety } from './engine/variety.js';
 import { ROOM_ANCHORS, ROOM_THEMES, ROOM_ITEMS, ROOM_ITEM, ROOM_SHELF_IDS, ROOM_SHELF_SPOTS, ROOM_SHELF_SIZES, ROOM_FINISHES, ROOM_FINISH_KINDS,
   ROOM_FURNITURE, ROOM_HOMESTEAD, roomHomestead, ROOM_WALL_SPOTS, ROOM_WALL_IDS, defaultWallDisplays, roomWallDisplays, wallMountsFit,
   defaultShelves, roomShelves, roomFinishes, roomAnchors, roomItemFits, wealthStage, defaultFurniture, furnitureValid, roomFurniture, upgradeFurniture, ownedFurniture, ROOM_FURNITURE_ITEMS, ROOM_PLAN } from './catalog/room.js';
@@ -91,6 +92,7 @@ export class Rooms {
         const look = pen.style[slot]; if (!record(look)) continue;
         style[slot] = { id: look.id, ...(look.shape ? { shape: look.shape } : {}), ...(Array.isArray(look.pal) ? { pal: [...look.pal] } : {}) };
       }
+      const variety = cleanVariety(pen.style.variety); if (variety) style.variety = variety; // its own look (engine/variety.js)
       if (Object.keys(style).length) out.style = style;
     }
     if (pen.stage === 'creature') {
