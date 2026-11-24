@@ -55,22 +55,23 @@ test('the poster keeps the parody lines and dynamic name, with no official Narut
   assert.equal(slackErrorLine({ method: 'files.getUploadURLExternal', error: 'missing_scope', needed: 'files:write' }), 'files.getUploadURLExternal missing_scope needed=files:write');
 });
 
-test('shameDecision: one poster per streak, re-arm below 4, at most one per 12h', () => {
+test('shameDecision: one poster per streak, re-arm below 7, at most one per 12h', () => {
+  assert.equal(SHAME_MIN, 7);
   const t0 = 1_000_000;
   const first = shameDecision({ lastAt: 0, streak: false }, { count: SHAME_MIN, now: t0 });
   assert.equal(first.post, true);
   assert.deepEqual(first.next, { lastAt: t0, streak: true });
-  const same = shameDecision(first.next, { count: 6, now: t0 + 60_000 });
+  const same = shameDecision(first.next, { count: SHAME_MIN + 2, now: t0 + 60_000 });
   assert.equal(same.post, false, 'same streak does not post again');
-  const below = shameDecision(same.next, { count: 3, now: t0 + 120_000 });
+  const below = shameDecision(same.next, { count: SHAME_MIN - 1, now: t0 + 120_000 });
   assert.equal(below.post, false);
-  assert.equal(below.next.streak, false, 'dropping below 4 re-arms');
-  const tooSoon = shameDecision(below.next, { count: 4, now: t0 + 120_000 });
+  assert.equal(below.next.streak, false, 'dropping below 7 re-arms');
+  const tooSoon = shameDecision(below.next, { count: SHAME_MIN, now: t0 + 120_000 });
   assert.equal(tooSoon.post, false, '12h cooldown still holds after re-arm');
   assert.equal(tooSoon.next.streak, true);
-  const later = shameDecision({ lastAt: t0, streak: false }, { count: 4, now: t0 + SHAME_COOLDOWN_MS });
+  const later = shameDecision({ lastAt: t0, streak: false }, { count: SHAME_MIN, now: t0 + SHAME_COOLDOWN_MS });
   assert.equal(later.post, true);
-  assert.equal(shameDecision({ lastAt: 0, streak: false }, { count: 3, now: t0 }).post, false);
+  assert.equal(shameDecision({ lastAt: 0, streak: false }, { count: SHAME_MIN - 1, now: t0 }).post, false);
 });
 
 test('env kill switch and default #buffalo-bills-academy channel', () => {
@@ -195,41 +196,51 @@ function agent(base) {
   return { get: (u) => call('GET', u), post: (u, b) => call('POST', u, b) };
 }
 
-test('a player on turn in 4 human-only holdem tables gets one poster, not a second, and not when killed', async (t) => {
+
+function plantShameTables(s, { actor, pal, n = SHAME_MIN, prefix, bots = false } = {}) {
+  for (let i = 0; i < n; i++) {
+    const code = `${prefix}${i}XXXX`.slice(0, 6);
+    if (bots) {
+      s.service.store.saveTable({
+        code, name: 'Bots', status: 'open', bots: true, settings: { turnSeconds: 100, bots: 1 },
+        seats: [{ playerId: actor.id, sittingOut: false, bot: false }, { playerId: 'bot-0', sittingOut: false, bot: true }],
+        hand: { toAct: 0, deadline: s.clock.t + 10_000, startedAt: s.clock.t },
+      });
+    } else {
+      s.service.store.saveTable({
+        code, name: `Wait ${i}`, status: 'open', hostId: pal.id,
+        settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
+        seats: [{ playerId: actor.id, sittingOut: false, name: actor.name || 'Ann' }, { playerId: pal.id, sittingOut: false, name: pal.name || 'Bob' }],
+        hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
+      });
+    }
+  }
+}
+
+test('a player on turn in 7 human-only holdem tables gets one poster, not a second, and not when killed', async (t) => {
   const slack = mockSlack();
   const s = await boot(t, { slackFetch: slack.fetch });
-  const pal = s.service.store.players;
-  // Create the actor through the service after a guest... easier: plant two players and 4 tables.
   const ann = { id: 'ann-wanted', name: 'Ann Wait', createdAt: 1, bankroll: 5000, txns: [] };
   const bob = { id: 'bob-wanted', name: 'Bob Pal', createdAt: 1, bankroll: 5000, txns: [] };
   s.service.store.players[ann.id] = ann;
   s.service.store.players[bob.id] = bob;
   s.service.store.savePlayers();
-  for (let i = 0; i < 4; i++) {
-    const code = `W${i}AAA`.slice(0, 6);
-    const t = {
-      code, name: `Wait ${i}`, status: 'open', hostId: bob.id,
-      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
-      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
-      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
-    };
-    s.service.store.saveTable(t);
-  }
-  assert.equal(s.service.wanted.countFor(ann, s.clock.t), 4);
+  plantShameTables(s, { actor: ann, pal: bob, prefix: 'W' });
+  assert.equal(s.service.wanted.countFor(ann, s.clock.t), 7);
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 1, JSON.stringify(slack.calls.map((c) => c.method)));
   assert.match(slack.uploads[0].comment, /<!channel>/);
   assert.match(slack.uploads[0].comment, /Sheriff's Office/);
   assert.match(slack.uploads[0].comment, /Ann Wait is WANTED for making everyone else wait/);
-  assert.match(slack.uploads[0].comment, /holding up 4 games/);
+  assert.match(slack.uploads[0].comment, /holding up 7 games/);
   assert.match(slack.uploads[0].comment, /One Thousand Years of Pain/);
   assert.equal(slack.uploads[0].channel, 'CACADEMY99');
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 1, 'same streak does not post again');
 
-  // Kill switch: no further posts even after dropping below 4 and waiting 12h
+  // Kill switch: no further posts even after dropping below 7 and waiting 12h
   const before = slack.uploads.length;
   s.service.wanted.setConfig({ enabled: false });
   // clear streak as if they acted, then re-offend after cooldown
@@ -243,19 +254,36 @@ test('a player on turn in 4 human-only holdem tables gets one poster, not a seco
   assert.equal(slack.uploads.length, before);
 });
 
+test('holding up 6 games does not post a wanted poster; 7 games does', async (t) => {
+  const slack = mockSlack();
+  const s = await boot(t, { slackFetch: slack.fetch });
+  const ann = { id: 'ann-threshold', name: 'Ann Wait', createdAt: 1, bankroll: 5000, txns: [] };
+  const bob = { id: 'bob-threshold', name: 'Bob Pal', createdAt: 1, bankroll: 5000, txns: [] };
+  s.service.store.players[ann.id] = ann;
+  s.service.store.players[bob.id] = bob;
+  s.service.store.savePlayers();
+  plantShameTables(s, { actor: ann, pal: bob, n: SHAME_MIN - 1, prefix: 'U' });
+  assert.equal(s.service.wanted.countFor(ann, s.clock.t), 6);
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 0, 'six games is still under the line');
+  assert.equal(slack.channelPosts.length, 0);
+
+  plantShameTables(s, { actor: ann, pal: bob, n: 1, prefix: 'V' });
+  assert.equal(s.service.wanted.countFor(ann, s.clock.t), 7);
+  s.service.wanted.scan();
+  await s.service.wanted.idle();
+  assert.equal(slack.uploads.length, 1);
+  assert.match(slack.uploads[0].comment, /holding up 7 games/);
+});
+
 test('bot tables and blackjack do not trigger a poster, and no Slack is sent without a channel', async (t) => {
   const slack = mockSlack();
   const s = await boot(t, { env: { SLACK_ACADEMY_CHANNEL: '' }, slackFetch: slack.fetch });
   const ann = { id: 'ann-bot', name: 'Ann', createdAt: 1, bankroll: 5000, txns: [] };
   s.service.store.players[ann.id] = ann;
   s.service.store.savePlayers();
-  for (let i = 0; i < 4; i++) {
-    s.service.store.saveTable({
-      code: `B${i}AAA`.slice(0, 6), name: 'Bots', status: 'open', bots: true, settings: { turnSeconds: 100, bots: 1 },
-      seats: [{ playerId: ann.id, sittingOut: false, bot: false }, { playerId: 'bot-0', sittingOut: false, bot: true }],
-      hand: { toAct: 0, deadline: s.clock.t + 10_000, startedAt: s.clock.t },
-    });
-  }
+  plantShameTables(s, { actor: ann, pal: ann, n: SHAME_MIN, prefix: 'B', bots: true });
   assert.equal(s.service.wanted.countFor(ann, s.clock.t), 0);
   s.service.wanted.scan();
   await s.service.wanted.idle();
@@ -272,14 +300,7 @@ test('a Slack-matched player is @mentioned in the channel post', async (t) => {
   s.service.store.players[ann.id] = ann;
   s.service.store.players[bob.id] = bob;
   s.service.store.savePlayers();
-  for (let i = 0; i < 4; i++) {
-    s.service.store.saveTable({
-      code: `M${i}AAA`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
-      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
-      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
-      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
-    });
-  }
+  plantShameTables(s, { actor: ann, pal: bob, prefix: 'M' });
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 1);
@@ -334,14 +355,7 @@ test('a pasted C-ID uploads without conversations.list, even when channels:read 
   s.service.store.players[ann.id] = ann;
   s.service.store.players[bob.id] = bob;
   s.service.store.savePlayers();
-  for (let i = 0; i < 4; i++) {
-    s.service.store.saveTable({
-      code: `C${i}CID0`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
-      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
-      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
-      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
-    });
-  }
+  plantShameTables(s, { actor: ann, pal: bob, prefix: 'C' });
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.ok(!slack.calls.some((c) => c.method === 'conversations.list'), 'a C-ID must not look up the channel name');
@@ -364,14 +378,7 @@ test('the admin channel setting also accepts a C-ID and skips name lookup', asyn
   s.service.store.players[ann.id] = ann;
   s.service.store.players[bob.id] = bob;
   s.service.store.savePlayers();
-  for (let i = 0; i < 4; i++) {
-    s.service.store.saveTable({
-      code: `A${i}CID0`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
-      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
-      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
-      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
-    });
-  }
+  plantShameTables(s, { actor: ann, pal: bob, prefix: 'A' });
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.ok(!slack.calls.some((c) => c.method === 'conversations.list'));
@@ -389,14 +396,7 @@ test('a missing files:write scope falls back to a channel post with an inline im
   s.service.store.players[ann.id] = ann;
   s.service.store.players[bob.id] = bob;
   s.service.store.savePlayers();
-  for (let i = 0; i < 4; i++) {
-    s.service.store.saveTable({
-      code: `F${i}ALL0`.slice(0, 6), name: `Wait ${i}`, status: 'open', hostId: bob.id,
-      settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
-      seats: [{ playerId: ann.id, sittingOut: false, name: 'Ann' }, { playerId: bob.id, sittingOut: false, name: 'Bob' }],
-      hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
-    });
-  }
+  plantShameTables(s, { actor: ann, pal: bob, prefix: 'F' });
   s.service.wanted.scan();
   await s.service.wanted.idle();
   assert.equal(slack.uploads.length, 0);
@@ -431,14 +431,7 @@ test('one sweep that finds several offenders posts one poster and queues the res
   const offenders = names.map((name, n) => {
     const p = { id: `off-${n}`, name, createdAt: 1, bankroll: 5000, txns: [] };
     s.service.store.players[p.id] = p;
-    for (let i = 0; i < 4; i++) {
-      s.service.store.saveTable({
-        code: `Q${n}${i}AAA`.slice(0, 6), name: `${name} ${i}`, status: 'open', hostId: pal.id,
-        settings: { turnSeconds: 100, maxPlayers: 3, smallBlind: 1, bigBlind: 2, buyIn: 200 },
-        seats: [{ playerId: p.id, sittingOut: false, name }, { playerId: pal.id, sittingOut: false, name: 'Pal' }],
-        hand: { toAct: 0, deadline: s.clock.t + 80_000, startedAt: s.clock.t - 10_000 },
-      });
-    }
+    plantShameTables(s, { actor: p, pal, prefix: `Q${n}` });
     return p;
   });
   s.service.store.savePlayers();
