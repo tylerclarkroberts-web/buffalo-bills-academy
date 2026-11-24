@@ -53,4 +53,6 @@ export const pvpAmbush = (send, target) => send('/mines/pvp/ambush', { target })
 export const pvpForfeit = (send) => send('/mines/pvp/forfeit', {});
 /** Fight the wild bug you walked up to with one of your bugs (`bug`, its Barn id); `at` is the server's time when you met it. */
 export const pvpWild = (send, wildId, bug, at) => send('/mines/pvp/wild', { wildId, bug, at });
-export const pvpJar = (send, battleId, have) => send('/mines/pvp/jar', { battleId, have });
+/** A wild bug has come into view: it goes in your Bugdex. */
+export const pvpSaw = (send, wildId) => send('/mines/pvp/saw', { wildId });
+export const pvpJar =(send, battleId, have) => send('/mines/pvp/jar', { battleId, have });

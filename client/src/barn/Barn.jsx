@@ -6,14 +6,14 @@ import { api, refreshSession, useSession } from '../api.js';
 import { money } from '../util.js';
 import { SignIn } from '../Home.jsx';
 import { goToMines } from '../App.jsx';
-import { BY_ID } from '../../../server/engine/creatures.js';
+import { BY_ID, ROSTER, formOf } from '../../../server/engine/creatures.js';
 import { movesFor, STANCES, riskFor } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
-import BugCard, { TypeChip } from './BugCard.jsx';
-import { TYPES, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
+import BugCard, { TypeChip, STAGES } from './BugCard.jsx';
+import { TYPES, RARITY, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
 import Gym from './Gym.jsx';
@@ -161,6 +161,7 @@ const HELP = {
   gym: ['Cardio and sparring are honest: a little power for good, no side effects.', 'A Double Shift builds power faster but drains mood and adds strain. Strain makes a bug unruly.', 'Roids make a bug far stronger and wreck its mood. The power fades as the roid load wears off.', 'Unruly bugs drag their feet in the mines and balk. A juiced bug may go into a roid rage and kill a wild bug it knocks out before you can jar it.', 'Cool Down & Stretch flushes roid load and strain faster. Both fade on their own, slowly.'],
   ring: ['Accept a challenge, challenge someone, or post a bout.', 'One fight at a time. A challenge waits if they are already in the ring.', 'The winner takes the pot. A knockout goes to the Bug Center.'],
   circuit: ['Beat the stops in order. A win pays XP and a one-time purse; a loss pays nothing.', 'Legendary bugs turn up in the mine a few times a year, one of each in the whole Academy.', 'Circuit bugs are drilled: tougher than a barn bug of the same level. Bring a type edge or a level or two.', 'Every ribbon raises the top level your bugs can reach by one.', 'After eight ribbons come the Fairgrounds: four judges, then the Grand Champion. The champion is a copy of the bug that last won the circuit. Take the rosette and yours defends it.', 'A stop marked ! is an errand: somebody wants something. Bring it and they pay. None of them are needed.', 'Your first ribbon and your first card each put something on the wall of My House.', 'Some stops hold a rare wild bug. Knock it out and you get three throws of a jar, as in the mine.', 'Every leader hands over a prize with the ribbon. Prizes work in circuit fights only.', 'Each area has a feature presentation after its ribbon: a one-of-a-kind bug with its own trick. Beat it for its card. You never have to.', 'After ribbon 2, the next four areas can be won in any order. Each ribbon you hold makes the ones you left tougher.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
+  dex: ['A bug goes in the Bugdex once you have kept one, been in a fight with one, or spotted one down the mine.', 'II and III are its evolved stages. Each stays a question mark until you have kept or fought one that far along.', 'Watching somebody else\'s fight does not count. The bug has to have seen you too.'],
 };
 
 /** The ring: other players and their bugs, bouts open to anyone, and recent fights. Anyone can look; fighting needs a bug. */
@@ -264,6 +265,39 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
       </div>
       <button className="btn ghost small" onClick={() => watch(fight.id)} disabled={busy} data-test="fight-watch">Watch</button>
     </li>; })}</ul> : <p className="small muted" data-test="fights-empty">No fights yet. The bottle caps are gathering dust.</p>)}
+  </div>;
+}
+
+/** The Bugdex: every species in card order, each with its two evolved stages beside it. A form you have met (`b.dex`:
+ * kept, fought, or spotted down the mine) shows its face and opens its card; the rest are a question mark. How rare a
+ * bug is and its type are posted either way. */
+const FORMS = ROSTER.flatMap((bug, k) => STAGES.map((_, evo) => ({ bug, evo, key: formOf(bug.id, evo), no: String(k + 1).padStart(2, '0') })));
+function Bugdex({ seen }) {
+  const met = FORMS.filter((form) => seen.includes(form.key)), [open, setOpen] = useState(null), dialog = useRef(null), shut = useRef(null), on = FORMS.find((form) => form.key === open);
+  useEffect(() => { const el = dialog.current; if (el && !el.open) { el.showModal(); shut.current.focus({ preventScroll: true }); } }, [open]); // Close, not the first arrow, so Enter does the safe thing
+  const flip = (step) => setOpen(met[(met.indexOf(on) + step + met.length) % met.length].key);
+  const tile = ({ bug, evo, key, no }) => {
+    const rarity = rarityOf(bug.id), type = TYPES[typeOf(bug.id)]?.name, kind = !evo && <small className={`dex-kind r${rarity}`} aria-hidden={!seen.includes(key)}>{RARITY[rarity].name} <span>{type}</span></small>;
+    return seen.includes(key)
+      ? <button key={key} className={`dex-tile${evo ? ' evo' : ''}`} onClick={() => setOpen(key)} aria-label={evo ? `${bug.name}, ${STAGES[evo]}` : undefined} data-test="dex-met">
+        <span className="num">{evo ? STAGES[evo].slice(6) : no}</span><BugThumb bug={{ species: bug.id, level: 10, style: evo ? { evo } : null }} />{!evo && <b>{bug.name}</b>}{kind}
+      </button>
+      : <span key={key} role="img" className={`dex-tile unmet${evo ? ' evo' : ''}`} aria-label={`Number ${no}${evo ? `, ${STAGES[evo]}` : ''}: not met yet. ${RARITY[rarity].name} ${type}.`} data-test="dex-unmet"><span className="num">{evo ? STAGES[evo].slice(6) : no}</span><i aria-hidden="true">?</i>{kind}</span>;
+  };
+  return <div className="dex" data-test="bugdex">
+    <p className="small dex-count" data-test="dex-count"><b className="num">{met.length} of {FORMS.length}</b> met{!met.length ? '. They turn up in fights and down the mine.' : met.length === FORMS.length ? '. That is all of them. They would like some privacy now.' : ''}</p>
+    <ol className="dex-grid">
+      {ROSTER.map((bug, k) => <li key={bug.id} className="dex-fam" style={{ '--tc': TYPES[typeOf(bug.id)]?.color }}>{tile(FORMS[k * 3])}<div className="dex-evos">{tile(FORMS[k * 3 + 1])}{tile(FORMS[k * 3 + 2])}</div></li>)}
+    </ol>
+    {on && <dialog ref={dialog} className="dex-card" aria-label={`${on.bug.name}${on.evo ? `, ${STAGES[on.evo]}` : ''}: card`} onClose={() => setOpen(null)} onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}
+      onKeyDown={(e) => { if (met.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) flip(e.key === 'ArrowLeft' ? -1 : 1); }} data-test="dex-card">
+      <BugCard key={open} species={on.bug.id} evo={on.evo} />
+      <div className="barn-row">
+        {met.length > 1 && <button className="btn" onClick={() => flip(-1)} aria-label="Previous bug" data-test="dex-prev">‹</button>}
+        <button ref={shut} className="btn" onClick={() => dialog.current.close()} data-test="dex-close">Close</button>
+        {met.length > 1 && <button className="btn" onClick={() => flip(1)} aria-label="Next bug" data-test="dex-next">›</button>}
+      </div>
+    </dialog>}
   </div>;
 }
 
@@ -392,8 +426,8 @@ function BarnHome({ me }) {
   const mutation = useRef(0);
   const [tab, setTab] = useState('card');
   const [help, setHelp] = useState(false);
-  // The Barn's three rooms: your stalls, the ring, the circuit. /barn?room=circuit opens on the circuit.
-  const [view, setView] = useState(() => { const room = new URLSearchParams(window.location.search).get('room'); return room === 'circuit' || room === 'gym' ? room : 'stalls'; });
+  // The Barn's rooms: your stalls, the ring, the circuit, the gym, the Bugdex. /barn?room=circuit (or gym, or dex) opens on that one.
+  const [view, setView] = useState(() => { const room = new URLSearchParams(window.location.search).get('room'); return ['circuit', 'gym', 'dex'].includes(room) ? room : 'stalls'; });
   const ring = view === 'ring', stalls = view === 'stalls';
   const setRing = (on) => setView(on ? 'ring' : 'stalls');
   const ringOpened = useRef(false);
@@ -500,7 +534,7 @@ function BarnHome({ me }) {
           <div className="barn-head-acts">
             {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted) || !!b.evoNews} />}
             <div className="barn-rooms" role="group" aria-label="Barn">
-              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit'], ['gym', 'Gym']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
+              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit'], ['gym', 'Gym'], ['dex', 'Bugdex']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
             </div>
             <button className="btn small ghost barn-help-btn" onClick={() => setHelp(!help)} aria-expanded={help} aria-controls="barn-help" title="How the Barn works" data-test="barn-help">?</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
@@ -518,6 +552,7 @@ function BarnHome({ me }) {
           watch={watch} />}
         {view === 'circuit' && <Circuit b={b} busy={busy} act={act} boutOpen={!!bout} />}
         {view === 'gym' && <Gym b={b} sel={pen?.id} busy={busy} act={act} take={take} now={now} />}
+        {view === 'dex' && <Bugdex seen={b.dex || []} />}
         {stalls && stable?.bugs.length > 0 && <Stalls stable={stable} sel={sel === 'build' ? sel : pen?.id} onPick={pick} />}
         {stalls && sel === 'build' && stable?.nextStall != null && (
           <div className="barn-none" data-test="barn-build">

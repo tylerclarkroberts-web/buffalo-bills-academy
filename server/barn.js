@@ -9,7 +9,7 @@
 // so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, givenName, levelFor, rawLevel, xpFor, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
+import { ROSTER, BY_ID, givenName, levelFor, rawLevel, xpFor, formOf, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { QUIRKS, MAN_QUIRKS } from './engine/bout.js';
@@ -38,6 +38,8 @@ export function bugLostToHeeshee(barn, playerId, mines = barn?.mines) {
 const STRAYS_KEPT = 50;                         // released bugs loose in the mines at once; the oldest wander off for good
 /** What names one bug among its owner's: when its egg was picked up (rows from before stalls: when it hatched). */
 export const idOf = (pen) => pen.eggAt || pen.bornAt;
+/** The Bugdex entries a kept bug stands for: itself as hatched and every stage it has evolved through. An egg is still a secret. */
+const formsOf = (pen) => (pen.stage === 'egg' ? [] : Array.from({ length: (pen.evo || 0) + 1 }, (_, evo) => formOf(pen.species, evo)));
 const idOk = (v) => v === undefined || Number.isFinite(v);
 export const DEFAULT_INCUBATE_MS = 3 * 24 * 3600e3;
 // Needs decay gently: from full to empty in about a week (hunger, v33: was 2 days), 2.5 days (mood) and 3 days
@@ -175,9 +177,34 @@ export class Barn {
     this.gymInt = gymInt || ((n) => crypto.randomInt(n)); // the sparring pit's
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
     this.doc.pens ||= {}; this.doc.names ||= {}; this.doc.count ||= {}; this.doc.graves ||= {};
-    this.doc.challenges ||= []; this.doc.fights ||= []; this.doc.bench ||= {}; this.doc.stalls ||= {};
+    this.doc.challenges ||= []; this.doc.fights ||= []; this.doc.bench ||= {}; this.doc.stalls ||= {}; this.doc.dex ||= {};
     this.fights = fights || new Fights({ now }); // the mine shares this one (server/app.js)
-    if (this.migrate()) this.save();
+    let dirty = this.migrate() > 0;
+    // The Bugdex. Every fight anywhere starts in `fights`, so that is where bugs are met, each in the form it fought in
+    // (an evolved bug's stage is in its style); what the barn already knows (bugs kept, graves, the fights still on
+    // the board) counts from before it existed.
+    const fought = (fighters) => fighters.map((f) => formOf(f.species, f.style?.evo));
+    this.fights.onStart = ({ players, fighters }) => { this.saw(players, fought(fighters)); };
+    for (const pid of new Set([...Object.keys(this.doc.pens), ...Object.keys(this.doc.bench), ...Object.keys(this.doc.graves)])) {
+      dirty = this.saw(pid, [...this.bugs(pid).flatMap(formsOf), ...(this.doc.graves[pid] || []).map((grave) => grave.species)]) || dirty;
+    }
+    for (const { sides } of this.doc.fights) dirty = this.saw(sides.map((side) => side.ownerId).filter((id) => store.players?.[id]), fought(sides.map((side) => side.fighter))) || dirty; // not an account since deleted
+    if (dirty) this.save();
+  }
+  /**
+   * These players have met these forms (`formOf`): kept one, been in a fight with one, or spotted one down the mine.
+   * A species as hatched and each of its evolved stages are met separately. True when it is news. It only marks: a
+   * fight's start is in the middle of committing its stakes, so the write is the caller's, or the fight's own ending.
+   * ponytail: a restart before the barn is next saved forgets a meeting; the next boot gets it back if the fight
+   * made the board.
+   */
+  saw(players, species) {
+    let news = false; const now = this.now();
+    for (const pid of [players].flat()) {
+      if (!pid) continue;
+      for (const id of [species].flat()) if (BY_ID[String(id).replace(/:[12]$/, '')] && !this.doc.dex[pid]?.[id]) { (this.doc.dex[pid] ||= {})[id] = now; news = true; }
+    }
+    return news;
   }
   /** v33: hybrid eggs and creatures become randomly chosen bugs. Level, XP, needs, record and cooldowns are kept;
    * the name follows the new species; the feeding clock restarts so nobody's bug is suddenly starving. */
@@ -366,6 +393,7 @@ export class Barn {
     if (!pen) { if (bug != null) throw new GameError('That bug is not in your barn.', 404); return null; }
     const now = this.now();
     let dirty = this.hatchIfDue(playerId, pen, now, pen !== this.doc.pens[playerId]);
+    dirty = this.saw(playerId, formsOf(pen)) || dirty; // the Bugdex: hatched, caught or evolved, its owner has met it
     // the top level it can show, by its stage: held at PAUSED_AT until it evolves. Stamped here so every level lookup can read it off the bug.
     const cap = STAGE_CAPS[pen.evo || 0] ?? PAUSED_AT; if (pen.cap !== cap) { pen.cap = cap; dirty = true; }
     if (pen.stage === 'creature' && !isHeesheeHeld(pen)) {
@@ -388,7 +416,7 @@ export class Barn {
     // `pen` is the partner, as every page that knows one bug expects; `lastBout` the newest fight of any of them.
     const evoNews = this.evoNewsOf(playerId);
     return { pen: stable.bugs.find((bug) => bug.partner) || null, serverNow: this.now(), stable, lastBout: stable.bugs.map((bug) => bug.lastBout).filter(Boolean).sort((a, b) => b.at - a.at)[0] || null,
-      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, ...(evoNews ? { evoNews } : {}) };
+      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}), ...(evoNews ? { evoNews } : {}) };
   }
   /** The stalls: how many, what the next one costs, and every bug in them as its owner sees it, partner first. */
   stable(playerId) {
@@ -1221,8 +1249,8 @@ export class Barn {
     return this.view(playerId);
   }
   forget(playerId) { // account deleted: the barn goes with it; its name stays retired so it's never reused
-    if (!this.has(playerId)) return;
-    delete this.doc.pens[playerId]; delete this.doc.bench[playerId]; delete this.doc.stalls[playerId]; delete this.doc.graves[playerId]; this.save();
+    if (!this.has(playerId) && !this.doc.dex[playerId]) return;
+    delete this.doc.pens[playerId]; delete this.doc.bench[playerId]; delete this.doc.stalls[playerId]; delete this.doc.graves[playerId]; delete this.doc.dex[playerId]; this.save();
   }
 }
 function moodWord(n) {

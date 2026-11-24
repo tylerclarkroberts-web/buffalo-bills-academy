@@ -27,6 +27,7 @@ export class Fights {
       nextAt: now + FIGHT.introMs, over: null, onFinish };
     this.live.set(id, fight);
     for (const p of players) if (p) this.of.set(p, id);
+    this.onStart?.(fight); // the Barn's Bugdex: both owners have now met both bugs
     return fight;
   }
   get(id) { return this.live.get(id) || null; }

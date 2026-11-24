@@ -315,6 +315,12 @@ export class Pvp {
     if (!this.startWild(player.id, shift, wild, body.bug ?? null)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
     return this.view(player);
   }
+  /** The miner has caught sight of one of the day's wild bugs: it goes in their Bugdex. ponytail: takes the page's word that it was in view; nothing is paid for a sighting. */
+  sawWild(player, body = {}) {
+    const shift = this.shiftOf(player.id), wild = shift?.id === body.shiftId && this.wildsFor(shift, player.id).find((bug) => bug.id === body.wildId);
+    if (wild && this.barn.saw(player.id, wild.species)) this.barn.save();
+    return { seen: !!wild };
+  }
   startWild(a, shift, wild, bug = null) {
     if (this.bugLost(a)) return null;
     const mine = this.bugOf(a, true, bug);

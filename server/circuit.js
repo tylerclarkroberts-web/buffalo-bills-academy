@@ -316,6 +316,10 @@ export class Circuit {
     this.store = store; this.accounts = accounts; this.randInt = randInt || ((n) => crypto.randomInt(n)); this.barn = barn; this.fights = fights || barn.fights; this.now = now;
     this.doc = store.loadDoc('circuit', { players: {} });
     this.doc.players ||= {};
+    // Bugs fought here before the Bugdex kept count (server/barn.js): whatever a finished stop fielded. A toll that was paid was never fought.
+    const met = Object.entries(this.doc.players).filter(([pid, me]) => store.players?.[pid]
+      && barn.saw(pid, Object.keys(me.done || {}).filter((id) => me.tolls?.[id] !== 'paid').flatMap((id) => STOPS.get(id)?.stop.bugs?.map((bug) => bug.species) || me.rival?.[id] || [])));
+    if (met.length) barn.save();
   }
   save() { this.store.saveDoc('circuit', this.doc); }
   me(pid) { return (this.doc.players[pid] ||= { done: {}, ribbons: {}, run: null }); }
