@@ -17,6 +17,7 @@ import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
+import { PATHS, gymAt, gymEffects, gymView, gymFighter, trainStep } from './engine/gym.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
@@ -78,6 +79,12 @@ export const EVOLVE_FROM = 10, EVOLVE_BY = 13, BILL_SHARE = 0.5, BOTCH_ODDS = 15
 // rebuild costs one of their other bugs for parts (or BILL_SHARE of their cash if they keep no other). Same odds of a botch.
 export const MECH_FROM = 23, MECH_BY = 26;
 const RANGES = [[EVOLVE_FROM, EVOLVE_BY], [MECH_FROM, MECH_BY]];
+// A one-time recap for the first Stage II rebuild, which ran from a stale heal tab and skipped the specialist's
+// panels. Matched only on this Empusa: no barn.json edit is required on deploy, and nobody else is offered the news.
+export const EVO_NEWS_PLAYER = '9dbf29cf-9704-44e7-bdf3-b6d5cd241853';
+export const EVO_NEWS_AT = 1795475094187;
+export const EVO_NEWS_BILL = { had: 10853.56, took: 5426.78, left: 5426.78 };
+const EVO_NEWS_LEVELS = { levelBefore: 9, levelAfter: 10 };
 export const purpleChance = (xp, stage = 0) => Math.max(0, Math.min(1, (rawLevel(xp) - RANGES[stage][0] + 1) / (RANGES[stage][1] - RANGES[stage][0] + 1)));
 /** Outside a fight only a knockout persists. Older standing bugs with saved damage recover here too. */
 export function healthOf(pen) {
@@ -160,13 +167,14 @@ export function strongestTrainers(barn, { players = barn?.store?.players, limit 
 }
 
 export class Barn {
-  constructor({ store, accounts, now, incubateMs, eggInt, evoInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
+  constructor({ store, accounts, now, incubateMs, eggInt, evoInt, gymInt, forceEgg = false, startXp = 0, starveMs, fights } = {}) {
     // starveMs: dev/e2e only (BARN_TEST_STARVE_MS), shrinks the whole neglect timeline proportionally
     this.starveMs = Number(starveMs) > 0 ? Number(starveMs) : STARVE_MS; this.k = this.starveMs / STARVE_MS;
     this.store = store; this.accounts = accounts; this.now = now; this.forceEgg = !!forceEgg; this.startXp = Math.max(0, Number(startXp) || 0);
     this.incubateMs = Number(incubateMs) > 0 ? Number(incubateMs) : DEFAULT_INCUBATE_MS;
     this.eggInt = eggInt || ((n) => crypto.randomInt(n)); // its own random source: never the mine's pay or vein ones
     this.evoInt = evoInt || ((n) => crypto.randomInt(n)); // evolution's own source, for the same reason
+    this.gymInt = gymInt || ((n) => crypto.randomInt(n)); // the sparring pit's
     this.doc = store.loadDoc('barn', { pens: {}, names: {}, count: {} });
     this.doc.pens ||= {}; this.doc.names ||= {}; this.doc.count ||= {}; this.doc.graves ||= {};
     this.doc.challenges ||= []; this.doc.fights ||= []; this.doc.bench ||= {}; this.doc.stalls ||= {}; this.doc.dex ||= {};
@@ -406,8 +414,9 @@ export class Barn {
     if (unseenBout) this.store.commitPlayerDrafts([{ ...player, barnBouts: { ...player.barnBouts, unseen: null } }]);
     const stable = this.stable(playerId);
     // `pen` is the partner, as every page that knows one bug expects; `lastBout` the newest fight of any of them.
+    const evoNews = this.evoNewsOf(playerId);
     return { pen: stable.bugs.find((bug) => bug.partner) || null, serverNow: this.now(), stable, lastBout: stable.bugs.map((bug) => bug.lastBout).filter(Boolean).sort((a, b) => b.at - a.at)[0] || null,
-      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}) };
+      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}), ...(evoNews ? { evoNews } : {}) };
   }
   /** The stalls: how many, what the next one costs, and every bug in them as its owner sees it, partner first. */
   stable(playerId) {
@@ -484,6 +493,7 @@ export class Barn {
       ...(isHeesheeHeld(pen) ? { heesheeHeld: true, heesheeHeldAt: pen.heesheeHeldAt || null } : {}),
       ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
+      gym: gymView(pen.gym, now),
       lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -523,6 +533,42 @@ export class Barn {
     return this.view(playerId);
   }
 
+  /** One bug's gym loads and what they do, now (all zeros for a bug that never trained). Pvp reads `rage` from here. */
+  gymOf(pen) { return gymEffects(gymAt(pen?.gym, this.now())); }
+  /**
+   * The Bug Gym (engine/gym.js): one session on one path for a living, standing bug. Needs move by the path's deltas
+   * (re-based on the bug's own clock, as care does), XP fades by level, and the vial costs cash. Returns the barn view
+   * plus `gym`: the session's outcome with before/after numbers, for the page's result card.
+   */
+  train(playerId, path, bug) {
+    const p = PATHS[path];
+    if (!p) throw new GameError('The gym does not have that machine.', 400);
+    const pen = this.refresh(playerId, bug);
+    if (!pen) throw new GameError('Your barn is empty. Keep an eye out in the mines.', 404);
+    if (pen.stage === 'egg') throw new GameError('Eggs do not lift. Mostly.', 409);
+    if (pen.stage === 'dead') throw new GameError('It is past training now.', 409);
+    if (isHeesheeHeld(pen) || (pen === this.doc.pens[playerId] && bugLostToHeeshee(this, playerId))) throw new GameError('Your bug is nowhere to be found. The Heeshee Mazode took it.', 409);
+    if (pen.sick) throw new GameError(`${pen.name} is not well. The Bug Center, now.`, 409);
+    if (pen.taken) throw new GameError(`${pen.name} is not here. There is a ticket. The Bug Center has the rest.`, 409);
+    if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
+    if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
+    const now = this.now(), own = this.own(pen, now), n = this.needs(pen, now), level = levelFor(pen.xp, pen.cap);
+    let step;
+    try { step = trainStep(path, { gym: pen.gym, needs: n, now, roll: (k) => this.gymInt(k) }); } catch (e) { throw new GameError(e.message, e.status || 409); }
+    const player = step.cost ? this.accounts.ensure(this.store.players[playerId]) : null;
+    if (player) this.accounts.requireFunds(player, step.cost, p.name.toLowerCase());
+    const before = { needs: Object.fromEntries(STATS.map((s) => [s, Math.round(n[s])])), ...gymView(pen.gym, now) };
+    const next = structuredClone(pen);
+    for (const s of STATS) next.stats[s] = { v: step.needs[s], at: own };
+    next.gym = step.gym;
+    const xp = step.xp > 0 ? fadedXp(step.xp, level) : 0;
+    next.xp += xp;
+    if (player) this.accounts.change(player, -step.cost, 'barn-gym', `Bug Gym: ${p.name}`);
+    this.commitPen(playerId, next);
+    const after = { needs: Object.fromEntries(STATS.map((s) => [s, Math.round(step.needs[s])])), ...gymView(next.gym, now) };
+    return { ...this.view(playerId), gym: { path, name: p.name, bug: idOf(next), bugName: next.name, outcome: step.outcome, xp, cost: step.cost, delta: step.delta, change: step.change, before, after } };
+  }
+
   /** Save an owned bug's unlocked moves; settings and fight rewards persist before becoming visible. */
   setBattle(playerId, settings) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)
@@ -545,7 +591,8 @@ export class Barn {
     return { species: pen.species, name: givenName(pen.species, pen.name), level, health: healthOf(pen),
       mood: Math.round(Math.min(...Object.values(this.needs(pen, this.now())))),
       gear: this.styleOf?.(playerId, idOf(pen)).gearBonus || 0, defense: this.styleOf?.(playerId, idOf(pen)).defenseBonus || 0, lunch: pen.lunch || null, style: this.looksOf(playerId, pen),
-      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle), ...(pen.botched ? { botched: pen.botched } : {}) };
+      legacyAbilities: pen.legacyAbilities || 0, battle: battleFor(pen.species, level, pen.legacyAbilities || 0, pen.battle), ...(pen.botched ? { botched: pen.botched } : {}),
+      ...gymFighter(pen.gym, this.now()) };
   }
 
   /** Alive, standing and old enough to fight: the partner, or the bug named. One fight at a time per owner. */
@@ -1009,12 +1056,47 @@ export class Barn {
     this.commitPen(playerId, { ...structuredClone(pen), xp: (pen.xp || 0) + xp });
     return { levelBefore, levelAfter: levelFor((pen.xp || 0) + xp, pen.cap) };
   }
+  /**
+   * Pending one-time recap of a Stage II rebuild the owner missed. Built from the live pen plus the historical bill;
+   * nothing is written until ackEvoNews stamps evoNewsSeen.
+   */
+  evoNewsOf(playerId) {
+    if (playerId !== EVO_NEWS_PLAYER) return null;
+    const pen = this.bugs(playerId).find((bug) => bug.species === 'empusa' && (bug.evo || 0) === 1 && bug.evolvedAt === EVO_NEWS_AT);
+    if (!pen || pen.evoNewsSeen) return null;
+    return {
+      id: idOf(pen), name: pen.name, species: pen.species, botched: pen.botched || null, stage: 1, copy: true,
+      levelBefore: EVO_NEWS_LEVELS.levelBefore, levelAfter: EVO_NEWS_LEVELS.levelAfter, bill: { ...EVO_NEWS_BILL },
+    };
+  }
+  /**
+   * The owner has seen the recap. Stamps evoNewsSeen only: no bill, no ledger, no XP, no stage change.
+   * Idempotent if the news is already gone or was never pending.
+   */
+  ackEvoNews(playerId) {
+    const news = this.evoNewsOf(playerId);
+    if (!news) return this.view(playerId);
+    const pen = this.bugs(playerId).find((bug) => idOf(bug) === news.id);
+    if (!pen || pen.evoNewsSeen) return this.view(playerId);
+    this.commitPen(playerId, { ...pen, evoNewsSeen: this.now() });
+    return this.view(playerId);
+  }
   /** The nurse treats a knockout for free after RECOVER_MS or immediately for FAST_HEAL_COST. */
-  heal(playerId, { pay = false, bug, donor } = {}) {
+  heal(playerId, { pay = false, bug, donor, mode, confirmEvolve, specialist, normalHeal } = {}) {
     const pen = this.refresh(playerId, bug);
     if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
     if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
     if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
+    // The ordinary heal button (mode: 'heal') must never run the specialist's rebuild. A stale Bug Center tab can
+    // otherwise evolve a newly sick or collected bug behind the 3-second pod and skip the panels, receipt and reveal.
+    // Bare /barn/heal (and existing tests) still go through to evolve/rebuild; only the heal UI opts into the guard.
+    const fromHeal = mode === 'heal' || normalHeal === true;
+    const fromSpecialist = confirmEvolve === true || specialist === true || mode === 'specialist';
+    if ((pen.sick || pen.taken) && fromHeal && !fromSpecialist) {
+      const err = new GameError(`${pen.name} needs the specialist. Talk to Nurse Hikari first.`, 409);
+      err.code = 'specialist_required';
+      throw err;
+    }
     if (pen.sick) return this.evolve(playerId, pen);
     if (pen.taken) return this.rebuild(playerId, pen, donor);
     const was = !!pen.faintedAt;

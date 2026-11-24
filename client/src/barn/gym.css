@@ -1,0 +1,151 @@
+/* The Bug Gym: one screen, never scrolled. Sawdust, chalk and a little blood-red for the juice. */
+.barn-wrap > .gym { flex: 1 1 0; min-height: 0; }
+/* Every block keeps its natural height (flex: none): nothing is squeezed, so nothing can be drawn over anything else.
+   The result of a session replaces the machines rather than sharing the space with them. */
+.gym { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.gym > * { flex: none; }
+.gym-empty { align-items: center; justify-content: center; text-align: center; }
+.gym-sign { font: 900 34px/1 var(--display); letter-spacing: .3em; color: var(--gold); margin: 0; transform: rotate(-4deg); border: 3px solid var(--gold); padding: 6px 14px; }
+
+.gym-pick { display: flex; flex-wrap: wrap; gap: 5px; }
+.gym-pick::-webkit-scrollbar { display: none; }
+.gym-chip { flex: none; font: 600 12px var(--sans, inherit); color: var(--paper-2); background: rgba(0,0,0,.3); border: 1px solid #7a4a2a; border-radius: 999px; padding: 5px 10px; min-height: 30px; cursor: pointer; white-space: nowrap; }
+.gym-chip small { opacity: .7; font-weight: 500; }
+.gym-chip-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #ff4a3a; box-shadow: 0 0 6px rgba(255, 60, 40, .8); vertical-align: 1px; }
+.gym-chip.on { border-color: var(--gold); color: var(--gold); background: rgba(242, 198, 90, .12); }
+.gym-chip.juiced { border-color: #b8262a; }
+
+.gym-bug { flex: none; display: grid; grid-template-columns: 112px minmax(0, 1fr); grid-template-areas: 'pic id' 'm m'; gap: 6px 12px; align-items: center; }
+.gym-portrait { grid-area: pic; position: relative; height: 92px; border-radius: 12px; overflow: hidden; background: radial-gradient(90% 70% at 50% 40%, #6a4a2a, #2a160c 80%); box-shadow: inset 0 0 26px rgba(0,0,0,.6); }
+.gym-sprite { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.gym.juiced .gym-portrait { box-shadow: inset 0 0 26px rgba(0,0,0,.6), 0 0 0 2px #b8262a, 0 0 16px rgba(220, 30, 30, .45); }
+.gym-badge { position: absolute; left: 6px; bottom: 6px; z-index: 1; font: 800 10px var(--mono); letter-spacing: .08em; padding: 2px 7px; border-radius: 999px; }
+.gym-badge.roid { background: #b8262a; color: #fff1e6; }
+.gym-badge.strain { background: #a8641c; color: #fff1e6; }
+.gym-id { grid-area: id; min-width: 0; }
+.gym-name { margin: 0; font-family: var(--display); color: var(--gold); font-size: 24px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gym-kind { margin: 2px 0 0; color: var(--paper-2); }
+.gym-power { margin: 4px 0 0; }
+.gym-power b { font-size: 26px; color: #ffe9a0; }
+.gym.juiced .gym-power b { color: #ff6a5a; text-shadow: 0 0 10px rgba(255, 40, 30, .5); }
+.gym-power small { color: var(--paper-2); }
+
+.gym-meters { grid-area: m; display: grid; gap: 5px; }
+.gym-meter { display: grid; grid-template-columns: 52px minmax(0, 1fr) 30px; align-items: center; gap: 8px; }
+.gym-meter-label { font-size: 12px; color: var(--paper-2); }
+.gym-meter-val { font: 600 12px var(--mono); text-align: right; color: var(--paper-2); }
+.gym-bar { position: relative; height: 12px; border-radius: 999px; background: rgba(0,0,0,.45); overflow: hidden; border: 1px solid rgba(255,255,255,.12); }
+.gym-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #6ac040, #b6ff7a); transition: width .5s; }
+.gym-bar-lost { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(255, 70, 50, .85) 0 4px, rgba(120, 10, 10, .85) 4px 8px); animation: gym-lost 1.4s ease-out both; }
+@keyframes gym-lost { 0% { opacity: 1; } 100% { opacity: .55; } }
+.gym-meter.low .gym-bar i { background: linear-gradient(90deg, #c04a2a, #ff8a5a); }
+.gym-meter.low .gym-meter-val { color: #ff8a6a; }
+.gym-meter.calm .gym-bar i { background: linear-gradient(90deg, #4a7a9a, #8ac6e6); }
+.gym-meter.warn .gym-bar i { background: linear-gradient(90deg, #b8781c, #f2b65a); }
+.gym-meter.bad .gym-bar i { background: linear-gradient(90deg, #8a1010, #ff4a3a); }
+.gym-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 2px; }
+.gym-stats span { display: grid; gap: 1px; padding: 4px 8px; border-radius: 8px; background: rgba(0,0,0,.25); }
+.gym-stats small { font-size: 10.5px; color: var(--paper-2); }
+.gym-stats b { font-size: 16px; color: #d8ffb8; }
+.gym-stats b.warn { color: #f2b65a; }
+.gym-stats b.bad { color: #ff5a4a; }
+.gym-stats .rage-hot { background: rgba(160, 14, 14, .45); box-shadow: inset 0 0 0 1px #d8282a; animation: gym-throb 1.3s ease-in-out infinite; }
+@keyframes gym-throb { 50% { box-shadow: inset 0 0 0 1px #ff6a5a, 0 0 12px rgba(255, 40, 30, .55); } }
+
+.gym-coach { margin: 0; text-align: center; font-style: italic; }
+.gym > .gym-result { flex: 1 0 auto; }
+.gym-result { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 12px; border-radius: 12px; background: rgba(0,0,0,.32); border: 1px solid rgba(255,255,255,.14); }
+.gym-result.bad, .gym-result.tanked { background: linear-gradient(180deg, rgba(120, 10, 10, .55), rgba(40, 0, 0, .55)); border-color: #b8262a; animation: gym-hit .5s ease-out; }
+@keyframes gym-hit { 0% { transform: translateX(-5px); } 25% { transform: translateX(5px); } 50% { transform: translateX(-3px); } 100% { transform: none; } }
+.gym-result-line { margin: 0; font-size: 14px; line-height: 1.35; }
+.gym-back { align-self: stretch; min-height: 46px; margin-top: 2px; font-weight: 700; }
+.gym-result-top { display: flex; align-items: flex-start; gap: 8px; }
+.gym-result-top .gym-result-line { flex: 1 1 auto; min-width: 0; }
+.gym-result-x { flex: none; min-height: 32px; min-width: 32px; padding: 2px 8px; margin: -4px -4px 0 0; }
+.gym-deltas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.gym-delta { display: grid; justify-items: start; padding: 2px 0; }
+.gym-delta small { font-size: 10.5px; color: var(--paper-2); text-transform: uppercase; letter-spacing: .06em; }
+.gym-delta b { font: 800 22px/1.3 var(--mono); }
+.gym-delta em { font-style: normal; font-size: 11px; color: var(--paper-2); }
+.gym-delta.up b { color: #b6ff7a; }
+.gym-delta.down b { color: #ff5a4a; }
+.gym-result.tanked .gym-delta.mood b { font-size: 30px; text-shadow: 0 0 12px rgba(255, 40, 30, .6); }
+.gym-delta.power.up b { color: #ffe9a0; }
+.gym-result.bad .gym-delta.power b { font-size: 26px; }
+.gym-result-warn { margin: 0; font-size: 12px; color: #ffc2b8; }
+
+.gym-paths { margin-top: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; gap: 6px; }
+.gym-path { display: grid; align-content: center; gap: 2px; text-align: left; padding: 7px 10px; min-height: 64px; min-width: 0; border-radius: 10px; border: 1px solid #7a4a2a; background: rgba(0,0,0,.28); color: var(--paper); cursor: pointer; font: inherit; }
+.gym-path:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.gym-path b { font-size: 14px; line-height: 1.2; color: var(--gold); }
+.gym-path-fx { font-size: 11.5px; color: var(--paper-2); line-height: 1.25; }
+.gym-path small { font: 600 10.5px var(--mono); color: var(--paper-2); opacity: .8; }
+.gym-path.warn { border-color: #a8641c; }
+.gym-path.bad { border-color: #b8262a; background: linear-gradient(180deg, rgba(120, 10, 10, .35), rgba(0,0,0,.3)); }
+.gym-path.bad b { color: #ff7a6a; }
+.gym-path.bad .gym-path-fx { color: #ffc2b8; }
+.gym-path.calm { border-color: #3a6a8a; }
+.gym-path:hover:not(:disabled) { border-color: var(--gold); }
+.gym-path:disabled { opacity: .45; cursor: default; }
+
+/* the stall's badge for a juiced or overworked bug */
+.bs-gym { font: 800 10.5px var(--mono); letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: #b8262a; color: #fff1e6; }
+.bs-gym.strain { background: #a8641c; }
+.barn-need.juiced .barn-bar { box-shadow: 0 0 0 1px #b8262a; }
+.barn-need.juiced .small { color: #ff8a6a; }
+
+@media (min-width: 761px) {
+  .gym { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); gap: 10px 22px; }
+  .gym-pick { grid-column: 1 / -1; }
+  .gym-bug { grid-column: 1; grid-row: 2; grid-template-columns: 180px minmax(0, 1fr); }
+  .gym-portrait { height: 150px; }
+  .gym-coach { grid-column: 1; grid-row: 3; align-self: start; }
+  .gym-paths { grid-column: 2; grid-row: 2 / 4; align-self: start; margin-top: 0; }
+  .gym-path { min-height: 76px; }
+  .gym > .gym-result { grid-column: 2; grid-row: 2 / 4; align-self: start; }
+}
+/* phones in a real browser (toolbars eat a fifth of the screen): the barn shell, the bug and the machines all tighten */
+@media (max-width: 760px) {
+  .barn-wrap:has(> .gym) { gap: 4px; padding-top: 6px; padding-bottom: 4px; }
+  .barn-wrap:has(> .gym) .barn-head { gap: 4px 8px; }
+  .barn-wrap:has(> .gym) .barn-head h1 { font-size: 22px; }
+  .barn-wrap:has(> .gym) .barn-rooms .btn { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+  .barn-wrap:has(> .gym) > .barn-msg { min-height: 0; }
+  .barn-wrap:has(> .gym) > .barn-msg:empty { display: none; }
+  .gym { gap: 7px; }
+  .gym-bug { grid-template-columns: 96px minmax(0, 1fr); gap: 5px 10px; }
+  .gym-portrait { height: 76px; }
+  .gym-name { font-size: 21px; }
+  .gym-power { margin-top: 2px; }
+  .gym-power b { font-size: 22px; }
+  .gym-meters { gap: 4px; }
+  .gym-stats span { padding: 3px 8px; }
+  .gym-stats b { font-size: 15px; }
+  .gym-path { min-height: 60px; padding: 6px 9px; }
+}
+@media (max-width: 760px) and (max-height: 740px) {
+  .gym-coach { display: none; }
+  .barn-wrap:has(> .gym) .barn-head h1 { font-size: 20px; }
+  .gym-portrait { height: 64px; }
+  .gym-pick { gap: 4px; }
+  .gym-chip { padding: 4px 7px; font-size: 11.5px; }
+  .gym-chip-dot { margin-left: 4px; }
+  .barn-wrap:has(> .gym) { padding-left: 8px; padding-right: 8px; }
+  .barn-wrap:has(> .gym) .barn-head .btn { min-height: 32px; }
+  .gym-bug { grid-template-columns: 84px minmax(0, 1fr); }
+  .gym-meter { grid-template-columns: 46px minmax(0, 1fr) 28px; }
+  .gym-bar { height: 10px; }
+  .gym-stats small { font-size: 10px; }
+  .gym-stats b { font-size: 14px; }
+  .gym-path { min-height: 56px; padding: 5px 9px; gap: 1px; }
+  .gym-path b { font-size: 13.5px; }
+  .gym-path-fx { font-size: 11px; }
+  .gym-result { gap: 6px; padding: 8px 10px; }
+  .gym-result-line { font-size: 13px; line-height: 1.3; }
+  .gym-back { min-height: 42px; }
+  .gym-result.tanked .gym-delta.mood b { font-size: 26px; }
+  .gym-result-warn { font-size: 11.5px; line-height: 1.3; }
+  /* while a result is up it reports power, rage and pace itself: the bug keeps its mood bar, the tiles step aside */
+  .gym.showing .gym-stats, .gym.showing .gym-meter:not([data-test=gym-mood]) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .gym-stats .rage-hot, .gym-result.bad, .gym-result.tanked, .gym-bar-lost { animation: none; } }

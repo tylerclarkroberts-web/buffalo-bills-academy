@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { createApp } from '../server/app.js';
 import { RANTS, CLOSERS, ESCALATION, JABS, PRAISE, HEESHEE_RETURN, makeProblem, makeScene, boxed, sceneLength, GENERATORS, BONUS, BONUS_PER_HOUR } from '../server/foreman.js';
+import { TYPING_RANTS, TYPING_JABS, TYPING_PRAISE, TYPING_PROMPT } from '../server/foremanTyping.js';
 import { PAID_RANTS, paidFarewell } from '../client/src/mines/paidFarewell.js';
 async function boot(opts = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'poker-foreman-'));
@@ -25,7 +26,7 @@ async function login(base, email) {
 let DATA = null; const held = (pendId) => { const d = JSON.parse(fs.readFileSync(DATA + '/foreman.json', 'utf8')); return Object.values(d.pending).find((x) => x.id === pendId).problem.answer; };
 
 test('lines: farmer swears only, no real profanity anywhere', () => {
-  const all = [...Object.values(RANTS).flat(2), ...ESCALATION, ...CLOSERS, ...JABS, ...PRAISE, ...PAID_RANTS.flat(), ...HEESHEE_RETURN].join(' \n ').toLowerCase();
+  const all = [...Object.values(RANTS).flat(2), ...ESCALATION, ...CLOSERS, ...JABS, ...PRAISE, ...PAID_RANTS.flat(), ...HEESHEE_RETURN, ...TYPING_RANTS.flat(), ...Object.values(TYPING_JABS), TYPING_PRAISE, TYPING_PROMPT].join(' \n ').toLowerCase();
   for (const w of ['fuck', 'shit', 'damn', 'hell', 'bitch', 'ass ', 'bastard', 'crap', 'piss', 'goddam', 'dick', 'cock']) assert.ok(!all.includes(w), w);
   for (const w of ['dad-gummit', 'biscuit-eatin', 'cow-patties', 'horse apples', 'dagnabbit', 'sack of feed corn']) assert.ok(all.includes(w), w);
 });

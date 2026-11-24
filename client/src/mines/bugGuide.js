@@ -11,6 +11,10 @@ export const WAIT_TILES = 3;         // if you're this many tiles behind it, it 
 export const ARRIVE_TILES = 0;       // stops on the pool tile
 /** What the bug can be told: lead to the acid (what it does unasked), come to heel, lead to the nearest other miner, lead back to the lift. */
 export const ORDERS = ['acid', 'come', 'someone', 'lift'];
+// The Bug Gym: an unruly guide (bug.gym from the server) walks at gym.mineSpeed of its pace and, every BALK_EVERY_S
+// seconds on the move, stops dead for BALK_S with chance gym.balk. A clean bug has no gym and walks as before.
+export const BALK_EVERY_S = 5;
+export const BALK_S = 1.6;
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const open = (g, x, y) => g[y]?.[x] === 0;
@@ -48,7 +52,7 @@ export class BugGuide {
    * @param maze {{ grid:number[][], pool:{x:number,y:number}, start?:{x:number,y:number} }}
    * @param opts {{ armed?:boolean, afterMs?:number, bug?:{species:string,name?:string,speciesName?:string,style?:object|null} }}
    */
-  constructor(maze, { armed = false, afterMs = APPEAR_AFTER_MS, bug = null } = {}) {
+  constructor(maze, { armed = false, afterMs = APPEAR_AFTER_MS, bug = null, rng = Math.random } = {}) {
     this.grid = maze.grid;
     this.pool = maze.pool;
     this.start = maze.start || { x: 1, y: 1 };
@@ -70,6 +74,10 @@ export class BugGuide {
     this.bob = 0;
     this.slow = 1;     // purple acid: it walks at this share of its pace
     this.down = false; // and then it does not walk at all
+    const gym = bug?.gym || null;
+    this.pace = gym ? Math.max(0.4, Math.min(1, Number(gym.mineSpeed) || 1)) : 1; // the Bug Gym: unruly bugs drag
+    this.balkChance = gym ? Math.max(0, Math.min(1, Number(gym.balk) || 0)) : 0;
+    this.balkLeft = 0; this.balkClock = BALK_EVERY_S; this.balking = false; this.rng = rng;
   }
 
   get present() { return this.state === 'guiding'; }
@@ -180,7 +188,15 @@ export class BugGuide {
     const tx = this.next[0] * TILE, tz = this.next[1] * TILE;
     const vx = tx - this.x, vz = tz - this.z, len = Math.hypot(vx, vz);
     if (len < 1e-4) { this.moving = false; return; }
-    const step = Math.min(WALK_SPEED * this.slow * dt, len);
+    if (this.balkChance > 0) { // unruly: now and then it just refuses
+      if (this.balkLeft > 0) { this.balkLeft -= dt; this.moving = false; this.balking = this.balkLeft > 0; this.bob += dt * 2; return; }
+      this.balkClock -= dt;
+      if (this.balkClock <= 0) {
+        this.balkClock = BALK_EVERY_S;
+        if (this.rng() < this.balkChance) { this.balkLeft = BALK_S; this.balking = true; this.moving = false; this.events.push('balk'); return; }
+      }
+    }
+    const step = Math.min(WALK_SPEED * this.slow * this.pace * dt, len);
     this.x += (vx / len) * step; this.z += (vz / len) * step;
     this.moving = step > 0;
     this.facing = Math.atan2(vx, vz);

@@ -10,6 +10,7 @@ import { useMedia } from './ui.jsx';
 import { TurnsEntry } from './turns/TurnsPill.jsx';
 import { ModeToggles, useModes } from './modes/Modes.jsx';
 import { familyHandle } from './modes/family.js';
+import { showEvoNewsBanner } from './shellNews.js';
 
 export function Link({ to, className = '', children, ...rest }) {
   return <a href={to} className={className} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); navigate(to); }} {...rest}>{children}</a>;
@@ -110,7 +111,9 @@ function GamesMenu({ me }) {
 
 export function Shell({ path, children }) {
   const { me, config } = useSession();
+  const { work } = useModes();
   const compactNav = !useMedia('(min-width: 1100px)');
+  const news = showEvoNewsBanner(me, path, { work });
   // The Barn button's count: ask once a minute while the tab is showing, and refresh the session only when it changed.
   const waiting = useRef(0); waiting.current = me?.barnChallenges ?? 0;
   useEffect(() => {
@@ -139,6 +142,12 @@ export function Shell({ path, children }) {
           {me ? <AccountMenu me={me} /> : (config.google ? <a className="btn small light" href={signInUrl()}>Sign in</a> : <Link to="/" className="btn small light">Sign in</Link>)}
         </div>
       </header>
+      {news && (
+        <div className="evo-news-banner" role="status" data-test="evo-news-banner">
+          <p>Nurse Hikari wants to talk to you — she has important news about {me.evoNews.name}.</p>
+          <Link to="/barn/center" className="btn small" data-test="evo-news-talk">Talk to Nurse</Link>
+        </div>
+      )}
       <main id="main" className="stage">{children}<Fawn /></main>
       <footer className="legal">
         {/* The course name is a door. It is not supposed to look like one. */}

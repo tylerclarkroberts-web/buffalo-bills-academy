@@ -12,8 +12,7 @@ import { RoomActivity, residentPose, faunPose } from './activity.js';
 import { TASK_LINES, TROUGH_LINES } from './dialogue.js';
 import { setupRoomLighting, configureShadowObjects, animateRoomLighting } from './lighting.js';
 import { pixGrid } from '../store/pixart.js';
-import { bugTexture, drawGrave, bugScale, onSpriteReady } from '../barn/sprite.js';
-import { hasStage1Egg } from '../barn/stage1Art.js';
+import { bugTexture, drawGrave, bugScale } from '../barn/sprite.js';
 import { drawEgg } from '../barn/draw.js';
 import { headParts, looks, shade as tint } from '../avatar/genbust.js';
 import { makeRoomCamera, wealthLayout, faceWrap, roomPositions, nearestShelfSpot, nearestWallSpot, floorPoint, nudgeAxes, roomRenderSize, roomView, roomWallVisibility, ROOM_FLOOR_SCALE, ROOM_GRADE, ROOM_DESK_TOP, ROOM_WALL_HEIGHT, ROOM_DOOR_HEIGHT, RESIDENT_HEIGHT_SCALE, ROOM_FIXTURES, ROOM_VIEW_LIMITS, roomShelfPosition, wallDisplayPosition, wallTurn, residentStep, residentErrands, residentTasks, ROOM_SIGNPOST, faunVisitRoute } from './scene-model.js';
@@ -1366,17 +1365,7 @@ export class RoomScene {
     if (!pet) return;
     let map;
     if (pet.stage === 'creature' && BY_ID[pet.species]) map = bugTexture(THREE, BY_ID[pet.species], pet.style, pet.level);
-    else if (pet.stage === 'egg' && hasStage1Egg()) {
-      map = paintedTexture(256, 256, ctx => drawEgg(ctx, { w: 256, h: 256, still: true }), false);
-      const unsub = onSpriteReady((ready) => {
-        if (ready !== 'egg') return;
-        const ctx = map.image.getContext('2d');
-        ctx.clearRect(0, 0, 256, 256);
-        drawEgg(ctx, { w: 256, h: 256, still: true });
-        map.needsUpdate = true;
-      });
-      map.addEventListener('dispose', unsub);
-    } else if (pet.stage === 'egg' || pet.stage === 'dead') map = paintedTexture(128, 128, ctx => {
+    else if (pet.stage === 'egg' || pet.stage === 'dead') map = paintedTexture(128, 128, ctx => {
       if (pet.stage === 'egg') drawEgg(ctx, { w: 128, h: 128, still: true }); else drawGrave(ctx, { w: 128, h: 128 });
     }, true);
     if (!map) return;

@@ -203,6 +203,19 @@ const ART = {
           ACID`,
 };
 
+/** The Bug Gym: what an unruly guide says when it refuses to walk. */
+const BALK_LINES = [
+  (n) => `${n} STOPS DEAD AND GLARES AT THE WALL.`,
+  (n) => `${n} IS NOT TAKING ORDERS RIGHT NOW.`,
+  (n) => `${n} FLEXES AT A STALACTITE. GIVE IT A SECOND.`,
+  (n) => `${n} REFUSES. THE JUICE IS TALKING.`,
+];
+/** A juiced or overworked guide, in the HUD: how much it drags and its roid rage chance. */
+function GymChip({ gym }) {
+  const hot = gym.rage >= 0.3;
+  return <div className={`m-gym${hot ? ' hot' : ''}`} data-test="mine-gym">{gym.roid > 0 ? 'JUICED' : 'OVERWORKED'} · PACE {Math.round(gym.mineSpeed * 100)}%{gym.rage > 0 ? ` · RAGE ${Math.round(gym.rage * 100)}%` : ''}</div>;
+}
+
 export default function Mines() {
   const { me, loading } = useSession();
   const [phase, setPhase] = useState('intro'); // intro | play | result
@@ -612,6 +625,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: m.wild ? 'Time. It wanders off unbeaten.' : 'No contest. Nobody gets robbed.' } : {}),
       ...(m.over.reason === 'decision' ? { verdict: `${m.over.won ? m.you.name : m.them.name} wins on points.` }
         : m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
+        : m.wild && m.over.rage ? { rage: m.over.rage, verdict: `ROID RAGE. ${m.you.name} went berserk and crushed the ${m.over.rage.killed} before you could get a jar on it. Nothing left to catch.` }
         : m.wild && m.over.reason === 'fainted' && m.over.won ? { verdict: m.jar ? `${m.them.name} is out cold. Jar it before it comes to.` : m.over.awake ? `${m.them.name} comes to and slinks off into the dark.` : `The wild ${m.them.name} slinks off into the dark.` }
         : m.wild && m.over.reason !== 'fainted' && m.over.reason !== 'draw' && m.over.reason !== 'abandoned' ? { verdict: 'You ran. It keeps the tunnel.' } : {}),
       spoils: raid ? [`${sign}$${raid.cash}${raid.cashCapped ? ' (daily loss cap)' : ''}`, `${sign}${Math.floor(m.over.won ? raid.gained || raid.acid : raid.acid)} acid`,
@@ -733,6 +747,17 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const faun = (!shift.scare && shift.faun) ? new FaunFollower(maze, { armed: true, rand: rng((shift.seed ^ 0xfa17) >>> 0) }) : null;
     // One exclusive slot: the Heeshee never shares a shift with the visitor or the faun (server/mines.js rollScare).
     const heeshee = (shift.heeshee && !shift.scare && !shift.faun) ? new HeesheeMazode(maze, { armed: true, hasBug: !!(shift.bug && !shift.bugStolen), rand: rng((shift.seed ^ 0x4ee5) >>> 0) }) : null;
+    const reportHeesheeSeen = () => {
+      if (!shift.heeshee || shift.bugStolen) return;
+      const body = JSON.stringify({ shiftId: shift.shiftId });
+      const headers = { 'content-type': 'application/json' };
+      try {
+        if (typeof fetch === 'function') fetch('/api/mines/heeshee/seen', { method: 'POST', credentials: 'same-origin', headers, body, keepalive: true }).catch(() => {});
+      } catch { /* leaving the page */ }
+    };
+    const onPageHide = () => { if (heeshee?.present || heeshee?.state === 'wandering') reportHeesheeSeen(); };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onPageHide);
     // v64: a living hatched Barn bug comes along and pathfinds toward the current glow.
     const bugGuide = (shift.bug && !shift.bugStolen) ? new BugGuide(maze, { armed: true, bug: shift.bug }) : null;
     guideRef.current = bugGuide;
@@ -772,6 +797,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           setStatus('YOUR BUG IS LEADING. FOLLOW IT.');
         }
         if (e === 'bug-done') setLine('YOUR BUG SETTLES BY THE GLOW. THE ACID IS HERE.');
+        if (e === 'bug-balk') { const nm = (shift.bug?.name || 'Your bug').toUpperCase(); setLine(BALK_LINES[Math.floor(Math.random() * BALK_LINES.length)](nm)); }
         if (e === 'bug-nobody') { setBugOrder(bugGuide.mode); setLine('NOBODY ELSE IS DOWN HERE. YOUR BUG LOOKS RELIEVED.'); }
         if (e === 'bug-retarget') {
           const nm = shift.bug?.name || 'Your bug';
@@ -780,7 +806,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         }
         if (e === 'faun-appear') setLine('A FAUN TROTTED IN BEHIND YOU. HE IS BLEATING.');
         if (e === 'faun-bleat') audio?.bleat();
-        if (e === 'heeshee-appear') setLine('SOMETHING IS MOVING IN THE DARK. IT DOES NOT WALK RIGHT.');
+        if (e === 'heeshee-appear') {
+          setLine('SOMETHING IS MOVING IN THE DARK. IT DOES NOT WALK RIGHT.');
+          api('POST', '/mines/heeshee/seen', { shiftId: shift.shiftId }).catch(() => {});
+        }
         if (e === 'heeshee-noise') {
           const hm = sceneRef.current?.heeshee; const pos = sceneRef.current?.pos;
           if (hm && pos) audio?.heesheeNoise({ kind: ['breath', 'click', 'warble'][Math.floor(Math.random() * 3)], dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.55 });
@@ -1050,6 +1079,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
       scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidHeeshee; delete window.__acidWorms; window.removeEventListener('resize', onResize);
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onPageHide);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', stopInput); document.removeEventListener('visibilitychange', hidden);
       clearInterval(tick); clearInterval(flavor); clearTimeout(lightsTimer); delete window.__acidHorror; audio?.danceBeat(false);
@@ -1150,7 +1181,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       <canvas ref={canvas} className="m-canvas" aria-label="First-person view of the mine tunnels" />
       {tier && <div className="m-dark" style={{ '--dark': [0, 0.15, 0.35, 0.65, 1][tier.tier - 1] }} aria-hidden="true" />}
       <Worms worms={worms} cutting={cutting} onCut={(id, a) => cutWorm.current(id, a)} />
-      <div className="m-hud tl">{tier && <TierBadge tier={tier.tier} />}<div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{otherMiners && <div className="m-others" data-test="others">{otherMiners}</div>}</div>
+      <div className="m-hud tl">{tier && <TierBadge tier={tier.tier} />}<div>SHIFT TIME {String(Math.floor(secs / 60)).padStart(2, '0')}:{String(secs % 60).padStart(2, '0')}</div><div className="m-dim">{near && progress < 1 && status === 'FIND THE ACID POOL' ? 'ACID FOUND. FILL THE BUCKET.' : status}</div>{shift.bug?.gym && !stolen && <GymChip gym={shift.bug.gym} />}{otherMiners && <div className="m-others" data-test="others">{otherMiners}</div>}</div>
       <div className="m-hud tr">
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}

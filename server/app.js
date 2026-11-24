@@ -83,7 +83,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
-  const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt });
+  // e2e only (dev login + GYM_TEST_RAGE=1): a juiced bug's roid rage always goes off, so the screenshot can show it
+  const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt, rageInt: barnTest && env.GYM_TEST_RAGE === '1' ? () => 0 : undefined });
   const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
   pvpSweep.unref?.();
   const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
@@ -152,9 +153,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   service.rooms = rooms;
   const meView = (p) => {
     accounts.ensure(p);
+    const evoNews = barn.evoNewsOf(p.id); // same helper as GET /barn: pending Stage II recap, if any
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
       username: p.login?.username || null, hasPassword: !!p.login?.hash, googleLinked: !!p.google && p.kind !== 'dev',
-      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id) };
+      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id), ...(evoNews ? { evoNews } : {}) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
   const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
@@ -349,6 +351,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''), req.body?.bug)));
   api.post('/barn/partner', needPlayer, wrap((req) => barn.setPartner(req.player.id, req.body?.bug))); // which bug comes with you
   api.post('/barn/stalls', needPlayer, wrap((req) => barn.buildStall(req.player.id)));
+  api.post('/barn/gym', needPlayer, wrap((req) => barn.train(req.player.id, String(req.body?.path || ''), req.body?.bug))); // the Bug Gym: one session on one path
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
   api.post('/barn/bouts', needPlayer, wrap((req) => barn.openBout(req.player.id, req.body)));
@@ -371,9 +374,11 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
-  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor }))); // the Bug Center nurse: free after an hour's rest, or paid now
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor, mode: req.body?.mode, confirmEvolve: req.body?.confirmEvolve === true, specialist: req.body?.specialist === true, normalHeal: req.body?.normalHeal === true }))); // the Bug Center nurse: free after an hour's rest, or paid now. mode: 'heal' is the ordinary button and will not evolve a sick or collected bug.
+  api.post('/barn/evo-news/ack', needPlayer, wrap((req) => barn.ackEvoNews(req.player.id))); // one-time Stage II recap: stamps evoNewsSeen, charges nothing
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
+  api.post('/mines/heeshee/seen', needPlayer, wrap((req) => mines.seeHeeshee(accounts.ensure(req.player), req.body?.shiftId)));
   api.post('/mines/bug/order', needPlayer, wrap((req) => mines.orderBug(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
   api.post('/mines/pvp/tick', needPlayer, wrap((req) => pvp.tick(accounts.ensure(req.player), req.body || {})));
@@ -388,6 +393,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   elhalo.mount(api, needPlayer);
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
+  api.post('/mines/foreman/typing/start', needPlayer, wrap((req) => foreman.startTyping(accounts.ensure(req.player), String(req.body?.id || ''))));
+  api.post('/mines/foreman/typing/submit', needPlayer, wrap((req) => foreman.gradeTyping(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.text)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
 
   // ----- investing (play money) -----
@@ -679,11 +686,20 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       fs.createReadStream(hit.gz).on('error', () => res.destroy()).pipe(res);
     });
     const appHtml = () => fs.readFileSync(path.join(staticDir, 'index.html'), 'utf8');
-    const sendApp = (req, res) => res.type('html').send(applyHtmlMeta(appHtml(), req.path));
+    // The SPA shell names this deploy's hashed bundles, so it must never be cached: a stale
+    // index.html on iOS Safari/Chrome would keep loading the previous deploy's JS.
+    const NO_CACHE = 'no-cache, no-store, must-revalidate';
+    const noCacheHtml = (res) => res.set({ 'Cache-Control': NO_CACHE, Pragma: 'no-cache', Expires: '0' });
+    const sendApp = (req, res) => { noCacheHtml(res); res.type('html').send(applyHtmlMeta(appHtml(), req.path)); };
     // /elhalo is the game route. public/elhalo/ holds musica and the lobby thumb, and express.static
     // would 301 /elhalo to /elhalo/ (a path the client treats as the lobby). Serve the app instead.
     app.get(['/elhalo', '/elhalo/'], sendApp);
-    app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
+    app.use(express.static(staticDir, {
+      index: false,
+      maxAge: '1h',
+      // a direct /index.html (or any other .html) hit gets the same no-cache treatment as the shell
+      setHeaders: (res, file) => { if (file.endsWith('.html')) noCacheHtml(res); },
+    }));
     app.get('/{*splat}', sendApp);
   } else {
     app.get('/', (req, res) => res.type('text').send('API is running. Build the web app with `npm run build` to play in the browser.'));
