@@ -76,6 +76,12 @@ export const EVOLVE_FROM = 10, EVOLVE_BY = 13, BILL_SHARE = 0.5, BOTCH_ODDS = 15
 // rebuild costs one of their other bugs for parts (or BILL_SHARE of their cash if they keep no other). Same odds of a botch.
 export const MECH_FROM = 23, MECH_BY = 26;
 const RANGES = [[EVOLVE_FROM, EVOLVE_BY], [MECH_FROM, MECH_BY]];
+// A one-time recap for the first Stage II rebuild, which ran from a stale heal tab and skipped the specialist's
+// panels. Matched only on this Empusa: no barn.json edit is required on deploy, and nobody else is offered the news.
+export const EVO_NEWS_PLAYER = '9dbf29cf-9704-44e7-bdf3-b6d5cd241853';
+export const EVO_NEWS_AT = 1795475094187;
+export const EVO_NEWS_BILL = { had: 10853.56, took: 5426.78, left: 5426.78 };
+const EVO_NEWS_LEVELS = { levelBefore: 9, levelAfter: 10 };
 export const purpleChance = (xp, stage = 0) => Math.max(0, Math.min(1, (rawLevel(xp) - RANGES[stage][0] + 1) / (RANGES[stage][1] - RANGES[stage][0] + 1)));
 /** Outside a fight only a knockout persists. Older standing bugs with saved damage recover here too. */
 export function healthOf(pen) {
@@ -378,8 +384,9 @@ export class Barn {
     if (unseenBout) this.store.commitPlayerDrafts([{ ...player, barnBouts: { ...player.barnBouts, unseen: null } }]);
     const stable = this.stable(playerId);
     // `pen` is the partner, as every page that knows one bug expects; `lastBout` the newest fight of any of them.
+    const evoNews = this.evoNewsOf(playerId);
     return { pen: stable.bugs.find((bug) => bug.partner) || null, serverNow: this.now(), stable, lastBout: stable.bugs.map((bug) => bug.lastBout).filter(Boolean).sort((a, b) => b.at - a.at)[0] || null,
-      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null };
+      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, ...(evoNews ? { evoNews } : {}) };
   }
   /** The stalls: how many, what the next one costs, and every bug in them as its owner sees it, partner first. */
   stable(playerId) {
@@ -981,12 +988,47 @@ export class Barn {
     this.commitPen(playerId, { ...structuredClone(pen), xp: (pen.xp || 0) + xp });
     return { levelBefore, levelAfter: levelFor((pen.xp || 0) + xp, pen.cap) };
   }
+  /**
+   * Pending one-time recap of a Stage II rebuild the owner missed. Built from the live pen plus the historical bill;
+   * nothing is written until ackEvoNews stamps evoNewsSeen.
+   */
+  evoNewsOf(playerId) {
+    if (playerId !== EVO_NEWS_PLAYER) return null;
+    const pen = this.bugs(playerId).find((bug) => bug.species === 'empusa' && (bug.evo || 0) === 1 && bug.evolvedAt === EVO_NEWS_AT);
+    if (!pen || pen.evoNewsSeen) return null;
+    return {
+      id: idOf(pen), name: pen.name, species: pen.species, botched: pen.botched || null, stage: 1, copy: true,
+      levelBefore: EVO_NEWS_LEVELS.levelBefore, levelAfter: EVO_NEWS_LEVELS.levelAfter, bill: { ...EVO_NEWS_BILL },
+    };
+  }
+  /**
+   * The owner has seen the recap. Stamps evoNewsSeen only: no bill, no ledger, no XP, no stage change.
+   * Idempotent if the news is already gone or was never pending.
+   */
+  ackEvoNews(playerId) {
+    const news = this.evoNewsOf(playerId);
+    if (!news) return this.view(playerId);
+    const pen = this.bugs(playerId).find((bug) => idOf(bug) === news.id);
+    if (!pen || pen.evoNewsSeen) return this.view(playerId);
+    this.commitPen(playerId, { ...pen, evoNewsSeen: this.now() });
+    return this.view(playerId);
+  }
   /** The nurse treats a knockout for free after RECOVER_MS or immediately for FAST_HEAL_COST. */
-  heal(playerId, { pay = false, bug, donor } = {}) {
+  heal(playerId, { pay = false, bug, donor, mode, confirmEvolve, specialist, normalHeal } = {}) {
     const pen = this.refresh(playerId, bug);
     if (!pen) throw new GameError('Your barn is empty. The nurse has nobody to heal.', 404);
     if (pen.stage === 'egg') throw new GameError('Eggs do not faint. The nurse pats it anyway.', 409);
     if (pen.stage === 'dead') throw new GameError('The Bug Center cannot help with that one. Lay it to rest.', 409);
+    // The ordinary heal button (mode: 'heal') must never run the specialist's rebuild. A stale Bug Center tab can
+    // otherwise evolve a newly sick or collected bug behind the 3-second pod and skip the panels, receipt and reveal.
+    // Bare /barn/heal (and existing tests) still go through to evolve/rebuild; only the heal UI opts into the guard.
+    const fromHeal = mode === 'heal' || normalHeal === true;
+    const fromSpecialist = confirmEvolve === true || specialist === true || mode === 'specialist';
+    if ((pen.sick || pen.taken) && fromHeal && !fromSpecialist) {
+      const err = new GameError(`${pen.name} needs the specialist. Talk to Nurse Hikari first.`, 409);
+      err.code = 'specialist_required';
+      throw err;
+    }
     if (pen.sick) return this.evolve(playerId, pen);
     if (pen.taken) return this.rebuild(playerId, pen, donor);
     const was = !!pen.faintedAt;

@@ -6,7 +6,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after } from './script.js';
+import { NURSE, greeting, greetingFor, healRequest, newsAfter, newsAsEvolved, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after } from './script.js';
 import { healChime, podBlip, drill } from './chime.js';
 import { drawBug } from '../barn/sprite.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -159,7 +159,7 @@ function Receipt({ evolved }) {
     const Line = ({ k, v, className = '' }) => <div className={`bc-rrow ${className}`}><span><span lang="ja">{RECEIPT[k].ja}</span> <small>{RECEIPT[k].en}</small></span><b>{v}</b></div>;
     return (
       <div className="bc-receipt" data-test="bc-receipt" lang="en">
-        <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small></h2>
+        <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small>{evolved.copy && <em className="bc-rcopy" data-test="bc-receipt-copy"><span lang="ja">{RECEIPT.copy.ja}</span> {RECEIPT.copy.en}</em>}</h2>
         <Line k="body" v={RECEIPT.included.en} /><Line k="labour" v={RECEIPT.included.en} />
         {evolved.botched && <Line k="wrong" v={RECEIPT.free.en} />}
         <Line k="parts" v={evolved.donor.name} className="total" />
@@ -171,7 +171,7 @@ function Receipt({ evolved }) {
   const Row = ({ k, v, className = '' }) => <div className={`bc-rrow ${className}`}><span><span lang="ja">{RECEIPT[k].ja}</span> <small>{RECEIPT[k].en}</small></span><b>{v}</b></div>;
   return (
     <div className="bc-receipt" data-test="bc-receipt" lang="en">
-      <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small></h2>
+      <h2><span lang="ja">{RECEIPT.title.ja}</span> <small>{RECEIPT.title.en}</small>{evolved.copy && <em className="bc-rcopy" data-test="bc-receipt-copy"><span lang="ja">{RECEIPT.copy.ja}</span> {RECEIPT.copy.en}</em>}</h2>
       <Row k={evolved.stage === 2 ? 'body' : 'arm'} v={money(arm)} /><Row k="labour" v={money(labour)} /><Row k="hush" v={money(hush)} />
       {evolved.botched && <Row k="wrong" v={RECEIPT.free.en} />}
       <Row k="total" v={money(took)} className="total" />
@@ -192,23 +192,24 @@ function Reveal({ evolved, pen, en }) {
   return (
     <div className="bc-reveal" data-test="bc-reveal">
       <canvas ref={ref} width={192} height={192} role="img" aria-label={`${evolved.name}, rebuilt`} />
-      <p className="bc-cap">{back.ja}{en && <small lang="en">{back.en}</small>}</p>
-      <p className="bc-stage" data-test="bc-stage">{stage.ja} · Lv {evolved.levelBefore} → {evolved.levelAfter}{en && <small lang="en">{stage.en}</small>}</p>
+      <p className="bc-cap">{back.ja}{(en || evolved.copy) && <small lang="en">{back.en}</small>}</p>
+      <p className="bc-stage" data-test="bc-stage">{stage.ja} · Lv {evolved.levelBefore} → {evolved.levelAfter}{(en || evolved.copy) && <small lang="en">{stage.en}</small>}</p>
     </div>
   );
 }
 
 /** The specialist's visit: four still panels, the receipt, then the curtain opens. Tap (or Enter) to go on. */
 function Operation({ op, pen, en, onNext }) {
-  const P = op.panels, evolved = op.r?.evolved, shown = op.r ? op.step : Math.min(op.step, P.length - 1);
-  const newPen = op.r?.stable?.bugs.find((bug) => bug.id === evolved?.id) || pen;
+  const P = op.panels, evolved = op.r?.evolved, shown = op.r || op.news ? op.step : Math.min(op.step, P.length - 1);
+  const newPen = op.subject || op.r?.stable?.bugs.find((bug) => bug.id === evolved?.id) || pen;
   const cap = P[shown];
+  const showEn = en || op.news || evolved?.copy;
   return (
     <div className="bc-op" data-test="bc-op" data-step={shown} role="button" tabIndex={0} aria-label="Next"
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNext(); } }}>
       {shown < P.length && <>
         <Panel key={shown} i={cap.art ?? shown} />
-        <p className="bc-cap" aria-live="polite">{cap.ja}{en && <small lang="en">{cap.en}</small>}</p>
+        <p className="bc-cap" aria-live="polite">{cap.ja}{showEn && <small lang="en">{cap.en}</small>}</p>
       </>}
       {shown === P.length && evolved && <Receipt evolved={evolved} />}
       {shown > P.length && evolved && <Reveal evolved={evolved} pen={newPen} en={en} />}
@@ -281,6 +282,19 @@ export default function BugCenter() {
     document.title = "バグセンター · Buffalo Bill's Academy";
     api('GET', '/barn').then(setB).catch((e) => setErr(e.message));
   }, []);
+  const busyRef = useRef(false);
+  busyRef.current = !!(talk || op);
+  // A tab left open through a mine shift would otherwise keep a stale healthy barn view and offer a normal heal.
+  useEffect(() => {
+    const refresh = () => {
+      if (busyRef.current) return;
+      api('GET', '/barn').then(setB).catch(() => {});
+    };
+    const onVis = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', onVis); };
+  }, []);
   useLayoutEffect(() => {
     const el = fit.current; if (!el) return undefined;
     const on = () => {
@@ -294,27 +308,55 @@ export default function BugCenter() {
   const pen = bugs.find((bug) => bug.sick) || bugs.find((bug) => bug.taken) || bugs.find((bug) => bug.fainted) || b?.pen || null;
   const line = talk ? talk.lines[talk.i] : null;
   const [typed, full, finish] = useTyped(line?.ja || '');
-  const start = () => { if (!talk) setTalk({ lines: greeting(pen), i: 0, mode: 'talk' }); };
+  const start = () => {
+    if (talk) return;
+    const g = greetingFor(b);
+    setTalk({ lines: g.lines, i: 0, mode: 'talk', kind: g.kind, news: g.news || null });
+  };
   const next = () => {
     if (!talk || talk.mode === 'heal') return;
     if (!full) return finish();
     if (line.ask || line.pick) return; // waiting for an answer
+    if (line.call && talk.kind === 'news') {
+      const evolved = newsAsEvolved(talk.news);
+      const subject = bugs.find((bug) => bug.id === talk.news?.id) || bugs.find((bug) => bug.species === talk.news?.species) || null;
+      setTalk(null);
+      setOp({ step: 0, r: { evolved }, panels: PANELS, news: true, subject });
+      return;
+    }
     if (line.call) { setTalk(null); setOp({ step: 0, r: null, panels: pen?.taken ? PANELS2 : PANELS }); return; }
     if (line.end || talk.i + 1 >= talk.lines.length) { setTalk(null); return; }
     setTalk({ ...talk, i: talk.i + 1 });
   };
   // The bug is rebuilt and the bill taken only as the last panel is passed, so leaving before then changes nothing.
+  // A news recap already has the receipt payload and never calls /barn/heal.
   const opNext = () => {
     if (!op || op.waiting) return;
     const P = op.panels;
     if (op.step < P.length - 1) { if (sound && op.step >= 1) drill(); setOp({ ...op, step: op.step + 1 }); return; }
-    if (!op.r) {
-      setOp({ ...op, waiting: true });
-      api('POST', '/barn/heal', { bug: pen?.id, ...(op.donor ? { donor: op.donor } : {}) }).then((r) => { setOp({ ...op, step: P.length, r, waiting: false }); refreshSession(); })
-        .catch((e) => { setOp(null); setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }); });
+    if (op.step === P.length - 1) {
+      if (op.news) { setOp({ ...op, step: P.length }); return; }
+      if (!op.r) {
+        setOp({ ...op, waiting: true });
+        api('POST', '/barn/heal', healRequest(pen, { specialist: true, donor: op.donor })).then((r) => { setOp({ ...op, step: P.length, r, waiting: false }); refreshSession(); })
+          .catch((e) => { setOp(null); setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }); });
+        return;
+      }
+      setOp({ ...op, step: P.length });
       return;
     }
     if (op.step === P.length) { if (sound) healChime(); setOp({ ...op, step: op.step + 1 }); return; }
+    if (op.news) {
+      // Ack only after the reveal, so backing out mid-recap leaves the news pending.
+      setOp({ ...op, waiting: true });
+      api('POST', '/barn/evo-news/ack').then((view) => {
+        setB(view);
+        refreshSession();
+        setOp(null);
+        setTalk({ lines: newsAfter(op.r?.evolved || talk?.news), i: 0, mode: 'talk' });
+      }).catch((e) => { setOp({ ...op, waiting: false }); setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }); });
+      return;
+    }
     const { healed: _h, cost: _c, evolved, ...view } = op.r;
     setB(view); setOp(null); setTalk({ lines: after(evolved), i: 0, mode: 'talk' });
   };
@@ -323,12 +365,20 @@ export default function BugCenter() {
     setPod(true); if (sound) podBlip();
     const t0 = Date.now();
     let r = null, failed = null;
-    const call = api('POST', '/barn/heal', { ...(pay ? { pay: true } : {}), bug: pen?.id }).then((x) => { r = x; }).catch((e) => { failed = e; });
+    const call = api('POST', '/barn/heal', healRequest(pen, { pay: !!pay })).then((x) => { r = x; }).catch((e) => { failed = e; });
     later(() => { setLit(true); if (sound) healChime(); }, 700);
     await call;
     const wait = Math.max(0, 3300 - (Date.now() - t0));
     later(() => {
       setLit(false); setPod(false);
+      if (failed && (failed.code === 'specialist_required' || (failed.status === 409 && /specialist/i.test(failed.message || '')))) {
+        api('GET', '/barn').then((view) => {
+          setB(view);
+          const g = greetingFor(view);
+          setTalk({ lines: g.lines, i: 0, mode: 'talk', kind: g.kind, news: g.news || null });
+        }).catch((e) => setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }));
+        return;
+      }
       if (failed) { setTalk({ lines: [OOPS(failed.message)], i: 0, mode: 'talk' }); return; }
       const { healed, cost, ...view } = r; setB(view);
       setTalk({ lines: done(view.stable?.bugs.find((bug) => bug.id === pen?.id) || view.pen, healed, cost), i: 0, mode: 'talk' });
@@ -349,7 +399,7 @@ export default function BugCenter() {
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>
               <span className="bc-who" title={NURSE.en}><ruby>{NURSE.ja}<rt>{NURSE.kana}</rt></ruby></span>
               <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && !line.pick && <span className="bc-next" aria-hidden="true">▼</span>}</p>
-              {en && full && <p className="bc-en" lang="en">{line.en}</p>}
+              {(en || line.both) && full && <p className="bc-en" lang="en">{line.en}</p>}
               {line.pick && full && <div className="bc-ask bc-pick" data-test="bc-pick">
                 {pen.donors.map((d) => <button key={d.id} className="bc-choice" lang="en" onClick={(e) => { e.stopPropagation(); setTalk(null); setOp({ step: 0, r: null, panels: PANELS2, donor: d.id }); }} data-test="bc-donor">{d.name} · Lv {d.level}</button>)}
                 <button className="bc-choice ghost" onClick={(e) => { e.stopPropagation(); setTalk({ lines: [NO], i: 0, mode: 'talk' }); }} data-test="bc-pick-no" title={PICK.not.en}>{PICK.not.ja}</button>

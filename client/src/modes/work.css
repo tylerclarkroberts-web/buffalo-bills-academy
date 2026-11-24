@@ -92,7 +92,7 @@ html.work-mode .work-exhibit-frame .stage {
 html.work-mode .work-exhibit-frame .stage { padding: 0; overflow: auto; }
 
 /* Hide the western chrome; the memo masthead is the header now. */
-html.work-mode .topbar, html.work-mode .legal { display: none !important; }
+html.work-mode .topbar, html.work-mode .legal, html.work-mode .evo-news-banner { display: none !important; }
 html.work-mode .app { background: transparent; }
 
 /* Soften the lobby so the home page reads as a memo exhibit, not a second website. */

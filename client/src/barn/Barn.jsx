@@ -494,13 +494,14 @@ function BarnHome({ me }) {
         <header className="barn-head">
           <h1 className="western">The Barn</h1>
           <div className="barn-head-acts">
-            {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted)} />}
+            {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted) || !!b.evoNews} />}
             <div className="barn-rooms" role="group" aria-label="Barn">
               {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
             </div>
             <button className="btn small ghost barn-help-btn" onClick={() => setHelp(!help)} aria-expanded={help} aria-controls="barn-help" title="How the Barn works" data-test="barn-help">?</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
+          {b.evoNews && <p className="barn-warn barn-news" role="status" data-test="barn-evo-news">Nurse Hikari left word at the Bug Center — important news about {b.evoNews.name}.</p>}
         </header>
         {help && <aside id="barn-help" className="barn-help" data-test="barn-help-panel"><ul>{HELP[view].map((line) => <li key={line}>{line}</li>)}</ul><button className="btn small ghost" onClick={() => setHelp(false)}>Got it</button></aside>}
         {ring && <Ring b={b} meId={me.id} now={now} busy={busy} unsaved={!!battleDraft} stake={stake} setStake={setStake}

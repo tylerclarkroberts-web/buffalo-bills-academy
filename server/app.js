@@ -152,9 +152,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   service.rooms = rooms;
   const meView = (p) => {
     accounts.ensure(p);
+    const evoNews = barn.evoNewsOf(p.id); // same helper as GET /barn: pending Stage II recap, if any
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
       username: p.login?.username || null, hasPassword: !!p.login?.hash, googleLinked: !!p.google && p.kind !== 'dev',
-      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id) };
+      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id), ...(evoNews ? { evoNews } : {}) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
   const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
@@ -371,7 +372,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
-  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor }))); // the Bug Center nurse: free after an hour's rest, or paid now
+  api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor, mode: req.body?.mode, confirmEvolve: req.body?.confirmEvolve === true, specialist: req.body?.specialist === true, normalHeal: req.body?.normalHeal === true }))); // the Bug Center nurse: free after an hour's rest, or paid now. mode: 'heal' is the ordinary button and will not evolve a sick or collected bug.
+  api.post('/barn/evo-news/ack', needPlayer, wrap((req) => barn.ackEvoNews(req.player.id))); // one-time Stage II recap: stamps evoNewsSeen, charges nothing
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
   api.post('/mines/heeshee/seen', needPlayer, wrap((req) => mines.seeHeeshee(accounts.ensure(req.player), req.body?.shiftId)));
