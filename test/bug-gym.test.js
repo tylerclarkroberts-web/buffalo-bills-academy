@@ -35,8 +35,10 @@ function fixture(t, { gymInt, rageInt } = {}) {
   for (const k of ['hunger', 'mood', 'clean']) barn.doc.pens.ann.stats[k] = { v: 90, at: clock.now };
   barn.save();
   const bug = () => barn.view('ann').pen;
-  const train = (p) => { const r = barn.train('ann', p); clock.now += 2 * HOUR; return r; }; // past every cooldown, little decay
-  return { clock, store, accounts, barn, shop, mines, pvp, player, bug, train };
+  // the effect tests stack sessions hours apart: `newDay` lifts the one-workout-a-day lock (tested on its own below)
+  const newDay = () => { delete barn.doc.pens.ann.gymLastAt; };
+  const train = (p) => { newDay(); const r = barn.train('ann', p); clock.now += 2 * HOUR; return r; }; // past every cooldown, little decay
+  return { clock, store, accounts, barn, shop, mines, pvp, player, bug, train, newDay };
 }
 
 /** Win rate of `a` against `b` over many seeds, from the real fight engine. */
@@ -86,7 +88,7 @@ test('overwork: faster power, drains mood, builds strain and unruliness, slows t
   assert.ok(r.after.mineSpeed < 1);
   assert.equal(r.after.rage, 0, 'one double shift is not dangerous');
   f.clock.now -= 2 * HOUR - 16 * 60e3; // the 15 minute cooldown only
-  for (let i = 0; i < 2; i++) { f.barn.train('ann', 'overwork'); f.clock.now += 16 * 60e3; }
+  for (let i = 0; i < 2; i++) { f.newDay(); f.barn.train('ann', 'overwork'); f.clock.now += 16 * 60e3; }
   const g = f.bug().gym;
   assert.ok(g.strain > 50, `strain ${g.strain}`);
   assert.ok(g.rage > 0, 'stacked overwork can snap');
@@ -146,6 +148,7 @@ test('cool-down flushes roid load and strain; the dirty edge tapers with it; tim
 test('cooldowns, money, hunger and limits are enforced', (t) => {
   const f = fixture(t);
   f.barn.train('ann', 'clean');
+  f.newDay();
   assert.throws(() => f.barn.train('ann', 'clean'), (e) => e.status === 429);
   f.player.bankroll = 10; f.store.savePlayers();
   assert.throws(() => f.barn.train('ann', 'roids'), /\$|fund|afford|enough/i);
@@ -155,6 +158,7 @@ test('cooldowns, money, hunger and limits are enforced', (t) => {
   assert.throws(() => trainStep('clean', { gym: null, needs: { hunger: 2, mood: 90, clean: 90 }, now: 0 }), /hungry/);
   assert.throws(() => trainStep('roids', { gym: { roid: 100, at: 0 }, needs: { hunger: 90, mood: 90, clean: 90 }, now: 0 }), /no room/);
   assert.throws(() => f.barn.train('ann', 'bench-press'), /machine/);
+  f.clock.now += 25 * HOUR;
   f.barn.doc.pens.ann.faintedAt = f.clock.now; f.barn.save();
   assert.throws(() => f.barn.train('ann', 'spar'), /fainted/);
 });
@@ -268,4 +272,51 @@ test('rage chance scales with load: noticeable after one vial, dangerous at a fu
 test('POST /barn/gym is wired', () => {
   const src = fs.readFileSync(new URL('../server/app.js', import.meta.url), 'utf8');
   assert.match(src, /api\.post\('\/barn\/gym'/);
+});
+
+test('one workout per bug per 24 hours: any path, counted from the start, blocked tries cost nothing', (t) => {
+  const f = fixture(t);
+  assert.equal(f.bug().gym.readyAt, 0, 'a legacy bug with no stamp is ready now');
+  assert.equal(f.bug().gym.readyIn, 0);
+  assert.equal(f.barn.doc.pens.ann.gymLastAt, undefined);
+  const start = f.clock.now;
+  f.barn.train('ann', 'clean'); // legacy bug: trains right away
+  assert.equal(f.barn.doc.pens.ann.gymLastAt, start, 'stamped at the start of the workout');
+  assert.equal(f.bug().gym.readyAt, start + 24 * HOUR);
+  assert.equal(f.bug().gymReadyAt, start + 24 * HOUR);
+  f.clock.now = start + 3 * HOUR; // past every per-path cooldown, still the same day
+  const cash = f.store.players.ann.bankroll, pen = structuredClone(f.barn.doc.pens.ann);
+  for (const path of PATH_IDS) {
+    assert.throws(() => f.barn.train('ann', path), (e) => e.status === 409 && e.code === 'gym_cooldown' && e.data.readyAt === start + 24 * HOUR && e.data.readyIn === 21 * HOUR && /Next workout in 21h 00m/.test(e.message), path);
+  }
+  assert.equal(f.store.players.ann.bankroll, cash, 'no $25 for a refused vial');
+  assert.deepEqual(f.barn.doc.pens.ann, pen, 'a refused try changes nothing on the bug');
+  assert.equal(f.bug().gym.readyIn, 21 * HOUR);
+  f.clock.now = start + 24 * HOUR - 1;
+  assert.throws(() => f.barn.train('ann', 'roids'), (e) => e.code === 'gym_cooldown' && e.data.readyIn === 1);
+  f.clock.now = start + 24 * HOUR;
+  const r = f.barn.train('ann', 'roids');
+  assert.equal(r.gym.cost, 25);
+  assert.equal(f.barn.doc.pens.ann.gymLastAt, start + 24 * HOUR, 'the next day starts at the next workout');
+  assert.equal(r.gym.after.readyAt, undefined, 'the result card numbers are the gym view only');
+  assert.equal(f.bug().gym.readyIn, 24 * HOUR);
+});
+
+test('the daily lock is per bug: a stall mate trains on its own clock', (t) => {
+  const f = fixture(t);
+  const pen = f.barn.doc.pens.ann;
+  f.barn.doc.bench.ann = [{ ...structuredClone(pen), bornAt: pen.bornAt + 1, eggAt: (pen.eggAt || pen.bornAt) + 1, name: 'Spare', gym: undefined, gymLastAt: undefined }];
+  f.barn.save();
+  const ids = f.barn.view('ann').stable.bugs.map((b) => b.id);
+  assert.equal(ids.length, 2);
+  const [one, two] = ids;
+  f.barn.train('ann', 'clean', one);
+  assert.throws(() => f.barn.train('ann', 'spar', one), (e) => e.code === 'gym_cooldown');
+  f.clock.now += HOUR;
+  const r = f.barn.train('ann', 'spar', two);
+  assert.equal(r.gym.bug, two);
+  const bugs = Object.fromEntries(f.barn.view('ann').stable.bugs.map((b) => [b.id, b]));
+  assert.equal(bugs[one].gym.readyIn, 23 * HOUR);
+  assert.equal(bugs[two].gym.readyIn, 24 * HOUR);
+  assert.throws(() => f.barn.train('ann', 'cooldown', two), (e) => e.code === 'gym_cooldown', 'Cool Down & Stretch is no way around it');
 });

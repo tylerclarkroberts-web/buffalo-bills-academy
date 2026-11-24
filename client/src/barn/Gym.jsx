@@ -12,6 +12,15 @@ import './gym.css';
 
 const pct = (v) => `${Math.round(v * 100)}%`;
 const plusPct = (v) => `+${+(v * 100).toFixed(1)}%`;
+/** The daily lock's countdown: "17h 42m", then "41m 09s" in the last hour, then "9s". */
+const until = (ms) => {
+  const s = Math.ceil(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  const m = Math.ceil(s / 60);
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+};
+const lockOf = (x, b, now) => Math.max(0, b.serverNow + (x.gym?.readyIn || 0) - now);
 const mins = (ms) => { const m = Math.ceil(ms / 60e3); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 const sign = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
 /** What each machine does, in one line: the numbers are the server's (engine/gym.js), so the page cannot drift from them. */
@@ -94,10 +103,11 @@ export default function Gym({ b, sel, busy, act, take, now }) {
     if (path === 'roids') sfx.nope?.(); else sfx.play?.();
   });
   const cdLeft = (id) => Math.max(0, b.serverNow + (g.cool?.[id] || 0) - now);
+  const lock = lockOf(bug, b, now); // one workout a day, any of the five: everything waits for this
   return <div className={`gym${g.juiced ? ' juiced' : ''}${fresh ? ' showing' : ''}`} data-test="gym">
     {bugs.length > 1 && <div className="gym-pick" role="group" aria-label="Who trains">
       {bugs.map((x) => <button key={x.id} className={`gym-chip${x.id === bug.id ? ' on' : ''}${x.gym?.juiced ? ' juiced' : ''}`} aria-pressed={x.id === bug.id} onClick={() => { setPick(x.id); setResult(null); }} data-test="gym-pick">
-        {x.partner ? '★ ' : ''}{x.name}<small> Lv {x.level}</small>{x.gym?.juiced ? <i className="gym-chip-dot" aria-label="juiced" title="Juiced" /> : null}
+        {x.partner ? '★ ' : ''}{x.name}<small> Lv {x.level}</small>{x.gym?.juiced ? <i className="gym-chip-dot" aria-label="juiced" title="Juiced" /> : null}{lockOf(x, b, now) > 0 ? <i className="gym-chip-rest" aria-label="trained today" title="Trained today" data-test="gym-chip-rest" /> : null}
       </button>)}
     </div>}
     <section className="gym-bug" data-test="gym-bug">
@@ -122,13 +132,15 @@ export default function Gym({ b, sel, busy, act, take, now }) {
       </div>
     </section>
     {fresh ? <Result r={fresh} onClose={() => setResult(null)} /> : <>
-    <p className="gym-coach small muted">{coach}</p>
-    <div className="gym-paths" role="group" aria-label="Training" data-test="gym-paths">
+    {lock > 0
+      ? <p className="gym-lock" data-test="gym-lock"><span>Next workout in <b className="num">{until(lock)}</b></span><small>one a day</small></p>
+      : <p className="gym-coach small muted">{coach}</p>}
+    <div className={`gym-paths${lock > 0 ? ' locked' : ''}`} role="group" aria-label="Training" aria-disabled={lock > 0 || undefined} data-test="gym-paths">
       {PATH_IDS.map((id) => { const p = PATHS[id], cd = cdLeft(id), poor = p.cost > (b.bankroll ?? 0);
-        return <button key={id} className={`gym-path ${TONE[id]}`} disabled={busy || cd > 0 || poor} onClick={() => train(id)} data-test={`gym-${id}`}>
+        return <button key={id} className={`gym-path ${TONE[id]}`} disabled={busy || lock > 0 || cd > 0 || poor} onClick={() => train(id)} data-test={`gym-${id}`}>
           <b>{p.name}</b>
           <span className="gym-path-fx">{EFFECT[id]()}</span>
-          <small>{cd > 0 ? `rests ${mins(cd)}` : poor ? `need ${money(p.cost)}` : p.cost ? money(p.cost) : 'free'}</small>
+          <small>{lock > 0 ? (p.cost ? money(p.cost) : 'free') : cd > 0 ? `rests ${mins(cd)}` : poor ? `need ${money(p.cost)}` : p.cost ? money(p.cost) : 'free'}</small>
         </button>; })}
     </div>
     </>}

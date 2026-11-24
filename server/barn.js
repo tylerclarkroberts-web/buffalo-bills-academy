@@ -17,7 +17,7 @@ import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
-import { PATHS, gymAt, gymEffects, gymView, gymFighter, trainStep } from './engine/gym.js';
+import { PATHS, gymAt, gymEffects, gymView, gymFighter, trainStep, gymReadyAt } from './engine/gym.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
@@ -465,7 +465,8 @@ export class Barn {
       ...(isHeesheeHeld(pen) ? { heesheeHeld: true, heesheeHeldAt: pen.heesheeHeldAt || null } : {}),
       ...this.hpOf(pen, level),
       mineRecord: pen.mineRecord || { w: 0, l: 0 },
-      gym: gymView(pen.gym, now),
+      gym: { ...gymView(pen.gym, now), readyAt: gymReadyAt(pen.gymLastAt), readyIn: Math.max(0, gymReadyAt(pen.gymLastAt) - now) },
+      gymReadyAt: gymReadyAt(pen.gymLastAt),
       lastBout: pen.lastBout || null }, serverNow: now };
   }
 
@@ -525,6 +526,12 @@ export class Barn {
     if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
     const now = this.now(), own = this.own(pen, now), n = this.needs(pen, now), level = levelFor(pen.xp, pen.cap);
+    // one workout per bug per 24 hours, any path (Cool Down & Stretch included). A blocked try costs nothing.
+    const readyAt = gymReadyAt(pen.gymLastAt);
+    if (readyAt > now) {
+      const left = readyAt - now, h = Math.floor(left / 3600e3), m = Math.ceil((left % 3600e3) / 60e3);
+      throw Object.assign(new GameError(`${pen.name} already trained today. Next workout in ${m === 60 ? `${h + 1}h 00m` : `${h}h ${String(m).padStart(2, '0')}m`}.`, 409), { code: 'gym_cooldown', data: { readyAt, readyIn: left } });
+    }
     let step;
     try { step = trainStep(path, { gym: pen.gym, needs: n, now, roll: (k) => this.gymInt(k) }); } catch (e) { throw new GameError(e.message, e.status || 409); }
     const player = step.cost ? this.accounts.ensure(this.store.players[playerId]) : null;
@@ -533,6 +540,7 @@ export class Barn {
     const next = structuredClone(pen);
     for (const s of STATS) next.stats[s] = { v: step.needs[s], at: own };
     next.gym = step.gym;
+    next.gymLastAt = now;
     const xp = step.xp > 0 ? fadedXp(step.xp, level) : 0;
     next.xp += xp;
     if (player) this.accounts.change(player, -step.cost, 'barn-gym', `Bug Gym: ${p.name}`);
