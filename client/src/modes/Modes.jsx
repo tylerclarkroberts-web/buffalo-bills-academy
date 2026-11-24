@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { getModes, loadModes, setFamily as setFamilyStore, setWork as setWorkStore, subscribeModes, handleWorkHotkey } from './store.js';
+import { getModes, loadModes, setFamily as setFamilyStore, setWork as setWorkStore, subscribeModes, subscribeElHaloActive, handleWorkHotkey, isElHaloImmersive } from './store.js';
 import { displayTableName, familyHandle, familyMask } from './family.js';
 import './modes.css';
 
@@ -31,6 +31,24 @@ export function ModesProvider({ children }) {
 
 export function useModes() {
   return useContext(ModesCtx);
+}
+
+/** True on /elhalo or when the El Halo room is mounted (including the Hall of Doors). */
+export function useElHaloImmersive() {
+  const [on, setOn] = useState(() => isElHaloImmersive());
+  useEffect(() => {
+    const sync = () => setOn(isElHaloImmersive());
+    const unsub = subscribeElHaloActive(sync);
+    window.addEventListener('popstate', sync);
+    window.addEventListener('bba:navigate', sync);
+    sync();
+    return () => {
+      unsub();
+      window.removeEventListener('popstate', sync);
+      window.removeEventListener('bba:navigate', sync);
+    };
+  }, []);
+  return on;
 }
 
 export function useTableLabel(code, rawName) {
@@ -82,11 +100,13 @@ export function ModeToggles({ compact = false, className = '' }) {
 
 /**
  * A small on-page way to turn modes off when the main header is hidden
- * (Work Mode, Mines, El Halo, Foff, admin). Hidden when both are off and the
- * header toggles are already visible.
+ * (Work Mode, Mines, Foff, admin). Hidden when both are off, when the
+ * header toggles are already visible, and on El Halo (it covers the controls).
  */
 export function ModeRail({ always = false } = {}) {
   const { family, work, setFamily, setWork } = useModes();
+  const elhalo = useElHaloImmersive();
+  if (elhalo) return null;
   if (!always && !family && !work) return null;
   return (
     <div className="mode-rail" data-test="mode-rail" role="status">

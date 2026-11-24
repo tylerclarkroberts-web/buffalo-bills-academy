@@ -35,13 +35,57 @@ function withSafe(s) {
 function applyDom(s) {
   if (!hasDoc()) return;
   const root = document.documentElement;
+  const immersive = isElHaloImmersive();
   const kosher = !!(s.family || s.work);
   root.classList.toggle('family-mode', !!s.family);
-  root.classList.toggle('work-mode', !!s.work);
+  // Work Mode's page skin parks the live app in a 1px box and locks the
+  // viewport; keep it off El Halo so the canvas stays full size.
+  root.classList.toggle('work-mode', !!s.work && !immersive);
   root.classList.toggle('kosher-mode', kosher);
+  root.classList.toggle('elh-active', immersive);
   root.dataset.family = s.family ? '1' : '0';
   root.dataset.work = s.work ? '1' : '0';
   root.dataset.safe = kosher ? '1' : '0';
+}
+
+let elhaloMounts = 0;
+const elhaloSubs = new Set();
+
+function emitElHalo() {
+  const on = elhaloMounts > 0;
+  elhaloSubs.forEach((fn) => { try { fn(on); } catch { /* listener */ } });
+}
+
+/** El Halo room is mounted (the /elhalo page or the Hall of Doors room). */
+export function setElHaloActive(on) {
+  const prev = elhaloMounts > 0;
+  elhaloMounts = Math.max(0, elhaloMounts + (on ? 1 : -1));
+  const next = elhaloMounts > 0;
+  if (next === prev) return;
+  applyDom(state);
+  emitElHalo();
+}
+
+export function resetElHaloActive() {
+  if (elhaloMounts === 0) return;
+  elhaloMounts = 0;
+  applyDom(state);
+  emitElHalo();
+}
+
+export function isElHaloActive() {
+  return elhaloMounts > 0;
+}
+
+export function subscribeElHaloActive(fn) {
+  elhaloSubs.add(fn);
+  return () => elhaloSubs.delete(fn);
+}
+
+/** True on the /elhalo route or whenever the El Halo room is mounted. */
+export function isElHaloImmersive(path = globalThis.location?.pathname || '', doc = globalThis.document) {
+  if (elhaloMounts > 0) return true;
+  return isElHaloScreen(path, doc);
 }
 
 let state = { family: false, work: false };

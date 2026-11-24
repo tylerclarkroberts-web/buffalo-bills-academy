@@ -7,6 +7,7 @@ import { getLook, saveLook } from './net.js';
 import { LOOK, LOOK_KEYS, DEFAULT_LOOK, cleanLook } from './logic.js';
 import { MUSIC_LEVELS } from './audio.js';
 import { LOOK_SWATCH } from './models.js';
+import { setElHaloActive } from '../../modes/store.js';
 
 // The EL HALO door in the Hall of Doors: a shared horde match in a sunset box canyon. You wait in the lobby first (pick
 // your poncho, sombrero, bigote, bandana and boots; get ready), then everyone drops into the same world: waves of
@@ -109,6 +110,10 @@ export default function ElHaloRoom({ onExit, elapsedMs, exitLabel = '◄ BACK TO
   const exitRef = useRef(onExit); exitRef.current = onExit;
   const fsOnce = useRef(false);
 
+  useEffect(() => {
+    setElHaloActive(true);
+    return () => setElHaloActive(false);
+  }, []);
   useEffect(() => watchCoarse(setTouch), []);
   useEffect(() => {
     const go = () => setVp({ w: window.innerWidth, h: window.innerHeight });
