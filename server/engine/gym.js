@@ -21,8 +21,33 @@ export const RAGE_CAP = 0.85;
 // The stamp lives on the bug (`pen.gymLastAt`); a bug that has none (every bug before this rule) may train right away.
 // The per-path cooldowns below still apply, but the daily lock always outlasts them.
 export const DAILY_MS = 24 * 3600e3;
+export const CREATINE_MS = 12 * 3600e3; // creatine: the lock after one workout is 12 hours, not 24
+
+/**
+ * Gym gear (sold in the General Store, catalog/bug.js). Worn by one bug for `days`; stored on the bug as
+ * `gym.gear = { id: untilMs }` and dead the moment `untilMs` passes. Every boost stays inside the existing caps:
+ * clean conditioning still tops out at FIT_CAP (+20% damage) and the GLP-1 health bonus counts toward the same
+ * +20% HP ceiling the roids share. Creatine is not here: it is one dose, kept on the bug (server/barn.js).
+ */
+export const GEAR = {
+  salts: { name: 'Smelling Salts', emoji: '🧂', days: 14, sharpOdds: 85 },          // the Sparring Pit: 60% sharp bouts -> 85%
+  prework: { name: 'Pre-Workout', emoji: '⚡', days: 21, fitMult: 1.5 },            // +50% power from Cardio, Sparring and Double Shift
+  mask: { name: 'Breathing Restriction Mask', emoji: '😷', days: 21, xpMult: 1.5, cardioFit: 0.005 }, // +50% XP everywhere, Cardio +0.5% more power
+  banana: { name: 'Banana', emoji: '🍌', days: 14, moodKeep: 0.5 },                   // mood losses halved (not the vial: nothing fixes that)
+  brace: { name: 'Knee Brace', emoji: '🦵', days: 28, overworkStrain: 18, strainLimit: 100 }, // Double Shift: +18 strain, not +30, and lifts until 100
+  glp1: { name: 'GLP-1', emoji: '🖊️', days: 28, fadeMult: 2, bulk: 0.05, sulk: -3 }, // loads fade twice as fast, +5% HP; it sulks (-3 mood a workout)
+  sweatband: { name: 'Terrycloth Sweatband', emoji: '🎽', days: 14, flush: 1.5 },     // Cool Down & Stretch flushes 50% more
+};
+export const GEAR_IDS = Object.keys(GEAR);
+/** The gear still working on this bug at `now`: { id: msLeft }. */
+export function gearOn(gym, now) {
+  const out = {};
+  for (const [id, until] of Object.entries(gym?.gear || {})) if (GEAR[id] && Number(until) > now) out[id] = Number(until) - now;
+  return out;
+}
 /** When a bug last stamped at `lastAt` may train again: 0 when it never has (or the stamp is junk). */
-export const gymReadyAt = (lastAt) => { const at = Number(lastAt); return Number.isFinite(at) && at > 0 ? at + DAILY_MS : 0; };
+/** `short`: creatine was in it for that workout (or went in after), so the lock is 12 hours. */
+export const gymReadyAt = (lastAt, short = false) => { const at = Number(lastAt); return Number.isFinite(at) && at > 0 ? at + (short ? CREATINE_MS : DAILY_MS) : 0; };
 export const SLOWEST = 0.4;             // a mine guide never drops below this share of its pace
 
 /**
@@ -53,7 +78,10 @@ const coolLeft = (gym, path, now) => { const at = Number(gym?.cool?.[path]); ret
 /** The bug's gym loads at `now`, with the hourly fade applied. A bug with no `gym` is all zeros. */
 export function gymAt(gym, now) {
   const g = gym && typeof gym === 'object' ? gym : {};
-  const hours = Math.max(0, (num(now) - num(g.at || now)) / 3600e3);
+  const from = num(g.at || now);
+  // GLP-1 doubles the fade for the hours it was on the bug (from the last session to now, or to when it ran out)
+  const glp = Math.max(0, Math.min(num(now), num(g.gear?.glp1)) - from) / 3600e3;
+  const hours = Math.max(0, (num(now) - from) / 3600e3) + glp * (GEAR.glp1.fadeMult - 1);
   return {
     fit: clamp(num(g.fit), 0, FIT_CAP),
     roid: clamp(num(g.roid) - DECAY_PER_HOUR.roid * hours, 0, 100),
@@ -62,9 +90,9 @@ export function gymAt(gym, now) {
 }
 
 /** What the loads add up to: combat power, unruliness, how it walks in the mine and its roid rage chance. */
-export function gymEffects({ fit = 0, roid = 0, strain = 0 } = {}) {
+export function gymEffects({ fit = 0, roid = 0, strain = 0 } = {}, on = {}) {
   const power = clamp(fit + roid * ROID_POWER, 0, POWER_CAP);
-  const bulk = clamp(roid * ROID_BULK, 0, 100 * ROID_BULK);
+  const bulk = clamp(roid * ROID_BULK + (on.glp1 ? GEAR.glp1.bulk : 0), 0, 100 * ROID_BULK);
   const unruly = clamp(Math.round(roid * 0.7 + strain * 0.5), 0, 100);
   const mineSpeed = Math.round(clamp(1 - unruly * 0.006, SLOWEST, 1) * 100) / 100;
   const rage = roid > 0 || strain > 50 ? Math.round(clamp(roid * 0.006 + Math.max(0, strain - 50) * 0.004, 0, RAGE_CAP) * 100) / 100 : 0;
@@ -75,16 +103,16 @@ export function gymEffects({ fit = 0, roid = 0, strain = 0 } = {}) {
 
 /** Everything a page shows about one bug's gym record. */
 export function gymView(gym, now) {
-  const at = gymAt(gym, now), fx = gymEffects(at);
+  const on = gearOn(gym, now), at = gymAt(gym, now), fx = gymEffects(at, on);
   const cool = Object.fromEntries(PATH_IDS.map((id) => [id, coolLeft(gym, id, now)]));
   return { fit: Math.round(at.fit * 1000) / 1000, roid: Math.round(at.roid), strain: Math.round(at.strain), ...fx, juiced: at.roid >= 1, cool,
-    sessions: num(gym?.sessions), last: gym?.last || null };
+    sessions: num(gym?.sessions), last: gym?.last || null, gear: on };
 }
 
 /** What a fighter snapshot carries into the ring (engine/bout.js reads it): nothing at all for an untrained bug. */
 export function gymFighter(gym, now) {
   if (!gym) return {};
-  const fx = gymEffects(gymAt(gym, now));
+  const fx = gymEffects(gymAt(gym, now), gearOn(gym, now));
   return { ...(fx.power ? { gym: fx.power } : {}), ...(fx.bulk ? { bulk: fx.bulk } : {}), ...(fx.slow ? { slow: fx.slow } : {}) };
 }
 
@@ -95,26 +123,36 @@ export function gymFighter(gym, now) {
 export function trainStep(path, { gym, needs, now, roll = () => 0 }) {
   const p = PATHS[path];
   if (!p) throw new Error('The gym does not have that machine.');
-  const at = gymAt(gym, now);
+  const at = gymAt(gym, now), on = gearOn(gym, now);
   const left = coolLeft(gym, path, now);
   if (left > 0) throw Object.assign(new Error(`${p.name} is still recovering. Give it ${Math.ceil(left / 60e3)} min.`), { status: 429 });
   if (path !== 'cooldown' && path !== 'roids' && needs.hunger < HUNGER_FLOOR) throw new Error('Too hungry to lift. Feed it first.');
-  if (path === 'overwork' && at.strain >= STRAIN_LIMIT) throw new Error('It will not lift. It is lying under the bench, staring at the ceiling.');
+  if (path === 'overwork' && at.strain >= (on.brace ? GEAR.brace.strainLimit : STRAIN_LIMIT)) throw new Error('It will not lift. It is lying under the bench, staring at the ceiling.');
   if (path === 'roids' && at.roid >= 100) throw new Error('There is no room left in it for more juice.');
   if (path === 'cooldown' && at.roid < 1 && at.strain < 1) throw new Error('Nothing to cool down from. It is as calm as a bug gets.');
-  let outcome = null, xp = p.xp, fit = p.fit || 0, needsDelta = { ...p.needs };
+  const helped = [], help = (id, what) => helped.push({ id, name: GEAR[id].name, emoji: GEAR[id].emoji, what });
+  let outcome = null, xp = p.xp, fit = p.fit || 0, needsDelta = { ...p.needs }, roid = p.roid || 0, strain = p.strain || 0;
   if (path === 'spar') {
-    outcome = roll(100) < p.sharpOdds ? 'sharp' : 'rough';
+    const odds = on.salts ? GEAR.salts.sharpOdds : p.sharpOdds;
+    outcome = roll(100) < odds ? 'sharp' : 'rough';
+    if (on.salts) help('salts', `${odds}% odds of a sharp bout`);
     const o = p[outcome]; xp = o.xp; fit = o.fit;
     for (const [k, v] of Object.entries(o.needs)) needsDelta[k] = (needsDelta[k] || 0) + v;
   }
-  const next = { fit: clamp(at.fit + fit, 0, FIT_CAP), roid: clamp(at.roid + (p.roid || 0), 0, 100), strain: clamp(at.strain + (p.strain || 0), 0, 100) };
+  if (on.mask && path === 'clean') { fit += GEAR.mask.cardioFit; }
+  if (on.prework && fit > 0) { fit *= GEAR.prework.fitMult; help('prework', `+${Math.round((GEAR.prework.fitMult - 1) * 100)}% power gain`); }
+  if (on.mask && (xp > 0 || path === 'clean')) { xp = Math.round(xp * GEAR.mask.xpMult); help('mask', path === 'clean' ? `+50% XP, +${GEAR.mask.cardioFit * 100}% power` : '+50% XP'); }
+  if (on.brace && path === 'overwork') { strain = GEAR.brace.overworkStrain; help('brace', `+${strain} strain, not +${p.strain}`); }
+  if (on.sweatband && path === 'cooldown') { roid = Math.round(roid * GEAR.sweatband.flush); strain = Math.round(strain * GEAR.sweatband.flush); help('sweatband', '+50% flush'); }
+  if (on.banana && path !== 'roids' && (needsDelta.mood || 0) < 0) { needsDelta.mood = Math.round(needsDelta.mood * GEAR.banana.moodKeep); help('banana', 'half the mood loss'); }
+  if (on.glp1) { needsDelta.mood = (needsDelta.mood || 0) + GEAR.glp1.sulk; help('glp1', `sulks: ${GEAR.glp1.sulk} mood`); }
+  const next = { fit: clamp(at.fit + fit, 0, FIT_CAP), roid: clamp(at.roid + roid, 0, 100), strain: clamp(at.strain + strain, 0, 100) };
   const after = {}, delta = {};
   for (const k of ['hunger', 'mood', 'clean']) { after[k] = clamp(num(needs[k]) + (needsDelta[k] || 0), 0, 100); delta[k] = Math.round(after[k] - num(needs[k])); }
-  const before = gymEffects(at), now2 = gymEffects(next);
+  const before = gymEffects(at, on), now2 = gymEffects(next, on);
   return {
-    gym: { ...next, at: now, cool: { ...(gym?.cool || {}), [path]: now }, sessions: num(gym?.sessions) + 1, last: { path, at: now, ...(outcome ? { outcome } : {}) } },
-    needs: after, delta, xp, cost: p.cost, outcome,
+    gym: { ...next, at: now, cool: { ...(gym?.cool || {}), [path]: now }, sessions: num(gym?.sessions) + 1, last: { path, at: now, ...(outcome ? { outcome } : {}) }, ...(gym?.gear ? { gear: gym.gear } : {}) },
+    needs: after, delta, xp, cost: p.cost, outcome, helped,
     change: { power: Math.round((now2.power - before.power) * 1000) / 1000, unruly: now2.unruly - before.unruly, rage: Math.round((now2.rage - before.rage) * 100) / 100, mineSpeed: Math.round((now2.mineSpeed - before.mineSpeed) * 100) / 100 },
   };
 }

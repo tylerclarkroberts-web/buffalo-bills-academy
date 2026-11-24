@@ -22,6 +22,10 @@ const FITTABLE = (x) => x?.kind === 'avatar' && x.slot !== 'skin';
 const BUG_LOOK = ['bugskin', 'bughat', 'bugacc'];
 const BATTLE_GEAR = ['gear', 'defense']; // one attack item and one defense item, both drawn on the bug
 const WORN = [...BUG_LOOK, ...BATTLE_GEAR]; // worn by one bug: each of yours has its own
+const DAY = 86400e3;
+/** Gym gear on the picked bug: ms left (gear), or what creatine is doing. Lives on the bug, read from /barn. */
+const gymOn = (x, pen) => (!x?.gym || !pen ? null : x.gym === 'creatine' ? (pen.gym?.creatine ? 'waiting' : pen.gym?.short ? 'in it' : null) : pen.gym?.gear?.[x.gym] || null);
+const gymLabel = (x, pen) => { const o = gymOn(x, pen); return o == null ? null : typeof o === 'string' ? (o === 'waiting' ? 'Scoop waiting' : '12h clock') : `${Math.ceil(o / DAY)}d left`; };
 const MONTH = (m) => new Date(2000, m - 1, 15).toLocaleString('en-US', { month: 'long' });
 
 function BugThumb({ species, style, size, level }) {
@@ -90,9 +94,15 @@ export default function Store() {
   const eqWear = Object.fromEntries(Object.entries(v.eq).map(([slot, id]) => [slot, { ...lookOf(v.items.find((i) => i.id === id) || { id }), fit: fits[id] }]).filter(([s]) => !BUG_LOOK.includes(s)));
   const cur = sel && v.items.find((x) => x.id === sel);
   const shown = items.slice(pg * per, pg * per + per);
-  const run = async (fn, ok) => { setErr(''); setMsg(''); try { const r = await fn(); setV(r); if (ok) setMsg(ok); refreshSession(); if (BUG_LOOK.includes(cur?.slot) || cur?.use || cur?.slot === 'toy' || BATTLE_GEAR.includes(cur?.slot)) readBugs(await api('GET', '/barn').catch(() => null)); } catch (e) { setErr(e.message); } };
+  const run = async (fn, ok) => { setErr(''); setMsg(''); try { const r = await fn(); setV(r); if (ok) setMsg(ok); refreshSession(); if (BUG_LOOK.includes(cur?.slot) || cur?.gym || cur?.use || cur?.slot === 'toy' || BATTLE_GEAR.includes(cur?.slot)) readBugs(await api('GET', '/barn').catch(() => null)); } catch (e) { setErr(e.message); } };
   const buy = (x, confirm = false) => {
     if (x.price > v.confirmOver && !confirm) { setAsk(x); return; }
+    if (x.gym) { // gym gear goes on the picked bug; the server says what creatine did
+      setAsk(null);
+      run(async () => { const r = await api('POST', '/shop/buy', { id: x.id, confirm, ...(pen ? { bug: pen.id } : {}) }); const g = r.gymGear;
+        setTimeout(() => setMsg(x.gym !== 'creatine' ? `${x.name} is on ${g.name} for ${x.days} days.` : g.note === 'held' ? `${g.name} takes the scoop into its next workout: 12 hour lock after it.` : g.note === 'ready' ? `${g.name} is ready to train now.` : `${g.name}'s lock is 12 hours now.`), 0); return r; });
+      return;
+    }
     const forBug = WORN.includes(x.slot) && pen, on = forBug ? !v.bugEq?.[pen.id]?.[x.slot] && ` ${pen.name} is wearing it now.` : x.slot && !v.eq[x.slot] && ' Wearing it now.';
     setAsk(null); run(() => api('POST', '/shop/buy', { id: x.id, confirm, ...(forBug ? { bug: pen.id } : {}) }), `Bought: ${x.name}.${on || ''}`);
   };
@@ -127,7 +137,7 @@ export default function Store() {
             <nav className="store-subcategories" aria-label={`${department.label} categories`}>
               {categories.length > 1 ? categories.map((t) => <button key={t.id} aria-pressed={category.id === t.id} className={category.id === t.id ? 'on' : ''} onClick={() => changeCategory(t.id)} data-test={`stab-${t.id}`}>{t.label}</button>) : <h2 className="store-category-title">{category?.label || department.label}</h2>}
             </nav>
-            {bugs.length > 1 && ['bugstyle', 'gear'].includes(category?.id) && <div className="store-bugpick" role="group" aria-label="Which bug" data-test="store-bugpick">For
+            {bugs.length > 1 && ['bugstyle', 'gear', 'gymgear'].includes(category?.id) && <div className="store-bugpick" role="group" aria-label="Which bug" data-test="store-bugpick">For
               {bugs.map((b) => <button key={b.id} aria-pressed={pen.id === b.id} className={pen.id === b.id ? 'on' : ''} onClick={() => { setBugId(b.id); setMsg(''); setErr(''); }} data-test="store-bug"><BugThumb species={b.species} style={b.style} size={30} level={b.level} />{b.name}</button>)}
             </div>}
             {category?.id === 'tobacco' && <p className="store-notice" role="note" data-test="store-tobacco-notice"><b>18+</b> {v.tobaccoNotice} Cartoon only; play money only.</p>}
@@ -139,7 +149,7 @@ export default function Store() {
                 <span className="sc-pic"><Thumb x={x} me={me} eqWear={eqWear} pen={pen} size={64} fit={fits} /></span>
                 <span className="sc-name">{x.name}</span>
                 {x.adult && <span className="sc-adult" title={v.tobaccoNotice}>18+</span>}
-                <span className="sc-price num">{v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (wears(x) ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : x.retired ? 'Not sold' : money(x.price)}</span>
+                <span className="sc-price num">{gymLabel(x, pen) ? <span className="sc-gym" data-test="store-gym-on">{gymLabel(x, pen)}</span> : v.own[x.id] && ONCE(x) ? 'In your pocket' : v.own[x.id] && !CONSUMABLE(x) ? (wears(x) ? 'Wearing' : 'Owned') : v.taken?.[x.id] ? 'Taken' : x.retired ? 'Not sold' : money(x.price)}</span>
               </button>
             ))}
           </div>
@@ -160,10 +170,12 @@ export default function Store() {
                 {fitOpen && owned && FITTABLE(cur) ? <><FitControls compact value={fits[cur.id]} onChange={(f) => setFitOf(cur.id, f)} onReset={() => resetFit(cur.id)} /><p className="small muted" data-test="fit-status">{fitStatus || 'Saved as you go; shows at every table.'}</p></> : <p className={`sd-desc ${cur.kind === 'tobacco' ? 'tob' : ''}`}>{cur.desc}</p>}
                 {cur.kind === 'absurd' && <p className="small muted">{cur.unique ? 'One of a kind · ' : ''}{cur.month ? `Sold in ${MONTH(cur.month)} only · ` : ''}House decoration · no gameplay bonus.</p>}
                 {takenBy && <p data-test="store-taken"><b>{takenBy}</b> has it.</p>}
+                {cur.gym && pen && <p className="small sd-gym" data-test="store-gym-status">{gymOn(cur, pen) == null ? `For ${pen.name}${cur.days ? ` · ${cur.days} days` : ' · one scoop'}` : `${pen.name}: ${gymLabel(cur, pen)}`}</p>}
                 <div className="sd-acts">
                   {owned > 0 && cur.kind === 'furniture' && <button className="btn ghost" onClick={() => navigate('/room')}>Put it in My House</button>}
                   {owned > 0 && cur.kind === 'absurd' && <button className="btn ghost" onClick={() => navigate('/room')}>Display in My House</button>}
-                  {!takenBy && !cur.retired && (!owned || (CONSUMABLE(cur) && !ONCE(cur)) || (perBug && bugs.length > 1 && owned < v.bugCopies)) && <button className={`btn ${owned && perBug ? 'ghost' : ''}`} onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy ${owned && perBug ? 'another ' : ''}· ${money(cur.price)}`}</button>}
+                  {cur.gym ? <button className="btn" onClick={() => buy(cur)} disabled={!pen || gymOn(cur, pen) != null || v.bankroll < cur.price} data-test="store-buy">{gymOn(cur, pen) != null ? (cur.gym === 'creatine' ? 'One scoop at a time' : 'On it already') : v.bankroll < cur.price ? 'Not enough cash' : `Buy for ${pen?.name || 'your bug'} · ${money(cur.price)}`}</button>
+                  : !takenBy && !cur.retired && (!owned || (CONSUMABLE(cur) && !ONCE(cur)) || (perBug && bugs.length > 1 && owned < v.bugCopies)) && <button className={`btn ${owned && perBug ? 'ghost' : ''}`} onClick={() => buy(cur)} disabled={v.bankroll < cur.price} data-test="store-buy">{v.bankroll < cur.price ? 'Not enough cash' : `Buy ${owned && perBug ? 'another ' : ''}· ${money(cur.price)}`}</button>}
                   {owned && cur.slot && !wearing && (!perBug || pen) ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: cur.id, ...bugArg }), 'On it goes.')} data-test="store-equip">{!perBug || bugs.length < 2 ? 'Wear' : spare ? `Put on ${pen.name}` : `Move from ${others[0].name}`}</button> : null}
                   {owned && wearing ? <button className="btn ghost" onClick={() => run(() => api('POST', '/shop/equip', { id: null, slot: cur.slot, ...bugArg }), 'Taken off.')} data-test="store-unequip">Take off</button> : null}
                   {owned && FITTABLE(cur) ? <button className={`btn ${fitOpen ? '' : 'ghost'}`} onClick={() => setFitOpen(!fitOpen)} aria-pressed={fitOpen} data-test="store-fit">{fitOpen ? 'Done' : 'Adjust fit'}</button> : null}

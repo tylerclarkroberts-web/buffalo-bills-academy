@@ -105,6 +105,14 @@ export class Shop {
     const iv = this.inv(p.id);
     if (x.kind === 'bug' && !this.hatched(p.id)) throw new GameError('Bug supplies are for folks with a hatched bug.', 409);
     if (x.slot === 'part' && !this.barn.penOf(p.id, bug)?.evo) throw new GameError(NO_PART, 409);
+    if (x.gym) { // gym gear goes on one bug (the partner unless named) and lives on that bug, not in the bag
+      const pen = this.barn.gymGearFor(p.id, bug, x.gym);
+      if (x.price > CONFIRM_OVER && confirm !== true) throw new GameError(`That costs $${x.price.toLocaleString('en-US')}. Please confirm.`, 428);
+      this.accounts.requireFunds(p, x.price, x.name);
+      this.accounts.change(p, -x.price, 'shop', `General Store: ${x.name} for ${pen.name}`);
+      const fitted = this.barn.fitGymGear(p.id, pen, x.gym);
+      return { ...this.view(p), gymGear: { id, ...fitted } };
+    }
     if (ONCE(x)) { if (iv.own[id]) throw new GameError('One at a time: use the one you have first.', 409); }
     else if (CONSUMABLE(x)) { if ((iv.own[id] || 0) >= MAX_STACK) throw new GameError(`You can only hold ${MAX_STACK} of those.`, 409); }
     else if (WORN.includes(x.slot)) { if ((iv.own[id] || 0) >= BUG_COPIES) throw new GameError('You have one for every stall already.', 409); } // one bug wears one: a second bug needs its own
