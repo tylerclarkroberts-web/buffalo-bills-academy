@@ -29,6 +29,60 @@ export function greeting(pen) {
   return [...out, L(`${n}ちゃんはもう元気いっぱいですね！`, `${n} is already full of energy!`), L('念のため、診ておきましょうか？', 'Shall I give it a quick check-up, just in case?', { ask: true })];
 }
 export const WAIT = L('少々お待ちください♪', 'Just a moment, please ♪');
+
+/** The ordinary heal button vs the specialist's last-panel confirm. Used by BugCenter so a stale tab cannot evolve. */
+export function healRequest(pen, { pay = false, specialist = false, donor } = {}) {
+  if (specialist) return { bug: pen?.id, confirmEvolve: true, ...(donor ? { donor } : {}) };
+  return { bug: pen?.id, mode: 'heal', ...(pay ? { pay: true } : {}) };
+}
+
+/**
+ * Who Nurse Hikari talks about first: a sick or collected bug always wins (they need her now). Otherwise a pending
+ * evoNews recap, then the usual greeting for the partner or a fainted bug.
+ */
+export function greetingFor(view) {
+  const bugs = view?.stable?.bugs || [];
+  const active = bugs.find((bug) => bug.sick) || bugs.find((bug) => bug.taken) || bugs.find((bug) => bug.fainted) || view?.pen || null;
+  if (active?.sick || active?.taken) return { kind: 'care', pen: active, lines: greeting(active) };
+  if (view?.evoNews) return { kind: 'news', pen: active, news: view.evoNews, lines: newsGreeting(view.evoNews) };
+  return { kind: 'care', pen: active, lines: greeting(active) };
+}
+
+/** Nurse Hikari's one-time recap of a Stage II rebuild the owner thought was a death. English always shows (`both`). */
+export function newsGreeting(news) {
+  const n = news?.name || 'Empusa';
+  const both = { both: true };
+  return [
+    L('こんにちは！バグセンターへようこそ♡', 'Hello! Welcome to the Bug Center ♡', both),
+    L('わたしはナースのヒカリです。', "I'm Nurse Hikari.", both),
+    L(`あ！戻ってきてくれて、よかった。${n}ちゃんのことで、大事なお知らせがあるんです…`, `Oh! I'm so glad you came back. I have important news about ${n}...`, both),
+    L('さっき、あの方がいらしたとき、全部があっという間で…', 'Earlier, when the specialist came through, everything happened so fast...', both),
+    L('カーテンの向こうの記録と、領収書の控えを、お見せするの、わすれてしまって。', 'I realized I forgot to show you the file from behind the curtain — and the copy of the receipt.', both),
+    L('いなくなっちゃったって、思ってましたよね？', "You thought she didn't make it, didn't you?", both),
+    L('あら、そんなことないですよ！ちゃんと生きてます。', "Oh dear, no! She's very much alive.", both),
+    L('ほら——待合室で待っているあいだに、何があったか、お見せしますね…', 'Here — let me show you what happened while you were waiting out front...', { ...both, call: true }),
+  ];
+}
+
+export function newsAfter(news) {
+  const n = news?.name || 'Empusa';
+  const both = { both: true };
+  return [
+    L('ね？いなくなったわけじゃなくて——ちょっと、おもくなっただけ。', 'See? Not gone at all — just... heavier.', both),
+    L('それに、ほとんど鉄です。いまは。', 'And mostly iron now.', both),
+    L('カーテンのことは、ほかの方には、ないしょですよ♡', "Please don't mention the curtain to the others ♡", { ...both, end: true }),
+  ];
+}
+
+/** Shape the recap payload so Receipt and Reveal can replay the original Stage II visit without calling evolve(). */
+export function newsAsEvolved(news) {
+  if (!news) return null;
+  return {
+    id: news.id, name: news.name, species: news.species, botched: news.botched || null, stage: news.stage ?? 1, copy: true,
+    levelBefore: news.levelBefore, levelAfter: news.levelAfter, bill: news.bill ? { ...news.bill } : undefined,
+  };
+}
+
 export function done(pen, healed, cost = 0) {
   const n = pen?.name || '';
   return [healed ? L(`お待たせしました！${n}ちゃんはすっかり元気になりました！`, `Thank you for waiting! ${n} is fully healed!`) : L(`ばっちり元気です！${n}ちゃん、えらいですね♪`, `Perfectly healthy! Good job, ${n} ♪`),
@@ -41,7 +95,7 @@ export const PANELS = [L('ドアが、ひとりでに開いた。', 'The door op
 export const PANELS2 = [L('道具。前より、多い。', 'Tools. More than last time.', { art: 2 }), L('カーテンの向こうで、音がする。長いあいだ。', 'Noises, behind the curtain. For a long while.', { art: 3 })];
 export const PICK = { warn: L('渡した子は、戻ってきません。', 'The one you hand over does not come back.'), not: L('やめておく', 'Not now') };
 /** The receipt is in both languages whatever the 訳 button says: it is the only place the cost is stated. */
-export const RECEIPT = { title: L('領収書', 'Receipt'), arm: L('腕 ×1', 'Arm (1)'), labour: L('技術料', 'Labour'), hush: L('口止め料', 'Not asking questions'),
+export const RECEIPT = { title: L('領収書', 'Receipt'), copy: L('控え', 'Copy · Already paid'), arm: L('腕 ×1', 'Arm (1)'), labour: L('技術料', 'Labour'), hush: L('口止め料', 'Not asking questions'),
   wrong: L('部品ちがい', 'Wrong part'), free: L('無料', 'no charge'), parts: L('部品', 'Parts'), included: L('込み', 'included'), body: L('ボディ ×1', 'Body (1)'), total: L('合計', 'Total'), had: L('お預かり', 'You had'), left: L('残高', 'You have'), foot: L('返品不可', 'No returns.') };
 export const BACK = (n) => L(`${n}ちゃんが帰ってきた。`, `${n} is back.`);
 export const STAGE = (botched, stage = 1) => { const n = stage === 2 ? 'III' : 'II'; return botched ? L(`ステージ ${n}（だいたい）`, `Stage ${n}, more or less`) : L(`ステージ ${n}`, `Stage ${n}`); };
