@@ -22,7 +22,7 @@ import { varietyFor, cleanVariety } from './engine/variety.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
-export const STALL_COSTS = [1500, 4000, 10000]; // the fourth, fifth and sixth stall
+export const STALL_COSTS = [1500, 2000, 2000]; // the fourth, fifth and sixth stall (v149: the last two were $4,000 and $10,000)
 export const BENCH_SLOW = 5;                    // a stalled bug lives this many times slower than the partner
 export const ACTIVE_MAX = 6;                    // never more than six bugs in the barn's stalls (STALLS + every STALL_COSTS)
 // GFR Farms: as many bugs as you like, out past the tailings pond. A bug there is frozen in time: no XP, no hunger,
