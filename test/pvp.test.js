@@ -53,7 +53,7 @@ function fixture(t, { rand = (n) => Math.floor(n / 2) } = {}) {
     f.accounts = new Accounts({ store: f.store, now });
     f.barn = new Barn({ store: f.store, accounts: f.accounts, now });
     f.shop = new Shop({ store: f.store, accounts: f.accounts, barn: f.barn, now });
-    f.mines = new Mines({ store: f.store, accounts: f.accounts, barn: f.barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000 });
+    f.mines = new Mines({ store: f.store, accounts: f.accounts, barn: f.barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000, wormInt: (n) => n - 1 });
     f.mines.owned = (id) => f.shop.doc.inv[id]?.own;
     f.pvp = new Pvp({ store: f.store, accounts: f.accounts, mines: f.mines, shop: f.shop, barn: f.barn, avatars: null, now, randInt: (n) => f.rand(n) });
   };

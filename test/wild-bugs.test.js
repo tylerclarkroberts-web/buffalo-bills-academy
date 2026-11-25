@@ -26,7 +26,7 @@ function fixture(t) {
   f.store = new Store(dir); f.accounts = new Accounts({ store: f.store, now });
   f.barn = new Barn({ store: f.store, accounts: f.accounts, now, incubateMs: 1000, eggInt: (n) => (n === 100000 ? 99999 : 0) }); // no mine eggs; the first species for a partner
   f.shop = new Shop({ store: f.store, accounts: f.accounts, barn: f.barn, now });
-  f.mines = new Mines({ store: f.store, accounts: f.accounts, barn: f.barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000 });
+  f.mines = new Mines({ store: f.store, accounts: f.accounts, barn: f.barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000, wormInt: (n) => n - 1 });
   f.mines.owned = (id) => f.shop.doc.inv[id]?.own;
   f.pvp = new Pvp({ store: f.store, accounts: f.accounts, mines: f.mines, shop: f.shop, barn: f.barn, avatars: null, now, randInt: (n) => (n === 1000 ? f.jarRoll : 0) });
   f.miner = (id) => {

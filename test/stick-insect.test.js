@@ -26,7 +26,7 @@ function fixture(t, { jarInt, layout } = {}) {
   const store = new Store(dir), accounts = new Accounts({ store, now });
   const barn = new Barn({ store, accounts, now, incubateMs: 1000, eggInt: (n) => (n === 100000 ? 99999 : 0) });
   const shop = new Shop({ store, accounts, barn, now });
-  const mines = new Mines({ store, accounts, barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000, layout });
+  const mines = new Mines({ store, accounts, barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000, wormInt: (n) => n - 1, layout });
   mines.owned = (id) => shop.doc.inv[id]?.own;
   const rolls = { jar: 0, pay: [] };
   const pvp = new Pvp({
