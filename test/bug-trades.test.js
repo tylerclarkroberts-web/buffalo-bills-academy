@@ -158,8 +158,13 @@ test('validation: self, empty, too many, bad money, money with nothing asked, no
   assert.throws(() => trades.propose('a', { to: 'b', want: Array.from({ length: MAX_SIDE + 1 }, (_, i) => i) }), /At most/);
   assert.throws(() => trades.propose('a', { to: 'b', want: [want], money: 5000 }), /You need \$5,000/);
   assert.throws(() => trades.propose('a', { to: 'b', want: [123] }), /left the barn/);
-  // b has 2 bugs in 3 stalls: two more coming in for none going out is too many
-  assert.throws(() => trades.propose('a', { to: 'b', give: barn.bugs('a').map(idOf) }), /no free stall/);
+  // b has 2 bugs in 3 stalls: two more coming in used to be refused; they now fit, with overflow at GFR Farms
+  const give = barn.bugs('a').map(idOf);
+  trades.propose('a', { to: 'b', give });
+  trades.accept('b', trades.view('b').incoming[0].id);
+  assert.equal(barn.bugs('b').length, 3, 'the stalls fill first');
+  assert.equal(barn.farmBugs('b').length, 1, 'the extra one goes to the farm');
+  assert.equal(barn.bugs('a').length, 0);
   assert.equal(store.players.a.bankroll, START);
   ledgerOk(store);
 });
@@ -278,4 +283,43 @@ test('HTTP: two accepts racing pay once; the barn and net worth show the held ca
   assert.equal((await buyer.api('POST', `/api/barn/trades/${id}/decline`)).status, 404);
   assert.equal((await buyer.api('DELETE', `/api/barn/trades/${id}`)).status, 200, 'cancelling an accepted trade is a no-op');
   assert.equal(players[buyer.id].bankroll, 880);
+});
+
+test('Trades.place uses barn.placeNewBug routing: partner, free stall, then GFR Farms, in one barn write', (t) => {
+  const { barn, trades, catchBug, store } = setup(t, { stalls: false });
+  // empty barn: the received bug is the partner
+  catchBug('a', 'pyrops');
+  const first = barn.bugs('a')[0];
+  trades.propose('a', { to: 'b', give: [idOf(first)] });
+  let writes = 0;
+  const save = barn.store.saveDoc.bind(barn.store);
+  barn.store.saveDoc = (name, data) => { if (name === 'barn') writes++; return save(name, data); };
+  trades.accept('b', trades.view('b').incoming[0].id);
+  assert.equal(barn.whereIs('b', first), 'partner');
+  assert.equal(writes, 1, 'the accept is one barn.json write');
+
+  // a partner already there: the next one takes a stall
+  catchBug('a', 'lamprima');
+  const second = barn.bugs('a')[0];
+  trades.propose('a', { to: 'b', give: [idOf(second)] });
+  writes = 0;
+  trades.accept('b', trades.view('b').incoming[0].id);
+  assert.equal(barn.whereIs('b', second), 'stall');
+  assert.ok(barn.doc.bench.b.some((pen) => idOf(pen) === idOf(second) && pen.benchedAt));
+  assert.equal(writes, 1);
+
+  // fill the remaining stalls, then one more goes to the farm
+  catchBug('a', 'halobates'); catchBug('a', 'onymacris');
+  // default barn has 3 stalls; b now has partner + 1 stall = 2, room for 1 more then farm
+  const third = barn.bugs('a')[0], fourth = barn.bugs('a')[1];
+  trades.propose('a', { to: 'b', give: [idOf(third), idOf(fourth)] });
+  writes = 0;
+  trades.accept('b', trades.view('b').incoming[0].id);
+  assert.equal(barn.bugs('b').length, 3);
+  const farmed = barn.farmBugs('b');
+  assert.equal(farmed.length, 1);
+  assert.ok(farmed[0].farmedAt && !farmed[0].benchedAt);
+  assert.equal(barn.whereIs('b', farmed[0]), 'farm');
+  assert.equal(writes, 1);
+  assert.equal(store.players.a.bankroll, START);
 });

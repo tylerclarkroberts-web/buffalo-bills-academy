@@ -11,6 +11,7 @@ import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
+import { creditStall5Refunds } from './stallRefund.js';
 import { Barn, strongestTrainers } from './barn.js';
 import { Trades } from './trades.js';
 import { Circuit } from './circuit.js';
@@ -82,6 +83,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   mines.owned = (id) => shop.doc.inv[id]?.own;
   barn.mines = mines; // so a mid-shift steal is visible to barn/circuit fight gates
   const trades = new Trades({ store: service.store, accounts, barn, now: service.now }); // the trading post: bugs and cash between players
+  barn.foreman = foreman; // in-game Foreman notes (stall-price credit, etc.) show on the barn and in /me
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
@@ -110,6 +112,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const mig = mines.migrateHeesheeSteals();
     if (mig.activeStolen || mig.stamped) console.log('[heeshee] mid-shift steals', mig);
   } catch (e) { console.error('[heeshee] migrate', e); }
+  try {
+    const refund = creditStall5Refunds({ store: service.store, accounts, foreman, now: service.now });
+    if (refund.credited.length) console.log('[stall-refund]', refund.credited.map((c) => `${c.name} +$${c.amount}`).join(', '));
+  } catch (e) { console.error('[stall-refund]', e); }
   const guestAllowed = config.allowGuest;
   const slack = new SlackAlerts({ service, publicUrl: env.PUBLIC_URL || 'https://buffalobillsacademy.com',
     client: new SlackClient({ token: env.SLACK_BOT_TOKEN, baseUrl: env.SLACK_API_URL || undefined, fetchImpl: slackFetch || fetchImpl || globalThis.fetch, retryDelayMs: slackRetryMs ?? 1500 }), ...(slackSendRetryMs ? { retryMs: slackSendRetryMs } : {}) });
@@ -158,7 +164,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const evoNews = barn.evoNewsOf(p.id); // same helper as GET /barn: pending Stage II recap, if any
     return { id: p.id, name: p.name, kind: p.kind || 'guest', email: p.login?.email || p.google?.email || null, picture: p.google?.picture || null,
       username: p.login?.username || null, hasPassword: !!p.login?.hash, googleLinked: !!p.google && p.kind !== 'dev',
-      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id), ...(evoNews ? { evoNews } : {}) };
+      signedIn: !!(p.google || p.login), bankroll: p.bankroll, worth: netWorth(p), broke: isBroke(p), minBuyIn: minBuyIn(), avatar: avatars.info(p), hasAvatar: !!p.avatar, slack: slack.status(p), foffWatched: foff.watched(p), barnChallenges: barn.challengeCount(p.id), ...(evoNews ? { evoNews } : {}), ...(foreman.noteOf(p.id) ? { foremanNote: foreman.noteOf(p.id) } : {}) };
   };
   const minBuyIn = () => cheapestBuyIn(service.store.allTables());
   const isBroke = (p) => brokeCheck({ bankroll: p.bankroll, holdings: market.holdingsValue(p), chipsInPlay: service.chipsInPlay(p.id) + barn.escrow(p), minBuyIn: minBuyIn() });
@@ -387,6 +393,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
   api.post('/barn/heal', needPlayer, wrap((req) => barn.heal(req.player.id, { pay: req.body?.pay === true, bug: req.body?.bug, donor: req.body?.donor, mode: req.body?.mode, confirmEvolve: req.body?.confirmEvolve === true, specialist: req.body?.specialist === true, normalHeal: req.body?.normalHeal === true }))); // the Bug Center nurse: free after an hour's rest, or paid now. mode: 'heal' is the ordinary button and will not evolve a sick or collected bug.
   api.post('/barn/evo-news/ack', needPlayer, wrap((req) => barn.ackEvoNews(req.player.id))); // one-time Stage II recap: stamps evoNewsSeen, charges nothing
+  api.post('/barn/foreman-note/ack', needPlayer, wrap((req) => foreman.ackNote(req.player.id, req.body?.id))); // dismiss a Foreman note; no money moves
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
   api.post('/mines/heeshee/seen', needPlayer, wrap((req) => mines.seeHeeshee(accounts.ensure(req.player), req.body?.shiftId)));

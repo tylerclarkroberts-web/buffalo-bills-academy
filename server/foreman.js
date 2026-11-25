@@ -282,7 +282,7 @@ const publicProblem = (p) => ({ text: textOf(p), word: textOf(p).length > 24 });
 export class Foreman {
   constructor({ store, accounts, now, randInt }) {
     this.store = store; this.accounts = accounts; this.now = now; this.r = randInt || ((n) => crypto.randomInt(n));
-    this.doc = store.loadDoc('foreman', { pending: {}, bonuses: {} });
+    this.doc = store.loadDoc('foreman', { pending: {}, bonuses: {}, notes: {} });
   }
   save() { this.store.saveDoc('foreman', this.doc); }
   pending(playerId) { return this.doc.pending[playerId] || null; }
@@ -353,5 +353,29 @@ export class Foreman {
     this.doc.bonuses[player.id] = recent; this.save();
     return { correct: true, bonus, line: pick(PRAISE, this.r), misses: p.misses, bankroll: player.bankroll };
   }
-  forget(playerId) { delete this.doc.pending[playerId]; delete this.doc.bonuses[playerId]; if (this.doc.lastMineShift) delete this.doc.lastMineShift[playerId]; this.save(); }
+  forget(playerId) { delete this.doc.pending[playerId]; delete this.doc.bonuses[playerId]; if (this.doc.lastMineShift) delete this.doc.lastMineShift[playerId]; if (this.doc.notes) delete this.doc.notes[playerId]; this.save(); }
+
+  /** A one-shot in-game note (not a lecture: it does not block clock-in). Same key is not posted twice. */
+  leaveNote(playerId, { key, text }) {
+    this.doc.notes ||= {};
+    const cur = this.doc.notes[playerId];
+    if (cur?.key === key) return cur;
+    const note = { id: crypto.randomBytes(9).toString('base64url'), key, text, at: this.now() };
+    this.doc.notes[playerId] = note;
+    this.save();
+    return note;
+  }
+  noteOf(playerId) {
+    const n = this.doc.notes?.[playerId];
+    return n ? { id: n.id, text: n.text, key: n.key } : null;
+  }
+  ackNote(playerId, id) {
+    const n = this.doc.notes?.[playerId];
+    if (!n) return { note: null };
+    if (id && n.id !== id) throw new GameError('That note is not waiting.', 409);
+    delete this.doc.notes[playerId];
+    this.save();
+    return { note: null };
+  }
 }
+

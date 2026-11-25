@@ -317,10 +317,15 @@ export class Barn {
    * the changes to commit (with `base`, any other changes of the same write) and where it went: 'partner', 'stall' or 'farm'.
    */
   placement(playerId, pen, base = {}) {
-    const now = this.now(), { benchedAt: _b, farmedAt: _f, ...bug } = pen, changes = { ...base };
-    if (!this.room(playerId)) { changes.farm = { ...this.doc.farm, [playerId]: [...this.farmBugs(playerId), { ...bug, farmedAt: now }] }; return { changes, where: 'farm' }; }
-    if (!this.doc.pens[playerId]) { changes.pens = { ...this.doc.pens, [playerId]: bug }; return { changes, where: 'partner' }; }
-    changes.bench = { ...this.doc.bench, [playerId]: [...(this.doc.bench[playerId] || []), { ...bug, benchedAt: now }] };
+    const now = this.now(), { benchedAt: _b, farmedAt: _f, ...bug } = pen;
+    // `base` is the in-progress barn write (trades accept both sides in one commit). Count room against it, not the last saved doc.
+    const pens = base.pens ?? this.doc.pens, bench = base.bench ?? this.doc.bench, farm = base.farm ?? this.doc.farm ?? {};
+    const cap = STALLS + ((base.stalls ?? this.doc.stalls ?? {})[playerId] || 0);
+    const active = (pens[playerId] ? 1 : 0) + (bench[playerId] || []).length;
+    const changes = { ...base };
+    if (active >= cap) { changes.farm = { ...farm, [playerId]: [...(farm[playerId] || []), { ...bug, farmedAt: now }] }; return { changes, where: 'farm' }; }
+    if (!pens[playerId]) { changes.pens = { ...pens, [playerId]: bug }; return { changes, where: 'partner' }; }
+    changes.bench = { ...bench, [playerId]: [...(bench[playerId] || []), { ...bug, benchedAt: now }] };
     return { changes, where: 'stall' };
   }
   /** For trades and gifts: put a ready-made bug (stage 'creature', its own eggAt/bornAt) in this barn, routed as placement does, and write it. */
@@ -522,7 +527,7 @@ export class Barn {
     // `pen` is the partner, as every page that knows one bug expects; `lastBout` the newest fight of any of them.
     const evoNews = this.evoNewsOf(playerId);
     return { pen: stable.bugs.find((bug) => bug.partner) || null, serverNow: this.now(), stable, lastBout: stable.bugs.map((bug) => bug.lastBout).filter(Boolean).sort((a, b) => b.at - a.at)[0] || null,
-      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}), tradeWaiting: this.trades?.count(playerId) || 0, ...(evoNews ? { evoNews } : {}) };
+      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}), tradeWaiting: this.trades?.count(playerId) || 0, ...(evoNews ? { evoNews } : {}), ...(this.foreman?.noteOf?.(playerId) ? { foremanNote: this.foreman.noteOf(playerId) } : {}) };
   }
   /** The stalls: how many, what the next one costs, and every bug in them as its owner sees it, partner first. */
   stable(playerId) {

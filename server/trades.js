@@ -108,11 +108,15 @@ export class Trades {
   }
   /**
    * Put one received bug into `changes` (a barn.json change set built for the accept write): the partner's place if
-   * it is empty, otherwise a stall, on the slow stall clock from now. The single trade-receipt path.
-   * ponytail: when GFR Farms lands, route through barn.placeNewBug(playerId, bug) here (it must write into the same
-   * change set, or the accept is no longer one write).
+   * it is empty, otherwise a free stall, otherwise GFR Farms. Uses barn.placement — the same helper placeNewBug uses —
+   * so the accept stays one write (placeNewBug itself would commit mid-accept).
    */
   place(changes, playerId, pen) {
+    if (typeof this.barn.placement === 'function') {
+      const { changes: next } = this.barn.placement(playerId, pen, changes);
+      Object.assign(changes, next);
+      return;
+    }
     const now = this.now();
     if (!changes.pens[playerId]) changes.pens[playerId] = pen;
     else changes.bench[playerId] = [...(changes.bench[playerId] || []), { ...pen, benchedAt: now }];
@@ -227,7 +231,7 @@ export class Trades {
 
     // One barn.json write: both sides' bugs out, both sides' bugs in, names, Bugdex, stale challenges, the trade's status.
     const now = this.now(), barn = this.barn, doc = barn.doc;
-    const changes = { pens: { ...doc.pens }, bench: { ...doc.bench }, names: { ...doc.names } };
+    const changes = { pens: { ...doc.pens }, bench: { ...doc.bench }, names: { ...doc.names }, farm: { ...(doc.farm || {}) } };
     const out = { [t.from]: new Set(theirs.map(idOf)), [playerId]: new Set(mine.map(idOf)) };
     const partnerMoved = {};
     for (const [owner, ids] of Object.entries(out)) {

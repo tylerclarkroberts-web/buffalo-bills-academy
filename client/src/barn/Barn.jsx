@@ -581,6 +581,13 @@ function BarnHome({ me }) {
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
           </div>
           {b.evoNews && <p className="barn-warn barn-news" role="status" data-test="barn-evo-news">Nurse Hikari left word at the Bug Center — important news about {b.evoNews.name}.</p>}
+          {b.foremanNote && (
+            <p className="barn-warn barn-news barn-foreman-note" role="status" data-test="foreman-note">
+              {b.foremanNote.text}
+              {' '}
+              <button type="button" className="linklike" data-test="foreman-note-ack" onClick={() => act(async () => { await api('POST', '/barn/foreman-note/ack', { id: b.foremanNote.id }); await refreshSession(); take(await api('GET', '/barn')); })}>Got it</button>
+            </p>
+          )}
         </header>
         {help && <aside id="barn-help" className="barn-help" data-test="barn-help-panel"><ul>{HELP[view].map((line) => <li key={line}>{line}</li>)}</ul><button className="btn small ghost" onClick={() => setHelp(false)}>Got it</button></aside>}
         {ring && <Ring b={b} meId={me.id} now={now} busy={busy} unsaved={!!battleDraft} stake={stake} setStake={setStake}
