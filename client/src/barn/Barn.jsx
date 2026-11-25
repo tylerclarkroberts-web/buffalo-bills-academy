@@ -6,7 +6,7 @@ import { api, refreshSession, useSession } from '../api.js';
 import { money } from '../util.js';
 import { SignIn } from '../Home.jsx';
 import { goToMines } from '../App.jsx';
-import { BY_ID, ROSTER, formOf } from '../../../server/engine/creatures.js';
+import { BY_ID, formOf } from '../../../server/engine/creatures.js';
 import { movesFor, STANCES, riskFor } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
@@ -15,6 +15,7 @@ import Bout, { mergeFight } from './Bout.jsx';
 import BugCard, { TypeChip, STAGES, VarietyNote } from './BugCard.jsx';
 import { varietyFor } from '../../../server/engine/variety.js';
 import { TYPES, RARITY, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
+import { DEX_ORDER, DEX_TIERS } from './dexOrder.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
 import Gym from './Gym.jsx';
@@ -269,16 +270,17 @@ function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel
   </div>;
 }
 
-/** The Bugdex: every species in card order, each with its two evolved stages beside it. A form you have met (`b.dex`:
+/** The Bugdex: every species, rarest first (dexOrder.js) under a divider for each tier, each with its two evolved stages beside it. A form you have met (`b.dex`:
  * kept, fought, or spotted down the mine) shows its face and opens its card; the rest are a question mark. How rare a
  * bug is and its type are posted either way. */
-const FORMS = ROSTER.flatMap((bug, k) => STAGES.map((_, evo) => ({ bug, evo, key: formOf(bug.id, evo), no: String(k + 1).padStart(2, '0') })));
+const FORMS = DEX_ORDER.flatMap(({ bug, no }) => STAGES.map((_, evo) => ({ bug, evo, key: formOf(bug.id, evo), no: String(no).padStart(2, '0') }))); // in Bugdex order, so ‹ › flip that way too
+const FORM = new Map(FORMS.map((form) => [form.key, form]));
 function Bugdex({ seen }) {
   const met = FORMS.filter((form) => seen.includes(form.key)), [open, setOpen] = useState(null), dialog = useRef(null), shut = useRef(null), on = FORMS.find((form) => form.key === open);
   useEffect(() => { const el = dialog.current; if (el && !el.open) { el.showModal(); shut.current.focus({ preventScroll: true }); } }, [open]); // Close, not the first arrow, so Enter does the safe thing
   const flip = (step) => setOpen(met[(met.indexOf(on) + step + met.length) % met.length].key);
   const tile = ({ bug, evo, key, no }) => {
-    const rarity = rarityOf(bug.id), type = TYPES[typeOf(bug.id)]?.name, kind = !evo && <small className={`dex-kind r${rarity}`} aria-hidden={!seen.includes(key)}>{RARITY[rarity].name} <span>{type}</span></small>;
+    const rarity = rarityOf(bug.id), type = TYPES[typeOf(bug.id)]?.name, kind = !evo && <small className={`dex-kind r${rarity}`} aria-hidden={!seen.includes(key)}><b aria-hidden="true">{RARITY[rarity].mark}</b> {RARITY[rarity].name} <span>{type}</span></small>;
     return seen.includes(key)
       ? <button key={key} className={`dex-tile${evo ? ' evo' : ''}`} onClick={() => setOpen(key)} aria-label={evo ? `${bug.name}, ${STAGES[evo]}` : undefined} data-test="dex-met">
         <span className="num">{evo ? STAGES[evo].slice(6) : no}</span><BugThumb bug={{ species: bug.id, level: 10, style: evo === 1 ? { evo, variety: varietyFor(bug.id, bug.id) } : evo ? { evo } : null }} />{!evo && <b>{bug.name}</b>}{kind}
@@ -288,7 +290,10 @@ function Bugdex({ seen }) {
   return <div className="dex" data-test="bugdex">
     <p className="small dex-count" data-test="dex-count"><b className="num">{met.length} of {FORMS.length}</b> met{!met.length ? '. They turn up in fights and down the mine.' : met.length === FORMS.length ? '. That is all of them. They would like some privacy now.' : ''}</p>
     <ol className="dex-grid">
-      {ROSTER.map((bug, k) => <li key={bug.id} className="dex-fam" style={{ '--tc': TYPES[typeOf(bug.id)]?.color }}>{tile(FORMS[k * 3])}<div className="dex-evos">{tile(FORMS[k * 3 + 1])}{tile(FORMS[k * 3 + 2])}</div></li>)}
+      {DEX_TIERS.flatMap((tier) => [
+        <li key={`tier-${tier.rarity}`} className={`dex-tier r${tier.rarity}`} data-test="dex-tier"><span aria-hidden="true">{tier.mark}</span> {tier.name} <i className="num">{tier.bugs.length}</i></li>,
+        ...tier.bugs.map(({ bug }) => <li key={bug.id} className="dex-fam" style={{ '--tc': TYPES[typeOf(bug.id)]?.color }} data-test="dex-fam" data-species={bug.id}>{tile(FORM.get(formOf(bug.id, 0)))}<div className="dex-evos">{tile(FORM.get(formOf(bug.id, 1)))}{tile(FORM.get(formOf(bug.id, 2)))}</div></li>),
+      ])}
     </ol>
     {on && <dialog ref={dialog} className="dex-card" aria-label={`${on.bug.name}${on.evo ? `, ${STAGES[on.evo]}` : ''}: card`} onClose={() => setOpen(null)} onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}
       onKeyDown={(e) => { if (met.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) flip(e.key === 'ArrowLeft' ? -1 : 1); }} data-test="dex-card">
