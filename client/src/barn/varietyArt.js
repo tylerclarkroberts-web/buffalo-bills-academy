@@ -17,16 +17,46 @@ function fromHsl(h, s, l) {
   const [r, g, b] = h < 60 ? [C, X, 0] : h < 120 ? [X, C, 0] : h < 180 ? [0, C, X] : h < 240 ? [0, X, C] : h < 300 ? [X, 0, C] : [C, 0, X];
   return toHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
 }
-/** A small turn of the colour wheel and a touch lighter or darker: the outline stays as it was. */
+/**
+ * Its colouring: a turn of the colour wheel, lighter or darker, and its morph. The outline stays as it was.
+ * twotone: the light shade and the accent go their own way round the wheel; inverted: light where it was dark, on the
+ * opposite hue; melanic: near black with its accent still bright; pale: washed out; vivid: turned right up.
+ */
 export function shiftPal(pal, v) {
-  if (!v || (!v.hue && !v.tone)) return pal;
-  return pal.map((c, i) => { if (i === 0 || typeof c !== 'string' || c[0] !== '#') return c; const [h, s, l] = hsl(c);
-    return fromHsl(h + v.hue * (i === 4 ? 1.4 : 1), s, Math.max(0.03, Math.min(0.95, l * (1 + v.tone / 100)))); });
+  const morph = v?.morph && v.morph !== 'none' ? v.morph : null;
+  if (!v || (!v.hue && !v.tone && !morph)) return pal;
+  const out = pal.map((c, i) => {
+    if (i === 0 || typeof c !== 'string' || c[0] !== '#') return c;
+    let [h, s, l] = hsl(c); h += v.hue * (i === 4 ? 1.4 : 1); l = l * (1 + v.tone / 100);
+    if (morph === 'twotone' && i >= 3) { h += i === 4 ? 150 : 110; s = Math.max(s, 0.5); }
+    if (morph === 'inverted' && i < 4) { h += 180; l = 1 - l; }
+    if (morph === 'melanic') { if (i < 4) { l *= 0.42; s *= 0.55; } else { s = Math.max(s, 0.8); l = Math.max(l, 0.55); } }
+    if (morph === 'pale') { l = 0.58 + l * 0.38; s *= 0.45; }
+    if (morph === 'vivid') { s = Math.min(1, s * 1.6 + 0.15); }
+    return fromHsl(h, Math.max(0, Math.min(1, s)), Math.max(0.03, Math.min(0.95, l)));
+  });
+  if (morph === 'inverted') [out[1], out[3]] = [out[3], out[1]]; // keep the ramp running dark to light
+  return out;
 }
-/** The extra materials variety draws with. Fruit tones lean into the body colour, so they whisper. */
-export function varietyRamps(R) {
-  const body = R.B[1], quiet = (c, t = 0.3) => mix(c, body, t);
+// what a Stage II machine body is plated in: iron (and brass) as built, or a coat of something else
+const METAL = {
+  brass: { M: ['#6a4a22', '#b8893e', '#f0d080'], J: ['#5a2c1c', '#a8562e', '#e8945a'] },
+  copper: { M: ['#5e2c1c', '#b0603a', '#f0a070'], J: ['#3a4a3e', '#6a8a72', '#b0d0b0'] },
+  gunmetal: { M: ['#1c2230', '#3e4a60', '#7d8aa4'], J: ['#555a66', '#9aa0aa', '#e0e4ea'] },
+  red: { M: ['#5a1418', '#a8302c', '#e87a62'], J: ['#69402d', '#bc7a3f', '#f8bf68'] },
+  teal: { M: ['#123c3e', '#2a8078', '#78d0bc'], J: ['#69402d', '#bc7a3f', '#f8bf68'] },
+  olive: { M: ['#2c3418', '#5a6a32', '#a0b06a'], J: ['#3a2a18', '#7a5a34', '#c09a5a'] },
+  cream: { M: ['#6e6658', '#c8bea4', '#fbf4e2'], J: ['#7a1a16', '#c8322a', '#f07458'] },
+  gold: { M: ['#6e5010', '#d0a02a', '#fff0a0'], J: ['#373641', '#747180', '#b6b1ae'] },
+};
+/** The extra materials variety draws with. Fruit tones lean into the body colour, so they whisper; the pattern ink stands out from it. */
+export function varietyRamps(R, v = null) {
+  const body = R.B[1], quiet = (c, t = 0.3) => mix(c, body, t), lum = hsl(body)[2];
+  const ink = lum > 0.42 ? [mix(R.B[0], '#000000', 0.55), mix(R.B[0], '#000000', 0.35), mix(R.B[1], '#000000', 0.2)] : [mix(R.B[1], '#ffffff', 0.35), mix(R.B[2], '#ffffff', 0.5), mix(R.B[2], '#ffffff', 0.75)];
   return {
+    ...(v?.metal ? METAL[v.metal] : null),
+    w: ink,                                                  // a bold shell pattern
+    x: R.A || ink,                                           // its second ink: the accent
     X: [quiet('#55705a', 0.35), quiet('#8fb492', 0.35), quiet('#d8eed2', 0.3)], // slug foot and its slime, in the bug's own tint
     C: ['#9a2a33', '#e0505a', '#ff9a9a'],                    // pox, rash, fever
     O: ['#4d5a22', '#7f8c3a', '#b4bd6c'],                    // warts
@@ -67,24 +97,24 @@ export function drawBase(u, S, base, frame = 0) {
   if (base === 'wheels') {
     const ys = h > 24 ? [top + h * 0.22, top + h * 0.55, top + h * 0.86] : [top + h * 0.28, top + h * 0.8];
     for (const y of ys) { const x = Math.max(4, edge(y - 2, y + 2) - 1.5);
-      u.line(x + 2, y, 31.5, y, 'M', 1); // axle
-      u.ell(x, y, 3, 4.6, 'K'); u.ell(x - 0.4, y, 1.3, 2, 'M'); u.put(x - 0.4, y, 'J'); // tyre, rim, hub
-      for (const dy of [-3, -1.5, 0, 1.5, 3]) u.hair([[x - 2.2, y + dy], [x - 1.4, y + dy]], 'S'); } // tread
+      u.line(x + 2, y, 31.5, y, 'M', 2); // axle
+      u.ell(x - 0.5, y, 4, 5.6, 'K'); u.ell(x - 0.9, y, 2, 3, 'M'); u.ell(x - 0.9, y, 0.9, 1.2, 'J'); // tyre, rim, hub
+      for (const dy of [-4, -2, 0, 2, 4]) u.hair([[x - 3.6, y + dy], [x - 2.6, y + dy]], 'S'); } // tread
   } else if (base === 'tracks') {
     const y0 = top + h * 0.12, y1 = bottom - h * 0.04, x = Math.max(4, edge(y0, y1) - 1.6);
-    u.line(x, y0, x, y1, 'K', 5); u.ell(x, y0, 2.5, 2.5, 'K'); u.ell(x, y1, 2.5, 2.5, 'K');
-    for (let y = y0; y <= y1; y += 2.5) u.line(x - 2, y, x + 1, y, 'M', 1); // treads
-    for (const y of [y0 + 1, (y0 + y1) / 2, y1 - 1]) u.put(x + 0.5, y, 'J'); // road wheels showing between them
+    u.line(x - 1, y0, x - 1, y1, 'K', 7); u.ell(x - 1, y0, 3.5, 3.5, 'K'); u.ell(x - 1, y1, 3.5, 3.5, 'K');
+    for (let y = y0 - 1; y <= y1 + 1; y += 2.5) u.line(x - 4.2, y, x + 1.6, y, 'M', 1); // treads
+    for (const y of [y0, (y0 * 2 + y1) / 3, (y0 + y1 * 2) / 3, y1]) u.ell(x - 1, y, 1.4, 1.4, 'J'); // road wheels showing between them
   } else if (base === 'rotor') {
     const cy = Math.round(mid), a = frame % 2 ? 0.35 : 1, b = frame % 2 ? 1 : 0.35;
     // two blades and a blur ring where they have been, the hub under the body
     const L = 25, dx = L * a, dy = L * b * 0.55;
-    for (let k = 0; k < 40; k++) { if (k % 4 === 3) continue; const t = (k / 40) * Math.PI * 2; u.put(31.5 + Math.cos(t) * 26, cy + Math.sin(t) * 15, 'g'); } // the blur
-    u.line(31.5 - dx, cy - dy, 31.5 + dx, cy + dy, 'M', 2, false); u.line(31.5 - dx, cy + dy, 31.5 + dx, cy - dy, 'M', 2, false);
-    for (const s of [-1, 1]) { u.ell(31.5 + s * dx, cy + s * dy, 1.3, 1.3, 'R', false); u.ell(31.5 - s * dx, cy + s * dy, 1.3, 1.3, 'R', false); } // painted tips
-    u.ell(31.5, cy, 3, 3, 'J', false);
+    for (let k = 0; k < 48; k++) { if (k % 4 === 3) continue; const t = (k / 48) * Math.PI * 2; u.ell(31.5 + Math.cos(t) * 27, cy + Math.sin(t) * 15, 0.8, 0.8, 'g', false); } // the blur
+    u.line(31.5 - dx, cy - dy, 31.5 + dx, cy + dy, 'M', 3, false); u.line(31.5 - dx, cy + dy, 31.5 + dx, cy - dy, 'M', 3, false);
+    for (const s of [-1, 1]) { u.ell(31.5 + s * dx, cy + s * dy, 2, 2, 'R', false); u.ell(31.5 - s * dx, cy + s * dy, 2, 2, 'R', false); } // painted tips
+    u.ell(31.5, cy, 4, 4, 'J', false); u.ell(31.5, cy, 1.6, 1.6, 'K', false);
   } else if (base === 'slug') {
-    let w = 0; for (let y = top; y <= bottom; y++) w = Math.max(w, S.width(y)); w = Math.min(24, w / 2 + 1.5);
+    let w = 0; for (let y = top; y <= bottom; y++) w = Math.max(w, S.width(y)); w = Math.min(26, w / 2 + 3.5);
     u.ell(31.5, mid + 2, w, h / 2 + 3, 'X'); // the foot, a little wider than the bug all round
     for (let y = top + 2; y < bottom + 4; y += 3) u.hair([[31.5 - w + 0.6, y], [31.5 - w + 1.6, y + 1]], 'T'); // its frilly edge
     const tail = Math.min(62, mid + h / 2 + 5.5);
@@ -96,18 +126,29 @@ export function drawBase(u, S, base, frame = 0) {
 /** The pattern, then the ailments, then the faint fruit: over the body. `seed` keeps every speck where it was. */
 export function drawMarks(c, S, v) {
   const R = dice(v.seed || 1), { eye, top, bottom } = S, h = Math.max(10, bottom - top);
-  if (v.pat === 'freckles') for (const [x, y] of spread(S.shell, 5, R)) c.put(x, y, 'S');
-  if (v.pat === 'banded') for (const y of [Math.round(bottom - h * 0.32), Math.round(bottom - h * 0.18)]) for (const [x, yy] of S.shell) if (yy === y) c.put(x, y, 'T');
+  PATTERN[v.pat]?.(c, S, R, h);
   for (const id of v.ail || []) AIL[id]?.(c, S, R);
   FRUIT[v.fruit]?.(c, S, R);
 }
 
 const clampY = (y) => Math.max(1, Math.min(62, y));
+// bold shell patterns, inked only on the shell (whole 64-grid pixels well inside the body)
+const on = (S, test, m = 'w') => (c) => { for (const [x, y] of S.shell) { const k = test(x, y); if (k) c.put(x, y, k === 2 ? 'x' : m); } };
+const PATTERN = {
+  freckles(c, S, R) { for (const [x, y] of spread(S.shell, 12, R)) { c.put(x, y, 'w'); if (R() < 0.4) c.put(x + 1, y, 'w'); } },
+  banded(c, S) { on(S, (x, y) => (y % 6) < 2)(c); },
+  stripes(c, S) { on(S, (x) => (Math.abs(Math.round(x - 31.5)) % 5) < 2)(c); },
+  chevrons(c, S) { on(S, (x, y) => ((y + Math.round(Math.abs(x - 31.5))) % 6) < 2)(c); },
+  checker(c, S) { on(S, (x, y) => (Math.floor(x / 3) + Math.floor(y / 3)) % 2 === 0)(c); },
+  spots(c, S, R) { const set = new Set(S.shell.map(([x, y]) => `${x},${y}`)); for (const [cx, cy] of spread(S.shell, 7, R)) for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) if (dx * dx + dy * dy <= 3 && set.has(`${cx + dx},${cy + dy}`)) c.put(cx + dx, cy + dy, 'w'); },
+  camo(c, S, R) { const set = new Set(S.shell.map(([x, y]) => `${x},${y}`)); spread(S.shell, 9, R).forEach(([cx, cy], i) => { const rx = 2 + R() * 2, ry = 1.5 + R() * 1.5, m = i % 3 === 2 ? 'x' : 'w';
+    for (let dx = -4; dx <= 4; dx++) for (let dy = -3; dy <= 3; dy++) if ((dx / rx) ** 2 + (dy / ry) ** 2 <= 1 && set.has(`${cx + dx},${cy + dy}`)) c.put(cx + dx, cy + dy, m); }); },
+};
 const AIL = {
-  pox(c, S, R) { for (const [x, y] of spread(S.shell, 6, R)) { c.ell(x, y, 1.3, 1.3, 'C', false); } },
-  warts(c, S, R) { for (const [x, y] of spread(S.shell, 4, R)) { c.ell(x, y, 1.8, 1.6, 'O', false); c.put(x - 0.5, y - 0.5, 'I'); } },
-  rash(c, S, R) { const [cx, cy] = spread(S.shell, 1, R)[0] || [27, 40]; for (let dx = -3; dx <= 3; dx++) for (let dy = -2; dy <= 2; dy++) if ((dx + dy) % 2 === 0 && dx * dx + dy * dy * 2 <= 10) c.put(cx + dx, cy + dy, 'C'); },
-  bandaged(c, S, R) { const [cx, cy] = spread(S.shell, 1, R)[0] || [28, 40]; c.line(cx - 4, cy - 2.5, cx + 4, cy + 2.5, 'P', 3, false); c.line(cx - 4, cy + 2.5, cx + 4, cy - 2.5, 'P', 3, false); c.put(cx, cy, 'C'); },
+  pox(c, S, R) { for (const [x, y] of spread(S.shell, 8, R)) { c.ell(x, y, 1.7, 1.7, 'C', false); c.put(x - 0.5, y - 0.5, 'I'); } },
+  warts(c, S, R) { for (const [x, y] of spread(S.shell, 6, R)) { c.ell(x, y, 2.3, 2, 'O', false); c.put(x - 0.5, y - 0.5, 'I'); } },
+  rash(c, S, R) { const [cx, cy] = spread(S.shell, 1, R)[0] || [27, 40]; for (let dx = -4; dx <= 4; dx++) for (let dy = -3; dy <= 3; dy++) if ((dx + dy) % 2 === 0 && dx * dx + dy * dy * 2 <= 16) c.put(cx + dx, cy + dy, 'C'); },
+  bandaged(c, S, R) { const [cx, cy] = spread(S.shell, 1, R)[0] || [28, 40]; c.line(cx - 5, cy - 3, cx + 5, cy + 3, 'P', 4, false); c.line(cx - 5, cy + 3, cx + 5, cy - 3, 'P', 4, false); c.put(cx, cy, 'C'); },
   sniffles(c, S) { const { eye } = S, x = eye.l - 2; c.put(x, clampY(eye.y + 3), 'b'); c.put(x, clampY(eye.y + 4), 'b'); c.ell(x, clampY(eye.y + 6.5), 1.9, 2.2, 'b', false); c.put(x - 0.6, clampY(eye.y + 6), 'G'); },
   fever(c, S) { const { eye } = S; c.ell(eye.l - 1, clampY(eye.y + 2.5), 1.4, 1, 'C', false); c.ell(eye.r + 1, clampY(eye.y + 2.5), 1.4, 1, 'C', false);
     [[5, -4], [6, -5], [6, -6], [5, -7], [5, -8], [6, -9]].forEach(([dx, dy]) => c.put(eye.l - dx, clampY(eye.y + dy), 'Z')); }, // and a wisp of steam
@@ -142,10 +183,12 @@ const FRUIT = {
 export function drawTool(c, S, tool, hand = null) {
   const D = TOOL_ART[tool]; if (!D) return;
   const h = Math.max(10, S.bottom - S.top), row = Math.round(S.top + h * 0.2);
-  const hx = hand ? hand.x : Math.max(38, Math.min(47, S.rows[row].r + 2)), hy = hand ? hand.y : Math.max(17, Math.min(40, row)), k = hand ? 1 : 1.2; // a touch bigger than life, to read small (life-size in a machine's hand, to stay in the frame)
-  const P = (dx, dy) => [hx + dx * k, hy - dy * k];
-  const line = (a, b, m, w = 1) => c.line(...P(...a), ...P(...b), m, w, false);
-  const ell = (a, rx, ry, m) => c.ell(...P(...a), rx, ry, m, false);
+  const hx = hand ? hand.x : Math.max(38, Math.min(47, S.rows[row].r + 2)), hy = hand ? hand.y : Math.max(17, Math.min(40, row)), k = hand ? 1.45 : 1.2; // a touch bigger than life, to read small
+  // in a machine's hand it is bigger still, and turned up (25 degrees) so it stays in the frame
+  const ca = hand ? Math.cos(0.44) : 1, sa = hand ? Math.sin(0.44) : 0;
+  const P = (dx, dy) => [hx + (dx * ca - dy * sa) * k, hy - (dx * sa + dy * ca) * k];
+  const line = (a, b, m, w = 1) => c.line(...P(...a), ...P(...b), m, hand && w > 1 ? w + 1 : w, false);
+  const ell = (a, rx, ry, m) => c.ell(...P(...a), rx * (hand ? k : 1), ry * (hand ? k : 1), m, false);
   const put = (a, m) => c.put(...P(...a), m);
   D({ line, ell, put });
   ell([0, 0], 1.3, 1.3, 'D'); // the hand round the grip

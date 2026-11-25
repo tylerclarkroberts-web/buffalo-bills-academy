@@ -12,7 +12,7 @@ import { Accounts } from '../server/accounts.js';
 import { Barn, idOf } from '../server/barn.js';
 import { ROSTER } from '../server/engine/creatures.js';
 import { line, simulateBout } from '../server/engine/bout.js';
-import { BASES, AILMENTS, FRUITS, PATTERNS, varietyFor, cleanVariety, varietyLabels, varietyKey } from '../server/engine/variety.js';
+import { BASES, AILMENTS, FRUITS, PATTERNS, MORPHS, METALS, varietyFor, cleanVariety, varietyLabels, varietyKey } from '../server/engine/variety.js';
 import { spriteGrid } from '../client/src/barn/sprite.js';
 
 const clock = () => ({ now: Date.parse('2031-06-15T18:00:00Z') });
@@ -27,21 +27,23 @@ const differ = (a, b) => { let n = 0; a.forEach((row, y) => row.forEach((px, x) 
 test('variety is decided by the bug alone: the same id and species always give the same look', () => {
   for (const id of [1, 1793834063911, 1795202956391, 'abc']) assert.deepEqual(varietyFor(id, 'lamprima'), varietyFor(id, 'lamprima'));
   assert.notDeepEqual(varietyFor(1793834063911, 'lamprima'), varietyFor(1793834063912, 'lamprima'));
-  const seen = { base: new Set(), ail: new Set(), fruit: new Set(), pat: new Set(), two: 0, morphs: 0 };
+  const seen = { base: new Set(), ail: new Set(), fruit: new Set(), pat: new Set(), morph: new Set(), metal: new Set(), two: 0, far: 0, morphs: 0 };
   for (let i = 0; i < 600; i++) {
     const v = varietyFor(1790000000000 + i * 7919, ROSTER[i % ROSTER.length].id);
     assert.deepEqual(cleanVariety(v), v, 'whatever it picks survives cleaning unchanged');
     assert.ok(v.ail.length >= 1 && v.ail.length <= 2 && new Set(v.ail).size === v.ail.length);
     if (v.ail.length === 2) { seen.two++; assert.notEqual(AILMENTS[v.ail[0]].spot, AILMENTS[v.ail[1]].spot, 'two ailments never draw in the same spot'); }
-    assert.ok(Math.abs(v.hue) <= 70 && Math.abs(v.tone) <= 9); if (Math.abs(v.hue) >= 40) seen.morphs++;
-    seen.base.add(v.base); v.ail.forEach((a) => seen.ail.add(a)); seen.fruit.add(v.fruit); seen.pat.add(v.pat);
+    assert.ok(Math.abs(v.hue) <= 180 && Math.abs(v.tone) <= 14); if (Math.abs(v.hue) >= 60) seen.far++; if (v.morph !== 'none') seen.morphs++;
+    seen.morph.add(v.morph); seen.metal.add(v.metal); seen.base.add(v.base); v.ail.forEach((a) => seen.ail.add(a)); seen.fruit.add(v.fruit); seen.pat.add(v.pat);
   }
   assert.deepEqual([...seen.base].sort(), Object.keys(BASES).sort(), 'wheels, rotor, tracks and slug all turn up: no Stage II bug keeps plain legs');
   assert.deepEqual([...seen.ail].sort(), Object.keys(AILMENTS).sort());
   assert.deepEqual([...seen.fruit].sort(), Object.keys(FRUITS).sort());
   assert.deepEqual([...seen.pat].sort(), [...PATTERNS].sort());
   assert.ok(seen.two > 100 && seen.two < 300, 'some bugs have two');
-  assert.ok(seen.morphs > 30 && seen.morphs < 120, 'about one in eight is a colour morph');
+  assert.deepEqual([...seen.morph].sort(), [...MORPHS].sort()); assert.deepEqual([...seen.metal].sort(), [...METALS].sort());
+  assert.ok(seen.far > 250, `most are turned well round the colour wheel (${seen.far} of 600)`);
+  assert.ok(seen.morphs > 330 && seen.morphs < 470, `about two in three have a morph (${seen.morphs})`);
 });
 
 test('a stored or sent variety is cleaned: unknown values never reach the drawing', () => {
@@ -49,7 +51,8 @@ test('a stored or sent variety is cleaned: unknown values never reach the drawin
   assert.ok(BASES[cleanVariety({ seed: 5, base: 'legs' }).base], 'a look stored with legs gets a real base');
   assert.equal(BASES.legs, undefined);
   assert.deepEqual(cleanVariety({ base: 'slug', ail: ['pox', 'pox', 'plague', 'grin', 'cloud'], fruit: 'durian', hue: 999, tone: -999, pat: '<script>', seed: -5 }),
-    { v: 1, seed: 0, base: 'slug', ail: ['pox', 'grin'], fruit: null, hue: 90, tone: -12, pat: 'plain' });
+    { v: 2, seed: 0, base: 'slug', ail: ['pox', 'grin'], fruit: null, hue: 180, tone: -14, pat: 'plain', morph: 'none', metal: 'iron' });
+  assert.equal(cleanVariety({ base: 'slug', morph: 'zombie', metal: 'unobtainium' }).metal, 'iron');
   const labels = varietyLabels({ base: 'rotor', ail: ['nightowl'], fruit: 'pea' });
   assert.equal(labels.base.name, 'Hover Rotor'); assert.equal(labels.ail[0].name, 'Night Owl'); assert.ok(labels.ail[0].line.length > 10); assert.equal(labels.fruit.name, 'pea pod');
   for (const a of Object.values(AILMENTS)) assert.ok(a.name && a.line && a.line.length < 60, `${a.name}: a name and one short line`);
@@ -73,7 +76,7 @@ test('existing bugs get their variety on load, nothing else on the pen changes, 
   const saved = JSON.parse(fs.readFileSync(path.join(f.dir, 'barn.json'), 'utf8'));
   assert.deepEqual(saved.pens.ann.variety, pens[0].variety, 'written to disk on that load');
   // a stored look wins over the formula, so a later change to the lists never redraws anyone's bug
-  saved.pens.ann.variety = { v: 1, seed: 7, base: 'tracks', ail: ['tidy'], fruit: 'stem', hue: 3, tone: 0, pat: 'plain' };
+  saved.pens.ann.variety = { v: 2, seed: 7, base: 'tracks', ail: ['tidy'], fruit: 'stem', hue: 3, tone: 0, pat: 'plain', morph: 'pale', metal: 'teal' };
   f.store.saveDoc('barn', saved);
   const again = f.make();
   assert.deepEqual(again.doc.pens.ann.variety, saved.pens.ann.variety);
@@ -174,5 +177,15 @@ test('every species has its own mining tool, with a name and a line, held by its
     const xs = [], c = { put: (x) => xs.push(x), line: (x0, y0, x1) => xs.push(x0, x1), ell: (x, y, rx) => xs.push(x - rx, x + rx), hair: (pts) => pts.forEach(([x]) => xs.push(x)) };
     drawTool(c, { top: 10, bottom: 60, rows: [] }, id, { x: 50.5, y: 39 });
     assert.ok(xs.length > 2 && Math.min(...xs) >= 44 && Math.max(...xs) <= 64, `${id}: x ${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}`);
+  }
+});
+
+test('two Stage II bugs of one species look clearly different: most of their pixels differ', () => {
+  for (const id of ['lamprima', 'halobates', 'nemoptera', 'macrodontia']) {
+    const bug = ROSTER.find((b) => b.id === id), gs = Array.from({ length: 10 }, (_, i) => spriteGrid(bug, 12, 1, 1, false, varietyFor(1795000000000 + i * 104729, id)));
+    const ink = gs[0].flat().filter(Boolean).length; let sum = 0, k = 0, min = Infinity;
+    for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) { const d = differ(gs[i], gs[j]); sum += d; k++; min = Math.min(min, d); }
+    assert.ok(sum / k / ink > 0.65, `${id}: on average ${Math.round((100 * sum) / k / ink)}% of its pixels differ`);
+    assert.ok(min > 300, `${id}: even the closest pair differs in ${min} pixels`);
   }
 });

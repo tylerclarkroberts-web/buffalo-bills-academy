@@ -14,8 +14,13 @@ so a bug already has its look the day it evolves. When it is a Stage II bug it s
   Cloud, Neat Freak, Night Owl, Dizzy Spells.
 - **Fruit and veg accent**: a few faint pixels toned into the body (leaf sprig, strawberry seeds, cherry stem, pea pod,
   lemon peel, carrot top, pumpkin rib, grape cluster).
-- **Colouring and pattern**: a small hue and tone turn (about one in eight is a colour morph), plain, freckled or banded.
-- **Mining tool**: fixed per species (`server/engine/tools.js`), held in the machine's free right hand (the gripper);
+- **Colouring**: a turn of the colour wheel (about a third stay near their species' colours, the rest go anywhere) and
+  a tone, plus usually a morph: two-tone, inverted, melanic (dark, accent still bright), pale or vivid.
+- **Shell pattern**, bold, inked in a colour that stands out from the body: stripes, spots, chevrons, camo, checker,
+  bands, freckles (or plain, rarely).
+- **Plating**: what its machine body is finished in: iron, brass, copper, gunmetal, gold, or painted red, teal, olive or
+  cream.
+- **Mining tool**: fixed per species (`server/engine/tools.js`), held, big and turned up, in the machine's free right hand (the gripper);
   named with a line on its Stage II card and in the Bugdex. The left arm keeps the machine's own attachment.
 
 The Bugdex's Stage II tile and card show a sample look for the species. Stall quirk lines and card notes appear only on

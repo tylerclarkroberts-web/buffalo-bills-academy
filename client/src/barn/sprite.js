@@ -43,7 +43,7 @@ const toHex = (r, g, b) => '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, 
 const mix = (a, b, t) => { const x = hex(a), y = hex(b); return toHex(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t); };
 
 /** Materials: each is a 3-step ramp [shadow, base, light]. */
-function ramps(pal) {
+function ramps(pal, v = null) {
   const [o, d, b, l, a] = pal;
   return {
     o, // outline
@@ -62,7 +62,7 @@ function ramps(pal) {
     // cloth and kit, for what a stage three bug wears (evolutionWear.js): red, green, blue, straw, leather
     R: ['#7a1a16', '#c8322a', '#f07458'], N: ['#1c4a24', '#3c8a3c', '#84cc62'], U: ['#1a2c66', '#3058c0', '#74a0f0'],
     F: ['#80602a', '#cca656', '#f2dc98'], Q: ['#38220f', '#6c421e', '#a87038'], Z: ['#7c8794', '#ccd5de', '#ffffff'], // and bright steel
-    ...varietyRamps({ B: [d, b, l] }), // slime, pox, sweat and the faint fruit (varietyArt.js)
+    ...varietyRamps({ B: [d, b, l], A: [mix(a, o, 0.45), a, mix(a, '#ffffff', 0.35)] }, v), // slime, pox, sweat, faint fruit, pattern ink and a Stage II bug's plating (varietyArt.js)
   };
 }
 
@@ -228,7 +228,7 @@ const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT
 export function spriteGrid(bug, level, fine = 1, evo = 0, botched = false, variety = null, frame = 0) {
   const L = lookOf(bug, evo ? undefined : level), v = variety && evo === 1 ? cleanVariety(variety) : null; // Stage II only
   const c = spriteArt(L, fine, evo, botched, false, v, frame);
-  return shade(c, ramps(palFor(L, null, v)));
+  return shade(c, ramps(palFor(L, null, v), PHOTO.has(L.id) ? null : v));
 }
 
 const DEFAULT_PAL = ['#111111', '#333333', '#666666', '#999999', '#cc3333'];
@@ -605,7 +605,7 @@ export function spriteCanvas(bug, style, level, fine = 1, frame = 0) {
   const artLevel = stage ? undefined : level;
   const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}|${stage === 1 ? varietyKey(varietyOf(style)) : ''}|${stage === 1 ? frame : 0}`;
   if (cache.has(key)) return cache.get(key);
-  const v = stage === 1 ? varietyOf(style) : null, L = lookOf(bug, artLevel), R = ramps(palFor(L, style, v)); // only a Stage II bug wears its variety
+  const v = stage === 1 ? varietyOf(style) : null, L = lookOf(bug, artLevel), R = ramps(palFor(L, style, v), PHOTO.has(L.id) ? null : v); // only a Stage II bug wears its variety
   if (v?.base !== 'rotor' || stage !== 1) frame = 0;
   const capless = !!style?.bughat?.shape || style?.gear?.shape === 'helmet' || style?.defense?.shape === 'helmet'; // one hat at a time: a bought one goes on instead of its own
   const art = spriteArt(L, fine, stage, botched, capless, v, frame), N = SPRITE * fine;
