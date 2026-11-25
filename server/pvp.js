@@ -461,13 +461,33 @@ export class Pvp {
     const fight = battle.fight, w = winnerSide === 'a' ? 0 : 1;
     this.fights.finish(fight, reason === 'draw' ? null : w, reason); // stops a fight that was walked out on; a no-op when it ran its course
     for (const [k, i] of [['a', 0], ['b', 1]]) if (battle.bugs?.[k] && fight.S.side[i].ate) this.barn?.lunchEaten?.(battle[k], battle.bugs[k].bornAt); // a packed lunch eaten in the fight is gone, however it ended
-    if (battle.wild) return this.wildOver(battle, winnerSide, reason, fight);
-    if (reason === 'draw' || reason === 'abandoned') return;
+    if (battle.wild) { this.wildOver(battle, winnerSide, reason, fight); this.logBattle(battle, w, reason); return; }
+    if (reason === 'abandoned') return; // nobody left to collect, and nobody to tell
+    if (reason === 'draw') { this.logBattle(battle, null, reason); return; }
     const loserSide = winnerSide === 'a' ? 'b' : 'a';
     const bugs = { winner: battle.bugs?.[winnerSide] ? { ...battle.bugs[winnerSide], odds: this.fights.lineOf(fight, w) } : null,
       loser: battle.bugs?.[loserSide] ? { ...battle.bugs[loserSide], fainted: fight.S.hp[1 - w] === 0 } : null, fought: reason === 'fainted' || reason === 'decision',
       winnerBug: fight.fighters[w].name, loserBug: fight.fighters[1 - w].name };
     battle.over.raid = this.raid('battle', winner, loser, battle.id, bugs).id;
+    this.logBattle(battle, w, reason);
+  }
+  /** The leaderboard's battle record (server/battles.js): both corners as they fought, the result, the XP and cash. */
+  logBattle(battle, winner, reason) {
+    const log = this.barn?.battleLog;
+    if (!log) return;
+    const fight = battle.fight, bug = (f) => (f ? { name: f.name, species: f.species, level: f.level } : null);
+    const walked = ['forfeit', 'disconnect'].includes(reason) ? reason : null;
+    if (battle.wild) {
+      const w = battle.wild, foe = w.stray ? `${w.stray.owner}'s abandoned ${w.name}` : `a wild ${w.name}`;
+      log.record({ id: battle.id, type: 'wild', at: battle.over.at, winner, reason: walked || (battle.over.rage ? 'roid rage' : null),
+        sides: [{ pid: battle.a, name: this.store.players[battle.a]?.name || 'A miner', bug: bug(fight.fighters[0]), xp: battle.over.bug?.xp ?? 0 },
+          { pid: null, name: foe, bug: bug(fight.fighters[1]) }] });
+      return;
+    }
+    const rec = battle.over.raid ? this.doc.raids[battle.over.raid] : null, cash = rec ? (rec.paid ?? rec.cash ?? 0) : 0;
+    const take = (i) => (winner === null ? {} : { cash: winner === i ? cash : -cash, ...(rec?.barn?.[winner === i ? 'winner' : 'loser'] ? { xp: rec.barn[winner === i ? 'winner' : 'loser'].xp || 0 } : {}) });
+    log.record({ id: battle.id, type: 'raid', at: battle.over.at, winner, reason: walked,
+      sides: [battle.a, battle.b].map((pid, i) => ({ pid, name: this.store.players[pid]?.name || 'A miner', bug: bug(fight.fighters[i]), ...take(i) })) });
   }
   /** Turn timers and disconnects, checked on every PvP request (and by the app's one-second sweep). */
   sweep() {

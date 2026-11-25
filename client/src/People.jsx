@@ -13,6 +13,7 @@ import { REPLAY_ON, replayEnabled, setReplayEnabled } from './table/replay.js';
 import * as music from './table/music.js';
 import { useModes } from './modes/Modes.jsx';
 import { displayTableName, familyHandle, FAMILY_GAME } from './modes/family.js';
+import { BattleBoard, BattleDetail, BoardTabs } from './BattleBoard.jsx';
 
 const OUTCOME = { motherlode: 'Motherlode', aliens: 'Alien skeletons', diamonds: 'Diamond well', dud: 'Mostly mud', normal: 'Shift' };
 const TX = { start: 'Start', buyin: 'Buy-in', cashout: 'Cash-out', mine: 'Mines', 'invest-buy': 'Bought', 'invest-sell': 'Sold', risk_stake: 'Risk stake', risk_win: 'Risk win', risk_refund: 'Risk refund' };
@@ -159,7 +160,15 @@ export function Profile({ id }) {
 const EARNING_SOURCES = [['mining', 'Mines'], ['poker', 'Poker'], ['blackjack', 'Blackjack'], ['slots', 'Slots'], ['investing', 'Investing']];
 const BOARD_METRICS = [['wealth', 'Net worth'], ['earnings', 'Recorded earnings'], ...EARNING_SOURCES];
 
-export function Leaderboard() {
+/** /leaderboard is money; /leaderboard/battles the bug fight board; /leaderboard/battles/<id> one player's fights. */
+export function Leaderboard({ path = window.location.pathname }) {
+  const who = path.match(/^\/leaderboard\/battles\/([\w-]+)/);
+  if (who) return <BattleDetail key={who[1]} id={who[1]} />;
+  if (path.startsWith('/leaderboard/battles')) return <BattleBoard />;
+  return <MoneyBoard />;
+}
+
+function MoneyBoard() {
   const { safe: family } = useModes();
   const handle = (n) => (family ? familyHandle(n) : n);
   const [d, setD] = useState(null);
@@ -184,6 +193,7 @@ export function Leaderboard() {
       <div className="page-head">
         <h1 className="display h2">Leader<span className="script neon-pink">board</span></h1>
       </div>
+      <BoardTabs value="money" />
       <div className="board-controls">
         <label className="field"><span>Rank by</span><select value={sort} onChange={(e) => setSort(e.target.value)}>{BOARD_METRICS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
         <label className="field"><span>Order</span><select value={direction} onChange={(e) => setDirection(e.target.value)}><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></label>

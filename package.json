@@ -35,6 +35,7 @@
     "e2e:bout": "node scripts/e2e-bout.mjs",
     "e2e:tiers": "node scripts/e2e-tiers.mjs",
     "e2e:bugs": "node scripts/e2e-bugs.mjs",
+    "e2e:battles": "node scripts/e2e-battle-board.mjs",
     "e2e:store": "node scripts/e2e-store.mjs",
     "e2e:smoke": "node scripts/e2e-smoke.mjs",
     "e2e:notes": "node scripts/e2e-notes.mjs",
