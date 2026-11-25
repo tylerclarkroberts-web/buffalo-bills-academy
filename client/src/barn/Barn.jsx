@@ -153,12 +153,41 @@ function Stalls({ stable, sel, onPick }) {
     </button>)}
     {Array.from({ length: Math.max(0, stable.stalls - stable.bugs.length) }, (_, i) => <span key={i} className="barn-stall-pick empty small muted" data-test="stall-empty">Empty</span>)}
     {stable.nextStall != null && <button className={`barn-stall-pick add${sel === 'build' ? ' on' : ''}`} aria-pressed={sel === 'build'} onClick={() => onPick('build')} data-test="stall-add"><span className="small">＋ Stall</span></button>}
+    <button className={`barn-stall-pick farm${sel === 'farm' ? ' on' : ''}`} aria-pressed={sel === 'farm'} onClick={() => onPick('farm')} data-test="stall-farm"><span className="barn-stall-glyph" aria-hidden="true">🌾</span><span className="small">GFR Farms · {stable.farm?.length || 0}</span></button>
+  </div>;
+}
+
+const FARM_LINES = [
+  'Out past the tailings pond. Clover to the knees, a heated barn, and a farmhand named Gus who sings to them.',
+  'Nothing ages at GFR Farms. Nobody gets hungry, nobody gets sick, nobody levels up. They just wait, fat and happy.',
+  'Gus says the old foreman kept every bug he ever caught out here. Gus says a lot of things.',
+];
+/** GFR Farms: every bug you keep beyond your stalls, frozen in time. Bring one back to a free stall, or swap it for a stall bug. */
+function Farm({ stable, busy, act, take, setMsg }) {
+  const out = stable.bugs.filter((bug) => bug.farmable), [swap, setSwap] = useState(out[0]?.id ?? null), full = !stable.room;
+  const pickOut = out.some((bug) => bug.id === swap) ? swap : out[0]?.id ?? null;
+  const back = (bug) => act(async () => { take(await api('POST', '/barn/farm/back', { bug: bug.id, ...(full ? { swap: pickOut } : {}) }));
+    const gone = full && out.find((x) => x.id === pickOut); setMsg(gone ? `${bug.name} is back in the barn. ${gone.name} rides out to GFR Farms.` : `${bug.name} is back in the barn, exactly as it left.`); });
+  const line = FARM_LINES[(stable.farm?.length || 0) % FARM_LINES.length];
+  return <div className="farm" data-test="farm">
+    <p className="farm-lead"><b className="western">GFR Farms</b> <span className="small muted">{line}</span></p>
+    <p className="small farm-rule">Bugs here keep forever: no XP, no hunger, no harm, no fights. {stable.stalls} stalls are active in the barn.</p>
+    {full && stable.farm?.length > 0 && (out.length
+      ? <label className="small farm-swap">Stalls full. Send out <select value={pickOut ?? ''} onChange={(e) => setSwap(Number(e.target.value))} data-test="farm-swap-out">{out.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · Lv {bug.level}</option>)}</select></label>
+      : <p className="small muted farm-swap">Stalls full, and none of your stall bugs can travel right now.</p>)}
+    {stable.farm?.length ? <ul className="farm-list">
+      {stable.farm.map((bug) => <li key={bug.id} className="farm-row" data-test="farm-bug">
+        <BugThumb bug={bug} />
+        <span className="farm-name"><b>{bug.name}</b><span className="small muted">Lv {bug.level} · {bug.speciesName}{bug.evo ? ` · Stage ${bug.evo === 2 ? 'III' : 'II'}` : ''}</span></span>
+        <button className="btn small" onClick={() => back(bug)} disabled={busy || (full && pickOut == null)} data-test="farm-back">{full ? 'Swap in' : 'Bring back'}</button>
+      </li>)}
+    </ul> : <p className="small muted farm-empty">Nobody out here yet. When every stall is taken, new bugs come here. Or send one from its stall.</p>}
   </div>;
 }
 
 /** What the ? button says in each room: the rules the screens themselves no longer spell out. */
 const HELP = {
-  stalls: ['Feed, Play and Mist are free, each on its own cooldown. Each gives 9 XP up to level 5, then less every level, down to 2 XP from level 10.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Release lets a bug go. It wanders into the mines as a stray, where anyone can catch it, you included.','Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.'],
+  stalls: ['Feed, Play and Mist are free, each on its own cooldown. Each gives 9 XP up to level 5, then less every level, down to 2 XP from level 10.', 'Needs count in a fight: the lowest one is its condition.', 'Your partner (★) comes to the mine and lives in your terrarium. Bugs in their stalls live five times slower but still need care.', 'A bug that faints needs the Bug Center: free after an hour\'s rest, or $50 now.', 'Release lets a bug go. It wanders into the mines as a stray, where anyone can catch it, you included.','Stance is how it fights when you leave the moves to it. Attack adds damage, defense softens hits, speed helps it go first and dodge.', 'Up to six stalls are active. Bugs you gain with every stall taken go to GFR Farms, frozen in time: no XP, no hunger, no harm, no fights. Swap them in from the 🌾 GFR Farms tab.'],
   gym: ['Cardio and sparring are honest: a little power for good, no side effects.', 'A Double Shift builds power faster but drains mood and adds strain. Strain makes a bug unruly.', 'Roids make a bug far stronger and wreck its mood. The power fades as the roid load wears off.', 'Unruly bugs drag their feet in the mines and balk. A juiced bug may go into a roid rage and kill a wild bug it knocks out before you can jar it.', 'Cool Down & Stretch flushes roid load and strain faster. Both fade on their own, slowly.'],
   ring: ['Accept a challenge, challenge someone, or post a bout.', 'One fight at a time. A challenge waits if they are already in the ring.', 'The winner takes the pot. A knockout goes to the Bug Center.'],
   circuit: ['Beat the stops in order. A win pays XP and a one-time purse; a loss pays nothing.', 'Legendary bugs turn up in the mine a few times a year, one of each in the whole Academy.', 'Circuit bugs are drilled: tougher than a barn bug of the same level. Bring a type edge or a level or two.', 'Every ribbon raises the top level your bugs can reach by one.', 'After eight ribbons come the Fairgrounds: four judges, then the Grand Champion. The champion is a copy of the bug that last won the circuit. Take the rosette and yours defends it.', 'A stop marked ! is an errand: somebody wants something. Bring it and they pay. None of them are needed.', 'Your first ribbon and your first card each put something on the wall of My House.', 'Some stops hold a rare wild bug. Knock it out and you get three throws of a jar, as in the mine.', 'Every leader hands over a prize with the ribbon. Prizes work in circuit fights only.', 'Each area has a feature presentation after its ribbon: a one-of-a-kind bug with its own trick. Beat it for its card. You never have to.', 'After ribbon 2, the next four areas can be won in any order. Each ribbon you hold makes the ones you left tougher.', 'Leaders field their bugs one after another. Health carries over between rounds, and a bug that loses sits out the rest.', 'When a leader gives their tell, their big move is next: line up a guard.'],
@@ -329,7 +358,7 @@ function CombatPane({ pen, battle, draft, setDraft, save, busy, locked }) {
 }
 
 /** One living bug: what it is and its record up top; the bug, its card (or combat, or field notes) and its care side by side. */
-function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke, setPoke, reduced, tab, setTab, battle, draft, setDraft, save, toRing, replayLast, replayButton }) {
+function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFarm, poke, setPoke, reduced, tab, setTab, battle, draft, setDraft, save, toRing, replayLast, replayButton }) {
   const type = typeOf(pen.species), next = pen.abilities?.find((a) => !a.unlocked);
   const [letGo, setLetGo] = useState(false); // Release asks once, in place
   const keys = (e) => {
@@ -388,6 +417,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, poke,
           {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span>
             : pen.species === 'steeze' ? <span className="small muted" data-test="no-release">STEEZE? Leave? He just unpacked his golf bag. The stall is his now.</span>
             : <button className="btn small ghost" onClick={() => setLetGo(true)} data-test="release">Release</button>}
+          {pen.farmable && <button className="btn small ghost" onClick={toFarm} disabled={busy || !!b.live} data-test="to-farm">To GFR Farms</button>}
         </div>}
       </div>
       <div className="bs-info">
@@ -465,7 +495,7 @@ function BarnHome({ me }) {
   }, [me?.id]);
   // The stall on show: the one you picked ('build' is the slot that sells another), otherwise your partner.
   const [sel, setSel] = useState(null);
-  const stable = b?.stable, pen = sel === 'build' ? null : stable?.bugs.find((bug) => bug.id === sel) || b?.pen;
+  const stable = b?.stable, pen = sel === 'build' || sel === 'farm' ? null : stable?.bugs.find((bug) => bug.id === sel) || b?.pen;
   const pick = (id) => { setSel(id); setBattleDraft(null); setMsg(''); setErr(''); };
   // Your bug is in the ring right now: follow it blow by blow. When it ends, the next look at the Barn (take) swaps
   // in the finished bout, with its payout and XP, on the same ring. Walking away leaves the bug to its own picks.
@@ -522,6 +552,7 @@ function BarnHome({ me }) {
     take(await api('PATCH', '/barn/battle', { stance: battleDraft.stance, bug: pen.id })); setBattleDraft(null); setMsg('Stance saved.');
   });
   const release = () => act(async () => { const name = pen.name; take(await api('POST', '/barn/release', { bug: pen.id })); setSel(null); setMsg(`${name} scuttles off toward the mines. Somebody might jar it someday.`); });
+  const toFarm = () => act(async () => { const name = pen.name; take(await api('POST', '/barn/farm', { bug: pen.id })); setSel('farm'); setMsg(`${name} rides out to GFR Farms. Gus waves from the gate.`); });
   const makePartner = () => act(async () => { take(await api('POST', '/barn/partner', { bug: pen.id })); setMsg(`${pen.name} is coming with you now.`); });
   const build = () => act(async () => { take(await api('POST', '/barn/stalls')); await refreshSession(); setSel(null); setMsg('One new stall. It smells of sawdust and ambition.'); });
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
@@ -555,7 +586,8 @@ function BarnHome({ me }) {
         {view === 'circuit' && <Circuit b={b} busy={busy} act={act} boutOpen={!!bout} />}
         {view === 'gym' && <Gym b={b} sel={pen?.id} busy={busy} act={act} take={take} now={now} />}
         {view === 'dex' && <Bugdex seen={b.dex || []} />}
-        {stalls && stable?.bugs.length > 0 && <Stalls stable={stable} sel={sel === 'build' ? sel : pen?.id} onPick={pick} />}
+        {stalls && (stable?.bugs.length > 0 || stable?.farm?.length > 0) && <Stalls stable={stable} sel={sel === 'build' || sel === 'farm' ? sel : pen?.id} onPick={pick} />}
+        {stalls && sel === 'farm' && stable && <Farm stable={stable} busy={busy} act={act} take={take} setMsg={setMsg} />}
         {stalls && sel === 'build' && stable?.nextStall != null && (
           <div className="barn-none" data-test="barn-build">
             <div className="barn-stall" aria-hidden="true"><span>STALL {stable.stalls + 1}</span></div>
@@ -563,7 +595,7 @@ function BarnHome({ me }) {
             <button className="btn" onClick={build} disabled={busy || stable.nextStall > b.bankroll} data-test="stall-build">{stable.nextStall > b.bankroll ? `Need ${money(stable.nextStall)}` : `Build it · ${money(stable.nextStall)}`}</button>
           </div>
         )}
-        {stalls && !pen && sel !== 'build' && (
+        {stalls && !pen && sel !== 'build' && sel !== 'farm' && (
           <div className="barn-none" data-test="barn-empty">
             <div className="barn-stall" aria-hidden="true"><span>EMPTY STALL</span></div>
             <p>Nothing lives here yet. Old miners say the tunnels sometimes leave something behind.</p>
@@ -597,7 +629,7 @@ function BarnHome({ me }) {
             </div>
           </div>
         )}
-        {stalls && pen?.stage === 'creature' && <Creature key={pen.id} pen={pen} b={b} stable={stable} now={now} busy={busy} care={care} makePartner={makePartner} release={release} poke={poke} setPoke={setPoke} reduced={reduced}
+        {stalls && pen?.stage === 'creature' && <Creature key={pen.id} pen={pen} b={b} stable={stable} now={now} busy={busy} care={care} makePartner={makePartner} release={release} toFarm={toFarm} poke={poke} setPoke={setPoke} reduced={reduced}
           tab={tab} setTab={setTab} battle={battle} draft={battleDraft} setDraft={setBattleDraft} save={saveBattle} toRing={() => setRing(true)}
           replayLast={() => { setReplay(true); setBout(pen.lastBout); }} replayButton={replayButton} />}
         {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} onJar={bout.kind === 'circuit' && bout.jar ? circuitJar : undefined} closeLabel={bout.kind === 'circuit' ? 'Back to the circuit' : undefined} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}

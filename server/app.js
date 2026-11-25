@@ -351,6 +351,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''), req.body?.bug)));
   api.post('/barn/partner', needPlayer, wrap((req) => barn.setPartner(req.player.id, req.body?.bug))); // which bug comes with you
   api.post('/barn/stalls', needPlayer, wrap((req) => barn.buildStall(req.player.id)));
+  // GFR Farms: send a stall bug to the farm, or bring one back (to a free stall, or swapped for `swap`, a stall bug)
+  api.post('/barn/farm', needPlayer, wrap((req) => barn.toFarm(req.player.id, req.body?.bug)));
+  api.post('/barn/farm/back', needPlayer, wrap((req) => barn.fromFarm(req.player.id, req.body?.bug, req.body?.swap ?? null)));
   api.post('/barn/gym', needPlayer, wrap((req) => barn.train(req.player.id, String(req.body?.path || ''), req.body?.bug))); // the Bug Gym: one session on one path
   api.patch('/barn/battle', needPlayer, wrap((req) => barn.setBattle(req.player.id, req.body)));
   api.post('/barn/bout', needPlayer, wrap((req) => barn.bout(req.player.id)));
