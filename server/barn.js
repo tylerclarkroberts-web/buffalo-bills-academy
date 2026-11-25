@@ -18,6 +18,7 @@ import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
 import { PATHS, GEAR, gymAt, gymEffects, gymView, gymFighter, trainStep, gymReadyAt, gearOn } from './engine/gym.js';
+import { varietyFor, cleanVariety } from './engine/variety.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
 export const STALLS = 3;                        // every barn starts with room for three
@@ -227,6 +228,12 @@ export class Barn {
         delete pen.lastBout; // its replay names a species that no longer exists
       }
     }
+    // Variety (engine/variety.js): every bug and egg gets its own look once, from its id, and keeps it from then on.
+    // Nothing else on the pen changes, and the look is the one it would have been given anyway.
+    for (const pen of [...Object.values(this.doc.pens), ...Object.values(this.doc.bench).flat()]) {
+      if (!pen || !['egg', 'creature'].includes(pen.stage) || !BY_ID[pen.species] || !idOf(pen) || cleanVariety(pen.variety)) continue;
+      pen.variety = varietyFor(idOf(pen), pen.species); n++;
+    }
     return n;
   }
   newName(playerId, bug, records = this.doc) {
@@ -300,7 +307,7 @@ export class Barn {
     const now = this.now();
     const commons = ROSTER.filter((bug) => rarityOf(bug.id) === 1); // an egg is always a common: the rest are met down the mine
     const species = commons[this.eggInt(commons.length)].id;
-    const egg = { stage: 'egg', species, eggAt: now, hatchAt: now + this.incubateMs, warmedAt: 0 };
+    const egg = { stage: 'egg', species, eggAt: now, hatchAt: now + this.incubateMs, warmedAt: 0, variety: varietyFor(now, species) };
     this.commitPen(playerId, egg);
     return this.view(playerId);
   }
@@ -317,7 +324,7 @@ export class Barn {
     const changes = { names: { ...this.doc.names }, count: { ...this.doc.count }, wildCatches: { ...this.doc.wildCatches, [wildId]: battleId } };
     if (name) changes.names[name.toLowerCase()] = playerId;
     const pen = { stage: 'creature', species, name: givenName(species, name || this.newName(playerId, BY_ID[species], changes)), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
-      stats: Object.fromEntries(STATS.map((s) => [s, { v: 60, at: now }])), ...(stalled ? { benchedAt: now } : {}) };
+      stats: Object.fromEntries(STATS.map((s) => [s, { v: 60, at: now }])), variety: varietyFor(at, species), ...(stalled ? { benchedAt: now } : {}) };
     if (stalled) changes.bench = { ...this.doc.bench, [playerId]: [...(this.doc.bench[playerId] || []), pen] };
     else changes.pens = { ...this.doc.pens, [playerId]: pen };
     this.commitDoc(changes); // ownership and removal from the mine survive a restart together
@@ -1173,6 +1180,9 @@ export class Barn {
     for (const k of ['gear', 'defense']) if (typeof st[k] === 'string' && st[k].startsWith('gear-')) o[k] = { id: st[k], shape: st[k].slice(5) };
     const evolved = pen || this.doc?.pens?.[playerId]; // an evolved bug's arm is part of how it looks, everywhere it is drawn
     if (evolved?.evo) { o.evo = evolved.evo; if (evolved.botched) o.botched = evolved.botched; }
+    // its own base, ailments, faint fruit and colouring (engine/variety.js): stored, or what it would be given
+    const variety = evolved && (cleanVariety(evolved.variety) || (idOf(evolved) && BY_ID[evolved.species] ? varietyFor(idOf(evolved), evolved.species) : null));
+    if (variety) o.variety = variety;
     return Object.keys(o).length ? o : undefined;
   }
   /** After a death: lay it to rest. The stall empties (a new egg can turn up in the mines); a small grave record stays. */

@@ -417,6 +417,7 @@
 .bs { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 8px; }
 .bs:not(:has(.barn-warn)) { grid-template-rows: auto minmax(0, 1fr); }
 .bs-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.bs-quirk { flex-basis: 100%; min-width: 0; color: var(--paper-2); opacity: .8; font-size: 11px; font-style: italic; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-kind { display: inline-flex; align-items: center; gap: 6px; color: var(--paper-2); font-size: 14px; }
 .bs-rec { font: 600 13px var(--mono); color: var(--gold); padding: 2px 9px; border: 1px solid rgba(242,198,90,.45); border-radius: 999px; }
 .bs-partner { color: var(--gold); }

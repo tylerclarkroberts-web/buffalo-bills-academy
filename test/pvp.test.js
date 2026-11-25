@@ -109,13 +109,15 @@ test('other miners see the bug’s evolution without its inventory cosmetics', (
   const { species, name } = f.barn.refresh('bob');
   f.barn.styleOf = () => ({ bughat: { id: 'bughat-cowboy', shape: 'cowboy' } });
   const { a, at, view } = f.setup();
-  assert.deepEqual(view.others[0].bug, { species, name });
+  const variety = f.barn.doc.pens.bob.variety; // its own look (engine/variety.js) shows; the store's hat does not
+  assert.ok(variety?.base);
+  assert.deepEqual(view.others[0].bug, { species, name, style: { variety } });
 
   f.barn.doc.pens.bob.evo = 1;
   const otherBug = () => f.tick(f.ann, a, { x: at.x, y: at.y, yaw: EAST }).others[0].bug;
-  assert.deepEqual(otherBug(), { species, name, style: { evo: 1 } });
+  assert.deepEqual(otherBug(), { species, name, style: { evo: 1, variety } });
   f.barn.doc.pens.bob.botched = 'haywire';
-  assert.deepEqual(otherBug(), { species, name, style: { evo: 1, botched: 'haywire' } });
+  assert.deepEqual(otherBug(), { species, name, style: { evo: 1, botched: 'haywire', variety } });
 });
 
 test('positions are checked: no walking through rock, no teleporting, but a reload restarts at the elevator', (t) => {

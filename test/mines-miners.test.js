@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildMiner, walkPose, OtherMiners } from '../client/src/mines/miners.js';
 import { MineScene } from '../client/src/mines/scene.js';
-import { spriteCanvas, FINE } from '../client/src/barn/sprite.js';
+import { spriteCanvas, TEXTURE_FINE } from '../client/src/barn/sprite.js';
 import { danceStep } from '../client/src/mines/dance.js';
 import { headParts, looks } from '../client/src/avatar/genbust.js';
 import { DANCE_IDS } from '../server/engine/dances.js';
@@ -184,7 +184,7 @@ test('a companion refreshes its sprite when the evolution or botch changes', t =
     miners.set([report]);
     const next = miners.map.get(player.id);
     assert.notEqual(next, previous);
-    assert.equal(next.pet.material.map.image, spriteCanvas(ROSTER[0], style, undefined, FINE));
+    assert.equal(next.pet.material.map.image, spriteCanvas(ROSTER[0], style, undefined, TEXTURE_FINE));
     miners.set([report]);
     assert.equal(miners.map.get(player.id), next);
     previous = next;
