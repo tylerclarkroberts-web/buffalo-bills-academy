@@ -11,6 +11,7 @@ import { GameError } from './engine/game.js';
 import { idOf, isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
 import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
 import { ROSTER, levelFor } from './engine/creatures.js';
+import { cents } from './accounts.js';
 import { typeOf, rarityOf, weakTo } from './engine/bug-types.js';
 
 export const RIBBON_XP = 75;
@@ -414,6 +415,7 @@ export class Circuit {
 
   /** A round is over. A draw goes to the home corner: it counts as a loss. */
   settle(pid, stop, bug, foe, fight) {
+    this.paidNow = 0;
     const me = this.me(pid), S = fight.S, won = fight.over.winner === 0, fainted = S.hp[0] === 0;
     const res = this.barn.battleResult(pid, { battleId: fight.id, bornAt: bug.bornAt, won, fought: false, fainted,
       foeLevel: foe.level, foeName: stop.kind === 'wild' ? `a wild ${foe.name}` : `${stop.who}'s ${foe.name}`, odds: this.fights.lineOf(fight, 0), place: 'circuit' });
@@ -478,6 +480,12 @@ export class Circuit {
     if (fight.over.winner === null) extra.verdict += ' A draw goes to the home corner.';
     fight.extra = extra;
     this.save();
+    // the leaderboard's battle record (server/battles.js). A draw goes to the home corner, so it is logged as a loss.
+    const bugOf = (f) => ({ name: f.name, species: f.species, level: f.level });
+    this.barn.battleLog?.record({ id: fight.id, type: 'circuit', at: this.now(), winner: won ? 0 : 1, note: STOPS.get(stop.id)?.area?.name || null,
+      sides: [{ pid, name: this.store.players[pid]?.name || 'A trainer', bug: bugOf(fight.fighters[0]), xp: extra.xpEarned || 0, cash: cents(this.paidNow || 0) },
+        { pid: null, name: stop.kind === 'wild' ? `a wild ${foe.name}` : stop.who, bug: bugOf(fight.fighters[1]) }] });
+    this.paidNow = 0;
   }
 
   /** Something for the wall of My House, once: the shop holds what a player owns. */
@@ -542,6 +550,7 @@ export class Circuit {
   pay(pid, stop, area) {
     const me = this.me(pid), held = Object.keys(me.ribbons).length - (stop.kind === 'leader' && me.ribbons[area.ribbon] ? 1 : 0); // a ribbon just won does not raise its own purse
     const amount = purseOf(stop, area, held), player = this.store.players[pid];
+    this.paidNow = (this.paidNow || 0) + (amount || 0); // read back by settle() for the battle record
     if (amount && player && this.accounts) this.accounts.change(player, amount, 'circuit', `Bug Circuit: ${stop.kind === 'leader' ? `ribbon ${area.ribbon} from` : stop.kind === 'champion' ? 'Grand Champion, took it from' : 'beat'} ${stop.who}`);
     return `$${amount} purse`;
   }

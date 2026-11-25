@@ -79,7 +79,7 @@ export default function App() {
   else if (path === '/room' || room) page = <Suspense fallback={<div className="screen muted">Opening the bunkhouse…</div>}><Room key={`${room?.[1] || 'mine'}.${me?.id || 'visitor'}`} id={room?.[1]} /></Suspense>;
   else if (path.startsWith('/profile')) page = <Profile key={`${me?.id || 'signed-out'}.self`} />;
   else if (p) page = <Profile key={`${me?.id || 'signed-out'}.${p[1]}`} id={p[1]} />;
-  else if (path.startsWith('/leaderboard')) page = <Leaderboard />;
+  else if (path.startsWith('/leaderboard')) page = <Leaderboard path={path} />;
   else if (path.startsWith('/invest')) page = <Invest />;
   else if (path.startsWith('/store')) page = <Suspense fallback={<div className="screen" />}><Store /></Suspense>;
   else if (path === '/bj' || path.startsWith('/bj/')) page = <Suspense fallback={<div className="screen" />}><Blackjack code={(path.split('/')[2] || '').toUpperCase() || null} /></Suspense>;

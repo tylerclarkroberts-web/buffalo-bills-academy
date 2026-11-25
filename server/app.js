@@ -12,6 +12,7 @@ import { Mines } from './mines.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
 import { creditStall5Refunds } from './stallRefund.js';
+import { BattleLog, BATTLE_TYPES } from './battles.js';
 import { Barn, strongestTrainers } from './barn.js';
 import { Trades } from './trades.js';
 import { Circuit } from './circuit.js';
@@ -69,6 +70,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (botDelayScale !== undefined) service.bots.delayScale = botDelayScale;
   else if (barnTest && env.BOT_DELAY_SCALE) service.bots.delayScale = Math.max(0, Number(env.BOT_DELAY_SCALE) || 0); // e2e only: quicker bots
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
+  barn.battleLog = new BattleLog({ store: service.store, now: service.now }); // every finished bug fight, for the leaderboard
   const circuit = new Circuit({ store: service.store, barn, accounts, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
   const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
@@ -112,6 +114,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     const mig = mines.migrateHeesheeSteals();
     if (mig.activeStolen || mig.stamped) console.log('[heeshee] mid-shift steals', mig);
   } catch (e) { console.error('[heeshee] migrate', e); }
+  try {
+    const filled = barn.battleLog.backfill({ players: service.store.players, barn, pvp });
+    if (!filled.skipped && (filled.entries || filled.players)) console.log(`[battles] backfilled ${filled.entries} fights for ${filled.players} players`);
+  } catch (e) { console.error('[battles] backfill', e); }
   try {
     const refund = creditStall5Refunds({ store: service.store, accounts, foreman, now: service.now });
     if (refund.credited.length) console.log('[stall-refund]', refund.credited.map((c) => `${c.name} +$${c.amount}`).join(', '));
@@ -330,6 +336,23 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
       return { id: row.id, name: row.name, picture: row.picture, avatar: avatars.info(row.player), bug };
     });
     return { rows: rows.slice(0, 200), me: req.player?.id || null, googleOnly: googleOn, sort, direction, bugTrainers };
+  }));
+
+  // ----- bug battles on the leaderboard (server/battles.js) -----
+  const battleEligible = (p) => p && !p.hidden && typeof p.bankroll === 'number' && (googleOn ? !!(p.google || p.login) : true);
+  api.get('/battles', wrap((req) => {
+    const rows = Object.values(service.store.players).filter(battleEligible)
+      .map((p) => ({ id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), ...barn.battleLog.statsOf(p.id) }))
+      .filter((r) => r.total.n > 0);
+    return { rows, me: req.player?.id || null, types: BATTLE_TYPES, coverage: barn.battleLog.coverage() };
+  }));
+  // A player's fights in detail: what signed-in players can already see of a bug's record and recent fights, pot included.
+  api.get('/battles/:id', needPlayer, wrap((req) => {
+    const p = service.getPlayer(req.params.id);
+    if (!battleEligible(p)) throw new GameError('No such player', 404);
+    const type = BATTLE_TYPES.includes(req.query.type) ? req.query.type : null;
+    return { id: p.id, name: p.name, picture: p.google?.picture || null, avatar: avatars.info(p), self: req.player.id === p.id,
+      ...barn.battleLog.statsOf(p.id), history: barn.battleLog.historyOf(p.id, { type }), coverage: barn.battleLog.coverage() };
   }));
 
   // Room views are permission-checked snapshots, never reusable public profile/store responses.

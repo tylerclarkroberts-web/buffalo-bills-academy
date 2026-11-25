@@ -1000,6 +1000,11 @@ export class Barn {
     // Both wallets and their reward receipts must land in the same atomic players.json write.
     this.store.commitPlayerDrafts(drafts);
     for (const e of entrants) this.applyBoutReward(e.id);
+    // the leaderboard's battle record (server/battles.js): both corners, the pot, and what each side took home
+    const receipt = (pid) => drafts.find((d) => d.id === pid)?.barnBouts?.lastBout;
+    this.battleLog?.record({ id, type: 'bout', at: now, winner, pot: cents(stakes[0] + stakes[1]),
+      sides: entrants.map((e, side) => ({ pid: e.id, name: this.store.players[e.id]?.name || 'A former member', bug: { name: fighters[side].name, species: fighters[side].species, level: fighters[side].level },
+        ...(receipt(e.id) ? { xp: receipt(e.id).xpEarned, cash: receipt(e.id).net } : {}) })) });
   }
 
   /** A held stake whose fight is gone (the server restarted mid-fight): nobody won, so it goes back. */
