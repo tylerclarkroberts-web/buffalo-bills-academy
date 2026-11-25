@@ -13,8 +13,10 @@ import { Foreman } from '../server/foreman.js';
 import { Mines, SCARE_CHANCE, FAUN_CHANCE, HEESHEE_GONE } from '../server/mines.js';
 import { APPEAR_AFTER_MS } from '../client/src/mines/heeshee.js';
 import {
-  TYPING_PROMPT, TYPING_WPM, TYPING_ACCURACY, TYPING_RANTS, TYPING_JABS, TYPING_PRAISE,
-  HEESHEE_APPEAR_MS, minTypingMs, levenshtein, typingStats,
+  TYPING_PROMPT, TYPING_PROMPTS, TYPING_WPM, TYPING_ACCURACY, TYPING_RANTS, TYPING_JABS, TYPING_PRAISE,
+  TYPING_MAX_INSERT, TYPING_TRACE_MIN, HEESHEE_APPEAR_MS, minTypingMs, levenshtein, typingStats,
+  pickTypingPrompt, shouldBlockTypingInput, verifyTypingTrace, typingTraceFor, recordTypingInput,
+  emptyTypingTrace,
 } from '../server/foremanTyping.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -94,14 +96,22 @@ function pendingOf(f) {
   return f.foreman.view(f.player.id).pending;
 }
 
+const keys = (text) => typingTraceFor(text);
+
 test('the appear delay and the required line are exact', () => {
   assert.equal(HEESHEE_APPEAR_MS, 5000);
   assert.equal(APPEAR_AFTER_MS, HEESHEE_APPEAR_MS);
   assert.equal(TYPING_PROMPT, 'Tyler Clark Roberts is number one. His legs are number one. His eyes are number one. His muscles are number one. Tyler is number one.');
+  assert.equal(TYPING_PROMPTS[0], TYPING_PROMPT);
+  assert.ok(TYPING_PROMPTS.length >= 4);
+  for (const line of TYPING_PROMPTS) {
+    assert.equal(line.length, TYPING_PROMPT.length, line);
+    assert.equal(minTypingMs(line), minTypingMs(TYPING_PROMPT));
+  }
   assert.equal(TYPING_WPM, 80);
   assert.equal(TYPING_ACCURACY, 0.95);
   assert.ok(TYPING_RANTS.length >= 3);
-  assert.ok(TYPING_JABS.speed && TYPING_JABS.accuracy && TYPING_JABS.short && TYPING_JABS.early);
+  assert.ok(TYPING_JABS.speed && TYPING_JABS.accuracy && TYPING_JABS.short && TYPING_JABS.early && TYPING_JABS.keys);
   assert.ok(TYPING_PRAISE);
 });
 
@@ -224,7 +234,7 @@ test('submitting too slowly, with typos, or only a fragment fails and keeps the 
 
   f.foreman.startTyping(f.player, id);
   f.clock.now += 60_000;
-  const slow = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT);
+  const slow = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT, keys(TYPING_PROMPT));
   assert.equal(slow.passed, false);
   assert.equal(slow.fail, 'speed');
   assert.match(slow.jab, /TOO SLOW|eighty/i);
@@ -232,14 +242,15 @@ test('submitting too slowly, with typos, or only a fragment fails and keeps the 
 
   f.foreman.startTyping(f.player, id);
   f.clock.now += minTypingMs();
-  const typo = f.foreman.gradeTyping(f.player, id, 'X'.repeat(TYPING_PROMPT.length));
+  const typoText = 'X'.repeat(TYPING_PROMPT.length);
+  const typo = f.foreman.gradeTyping(f.player, id, typoText, keys(typoText));
   assert.equal(typo.passed, false);
   assert.equal(typo.fail, 'accuracy');
   assert.equal(pendingOf(f)?.kind, 'typing');
 
   f.foreman.startTyping(f.player, id);
   f.clock.now += minTypingMs();
-  const short = f.foreman.gradeTyping(f.player, id, 'Tyler');
+  const short = f.foreman.gradeTyping(f.player, id, 'Tyler', keys('Tyler'));
   assert.equal(short.passed, false);
   assert.equal(short.fail, 'short');
   assert.equal(pendingOf(f)?.kind, 'typing');
@@ -260,7 +271,7 @@ test('a clean 80 WPM / 95% pass clears the lock so they can mine again', (t) => 
   const id = pendingOf(f).id;
   f.foreman.startTyping(f.player, id);
   f.clock.now += minTypingMs();
-  const ok = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT);
+  const ok = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT, keys(TYPING_PROMPT));
   assert.equal(ok.passed, true);
   assert.ok(ok.wpm >= 80);
   assert.ok(ok.accuracy >= 0.95);
@@ -356,7 +367,8 @@ test('HTTP: seeing Heeshee and quitting locks clock-in across a re-fetch until a
 
   const refetch = await d.get('/api/mines/foreman');
   assert.equal(refetch.body.pending?.id, quit.body.pending.id);
-  assert.equal(refetch.body.pending.prompt, TYPING_PROMPT);
+  const prompt = refetch.body.pending.prompt;
+  assert.ok(TYPING_PROMPTS.includes(prompt), prompt);
 
   const blocked = await d.post('/api/mines/start');
   assert.equal(blocked.status, 409);
@@ -366,7 +378,7 @@ test('HTTP: seeing Heeshee and quitting locks clock-in across a re-fetch until a
   const began = await d.post('/api/mines/foreman/typing/start', { id });
   assert.equal(began.status, 200);
   // A forged elapsedMs in the body is ignored: still too early on the server clock.
-  const instant = await d.post('/api/mines/foreman/typing/submit', { id, text: TYPING_PROMPT, elapsedMs: 1000 });
+  const instant = await d.post('/api/mines/foreman/typing/submit', { id, text: prompt, elapsedMs: 1000 });
   assert.equal(instant.status, 200);
   assert.equal(instant.body.passed, false);
   assert.equal(instant.body.fail, 'early');
@@ -375,10 +387,14 @@ test('HTTP: seeing Heeshee and quitting locks clock-in across a re-fetch until a
   const again = await d.post('/api/mines/foreman/typing/start', { id });
   assert.equal(again.status, 200);
   s.clock.t += minTypingMs();
-  const pass = await d.post('/api/mines/foreman/typing/submit', { id, text: TYPING_PROMPT });
+  const pass = await d.post('/api/mines/foreman/typing/submit', { id, text: prompt, trace: keys(prompt) });
   assert.equal(pass.status, 200, JSON.stringify(pass.body));
   assert.equal(pass.body.passed, true);
   assert.equal((await d.get('/api/mines/foreman')).body.pending, null);
+  const disk = JSON.parse(fs.readFileSync(path.join(s.dataDir, 'foreman.json'), 'utf8'));
+  const submits = (disk.typingLog || []).filter((r) => r.k === 'submit');
+  assert.ok(submits.some((r) => r.passed === false && r.fail === 'early'));
+  assert.ok(submits.some((r) => r.passed === true && r.prompt === prompt));
 
   const next = await d.post('/api/mines/start');
   assert.equal(next.status, 200);
@@ -389,6 +405,7 @@ test('HTTP: seeing Heeshee and quitting locks clock-in across a re-fetch until a
 test('the Foreman typing UI blocks paste, turns off autocomplete, and stays on a mines screen for Work Mode', () => {
   const jsx = read('client/src/mines/Foreman.jsx');
   assert.match(jsx, /data-test="fm-type-input"/);
+  assert.match(jsx, /onBeforeInput=\{onBeforeInput\}/);
   assert.match(jsx, /onPaste=\{blockPaste\}/);
   assert.match(jsx, /onDrop=\{blockPaste\}/);
   assert.match(jsx, /onContextMenu=\{blockPaste\}/);
@@ -406,4 +423,126 @@ test('the Foreman typing UI blocks paste, turns off autocomplete, and stays on a
   assert.match(mines, /\/mines\/heeshee\/seen/);
   assert.match(mines, /pagehide/);
   assert.match(mines, /keepalive: true/);
+});
+
+test('every lock picks a stored prompt from the pool, and grading uses that line', (t) => {
+  const calls = [];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bba-fm-type-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const clock = { now: 1_800_000_000_000 };
+  const store = new Store(dir);
+  const accounts = new Accounts({ store, now: () => clock.now });
+  // First draw is the rant (n === 3), second is the prompt pool.
+  const foreman = new Foreman({
+    store, accounts, now: () => clock.now,
+    randInt: (n) => { calls.push(n); return n === TYPING_PROMPTS.length ? 3 : 0; },
+  });
+  foreman.scoldTyping('miner');
+  const pend = foreman.view('miner').pending;
+  assert.equal(pend.prompt, TYPING_PROMPTS[3]);
+  assert.notEqual(pend.prompt, TYPING_PROMPT);
+  const disk = JSON.parse(fs.readFileSync(path.join(dir, 'foreman.json'), 'utf8'));
+  assert.equal(disk.pending.miner.prompt, TYPING_PROMPTS[3]);
+  assert.equal(disk.pending.miner.promptIndex, 3);
+
+  const player = { id: 'miner', name: 'Miner', bankroll: 0 };
+  foreman.startTyping(player, pend.id);
+  clock.now += minTypingMs(pend.prompt);
+  const wrongLine = foreman.gradeTyping(player, pend.id, TYPING_PROMPT, keys(TYPING_PROMPT));
+  assert.equal(wrongLine.passed, false);
+  assert.equal(wrongLine.fail, 'accuracy');
+  foreman.startTyping(player, pend.id);
+  clock.now += minTypingMs(pend.prompt);
+  const ok = foreman.gradeTyping(player, pend.id, TYPING_PROMPTS[3], keys(TYPING_PROMPTS[3]));
+  assert.equal(ok.passed, true);
+});
+
+test('shouldBlockTypingInput catches paste, drop, replacement, and a big insert', () => {
+  assert.equal(shouldBlockTypingInput('insertFromPaste', 'hello'), true);
+  assert.equal(shouldBlockTypingInput('insertReplacementText', 'Tyler'), true);
+  assert.equal(shouldBlockTypingInput('insertFromDrop', 'x'), true);
+  assert.equal(shouldBlockTypingInput('insertText', 'abc'), true);
+  assert.equal(shouldBlockTypingInput('insertText', 'ab'), false);
+  assert.equal(shouldBlockTypingInput('insertText', 'T'), false);
+  assert.equal(shouldBlockTypingInput('deleteContentBackward', ''), false);
+  const tr = emptyTypingTrace();
+  assert.equal(recordTypingInput(tr, 'insertFromPaste', TYPING_PROMPT).blocked, true);
+  assert.equal(tr.blocked, 1);
+  assert.equal(tr.inserts, 0);
+  assert.equal(recordTypingInput(tr, 'insertText', 'T').blocked, false);
+  assert.equal(tr.inserts, 1);
+  assert.equal(tr.chars, 1);
+});
+
+test('verifyTypingTrace rejects a missing, thin, or one-shot trace and accepts honest typing', () => {
+  assert.equal(verifyTypingTrace(TYPING_PROMPT, null).ok, false);
+  assert.equal(verifyTypingTrace(TYPING_PROMPT, null).fail, 'keys');
+  assert.equal(verifyTypingTrace(TYPING_PROMPT, { inserts: 1, chars: TYPING_PROMPT.length, deletes: 0, maxInsert: TYPING_PROMPT.length }).ok, false);
+  assert.equal(verifyTypingTrace(TYPING_PROMPT, { inserts: TYPING_PROMPT.length, chars: TYPING_PROMPT.length, deletes: 0, maxInsert: TYPING_MAX_INSERT + 1 }).ok, false);
+  assert.equal(verifyTypingTrace(TYPING_PROMPT, { inserts: Math.ceil(TYPING_PROMPT.length * TYPING_TRACE_MIN) - 1, chars: TYPING_PROMPT.length, deletes: 0, maxInsert: 1 }).ok, false);
+  assert.equal(verifyTypingTrace(TYPING_PROMPT, typingTraceFor(TYPING_PROMPT)).ok, true);
+  assert.equal(pickTypingPrompt(() => 0).prompt, TYPING_PROMPT);
+  assert.equal(pickTypingPrompt(() => 5).prompt, TYPING_PROMPTS[5]);
+});
+
+test('a perfect line without a keystroke trace, or with one big insert, stays locked', (t) => {
+  const f = heesheeBug(t);
+  const s = f.start();
+  f.mines.seeHeeshee(f.player, s.shiftId);
+  f.mines.quit(f.player, s.shiftId, V);
+  const id = pendingOf(f).id;
+
+  f.foreman.startTyping(f.player, id);
+  f.clock.now += minTypingMs();
+  const missing = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT);
+  assert.equal(missing.passed, false);
+  assert.equal(missing.fail, 'keys');
+  assert.match(missing.jab, /paste-hands/i);
+  assert.equal(pendingOf(f)?.kind, 'typing');
+
+  f.foreman.startTyping(f.player, id);
+  f.clock.now += minTypingMs();
+  const dumped = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT, {
+    inserts: 1, chars: TYPING_PROMPT.length, deletes: 0, maxInsert: TYPING_PROMPT.length,
+  });
+  assert.equal(dumped.passed, false);
+  assert.equal(dumped.fail, 'keys');
+  assert.equal(pendingOf(f)?.kind, 'typing');
+});
+
+test('start and submit rows stay in the typing log after a pass', (t) => {
+  const f = heesheeBug(t);
+  const s = f.start();
+  f.mines.seeHeeshee(f.player, s.shiftId);
+  f.mines.quit(f.player, s.shiftId, V);
+  const id = pendingOf(f).id;
+  f.foreman.startTyping(f.player, id);
+  f.clock.now += 200;
+  f.foreman.gradeTyping(f.player, id, TYPING_PROMPT, keys(TYPING_PROMPT));
+  f.foreman.startTyping(f.player, id);
+  f.clock.now += minTypingMs();
+  const ok = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT, keys(TYPING_PROMPT));
+  assert.equal(ok.passed, true);
+  assert.equal(pendingOf(f), null);
+
+  const disk = JSON.parse(fs.readFileSync(path.join(f.dir, 'foreman.json'), 'utf8'));
+  assert.ok(Array.isArray(disk.typingLog));
+  assert.equal(disk.pending[f.player.id], undefined);
+  const rows = disk.typingLog.filter((r) => r.p === f.player.id);
+  const starts = rows.filter((r) => r.k === 'start');
+  const submits = rows.filter((r) => r.k === 'submit');
+  assert.equal(starts.length, 2);
+  assert.equal(submits.length, 2);
+  assert.equal(submits[0].passed, false);
+  assert.equal(submits[0].fail, 'early');
+  assert.equal(submits[0].textLen, TYPING_PROMPT.length);
+  assert.ok(Number.isFinite(submits[0].startedAt) && Number.isFinite(submits[0].submittedAt));
+  assert.equal(submits[0].elapsedMs, 200);
+  assert.equal(submits[1].passed, true);
+  assert.equal(submits[1].fail, null);
+  assert.ok(submits[1].wpm >= 80);
+  assert.ok(submits[1].accuracy >= 0.95);
+  assert.equal(submits[1].inserts, TYPING_PROMPT.length);
+  const again = new Foreman({ store: f.store, accounts: f.mines.accounts, now: () => f.clock.now, randInt: () => 0 });
+  assert.equal(again.doc.typingLog.length, rows.length);
 });

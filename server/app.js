@@ -412,7 +412,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
   api.post('/mines/foreman/typing/start', needPlayer, wrap((req) => foreman.startTyping(accounts.ensure(req.player), String(req.body?.id || ''))));
-  api.post('/mines/foreman/typing/submit', needPlayer, wrap((req) => foreman.gradeTyping(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.text)));
+  api.post('/mines/foreman/typing/submit', needPlayer, wrap((req) => foreman.gradeTyping(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.text, req.body?.trace)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
 
   // ----- investing (play money) -----

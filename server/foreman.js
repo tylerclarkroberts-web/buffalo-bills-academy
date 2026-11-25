@@ -8,7 +8,7 @@ import { GameError } from './engine/game.js';
 import { FOREMAN_LORE } from './engine/lore.js';
 import {
   TYPING_PROMPT, TYPING_WPM, TYPING_ACCURACY, TYPING_RANTS, TYPING_JABS, TYPING_PRAISE,
-  typingStats, publicTypingStats,
+  TYPING_LOG_MAX, pickTypingPrompt, typingStats, publicTypingStats, publicTypingTrace, verifyTypingTrace,
 } from './foremanTyping.js';
 
 export const BONUS = 5, BONUS_PER_HOUR = 3;
@@ -282,7 +282,8 @@ const publicProblem = (p) => ({ text: textOf(p), word: textOf(p).length > 24 });
 export class Foreman {
   constructor({ store, accounts, now, randInt }) {
     this.store = store; this.accounts = accounts; this.now = now; this.r = randInt || ((n) => crypto.randomInt(n));
-    this.doc = store.loadDoc('foreman', { pending: {}, bonuses: {}, notes: {} });
+    this.doc = store.loadDoc('foreman', { pending: {}, bonuses: {}, notes: {}, typingLog: [] });
+    this.doc.typingLog ||= [];
   }
   save() { this.store.saveDoc('foreman', this.doc); }
   pending(playerId) { return this.doc.pending[playerId] || null; }
@@ -308,26 +309,55 @@ export class Foreman {
     const cur = this.doc.pending[playerId];
     if (cur?.kind === 'typing') return this.view(playerId);
     const lines = TYPING_RANTS[this.r(TYPING_RANTS.length)] || TYPING_RANTS[0];
-    const next = { ...this.doc, pending: { ...this.doc.pending, [playerId]: { id: crypto.randomBytes(9).toString('base64url'), kind: 'typing', reason: 'heeshee-quit', lines, prompt: TYPING_PROMPT, misses: 0, attemptStartedAt: null, at: this.now() } },
+    const picked = pickTypingPrompt(this.r);
+    const next = { ...this.doc, pending: { ...this.doc.pending, [playerId]: { id: crypto.randomBytes(9).toString('base64url'), kind: 'typing', reason: 'heeshee-quit', lines, prompt: picked.prompt, promptIndex: picked.promptIndex, misses: 0, attemptStartedAt: null, at: this.now() } },
       ...(shiftId ? { lastMineShift: { ...this.doc.lastMineShift, [playerId]: shiftId } } : {}) };
     this.store.saveDoc('foreman', next); this.doc = next;
     return this.view(playerId);
+  }
+  logTyping(entry) {
+    const log = this.doc.typingLog || (this.doc.typingLog = []);
+    log.push(entry);
+    if (log.length > TYPING_LOG_MAX) log.splice(0, log.length - TYPING_LOG_MAX);
   }
   startTyping(player, id) {
     const p = this.doc.pending[player.id];
     if (!p || p.kind !== 'typing' || p.id !== id) throw new GameError('The foreman is not waiting on a typing test.', 409);
     p.attemptStartedAt = this.now();
+    this.logTyping({
+      k: 'start', p: player.id, lockId: p.id,
+      prompt: p.prompt || TYPING_PROMPT,
+      promptIndex: p.promptIndex ?? null,
+      startedAt: p.attemptStartedAt,
+    });
     this.save();
     return { started: true, startedAt: p.attemptStartedAt };
   }
-  gradeTyping(player, id, raw) {
+  gradeTyping(player, id, raw, trace) {
     const p = this.doc.pending[player.id];
     if (!p || p.kind !== 'typing' || p.id !== id) throw new GameError('The foreman is not waiting on a typing test.', 409);
     if (!p.attemptStartedAt) throw new GameError('Start typing first, sport.', 400);
-    const elapsed = this.now() - p.attemptStartedAt;
-    const stats = typingStats(raw, elapsed, p.prompt || TYPING_PROMPT);
-    const pub = publicTypingStats(stats);
-    if (stats.passed) {
+    const startedAt = p.attemptStartedAt;
+    const submittedAt = this.now();
+    const elapsed = submittedAt - startedAt;
+    const prompt = p.prompt || TYPING_PROMPT;
+    const typed = String(raw ?? '');
+    const stats = typingStats(typed, elapsed, prompt);
+    const traceCheck = verifyTypingTrace(typed, trace);
+    const fail = stats.fail || (traceCheck.ok ? null : 'keys');
+    const passed = !fail;
+    const pub = publicTypingStats({ ...stats, passed, fail });
+    const compact = publicTypingTrace(trace);
+    this.logTyping({
+      k: 'submit', p: player.id, lockId: p.id,
+      prompt, promptIndex: p.promptIndex ?? null,
+      startedAt, submittedAt, elapsedMs: elapsed,
+      wpm: pub.wpm, accuracy: pub.accuracy,
+      passed, fail, textLen: typed.length,
+      inserts: compact.inserts, chars: compact.chars,
+      deletes: compact.deletes, maxInsert: compact.maxInsert,
+    });
+    if (passed) {
       delete this.doc.pending[player.id];
       this.save();
       return { ...pub, line: TYPING_PRAISE, misses: p.misses || 0, bankroll: player.bankroll };
@@ -335,7 +365,7 @@ export class Foreman {
     p.misses = (p.misses || 0) + 1;
     p.attemptStartedAt = null;
     this.save();
-    return { ...pub, jab: TYPING_JABS[stats.fail] || TYPING_JABS.accuracy, misses: p.misses };
+    return { ...pub, jab: TYPING_JABS[fail] || TYPING_JABS.accuracy, misses: p.misses };
   }
   answer(player, id, raw) {
     const p = this.doc.pending[player.id];
