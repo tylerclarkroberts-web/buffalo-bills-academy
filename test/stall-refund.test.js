@@ -8,7 +8,7 @@ import { Store } from '../server/store.js';
 import { Accounts, cents } from '../server/accounts.js';
 import { Foreman } from '../server/foreman.js';
 import {
-  creditStall5Refunds, STALL5_REFUND_KEY, STALL5_REFUND_AMT, STALL5_REFUND_TYPE, STALL5_REFUND_NOTE, STALL5_OLD_COST,
+  creditStall5Refunds, STALL5_REFUND_ID, STALL5_REFUND_AMT, STALL5_REFUND_TYPE, STALL5_REFUND_NOTE, STALL5_OLD_COST,
 } from '../server/stallRefund.js';
 
 function fixture(t) {
@@ -55,11 +55,11 @@ test('the two players who paid $4,000 for a fifth stall each get $2,000 back onc
     const note = f.foreman.noteOf(p.id);
     assert.ok(note);
     assert.equal(note.text, STALL5_REFUND_NOTE);
-    assert.equal(note.key, STALL5_REFUND_KEY);
+    assert.equal(note.key, STALL5_REFUND_ID);
   }
   assert.equal(f.foreman.noteOf('joe'), null);
   const saved = JSON.parse(fs.readFileSync(path.join(f.dir, 'migrations.json'), 'utf8'));
-  assert.deepEqual(new Set(saved.done[STALL5_REFUND_KEY].ids), new Set(['tyler', 'breiden']));
+  assert.deepEqual(new Set(saved.done[STALL5_REFUND_ID].ids), new Set(['tyler', 'breiden']));
 
   const second = f.run();
   assert.equal(second.credited.length, 0, 'a second boot credits nobody');
