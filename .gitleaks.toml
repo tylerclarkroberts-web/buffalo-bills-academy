@@ -1,0 +1,7 @@
+# Extends the default rules. The stall-price refund marker is a public migration id, not a credential.
+title = "Buffalo Bill's Academy"
+[extend]
+useDefault = true
+[allowlist]
+description = "public stall-price refund migration marker, not a credential"
+regexes = ['''stall5-price-cut-v150''']
