@@ -485,6 +485,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/slots/end', needPlayer, wrap((req) => slots.end(req.player)));
   // Horror Night override for local testing and the e2e: {on: true|false|null}. DEV_LOGIN only; never in production.
   if (barnTest) api.post('/dev/horror', needPlayer, wrap((req) => { const v = req.body?.on; mines.horrorForce = v === true || v === false ? v : null; return { force: mines.horrorForce, on: mines.horrorOn() }; }));
+  if (barnTest) api.post('/dev/worms', needPlayer, wrap((req) => mines.debugWorm(req.player, req.body || {})));
   if (barnTest) api.post('/dev/legend', needPlayer, wrap((req) => mines.forceStick(req.player.id, req.body?.on)));
   if (barnTest) api.post('/dev/steeze', needPlayer, wrap((req) => mines.forceSteeze(req.player.id, req.body?.on)));
   if (barnTest) api.post('/dev/heeshee', needPlayer, wrap((req) => {

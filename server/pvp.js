@@ -184,7 +184,13 @@ export class Pvp {
     if (!this.inBattle.has(player.id)) {
       for (const [oid] of this.neighbours(player.id)) if (this.canBattle(player.id, oid)) { this.startBattle(player.id, oid); break; }
     }
-    return this.view(player, { snap, have: body.have });
+    // Acid worms: landings and the drain on the bucket you are carrying. slash/away come from the visor.
+    const worms = this.mines.tickWorms(player, {
+      pose: { x: pr.x, y: pr.y },
+      slash: body.slash,
+      hold: body.away === true,
+    });
+    return { ...this.view(player, { snap, have: body.have }), ...worms };
   }
 
   /**

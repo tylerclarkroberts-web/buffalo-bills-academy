@@ -29,7 +29,7 @@ function harness(t) {
   const store = new Store(dir), accounts = new Accounts({ store, now });
   const barn = new Barn({ store, accounts, now, incubateMs: 1000, eggInt: () => 0 });
   const shop = new Shop({ store, accounts, barn, now });
-  const mines = new Mines({ store, accounts, barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000 });
+  const mines = new Mines({ store, accounts, barn, now, randInt: (n) => (n === 100000 ? 50000 : 0), scareInt: (n) => n - 1, poolInt: () => 40000, wormInt: (n) => n - 1 });
   mines.owned = (id) => shop.doc.inv[id]?.own;
   barn.mines = mines;
   const pvp = new Pvp({ store, accounts, mines, shop, barn, avatars: null, now, randInt: (n) => Math.floor(n / 2) });

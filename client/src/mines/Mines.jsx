@@ -122,6 +122,7 @@ const VISITOR_LINES = [
 ];
 // v79: the acid worms and the cave-ins get their own lines.
 const WORM_LINES = ['AN ACID WORM IS ON YOUR GOGGLES. IT IS LOOKING AT YOU.', 'WORM. FACE. KNIFE. IN THAT ORDER.', 'IT IS WARM AND IT IS WIGGLING. CUT IT OFF.', 'THE WORM WOULD LIKE TO BE FRIENDS. CUT IT OFF.'];
+const SUCK_LINE = "IT'S SUCKING YOUR ACID.";
 const CUT_LINES = ['SHLICK. TWO WORMS NOW, BOTH LEAVING.', 'CLEAN CUT. THE FOREMAN WOULD BE PROUD. HE WOULD NOT SAY SO.', 'YOU BOWIE\'D IT.', 'WORM REMOVED. GOGGLES STILL STICKY.'];
 const CAVE_LINE = 'THE ROOF CAME DOWN HERE. GO AROUND.';
 // Horror Night (server/engine/horror.js decides when): once the lights go, the ticker changes its tune.
@@ -492,16 +493,19 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const maze = useRef(shiftMaze(shift)).current; // v79: the day's tier decides the size and the cave-ins
   const tier = tierInfo(shift.tier);
   // v79: acid worms (none on the easy days). They hold off while acid is in reach, in a battle or behind the door.
+  // After a second on your goggles they drink from the bucket (the server decides how much).
   const swarm = useRef(null); if (!swarm.current) swarm.current = new WormSwarm(tier);
   const [worms, setWorms] = useState([]);
   const [cutting, setCutting] = useState([]);
   const nearRef = useRef(false);
+  const pendingSlash = useRef([]); // ids cut locally, waiting for the heartbeat to confirm
   const cutWorm = useRef(null);
   cutWorm.current = (id, angle = -0.6) => {
     const w = swarm.current.slash(id); if (!w) return;
     setWorms([...swarm.current.worms]); setCutting((c) => [...c, { w, angle }]); audio?.slash();
     setTimeout(() => setCutting((c) => c.filter((x) => x.w.id !== w.id)), 700);
     if (swarm.current.cuts % 3 === 1) setLine(CUT_LINES[swarm.current.cuts % CUT_LINES.length]);
+    if (bucketShift) { pendingSlash.current.push(w.id); pvp.current?.beat(); }
   };
   const eggLocation = useRef(eggSpot(maze, shift.seed)).current;
   const chain = useRef(veinChain(maze, shift.seed)).current;
@@ -567,6 +571,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (state.collected > previous.collected) {
       audio?.chunk();
       if (darkRef.current && gate.current.roll(Date.now())) jump.current?.(); // a chunk of rock comes away, and something with it
+    } else if (state.sucking && state.collected < previous.collected) {
+      setLine(SUCK_LINE);
     }
     sceneRef.current?.setDeposits(state.pools, state.currentPoolId);
     const pool = state.pools.find(p => p.id === state.currentPoolId);
@@ -657,6 +663,24 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       const n = v.notice;
       setLine(n.kind === 'ambush' ? `YOU GOT ${n.loser.toUpperCase()} FROM BEHIND. +$${n.cash}, +${Math.floor(n.gained)} ACID.` : `YOU BEAT ${n.loser.toUpperCase()}. +$${n.cash}, +${Math.floor(n.gained)} ACID${n.tobacco?.length ? `, ${n.tobacco.length} SMOKE${n.tobacco.length > 1 ? 'S' : ''}` : ''}.`);
       if (v.shift) { if (battleRef.current && (v.shift.result || Object.hasOwn(v.shift, 'pending'))) afterBattle.current = v.shift; else accept(v.shift); }
+    }
+    if (v.worms) {
+      const pending = pendingSlash.current;
+      const list = v.worms.filter((w) => !pending.includes(w.id));
+      pendingSlash.current = pending.filter((id) => v.worms.some((w) => w.id === id));
+      const before = new Set(swarm.current.worms.map((w) => w.id));
+      swarm.current.sync(list);
+      setWorms([...swarm.current.worms]);
+      const landed = swarm.current.worms.find((w) => !before.has(w.id));
+      if (landed) { audio?.splat(); setLine(WORM_LINES[landed.id % WORM_LINES.length]); }
+    }
+    if (v.collected != null && bucketShift && !v.ended) {
+      const prev = bucketRef.current;
+      if (v.collected !== prev.collected || !!v.sucking !== !!prev.sucking) {
+        const next = { ...prev, collected: v.collected, rich: v.rich ?? prev.rich, sucking: !!v.sucking, sucked: v.sucked };
+        bucketRef.current = next; setBucket(next);
+        if (v.sucking && v.collected < prev.collected) setLine(SUCK_LINE);
+      }
     }
   };
   const stab = async () => {
@@ -903,7 +927,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (bucketShift) {
       pvp.current = createPvpClient({
         send: pvpSend, onView: onPvp,
-        pose: () => (doomRef.current || done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw, have: battleRef.current?.rounds.length || 0, dance: danceRef.current }),
+        pose: () => (done.current ? null : { x: scene.pos.x / TILE, y: scene.pos.y / TILE, yaw: scene.yaw, have: battleRef.current?.rounds.length || 0, dance: danceRef.current,
+          ...(doomRef.current || document.hidden ? { away: true } : {}),
+          ...(pendingSlash.current.length ? { slash: pendingSlash.current.slice() } : {}) }),
         onError: (e) => { if (e.code === 'mine_reload') fail(e); },
       });
     }
@@ -939,7 +965,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       lunge() { heeshee.hasBug = !!(guideRef.current?.armed && guideRef.current.state !== 'stolen'); heeshee.state = 'lunging'; heeshee.lungeT = 0.4; heeshee.events.push('lunge'); },
     };
 
-    window.__acidWorms = { spawn: () => { const w = swarm.current.spawn(); setWorms([...swarm.current.worms]); return w; }, cut: (id) => cutWorm.current(id ?? null), get count() { return swarm.current.worms.length; } };
+    window.__acidWorms = { spawn: () => { const w = swarm.current.spawn(); setWorms([...swarm.current.worms]); return w; }, cut: (id) => cutWorm.current(id ?? null), get count() { return swarm.current.worms.length; }, get sucking() { return swarm.current.worms.some((w) => w.sucking); } };
     const onResize = () => scene.resize();
     window.addEventListener('resize', onResize);
     const sync = () => {
@@ -1021,7 +1047,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       }
       const nowMs = Date.now(), dtMs = Math.min(1000, nowMs - lastTick); lastTick = nowMs;
       const out = maze.dist[Math.round(scene.pos.y / TILE)]?.[Math.round(scene.pos.x / TILE)]; // worms keep to the far tunnels: none at the lift, twice as many at the far end
-      const landed = swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden, scale: out >= 0 ? 2 * out / farthest(maze) : 1 });
+      // Bucket shifts: the server lands worms and drains the haul. Legacy shifts still spawn in the browser only.
+      const landed = bucketShift ? null : swarm.current.tick(dtMs, { hold: nearRef.current || !!battleRef.current || doomRef.current || done.current || document.hidden, scale: out >= 0 ? 2 * out / farthest(maze) : 1 });
       if (landed) { setWorms([...swarm.current.worms]); audio?.splat(); setLine(WORM_LINES[landed.id % WORM_LINES.length]); }
       if (!landed) { // a cave-in a step or two ahead: say so once (not on the tick a worm lands, or its line would swallow this one)
         const tx = Math.round(scene.pos.x / TILE), ty = Math.round(scene.pos.y / TILE), fx = -Math.sin(scene.yaw), fz = -Math.cos(scene.yaw);
@@ -1186,9 +1213,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <div className={`geiger ${bars >= 8 ? 'hot' : bars >= 5 ? 'warm' : ''}`}>ACID {'▮'.repeat(bars)}{'▯'.repeat(10 - bars)}</div>
         {rod != null && <div className="m-rod" data-test="rod">ROD <b aria-label={['ahead', 'ahead and right', 'right', 'behind and right', 'behind', 'behind and left', 'left', 'ahead and left'][rod]}>{'↑↗→↘↓↙←↖'[rod]}</b></div>}
         {bucket.peek != null && <div className="m-rod" data-test="peek">NEXT POOL <b>{Math.round(bucket.peek)}</b></div>}
-        {bucketShift && <div className="m-bucket-status" data-test="bucket-status">
+        {bucketShift && <div className={`m-bucket-status${bucket.sucking ? ' sucking' : ''}`} data-test="bucket-status">
           <span>{bucket.capacity > 100 ? 'HAUL' : 'BUCKET'} {Math.floor(bucket.collected)} / {bucket.capacity}{bucket.rich > 1.004 && <span className="m-rich" data-test="bucket-rich"> · ACID ×{bucket.rich.toFixed(2)}</span>}</span>
           <div className="m-bucket" role="progressbar" aria-label="Acid collected" aria-valuemin={0} aria-valuemax={bucket.capacity} aria-valuenow={bucket.collected}><div style={{ width: `${progress * 100}%` }} /></div>
+          {bucket.sucking && <div className="m-suck-flecks" aria-hidden="true"><i /><i /><i /><i /></div>}
         </div>}
         <button className="m-link" disabled={clockingOut} onClick={() => clockOut()}>{clockingOut ? 'WEIGHING…' : 'CLOCK OUT'}</button>
         {dark && <button className="m-link m-flash-btn" data-test="flash-toggle" aria-pressed={lowFlash} onClick={toggleFlash}>{lowFlash ? 'FLASHING: LOW' : 'FLASHING: ON'}</button>}
@@ -1387,7 +1415,7 @@ function Result({ r, onAgain, onLeave, starting, fare }) {
       {r.pvp && <p className="m-twin" data-test="pvp-receipt">{r.pvp.by.toUpperCase()} TOOK {r.pvp.cash ? `$${r.pvp.cash}` : 'NO CASH (YOU HIT TODAY\'S LOSS CAP)'}{r.pvp.acid ? `, ${Math.floor(r.pvp.acid)} ACID` : ''}{r.pvp.tobacco?.length ? ` AND YOUR ${r.pvp.tobacco.map((t) => t.toUpperCase()).join(', ')}` : ''}. NO PAY FOR THIS SHIFT.</p>}
       {r.pvp?.fainted && <p className="m-twin" data-test="pvp-fainted">{typeof r.pvp.fainted === 'string' ? r.pvp.fainted.toUpperCase() : 'YOUR BUG'} FAINTED. <button className="m-link" onClick={() => navigate('/barn/center')}>BUG CENTER ►</button></p>}
       {r.twin && <p className="m-twin" data-test="twin">THE OTHER FAUN WAS WAITING AT THE ELEVATOR. HE TOOK ${r.twin.took.toLocaleString('en-US', { maximumFractionDigits: 2 })} AND SAID THANK YOU.</p>}
-      {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED{r.rich ? <span data-test="result-rich"> · ACID QUALITY ×{r.rich.toFixed(2)}</span> : null}</p>}
+      {r.capacity != null && <p className="m-dim">{r.collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} / {r.capacity} UNITS COLLECTED{r.rich ? <span data-test="result-rich"> · ACID QUALITY ×{r.rich.toFixed(2)}</span> : null}{r.sucked > 0 ? <span data-test="result-sucked"> · WORMS DRANK {Number(r.sucked).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span> : null}</p>}
       {r.bugReturned && <p className={`m-dim m-bug-back${r.bugShaken ? ' shaken' : ''}`} data-test="heeshee-return">YOUR BUG IS BACK. HE'S SHAKEN UP, BUT THE CIGARETTES HELPED.</p>}
       <p className="m-dim">BANKROLL NOW ${r.bankroll.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
       <div className="m-actions">
