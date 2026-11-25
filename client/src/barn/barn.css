@@ -115,6 +115,7 @@
 
 /* v33: bugs, field notes, warnings, gravestone. All fixed-size pages, never a scrollbar. */
 .barn-canvas { image-rendering: pixelated; }
+.barn-lore { margin: 4px 0 0; font-style: italic; color: var(--paper-2); opacity: .65; }
 .barn-tabs { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.15); }
 .barn-tabs button { background: none; border: 0; color: var(--paper-2); font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 6px 10px; min-height: 32px; cursor: pointer; border-bottom: 2px solid transparent; }
 .barn-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
@@ -615,6 +616,13 @@
 .dex-kind { font: 600 9.5px/1.2 var(--mono); letter-spacing: .03em; text-transform: uppercase; color: var(--mute); } /* how rare, then its type in the type's colour */
 .dex-kind span { color: var(--tc); }
 .dex-kind.r2 { color: #c9d0d8; } .dex-kind.r3 { color: var(--gold); } .dex-kind.r4 { color: #e7b8ff; letter-spacing: .08em; }
+.dex-kind b { font: inherit; }
+/* a thin divider above each rarity tier, across the whole grid */
+.dex-tier { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; margin: 4px 0 -2px; font: 600 10.5px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
+.dex-tier:first-child { margin-top: 0; }
+.dex-tier::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
+.dex-tier .num { font-style: normal; opacity: .7; }
+.dex-tier.r2 { color: #c9d0d8; } .dex-tier.r3 { color: var(--gold); } .dex-tier.r4 { color: #e7b8ff; }
 .dex-tile.evo { min-height: 48px; padding: 12px 2px 2px; border-radius: 8px; }
 .dex-tile.evo .num { top: 2px; left: 5px; font-size: 8.5px; }
 .dex-tile.evo .barn-thumb { width: 38px; height: 31px; }
@@ -624,3 +632,8 @@
 .dex-card .btn { --bg: rgba(48, 22, 14, .96); }
 @media (max-height: 620px) { .dex-card .barn-row { position: sticky; bottom: 0; padding: 8px 12px 4px; border-radius: 12px 12px 0 0; background: rgba(0,0,0,.72); } } /* a phone on its side: the card scrolls, Close stays put */
 @media (min-width: 1100px) and (min-height: 860px) { .dex-card .bugcard { zoom: 1.2; } .dex-grid { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); } }
+/* Six rooms on one phone row: tighter buttons so Bugdex is not pushed off the edge. */
+@media (max-width: 760px) {
+  .barn-rooms { gap: 3px; }
+  .barn-rooms .btn.small { min-width: 0; padding-inline: 2px; font-size: 12px; letter-spacing: 0; white-space: nowrap; }
+}

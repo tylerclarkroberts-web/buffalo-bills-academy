@@ -52,6 +52,7 @@ export class Store {
       p.conquest = draft.conquest;
       if (Object.hasOwn(draft, 'mining')) p.mining = draft.mining;
       if (Object.hasOwn(draft, 'barnBouts')) p.barnBouts = draft.barnBouts;
+      if (Object.hasOwn(draft, 'barnTrades')) p.barnTrades = draft.barnTrades; // cash held for open bug trades (server/trades.js)
       if (Object.hasOwn(draft, 'pvp')) p.pvp = draft.pvp;
     }
   }

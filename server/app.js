@@ -12,6 +12,7 @@ import { Mines } from './mines.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
 import { Barn, strongestTrainers } from './barn.js';
+import { Trades } from './trades.js';
 import { Circuit } from './circuit.js';
 import { Shop, SMOKE } from './shop.js';
 import { ITEM } from './catalog/index.js';
@@ -80,6 +81,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   circuit.shop = shop; // jars for the circuit's wild bugs
   mines.owned = (id) => shop.doc.inv[id]?.own;
   barn.mines = mines; // so a mid-shift steal is visible to barn/circuit fight gates
+  const trades = new Trades({ store: service.store, accounts, barn, now: service.now }); // the trading post: bugs and cash between players
   const fawn = new Fawn({ store: service.store, accounts, shop, now: service.now });
   // v71: the shared daily mine. Test hook (dev login + PVP_TEST=1 only): skip the greenhorn rules for the two-browser e2e.
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
@@ -103,7 +105,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const unregisterScumTurns = registerTurnSource(scumSource(scum));
   if (barnTest && Number(env.SLOTS_TEST_GAP_MS) >= 0 && env.SLOTS_TEST_GAP_MS) SLOTS.minGapMs = Number(env.SLOTS_TEST_GAP_MS); // e2e only: quicker API spins
   const market = new Market({ store: service.store, accounts, now: service.now, fetchImpl, sources: marketSources, snapshots: snapshots ?? (env.NODE_ENV === 'production' && !marketSources) });
-  service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.circuit = circuit; service.sessions = sessions;
+  service.market = market; service.mines = mines; service.pvp = pvp; service.barn = barn; service.trades = trades; service.circuit = circuit; service.sessions = sessions;
   try {
     const mig = mines.migrateHeesheeSteals();
     if (mig.activeStolen || mig.stamped) console.log('[heeshee] mid-shift steals', mig);
@@ -374,6 +376,12 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/circuit/jar', needPlayer, wrap((req) => circuit.jar(req.player.id, req.body || {})));
   api.post('/circuit/toll', needPlayer, wrap((req) => circuit.payToll(req.player.id, req.body || {})));
   api.post('/circuit/give-up', needPlayer, wrap((req) => circuit.giveUp(req.player.id)));
+  // The trading post. Cash offered is held from the offer until the trade closes (server/trades.js).
+  api.get('/barn/trades', needPlayer, wrap((req) => trades.view(req.player.id, { seen: req.query.seen === '1' })));
+  api.post('/barn/trades', needPlayer, wrap((req) => trades.propose(req.player.id, req.body || {})));
+  api.post('/barn/trades/:id/accept', needPlayer, wrap((req) => trades.accept(req.player.id, req.params.id)));
+  api.post('/barn/trades/:id/decline', needPlayer, wrap((req) => trades.decline(req.player.id, req.params.id)));
+  api.delete('/barn/trades/:id', needPlayer, wrap((req) => trades.cancel(req.player.id, req.params.id)));
   api.get('/barn/waiting', needPlayer, wrap((req) => ({ challenges: barn.challengeCount(req.player.id) }))); // polled for the Barn button's count
   api.post('/barn/bury', needPlayer, wrap((req) => barn.bury(req.player.id, req.body?.bug)));
   api.post('/barn/release', needPlayer, wrap((req) => barn.release(req.player.id, req.body?.bug))); // let a living bug go: a stray in the mines
@@ -419,7 +427,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    pvp.forget(p.id); mines.forget(p.id);
+    pvp.forget(p.id); mines.forget(p.id); trades.forget(p.id); // open trade offers called off, held cash returned
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();
