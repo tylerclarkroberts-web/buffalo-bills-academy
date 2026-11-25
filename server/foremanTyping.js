@@ -1,13 +1,38 @@
 // Extra-mad Foreman typing test: you saw the Heeshee Mazode and bailed before it took your bug.
 // The prompt, speed, and accuracy are checked on the server. The client cannot send a fake elapsed time;
-// an attempt starts only when the server stamps attemptStartedAt.
-export const TYPING_PROMPT = 'Tyler Clark Roberts is number one. His legs are number one. His eyes are number one. His muscles are number one. Tyler is number one.';
+// an attempt starts only when the server stamps attemptStartedAt. A compact input-event trace has to
+// match the text (enough single-character inserts, no one big dump) or the attempt is rejected.
+export const TYPING_PROMPTS = [
+  'Tyler Clark Roberts is number one. His legs are number one. His eyes are number one. His muscles are number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His heart is number one. His stare is number one. His backbone is number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His pulse is number one. His voice is number one. His own word is number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His eyes are number one. His heart is number one. His raw grit is number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His stare is number one. His legs are number one. His own word is number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His voice is number one. His pulse is number one. His backbone is number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His heart is number one. His eyes are number one. His raw grit is number one. Tyler is number one.',
+  'Tyler Clark Roberts is number one. His legs are number one. His voice is number one. His own word is number one. Tyler is number one.',
+];
+export const TYPING_PROMPT = TYPING_PROMPTS[0];
 export const TYPING_WPM = 80;
 export const TYPING_ACCURACY = 0.95;
 /** Matches client/src/mines/heeshee.js APPEAR_AFTER_MS: after this, the Heeshee is in the tunnels. */
 export const HEESHEE_APPEAR_MS = 5000;
 /** World-class burst pace. Anything faster is treated as a paste, not typing. */
 export const TYPING_MAX_WPM = 200;
+/** Largest single insert the server will accept as typing. Bigger is a dump. */
+export const TYPING_MAX_INSERT = 2;
+/** Insert events must be at least this fraction of the submitted text length. */
+export const TYPING_TRACE_MIN = 0.9;
+/** Keep this many start/submit rows in foreman.json after passes. */
+export const TYPING_LOG_MAX = 2000;
+
+export const TYPING_BLOCKED_INPUT = new Set([
+  'insertFromPaste',
+  'insertReplacementText',
+  'insertFromDrop',
+  'insertFromYank',
+  'insertFromPasteAsQuotation',
+]);
 
 export const TYPING_RANTS = [
   [
@@ -35,9 +60,16 @@ export const TYPING_JABS = {
   accuracy: 'Dagnabbit, that was sloppy. Ninety-five percent or it don\'t count. Start over.',
   short: 'That ain\'t the whole thing. I said EVERY word. Try again.',
   early: 'Nice try, paste-hands. You type it. You don\'t dump it. Start over.',
+  keys: 'Nice try, paste-hands. You type it. You don\'t dump it. Start over.',
 };
 
 export const TYPING_PRAISE = 'WELL I\'LL BE. You can type and you meant it. Get back down there, and don\'t run next time.';
+
+export function pickTypingPrompt(randInt) {
+  const n = TYPING_PROMPTS.length;
+  const i = Math.max(0, Number(randInt?.(n)) || 0) % n;
+  return { prompt: TYPING_PROMPTS[i], promptIndex: i };
+}
 
 export function minTypingMs(prompt = TYPING_PROMPT) {
   const words = String(prompt).length / 5;
@@ -89,4 +121,80 @@ export function publicTypingStats(stats) {
     passed: !!stats.passed,
     ...(stats.fail ? { fail: stats.fail } : {}),
   };
+}
+
+export function shouldBlockTypingInput(inputType, data) {
+  const type = String(inputType || '');
+  if (TYPING_BLOCKED_INPUT.has(type)) return true;
+  if (type.startsWith('insert') && String(data ?? '').length > TYPING_MAX_INSERT) return true;
+  return false;
+}
+
+export function emptyTypingTrace() {
+  return { inserts: 0, chars: 0, deletes: 0, maxInsert: 0, blocked: 0, firstMs: 0, lastMs: 0 };
+}
+
+/** Honest one-character-at-a-time trace for tests and for a client that already typed `text`. */
+export function typingTraceFor(text, { deletes = 0, maxInsert = 1, spanMs = 8_000 } = {}) {
+  const typed = String(text ?? '');
+  return {
+    inserts: typed.length + deletes,
+    chars: typed.length + deletes,
+    deletes,
+    maxInsert,
+    firstMs: 1,
+    lastMs: 1 + Math.max(0, spanMs),
+  };
+}
+
+export function recordTypingInput(trace, inputType, data, now = Date.now()) {
+  const type = String(inputType || '');
+  const chunk = String(data ?? '');
+  if (shouldBlockTypingInput(type, chunk)) {
+    trace.blocked = (trace.blocked || 0) + 1;
+    return { blocked: true };
+  }
+  if (!trace.firstMs) trace.firstMs = now;
+  trace.lastMs = now;
+  if (type.startsWith('insert')) {
+    if (!chunk.length && (type === 'insertParagraph' || type === 'insertLineBreak')) return { blocked: false };
+    const size = chunk.length || 1;
+    trace.inserts += 1;
+    trace.chars += size;
+    if (size > trace.maxInsert) trace.maxInsert = size;
+  } else if (type.startsWith('delete')) {
+    trace.deletes += 1;
+  }
+  return { blocked: false };
+}
+
+export function publicTypingTrace(trace) {
+  const t = trace || emptyTypingTrace();
+  return {
+    inserts: t.inserts | 0,
+    chars: t.chars | 0,
+    deletes: t.deletes | 0,
+    maxInsert: t.maxInsert | 0,
+    firstMs: t.firstMs || 0,
+    lastMs: t.lastMs || 0,
+  };
+}
+
+export function verifyTypingTrace(text, trace) {
+  const typed = String(text ?? '');
+  if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
+    return { ok: false, fail: 'keys' };
+  }
+  const inserts = Number(trace.inserts);
+  const chars = Number(trace.chars);
+  const deletes = Number(trace.deletes);
+  const maxInsert = Number(trace.maxInsert);
+  if (![inserts, chars, maxInsert].every(Number.isFinite) || inserts < 0 || chars < 0 || maxInsert < 0) {
+    return { ok: false, fail: 'keys' };
+  }
+  if (Number.isFinite(deletes) && deletes < 0) return { ok: false, fail: 'keys' };
+  if (maxInsert > TYPING_MAX_INSERT) return { ok: false, fail: 'keys' };
+  if (inserts < Math.ceil(typed.length * TYPING_TRACE_MIN)) return { ok: false, fail: 'keys' };
+  if (chars < typed.length) return { ok: false, fail: 'keys' };
+  return { ok: true, fail: null };
 }

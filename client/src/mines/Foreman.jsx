@@ -4,6 +4,7 @@
 // Music and grunts only play when the mines ♪ toggle is on.
 import React, { useEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
+import { emptyTypingTrace, recordTypingInput, publicTypingTrace } from '../../../server/foremanTyping.js';
 import { reducedMotion } from '../themes/store.js';
 import { ForemanScene } from './foremanScene.js';
 import { ForemanAudio } from './foremanAudio.js';
@@ -16,7 +17,7 @@ export default function Foreman({ pending, sound, onDone }) {
   const farewell = pending.reason === 'paid' || pending.reason === 'heeshee';
   const typingTest = pending.kind === 'typing' || pending.reason === 'heeshee-quit';
   const prompt = pending.prompt || '';
-  const canvas = useRef(null), scene = useRef(null), audio = useRef(null), input = useRef(null), starting = useRef(null);
+  const canvas = useRef(null), scene = useRef(null), audio = useRef(null), input = useRef(null), starting = useRef(null), strokes = useRef(emptyTypingTrace());
   const still = useRef(reducedMotion()).current;
   const [lines] = useState(pending.lines);
   const [idx, setIdx] = useState(0);
@@ -70,6 +71,10 @@ export default function Foreman({ pending, sound, onDone }) {
     else { setStage('math'); setAnswer(''); say(problem.word ? 'Word problem. Listen close, sport:' : `Quick now: what's ${problem.text}?`); setTimeout(() => input.current?.focus(), 80); }
   }
   function blockPaste(e) { e.preventDefault(); }
+  function resetTrace() { strokes.current = emptyTypingTrace(); }
+  function onBeforeInput(e) {
+    if (recordTypingInput(strokes.current, e.inputType, e.data).blocked) e.preventDefault();
+  }
   async function beginTyping() {
     if (startedAt) return startedAt;
     if (starting.current) return starting.current;
@@ -106,10 +111,10 @@ export default function Foreman({ pending, sound, onDone }) {
     if (!start) return;
     setBusy(true);
     try {
-      const r = await api('POST', '/mines/foreman/typing/submit', { id: pending.id, text: typed });
+      const r = await api('POST', '/mines/foreman/typing/submit', { id: pending.id, text: typed, trace: publicTypingTrace(strokes.current) });
       if (r.passed) { setDone(r); setGrade(r); setStage('done'); setText(r.line); setShown(r.line.length); audio.current.music(false); }
       else {
-        setGrade(r); setStartedAt(null); setTyped('');
+        setGrade(r); setStartedAt(null); setTyped(''); resetTrace();
         setText(r.jab); setShown(r.jab.length);
         if (scene.current) scene.current.yell = 1;
         if (!still) { setShake(true); setTimeout(() => setShake(false), 450); }
@@ -120,7 +125,7 @@ export default function Foreman({ pending, sound, onDone }) {
     finally { setBusy(false); }
   }
   function retryTyping() {
-    setTyped(''); setGrade(null); setStartedAt(null); setDone(null);
+    setTyped(''); setGrade(null); setStartedAt(null); setDone(null); resetTrace();
     say('Again. From the top. And do not paste.');
     setTimeout(() => input.current?.focus(), 30);
   }
@@ -158,6 +163,7 @@ export default function Foreman({ pending, sound, onDone }) {
               data-test="fm-type-input"
               value={typed}
               onChange={onTyped}
+              onBeforeInput={onBeforeInput}
               onPaste={blockPaste}
               onDrop={blockPaste}
               onContextMenu={blockPaste}
