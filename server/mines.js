@@ -13,6 +13,7 @@ import { rarityOf, WILD_ODDS, RARE_TIER, LEGENDARY } from './engine/bug-types.js
 import { HEESHEE_RETURN } from './foreman.js';
 import { HEESHEE_APPEAR_MS } from './foremanTyping.js';
 import { STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, isSteeze } from './engine/steeze.js';
+import { WormSwarm, suckUnits, wormPublic, WORM_SUCK_MAX_GAP_MS, WORM_TILE, WORM_MINE_REACH } from './engine/worms.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
 // Probabilities are out of 100,000 so 0.01% is exact. The three rare finds are each worth the same on average:
@@ -153,7 +154,7 @@ function reloadRequired() {
 }
 
 export class Mines {
-  constructor({ store, accounts, now, randInt, scareInt, poolInt, caveInt, twinInt, vein, barn, foreman, owned, layout }) {
+  constructor({ store, accounts, now, randInt, scareInt, poolInt, caveInt, twinInt, wormInt, vein, barn, foreman, owned, layout }) {
     this.owned = owned || (() => ({})); // player id -> General Store items they own (wired to the shop in app.js)
     this.foreman = foreman || null; // v45
     this.store = store; this.accounts = accounts; this.now = now; this.randInt = randInt;
@@ -176,6 +177,8 @@ export class Mines {
     this.busy = () => false; // set by the PvP module: no mining while your bug is mid-battle
     this.doc = store.loadDoc('mines', { active: {} });
     this.holds = new Map(); // Never resume a held button after a disconnect or restart.
+    this.wormInt = wormInt || ((n) => crypto.randomInt(n)); // worms have their own source: they never see the payout roll
+    this.swarms = new Map(); // in-memory only: a restart starts with a clean visor, same as before
     // Horror Night (engine/horror.js): the clock decides. horrorForce (true/false) overrides it; only the dev-login
     // test route in app.js ever sets it, and that route is never mounted in production.
     this.horrorForce = null;
@@ -436,7 +439,7 @@ export class Mines {
     return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(taken ? { bugStolen: { name: guide?.name || 'Your bug', line: HEESHEE_GONE } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.part ? { part: s.part } : {}), ...(s.plunged ? { plunged: s.plunged } : {}), ...(s.caught ? { caught: s.caught } : {}),
         ...(s.part === 'lamp' && s.pools[s.index].quantity === null ? { peek: acidFillAmount(cap(s), s.pools[s.index].roll, cap(s) - s.collected) / 1000 } : {}), ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
-        pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })) } : {}) };
+        pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })), ...this.wormFields(s) } : {}) };
   }
 
   target(s, poolId) {
@@ -484,6 +487,7 @@ export class Mines {
     this.requireVersion(request);
     if (!['start', 'continue', 'stop'].includes(request.action)) throw new GameError('Choose a valid mining action.', 400);
     const completed = this.completed(player, shiftId, request); if (completed) return completed;
+    this.tickWorms(player, { hold: true }); // already-latched worms keep drinking while you mine; new ones still wait
     const cur = this.current(player, shiftId);
     if (cur.rulesVersion !== 2) throw reloadRequired();
     const now = this.now();
@@ -610,7 +614,9 @@ export class Mines {
 
   settle(player, shift) {
     this.holds.delete(player.id);
-    let cur = shift;
+    this.tickWorms(player, { hold: true });
+    this.dropSwarm(player.id);
+    let cur = this.doc.active[player.id] || shift;
     if (!cur.settlement) {
       const r = cur.outcome, full = cap(cur);
       // Everything pays by the share of the bucket filled. (`per` only differs for a shift dug when buckets came in sizes.)
@@ -622,6 +628,7 @@ export class Mines {
       const rich = r.outcome === 'normal' && cur.collected > 0 ? worthOf(cur) / cur.collected : 1;
       const result = cur.collected > 0 ? { ...r, shiftId: cur.id, collected: cur.collected / 1000, capacity: full / 1000,
         amount: Math.round(r.amount * hazard * rich * 100 * cur.collected / per) / 100, ...(hazard > 1 ? { hazard } : {}), ...(rich > 1.004 ? { rich: Math.round(rich * 100) / 100 } : {}),
+        ...(cur.sucked > 0 ? { sucked: cur.sucked / 1000 } : {}),
         ...(r.outcome === 'dud' && cur.collected < full ? { text: 'Mostly mud. The foreman pays for what you brought and questions your judgment.' } : {}) } : null;
       if (result && cur.twin) { // decided at clock-in, never sent to the browser, met only on the way out
         const took = Math.floor(result.amount * 100 * TWIN_CUT) / 100;
@@ -671,6 +678,9 @@ export class Mines {
    */
   applyRaid(rec) {
     if (this.doc.raids?.[rec.id]) return this.doc.raids[rec.id];
+    if (this.doc.active[rec.loser]) this.tickWorms({ id: rec.loser }, { hold: true });
+    if (this.doc.active[rec.winner]) this.tickWorms({ id: rec.winner }, { hold: true });
+    this.dropSwarm(rec.loser);
     const next = { ...this.doc, active: { ...this.doc.active }, completed: { ...this.doc.completed }, raids: { ...this.doc.raids } };
     const lost = next.active[rec.loser], won = next.active[rec.winner];
     let taken = 0, gained = 0;
@@ -702,6 +712,102 @@ export class Mines {
     const next = { ...this.doc, active: { ...this.doc.active }, completed: { ...this.doc.completed }, nephew: { ...this.doc.nephew } };
     delete next.active[playerId]; delete next.completed[playerId]; delete next.nephew[playerId];
     this.store.saveDoc('mines', next); this.doc = next; this.holds.delete(playerId);
+    this.dropSwarm(playerId);
+  }
+
+  dropSwarm(playerId) { this.swarms.delete(playerId); }
+
+  /** In-reach of the current pool, same 1.9 m the MINE button uses (pose is in tiles). */
+  acidInReach(shift, pose) {
+    if (!pose || !Number.isFinite(pose.x) || !Number.isFinite(pose.y) || shift?.rulesVersion !== 2) return false;
+    const pool = shift.pools?.[shift.index];
+    if (!pool || pool.remaining === 0) return false;
+    return Math.hypot((pose.x - pool.x) * WORM_TILE, (pose.y - pool.y) * WORM_TILE) <= WORM_MINE_REACH;
+  }
+
+  wormRow(playerId, shift) {
+    let row = this.swarms.get(playerId);
+    if (!row || row.shiftId !== shift.id) {
+      const swarm = new WormSwarm(tierInfo(shift.tier), () => this.wormInt(1_000_000) / 1_000_000);
+      const elapsed = Math.max(0, this.now() - shift.startedAt);
+      swarm.clock = elapsed; // grace is from clock-in, not from this process's first heartbeat
+      row = { shiftId: shift.id, swarm, lastAt: this.now(), frac: 0 };
+      this.swarms.set(playerId, row);
+    }
+    return row;
+  }
+
+  /** Fields the browser draws: the live worms and whether they are drinking. */
+  wormFields(shift) {
+    if (!shift) return {};
+    let found = null;
+    for (const r of this.swarms.values()) if (r.shiftId === shift.id) { found = r; break; }
+    const worms = found ? found.swarm.worms.map((w) => wormPublic(w, found.swarm.clock)) : [];
+    const sucking = worms.some((w) => w.sucking) && shift.collected > 0;
+    return { worms, sucking, sucked: (shift.sucked || 0) / 1000 };
+  }
+
+  /**
+   * Advance this miner's worms and drain the bucket they are carrying.
+   * `pose` is in tiles (the PvP heartbeat). `slash` is one worm id or a list, applied before the drain.
+   * `hold` (or acid in reach, or a bug battle) stops new landings; already-latched worms keep drinking.
+   * A late or skipped heartbeat is billed for at most WORM_SUCK_MAX_GAP_MS.
+   */
+  tickWorms(player, { pose = null, slash = null, hold = false, spawn = false } = {}) {
+    const cur = this.doc.active[player.id];
+    if (!cur || cur.rulesVersion !== 2 || cur.settlement) { this.dropSwarm(player.id); return { worms: [] }; }
+    const now = this.now();
+    const row = this.wormRow(player.id, cur);
+    const swarm = row.swarm;
+    const t0 = swarm.clock;
+    const gap = Math.min(WORM_SUCK_MAX_GAP_MS, Math.max(0, now - row.lastAt));
+    // Bill first, including a worm you just cut: it was on you for this beat. Then slash, then maybe land a new one.
+    const units = suckUnits(swarm.worms, t0, t0 + gap);
+    if (slash != null) {
+      const ids = Array.isArray(slash) ? slash : [slash];
+      for (const id of ids) swarm.slash(Number(id) || 0);
+    }
+    const maze = shiftMaze(cur);
+    const far = farthest(maze);
+    const tx = pose && Number.isFinite(pose.x) ? Math.round(pose.x) : null;
+    const ty = pose && Number.isFinite(pose.y) ? Math.round(pose.y) : null;
+    const out = tx != null && ty != null ? maze.dist[ty]?.[tx] : undefined;
+    const scale = out >= 0 ? 2 * out / far : 1;
+    const noLand = hold || this.acidInReach(cur, pose) || this.busy(player.id);
+    if (gap > 0) swarm.tick(gap, { hold: noLand || spawn, scale });
+    if (spawn) swarm.spawn();
+    row.lastAt = now;
+    row.frac = (row.frac || 0) + units * 1000;
+    const take = Math.min(cur.collected, Math.floor(row.frac));
+    row.frac -= take;
+    let suckedJust = 0;
+    if (take > 0) {
+      const next = structuredClone(cur);
+      next.worth = next.collected > 0 ? worthOf(next) * (next.collected - take) / next.collected : 0;
+      next.collected -= take;
+      next.sucked = (next.sucked || 0) + take;
+      this.commit(player.id, next);
+      suckedJust = take;
+    }
+    const live = this.doc.active[player.id] || cur;
+    const worms = swarm.worms.map((w) => wormPublic(w, swarm.clock));
+    const sucking = worms.some((w) => w.sucking) && live.collected > 0;
+    return { worms, collected: live.collected / 1000, rich: live.collected > 0 ? Math.round(100 * worthOf(live) / live.collected) / 100 : 1,
+      sucked: (live.sucked || 0) / 1000, suckedJust: suckedJust / 1000, sucking };
+  }
+
+  /** Dev/e2e only (app.js mounts this behind DEV_LOGIN): fill the bucket and/or stick a worm on the visor. */
+  debugWorm(player, body = {}) {
+    const cur = this.doc.active[player.id];
+    if (!cur || cur.rulesVersion !== 2 || cur.settlement) throw new GameError('Clock in first.', 409);
+    if (body.fill) {
+      const next = structuredClone(cur);
+      const add = Math.min(cap(next) - next.collected, Math.round(Number(body.fill) * 1000));
+      if (add > 0) { next.collected += add; next.worth += add; this.commit(player.id, next); }
+    }
+    const pose = body.pose && Number.isFinite(body.pose.x) ? body.pose : { x: 0, y: 0 };
+    const drained = this.tickWorms(player, { pose, spawn: !!body.spawn, hold: !!body.hold });
+    return { ...this.publicShift(this.doc.active[player.id], true, player.id, this.guideBug(player.id)), ...drained };
   }
 }
 

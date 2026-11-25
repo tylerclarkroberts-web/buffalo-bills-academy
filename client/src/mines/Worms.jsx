@@ -69,8 +69,9 @@ export default function Worms({ worms, cutting, onCut }) {
       <div className="m-worms" aria-hidden="true" data-mode={mode}>
         <canvas ref={canvas} className="m-worm3d" hidden={flat} />
         {worms.map((w) => (
-          <div key={w.id} className={`m-worm${flat ? '' : ' hit'}`} style={place(w)} data-test="worm" onPointerDown={down(w)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { swipe.current = null; }}>
+          <div key={w.id} className={`m-worm${flat ? '' : ' hit'}${w.sucking ? ' sucking' : ''}`} style={place(w)} data-test="worm" data-sucking={w.sucking || undefined} onPointerDown={down(w)} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { swipe.current = null; }}>
             {flat && <div className="w-in"><WormArt id={w.id} /></div>}
+            {w.sucking && <span className="m-suck-drops" aria-hidden="true"><i /><i /><i /><i /></span>}
           </div>
         ))}
         {cutting.map(({ w }) => (
