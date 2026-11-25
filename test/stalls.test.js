@@ -40,12 +40,15 @@ test('a barn holds three, the first is the partner, and a paid stall makes room 
   assert.equal(new Set(bugs.map(b => b.id)).size, 3, 'each has its own id');
   assert.equal(barn.view(ann).pen.id, bugs[0].id, 'pages that know one bug get the partner');
   assert.throws(() => barn.layEgg(ann), /empty barn/);
-  assert.throws(() => catchWild(ann), /Every stall is taken/);
+  assert.equal(catchWild(ann).length, STALLS, 'every stall taken: the catch goes to GFR Farms instead');
+  assert.equal(barn.view(ann).stable.farm.length, 1);
   const view = barn.buildStall(ann);
   assert.deepEqual([view.stable.stalls, view.stable.nextStall, store.players[ann].bankroll], [STALLS + 1, STALL_COSTS[1], 2000 - STALL_COSTS[0]]);
-  assert.throws(() => barn.buildStall(ann), /need \$4,000/, 'the next one costs more than is left');
+  assert.throws(() => barn.buildStall(ann), /need \$2,000/, 'the next one costs more than is left');
+  assert.deepEqual(STALL_COSTS, [1500, 2000, 2000], 'the fourth $1,500; the fifth and sixth $2,000 each');
   assert.equal(barn.stalls(ann), STALLS + 1, 'and nothing was built');
   assert.equal(catchWild(ann).length, 4);
+  assert.equal(barn.view(ann).stable.farm.length, 1, 'the farm bug stays at the farm until it is brought back');
 });
 
 test('a stalled bug gets hungry five times slower, and care still counts for it', t => {

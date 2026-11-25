@@ -632,7 +632,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     if (m.over) Object.assign(m, { xpEarned: m.over.bug?.xp, levelBefore: m.over.bug?.levelBefore, levelAfter: m.over.bug?.levelAfter,
       ...(m.over.reason === 'abandoned' || m.over.reason === 'draw' ? { result: 'draw', verdict: m.wild ? 'Time. It wanders off unbeaten.' : 'No contest. Nobody gets robbed.' } : {}),
       ...(m.over.reason === 'decision' ? { verdict: `${m.over.won ? m.you.name : m.them.name} wins on points.` }
-        : m.wild && m.over.reason === 'jarred' ? { verdict: `In the jar. ${m.over.caught} has a stall waiting.` }
+        : m.wild && m.over.reason === 'jarred' ? { verdict: m.over.farm ? `In the jar. Every stall is taken, so ${m.over.caught} is off to GFR Farms.` : `In the jar. ${m.over.caught} has a stall waiting.` }
         : m.wild && m.over.rage ? { rage: m.over.rage, verdict: `ROID RAGE. ${m.you.name} went berserk and crushed the ${m.over.rage.killed} before you could get a jar on it. Nothing left to catch.` }
         : m.wild && m.over.reason === 'fainted' && m.over.won ? { verdict: m.jar ? `${m.them.name} is out cold. Jar it before it comes to.` : m.over.awake ? `${m.them.name} comes to and slinks off into the dark.` : `The wild ${m.them.name} slinks off into the dark.` }
         : m.wild && m.over.reason !== 'fainted' && m.over.reason !== 'draw' && m.over.reason !== 'abandoned' ? { verdict: 'You ran. It keeps the tunnel.' } : {}),

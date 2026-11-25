@@ -200,7 +200,7 @@ test('a jar needs a knockout, a jar and a free stall; a miss spends one of three
   f.shop.buy(f.ann, 'jar'); f.shop.buy(f.ann, 'jar');
   assert.throws(() => f.shop.use(f.ann, 'jar'), /down the mine/, 'not something you use from the store');
   const chance = jarChance(rarityOf(s.wilds[0].species), s.wilds[0].level - 10);
-  assert.deepEqual(f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }).battle.jar, { have: 2, room: true, left: WILD.throws, chance, keeps: s.wilds[0].level }, 'the page is shown the same odds');
+  assert.deepEqual(f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId }).battle.jar, { have: 2, room: true, farm: false, left: WILD.throws, chance, keeps: s.wilds[0].level }, 'the page is shown the same odds');
   f.jarRoll = Math.round(chance * 1000); // just misses
   const miss = f.pvp.jar(f.ann, body);
   assert.deepEqual([miss.held, miss.battle.jar.have, miss.battle.jar.left, f.barn.bugs('ann').length], [false, 1, WILD.throws - 1, 1]);
@@ -299,15 +299,19 @@ test('an interrupted winning throw returns the jar or keeps its catch, once', t 
   assert.equal(f.barn.bugs(f.ann.id).length, 2);
 });
 
-test('with every stall taken a jar is refused before it is spent; running leaves the partner at full HP', t => {
+test('with every stall taken a jar still works and the catch goes to GFR Farms; running leaves the partner at full HP', t => {
   const f = fixture(t); f.partner(10);
   f.barn.doc.bench.ann = [{ stage: 'egg', eggAt: 5, hatchAt: f.clock.now + 9e9 }, { stage: 'egg', eggAt: 6, hatchAt: f.clock.now + 9e9 }];
   f.shop.buy(f.ann, 'jar');
   const s = f.walkUp(); f.pvp.meetWild(f.ann, { shiftId: s.shiftId });
   const battle = f.fight();
   knockOut(f, battle);
-  assert.throws(() => f.pvp.jar(f.ann, { battleId: battle.id }), /Every stall is taken/);
-  assert.equal(f.shop.jars('ann'), 1);
+  f.jarRoll = 0; // it holds
+  const r = f.pvp.jar(f.ann, { battleId: battle.id });
+  assert.equal(r.held, true); assert.equal(f.shop.jars('ann'), 0);
+  assert.equal(f.barn.bugs('ann').length, 3, 'the stalls are as they were');
+  assert.equal(f.barn.farmBugs('ann').length, 1, 'and the catch is at GFR Farms');
+  assert.equal(f.pvp.battles.get(battle.id).over.farm, true, 'the mine says so');
   const g = fixture(t); g.partner(10);
   const s2 = g.walkUp(); g.pvp.meetWild(g.ann, { shiftId: s2.shiftId });
   const ran = g.fight(); ran.fight.S.hp[0] = Math.ceil(ran.fight.S.maxHp[0] / 2);

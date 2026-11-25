@@ -61,7 +61,7 @@ function Jar({ jar, level, onJar, setToss, reduced }) {
     setBusy(false);
   };
   return <button className={`btn small bout-jar${why ? '' : ' ready'}`} onClick={throwIt} disabled={busy || !!why} data-test="bout-jar">
-    {said || why || `Throw a jar · ${pct(jar.chance)} to hold${jar.keeps < level ? ` · arrives Lv ${jar.keeps}` : ''}`}<small> · {jar.left} {jar.left === 1 ? 'throw' : 'throws'} left{jar.have > 0 ? `, ${jar.have} ${jar.have === 1 ? 'jar' : 'jars'}` : ''}</small>
+    {said || why || `Throw a jar · ${pct(jar.chance)} to hold${jar.keeps < level ? ` · arrives Lv ${jar.keeps}` : ''}`}<small> · {jar.left} {jar.left === 1 ? 'throw' : 'throws'} left{jar.have > 0 ? `, ${jar.have} ${jar.have === 1 ? 'jar' : 'jars'}` : ''}{jar.farm ? ' · stalls full: to GFR Farms' : ''}</small>
   </button>;
 }
 /** The thrown jar, over the ring: `toss` is fly, shake, held or miss. */

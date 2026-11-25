@@ -148,6 +148,12 @@ export function Shell({ path, children }) {
           <Link to="/barn/center" className="btn small" data-test="evo-news-talk">Talk to Nurse</Link>
         </div>
       )}
+      {me?.foremanNote && !work && (
+        <div className="evo-news-banner foreman-note-banner" role="status" data-test="foreman-note-banner">
+          <p>{me.foremanNote.text}</p>
+          <button type="button" className="btn small" data-test="foreman-note-ack" onClick={() => api('POST', '/barn/foreman-note/ack', { id: me.foremanNote.id }).then(() => refreshSession()).catch(() => {})}>Got it</button>
+        </div>
+      )}
       <main id="main" className="stage">{children}<Fawn /></main>
       <footer className="legal">
         {/* The course name is a door. It is not supposed to look like one. */}
