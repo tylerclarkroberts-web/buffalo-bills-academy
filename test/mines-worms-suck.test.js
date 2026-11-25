@@ -214,3 +214,70 @@ test('extract keeps draining a latched worm, and a PvP heartbeat carries the sla
   assert.equal(view.worms.length, 0);
   assert.equal(view.suckedJust, 2);
 });
+
+// Joe, Nov 25: "my acid only gets to 2 buckets then disappears". A worm on an empty bucket ran up a tab (the part it
+// could not drink stayed owed), so the next acid mined vanished on the following beat, even after the worm was cut.
+test('a worm on an empty bucket runs up no tab: acid mined after the cut stays in the bucket', (t) => {
+  const f = fixture(t);
+  const s = f.start(f.ann);
+  const pose = farPose(s);
+  f.clock.now += 8000;
+  let v = f.mines.tickWorms(f.ann, { pose, spawn: true });
+  const id = v.worms[0].id;
+  for (let i = 0; i < 80; i++) { f.clock.now += 250; v = f.tick(f.ann, s, pose); } // 20 s of drinking from nothing
+  assert.equal(v.collected, 0);
+  assert.equal(v.sucked, 0, 'nothing was in the bucket, so nothing was drunk');
+  f.clock.now += 250;
+  v = f.tick(f.ann, s, pose, { slash: id });
+  assert.equal(v.worms.length, 0);
+
+  // Now mine for real: inspect, hold, two pulses.
+  f.mines.probe(f.ann, s.shiftId, { ...V, poolId: s.currentPoolId });
+  f.mines.extract(f.ann, s.shiftId, { ...V, poolId: s.currentPoolId, action: 'start' });
+  f.clock.now += 1000;
+  f.mines.extract(f.ann, s.shiftId, { ...V, poolId: s.currentPoolId, action: 'continue' });
+  f.clock.now += 1000;
+  const mined = f.mines.extract(f.ann, s.shiftId, { ...V, poolId: s.currentPoolId, action: 'stop' });
+  assert.equal(mined.collected, 10);
+  for (let i = 0; i < 8; i++) { f.clock.now += 250; v = f.tick(f.ann, s, pose); }
+  assert.equal(v.collected, 10, 'the acid does not disappear on the next heartbeat');
+  assert.equal(v.sucked, 0);
+  f.clock.now += 1000;
+  const done = f.mines.quit(f.ann, s.shiftId, V);
+  assert.equal(done.result.collected, 10, 'clock-out pays the full bucket');
+  assert.equal(done.result.sucked, undefined);
+});
+
+test('a worm still on you drinks new acid at the normal rate, not the backlog from an empty bucket', (t) => {
+  const f = fixture(t);
+  const s = f.start(f.ann);
+  const pose = farPose(s);
+  f.clock.now += 8000;
+  f.mines.tickWorms(f.ann, { pose, spawn: true });
+  for (let i = 0; i < 40; i++) { f.clock.now += 250; f.mines.tickWorms(f.ann, { pose }); } // 10 s, empty bucket
+  f.fill(f.ann, 10);
+  f.clock.now += 1000;
+  const v = f.mines.tickWorms(f.ann, { pose });
+  assert.equal(v.collected, 8, 'one second on 10 units costs 2, not the 18 it "drank" from nothing');
+  assert.equal(v.suckedJust, 2);
+});
+
+test('a worm that empties a small bucket keeps no remainder once it is cut', (t) => {
+  const f = fixture(t);
+  const s = f.start(f.ann);
+  f.fill(f.ann, 3);
+  const pose = farPose(s);
+  f.clock.now += 8000;
+  let v = f.mines.tickWorms(f.ann, { pose, spawn: true });
+  const id = v.worms[0].id;
+  f.clock.now += WORM_SUCK_DELAY_MS;
+  for (let i = 0; i < 5; i++) { f.clock.now += 1000; v = f.mines.tickWorms(f.ann, { pose }); } // would be 10 units
+  assert.equal(v.collected, 0);
+  assert.equal(v.sucked, 3, 'it drank the 3 that were there');
+  v = f.mines.tickWorms(f.ann, { pose, slash: id });
+  f.fill(f.ann, 10);
+  f.clock.now += 250;
+  v = f.mines.tickWorms(f.ann, { pose });
+  assert.equal(v.collected, 10);
+  assert.equal(v.sucked, 3);
+});

@@ -779,7 +779,9 @@ export class Mines {
     row.lastAt = now;
     row.frac = (row.frac || 0) + units * 1000;
     const take = Math.min(cur.collected, Math.floor(row.frac));
-    row.frac -= take;
+    // Only the sub-thousandth remainder carries to the next beat. A worm that drinks more than the bucket holds (an empty
+    // or nearly empty bucket) gets nothing for the rest: it must not run up a tab that eats the next acid you mine.
+    row.frac = take < Math.floor(row.frac) ? 0 : row.frac - take;
     let suckedJust = 0;
     if (take > 0) {
       const next = structuredClone(cur);
