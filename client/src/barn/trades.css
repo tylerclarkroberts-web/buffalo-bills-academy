@@ -1,0 +1,30 @@
+/* The Trading Post (Trades.jsx). Tight rows, pixel thumbs, no nested boxes. */
+.tr { display: grid; gap: 8px; align-content: start; min-height: 0; }
+.tr .barn-tabs { align-items: center; }
+.tr-held { margin-left: auto; }
+.tr-ok { color: var(--gold); margin: 0; }
+.tr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: min(58vh, 520px); overflow: auto; }
+.tr-offer { display: grid; gap: 4px; padding: 6px 10px; border-left: 3px solid rgba(255,255,255,.18); background: rgba(0,0,0,.18); }
+.tr-offer.in { border-left-color: var(--gold); background: rgba(242,198,90,.07); }
+.tr-offer.fresh { border-left-color: #8fd18f; }
+.tr-who { margin: 0; }
+.tr-swap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tr-side { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.tr-bug { display: grid; justify-items: center; width: 60px; }
+.tr-bug small, .tr-chip small { font-size: 10px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-bug .barn-thumb, .tr-chip .barn-thumb { width: 44px; height: 36px; image-rendering: pixelated; }
+.tr-cash { font: 700 14px var(--mono); color: var(--gold); }
+.tr-for { color: var(--paper-2); font-style: italic; }
+.tr-new { display: grid; gap: 4px; }
+.tr-with select { margin-left: 6px; }
+.tr-h { margin: 4px 0 0; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--paper-2); }
+.tr-pick { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.tr-chip { flex: none; display: grid; justify-items: center; gap: 0; width: 66px; padding: 3px 2px; background: rgba(0,0,0,.2); border: 2px solid transparent; color: inherit; cursor: pointer; font: inherit; }
+.tr-chip span { font: 10px var(--mono); color: var(--paper-2); }
+.tr-chip.on { border-color: var(--gold); background: rgba(242,198,90,.12); }
+.tr-chip:disabled { opacity: .35; cursor: not-allowed; }
+.tr-send { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 6px; }
+.tr-money { display: flex; align-items: center; gap: 4px; font: 600 13px var(--mono); }
+.tr-money input { width: 96px; }
+.tr-note, .tr-empty { margin: 0; }
+.tr-lore { margin: 6px 0 0; font-style: italic; color: var(--paper-2); opacity: .7; text-align: center; }

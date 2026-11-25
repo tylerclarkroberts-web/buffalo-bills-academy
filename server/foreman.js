@@ -5,6 +5,7 @@
 // pays a $5 "can count" bonus, at most 3 times an hour; right after a miss pays nothing. No timer.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
+import { FOREMAN_LORE } from './engine/lore.js';
 import {
   TYPING_PROMPT, TYPING_WPM, TYPING_ACCURACY, TYPING_RANTS, TYPING_JABS, TYPING_PRAISE,
   typingStats, publicTypingStats,
@@ -175,6 +176,7 @@ export const ESCALATION = [
   'Thirty-one years in this hole and I still ain\'t found the bottom of these EXCUSES!',
   'You got me talkin\' to myself, sport, and I\'m losin\' the argument!',
   'Dad-gummit, even the echo sounds disappointed in you!',
+  ...FOREMAN_LORE, // he has heard the whole-set rumour too (engine/lore.js)
 ];
 export const CLOSERS = [
   'Now. Before you set ONE muddy boot back in my mine, you\'re doin\' some figurin\'.',
