@@ -2,7 +2,7 @@
 // the bug beside its owner in the mine and the terrarium. The rest wait in stalls (doc.bench), where a bug's needs,
 // hunger and day XP run BENCH_SLOW times slower. The server decides everything:
 // whether a mine shift has an egg (mines.js), which creature is inside (rolled at pickup, hidden until it hatches),
-// when it hatches, how its needs decay, and its level. Bouts stake play money; bugs cannot be sold or traded.
+// when it hatches, how its needs decay, and its level. Bouts stake play money; bugs change hands only at the trading post (server/trades.js).
 // v33: residents are real bugs (engine/bugs.js); old hybrid rows are migrated once, quietly, on load.
 // v33: bugs can die of neglect, tamagotchi-style, but only slowly: STARVE_MS (21 days) after the last feed (or the
 // end of an automatic feeder's run). Warnings start at 7 days. Death is computed from stored times, never a timer,
@@ -417,13 +417,14 @@ export class Barn {
   view(playerId, { seen = false } = {}) {
     this.fights.sweep();
     this.expireBouts();
+    try { this.trades?.settle(); } catch (error) { console.error('Trade settle failed:', error.message); } // expired offers' cash goes home
     const player = this.store.players?.[playerId], unseenBout = seen && !!player?.barnBouts?.unseen;
     if (unseenBout) this.store.commitPlayerDrafts([{ ...player, barnBouts: { ...player.barnBouts, unseen: null } }]);
     const stable = this.stable(playerId);
     // `pen` is the partner, as every page that knows one bug expects; `lastBout` the newest fight of any of them.
     const evoNews = this.evoNewsOf(playerId);
     return { pen: stable.bugs.find((bug) => bug.partner) || null, serverNow: this.now(), stable, lastBout: stable.bugs.map((bug) => bug.lastBout).filter(Boolean).sort((a, b) => b.at - a.at)[0] || null,
-      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}), ...(evoNews ? { evoNews } : {}) };
+      ...this.board(playerId), ...this.ring(playerId), unseenBout, live: this.fights.fightOf(playerId)?.id || null, dex: Object.keys(this.doc.dex[playerId] || {}), tradeWaiting: this.trades?.count(playerId) || 0, ...(evoNews ? { evoNews } : {}) };
   }
   /** The stalls: how many, what the next one costs, and every bug in them as its owner sees it, partner first. */
   stable(playerId) {
@@ -462,7 +463,8 @@ export class Barn {
     const now = this.now(), players = this.store.players || {};
     const canFight = this.bugs(playerId).some((pen) => pen.stage === 'creature' && !pen.faintedAt && !isHeesheeHeld(pen) && levelFor(pen.xp, pen.cap) >= BOUT_LEVEL && now < this.deathAt(pen));
     return this.doc.challenges.filter(c => c.to === playerId && now < c.expiresAt).length + (players[playerId]?.barnBouts?.unseen ? 1 : 0) + (this.fights.fightOf(playerId) ? 1 : 0)
-      + (canFight ? Object.values(players).filter(p => p.id !== playerId && p.barnBouts?.open && now < p.barnBouts.open.expiresAt).length : 0);
+      + (canFight ? Object.values(players).filter(p => p.id !== playerId && p.barnBouts?.open && now < p.barnBouts.open.expiresAt).length : 0)
+      + (this.trades?.count(playerId) || 0); // trade offers waiting on them, and answers to theirs
   }
 
   /** A recent fight as anyone may watch it: the bugs as drawn and the blows, without setups, condition or wallets. */
@@ -668,7 +670,8 @@ export class Barn {
     return pen;
   }
 
-  escrow(player) { return (player?.barnBouts?.open?.stake || 0) + (player?.barnBouts?.live?.stake || 0); }
+  /** Money of theirs the barn is holding: bout stakes, and cash offered in open bug trades. Counts toward net worth. */
+  escrow(player) { return cents((player?.barnBouts?.open?.stake || 0) + (player?.barnBouts?.live?.stake || 0) + (this.trades?.escrow(player) || 0)); }
 
   /** The caller's bugs that could step into the ring now, as the ring would take them: what each line on the board is worked out against. */
   corner(playerId) {

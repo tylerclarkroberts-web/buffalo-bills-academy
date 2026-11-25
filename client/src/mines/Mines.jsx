@@ -43,6 +43,7 @@ import { DANCES, DANCE_BY_ID } from '../../../server/engine/dances.js';
 import { Crew, CREW, Flicker, ScareGate } from './horror.js';
 import JumpScare from './JumpScare.jsx';
 import './mines.css';
+import { MINE_LORE } from '../../../server/engine/lore.js';
 
 const LINES = [
   'FOREMAN: "THE ACID WON\'T MINE ITSELF."',
@@ -112,6 +113,7 @@ const LINES = [
   'THE ACID LOOKED AT YOU FIRST.',
   'A DISTANT VOICE: "HEY." JUST "HEY." KEEP WALKING.',
   'A DISTANT VOICE: "YOU DROPPED THIS." YOU DID NOT DROP ANYTHING.',
+  ...MINE_LORE, // the whole-set rumour, scratched into the rock (server/engine/lore.js)
 ];
 // Only while the visitor is on shift with you.
 const VISITOR_LINES = [

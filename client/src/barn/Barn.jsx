@@ -18,6 +18,8 @@ import { TYPES, RARITY, typeOf, edge, rarityOf } from '../../../server/engine/bu
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
 import Gym from './Gym.jsx';
+import Trades from './Trades.jsx';
+import { LORE, loreLine } from '../../../server/engine/lore.js';
 import { navigate } from '../App.jsx';
 import './barn.css';
 
@@ -287,6 +289,7 @@ function Bugdex({ seen }) {
   };
   return <div className="dex" data-test="bugdex">
     <p className="small dex-count" data-test="dex-count"><b className="num">{met.length} of {FORMS.length}</b> met{!met.length ? '. They turn up in fights and down the mine.' : met.length === FORMS.length ? '. That is all of them. They would like some privacy now.' : ''}</p>
+    <p className="small barn-lore" data-test="dex-lore">{met.length === FORMS.length ? 'Every page full. Listen. Can you hear the kneeling?' : loreLine(`dex:${met.length}`, LORE)}</p>
     <ol className="dex-grid">
       {ROSTER.map((bug, k) => <li key={bug.id} className="dex-fam" style={{ '--tc': TYPES[typeOf(bug.id)]?.color }}>{tile(FORMS[k * 3])}<div className="dex-evos">{tile(FORMS[k * 3 + 1])}{tile(FORMS[k * 3 + 2])}</div></li>)}
     </ol>
@@ -429,7 +432,7 @@ function BarnHome({ me }) {
   const [tab, setTab] = useState('card');
   const [help, setHelp] = useState(false);
   // The Barn's rooms: your stalls, the ring, the circuit, the gym, the Bugdex. /barn?room=circuit (or gym, or dex) opens on that one.
-  const [view, setView] = useState(() => { const room = new URLSearchParams(window.location.search).get('room'); return ['circuit', 'gym', 'dex'].includes(room) ? room : 'stalls'; });
+  const [view, setView] = useState(() => { const room = new URLSearchParams(window.location.search).get('room'); return ['circuit', 'gym', 'dex', 'trade'].includes(room) ? room : 'stalls'; });
   const ring = view === 'ring', stalls = view === 'stalls';
   const setRing = (on) => setView(on ? 'ring' : 'stalls');
   const ringOpened = useRef(false);
@@ -525,7 +528,7 @@ function BarnHome({ me }) {
   const makePartner = () => act(async () => { take(await api('POST', '/barn/partner', { bug: pen.id })); setMsg(`${pen.name} is coming with you now.`); });
   const build = () => act(async () => { take(await api('POST', '/barn/stalls')); await refreshSession(); setSel(null); setMsg('One new stall. It smells of sawdust and ambition.'); });
   if (!me) return <div className="screen barn"><div className="barn-empty panel"><h1 className="western">The Barn</h1><p>Sign in to see your barn.</p><SignIn /></div></div>;
-  if (!b) return <div className="screen barn"><div className="barn-empty muted">{err ? <><p role="alert">{err}</p><button className="btn" onClick={() => { setErr(''); load(); }}>Try again</button></> : 'Opening the barn doors…'}</div></div>;
+  if (!b) return <div className="screen barn"><div className="barn-empty muted">{err ? <><p role="alert">{err}</p><button className="btn" onClick={() => { setErr(''); load(); }}>Try again</button></> : <>Opening the barn doors…<p className="small barn-lore">{loreLine(Math.floor(Date.now() / 60e3))}</p></>}</div></div>;
   const now = Date.now() + skew.current;
     const waiting = b.challenges.incoming.length + b.bouts.filter((x) => x.hostId !== me.id).length;
   return (
@@ -536,7 +539,7 @@ function BarnHome({ me }) {
           <div className="barn-head-acts">
             {stable?.bugs.some((bug) => bug.stage === 'creature') && <CenterDoor urgent={stable.bugs.some((bug) => bug.fainted) || !!b.evoNews} />}
             <div className="barn-rooms" role="group" aria-label="Barn">
-              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit'], ['gym', 'Gym'], ['dex', 'Bugdex']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${id === 'ring' && waiting && !ring ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
+              {[['stalls', 'Stalls'], ['ring', waiting ? `Ring · ${waiting}` : 'Ring'], ['circuit', 'Circuit'], ['gym', 'Gym'], ['trade', b.tradeWaiting ? `Trade · ${b.tradeWaiting}` : 'Trade'], ['dex', 'Bugdex']].map(([id, label]) => <button key={id} className={`btn small${view === id ? ' on' : ' ghost'}${(id === 'ring' && waiting && !ring) || (id === 'trade' && b.tradeWaiting && view !== 'trade') ? ' waiting' : ''}`} aria-pressed={view === id} onClick={() => setView(id)} data-test={id === 'ring' ? 'ring-toggle' : `room-${id}`}>{label}</button>)}
             </div>
             <button className="btn small ghost barn-help-btn" onClick={() => setHelp(!help)} aria-expanded={help} aria-controls="barn-help" title="How the Barn works" data-test="barn-help">?</button>
             <button className="btn small ghost" onClick={() => { const v = !sound; setSnd(v); setSound(v); if (v && pen?.stage === 'creature') voice(BY_ID[pen.species]?.voice); }} aria-pressed={sound} title="Barn sounds">{sound ? '🔊' : '🔈'}</button>
@@ -555,6 +558,7 @@ function BarnHome({ me }) {
         {view === 'circuit' && <Circuit b={b} busy={busy} act={act} boutOpen={!!bout} />}
         {view === 'gym' && <Gym b={b} sel={pen?.id} busy={busy} act={act} take={take} now={now} />}
         {view === 'dex' && <Bugdex seen={b.dex || []} />}
+        {view === 'trade' && <Trades meId={me.id} Thumb={BugThumb} onChange={load} />}
         {stalls && stable?.bugs.length > 0 && <Stalls stable={stable} sel={sel === 'build' ? sel : pen?.id} onPick={pick} />}
         {stalls && sel === 'build' && stable?.nextStall != null && (
           <div className="barn-none" data-test="barn-build">

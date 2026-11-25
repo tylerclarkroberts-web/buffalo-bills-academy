@@ -115,6 +115,7 @@
 
 /* v33: bugs, field notes, warnings, gravestone. All fixed-size pages, never a scrollbar. */
 .barn-canvas { image-rendering: pixelated; }
+.barn-lore { margin: 4px 0 0; font-style: italic; color: var(--paper-2); opacity: .65; }
 .barn-tabs { display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.15); }
 .barn-tabs button { background: none; border: 0; color: var(--paper-2); font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 6px 10px; min-height: 32px; cursor: pointer; border-bottom: 2px solid transparent; }
 .barn-tabs button.on { color: var(--gold); border-bottom-color: var(--gold); }
@@ -613,3 +614,8 @@
 .dex-card .btn { --bg: rgba(48, 22, 14, .96); }
 @media (max-height: 620px) { .dex-card .barn-row { position: sticky; bottom: 0; padding: 8px 12px 4px; border-radius: 12px 12px 0 0; background: rgba(0,0,0,.72); } } /* a phone on its side: the card scrolls, Close stays put */
 @media (min-width: 1100px) and (min-height: 860px) { .dex-card .bugcard { zoom: 1.2; } .dex-grid { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); } }
+/* Six rooms on one phone row: tighter buttons so Bugdex is not pushed off the edge. */
+@media (max-width: 760px) {
+  .barn-rooms { gap: 3px; }
+  .barn-rooms .btn.small { min-width: 0; padding-inline: 2px; font-size: 12px; letter-spacing: 0; white-space: nowrap; }
+}
