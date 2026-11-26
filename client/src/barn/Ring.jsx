@@ -38,6 +38,29 @@ export function Portrait({ bug, flip, reduced, Thumb }) {
   return <canvas ref={ref} className="rs-portrait" aria-hidden="true" />;
 }
 
+/** The page never moves: any focus, keyboard or sheet change that scrolled the window puts it back at the top. */
+export function settleScreen() {
+  const el = document.activeElement;
+  if (el && el !== document.body && typeof el.blur === 'function' && el.matches?.('input, textarea, select, [contenteditable]')) el.blur();
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+}
+const coarse = () => !!window.matchMedia?.('(pointer: coarse)').matches;
+
+const PAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', 'done'];
+/** "Other": a stake typed on buttons in the page, so a phone never opens its own keyboard (which shoved the whole screen up). */
+export function StakePad({ value, onChange, onDone, step }) {
+  const press = (k) => {
+    if (k === 'done') return onDone();
+    if (k === 'back') return onChange(value.slice(0, -1));
+    if (value.length >= 5) return undefined;
+    onChange(value === '0' ? k : value + k);
+  };
+  return <div className="rs-pad" role="group" aria-label="Type your stake" data-test="stake-pad">
+    <div className="rs-pad-show num" role="status" aria-live="polite" data-test="stake-typed">{value ? money(Number(value)) : <span className="muted">$0</span>}<small className="muted">steps of {money(step)}</small></div>
+    {PAD.map((k) => <button key={k} type="button" className={`rs-key${k === 'done' ? ' done' : ''}`} onClick={() => press(k)} data-test={`pad-${k}`} aria-label={k === 'back' ? 'Delete' : k === 'done' ? 'Done' : k}>{k === 'back' ? '⌫' : k === 'done' ? 'Done' : k}</button>)}
+  </div>;
+}
+
 /** One corner of the tape: name, owner, type and level, record. */
 function Corner({ bug, owner, side, reduced, Thumb }) {
   const rec = bug?.record;
@@ -75,26 +98,38 @@ export default function Ring({ b, meId, now, busy, unsaved, reduced, Thumb, post
   const gone = step && !stamp && ((step.kind === 'bout' || step.kind === 'call') ? !row : step.kind === 'accept' ? !challenge : false);
   useEffect(() => { if (gone) setStep(null); }, [gone]);
   const open = (next, from) => { opener.current = from || document.activeElement; setStep(next); setStakeRaw(null); setOther(false); setStamp(''); };
-  const close = () => { setStep(null); setStamp(''); requestAnimationFrame(() => opener.current?.focus?.()); };
+  const close = () => { settleScreen(); setStep(null); setStamp(''); setOther(false); requestAnimationFrame(() => { if (!coarse()) opener.current?.focus?.({ preventScroll: true }); settleScreen(); }); };
   useEffect(() => {
     if (!step) return undefined;
-    sheet.current?.querySelector('[data-autofocus]')?.focus({ preventScroll: true });
+    // Keyboard users land on the big button; on a phone nothing takes focus, so nothing can pull the screen.
+    if (!coarse()) sheet.current?.querySelector('[data-autofocus]')?.focus({ preventScroll: true });
     const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   }, [step?.kind, step?.key, step?.id]);
+  // While the sheet is up the page underneath is locked, and anything that scrolls the window (a stray keyboard,
+  // iOS focus nudges, the visual viewport moving) is put straight back.
+  useEffect(() => {
+    if (!step) return undefined;
+    const root = document.documentElement; root.classList.add('rs-lock'); settleScreen();
+    const vv = window.visualViewport, back = () => { if (window.scrollY || window.scrollX) window.scrollTo(0, 0); };
+    window.addEventListener('scroll', back, { passive: true }); vv?.addEventListener('resize', back); vv?.addEventListener('scroll', back);
+    return () => { root.classList.remove('rs-lock'); window.removeEventListener('scroll', back); vv?.removeEventListener('resize', back); vv?.removeEventListener('scroll', back); settleScreen(); };
+  }, [!!step]);
 
   const kind = step?.kind;
   const named = kind === 'call' || kind === 'post';
+  const custom = stakeRaw !== null && !stakeChips(b).includes(Number(stakeRaw)) || (stakeRaw === '' );
   const stake = named ? (stakeRaw === null ? openingStake(b) : cleanStake(stakeRaw, b)) : 0;
   const me = kind === 'accept' ? fighters.find((bug) => bug.id === challenge?.toBug) || null : mine;
   const them = kind === 'accept' ? (b.roster.find((r) => r.ownerId === challenge?.from && r.id === challenge?.fromBug) || { name: challenge?.fromBugName, species: null }) : row?.bug || null;
   const win = kind === 'accept' ? challenge?.win : row?.win ?? null;
   const terms = step ? termsFor(kind, { stake: named ? stake ?? 0 : kind === 'accept' ? challenge?.stake : row?.stake, risk: kind === 'accept' ? challenge?.risk : row?.risk, win }) : null;
   const why = step ? (named && stake === null ? `Pick a stake in steps of ${money(b.stakeStep || 10)}.` : named && stake > stakeCap(b) ? `You can put up ${money(stakeCap(b))} at most.` : blocker({ mine: me || mine, b, unsaved, kind, row, call: challenge, stake })) : '';
-  const sent = kind === 'call' ? row?.sent : null;
+  const sent = kind === 'call' && !stamp ? row?.sent : null; // the stamp holds the sheet as it was until it closes
   const owner = kind === 'accept' ? challenge?.fromName : row?.owner;
 
   const fight = async () => {
+    settleScreen();
     if (why || busy) return;
     if (kind === 'bout' || kind === 'accept') {
       const ok = kind === 'bout' ? await join(row.id, mine.id, row.risk) : await accept(challenge.id, challenge.risk);
@@ -172,13 +207,13 @@ export default function Ring({ b, meId, now, busy, unsaved, reduced, Thumb, post
           <Corner bug={kind === 'post' ? null : them} owner={kind === 'post' ? 'Whoever answers' : owner} side="them" reduced={reduced} Thumb={Thumb} />
         </div>
         <Line win={kind === 'post' ? null : win} note={kind === 'post' ? 'Anyone can join. The line sets what they put up.' : them?.species ? edgeNote((me || mine)?.species, them.species) : ''} />
-        {kind !== 'accept' && fighters.length > 1 && !sent && <div className="rs-swap" role="radiogroup" aria-label="Fight with">
+        {kind !== 'accept' && fighters.length > 1 && !sent && !other && <div className="rs-swap" role="radiogroup" aria-label="Fight with">
           {fighters.map((bug) => <button key={bug.id} role="radio" aria-checked={bug.id === mine?.id} className={`rs-swap-pick${bug.id === mine?.id ? ' on' : ''}`} onClick={() => setWithId(bug.id)} disabled={bug.fainted} data-test="matchup-swap" aria-label={`Fight with ${bug.name}`}><Thumb bug={bug} /><small>{bug.name}</small></button>)}
         </div>}
-        {named && !sent && <div className="rs-stake" role="group" aria-label="Your stake">
-          {stakeChips(b).map((v) => <button key={v} className={`rs-chip${!other && stake === v ? ' on' : ''}`} aria-pressed={!other && stake === v} onClick={() => { setOther(false); setStakeRaw(String(v)); }} data-test="stake-chip">{v ? money(v) : 'Free'}</button>)}
-          {other ? <input className="rs-chip rs-other" type="number" inputMode="numeric" min="0" max={stakeCap(b)} step={b.stakeStep || 10} aria-label="Your stake" autoFocus enterKeyHint="go" value={stakeRaw ?? ''} onChange={(e) => setStakeRaw(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); fight(); } }} data-test={kind === 'call' ? 'challenge-stake' : 'bout-stake'} />
-            : <button className="rs-chip" onClick={() => { setOther(true); setStakeRaw(String(stake ?? '')); }} data-test="stake-other">Other</button>}
+        {named && !sent && <div className={`rs-stake${other ? ' padding' : ''}`} role="group" aria-label="Your stake">
+          {other ? <StakePad value={stakeRaw ?? ''} step={b.stakeStep || 10} onChange={setStakeRaw} onDone={() => setOther(false)} />
+            : <>{stakeChips(b).map((v) => <button key={v} className={`rs-chip${!custom && stake === v ? ' on' : ''}`} aria-pressed={!custom && stake === v} onClick={() => setStakeRaw(String(v))} data-test="stake-chip">{v ? money(v) : 'Free'}</button>)}
+              <button className={`rs-chip${custom ? ' on' : ''}`} aria-pressed={custom} onClick={() => { setOther(true); setStakeRaw(''); }} data-test="stake-other">{custom && stake !== null ? money(stake) : 'Other'}</button></>}
         </div>}
         <p className="rs-terms num" data-test="matchup-terms">{sent ? `Called out${sent.stake ? ` for ${money(sent.stake)}` : ''}. ${owner} has ${left(sent.expiresAt - now)} to answer.`
           : kind === 'post' ? (terms.you ? `You put up ${money(terms.you)}. Winner takes the pot.` : 'Nothing on it but pride.')

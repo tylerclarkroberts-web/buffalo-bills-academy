@@ -66,7 +66,7 @@ try {
   await C.get('/barn');
   const hp = await page(browser, A, DESK, '/barn');
   await hp.waitForSelector('[data-test=ring-toggle]'); await hp.click('[data-test=ring-toggle]');
-  await hp.click('[data-test=roster-bug]'); await hp.click('[data-test=stake-other]'); await hp.fill('[data-test=challenge-stake]', '20'); await hp.click('[data-test=challenge-send]');
+  await hp.click('[data-test=roster-bug]'); await hp.click('[data-test=stake-other]'); await hp.click('[data-test=pad-2]'); await hp.click('[data-test=pad-0]'); await hp.click('[data-test=challenge-send]');
   await hp.waitForSelector('[data-test=roster-bug]:has-text("Called out")', { timeout: 8000 });
   check(await alive(hp) && !hp.errs.length, `desktop: challenge sent (${hp.errs.join(' | ') || 'no errors'})`);
   await shot(hp, '03-challenge-sent-desktop');

@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { seedRing } from './lib-bout-seed.mjs';
 
 const req = createRequire(process.env.PLAYWRIGHT_DIR ? path.join(process.env.PLAYWRIGHT_DIR, 'x.js') : import.meta.url);
-const { chromium } = req('playwright-core');
+const { chromium, webkit, devices } = req('playwright-core');
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const OUT = process.env.OUT;
 const fails = []; const check = (ok, msg) => { console.log(ok ? 'ok  ' : 'FAIL', msg); if (!ok) fails.push(msg); };
@@ -34,6 +34,14 @@ const fit = (p, root) => p.evaluate((sel) => {
   const small = [...(el?.querySelectorAll('button, input, select') || [])].filter((b) => { const q = b.getBoundingClientRect(); return q.width && q.height && q.bottom > 0 && q.top < innerHeight && q.height < 44; }).map((b) => `${b.dataset.test || b.textContent.trim().slice(0, 16)}:${Math.round(b.getBoundingClientRect().height)}`);
   return { pageScroll: se.scrollHeight > innerHeight + 1 || se.scrollWidth > innerWidth + 1, inside: !!r && r.top >= -1 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1, small };
 }, root);
+/** Nothing in the bout flow can open the phone's keyboard, nothing typed holds focus, and the page sits at the top. */
+const settled = (p) => p.evaluate(() => {
+  const typing = 'input:not([type=hidden]):not([readonly]):not([inputmode=none]), textarea, select, [contenteditable]:not([contenteditable=false])';
+  const scope = [document.querySelector('[data-test=barn-ring]'), document.querySelector('[data-test=matchup]'), document.querySelector('[data-test=bout]')].filter(Boolean);
+  const a = document.activeElement;
+  return { fields: scope.reduce((n, el) => n + el.querySelectorAll(typing).length, 0), typingFocus: !!a?.matches?.(typing), scrollY: window.scrollY, pageScroll: document.scrollingElement.scrollHeight > innerHeight + 1 };
+});
+const guard = async (p, label) => { const g = await settled(p); check(!g.fields && !g.typingFocus && g.scrollY === 0 && !g.pageScroll, `${label}: no keyboard field, nothing typed has focus, scrollY 0, no page scroll (${JSON.stringify(g)})`); };
 const inView = (p, sel) => p.evaluate((s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return !!r && r.top >= 0 && r.bottom <= innerHeight && r.height > 0; }, sel);
 
 let browser;
@@ -49,6 +57,7 @@ try {
     if (vp.m) check(!f.small.length, `${n}: ring controls are thumb-sized (${f.small.join(', ') || 'all ≥ 44px'})`);
     check((await p.$$('[data-test=ring-with]')).length === 2, `${n}: both of your bugs are big picks, not a dropdown`);
     check(!(await p.$('[data-test=ring-how]')), `${n}: the rules live under ?, not on the ring`);
+    await guard(p, `${n} ring`);
     const first = await p.textContent('[data-test=ring-list] li:first-child button');
     check(/Fights now/.test(first), `${n}: the open bout is first in the list ("${first.replace(/\s+/g, ' ').trim()}")`);
     check(await p.$$eval('[data-test=roster-bug]', (els) => els.every((e) => /\d+%/.test(e.textContent))), `${n}: every bug you can call out shows your chance`);
@@ -62,6 +71,7 @@ try {
     check(!f.pageScroll && f.inside, `${n}: the tale of the tape fits the screen`);
     if (vp.m) check(!f.small.length, `${n}: tape controls are thumb-sized (${f.small.join(', ') || 'all ≥ 44px'})`);
     check(await inView(p, '[data-test=challenge-send]'), `${n}: the big button is on screen`);
+    await guard(p, `${n} call-out tape`);
     const odds1 = await p.textContent('[data-test=matchup-odds]');
     await p.tapOr('[data-test=matchup-swap]:has-text("Phanaeus")');
     await p.waitForTimeout(200);
@@ -75,6 +85,8 @@ try {
     await p.waitForSelector('[data-test=matchup-stamp]', { timeout: 5000 }).catch(() => null);
     await shot(p, `after-${n}-03-called-out`);
     await p.waitForSelector('[data-test=matchup]', { state: 'detached', timeout: 4000 }).catch(() => null);
+    await guard(p, `${n} after the challenge`);
+    check(await inView(p, '.barn-msg') && /Challenge sent/.test(await p.textContent('.barn-msg')), `${n}: back on the ring with "Challenge sent" in view`);
     const out = (await s.me.call('GET', '/barn')).challenges.outgoing;
     check(out.length === 1 && out[0].stake === 50, `${n}: the challenge went out for $50 in three taps`);
     check(/Called out/.test(await p.textContent('[data-test=roster-bug]:has-text("Lamprima")')), `${n}: the row says it is called out`);
@@ -106,6 +118,7 @@ try {
     await p.waitForTimeout(750); if (OUT) await p.screenshot({ path: path.join(OUT, `after-${n}-07-fight.png`) });
     await p.waitForSelector('[data-test=bout][data-live="1"]', { timeout: 10000 }).catch(() => null);
     check(!!(await p.$('[data-test=bout][data-live="1"]')) && !(await p.$('[data-test=fight-fx]')), `${n}: then the live fight opens`);
+    await guard(p, `${n} live fight`);
     await shot(p, `after-${n}-08-live`);
     check(!p.errs.length, `${n}: no page errors (${p.errs.join(' | ') || 'none'})`);
     await p.context().close(); await s.close();
@@ -153,11 +166,81 @@ try {
     await p.tap('[data-test=bout-post-open]'); await p.waitForSelector('[data-test=matchup]');
     const chips = await p.$$eval('[data-test=stake-chip]', (els) => els.map((e) => e.textContent));
     check(JSON.stringify(chips) === JSON.stringify(['Free', '$10']), `broke: only stakes you can cover are offered (${chips.join(', ')})`);
-    await p.tap('[data-test=stake-other]'); await p.fill('[data-test=bout-stake]', '15');
+    await p.tap('[data-test=stake-other]'); await p.tap('[data-test=pad-1]'); await p.tap('[data-test=pad-5]');
     check(/steps of \$10/.test(await p.textContent('[data-test=matchup-why]').catch(() => '')), 'a stake off the $10 step says so');
     await shot(p, 'after-375-11-broke-stake');
     check(!p.errs.length, `broke: no page errors (${p.errs.join(' | ') || 'none'})`);
     await p.context().close(); await s.close();
+  }
+
+  // iPhone Safari (WebKit): every bout flow, with document.activeElement and the scroll checked after every tap,
+  // including the "Other" stake on the in-page pad. The system keyboard must never be asked for.
+  {
+    const wk = await webkit.launch();
+    const phone = async (s) => {
+      const ctx = await wk.newContext({ ...devices['iPhone 13'], viewport: { width: 390, height: 844 } });
+      await ctx.addCookies([{ name: 'bba_sid', value: s.me.sid, url: s.B }]);
+      await ctx.route('**/api/fawn', (r) => r.fulfill({ json: { available: false } }));
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', (e) => p.errs.push(e.message));
+      await p.goto(s.B + '/barn'); await p.waitForSelector('[data-test=barn-ring]'); return p;
+    };
+    const header = (p) => inView(p, '[data-test=ring-back]');
+    // Post with a typed stake, then call out with a typed stake.
+    let s = await seedRing({ root: ROOT });
+    let p = await phone(s);
+    await guard(p, 'iphone ring');
+    await p.tap('[data-test=bout-post-open]'); await p.waitForSelector('[data-test=matchup][data-kind=post]'); await guard(p, 'iphone post tape');
+    await p.tap('[data-test=stake-other]'); await p.waitForSelector('[data-test=stake-pad]');
+    await guard(p, 'iphone post: Other pad up'); check(await header(p), 'iphone post: the sheet header stays on screen with the pad up');
+    for (const k of ['4', '0']) { await p.tap(`[data-test=pad-${k}]`); await guard(p, `iphone post: pad ${k}`); }
+    check((await p.textContent('[data-test=stake-typed]')).includes('$40'), 'iphone post: the pad typed $40');
+    await shot(p, 'fix-keyboard-390-01-post-pad');
+    await p.tap('[data-test=bout-post]'); await p.waitForSelector('[data-test=matchup]', { state: 'detached', timeout: 4000 }).catch(() => null);
+    await guard(p, 'iphone after posting');
+    check((await s.me.call('GET', '/barn')).openBout?.stake === 40 && await inView(p, '[data-test=bout-waiting]'), 'iphone: the $40 bout is posted and shown on the ring');
+    await shot(p, 'fix-keyboard-390-02-posted');
+    await p.tap('[data-test=roster-bug]:has-text("Lamprima")'); await p.waitForSelector('[data-test=matchup][data-kind=call]'); await guard(p, 'iphone call-out tape');
+    await p.tap('[data-test=stake-other]'); await guard(p, 'iphone call-out: Other pad up'); check(await header(p), 'iphone call-out: the sheet header stays on screen with the pad up');
+    for (const k of ['3', '5', 'back', '0']) await p.tap(`[data-test=pad-${k}]`);
+    await guard(p, 'iphone call-out: typed'); check((await p.textContent('[data-test=stake-typed]')).includes('$30'), 'iphone call-out: ⌫ works, the pad reads $30');
+    await shot(p, 'fix-keyboard-390-03-callout-pad');
+    await p.tap('[data-test=pad-done]'); check(/\$30/.test(await p.textContent('[data-test=stake-other]')), 'iphone call-out: Done keeps $30 on the Other chip');
+    await guard(p, 'iphone call-out: pad done');
+    await p.tap('[data-test=challenge-send]'); await guard(p, 'iphone call-out: just sent');
+    check(!(await p.$('[data-test=challenge-withdraw]')), 'iphone call-out: the stamp holds the sheet (no Withdraw flash)');
+    await p.waitForSelector('[data-test=matchup]', { state: 'detached', timeout: 4000 }).catch(() => null);
+    await guard(p, 'iphone after the challenge');
+    check(await inView(p, '.barn-msg') && /Challenge sent/.test(await p.textContent('.barn-msg')), 'iphone: back on a still ring with "Challenge sent" in view');
+    check((await s.me.call('GET', '/barn')).challenges.outgoing[0]?.stake === 30, 'iphone: the challenge went out for $30');
+    await shot(p, 'fix-keyboard-390-04-challenge-sent');
+    check(!p.errs.length, `iphone post/call: no page errors (${p.errs.join(' | ') || 'none'})`);
+    await p.context().close(); await s.close();
+    // Accept Cy's call-out.
+    s = await seedRing({ root: ROOT }); p = await phone(s);
+    await p.tap('[data-test=challenge-incoming]'); await p.waitForSelector('[data-test=matchup][data-kind=accept]'); await guard(p, 'iphone accept tape');
+    await p.tap('[data-test=challenge-accept]'); await guard(p, 'iphone accept: tapped');
+    await p.waitForSelector('[data-test=bout][data-live="1"]', { timeout: 10000 }).catch(() => null); await guard(p, 'iphone accept: live fight');
+    await shot(p, 'fix-keyboard-390-05-accepted-live');
+    check(!p.errs.length, `iphone accept: no page errors (${p.errs.join(' | ') || 'none'})`);
+    await p.context().close(); await s.close();
+    // Join Bess's open bout.
+    s = await seedRing({ root: ROOT }); p = await phone(s);
+    await p.tap('[data-test=bout-listing]'); await p.waitForSelector('[data-test=matchup][data-kind=bout]'); await guard(p, 'iphone join tape');
+    await p.tap('[data-test=bout-join]'); await guard(p, 'iphone join: tapped');
+    await p.waitForSelector('[data-test=bout][data-live="1"]', { timeout: 10000 }).catch(() => null); await guard(p, 'iphone join: live fight');
+    check(!p.errs.length, `iphone join: no page errors (${p.errs.join(' | ') || 'none'})`);
+    await p.context().close(); await s.close();
+    // A short iPhone (375×667): the pad, the header and the big button all fit at once.
+    s = await seedRing({ root: ROOT });
+    const ctx = await wk.newContext({ ...devices['iPhone SE'], viewport: { width: 375, height: 667 } });
+    await ctx.addCookies([{ name: 'bba_sid', value: s.me.sid, url: s.B }]); await ctx.route('**/api/fawn', (r) => r.fulfill({ json: { available: false } }));
+    p = await ctx.newPage(); await p.goto(s.B + '/barn'); await p.waitForSelector('[data-test=barn-ring]');
+    await p.tap('[data-test=roster-bug]:has-text("Lamprima")'); await p.waitForSelector('[data-test=matchup]');
+    await p.tap('[data-test=stake-other]'); await p.tap('[data-test=pad-2]'); await p.tap('[data-test=pad-0]');
+    check(await header(p) && await inView(p, '[data-test=challenge-send]') && await inView(p, '[data-test=pad-done]'), 'iphone SE: header, pad and the big button all on screen');
+    await guard(p, 'iphone SE pad');
+    await shot(p, 'fix-keyboard-375-06-callout-pad');
+    await ctx.close(); await s.close(); await wk.close();
   }
 } catch (e) { console.error(e); fails.push(String(e.message)); }
 finally { await browser?.close(); }

@@ -106,3 +106,15 @@ test('ring: the page never scrolls; motion has a reduced-motion fallback', () =>
   const fx = fs.readFileSync(new URL('../client/src/barn/FightFx.jsx', import.meta.url), 'utf8');
   assert.match(fx, /reduced \? FIGHT_STILL_MS : FIGHT_MS/);
 });
+
+test('ring: nothing in the bout flow can open the phone keyboard (the Other stake is an in-page pad)', () => {
+  for (const f of ['Ring.jsx', 'FightFx.jsx', 'Bout.jsx']) {
+    const src = fs.readFileSync(new URL(`../client/src/barn/${f}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /<input|<textarea|<select|contentEditable|autoFocus/, `${f} has a field that could raise the keyboard`);
+  }
+  const ring = fs.readFileSync(new URL('../client/src/barn/Ring.jsx', import.meta.url), 'utf8');
+  assert.match(ring, /function StakePad/);
+  assert.match(ring, /window\.scrollTo\(0, 0\)/, 'the sheet puts the page back at the top');
+  const css = fs.readFileSync(new URL('../client/src/barn/ring-start.css', import.meta.url), 'utf8');
+  assert.match(css, /html\.rs-lock/);
+});

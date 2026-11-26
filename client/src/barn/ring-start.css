@@ -168,3 +168,21 @@
   .rs-row, .rs-pick, .rs-chip, .rs-big { transition: none; }
   .rs-row:active, .rs-pick:active, .rs-chip:active { transform: none; }
 }
+
+/* While the tape is up the page under it cannot scroll, so nothing (not even iOS nudging a focused field) can shove it. */
+html.rs-lock, html.rs-lock body { overflow: hidden; overscroll-behavior: none; }
+.rs-sheet-wrap { overscroll-behavior: contain; touch-action: manipulation; }
+
+/* "Other": a number pad drawn in the page. The phone's own keyboard never opens in the bout flow. */
+.rs-stake.padding { grid-template-columns: minmax(0, 1fr); }
+.rs-pad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.rs-pad-show { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: center; gap: 10px; min-height: 40px; font: 700 26px/1 var(--mono); color: var(--gold); border-bottom: 1px solid #7a4a2a; padding-bottom: 4px; }
+.rs-pad-show small { font: 500 11px var(--mono); }
+.rs-key { min-height: 44px; border-radius: 12px; border: 1px solid #7a4a2a; background: rgba(0,0,0,.25); color: var(--paper); font: 600 20px var(--mono); cursor: pointer; -webkit-user-select: none; user-select: none; transition: background .12s, transform .1s var(--ease); }
+.rs-key:active { transform: scale(.94); background: rgba(242,198,90,.18); }
+.rs-key.done { font-size: 15px; border-color: var(--gold); color: var(--gold); }
+@media (max-height: 700px) { .rs-key { min-height: 44px; font-size: 18px; } .rs-pad { gap: 5px; } .rs-pad-show { min-height: 34px; font-size: 22px; } }
+@media (prefers-reduced-motion: reduce) { .rs-key { transition: none; } .rs-key:active { transform: none; } }
+/* the pad needs the room: the bugs shrink so their names and the line stay in view */
+.rs-sheet:has(.rs-pad) .rs-portrait { height: clamp(56px, 13dvh, 130px); }
+.rs-sheet:has(.rs-pad) { gap: 8px; }
