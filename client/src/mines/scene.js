@@ -16,7 +16,8 @@ import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { buildCrewMember, disposeCrewMember } from './crewMesh.js';
-import { buildMineHands, drawMineHands, resizeMineHands, stepMineHands } from './hands.js';
+import { buildMineHands, drawMineHands, resizeMineHands, stepMineHands, whackMineHands } from './hands.js';
+import { buildNpc, poseNpc, showSmokes, stumbleNpc } from './npcMesh.js';
 import { buildMineEntrance } from './entrance.js';
 import { WALK_SPEED, RUN_SPEED } from './controls.js';
 import { wildAt } from '../../../server/engine/wild-roam.js';
@@ -182,6 +183,7 @@ export class MineScene {
     this.scale = 0.34; // render small, upscale with pixelated CSS for the CRT look
     this.scene = new THREE.Scene();
     this.wilds = new Map();
+    this.npcs = new Map(); // the old-timers (setNpcs)
     const look = LOOKS[depth] || LOOKS[0], acid = this.acid = acidOf(look);
     this.scene.background = new THREE.Color(look.bg);
     this.scene.fog = new THREE.Fog(look.bg, 2.5, fogFar); // deeper shafts are darker; a headlamp pushes it back
@@ -358,7 +360,7 @@ export class MineScene {
       const tx = Math.round((x + ox) / TILE), tz = Math.round((z + oz) / TILE);
       if (g[tz]?.[tx] !== 0) return true;
     }
-    return !!this.stalker?.blocks(x, z, RADIUS) || !!this.faun?.blocks(x, z, RADIUS); // they take up room: walk around them
+    return !!this.stalker?.blocks(x, z, RADIUS) || !!this.faun?.blocks(x, z, RADIUS) || this.npcBlocks(x, z); // they take up room: walk around them
   }
   updateVisitor(now, dt) {
     const st = this.stalker, v = this.visitor;
@@ -529,6 +531,64 @@ export class MineScene {
         this.wilds.set(wild.id, { ...wild, ...at, ...sprite });
       }
     }
+  }
+  /** The old-timers on this shift (server/npcMiners.js view): each sits in its dead end, facing the tunnel. */
+  setNpcs(list = []) {
+    for (const n of list) {
+      if (this.npcs.has(n.id)) continue;
+      const m = buildNpc(n), wx = (n.x + (n.ox || 0)) * TILE, wz = (n.y + (n.oy || 0)) * TILE;
+      m.group.position.set(wx, 0, wz); m.group.rotation.y = n.facing || 0;
+      if (n.ox !== undefined) m.kickMax = 0.2; // against a hallway wall: a stagger has less room
+      m.down = n.downMs > 0; m.fall = m.down ? 1 : 0; m.upAt = m.down ? performance.now() + n.downMs : 0;
+      showSmokes(m, n.smokes || 0);
+      this.scene.add(m.group);
+      this.npcs.set(n.id, { ...n, m, wx, wz }); // a dead end, or the side of a hallway: never in the way
+    }
+  }
+  npcBlocks(x, z) {
+    for (const n of this.npcs.values()) if (Math.hypot(x - n.wx, z - n.wz) < RADIUS + 0.4) return true;
+    return false;
+  }
+  /** The nearest old-timer: how far (metres) and how squarely you face them (1 = dead ahead). */
+  npcView() {
+    let best = null;
+    for (const n of this.npcs.values()) {
+      const dx = n.wx - this.pos.x, dz = n.wz - this.pos.y, d = Math.hypot(dx, dz) || 1;
+      const facing = (-Math.sin(this.yaw) * dx + -Math.cos(this.yaw) * dz) / d;
+      if (!best || d < best.dist) best = { npc: n, dist: d, facing };
+    }
+    return best || { npc: null, dist: 99, facing: -1 };
+  }
+  /** A swing of the pick; on an old-timer (`id`) it lands: a flinch and a little kick to the camera. */
+  hitNpc(id) {
+    const n = id && this.npcs.get(id); whackMineHands(this.hands);
+    if (!n) return;
+    // the swing's direction (you to them) in their own frame, so they stumble away from it
+    const wx = n.wx - this.pos.x, wz = n.wz - this.pos.y, f = n.facing || 0;
+    stumbleNpc(n.m, { x: wx * Math.cos(f) - wz * Math.sin(f), z: wx * Math.sin(f) + wz * Math.cos(f) }, (n.m.hits || 0) + 1);
+    if (!this.reduce) this.shake = Math.max(this.shake, 0.22);
+  }
+  /** Down (ms on the server's clock) with `smokes` on the floor beside them, or back up (ms 0). */
+  setNpcDown(id, ms, smokes = 0) {
+    const n = this.npcs.get(id); if (!n) return;
+    n.m.down = ms > 0; n.m.upAt = ms > 0 ? performance.now() + ms : 0;
+    showSmokes(n.m, ms > 0 ? smokes : 0);
+  }
+  /** The server's count of hits in this beating (keeps the stumbles in step with it). */
+  setNpcHits(id, hits) { const n = this.npcs.get(id); if (n && !n.m.down) n.m.hits = hits; }
+  setNpcSmokes(id, count) { const n = this.npcs.get(id); if (n) showSmokes(n.m, count); }
+  talkNpc(id, seconds = 2.6) { const n = this.npcs.get(id); if (n) n.m.talk = seconds; }
+  updateNpcs(now, dt) {
+    const t = performance.now(); let dip = 0;
+    for (const n of this.npcs.values()) {
+      const m = n.m;
+      if (m.down && m.upAt && t >= m.upAt) { m.down = false; m.upAt = 0; showSmokes(m, 0); this.onEvent?.('npc-up', n.id); } // up again, and the smokes with him
+      const dx = this.pos.x - n.wx, dz = this.pos.y - n.wz, d = Math.hypot(dx, dz);
+      const look = Math.atan2(Math.sin(Math.atan2(dx, dz) - (n.facing || 0)), Math.cos(Math.atan2(dx, dz) - (n.facing || 0)));
+      poseNpc(m, dt, now, { look, close: d < 6 ? 1 : 0, reduce: this.reduce });
+      if (m.fall > 0.5 && d < 3.6) dip = Math.max(dip, 0.45 * (1 - d / 3.6) + 0.15); // look down at one on the floor
+    }
+    this.npcDip = this.reduce ? dip : (this.npcDip || 0) + (dip - (this.npcDip || 0)) * (1 - Math.exp(-dt * 5));
   }
   nearestWild() {
     let nearest = null;
@@ -765,6 +825,7 @@ export class MineScene {
     if (this.faun) this.updateFaun(now, dt);
     if (this.heeshee) this.updateHeeshee(now, dt);
     if (this.bugGuide) this.updateBugGuide(now, dt);
+    if (this.npcs.size) this.updateNpcs(now, dt);
     const serverNow = Date.now() + (this.clockSkew || 0); // a wild bug is where the server's clock says it has roamed to
     for (const wild of this.wilds.values()) {
       const wasX = wild.x, wasY = wild.y;
@@ -810,7 +871,7 @@ export class MineScene {
       }
     } else {
       this.camera.position.set(this.pos.x, EYE + Math.sin(this.bob) * 0.045 + swing, this.pos.y);
-      this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+      this.camera.rotation.set(this.pitch - (this.npcDip || 0), this.yaw, 0, 'YXZ');
       if (this.introLook) {
         const stick = [...this.wilds.values()].find((w) => w.stick);
         if (stick) {

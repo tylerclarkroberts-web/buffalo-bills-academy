@@ -44,6 +44,7 @@ import { Crew, CREW, Flicker, ScareGate } from './horror.js';
 import JumpScare from './JumpScare.jsx';
 import './mines.css';
 import { MINE_LORE } from '../../../server/engine/lore.js';
+import { GET_UP, HITS_TO_DROP, HIT_FORGET_MS } from '../../../server/engine/npc-miners.js';
 
 const LINES = [
   'FOREMAN: "THE ACID WON\'T MINE ITSELF."',
@@ -534,6 +535,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const doomRef = useRef(false);
   const soundWas = useRef(false);
   const [eggNear, setEggNear] = useState(false);
+  // The old-timers (server/npcMiners.js): the one you're facing, what they last said, and the smokes you've pocketed.
+  const [npcAt, setNpcAt] = useState(null); // { id, name, title, hits, hitAt, upAt, smokes, say, hello }
+  const npcRef = useRef(null), npcBusy = useRef(false), npcSwing = useRef(0), npcSeq = useRef(0), npcActs = useRef(null), npcSeenRef = useRef(null);
+  const [smokes, setSmokes] = useState(shift.smokes || 0);
   const eggRef = useRef(shift.egg ? 'there' : null); // there | taking | taken | gone
   const grabEgg = useRef(null);
   const [tiltActive, setTiltActive] = useState(false);
@@ -814,7 +819,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       stalker, bugGuide, faun, heeshee, localStart: shift.localStart, reduceMotion: reduce,
       depth: dark, ...light, lampPower: tier ? Math.min(1.15, Math.max(0.7, tier.lamp)) : 1,
       onDread: (level) => { dreadEl.current?.style.setProperty('--dread', level.toFixed(2)); },
-      onEvent: (e) => {
+      onEvent: (e, id) => {
+        if (e === 'npc-up') npcSeenRef.current?.(id, { upAt: 0, smokes: 0, hits: 0, say: GET_UP[Math.floor(Math.random() * GET_UP.length)], hello: null });
         if (e === 'appear') { visitorHere.current = true; setVisitor(true); audio?.dread(true); setLine('SOMEONE ELSE IS ON SHIFT TODAY.'); }
         if (e === 'vanish') { visitorHere.current = false; setVisitor(false); audio?.dread(darkRef.current); setLine('THE ACID GLOWS. HE\'S GONE.'); dreadEl.current?.style.setProperty('--dread', '0'); }
         if (e === 'bug-appear') {
@@ -869,6 +875,64 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     scene.addFinds(findSpots(maze, shift.seed, [...(shift.pools || chain), eggLocation]));
     scene.clockSkew = shift.startedAt - shift.localStart; // the server's clock from this one, for where the wild bugs have roamed to
     scene.setWilds(shift.wilds || []);
+    scene.setNpcs(shift.npcs || []);
+    // what the server last said about each old-timer, with its clocks turned into this browser's
+    const local = (v) => { const { downMs, ...rest } = v; return { ...rest, ...(downMs !== undefined ? { upAt: downMs > 0 ? Date.now() + downMs : 0 } : {}), ...(v.hits !== undefined ? { hitAt: Date.now() } : {}) }; };
+    const npcSeen = new Map((shift.npcs || []).map((n) => [n.id, local(n)]));
+    const npcShow = (id, patch) => { // the prompt follows the server's answer for whoever you're facing
+      const base = npcSeen.get(id); if (!base) return;
+      const n = { ...base, ...patch }; npcSeen.set(id, n);
+      if (npcRef.current?.id === id) { npcRef.current = n; setNpcAt(n); }
+    };
+    npcSeenRef.current = npcShow;
+    const npcCall = async (path, id) => {
+      const r = await api('POST', `/mines/npc/${path}`, { shiftId: shift.shiftId, npc: id });
+      if (sceneRef.current !== scene) return null;
+      if (typeof r.totalSmokes === 'number') setSmokes(r.totalSmokes);
+      return r;
+    };
+    npcActs.current = {
+      talk: async () => {
+        const n = npcRef.current; if (!n || npcBusy.current) return;
+        npcBusy.current = true;
+        try {
+          const r = await npcCall('talk', n.id); if (!r) return;
+          scene.talkNpc(n.id);
+          npcShow(n.id, { ...local(r.npc), say: r.tip || r.line, hello: r.tip ? r.line : null });
+        } catch (e) { setLine(String(e.message).toUpperCase()); } finally { npcBusy.current = false; }
+      },
+      // Space (or SWING on a phone): the pick goes round wherever you are. Up against an old-timer, it lands.
+      swing: async () => {
+        const t = Date.now(); if (t - npcSwing.current < 320) return; npcSwing.current = t; // one swing at a time
+        const n = npcRef.current, lands = !!n && !(n.upAt > t);
+        scene.hitNpc(lands ? n.id : null); if (lands) audio?.bonk(); else audio?.swish();
+        if (!lands) return;
+        const seq = ++npcSeq.current;
+        try {
+          const r = await npcCall('hit', n.id); if (!r || (r.ignored && !r.line)) return;
+          const knocked = r.down && !r.ignored;
+          if (knocked) {
+            scene.setNpcDown(n.id, r.npc.downMs, r.npc.smokes); audio?.thud();
+            setLine(r.empty || r.said);
+          }
+          if (!knocked && seq === npcSeq.current && !r.ignored) scene.setNpcHits(n.id, r.npc.hits);
+          if (knocked || seq === npcSeq.current) npcShow(n.id, { ...local(r.npc), say: r.line, hello: null });
+        } catch (e) { setLine(String(e.message).toUpperCase()); }
+      },
+      pickup: async () => {
+        const n = npcRef.current; if (!n || !(n.smokes > 0) || npcBusy.current) return;
+        npcBusy.current = true;
+        try {
+          const r = await npcCall('pickup', n.id); if (!r) return;
+          scene.setNpcSmokes(n.id, 0); audio?.chunk();
+          setLine(`YOU POCKET ${r.took} ${r.took === 1 ? 'CIGARETTE' : 'CIGARETTES'}. ${r.totalSmokes} BUMMED SMOKES TO YOUR NAME.`);
+          npcShow(n.id, { ...local(r.npc), say: null });
+        } catch (e) {
+          scene.setNpcSmokes(n.id, 0); npcShow(n.id, { smokes: 0 });
+          setLine(String(e.message).toUpperCase());
+        } finally { npcBusy.current = false; }
+      },
+    };
     const wildRetryAt = new Map();
     let askingWild = false;
     window.__forceAskSteeze = () => {
@@ -989,6 +1053,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         if (doorRef.current) { openDoor.current(); return; }
       }
       if (k === 'g' && eggRef.current === 'there') { grabEgg.current(); return; }
+      if (npcRef.current && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (k === 't' && !e.repeat) { npcActs.current?.talk(); return; }
+        if (k === 'g' && !e.repeat) { npcActs.current?.pickup(); return; }
+      }
       if (k === 'x' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && preyRef.current) { stab(); return; }
       if (k === 'k' && swarm.current.worms.length) { cutWorm.current(null); return; }
       if (stickIntroRef.current && k === 'escape') { wildActs.current?.finishStickIntro(); return; }
@@ -1010,6 +1078,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (k === 'escape' && pickerRef.current) { showPicker(false); return; }
       if (/^[1-9]$/.test(k) && !e.metaKey && !e.ctrlKey && !e.altKey) { startDance(DANCES[Number(k) - 1].id); return; }
       if (danceRef.current && ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) stopDance();
+      if (k === ' ' && !nearRef.current) { e.preventDefault(); if (danceRef.current) stopDance(); else npcActs.current?.swing(); return; } // away from the acid, Space swings the pick
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
       keys.add(k === 'shift' ? e.code : k); sync();
@@ -1097,6 +1166,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
             setLine(HEESHEE_NO_BATTLE); setStatus(HEESHEE_NO_BATTLE);
             wildRetryAt.set(wild.id, nowMs + 4000);
           } else if (canFightWild.current) askWild(wild);
+        }
+      }
+      { // an old-timer within reach and in front of you
+        const nv = scene.npcView();
+        const id = !battleRef.current && !doomRef.current && !mapRef.current && !done.current && !wildAskRef.current && nv.dist < 2.8 && nv.facing > 0.4 ? nv.npc.id : null;
+        if (id !== (npcRef.current?.id || null)) {
+          const n = id ? { ...npcSeen.get(id), say: null, hello: null } : null;
+          npcRef.current = n; setNpcAt(n);
         }
       }
       if (eggRef.current === 'there') {
@@ -1275,6 +1352,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <span className="m-dim small">or press F</span>
         </div>
       )}
+      {npcAt && !doom && !battle && !near && !eggNear && !liftNear && !doorNear && !prey && !dance && !wildAsk && (
+        <NpcPrompt npc={npcAt} smokes={smokes} onTalk={() => npcActs.current?.talk()} onPickup={() => npcActs.current?.pickup()} />
+      )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
       {horror && <div ref={horrorEl} className={`m-horror-veil${dark ? ' on' : ''}`} aria-hidden="true" />}
       {banner && <div className="m-horror-banner" role="status" data-test="horror-banner">The lights feel wrong tonight…</div>}
@@ -1284,6 +1364,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onJar={battleJar} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
+      {!doom && !battle && !near && !mapOpen && !dance && !worms.length && ( // a worm on your face: the knife takes this corner (K / CUT); Space still swings
+        <button type="button" className="m-swing" data-test="swing" aria-label="Swing the pickaxe" aria-keyshortcuts="Space"
+          onPointerDown={(e) => { e.preventDefault(); npcActs.current?.swing(); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); npcActs.current?.swing(); } }}>⛏<span>SWING</span></button>
+      )}
       <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle || mapOpen} />
         {!tiltActive && <MovePad apply={move} />}
@@ -1292,6 +1376,30 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     {bugMenu && !doom && !battle && <BugOrders current={bugOrder} onPick={giveOrder} onClose={() => showBugMenu(false)} />}
     {stickIntro && !doom && !battle && <StickIntro short={stickIntro.short} onDone={() => wildActs.current?.finishStickIntro()} onScratch={() => audio?.stickScratch()} onFlicker={(on) => { if (sceneRef.current) sceneRef.current.introFlicker = on; }} />}
     {wildAsk && !stickIntro && !doom && !battle && <WildPrompt wild={wildAsk} bugsRef={wildBugs} onFight={(bug) => wildActs.current?.fight(bug)} onLeave={() => wildActs.current?.leave()} />}</>
+  );
+}
+
+/** An old-timer within reach: what they said, how hurt they are, and TALK (or the smokes on the floor). The pick is always free: Space / SWING. */
+function NpcPrompt({ npc, smokes, onTalk, onPickup }) {
+  const [, tick] = useState(0);
+  const left = Math.max(0, (npc.upAt || 0) - Date.now());
+  useEffect(() => { if (!left) return undefined; const id = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(id); }, [left > 0, npc.upAt]);
+  const hits = npc.hits > 0 && Date.now() - (npc.hitAt || 0) < HIT_FORGET_MS ? npc.hits : 0;
+  const clock = `${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
+  return (
+    <div className="m-door-prompt m-npc" data-test="npc-prompt" role="group" aria-label={npc.name}>
+      <span className="m-npc-name">{npc.name}{!left && <span className="m-dim small">{npc.title}</span>}</span>
+      {npc.hello && <span className="m-npc-say m-dim" data-test="npc-hello">“{npc.hello}”</span>}
+      {npc.say && <span className={`m-npc-say${left ? ' m-dim' : ''}`} data-test="npc-say" aria-live="polite">“{npc.say}”</span>}
+      {left > 0 ? <span className="m-dim small" data-test="npc-down">OUT COLD · UP IN {clock}</span>
+        : hits > 0 && <span className="m-npc-hits" data-test="npc-hits" aria-label={`${hits} of ${HITS_TO_DROP} hits`}>{'●'.repeat(hits)}{'○'.repeat(Math.max(0, HITS_TO_DROP - hits))}</span>}
+      <div className="m-npc-acts">
+        {left > 0 ? (npc.smokes > 0
+          ? <button className="m-btn" data-test="npc-pickup" onClick={onPickup}>PICK UP {npc.smokes} {npc.smokes === 1 ? 'SMOKE' : 'SMOKES'}<span className="m-key"> · G</span></button>
+          : <span className="m-dim small">{smokes ? `${smokes} BUMMED SMOKES IN YOUR POCKET` : 'NOTHING ON THE FLOOR'}</span>)
+          : <button className="m-btn ghost" data-test="npc-talk" onClick={onTalk}>TALK<span className="m-key"> · T</span></button>}
+      </div>
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import { BUGS, givenName } from './engine/bugs.js';
 import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
+import { NpcMiners } from './npcMiners.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
 import { creditStall5Refunds } from './stallRefund.js';
@@ -83,6 +84,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const shop = new Shop({ store: service.store, accounts, barn, now: service.now });
   circuit.shop = shop; // jars for the circuit's wild bugs
   mines.owned = (id) => shop.doc.inv[id]?.own;
+  const npcs = new NpcMiners({ store: service.store, mines, now: service.now }); // the old-timers down the mine
+  mines.npcs = npcs;
   barn.mines = mines; // so a mid-shift steal is visible to barn/circuit fight gates
   const trades = new Trades({ store: service.store, accounts, barn, now: service.now }); // the trading post: bugs and cash between players
   barn.foreman = foreman; // in-game Foreman notes (stall-price credit, etc.) show on the barn and in /me
@@ -91,6 +94,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest && env.PVP_TEST === '1') { PVP.minShifts = 0; PVP.minAgeMs = 0; if (env.PVP_TEST_GRACE_MS) PVP.graceMs = Math.max(0, Number(env.PVP_TEST_GRACE_MS) || 0); }
   // e2e only (dev login + GYM_TEST_RAGE=1): a juiced bug's roid rage always goes off, so the screenshot can show it
   const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt, rageInt: barnTest && env.GYM_TEST_RAGE === '1' ? () => 0 : undefined });
+  // A pickaxe hit only counts from where the server last had you (pvp's checked heartbeat), right up against the old-timer.
+  npcs.pose = (playerId, shiftId) => { const pr = pvp.presence.get(playerId); return pr && pr.shiftId === shiftId && service.now() - pr.at < PVP.staleMs ? { x: pr.x, y: pr.y } : null; };
   const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
   pvpSweep.unref?.();
   const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
@@ -377,6 +382,10 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/mines/probe', needPlayer, wrap((req) => mines.probe(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/extract', needPlayer, wrap((req) => mines.extract(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   api.post('/mines/egg', needPlayer, wrap((req) => mines.takeEgg(accounts.ensure(req.player), String(req.body?.shiftId || ''))));
+  // The old-timers: talk for a tip, or hit them with the pickaxe (they just take it). Smokes are a keepsake count.
+  api.post('/mines/npc/talk', needPlayer, wrap((req) => npcs.talk(accounts.ensure(req.player), req.body?.shiftId, req.body?.npc)));
+  api.post('/mines/npc/hit', needPlayer, wrap((req) => npcs.hit(accounts.ensure(req.player), req.body?.shiftId, req.body?.npc)));
+  api.post('/mines/npc/pickup', needPlayer, wrap((req) => npcs.pickup(accounts.ensure(req.player), req.body?.shiftId, req.body?.npc)));
   // ----- the Barn (v30) -----
   api.get('/barn', needPlayer, wrap((req) => barn.view(req.player.id, { seen: req.query.seen === '1' })));
   api.post('/barn/care', needPlayer, wrap((req) => barn.care(req.player.id, String(req.body?.action || ''), req.body?.bug)));
@@ -457,7 +466,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    pvp.forget(p.id); mines.forget(p.id); trades.forget(p.id); // open trade offers called off, held cash returned
+    pvp.forget(p.id); mines.forget(p.id); npcs.forget(p.id); trades.forget(p.id); // open trade offers called off, held cash returned
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();

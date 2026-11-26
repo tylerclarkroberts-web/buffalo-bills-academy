@@ -506,3 +506,25 @@ body.in-mines { background: #020402; }
 .m-gym.hot { color: #ff5a4a; text-shadow: 0 0 6px rgba(255,40,30,.6); animation: m-gym-throb 1.2s ease-in-out infinite; }
 @keyframes m-gym-throb { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .m-gym.hot { animation: none; } }
+/* The old-timers: who, what they said, how hurt, and TALK / HIT. Same spot as the other prompts. */
+.m-npc { width: min(380px, calc(100% - 32px)); gap: 4px; }
+.m-npc-name { color: var(--y); font-size: 20px; letter-spacing: .06em; }
+.m-npc-name .small { display: block; color: var(--g); letter-spacing: .02em; }
+.m-npc-say { font-size: 17px; line-height: 1.25; text-transform: none; background: rgba(0,0,0,.72); padding: 6px 10px; border-left: 2px solid var(--y); text-align: left; }
+.m-npc-hits { color: #ff6a2a; letter-spacing: .12em; font-size: 15px; }
+.m-npc-acts { display: flex; gap: 10px; justify-content: center; }
+.m-npc-acts .m-btn { min-height: 44px; min-width: 110px; touch-action: manipulation; }
+.m-door-prompt .m-btn.ghost { background: rgba(0,0,0,.55); color: var(--g); box-shadow: inset 0 0 0 2px var(--g); }
+.m-door-prompt .m-btn.ghost:hover, .m-door-prompt .m-btn.ghost:focus-visible { background: var(--g); color: #000; }
+/* The pick, free to swing anywhere (Space on a keyboard). Phones get a button opposite the walking pad. */
+.m-swing { display: none; position: absolute; z-index: 26; right: calc(12px + env(safe-area-inset-right)); bottom: calc(60px + env(safe-area-inset-bottom)); width: 72px; height: 72px; border-radius: 50%; border: 2px solid rgba(255,106,42,.8); background: rgba(0,0,0,.5); color: #ffb08a; font: 700 30px/1 var(--mono); touch-action: none; user-select: none; -webkit-user-select: none; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; }
+.m-swing span { font-size: 11px; letter-spacing: .08em; }
+.m-swing:active { background: rgba(255,106,42,.3); transform: scale(.94); }
+@media (pointer: coarse), (max-width: 800px) { .m-swing { display: flex; } }
+@media (max-width: 640px) and (orientation: portrait) { .m-swing { bottom: calc(50px + env(safe-area-inset-bottom)); } }
+@media (max-width: 640px) {
+  .m-npc { bottom: calc(190px + env(safe-area-inset-bottom)); width: calc(100% - 24px); }
+  .m-npc-say { font-size: 15px; }
+  .m-npc-acts .m-btn { font-size: 19px; padding: 8px 10px; flex: 1; }
+  .m-npc .m-key { display: none; }
+}

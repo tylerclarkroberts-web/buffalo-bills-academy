@@ -56,6 +56,9 @@ export function buildMineHands() {
 }
 
 const PIXEL = 2; // pick pixels per tunnel pixel
+export const WHACK_S = 0.3;
+/** One swing of the pick at something in front of you (an old-timer: client/src/mines/npcMesh.js). */
+export function whackMineHands(hands) { if (hands) hands.whack = WHACK_S; }
 
 /** Draws the pick over whatever is already on the canvas. */
 export function drawMineHands(hands, renderer) {
@@ -85,7 +88,10 @@ export function stepMineHands(hands, dt, { distance = 0, mining = false, hidden 
   hands.mining = mining && !hidden && !reduce ? hands.mining + dt : 0;
   const sway = reduce || hidden ? 0 : Math.sin(hands.walk) * hands.walking;
   const lift = reduce || hidden ? 0 : Math.abs(Math.cos(hands.walk)) * hands.walking;
-  const strike = hands.mining ? (1 - Math.cos(hands.mining * Math.PI * 4)) / 2 : 0;
+  // one full swing (whackMineHands): up and over, then back, whatever else the pick is doing
+  hands.whack = Math.max(0, (hands.whack || 0) - dt);
+  const whack = hands.whack > 0 && !hidden && !reduce ? Math.sin((1 - hands.whack / WHACK_S) * Math.PI) : 0;
+  const strike = Math.max(whack * 1.15, hands.mining ? (1 - Math.cos(hands.mining * Math.PI * 4)) / 2 : 0);
   hands.grip.position.set(hands.spread * (1 - strike * .25) - sway * .012, hands.height - lift * .015, -1 - sway * .025 - strike * .14);
   hands.grip.rotation.set(-.1 - strike * .99, 0, .45 + sway * .035 + strike * .1);
 }
