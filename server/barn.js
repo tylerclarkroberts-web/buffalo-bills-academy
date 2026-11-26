@@ -17,7 +17,7 @@ import { line } from './engine/bout.js';
 import { rarityOf, LEGENDARY } from './engine/bug-types.js';
 import { isSteeze, STEEZE_STUCK } from './engine/steeze.js';
 import { cents } from './accounts.js';
-import { PATHS, GEAR, gymAt, gymEffects, gymView, gymFighter, trainStep, gymReadyAt, gearOn } from './engine/gym.js';
+import { PATHS, GEAR, CREATINE_MS, gymAt, gymEffects, gymView, gymFighter, trainStep, gymReadyAt, gearOn } from './engine/gym.js';
 import { varietyFor, cleanVariety } from './engine/variety.js';
 
 export const EGG_CHANCE = 15000; // out of 100,000 shifts (15%) with an empty barn
@@ -669,7 +669,7 @@ export class Barn {
     if (pen.faintedAt) throw new GameError(`${pen.name} fainted. Take it to the Bug Center first.`, 409);
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
     const now = this.now(), own = this.own(pen, now), n = this.needs(pen, now), level = levelFor(pen.xp, pen.cap);
-    // one workout per bug per 24 hours, any path (Cool Down & Stretch included). A blocked try costs nothing.
+    // one workout per bug per Pacific calendar day, any path (Cool Down & Stretch included). A blocked try costs nothing.
     const readyAt = gymReadyAt(pen.gymLastAt, pen.gymShort);
     if (readyAt > now) {
       const left = readyAt - now, h = Math.floor(left / 3600e3), m = Math.ceil((left % 3600e3) / 60e3);
@@ -684,11 +684,15 @@ export class Barn {
     for (const s of STATS) next.stats[s] = { v: step.needs[s], at: own };
     next.gym = step.gym;
     next.gymLastAt = now;
-    // a creatine dose waiting in it goes into this workout: the lock after it is 12 hours
+    // a creatine dose waiting in it goes into this workout: unlock at +12h or midnight PT, whichever is sooner
     const creatine = !!pen.gymCreatine;
     if (creatine) next.gymShort = true; else delete next.gymShort;
     delete next.gymCreatine;
-    const helped = [...(step.helped || []), ...(creatine ? [{ id: 'creatine', name: 'Creatine', emoji: '🥛', what: 'next workout in 12h' }] : [])];
+    const shortAt = gymReadyAt(now, true), left = shortAt - now;
+    const creatineWhat = left <= 0 ? 'ready now'
+      : shortAt === now + CREATINE_MS ? 'next workout in 12h'
+      : `next workout in ${(() => { const h = Math.floor(left / 3600e3), m = Math.ceil((left % 3600e3) / 60e3); return m === 60 ? `${h + 1}h 00m` : `${h}h ${String(m).padStart(2, '0')}m`; })()} (midnight PT)`;
+    const helped = [...(step.helped || []), ...(creatine ? [{ id: 'creatine', name: 'Creatine', emoji: '🥛', what: creatineWhat }] : [])];
     const xp = step.xp > 0 ? fadedXp(step.xp, level) : 0;
     next.xp += xp;
     if (player) this.accounts.change(player, -step.cost, 'barn-gym', `Bug Gym: ${p.name}`);
@@ -701,7 +705,7 @@ export class Barn {
    * Gym gear from the General Store (engine/gym.js GEAR, plus creatine). `gymGearFor` checks a purchase before any
    * money moves; `fitGymGear` puts it on. Gear on a bug runs `days` and cannot be doubled up: a second one waits
    * until the first runs out. Creatine is one dose: bought while the bug is locked, it shortens that lock to 12 hours
-   * from the workout's start (and is used up); otherwise the bug carries it into its next workout.
+   * from the workout's start or to midnight PT, whichever is sooner (and is used up); otherwise the bug carries it into its next workout.
    */
   gymGearFor(playerId, bug, gear) {
     const pen = this.penOf(playerId, bug);
