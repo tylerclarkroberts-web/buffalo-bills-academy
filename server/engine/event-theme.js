@@ -6,7 +6,8 @@
 //   1. ?event=on|off on the page URL (this tab only; handy for shots and QA)
 //   2. EVENT_THEME=on|off env, injected as window.__BBA_EVENT_THEME (or VITE_EVENT_THEME at build)
 //   3. the date window
-// ?bubble=1 keeps Guntrad's Crucible line visible (screenshots). Players do not get a bubble.
+// The Crucible line stays over Guntrad's head for the whole event (no hide cycle).
+// ?bubble=1 also keeps it on (screenshots / older links). Players do not get a bubble.
 
 export const EVENT_ID = 'desert-resort';
 export const EVENT_LABEL = 'Desert Resort Night';
@@ -45,10 +46,12 @@ export function hashId(id) {
 }
 
 /**
- * Speech-bubble window. Used for Guntrad only (id "guntrad"). force keeps it on for screenshots.
+ * Speech-bubble window. Used for Guntrad only (id "guntrad").
+ * Default: the line stays up all day while the event is on.
+ * force keeps it on for screenshots. persist:false restores the old show/hide cycle (tests).
  */
-export function bubblePhase(id, nowMs, { showMs = BUBBLE_SHOW_MS, cycleMs = BUBBLE_CYCLE_MS, force } = {}) {
-  if (force) return { on: true, wait: cycleMs, t: 0, offset: 0 };
+export function bubblePhase(id, nowMs, { showMs = BUBBLE_SHOW_MS, cycleMs = BUBBLE_CYCLE_MS, force, persist = true } = {}) {
+  if (force || persist !== false) return { on: true, wait: cycleMs, t: 0, offset: 0 };
   const offset = hashId(id) % cycleMs;
   const t = (((Number(nowMs) + offset) % cycleMs) + cycleMs) % cycleMs;
   const on = t < showMs;

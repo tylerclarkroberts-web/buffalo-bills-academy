@@ -46,19 +46,23 @@ test('the skin is on only for that Phoenix date, unless a flag overrides it', ()
   assert.equal(parseFlag('0'), false);
 });
 
-test('the Crucible line is exact, and the bubble is a timed window (for Guntrad)', () => {
+test('the Crucible line is exact, and the bubble stays up all day', () => {
   assert.equal(CRUCIBLE_LINE, 'Because it is my name!!!');
   const id = 'guntrad';
   const a = bubblePhase(id, 1_000_000);
   const b = bubblePhase(id, 1_000_000);
   assert.deepEqual(a, b);
-  assert.equal(a.on, a.t < BUBBLE_SHOW_MS);
-  assert.ok(a.wait > 0 && a.wait <= BUBBLE_CYCLE_MS);
-  // force keeps it on for screenshots
+  assert.equal(a.on, true);
+  // force and the default persist window both keep it on
   assert.equal(bubbleVisible(id, 1_000_000, { force: true }), true);
-  // over a full cycle the line both appears and disappears
-  const seen = new Set(Array.from({ length: BUBBLE_CYCLE_MS / 200 }, (_, i) => bubbleVisible(id, i * 200)));
+  assert.equal(bubbleVisible(id, 1_000_000), true);
+  assert.equal(bubbleVisible(id, 1_000_000 + BUBBLE_CYCLE_MS * 3), true);
+  // the old show/hide cycle is still available when a test asks for it
+  const seen = new Set(Array.from({ length: BUBBLE_CYCLE_MS / 200 }, (_, i) => bubbleVisible(id, i * 200, { persist: false })));
   assert.deepEqual([...seen].sort(), [false, true]);
+  const cycled = bubblePhase(id, 1_000_000, { persist: false });
+  assert.equal(cycled.on, cycled.t < BUBBLE_SHOW_MS);
+  assert.ok(cycled.wait > 0 && cycled.wait <= BUBBLE_CYCLE_MS);
 });
 
 test('the server can stamp EVENT_THEME into the SPA shell', () => {
@@ -106,4 +110,34 @@ test('the skin copy stays a neutral desert-resort look: no caricature language',
     assert.equal(files.includes(word), false, `forbidden term: ${word}`);
   }
   assert.match(files, /desert resort night/);
+});
+
+test('the hook and dealer keep the Crucible line on with no hide cycle', () => {
+  const store = readFileSync(path.join(ROOT, 'client/src/themes/event-store.js'), 'utf8');
+  assert.match(store, /useCrucibleBubble/);
+  assert.doesNotMatch(store, /setTimeout\(loop/);
+  assert.match(store, /return !!\(enabled && id\)/);
+  const dealer = readFileSync(path.join(ROOT, 'client/src/table/Dealer.jsx'), 'utf8');
+  assert.match(dealer, /useCrucibleBubble\('guntrad', festive && !still\)/);
+  const css = readFileSync(path.join(ROOT, 'client/src/themes/desert-resort.css'), 'utf8');
+  assert.match(css, /translate\(-50%, calc\(-100%/);
+  assert.match(css, /clear of cards and the action bar/);
+});
+
+test('the lobby marquee swaps Neon Bill for a neon waving turkey only during the event', () => {
+  const theme = readFileSync(path.join(ROOT, 'client/src/theme.jsx'), 'utf8');
+  assert.match(theme, /export function NeonTurkey/);
+  assert.match(theme, /data-test="neon-turkey"/);
+  assert.match(theme, /data-test="neon-bill"/);
+  assert.match(theme, /festive \? <NeonTurkey \/> : <NeonBill \/>/);
+  assert.match(theme, /nb-wave a/);
+  assert.match(theme, /nb-wave b/);
+  assert.match(theme, /className=\{`neonbill neon-turkey/);
+  // same palette and tube style as the cowboy
+  assert.match(theme, /c=\{C\.red\}/);
+  assert.match(theme, /c=\{C\.yellow\}/);
+  assert.match(theme, /c=\{C\.blue\}/);
+  assert.match(theme, /viewBox="0 0 420 660"/);
+  const css = readFileSync(path.join(ROOT, 'client/src/neon.css'), 'utf8');
+  assert.match(css, /\.neonbill \.nb-wave\.a/);
 });

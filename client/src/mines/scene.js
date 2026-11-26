@@ -503,7 +503,14 @@ export class MineScene {
     });
   }
   /** Barn bug sprite as a small billboard that floats ahead toward the acid. */
-  addBugGuide(bug) { this.bugMesh = this.bugBillboard(BY_ID[bug?.species], bug.style || null, '#b6ff7a'); }
+  addBugGuide(bug) {
+    this.bugMesh = this.bugBillboard(BY_ID[bug?.species], bug.style || null, '#b6ff7a');
+    const bg = this.bugGuide;
+    if (bg?.present) {
+      this.bugMesh.group.visible = true;
+      this.bugMesh.group.position.set(bg.x, 0, bg.z);
+    }
+  }
   setWilds(wilds) {
     const ids = new Set(wilds.map(wild => wild.id));
     for (const [id, wild] of this.wilds) if (!ids.has(id)) {

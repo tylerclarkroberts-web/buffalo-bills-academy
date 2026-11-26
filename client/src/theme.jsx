@@ -2,6 +2,7 @@
 // Everything here is original artwork drawn in code.
 import React, { useMemo } from 'react';
 import { chipPiles } from './util.js';
+import { useEventTheme } from './themes/event-store.js';
 
 export const VENUE = { name: "Buffalo Bill's Academy", short: "Buffalo Bill's", place: 'West Wendover, Nevada' };
 export const TABLE_NAMES = [
@@ -69,7 +70,7 @@ const STARS = [[40, 60], [80, 160], [356, 54], [372, 210], [30, 300], [60, 470],
 export function NeonBill({ className = '', label = 'Neon Bill, a giant neon cowboy waving hello' }) {
   const uid = useMemo(() => Math.random().toString(36).slice(2, 7), []);
   return (
-    <svg className={`neonbill ${className}`} viewBox="0 0 420 660" role="img" aria-label={label}>
+    <svg className={`neonbill ${className}`} viewBox="0 0 420 660" role="img" aria-label={label} data-test="neon-bill">
       <defs>
         <filter id={`glow-${uid}`} filterUnits="userSpaceOnUse" x="-60" y="-60" width="540" height="780"><feGaussianBlur stdDeviation="7" /></filter>
         <radialGradient id={`pool-${uid}`} cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#ff8a3d" stopOpacity=".38" /><stop offset="1" stopColor="#ff8a3d" stopOpacity="0" /></radialGradient>
@@ -121,12 +122,122 @@ export function NeonBill({ className = '', label = 'Neon Bill, a giant neon cowb
   );
 }
 
-/** The lobby sign: a bulb-lit marquee with Neon Bill waving from the left. */
+
+// Thanksgiving only: a neon waving turkey in the same tube style, size, and palette as Neon Bill.
+const T = {
+  // fanned tail, drawn back-to-front so the body sits on top
+  f1: 'M200 360 C120 300 60 220 48 120 C90 170 150 250 210 350',
+  f2: 'M198 365 C100 330 30 250 18 150 C70 210 140 290 208 360',
+  f3: 'M196 370 C90 360 20 300 8 210 C60 260 130 330 206 368',
+  f4: 'M198 376 C110 400 40 390 16 320 C70 350 140 370 206 374',
+  f5: 'M200 355 C140 270 110 180 120 80 C150 150 180 250 214 348',
+  f6: 'M204 350 C170 250 165 150 190 60 C200 140 210 250 218 346',
+  f7: 'M206 352 C210 250 230 160 270 80 C240 150 228 250 216 348',
+  rib1: 'M200 360 L48 130', rib2: 'M198 365 L18 160', rib3: 'M196 370 L8 220',
+  rib4: 'M198 376 L16 325', rib5: 'M200 355 L120 85', rib6: 'M204 350 L190 65', rib7: 'M206 352 L270 85',
+  // body + breast
+  body: 'M150 300 C150 230 270 230 270 305 C270 410 150 410 150 305',
+  breast: 'M175 300 C175 270 245 270 245 305 C245 370 175 370 175 305',
+  belly: 'M168 350 Q210 390 252 350',
+  // left (resting) wing
+  wingL: 'M160 320 C110 330 90 380 100 430 C130 410 160 380 172 350',
+  wingLin: 'M158 335 C125 345 115 385 122 415',
+  // neck, head, face
+  neck: 'M230 260 C248 230 250 190 238 150',
+  neckIn: 'M218 262 C230 230 232 195 224 158',
+  head: 'M208 150 C208 112 268 112 268 150 C268 186 208 186 208 150',
+  brow: 'M222 138 Q236 132 250 138',
+  eye: 'M228 150 Q238 142 248 150',
+  beak: 'M266 150 L318 162 L266 174',
+  beakIn: 'M266 158 L300 162 L266 166',
+  snood: 'M258 148 C274 136 296 146 278 160',
+  wattle: 'M266 172 C278 200 258 214 250 190',
+  // legs + pink feet (same boot pink as Bill)
+  legL: 'M186 408 L176 548', legR: 'M234 408 L244 548',
+  thighL: 'M190 408 L182 470', thighR: 'M230 408 L238 470',
+  footL: 'M176 548 L132 562 M176 548 L158 586 M176 548 L204 580',
+  footR: 'M244 548 L288 562 M244 548 L262 586 M244 548 L216 580',
+  spurL: 'M176 548 L168 566', spurR: 'M244 548 L252 566',
+  // waving wing: upper is fixed; tip swaps between two neon frames
+  upperR: 'M262 300 C310 280 348 250 365 220',
+  upperRin: 'M256 318 C308 298 350 268 368 236',
+  tipR: 'M365 220 C378 180 372 135 348 100 M368 236 C390 190 384 140 360 108',
+  barbsR: 'M350 130 L330 108 M365 145 L358 112 M378 160 L400 128',
+};
+
+export function NeonTurkey({ className = '', label = 'Neon Tom, a giant neon turkey waving hello' }) {
+  const uid = useMemo(() => Math.random().toString(36).slice(2, 7), []);
+  return (
+    <svg className={`neonbill neon-turkey ${className}`} viewBox="0 0 420 660" role="img" aria-label={label} data-test="neon-turkey">
+      <defs>
+        <filter id={`glow-${uid}`} filterUnits="userSpaceOnUse" x="-60" y="-60" width="540" height="780"><feGaussianBlur stdDeviation="7" /></filter>
+        <radialGradient id={`pool-${uid}`} cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#ff8a3d" stopOpacity=".38" /><stop offset="1" stopColor="#ff8a3d" stopOpacity="0" /></radialGradient>
+      </defs>
+      <ellipse cx="200" cy="640" rx="190" ry="22" fill={`url(#pool-${uid})`} />
+      <g className="nb-sparkle" aria-hidden="true">{STARS.map(([x, y], i) => <path key={i} d={`M${x} ${y - 6} L${x} ${y + 6} M${x - 6} ${y} L${x + 6} ${y}`} style={{ animationDelay: `${(i * 0.37) % 2.6}s` }} />)}</g>
+      <g className="nb-tubes" style={{ '--glow': `url(#glow-${uid})` }}>
+        <g className="nb-part p1">
+          <Tube d={T.f5} c={C.red} w={5} />
+          <Tube d={T.f1} c={C.yellow} w={5} />
+          <Tube d={T.f6} c={C.blue} w={5} />
+          <Tube d={T.f2} c={C.amber} w={5} />
+          <Tube d={T.f7} c={C.red} w={5} />
+          <Tube d={T.f3} c={C.white} w={5} />
+          <Tube d={T.f4} c={C.yellow} w={5} />
+          <Tube d={T.rib5} c={C.white} w={2.5} className="nb-flicker" />
+          <Tube d={T.rib1} c={C.amber} w={2.5} />
+          <Tube d={T.rib6} c={C.white} w={2.5} />
+          <Tube d={T.rib2} c={C.yellow} w={2.5} />
+          <Tube d={T.rib7} c={C.amber} w={2.5} />
+          <Tube d={T.rib3} c={C.white} w={2.5} />
+          <Tube d={T.rib4} c={C.red} w={2.5} className="nb-flicker" />
+        </g>
+        <g className="nb-part p2">
+          <Tube d={T.body} c={C.amber} w={5.5} />
+          <Tube d={T.breast} c={C.yellow} w={4.5} />
+          <Tube d={T.belly} c={C.white} w={3} />
+          <Tube d={T.wingL} c={C.yellow} w={5} />
+          <Tube d={T.wingLin} c={C.amber} w={3.5} />
+        </g>
+        <g className="nb-part p3">
+          <Tube d={T.neck} c={C.amber} w={5} />
+          <Tube d={T.neckIn} c={C.yellow} w={3.5} />
+          <Tube d={T.head} c={C.amber} w={5} />
+          <Tube d={T.brow} c={C.white} w={3.5} />
+          <g className="nb-blink"><Tube d={T.eye} c={C.white} w={4} /></g>
+          <Tube d={T.beak} c={C.yellow} w={4.5} />
+          <Tube d={T.beakIn} c={C.white} w={2.5} />
+          <Tube d={T.snood} c={C.red} w={4} className="nb-flicker" />
+          <Tube d={T.wattle} c={C.red} w={4.5} />
+        </g>
+        <g className="nb-part p4">
+          <Tube d={T.legL} c={C.amber} w={4.5} />
+          <Tube d={T.legR} c={C.amber} w={4.5} />
+          <Tube d={T.thighL} c={C.yellow} w={3} />
+          <Tube d={T.thighR} c={C.yellow} w={3} />
+          <Tube d={T.footL} c={C.red} w={5} />
+          <Tube d={T.footR} c={C.red} w={5} />
+          <Tube d={T.spurL} c={C.red} w={3} />
+          <Tube d={T.spurR} c={C.red} w={3} />
+        </g>
+        <g className="nb-part p5">
+          <Tube d={T.upperR} c={C.yellow} w={5.5} />
+          <Tube d={T.upperRin} c={C.yellow} w={4} />
+          <g className="nb-wave a" transform="rotate(-10 365 220)"><Tube d={T.tipR} c={C.yellow} w={5} /><Tube d={T.barbsR} c={C.white} w={3} /></g>
+          <g className="nb-wave b" transform="rotate(22 365 220)"><Tube d={T.tipR} c={C.yellow} w={5} /><Tube d={T.barbsR} c={C.white} w={3} /></g>
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+/** The lobby sign: a bulb-lit marquee with Neon Bill (or, today, a neon turkey) waving from the left. */
 export function Marquee({ aside = null }) {
+  const festive = useEventTheme();
   const bulbs = Array.from({ length: 28 }, (_, i) => <i key={i} />);
   return (
     <header className="marquee5">
-      <div className="mq-bill" aria-hidden="true"><NeonBill /></div>
+      <div className="mq-bill" aria-hidden="true">{festive ? <NeonTurkey /> : <NeonBill />}</div>
       <div className="mq-sign">
         <div className="mq-bulbs">{bulbs}</div>
         <div className="mq-body">

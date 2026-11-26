@@ -5,7 +5,7 @@
 import { bfs, tileOf, TILE } from './stalker.js';
 import { WALK_SPEED } from './controls.js';
 
-export const APPEAR_AFTER_MS = 4000; // brief delay so it doesn't hand you the route at clock-in
+export const APPEAR_AFTER_MS = 0; // with the miner on the first frame of the shift
 export const LEAD_TILES = 2;         // tries to stay about this many tiles ahead of you toward the pool
 export const WAIT_TILES = 3;         // if you're this many tiles behind it, it pauses
 export const ARRIVE_TILES = 0;       // stops on the pool tile
@@ -78,6 +78,10 @@ export class BugGuide {
     this.pace = gym ? Math.max(0.4, Math.min(1, Number(gym.mineSpeed) || 1)) : 1; // the Bug Gym: unruly bugs drag
     this.balkChance = gym ? Math.max(0, Math.min(1, Number(gym.balk) || 0)) : 0;
     this.balkLeft = 0; this.balkClock = BALK_EVERY_S; this.balking = false; this.rng = rng;
+    // Armed guides are present immediately so the first rendered frame already has the bug.
+    if (this.armed && this.afterMs <= 0) {
+      this.appear({ x: this.start.x * TILE, z: this.start.y * TILE, yaw: 0, elapsedMs: 0, t: 0 });
+    }
   }
 
   get present() { return this.state === 'guiding'; }

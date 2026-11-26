@@ -161,19 +161,23 @@ body[data-event="desert-resort"] .bust .b-wear-body [data-slot="neck"] { display
 .dl-proctor-coat { z-index: 2; }
 .dealer-fig.proctor, body[data-event="desert-resort"] .dealer-spot { overflow: visible; }
 .dl-crucible-say {
-  position: absolute; left: 58%; top: 2%; z-index: 8;
-  max-width: 44%; padding: 5px 8px 6px;
-  border-radius: 10px 10px 10px 3px; background: #f7efe4; color: #2a1810;
+  position: absolute; left: 50%; top: 0; z-index: 8;
+  transform: translate(-50%, calc(-100% + 8px));
+  max-width: min(180px, 80%); padding: 5px 8px 6px;
+  border-radius: 10px; background: #f7efe4; color: #2a1810;
   font: 650 11px/1.2 var(--sans); letter-spacing: .01em; text-align: center;
   pointer-events: none; box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
-  animation: crucible-pop .28s cubic-bezier(.3, 1.5, .5, 1);
+  animation: crucible-pop .28s ease-out both;
 }
 .dl-crucible-say::after {
-  content: ''; position: absolute; left: 14px; bottom: -5px;
+  content: ''; position: absolute; left: 50%; bottom: -5px;
+  transform: translateX(-50%);
   border: 6px solid transparent; border-top-color: #f7efe4; border-bottom: 0;
 }
-@keyframes crucible-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes crucible-pop { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .dl-crucible-say { animation: none; } }
 @media (max-width: 520px) {
-  .dl-crucible-say { font-size: 9px; max-width: 50%; padding: 4px 6px 5px; }
+  /* Beside the hat, under the tab row, clear of cards and the action bar. */
+  .dl-crucible-say { font-size: 8px; max-width: min(120px, 52%); padding: 3px 6px 4px; left: 74%; top: 8%; transform: none; }
+  .dl-crucible-say::after { left: 16px; transform: none; }
 }
