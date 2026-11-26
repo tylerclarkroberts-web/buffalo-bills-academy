@@ -112,6 +112,10 @@ test('the appear delay and the required line are exact', () => {
   assert.equal(TYPING_ACCURACY, 0.95);
   assert.ok(TYPING_RANTS.length >= 3);
   assert.ok(TYPING_JABS.speed && TYPING_JABS.accuracy && TYPING_JABS.short && TYPING_JABS.early && TYPING_JABS.keys);
+  assert.notEqual(TYPING_JABS.keys, TYPING_JABS.early, 'keys and early must be distinguishable');
+  assert.match(TYPING_JABS.early, /paste-hands/i);
+  assert.match(TYPING_JABS.keys, /keystrokes/i);
+  assert.doesNotMatch(TYPING_JABS.keys, /paste-hands/i);
   assert.ok(TYPING_PRAISE);
 });
 
@@ -405,7 +409,9 @@ test('HTTP: seeing Heeshee and quitting locks clock-in across a re-fetch until a
 test('the Foreman typing UI blocks paste, turns off autocomplete, and stays on a mines screen for Work Mode', () => {
   const jsx = read('client/src/mines/Foreman.jsx');
   assert.match(jsx, /data-test="fm-type-input"/);
-  assert.match(jsx, /onBeforeInput=\{onBeforeInput\}/);
+  assert.match(jsx, /addEventListener\('beforeinput'/);
+  assert.doesNotMatch(jsx, /onBeforeInput=\{onBeforeInput\}/);
+  assert.match(jsx, /textInput\/keypress/);
   assert.match(jsx, /onPaste=\{blockPaste\}/);
   assert.match(jsx, /onDrop=\{blockPaste\}/);
   assert.match(jsx, /onContextMenu=\{blockPaste\}/);
@@ -497,7 +503,8 @@ test('a perfect line without a keystroke trace, or with one big insert, stays lo
   const missing = f.foreman.gradeTyping(f.player, id, TYPING_PROMPT);
   assert.equal(missing.passed, false);
   assert.equal(missing.fail, 'keys');
-  assert.match(missing.jab, /paste-hands/i);
+  assert.match(missing.jab, /keystrokes/i);
+  assert.notEqual(missing.jab, TYPING_JABS.early);
   assert.equal(pendingOf(f)?.kind, 'typing');
 
   f.foreman.startTyping(f.player, id);
@@ -545,4 +552,14 @@ test('start and submit rows stay in the typing log after a pass', (t) => {
   assert.equal(submits[1].inserts, TYPING_PROMPT.length);
   const again = new Foreman({ store: f.store, accounts: f.mines.accounts, now: () => f.clock.now, randInt: () => 0 });
   assert.equal(again.doc.typingLog.length, rows.length);
+});
+
+test('e2e types the prompt keystroke by keystroke at about 100 WPM in a real browser', () => {
+  const e2e = read('scripts/e2e-foreman-typing.mjs');
+  assert.match(e2e, /pressSequentially/);
+  assert.match(e2e, /wpm = 100/);
+  assert.match(e2e, /beforeinput/);
+  assert.match(e2e, /chromium/);
+  assert.match(e2e, /webkit/);
+  assert.doesNotMatch(e2e, /\.fill\(|insertFromPaste/);
 });

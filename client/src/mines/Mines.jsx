@@ -356,6 +356,7 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
   const units = office?.capacity || 100;
   // Signed out: the sign-in form takes the place of the orientation, so the page still fits one screen.
   const [signing, setSigning] = useState(false);
+  const [brief, setBrief] = useState('orientation');
   if (signing && !me) {
     return (
       <main className="m-intro m-intro-signin">
@@ -368,8 +369,16 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
       </main>
     );
   }
+  const clockIn = (
+    <div className="m-go">
+      {loading ? null : me
+        ? <button className="m-btn" data-test="mine-clock-in" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button>
+        : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" data-test="mine-clock-in" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
+      {me && office?.nephew && <Nephew hired={office.nephew} />}
+    </div>
+  );
   return (
-    <main className={`m-intro${office?.today ? ' has-today' : ''}`}>
+    <main className={`m-intro${office?.today ? ' has-today' : ''}`} data-test="mine-intro">
       <div className="hazard-bar" />
       <h1 className="m-title glitch" data-text="THE ACID MINES">THE ACID MINES</h1>
       <p className="m-sub">NOW HIRING · ALL SHIFTS · NO EXPERIENCE · NO QUESTIONS</p>
@@ -377,37 +386,39 @@ function Intro({ me, loading, onStart, starting, office, open, going, onShaft })
         <span className="m-dim">TODAY'S DIG</span><TierBadge tier={office.today.tier} />
         <span className="m-dim"><span className="m-blurb">{tierInfo(office.today.tier).blurb} </span>{office.today.pay > 1 ? <><span className="m-pay-word">HAZARD </span>PAY ×{office.today.pay}</> : <span className="m-pay-word">STANDARD PAY</span>}</span>
       </div>}
-      <div className="m-cols">
-        <section className="m-box">
-          <h2>&gt; SHIFT ORIENTATION</h2>
-          <ol>
-            <li>Descend. Walk the tunnels. <span className="m-dim">WASD / arrows · hold Shift to run · phones: stick to walk and steer, hold ◂/▸ to turn, drag the view to look.</span></li>
-            <li>Want motion controls? Tap <b>TILT</b>, hold the phone comfortably, and use <b>Recenter</b> to reset your neutral position. <b>Use touch</b> switches back.</li>
-            <li>Follow the clicks. Closer is faster; facing the right tunnel gives them a little boost.</li>
-            <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks to the next one. The farther from the lift, the richer the acid.</li>
-            <li>One bucket. {units.toLocaleString('en-US')} units. Clock out with what you've got, or fill it for automatic pay.</li>
-            <li>A hatched barn bug knows the tunnels and leads you to the glow. If it gets knocked out, take it to the <b>Bug Center</b> in the Barn. Otherwise it recovers all HP after the fight.</li>
-            <li><b>Everyone in your shaft shares today's tunnels.</b> Get close behind an unsuspecting miner and press <b>X</b> or tap <b>Assassinate</b> for their acid and up to $100. Meet face to face and your <b>bugs battle automatically</b> for the haul and the loser's smokes. You'll need a day-old account and three finished shifts. Guests and the elevator landing are protected.</li>
-          </ol>
-          <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
-          {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
-            {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}{s.quality > 1 ? ` · ACID ×${s.quality}` : ''}</span></button>)}
-          </div>}
-          <div className="m-go">
-          {loading ? null : me ? <button className="m-btn" disabled={starting} onClick={onStart}>[ CLOCK IN ]</button> : <div className="m-signin"><p>Sign in so payroll knows where to send your money.</p><button className="m-btn" onClick={() => setSigning(true)}>[ SIGN IN TO CLOCK IN ]</button></div>}
-          {me && office?.nephew && <Nephew hired={office.nephew} />}
-          </div>
-        </section>
-        <section className="m-box">
-          <h2>&gt; WHAT'S DOWN THERE</h2>
-          <ul className="m-finds">
-            <li><b>ACID.</b> Buckets of it. This is the job.</li>
-            <li><b>MUD.</b> Some days it is just mud.</li>
-            <li><b>???</b> Old-timers whisper about a motherlode, a well full of something shiny, and things that are not from here.</li>
-          </ul>
-          <p className="m-dim">Nobody knows the odds. Payroll will not say. Every shift pays something.</p>
-          {me && <button className="m-link" onClick={() => navigate('/store')}>DEEPER SHAFTS AND FASTER TOOLS: GENERAL STORE ►</button>}
-        </section>
+      {me && open.length > 1 && <div className="m-shafts" role="group" aria-label="Which shaft">
+        {open.map((s) => <button key={s.id} className={`m-btn ${s === going ? '' : 'ghost'}`} aria-pressed={s === going} onClick={() => onShaft(s.id)}>{s.name}<span className="small"> · {s.fare ? `$${s.fare} FARE` : 'FREE'}{s.quality > 1 ? ` · ACID ×${s.quality}` : ''}</span></button>)}
+      </div>}
+      {clockIn}
+      <div className="m-brief" data-test="mine-brief">
+        <div className="m-brief-tabs" role="tablist" aria-label="Shift brief">
+          <button type="button" role="tab" className={brief === 'orientation' ? 'on' : ''} aria-selected={brief === 'orientation'} data-test="mine-brief-orientation" onClick={() => setBrief('orientation')}>SHIFT ORIENTATION</button>
+          <button type="button" role="tab" className={brief === 'down' ? 'on' : ''} aria-selected={brief === 'down'} data-test="mine-brief-down" onClick={() => setBrief('down')}>WHAT'S DOWN THERE</button>
+        </div>
+        <div className="m-cols">
+          <section className={`m-box${brief === 'orientation' ? ' on' : ''}`} data-test="mine-orientation">
+            <h2>&gt; SHIFT ORIENTATION</h2>
+            <ol>
+              <li>Descend. <span className="m-dim">WASD / arrows · Shift to run · phones: stick to walk, hold ◂/▸ to turn, drag to look. TILT for motion; Recenter / Use touch to switch.</span></li>
+              <li>Follow the clicks. Closer is faster; face the right tunnel for a boost.</li>
+              <li>Hold <b>MINE</b> at a wet pool. Drain it, then follow the clicks. Farther from the lift is richer.</li>
+              <li>One bucket. {units.toLocaleString('en-US')} units. Clock out anytime, or fill it for automatic pay.</li>
+              <li>A hatched barn bug leads you to the glow. Knocked out? Take it to the <b>Bug Center</b> in the Barn. Otherwise it recovers after the fight.</li>
+              <li><b>Shared shafts.</b> From behind: <b>X</b> or <b>Assassinate</b> for their acid and up to $100. Face to face: bugs battle. Need a day-old account and three finished shifts. Guests and the lift are protected.</li>
+            </ol>
+            <p className="m-dim">Acid is ready when you find it. Payroll weighs the bucket when you finish.</p>
+          </section>
+          <section className={`m-box${brief === 'down' ? ' on' : ''}`} data-test="mine-down-there">
+            <h2>&gt; WHAT'S DOWN THERE</h2>
+            <ul className="m-finds">
+              <li><b>ACID.</b> Buckets of it. This is the job.</li>
+              <li><b>MUD.</b> Some days it is just mud.</li>
+              <li><b>???</b> Old-timers whisper about a motherlode, a well full of something shiny, and things that are not from here.</li>
+            </ul>
+            <p className="m-dim">Nobody knows the odds. Payroll will not say. Every shift pays something.</p>
+            {me && <button className="m-link" onClick={() => navigate('/store')}>DEEPER SHAFTS AND FASTER TOOLS: GENERAL STORE ►</button>}
+          </section>
+        </div>
       </div>
     </main>
   );

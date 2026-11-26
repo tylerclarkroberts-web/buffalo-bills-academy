@@ -72,9 +72,20 @@ export default function Foreman({ pending, sound, onDone }) {
   }
   function blockPaste(e) { e.preventDefault(); }
   function resetTrace() { strokes.current = emptyTypingTrace(); }
-  function onBeforeInput(e) {
-    if (recordTypingInput(strokes.current, e.inputType, e.data).blocked) e.preventDefault();
-  }
+  // React 19's onBeforeInput is still backed by textInput/keypress and has no inputType,
+  // so a synthetic handler never counts inserts (trace.inserts stays 0 → 'keys' fail).
+  // A native beforeinput listener gets the real inputType/data, including 2-char inserts
+  // (double-space period). Paste, drop, and replacement stay blocked via preventDefault.
+  useEffect(() => {
+    if (stage !== 'typing') return undefined;
+    const el = input.current;
+    if (!el) return undefined;
+    const onBeforeInput = (e) => {
+      if (recordTypingInput(strokes.current, e.inputType, e.data).blocked) e.preventDefault();
+    };
+    el.addEventListener('beforeinput', onBeforeInput);
+    return () => el.removeEventListener('beforeinput', onBeforeInput);
+  }, [stage]);
   async function beginTyping() {
     if (startedAt) return startedAt;
     if (starting.current) return starting.current;
@@ -163,7 +174,6 @@ export default function Foreman({ pending, sound, onDone }) {
               data-test="fm-type-input"
               value={typed}
               onChange={onTyped}
-              onBeforeInput={onBeforeInput}
               onPaste={blockPaste}
               onDrop={blockPaste}
               onContextMenu={blockPaste}

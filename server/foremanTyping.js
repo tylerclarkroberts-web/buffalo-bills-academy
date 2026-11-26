@@ -60,7 +60,7 @@ export const TYPING_JABS = {
   accuracy: 'Dagnabbit, that was sloppy. Ninety-five percent or it don\'t count. Start over.',
   short: 'That ain\'t the whole thing. I said EVERY word. Try again.',
   early: 'Nice try, paste-hands. You type it. You don\'t dump it. Start over.',
-  keys: 'Nice try, paste-hands. You type it. You don\'t dump it. Start over.',
+  keys: 'Those keystrokes don\'t add up, sport. Type every letter. No dumps, no tricks. Start over.',
 };
 
 export const TYPING_PRAISE = 'WELL I\'LL BE. You can type and you meant it. Get back down there, and don\'t run next time.';

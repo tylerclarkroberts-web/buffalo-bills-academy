@@ -1,6 +1,6 @@
 // Apply the one-day event skin to the document, and React hooks for busts/dealer.
 import { useEffect, useState } from 'react';
-import { EVENT_ID, bubblePhase, isEventThemeOn, liveEventOpts } from './event-theme.js';
+import { EVENT_ID, isEventThemeOn, liveEventOpts } from './event-theme.js';
 
 export function applyEventThemeToDocument(doc = typeof document !== 'undefined' ? document : null, opts = liveEventOpts()) {
   const on = isEventThemeOn(opts);
@@ -24,20 +24,7 @@ export function useEventTheme() {
   return on;
 }
 
-/** True while Guntrad should show the Crucible line. */
+/** True while Guntrad should show the Crucible line. Stays up all day; no hide cycle. */
 export function useCrucibleBubble(id, enabled) {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    if (!enabled || !id) { setOn(false); return undefined; }
-    let t;
-    const loop = () => {
-      const opts = liveEventOpts();
-      const phase = bubblePhase(id, Date.now(), { force: opts.bubble });
-      setOn(phase.on);
-      t = setTimeout(loop, Math.max(80, Math.min(phase.wait, 8000)));
-    };
-    loop();
-    return () => clearTimeout(t);
-  }, [id, enabled]);
-  return on;
+  return !!(enabled && id);
 }

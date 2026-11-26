@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { makeMaze, FIRST_POOL_STEPS } from '../server/engine/maze.js';
-import { BugGuide, pathBetween, stepToward } from '../client/src/mines/bugGuide.js';
+import { BugGuide, pathBetween, stepToward, APPEAR_AFTER_MS } from '../client/src/mines/bugGuide.js';
 import { WALK_SPEED } from '../client/src/mines/controls.js';
 import { bfs, tileOf, TILE } from '../client/src/mines/stalker.js';
 import { createApp } from '../server/app.js';
@@ -19,6 +19,7 @@ const G = [
 
 test('orders: come to heel, lead to the lift, lead to the nearest other miner, and back to the acid', () => {
   const guide = new BugGuide({ grid: G, pool: { x: 7, y: 5 }, start: { x: 1, y: 1 } }, { armed: true, afterMs: 0, bug: { species: 'lamprima' } });
+  guide.events.length = 0; // drop the first-frame appear so this test can read later events
   const at = (x, y) => ({ t: 0, x: x * TILE, z: y * TILE, yaw: 0, elapsedMs: 1 });
   const run = (p, secs = 12) => { for (let i = 0; i < secs * 20; i++) guide.update(0.05, p); return tileOf(guide.x, guide.z); };
   assert.equal(guide.order('dance'), false, 'only the four it knows');
@@ -85,22 +86,28 @@ test('stepToward descends the BFS distance field', () => {
   assert.deepEqual(stepToward(dist, 7, 1), [7, 1]);
 });
 
-test('BugGuide appears after delay, leads toward pool, waits when player lags', () => {
+test('BugGuide is present on the first frame when a living bug came on shift', () => {
+  assert.equal(APPEAR_AFTER_MS, 0);
   const maze = { grid: G, pool: { x: 7, y: 1 }, start: { x: 1, y: 1 } };
-  const g = new BugGuide(maze, { armed: true, afterMs: 1000, bug: { species: 'candela', name: 'Pip' } });
+  const g = new BugGuide(maze, { armed: true, bug: { species: 'candela', name: 'Pip' } });
+  assert.equal(g.state, 'guiding', 'present before the first update');
+  assert.equal(g.present, true);
+  assert.equal(g.events[0], 'appear');
+  // An explicit delay still works (tests, or a future slow entrance).
+  const delayed = new BugGuide(maze, { armed: true, afterMs: 1000, bug: { species: 'candela', name: 'Pip' } });
   const p0 = { t: 0, x: 1 * TILE, z: 1 * TILE, yaw: 0, elapsedMs: 500 };
-  g.update(0.05, p0);
-  assert.equal(g.state, 'dormant');
-  g.update(0.05, { ...p0, elapsedMs: 1100 });
-  assert.equal(g.state, 'guiding');
-  assert.equal(g.events.shift(), 'appear');
-  for (let i = 0; i < 400; i++) g.update(0.05, { t: i * 0.05, x: 1 * TILE, z: 1 * TILE, yaw: 0, elapsedMs: 1100 + i * 50 });
-  assert.equal(g.waiting, true, 'waits when the miner stays at the entrance');
-  const [bx] = tileOf(g.x, g.z);
+  delayed.update(0.05, p0);
+  assert.equal(delayed.state, 'dormant');
+  delayed.update(0.05, { ...p0, elapsedMs: 1100 });
+  assert.equal(delayed.state, 'guiding');
+  assert.equal(delayed.events.shift(), 'appear');
+  for (let i = 0; i < 400; i++) delayed.update(0.05, { t: i * 0.05, x: 1 * TILE, z: 1 * TILE, yaw: 0, elapsedMs: 1100 + i * 50 });
+  assert.equal(delayed.waiting, true, 'waits when the miner stays at the entrance');
+  const [bx] = tileOf(delayed.x, delayed.z);
   assert.ok(bx > 1, 'moved some of the way toward the pool before waiting');
-  const [bx0] = tileOf(g.x, g.z);
-  for (let i = 0; i < 120; i++) g.update(0.05, { t: 20 + i * 0.05, x: g.x, z: g.z, yaw: 0, elapsedMs: 5000 + i * 50 });
-  const [bx1] = tileOf(g.x, g.z);
+  const [bx0] = tileOf(delayed.x, delayed.z);
+  for (let i = 0; i < 120; i++) delayed.update(0.05, { t: 20 + i * 0.05, x: delayed.x, z: delayed.z, yaw: 0, elapsedMs: 5000 + i * 50 });
+  const [bx1] = tileOf(delayed.x, delayed.z);
   assert.ok(bx1 > bx0 || (bx1 === 7), `resumed after catch-up (${bx0} → ${bx1})`);
 });
 

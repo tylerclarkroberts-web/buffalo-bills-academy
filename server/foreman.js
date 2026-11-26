@@ -348,12 +348,13 @@ export class Foreman {
     const passed = !fail;
     const pub = publicTypingStats({ ...stats, passed, fail });
     const compact = publicTypingTrace(trace);
+    const jab = passed ? null : (TYPING_JABS[fail] || TYPING_JABS.accuracy);
     this.logTyping({
       k: 'submit', p: player.id, lockId: p.id,
       prompt, promptIndex: p.promptIndex ?? null,
       startedAt, submittedAt, elapsedMs: elapsed,
       wpm: pub.wpm, accuracy: pub.accuracy,
-      passed, fail, textLen: typed.length,
+      passed, fail, jab, textLen: typed.length,
       inserts: compact.inserts, chars: compact.chars,
       deletes: compact.deletes, maxInsert: compact.maxInsert,
     });
@@ -365,7 +366,7 @@ export class Foreman {
     p.misses = (p.misses || 0) + 1;
     p.attemptStartedAt = null;
     this.save();
-    return { ...pub, jab: TYPING_JABS[fail] || TYPING_JABS.accuracy, misses: p.misses };
+    return { ...pub, jab, misses: p.misses };
   }
   answer(player, id, raw) {
     const p = this.doc.pending[player.id];
