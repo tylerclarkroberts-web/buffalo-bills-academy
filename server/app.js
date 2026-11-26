@@ -10,6 +10,7 @@ import { PokerService } from './service.js';
 import { setupAuth, Sessions, authConfig } from './auth.js';
 import { Mines } from './mines.js';
 import { NpcMiners } from './npcMiners.js';
+import { MazodeChase } from './mazodeChase.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
 import { creditStall5Refunds } from './stallRefund.js';
@@ -86,6 +87,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   mines.owned = (id) => shop.doc.inv[id]?.own;
   const npcs = new NpcMiners({ store: service.store, mines, now: service.now }); // the old-timers down the mine
   mines.npcs = npcs;
+  const mazode = new MazodeChase({ store: service.store, mines, now: service.now }); // chasing the Heeshee Mazode for your bug
+  mines.chase = mazode;
   barn.mines = mines; // so a mid-shift steal is visible to barn/circuit fight gates
   const trades = new Trades({ store: service.store, accounts, barn, now: service.now }); // the trading post: bugs and cash between players
   barn.foreman = foreman; // in-game Foreman notes (stall-price credit, etc.) show on the barn and in /me
@@ -96,6 +99,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const pvp = new Pvp({ store: service.store, accounts, mines, shop, barn, avatars, now: service.now, randInt: pvpInt, rageInt: barnTest && env.GYM_TEST_RAGE === '1' ? () => 0 : undefined });
   // A pickaxe hit only counts from where the server last had you (pvp's checked heartbeat), right up against the old-timer.
   npcs.pose = (playerId, shiftId) => { const pr = pvp.presence.get(playerId); return pr && pr.shiftId === shiftId && service.now() - pr.at < PVP.staleMs ? { x: pr.x, y: pr.y } : null; };
+  // The Heeshee chase reads the same checked position, with when it was taken (the hit is judged against where it was then).
+  mazode.pose = (playerId, shiftId) => { const pr = pvp.presence.get(playerId); return pr && pr.shiftId === shiftId && service.now() - pr.at < PVP.staleMs ? { x: pr.x, y: pr.y, at: pr.at } : null; };
   const pvpSweep = setInterval(() => { try { pvp.sweep(); } catch (e) { console.error('[pvp] sweep', e); } }, 1000);
   pvpSweep.unref?.();
   const foff = new Foff({ store: service.store, accounts, shop, avatars, now: service.now });
@@ -428,6 +433,8 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   api.post('/barn/foreman-note/ack', needPlayer, wrap((req) => foreman.ackNote(req.player.id, req.body?.id))); // dismiss a Foreman note; no money moves
   api.post('/mines/quit', needPlayer, wrap((req) => { pvp.forfeit(req.player.id); return mines.quit(accounts.ensure(req.player), req.body?.shiftId, req.body); })); // clocking out mid-battle forfeits it
   api.post('/mines/heeshee/steal', needPlayer, wrap((req) => mines.stealBug(accounts.ensure(req.player), req.body?.shiftId)));
+  api.post('/mines/heeshee/hit', needPlayer, wrap((req) => mazode.hit(accounts.ensure(req.player), req.body?.shiftId)));
+  api.post('/mines/heeshee/answer', needPlayer, wrap((req) => mazode.answer(accounts.ensure(req.player), req.body?.shiftId, req.body?.n, req.body?.pick)));
   api.post('/mines/heeshee/seen', needPlayer, wrap((req) => mines.seeHeeshee(accounts.ensure(req.player), req.body?.shiftId)));
   api.post('/mines/bug/order', needPlayer, wrap((req) => mines.orderBug(accounts.ensure(req.player), req.body?.shiftId, req.body)));
   // v71: the shared daily mine (server/pvp.js). The browser reports its position; the server decides who saw whom.
@@ -466,7 +473,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     if (seated) throw new GameError('Leave your tables first, then delete your account.', 409);
     rooms.forget(p.id);
     try { fs.unlinkSync(avatars.file(p.id)); } catch { /* no photo */ }
-    pvp.forget(p.id); mines.forget(p.id); npcs.forget(p.id); trades.forget(p.id); // open trade offers called off, held cash returned
+    pvp.forget(p.id); mines.forget(p.id); npcs.forget(p.id); mazode.forget(p.id); trades.forget(p.id); // open trade offers called off, held cash returned
     barn.forget(p.id); foreman.forget(p.id); shop.forget(p.id); slots.forget(p.id); foff.forget(p.id);
     for (const [k, x] of Object.entries(sessions.doc.sessions)) if (x.playerId === p.id) delete sessions.doc.sessions[k];
     sessions.save();

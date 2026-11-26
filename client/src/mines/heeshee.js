@@ -3,6 +3,7 @@
 // hatched bug guide. It never takes a bug the server has not already said is on this shift; the steal itself is
 // reported to the server. No bug hatched = it still wanders, but it has nothing to grab.
 import { bfs, tileOf, TILE } from './stalker.js';
+import { mazodeAt } from '../../../server/engine/mazode-chase.js';
 
 export const APPEAR_AFTER_MS = 5000; // they hear it first
 export const BODY_RADIUS = 0.55;
@@ -51,7 +52,7 @@ export class HeesheeMazode {
     this.grid = maze.grid; this.pool = maze.pool; this.start = maze.start || { x: 1, y: 1 };
     this.rand = rand; this.afterMs = Math.max(0, afterMs || 0);
     this.hasBug = !!hasBug;
-    this.state = armed ? 'dormant' : 'off'; // off | dormant | wandering | frozen | lunging | fleeing | gone
+    this.state = armed ? 'dormant' : 'off'; // off | dormant | wandering | frozen | lunging | fleeing | chased | gone
     this.x = 0; this.z = 0; this.facing = 0;
     this.moving = false; this.next = null;
     this.burst = 0; this.pause = 0; this.hold = 0;
@@ -62,9 +63,47 @@ export class HeesheeMazode {
     this.snap = 0;
   }
   get present() { return !['off', 'dormant', 'gone'].includes(this.state); }
-  get stolen() { return this.state === 'fleeing' || this.state === 'gone'; }
+  get stolen() { return this.state === 'fleeing' || this.state === 'chased' || this.state === 'gone'; }
 
   setHasBug(v) { this.hasBug = !!v; }
+
+  /**
+   * After the steal the server runs it (server/mazodeChase.js): `view` is its latest word on the chase, `route` the
+   * tiles it runs, `skew` server clock minus ours. From here on it is wherever the server's clock says it is.
+   */
+  follow(view, route, skew = 0) {
+    if (!view || !route) return;
+    const first = !this.chase;
+    this.chase = { view, route, skew };
+    if (first) { this.state = 'chased'; this.carrying = view.phase !== 'freed'; this.carryT = 0; this.nextSqueal = 0.3; this.slowSeen = false; this.turn = 0; }
+  }
+  /** Where the server says it is right now (tiles), or null. */
+  chaseNow(nowMs = Date.now()) {
+    const c = this.chase; return c ? mazodeAt(c.view, c.route, nowMs + c.skew) : null;
+  }
+  stepChase(dt, p) {
+    const at = this.chaseNow(); if (!at) return;
+    const v = this.chase.view, tx = at.x * TILE, tz = at.y * TILE;
+    if (at.state === 'gone') { if (this.state !== 'gone') { this.ceiling = false; this.drop(); } return; }
+    // glide onto the server's spot (a snap only if it is far off, e.g. right after the steal)
+    const d = Math.hypot(tx - this.x, tz - this.z);
+    if (d > TILE * 2.5) { this.x = tx; this.z = tz; } else { const k = 1 - Math.exp(-dt * 14); this.x += (tx - this.x) * k; this.z += (tz - this.z) * k; }
+    this.ceiling = !!at.ceiling && at.state === 'chase';
+    this.moving = at.speed > 0;
+    const toYou = Math.atan2(p.x - this.x, p.z - this.z);
+    const want = this.moving ? at.facing : toYou; // stopped: it turns round to look at you
+    const diff = Math.atan2(Math.sin(want - this.facing), Math.cos(want - this.facing));
+    this.facing += diff * (1 - Math.exp(-dt * (this.moving ? 16 : 5)));
+    this.carrying = v.phase !== 'freed';
+    this.laugh = at.state === 'caught' || at.state === 'laugh' ? 1 : Math.max(0, (this.laugh || 0) - dt * 2);
+    if (at.state === 'chase' && at.slow && !this.slowSeen) { this.slowSeen = true; this.events.push('slow'); }
+    if (this.carrying && this.moving) {
+      this.nextSqueal -= dt;
+      if (this.nextSqueal <= 0) { this.events.push('squeal'); this.nextSqueal = 0.8 + this.rand() * 0.8; }
+    }
+    if (v.phase === 'freed' && !this.freedAt) { this.freedAt = Date.now(); this.carrying = false; this.events.push('release'); }
+    if (this.freedAt && Date.now() - this.freedAt > 3200) { this.drop(); }
+  }
   setPool(p) { if (p) this.pool = p; }
 
   /**
@@ -76,6 +115,7 @@ export class HeesheeMazode {
       return;
     }
     if (!this.present) return;
+    if (this.chase) { this.fan = Math.min(1, this.fan + dt * 0.5); if (this.snap > 0) this.snap = Math.max(0, this.snap - dt * 3); this.stepChase(dt, p); return; }
     const dist = Math.hypot(p.x - this.x, p.z - this.z);
     this.nextNoise -= dt;
     if (this.nextNoise <= 0 && dist <= HEAR_RANGE) {

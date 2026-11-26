@@ -126,7 +126,7 @@ export function buildHeeshee() {
  * `lunge` uncoils the long arms; `carry` clutches a stolen bug in the right hand and walks off with it;
  * `frozen` holds a dead still; `reduce` skips twitch.
  */
-export function poseHeeshee(mesh, nowMs, { moving = false, frozen = false, lunge = 0, carry = false, fan = 0.5, snap = 0, reduce = false } = {}) {
+export function poseHeeshee(mesh, nowMs, { moving = false, frozen = false, lunge = 0, carry = false, fan = 0.5, snap = 0, reduce = false, laugh = 0, stagger = null } = {}) {
   if (!mesh) return;
   const t = nowMs / 1000;
   const C = carry ? 1 : 0;
@@ -149,6 +149,22 @@ export function poseHeeshee(mesh, nowMs, { moving = false, frozen = false, lunge
     frozen || reduce ? 0 : Math.sin(t * 0.7) * 0.08,
     frozen ? 0 : walk * 0.03 + jerk,
   );
+  // Caught: it straightens up, throws its head back and laughs at you, the free hand on its hip.
+  const H = Math.max(0, Math.min(1, laugh)), shake = reduce ? 0 : Math.sin(t * 19) * 0.07 * H;
+  if (H) {
+    mesh.torso.rotation.x += -0.4 * H + shake;
+    mesh.head.rotation.x += -0.45 * H + shake * 1.6;
+    mesh.leftArm.rotation.x += 0.35 * H; mesh.leftArm.rotation.z += 0.75 * H;
+    mesh.group.position.y += Math.abs(shake) * 0.25;
+  }
+  // A pick in the back: it lurches away from the blow (dir is in its own frame: +z its front, +x its left), then rights itself.
+  if (stagger && stagger.amt > 0) {
+    const a = stagger.amt, wob = reduce ? 1 : Math.cos((1 - a) * 9);
+    mesh.torso.rotation.x += stagger.z * 0.55 * a * wob;
+    mesh.torso.rotation.z += -stagger.x * 0.5 * a * wob;
+    mesh.head.rotation.z += -stagger.x * 0.35 * a;
+    mesh.leftArm.rotation.z += 0.6 * a; mesh.rightArm.rotation.z -= C ? 0.1 * a : 0.6 * a;
+  }
   const open = 0.15 + fan * 0.85 + snap * 0.4;
   const aimY = snap * 0.35;
   if (mesh.mats?.[7]?.emissive) {

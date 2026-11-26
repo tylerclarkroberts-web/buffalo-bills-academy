@@ -88,6 +88,14 @@ export class BugGuide {
     return true;
   }
 
+  /** Won back off the Heeshee (server/mazodeChase.js): it drops out of its fist at (x, z) and gets back to work. */
+  giveBack(x, z) {
+    if (!this.armed || this.state !== 'stolen') return false;
+    this.x = x; this.z = z; this.next = null; this.repath = 0; this.moving = false;
+    this.state = this.mode === 'acid' && this.found ? 'done' : 'guiding'; this.events.push('back');
+    return true;
+  }
+
   setPool(p) {
     if (!p) return;
     const changed = !this.pool || this.pool.x !== p.x || this.pool.y !== p.y;

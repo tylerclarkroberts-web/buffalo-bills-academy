@@ -190,7 +190,9 @@ export class Pvp {
       slash: body.slash,
       hold: body.away === true,
     });
-    return { ...this.view(player, { snap, have: body.have }), ...worms };
+    // The Heeshee Mazode, if it has your bug and you are after it (server/mazodeChase.js): did you keep up?
+    const mazode = this.mines.chase?.tick?.(player, { x: pr.x, y: pr.y, at: now }) || null;
+    return { ...this.view(player, { snap, have: body.have }), ...worms, ...(mazode ? { mazode } : {}) };
   }
 
   /**

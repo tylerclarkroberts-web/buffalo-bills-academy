@@ -293,7 +293,10 @@ try {
   await shot(P, 'phone-1-silhouette');
   await hush(P, { keepHeeshee: true, keepGuide: true });
   await H(P, () => { window.__acidMine.hideHands = true; window.__acidMine.heeshee.hasBug = true; window.__acidHeeshee.lunge(); });
-  check(await until(async () => P.$('[data-test=heeshee-stolen]'), 4000), 'phone: the steal banner shows');
+  // With a live server pose the theft opens a chase (mazode-chase chip) and the
+  // banner takes over once the chase ends; either proves the bug was taken.
+  check(await until(async () => P.$('[data-test=heeshee-stolen], [data-test=mazode-chase]'), 4000), 'phone: the steal banner (or chase chip) shows');
+  await until(async () => P.$('[data-test=heeshee-stolen]'), 12000);
   await wait(400);
   const phoneBanner = ((await P.textContent('[data-test=heeshee-stolen]')) || '');
   check(/nowhere to be found/i.test(phoneBanner), `phone: banner wording (${phoneBanner.trim() || 'missing'})`);

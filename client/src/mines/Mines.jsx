@@ -45,6 +45,7 @@ import JumpScare from './JumpScare.jsx';
 import './mines.css';
 import { MINE_LORE } from '../../../server/engine/lore.js';
 import { GET_UP, HITS_TO_DROP, HIT_FORGET_MS } from '../../../server/engine/npc-miners.js';
+import { MazodeChase } from './MazodeChase.jsx';
 
 const LINES = [
   'FOREMAN: "THE ACID WON\'T MINE ITSELF."',
@@ -539,6 +540,9 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
   const [npcAt, setNpcAt] = useState(null); // { id, name, title, hits, hitAt, upAt, smokes, say, hello }
   const npcRef = useRef(null), npcBusy = useRef(false), npcSwing = useRef(0), npcSeq = useRef(0), npcActs = useRef(null), npcSeenRef = useRef(null);
   const [smokes, setSmokes] = useState(shift.smokes || 0);
+  // Chasing the Heeshee Mazode for your bug (server/mazodeChase.js): its latest word, the route it runs, and the calls.
+  const [mazode, setMazode] = useState(null);
+  const mazodeRef = useRef(null), mazodeRoute = useRef(shift.mazode?.route || null), mazodeActs = useRef(null);
   const eggRef = useRef(shift.egg ? 'there' : null); // there | taking | taken | gone
   const grabEgg = useRef(null);
   const [tiltActive, setTiltActive] = useState(false);
@@ -655,6 +659,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     }
     sceneRef.current?.setOthers(v.others || []); guideRef.current?.setOthers(v.others || []);
     if (v.wilds) sceneRef.current?.setWilds(v.wilds);
+    if (v.mazode) mazodeActs.current?.sync(v.mazode); // the Heeshee chase: did you keep up?
     if (v.egg === false && eggRef.current === 'there') {
       eggRef.current = 'gone'; sceneRef.current?.removeEgg('sink'); setEggNear(false);
     }
@@ -855,13 +860,14 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           const hm = sceneRef.current?.heeshee, pos = sceneRef.current?.pos;
           if (hm && pos) audio?.heesheeSqueal({ dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.9 });
           setLine(HEESHEE_GONE); setStatus(HEESHEE_GONE);
-          api('POST', '/mines/heeshee/steal', { shiftId: shift.shiftId, rulesVersion: 2 }).catch(() => {});
+          api('POST', '/mines/heeshee/steal', { shiftId: shift.shiftId, rulesVersion: 2 }).then((r) => { if (r?.mazode) mazodeActs.current?.sync(r.mazode); }).catch(() => {});
         }
         if (e === 'heeshee-squeal') {
           const hm = sceneRef.current?.heeshee, pos = sceneRef.current?.pos;
           if (hm && pos) audio?.heesheeSqueal({ dist: Math.hypot(pos.x - hm.x, pos.y - hm.z), pan: panOf(pos.x, pos.y, sceneRef.current.yaw, hm.x, hm.z), vol: 0.7 });
         }
-        if (e === 'heeshee-gone') setLine(stolenRef.current ? HEESHEE_GONE : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
+        if (e === 'heeshee-gone' && !mazodeRef.current) setLine(stolenRef.current ? HEESHEE_GONE : 'WHATEVER IT WAS, IT WENT BACK INTO THE DARK.');
+        if (e === 'heeshee-slow') { setLine('IT\'S SLOWING DOWN. CATCH IT.'); audio?.heesheeNoise({ kind: 'breath', dist: 3, pan: 0, vol: 0.7 }); }
 
       },
     });
@@ -891,6 +897,47 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (typeof r.totalSmokes === 'number') setSmokes(r.totalSmokes);
       return r;
     };
+    // The chase: whatever the server last said goes to the Heeshee (it runs on the server's clock) and the card.
+    const chaseSync = (v) => {
+      if (!v || sceneRef.current !== scene) return;
+      if (v.route) mazodeRoute.current = v.route;
+      if (!mazodeRoute.current || !heeshee) return;
+      const prev = mazodeRef.current, view = { ...v, skew: v.serverNow - Date.now() };
+      const key = (x) => x && `${x.phase}:${x.riddle?.n ?? ''}:${x.last?.n ?? ''}:${x.lostMs > 0}`;
+      mazodeRef.current = view;
+      heeshee.follow(view, mazodeRoute.current, view.skew);
+      scene.chasing = view.phase === 'chase';
+      if (key(prev) !== key(view)) setMazode(view);
+      if (prev?.phase === view.phase) return;
+      const nm = String(shift.bug?.name || 'Your bug').toUpperCase();
+      if (view.phase === 'chase') { setLine(`IT HAS ${nm}. GO AFTER IT.`); setStatus('CHASE THE HEESHEE'); }
+      if (view.phase === 'caught') { freeze(false); setStatus('IT IS LAUGHING AT YOU'); setLine('IT STOPS. IT TURNS ROUND. IT IS LAUGHING.'); audio?.heesheeNoise({ kind: 'warble', dist: 1.4, pan: 0, vol: 0.9 }); }
+      if (view.phase === 'flee') { setLine(String(view.say || HEESHEE_GONE).toUpperCase()); setStatus(HEESHEE_GONE); audio?.heesheeSting(); }
+      if (view.phase === 'gone') { setLine(view.say ? String(view.say).toUpperCase() : HEESHEE_GONE); setStatus(HEESHEE_GONE); }
+      if (view.phase === 'freed') {
+        stolenRef.current = false; setStolen(false); canFightWild.current = true;
+        setLine(`YOU GOT ${nm} BACK. THE HEESHEE SULKS OFF.`); setStatus(guideRef.current ? 'YOUR BUG IS LEADING. FOLLOW IT.' : 'FIND THE ACID POOL');
+      }
+    };
+    mazodeActs.current = {
+      sync: chaseSync,
+      answer: async (n, pick) => {
+        try { const r = await api('POST', '/mines/heeshee/answer', { shiftId: shift.shiftId, n, pick }); chaseSync(r?.mazode); }
+        catch (e) { setLine(String(e.message).toUpperCase()); }
+      },
+      // Space / SWING with it right in front of you: it lurches now; the server says whether it counted.
+      swing: () => {
+        if (mazodeRef.current?.phase !== 'chase' || !scene.heesheeInReach()) return false;
+        scene.hitHeeshee(); audio?.bonk();
+        api('POST', '/mines/heeshee/hit', { shiftId: shift.shiftId }).then((r) => {
+          if (r?.mazode) chaseSync(r.mazode);
+          if (r && !r.hit && !r.ignored && r.mazode?.phase === 'chase') setLine(r.miss === 'ceiling' ? 'IT\'S ON THE ROOF. WAIT FOR IT TO DROP.' : 'IT TWISTS AWAY FROM THE PICK.');
+        }).catch(() => {});
+        return true;
+      },
+    };
+    if (shift.mazode && !['gone', 'freed'].includes(shift.mazode.phase)) chaseSync(shift.mazode); // back on the page mid-chase
+    window.__acidMazode = { get view() { return mazodeRef.current; }, get route() { return mazodeRoute.current; } }; // read-only, for the e2e
     npcActs.current = {
       talk: async () => {
         const n = npcRef.current; if (!n || npcBusy.current) return;
@@ -904,6 +951,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       // Space (or SWING on a phone): the pick goes round wherever you are. Up against an old-timer, it lands.
       swing: async () => {
         const t = Date.now(); if (t - npcSwing.current < 320) return; npcSwing.current = t; // one swing at a time
+        if (mazodeActs.current?.swing()) return; // the Heeshee comes first
         const n = npcRef.current, lands = !!n && !(n.upAt > t);
         scene.hitNpc(lands ? n.id : null); if (lands) audio?.bonk(); else audio?.swish();
         if (!lands) return;
@@ -1076,9 +1124,12 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       if (k === 'escape' && bugMenuRef.current) { showBugMenu(false); return; }
       if (bugMenuRef.current && /^[1-4]$/.test(k)) { giveOrder(BUG_ORDERS[Number(k) - 1].id); return; }
       if (k === 'escape' && pickerRef.current) { showPicker(false); return; }
+      const mz = mazodeRef.current; // a riddle on screen: 1-4 answers it
+      if (mz?.phase === 'caught' && mz.riddle && Date.now() + (mz.skew || 0) >= mz.riddle.askedAt && /^[1-4]$/.test(k)) { document.querySelector(`[data-test=mazode-opt-${Number(k) - 1}]`)?.click(); return; }
+      if (mz?.phase === 'caught' && /^[1-9]$/.test(k)) return;
       if (/^[1-9]$/.test(k) && !e.metaKey && !e.ctrlKey && !e.altKey) { startDance(DANCES[Number(k) - 1].id); return; }
       if (danceRef.current && ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) stopDance();
-      if (k === ' ' && !nearRef.current) { e.preventDefault(); if (danceRef.current) stopDance(); else npcActs.current?.swing(); return; } // away from the acid, Space swings the pick
+      if (k === ' ' && (!nearRef.current || mazodeRef.current?.phase === 'chase')) { e.preventDefault(); if (danceRef.current) stopDance(); else npcActs.current?.swing(); return; } // away from the acid, Space swings the pick
       if (k === ' ' || k === 'enter') { if (!errorRef.current) hold(true); e.preventDefault(); return; }
       if (k.startsWith('arrow')) e.preventDefault();
       keys.add(k === 'shift' ? e.code : k); sync();
@@ -1184,7 +1235,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
     const flavor = setInterval(() => { if (Date.now() < caveHold) return; const pool = darkRef.current ? HORROR_LINES : visitorHere.current ? VISITOR_LINES : LINES; setLine(pool[Math.floor(Math.random() * pool.length)]); }, 6500);
     return () => {
       client.current?.dispose(); pvp.current?.dispose(); pvp.current = null; exitShift.current = null;
-      scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidHeeshee; delete window.__acidWorms; window.removeEventListener('resize', onResize);
+      scene.dispose(); sceneRef.current = null; delete window.__acidMine; delete window.__acidHeeshee; delete window.__acidMazode; delete window.__acidWorms; window.removeEventListener('resize', onResize);
       window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('visibilitychange', onPageHide);
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
@@ -1312,7 +1363,8 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         <span>{mineError.message}</span>
         <button className="m-btn" disabled={clockingOut} onClick={mineError.code === 'mine_reload' ? () => window.location.reload() : retry}>{mineError.code === 'mine_reload' ? 'RELOAD' : 'RETRY'}</button>
       </div>}
-      {stolen && <div className="m-stolen" data-test="heeshee-stolen" role="status">Your bug is nowhere to be found. The Heeshee Mazode took it.</div>}
+      {stolen && !(mazode && ['chase', 'caught', 'laugh', 'flee'].includes(mazode.phase)) && <div className="m-stolen" data-test="heeshee-stolen" role="status">Your bug is nowhere to be found. The Heeshee Mazode took it.</div>}
+      <MazodeChase view={mazode} bugName={shift.bug?.name} onAnswer={(n, i) => mazodeActs.current?.answer(n, i)} />
       <div className="m-ticker" aria-live="polite">{line}</div>
       {prey && !battle && !doom && !mapOpen && (
         <div className="m-door-prompt m-stab" data-test="ambush-prompt">
@@ -1320,7 +1372,7 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <button className="m-btn" aria-keyshortcuts="X" disabled={clockingOut} onClick={stab} data-test="ambush">ASSASSINATE<span className="m-key"> · X</span></button>
         </div>
       )}
-      {near && !prey && !dance && (
+      {near && !prey && !dance && mazode?.phase !== 'caught' && (
         <div className="m-mine">
           {!bucketShift && <div className="m-bucket"><div style={{ width: `${progress * 100}%` }} /></div>}
           <button className={`m-btn big ${holding ? 'on' : ''}`} disabled={!!mineError || clockingOut} onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture?.(e.pointerId); hold(true); }} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release} onContextMenu={(e) => e.preventDefault()}
@@ -1331,28 +1383,28 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
           <div className="m-dim small">or hold SPACE</div>
         </div>
       )}
-      {eggNear && !doom && !near && !prey && !dance && (
+      {eggNear && !doom && !near && !prey && !dance && mazode?.phase !== 'caught' && (
         <div className="m-door-prompt" data-test="egg-prompt">
           <span className="m-dim">AN EGG. STILL WARM.</span>
           <button className="m-btn" onClick={() => grabEgg.current()} data-test="egg-take">[ PICK IT UP ]</button>
           <span className="m-dim small">or press G</span>
         </div>
       )}
-      {liftNear && !doom && !battle && !near && !eggNear && !prey && !dance && (
+      {liftNear && !doom && !battle && !near && !eggNear && !prey && !dance && mazode?.phase !== 'caught' && (
         <div className="m-door-prompt" data-test="lift-prompt">
           <span className="m-dim">IT PASSED AN INSPECTION. ONCE.</span>
           <button className="m-btn" disabled={clockingOut} onClick={() => takeLift.current()} data-test="lift-up">{clockingOut ? 'WEIGHING…' : '[ LIFT TO SURFACE ]'}</button>
           <span className="m-dim small">Clock out · game room · F</span>
         </div>
       )}
-      {doorNear && !doom && !battle && !near && !eggNear && !prey && !dance && (
+      {doorNear && !doom && !battle && !near && !eggNear && !prey && !dance && mazode?.phase !== 'caught' && (
         <div className="m-door-prompt" data-test="door-prompt">
           <span className="m-dim">A DOOR. VOICES BEHIND IT.</span>
           <button className="m-btn" onClick={() => openDoor.current()} data-test="door-open">[ OPEN THE DOOR ]</button>
           <span className="m-dim small">or press F</span>
         </div>
       )}
-      {npcAt && !doom && !battle && !near && !eggNear && !liftNear && !doorNear && !prey && !dance && !wildAsk && (
+      {npcAt && !doom && !battle && !near && !eggNear && !liftNear && !doorNear && !prey && !dance && !wildAsk && mazode?.phase !== 'caught' && (
         <NpcPrompt npc={npcAt} smokes={smokes} onTalk={() => npcActs.current?.talk()} onPickup={() => npcActs.current?.pickup()} />
       )}
       <div ref={dreadEl} className={`m-dread ${visitor ? 'on' : ''}`} aria-hidden="true" />
@@ -1364,11 +1416,11 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
         pose={chartPosition()} onClose={() => showMap(false)} returnFocus={mapButton} />}
       {doom && <DoorHall elapsedMs={elapsed} onExit={closeDoor} />}
       {battle && <Bout key={battle.id} bout={battle} reduced={!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches} onLine={battleMove} onForfeit={battleForfeit} onJar={battleJar} onClose={battleDone} closeLabel={battle.result === 'won' ? 'Back to mining' : 'Continue'} />}
-      {!doom && !battle && !near && !mapOpen && !dance && !worms.length && ( // a worm on your face: the knife takes this corner (K / CUT); Space still swings
+      {!doom && !battle && (!near || mazode?.phase === 'chase') && !mapOpen && !dance && !worms.length && mazode?.phase !== 'caught' && ( // a worm on your face: the knife takes this corner (K / CUT); Space still swings
         <button type="button" className="m-swing" data-test="swing" aria-label="Swing the pickaxe" aria-keyshortcuts="Space"
           onPointerDown={(e) => { e.preventDefault(); npcActs.current?.swing(); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); npcActs.current?.swing(); } }}>⛏<span>SWING</span></button>
       )}
-      <div className="m-movement" inert={doom || battle ? '' : undefined} aria-hidden={doom || battle || undefined}>
+      <div className="m-movement" inert={doom || battle || mazode?.phase === 'caught' ? '' : undefined} aria-hidden={doom || battle || mazode?.phase === 'caught' || undefined} style={mazode?.phase === 'caught' ? { visibility: 'hidden' } : undefined}>
         <TiltControls onInput={move} onActiveChange={setTiltMode} paused={holding || doom || !!battle || mapOpen} />
         {!tiltActive && <MovePad apply={move} />}
       </div>
