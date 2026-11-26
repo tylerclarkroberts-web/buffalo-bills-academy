@@ -105,6 +105,6 @@ const GYM = [
 for (const [gym, name, price, , joke, what] of GYM) add({ id: `gym-${gym}`, name, price, emoji: GYM_GEAR[gym].emoji, gpix: gym, cat: 'gymgear', slot: null, gym, days: GYM_GEAR[gym].days,
   desc: `${joke} ${what} Lasts ${GYM_GEAR[gym].days} days on one bug; a second one can go on once it runs out.` });
 add({ id: 'gym-creatine', name: 'Creatine', price: 2000, emoji: '🥛', gpix: 'creatine', cat: 'gymgear', slot: null, gym: 'creatine',
-  desc: 'One scoop, chalky, stirred with a finger. One use: the bug\'s gym lock is 12 hours instead of 24. Buy it while the bug is resting and today\'s lock drops to 12 hours from that workout; otherwise it goes into the next one. One scoop at a time.' });
+  desc: 'One scoop, chalky, stirred with a finger. One use: the bug\'s gym lock is 12 hours instead of waiting until midnight Pacific, or until midnight if that comes first. Buy it while the bug is resting and today\'s lock drops to 12 hours from that workout (or midnight PT, whichever is sooner); otherwise it goes into the next one. One scoop at a time.' });
 
 export const BUG_ITEMS = items;

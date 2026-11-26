@@ -98,7 +98,7 @@
 .gym-path.calm { border-color: #3a6a8a; }
 .gym-path:hover:not(:disabled) { border-color: var(--gold); }
 .gym-path:disabled { opacity: .45; cursor: default; }
-/* the daily lock: one compact line over the machines, which sit dimmed and dead until tomorrow */
+/* the daily lock: one compact line over the machines, which sit dimmed and dead until midnight PT */
 .gym-lock { margin: 0; display: flex; justify-content: center; align-items: baseline; gap: 8px; font-size: 13px; color: var(--paper-2); line-height: 1.3; }
 .gym-lock b { color: var(--gold); font: 700 13px var(--mono); }
 .gym-lock small { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; opacity: .6; }

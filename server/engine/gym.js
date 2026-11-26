@@ -17,11 +17,12 @@ export const DECAY_PER_HOUR = { roid: 0.75, strain: 1.5 }; // a full load is gon
 export const STRAIN_LIMIT = 90;         // past this it will not lift for overtime
 export const HUNGER_FLOOR = 10;         // nor train at all on an empty stomach
 export const RAGE_CAP = 0.85;
-// One workout a day: each bug picks ONE of the five paths per rolling 24 hours, counted from when that workout started.
+// One workout a day: each bug picks ONE of the five paths per America/Los_Angeles calendar day.
 // The stamp lives on the bug (`pen.gymLastAt`); a bug that has none (every bug before this rule) may train right away.
-// The per-path cooldowns below still apply, but the daily lock always outlasts them.
-export const DAILY_MS = 24 * 3600e3;
-export const CREATINE_MS = 12 * 3600e3; // creatine: the lock after one workout is 12 hours, not 24
+// The daily lock lifts at the next Pacific midnight after that workout (DST-correct). Per-path cooldowns still apply
+// and can outlast the daily lock when a bug trains close to midnight.
+export const GYM_TZ = 'America/Los_Angeles';
+export const CREATINE_MS = 12 * 3600e3; // creatine: unlock at lastAt+12h if that comes before midnight PT
 
 /**
  * Gym gear (sold in the General Store, catalog/bug.js). Worn by one bug for `days`; stored on the bug as
@@ -45,9 +46,43 @@ export function gearOn(gym, now) {
   for (const [id, until] of Object.entries(gym?.gear || {})) if (GEAR[id] && Number(until) > now) out[id] = Number(until) - now;
   return out;
 }
+const gymDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: GYM_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const gymPartFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: GYM_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+const gymParts = (ms) => Object.fromEntries(gymPartFmt.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+const nextDate = (day) => {
+  const [y, m, d] = day.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + 1));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+};
+
+/** The gym's calendar day ('YYYY-MM-DD') in America/Los_Angeles. */
+export function gymDay(now) { return gymDayFmt.format(new Date(now)); }
+
+/** UTC instant of 00:00:00 America/Los_Angeles on the calendar day `YYYY-MM-DD`. Verified with Intl, so DST is exact. */
+export function gymMidnight(day) {
+  for (const off of ['-08:00', '-07:00']) {
+    const ms = Date.parse(`${day}T00:00:00${off}`);
+    if (!Number.isFinite(ms)) continue;
+    const p = gymParts(ms);
+    if (`${p.year}-${p.month}-${p.day}` === day && p.hour === '00' && p.minute === '00' && p.second === '00') return ms;
+  }
+  throw new Error(`no Pacific midnight for ${day}`);
+}
+
+/** The next Pacific midnight strictly after `now`. An instant that is itself midnight waits until the following one. */
+export function nextGymMidnight(now) { return gymMidnight(nextDate(gymDay(now))); }
+
 /** When a bug last stamped at `lastAt` may train again: 0 when it never has (or the stamp is junk). */
-/** `short`: creatine was in it for that workout (or went in after), so the lock is 12 hours. */
-export const gymReadyAt = (lastAt, short = false) => { const at = Number(lastAt); return Number.isFinite(at) && at > 0 ? at + (short ? CREATINE_MS : DAILY_MS) : 0; };
+/** `short`: creatine was in it for that workout (or went in after), so it unlocks at lastAt+12h or midnight PT, whichever is sooner. */
+export const gymReadyAt = (lastAt, short = false) => {
+  const at = Number(lastAt);
+  if (!Number.isFinite(at) || at <= 0) return 0;
+  const midnight = nextGymMidnight(at);
+  return short ? Math.min(at + CREATINE_MS, midnight) : midnight;
+};
 export const SLOWEST = 0.4;             // a mine guide never drops below this share of its pace
 
 /**

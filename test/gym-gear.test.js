@@ -9,7 +9,7 @@ import { Accounts } from '../server/accounts.js';
 import { Barn } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { ITEM } from '../server/catalog/index.js';
-import { GEAR, FIT_CAP, gymAt, gymView, trainStep } from '../server/engine/gym.js';
+import { GEAR, FIT_CAP, gymAt, gymView, trainStep, nextGymMidnight } from '../server/engine/gym.js';
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 
@@ -152,46 +152,54 @@ test('gear is per bug: a stall mate does not share it', (t) => {
   assert.equal(f.player.bankroll, 50000 - 7000);
 });
 
-test('creatine: one scoop, used on the next workout, which then locks for 12h instead of 24h', (t) => {
+test('creatine: one scoop, used on the next workout, which then locks for 12h if that is before midnight PT', (t) => {
   const f = fixture(t);
   const r = f.buy('creatine');
   assert.equal(r.gymGear.note, 'held'); assert.equal(f.player.bankroll, 48000);
   assert.equal(f.bug().gym.creatine, true);
   assert.throws(() => f.buy('creatine'), (e) => e.status === 409 && /already has a scoop/.test(e.message));
   assert.equal(f.player.bankroll, 48000);
-  const start = f.clock.now;
+  const start = f.clock.now, midnight = nextGymMidnight(start);
+  assert.ok(start + 12 * HOUR < midnight, 'fixture is early enough in the Pacific day that 12h beats midnight');
   f.feed(); const res = f.barn.train('ann', 'clean').gym;
-  assert.ok(res.helped.some((h) => h.id === 'creatine'));
+  assert.ok(res.helped.some((h) => h.id === 'creatine' && h.what === 'next workout in 12h'));
   assert.equal(f.pen().gymCreatine, undefined, 'used up');
   assert.equal(f.bug().gym.readyAt, start + 12 * HOUR);
   f.clock.now = start + 12 * HOUR - 1;
   assert.throws(() => f.barn.train('ann', 'spar'), (e) => e.code === 'gym_cooldown');
   f.clock.now = start + 12 * HOUR;
-  f.feed(); f.barn.train('ann', 'spar'); // no scoop this time: back to 24 hours
-  assert.equal(f.bug().gym.readyAt, start + 36 * HOUR);
+  f.feed(); f.barn.train('ann', 'spar'); // no scoop this time: wait until midnight PT
+  assert.equal(f.bug().gym.readyAt, nextGymMidnight(f.clock.now));
+  assert.equal(f.bug().gym.readyAt, midnight, '11pm PT unlocks at the coming midnight, not 24h later');
 });
 
-test('creatine bought while the bug is resting cuts today\'s lock to 12h from that workout', (t) => {
+test('creatine bought while the bug is resting cuts today\'s lock to 12h from that workout, or midnight if sooner', (t) => {
   const f = fixture(t);
-  const start = f.clock.now;
+  const start = f.clock.now, midnight = nextGymMidnight(start);
   f.feed(); f.barn.train('ann', 'clean');
   f.clock.now = start + 5 * HOUR;
-  assert.equal(f.bug().gym.readyAt, start + 24 * HOUR);
+  assert.equal(f.bug().gym.readyAt, midnight);
   const r = f.buy('creatine');
   assert.equal(r.gymGear.note, 'locked');
-  assert.equal(f.bug().gym.readyAt, start + 12 * HOUR);
+  assert.equal(f.bug().gym.readyAt, start + 12 * HOUR, '12h is still sooner than midnight from a morning workout');
   assert.equal(f.bug().gym.creatine, false, 'the scoop went into today');
   assert.throws(() => f.buy('creatine'), /already on the 12 hour clock/);
   f.clock.now = start + 12 * HOUR;
   f.feed(); f.barn.train('ann', 'spar');
-  assert.equal(f.bug().gym.readyAt, start + 36 * HOUR, 'the next lock is 24h again');
-  // bought more than 12h into a lock: free to train right away
-  f.clock.now = start + 12 * HOUR + 13 * HOUR;
+  assert.equal(f.bug().gym.readyAt, midnight, 'the next lock is midnight PT again');
+  // jump to the next Pacific morning and train, then buy creatine 13h later (before midnight): free to train
+  f.clock.now = midnight + 10 * HOUR; // 10am PT the next day
+  assert.equal(f.bug().gym.readyIn, 0, 'a new Pacific day, ready without creatine');
+  f.feed(); f.barn.train('ann', 'clean');
+  const second = f.clock.now, nextMid = nextGymMidnight(second);
+  assert.equal(f.bug().gym.readyAt, nextMid);
+  f.clock.now = second + 13 * HOUR; // 11pm PT, 12h has passed, midnight has not
+  assert.ok(f.clock.now < nextMid);
   assert.equal(f.buy('creatine').gymGear.note, 'ready');
   assert.equal(f.bug().gym.readyIn, 0);
   f.feed(); f.barn.train('ann', 'clean');
-  assert.equal(f.bug().gym.readyAt, f.clock.now + 24 * HOUR);
-  // and once that 12h lock is over, a new scoop waits for the next workout instead of being wasted
-  f.clock.now += 24 * HOUR;
+  assert.equal(f.bug().gym.readyAt, nextGymMidnight(f.clock.now));
+  // and once that lock is over, a new scoop waits for the next workout instead of being wasted
+  f.clock.now = nextGymMidnight(f.clock.now);
   assert.equal(f.buy('creatine').gymGear.note, 'held');
 });

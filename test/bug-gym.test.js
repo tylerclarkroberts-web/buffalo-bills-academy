@@ -11,7 +11,7 @@ import { Shop } from '../server/shop.js';
 import { Mines } from '../server/mines.js';
 import { Pvp } from '../server/pvp.js';
 import { startBout, line, simulateBout } from '../server/engine/bout.js';
-import { PATHS, PATH_IDS, FIT_CAP, ROID_POWER, POWER_CAP, gymAt, gymEffects, gymView, gymFighter, trainStep, STRAIN_LIMIT } from '../server/engine/gym.js';
+import { PATHS, PATH_IDS, FIT_CAP, ROID_POWER, POWER_CAP, gymAt, gymEffects, gymView, gymFighter, trainStep, STRAIN_LIMIT, gymReadyAt, nextGymMidnight } from '../server/engine/gym.js';
 import { BugGuide, BALK_S } from '../client/src/mines/bugGuide.js';
 import { wildAt } from '../server/engine/wild-roam.js';
 
@@ -274,35 +274,40 @@ test('POST /barn/gym is wired', () => {
   assert.match(src, /api\.post\('\/barn\/gym'/);
 });
 
-test('one workout per bug per 24 hours: any path, counted from the start, blocked tries cost nothing', (t) => {
+test('one workout per bug per Pacific day: locked until midnight PT, blocked tries cost nothing', (t) => {
   const f = fixture(t);
   assert.equal(f.bug().gym.readyAt, 0, 'a legacy bug with no stamp is ready now');
   assert.equal(f.bug().gym.readyIn, 0);
   assert.equal(f.barn.doc.pens.ann.gymLastAt, undefined);
-  const start = f.clock.now;
+  const start = f.clock.now, midnight = nextGymMidnight(start), left = midnight - start;
+  assert.equal(gymReadyAt(start), midnight);
+  assert.ok(left < 24 * HOUR && left > 0, 'the fixture starts late morning PT, so midnight is sooner than 24h');
   f.barn.train('ann', 'clean'); // legacy bug: trains right away
   assert.equal(f.barn.doc.pens.ann.gymLastAt, start, 'stamped at the start of the workout');
-  assert.equal(f.bug().gym.readyAt, start + 24 * HOUR);
-  assert.equal(f.bug().gymReadyAt, start + 24 * HOUR);
-  f.clock.now = start + 3 * HOUR; // past every per-path cooldown, still the same day
+  assert.equal(f.bug().gym.readyAt, midnight);
+  assert.equal(f.bug().gymReadyAt, midnight);
+  f.clock.now = start + 3 * HOUR; // past every per-path cooldown, still the same Pacific day
   const cash = f.store.players.ann.bankroll, pen = structuredClone(f.barn.doc.pens.ann);
+  const left3 = midnight - f.clock.now, h = Math.floor(left3 / 3600e3), m = Math.ceil((left3 % 3600e3) / 60e3);
+  const wait = m === 60 ? `${h + 1}h 00m` : `${h}h ${String(m).padStart(2, '0')}m`;
   for (const path of PATH_IDS) {
-    assert.throws(() => f.barn.train('ann', path), (e) => e.status === 409 && e.code === 'gym_cooldown' && e.data.readyAt === start + 24 * HOUR && e.data.readyIn === 21 * HOUR && /Next workout in 21h 00m/.test(e.message), path);
+    assert.throws(() => f.barn.train('ann', path), (e) => e.status === 409 && e.code === 'gym_cooldown' && e.data.readyAt === midnight && e.data.readyIn === left3 && e.message.includes(`Next workout in ${wait}`), path);
   }
   assert.equal(f.store.players.ann.bankroll, cash, 'no $25 for a refused vial');
   assert.deepEqual(f.barn.doc.pens.ann, pen, 'a refused try changes nothing on the bug');
-  assert.equal(f.bug().gym.readyIn, 21 * HOUR);
-  f.clock.now = start + 24 * HOUR - 1;
+  assert.equal(f.bug().gym.readyIn, left3);
+  f.clock.now = midnight - 1;
   assert.throws(() => f.barn.train('ann', 'roids'), (e) => e.code === 'gym_cooldown' && e.data.readyIn === 1);
-  f.clock.now = start + 24 * HOUR;
+  f.clock.now = midnight;
   const r = f.barn.train('ann', 'roids');
   assert.equal(r.gym.cost, 25);
-  assert.equal(f.barn.doc.pens.ann.gymLastAt, start + 24 * HOUR, 'the next day starts at the next workout');
+  assert.equal(f.barn.doc.pens.ann.gymLastAt, midnight, 'a workout at midnight uses the new Pacific day');
   assert.equal(r.gym.after.readyAt, undefined, 'the result card numbers are the gym view only');
-  assert.equal(f.bug().gym.readyIn, 24 * HOUR);
+  assert.equal(f.bug().gym.readyAt, nextGymMidnight(midnight));
+  assert.equal(f.bug().gym.readyIn, nextGymMidnight(midnight) - midnight);
 });
 
-test('the daily lock is per bug: a stall mate trains on its own clock', (t) => {
+test('the daily lock is per bug: a stall mate trains on its own stamp, both unlock at the same midnight PT', (t) => {
   const f = fixture(t);
   const pen = f.barn.doc.pens.ann;
   f.barn.doc.bench.ann = [{ ...structuredClone(pen), bornAt: pen.bornAt + 1, eggAt: (pen.eggAt || pen.bornAt) + 1, name: 'Spare', gym: undefined, gymLastAt: undefined }];
@@ -310,13 +315,16 @@ test('the daily lock is per bug: a stall mate trains on its own clock', (t) => {
   const ids = f.barn.view('ann').stable.bugs.map((b) => b.id);
   assert.equal(ids.length, 2);
   const [one, two] = ids;
+  const start = f.clock.now, midnight = nextGymMidnight(start);
   f.barn.train('ann', 'clean', one);
   assert.throws(() => f.barn.train('ann', 'spar', one), (e) => e.code === 'gym_cooldown');
   f.clock.now += HOUR;
   const r = f.barn.train('ann', 'spar', two);
   assert.equal(r.gym.bug, two);
   const bugs = Object.fromEntries(f.barn.view('ann').stable.bugs.map((b) => [b.id, b]));
-  assert.equal(bugs[one].gym.readyIn, 23 * HOUR);
-  assert.equal(bugs[two].gym.readyIn, 24 * HOUR);
+  assert.equal(bugs[one].gym.readyAt, midnight);
+  assert.equal(bugs[two].gym.readyAt, midnight, 'both wait for the same Pacific midnight');
+  assert.equal(bugs[one].gym.readyIn, midnight - f.clock.now);
+  assert.equal(bugs[two].gym.readyIn, midnight - f.clock.now);
   assert.throws(() => f.barn.train('ann', 'cooldown', two), (e) => e.code === 'gym_cooldown', 'Cool Down & Stretch is no way around it');
 });
