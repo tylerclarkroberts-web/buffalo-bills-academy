@@ -33,6 +33,7 @@
     "e2e:gag": "node scripts/e2e-gag.mjs",
     "e2e:barn": "node scripts/e2e-barn.mjs",
     "e2e:bout": "node scripts/e2e-bout.mjs",
+    "e2e:bout-start": "node scripts/e2e-bout-start.mjs",
     "e2e:tiers": "node scripts/e2e-tiers.mjs",
     "e2e:welcome-turkey": "node scripts/e2e-welcome-turkey.mjs",
     "e2e:foreman-typing": "node scripts/e2e-foreman-typing.mjs",

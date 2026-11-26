@@ -7,14 +7,16 @@ import { money } from '../util.js';
 import { SignIn } from '../Home.jsx';
 import { goToMines } from '../App.jsx';
 import { BY_ID, formOf } from '../../../server/engine/creatures.js';
-import { movesFor, STANCES, riskFor } from '../../../server/engine/bug-combat.js';
+import { movesFor, STANCES } from '../../../server/engine/bug-combat.js';
 import { drawEgg } from './draw.js';
 import { drawBug, drawGrave, youngForm } from './sprite.js';
 import { voice, sfx, setSound, soundOn } from './sfx.js';
 import Bout, { mergeFight } from './Bout.jsx';
+import Ring from './Ring.jsx';
+import FightFx from './FightFx.jsx';
 import BugCard, { TypeChip, STAGES, VarietyNote } from './BugCard.jsx';
 import { varietyFor } from '../../../server/engine/variety.js';
-import { TYPES, RARITY, typeOf, edge, rarityOf } from '../../../server/engine/bug-types.js';
+import { TYPES, RARITY, typeOf, rarityOf } from '../../../server/engine/bug-types.js';
 import { DEX_ORDER, DEX_TIERS } from './dexOrder.js';
 import Dizzy from './Dizzy.jsx';
 import Circuit from './Circuit.jsx';
@@ -28,12 +30,8 @@ const BugCenter = lazy(() => import('../bugcenter/BugCenter.jsx'));
 
 const SOUND_KEY = 'bba.barnSound';
 const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; };
-/** A bug's chance by the line, as the board says it. */
-const chance = (name, p) => (Math.round(p * 100) === 50 ? 'even fight' : `${name} ${Math.round(p * 100)}% to win`);
 const NEED = { hunger: 'Fed', mood: 'Mood', clean: 'Clean' };
 const ACT = { feed: ['Feed', 'free'], play: ['Play', 'free'], clean: ['Mist', 'free'] };
-/** One bug's type against another's, as the board says it: nothing when neither has the edge. The line already counts it. */
-const matchup = (mine, theirs) => { const e = edge(typeOf(mine), typeOf(theirs)); return e ? ` · ${e > 0 ? 'your' : 'its'} type has the edge` : ''; };
 const WARN = ['', 'is hungry. It has not been fed in a week.', 'is getting weak from hunger. Feed it soon.', 'is close to starving. Feed it today.'];
 const SHEET = [['range', 'Where'], ['size', 'Size'], ['diet', 'Eats'], ['life', 'Life cycle'], ['conservation', 'Status']];
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -197,110 +195,6 @@ const HELP = {
   dex: ['A bug goes in the Bugdex once you have kept one, been in a fight with one, or spotted one down the mine.', 'II and III are its evolved stages. Each stays a question mark until you have kept or fought one that far along.', 'Watching somebody else\'s fight does not count. The bug has to have seen you too.'],
 };
 
-/** The ring: other players and their bugs, bouts open to anyone, and recent fights. Anyone can look; fighting needs a bug. */
-const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
-function Ring({ b, meId, now, busy, unsaved, stake, setStake, post, join, cancel, call, accept, drop, watch }) {
-  const { openBout, roster, challenges } = b;
-  // Any of your hatched bugs can fight: the partner unless you choose another, or the first one standing.
-  const fighters = (b.stable?.bugs || []).filter((bug) => bug.stage === 'creature'), [withId, setWithId] = useState(null);
-  const mine = fighters.find((bug) => bug.id === withId) || fighters.find((bug) => !bug.fainted) || fighters[0] || null;
-  // A stake box opens on $100 (or the most this owner can cover) and moves in tens. Until its owner types, it shows that.
-  const step = b.stakeStep || 10, opening = String(Math.max(0, Math.min(100, Math.floor(Math.min(b.maxStake, b.bankroll ?? 0) / step) * step)));
-  const [calling, setCalling] = useState(null), [typedCall, setCallStake] = useState(null), callStake = typedCall ?? opening, posting = stake ?? opening;
-  const [pane, setPane] = useState('players'), [opened, setOpened] = useState(null);
-  const grown = !!mine?.arena, fainted = !!mine?.fainted, lost = !!(mine?.heesheeHeld || (b.stable?.bugs || []).some((bug) => bug.heesheeHeld)), locked = busy || unsaved || !grown || fainted || lost;
-  // Other players, each with their bugs: the list opens on a player, the bugs are a tap away.
-  const players = [];
-  for (const bug of roster.filter((entry) => entry.ownerId !== meId)) {
-    let p = players.find((entry) => entry.id === bug.ownerId);
-    if (!p) players.push(p = { id: bug.ownerId, name: bug.owner, bugs: [] });
-    p.bugs.push(bug);
-  }
-  players.sort((x, y) => x.name.localeCompare(y.name));
-  const listings = (b.bouts || []).filter((entry) => entry.id !== openBout?.id);
-  const setup = (fighter) => <p className="small muted">{STANCES[fighter.battle.stance].name} · condition {fighter.mood}/100{fighter.gear || fighter.defense ? ` · gear +${+((fighter.gear || 0) * 100).toFixed(1)}% / −${+((fighter.defense || 0) * 100).toFixed(1)}%` : ''}</p>;
-  const stakeLabel = (amount) => (Number(amount) > 0 ? ` for ${money(Number(amount))}` : ' for free');
-  const levels = (bugs) => { const lv = bugs.map((bug) => bug.level); const lo = Math.min(...lv), hi = Math.max(...lv); return lo === hi ? `Lv ${lo}` : `Lv ${lo}–${hi}`; };
-  const PANES = [['players', `Players · ${players.length}`], ['bouts', `Open bouts · ${listings.length + (openBout ? 1 : 0)}`], ['fights', 'Recent fights']];
-  return <div className="barn-ring" data-test="barn-ring">
-    <div className="ring-bar">
-      {fighters.length > 0 && <label className="barn-with">Fighting with <select value={mine.id} onChange={(event) => setWithId(Number(event.target.value))} data-test="ring-with">{fighters.map((bug) => <option key={bug.id} value={bug.id}>{bug.name} · {TYPES[typeOf(bug.species)]?.name} · Lv {bug.level}{bug.fainted ? ' · fainted' : ''}</option>)}</select></label>}
-      <span className="small num muted">{money(b.bankroll)} available</span>
-      <p className="small barn-ring-note" role="status" data-test={lost ? 'barn-heeshee-no-battle' : undefined}>{!mine ? 'You need a living bug to fight. Watching is free.'
-        : lost ? HEESHEE_NO_BATTLE
-        : !grown ? `Bouts unlock at level ${mine.arenaLevel}.`
-        : mine.fainted ? <>{mine.name} fainted: <button className="linklike" onClick={() => navigate('/barn/center')}>Bug Center</button>.</>
-        : unsaved ? 'Save or discard your Combat changes first.' : ''}</p>
-      <ul className="ring-how" data-test="ring-how">{HELP.ring.map((line) => <li key={line}>{line}</li>)}</ul>
-    </div>
-    {challenges.incoming.length > 0 && <section className="ring-calls" aria-label="Challenges for you">
-      {challenges.incoming.map((c) => { const bug = roster.find((entry) => entry.ownerId === c.from && entry.id === c.fromBug), called = fighters.find((entry) => entry.id === c.toBug), risk = c.risk ?? c.stake, wait = c.wait, blocked = busy || unsaved || lost || !called || called.fainted || called.heesheeHeld || !!openBout || risk > b.bankroll || !!wait; return <div key={c.id} className="ring-call" data-test="challenge-incoming">
-        <p><b>{c.fromName}</b> calls out {c.toBugName} with <b>{c.fromBugName}</b>{bug ? ` (Lv ${bug.level})` : ''}</p>
-        <p className="small" data-test="challenge-terms">{c.line ? `${chance(c.toBugName, 1 - c.line)} · ` : ''}{c.stake ? `risk ${money(risk)} to win ${money(c.stake)}` : 'for the grudge'} · {left(c.expiresAt - now)} left</p>
-        <div className="barn-row">
-          <button className="btn primary" onClick={() => accept(c.id, c.risk)} disabled={blocked} data-test="challenge-accept">{risk > b.bankroll && !wait ? `Need ${money(risk)}` : `Accept${c.stake ? stakeLabel(risk) : ''}`}</button>
-          <button className="btn ghost" onClick={() => drop(c.id)} disabled={busy} data-test="challenge-decline">Decline</button>
-        </div>
-        {wait ? <p className="small muted" data-test="challenge-wait">{wait}</p>
-          : openBout ? <p className="small muted">Cancel your open bout to accept.</p>
-          : called?.fainted ? <p className="small muted">{called.name} fainted: take it to the Bug Center first.</p>
-          : null}
-      </div>; })}
-    </section>}
-    <div className="barn-tabs ring-tabs" role="tablist" aria-label="The ring">
-      {PANES.map(([id, label]) => <button key={id} role="tab" aria-selected={pane === id} className={pane === id ? 'on' : ''} onClick={() => setPane(id)} data-test={`ring-pane-${id}`}>{label}</button>)}
-    </div>
-    {pane === 'players' && (players.length ? <ul className="ring-players" role="tabpanel">{players.map((p) => { const out = challenges.outgoing.filter((c) => c.to === p.id).length, isOpen = opened === p.id; return <li key={p.id} className={isOpen ? 'open' : ''}>
-      <button className="ring-player" aria-expanded={isOpen} onClick={() => setOpened(isOpen ? null : p.id)} data-test="ring-player">
-        <span className="ring-thumbs" aria-hidden="true">{p.bugs.slice(0, 4).map((bug) => <BugThumb key={bug.id} bug={bug} />)}</span>
-        <span className="ring-who"><b>{p.name}</b><small>{p.bugs.length} bug{p.bugs.length === 1 ? '' : 's'} · {levels(p.bugs)}{p.bugs.some((bug) => bug.inRing) ? ' · in the ring' : ''}{out ? ` · ${out} challenge${out === 1 ? '' : 's'} sent` : ''}</small></span>
-        <span className="ring-chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
-      </button>
-      {isOpen && <ul className="barn-roster">{p.bugs.map((bug) => { const key = `${bug.ownerId}:${bug.id}`, sent = challenges.outgoing.find((c) => c.to === bug.ownerId && c.toBug === bug.id); return <li key={key} data-test="roster-bug">
-        <BugThumb bug={bug} />
-        <div>
-          <b>{bug.name}</b>
-          <p className="small"><TypeChip type={typeOf(bug.species)} small /> Lv {bug.level} · {BY_ID[bug.species]?.name} · {bug.record.w}W {bug.record.l}L{!bug.fights ? ' · too young' : bug.fainted ? ' · fainted' : bug.inRing ? ' · in the ring' : ''}</p>
-          {mine && bug.line?.[mine.id] ? <p className="small ring-odds" data-test="roster-line">{chance(mine.name, bug.line[mine.id])}{matchup(mine.species, bug.species)}</p> : null}
-        </div>
-        {sent ? <div className="barn-row"><span className="small">Called out{sent.stake ? stakeLabel(sent.stake) : ''} · {left(sent.expiresAt - now)} left</span><button className="btn ghost small" onClick={() => drop(sent.id)} disabled={busy} data-test="challenge-withdraw">Withdraw</button></div>
-          : calling === key ? <form className="barn-post" onSubmit={(event) => { event.preventDefault(); call(bug.ownerId, bug.id, Number(callStake), mine?.id); setCalling(null); }}>
-            <label htmlFor="call-stake">Your stake<input id="call-stake" data-test="challenge-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required autoFocus value={callStake} onChange={(event) => setCallStake(event.target.value)} /></label>
-            <button className="btn primary" type="submit" disabled={busy || callStake === ''} data-test="challenge-send">Send{stakeLabel(callStake)}</button>
-            <button className="btn ghost" type="button" onClick={() => setCalling(null)}>Never mind</button>
-            {Number(callStake) > 0 && bug.line?.[mine?.id] && <p className="small muted" data-test="call-terms">{bug.owner} would put up {money(riskFor(Number(callStake), bug.line[mine.id]))}.</p>}
-          </form>
-          : grown && bug.fights && !bug.fainted && <button className="btn small" onClick={() => setCalling(key)} disabled={busy || unsaved || fainted || lost} data-test="challenge-open">Challenge</button>}
-      </li>; })}</ul>}
-    </li>; })}</ul> : <p className="small muted" data-test="roster-empty">No other bugs yet. Every stall but yours is straw.</p>)}
-    {pane === 'bouts' && <div className="ring-pane" role="tabpanel">
-      {openBout ? <div className="barn-waiting" data-test="bout-waiting">
-        <p><b>Your bout is posted.</b> <span className="small">{money(openBout.stake)} held · {left(openBout.expiresAt - now)} left</span></p>
-        <button className="btn ghost" onClick={() => cancel(openBout.id)} disabled={busy} data-test="bout-cancel">Cancel{openBout.stake > 0 ? ` & reclaim ${money(openBout.stake)}` : ''}</button>
-      </div> : grown && <form className="barn-post" onSubmit={(event) => { event.preventDefault(); if (!locked) post(mine?.id, Number(posting)); }}>
-        <label htmlFor="bout-stake">Post a bout for anyone · your stake<input id="bout-stake" data-test="bout-stake" type="number" inputMode="numeric" min="0" max={Math.min(b.maxStake, b.bankroll)} step={step} required value={posting} onChange={(event) => setStake(event.target.value)} disabled={locked} /></label>
-        <button className="btn primary" type="submit" disabled={locked || posting === ''} data-test="bout-post">Post{stakeLabel(posting)}</button>
-      </form>}
-      {listings.length ? <ul className="barn-open-bouts">{listings.map((entry) => { const t = mine && entry.terms?.[mine.id], risk = t ? t.risk : entry.stake; return <li key={entry.id} data-test="bout-listing">
-        <BugThumb bug={entry.fighter} />
-        <div>
-          <b>{entry.fighter.name}</b> <span className="small muted">{entry.hostName}</span>
-          <p className="small" data-test="bout-terms"><TypeChip type={typeOf(entry.fighter.species)} small /> Lv {entry.fighter.level} · {BY_ID[entry.fighter.species].name}{t ? ` · ${chance(mine.name, t.win)}${matchup(mine.species, entry.fighter.species)}` : ''} · {!entry.stake ? 'no money on it' : t ? `risk ${money(risk)} to win ${money(entry.stake)}` : `${money(entry.stake)} posted`}</p>
-          {setup(entry.fighter)}
-        </div>
-        {mine && <button className="btn" onClick={() => join(entry.id, mine.id, t?.risk)} disabled={locked || !!openBout || entry.expiresAt <= now || risk > b.bankroll} data-test="bout-join">{risk > b.bankroll ? `Need ${money(risk)}` : `Join${stakeLabel(risk)}`}</button>}
-      </li>; })}</ul> : <p className="small muted" data-test="bouts-empty">Nobody waiting. The hay has refused to fight.</p>}
-    </div>}
-    {pane === 'fights' && (b.fights.length ? <ul className="barn-fights" role="tabpanel">{b.fights.map((fight) => { const [first, second] = fight.sides; return <li key={fight.id} data-test="fight-row">
-      <div>
-        <b>{fight.winner === null ? `${first.name} and ${second.name} drew` : `${fight.sides[fight.winner].name} beat ${fight.sides[1 - fight.winner].name}`}</b>
-        <p className="small muted">{first.owner} v {second.owner}{fight.pot ? ` · ${money(fight.pot)} pot` : ''} · {ago(now - fight.at)}</p>
-      </div>
-      <button className="btn ghost small" onClick={() => watch(fight.id)} disabled={busy} data-test="fight-watch">Watch</button>
-    </li>; })}</ul> : <p className="small muted" data-test="fights-empty">No fights yet. The bottle caps are gathering dust.</p>)}
-  </div>;
-}
-
 /** The Bugdex: every species, rarest first (dexOrder.js) under a divider for each tier, each with its two evolved stages beside it. A form you have met (`b.dex`:
  * kept, fought, or spotted down the mine) shows its face and opens its card; the rest are a question mark. How rare a
  * bug is and its type are posted either way. */
@@ -459,7 +353,7 @@ function BarnHome({ me }) {
   const seenBout = useRef(undefined);
   const wallet = useRef(undefined);
   const loading = useRef(false);
-  const [stake, setStake] = useState(null); // null until its owner types: the ring shows its opening stake
+  const [fx, setFx] = useState(null); // the FIGHT moment between joining a bout and the ring opening
   const [battleDraft, setBattleDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
@@ -536,10 +430,10 @@ function BarnHome({ me }) {
   useEffect(() => { if (pen?.stage === 'egg' && Date.now() + skew.current >= pen.hatchAt) load(); });
   useEffect(() => { if (wasEgg.current && wasEgg.current === pen?.id && pen.stage === 'creature') { sfx.hatch(); setMsg(`It hatched! Meet ${pen.name}.`); setTimeout(() => voice(BY_ID[pen.species]?.voice), 900); } wasEgg.current = pen?.stage === 'egg' ? pen.id : null; }, [pen?.stage, pen?.id]);
   const act = async (work) => {
-    if (pending.current || bout) return;
+    if (pending.current || bout) return false;
     pending.current = true; mutation.current += 1; setBusy(true);
     setErr(''); setMsg('');
-    try { await work(); } catch (e) { sfx.nope(); setErr(e.message); }
+    try { await work(); return true; } catch (e) { sfx.nope(); setErr(e.message); return false; }
     finally { pending.current = false; setBusy(false); load(); }
   };
   const care = (action) => act(async () => {
@@ -552,8 +446,8 @@ function BarnHome({ me }) {
     take(await api('POST', '/barn/bury', { bug: pen.id })); setSel(null); setBattleDraft(null); setMsg('Laid to rest under the old cottonwood.');
   });
   const wager = (method, url, body) => {
-    if (battleDraft) return;
-    act(async () => { take(await api(method, url, body)); await refreshSession(); });
+    if (battleDraft) return Promise.resolve(false);
+    return act(async () => { take(await api(method, url, body)); await refreshSession(); });
   };
   const watch = (id) => act(async () => { const fight = await api('GET', `/barn/fights/${id}`); setReplay(true); setBout(fight); });
   const saveBattle = () => act(async () => {
@@ -590,14 +484,15 @@ function BarnHome({ me }) {
           )}
         </header>
         {help && <aside id="barn-help" className="barn-help" data-test="barn-help-panel"><ul>{HELP[view].map((line) => <li key={line}>{line}</li>)}</ul><button className="btn small ghost" onClick={() => setHelp(false)}>Got it</button></aside>}
-        {ring && <Ring b={b} meId={me.id} now={now} busy={busy} unsaved={!!battleDraft} stake={stake} setStake={setStake}
+        {ring && <Ring b={b} meId={me.id} now={now} busy={busy} unsaved={!!battleDraft} reduced={reduced} Thumb={BugThumb}
           post={(bug, amount) => wager('POST', '/barn/bouts', { stake: amount, bug })}
           join={(id, bug, risk) => wager('POST', `/barn/bouts/${id}/join`, { bug, risk })}
           cancel={(id) => act(async () => { take(await api('DELETE', `/barn/bouts/${id}`)); await refreshSession(); setMsg('Bout cancelled. Your stake is back.'); })}
           call={(to, their, amount, bug) => act(async () => { take(await api('POST', '/barn/challenges', { to, their, stake: amount, bug })); setMsg('Challenge sent. It stands for a day.'); })}
           accept={(id, risk) => wager('POST', `/barn/challenges/${id}/accept`, { risk })}
           drop={(id) => act(async () => { take(await api('DELETE', `/barn/challenges/${id}`)); await refreshSession(); })}
-          watch={watch} />}
+          watch={watch} onFight={(you, them) => setFx({ you, them })} />}
+        {fx && <FightFx you={fx.you} them={fx.them} reduced={reduced} Thumb={BugThumb} onDone={() => setFx(null)} />}
         {view === 'circuit' && <Circuit b={b} busy={busy} act={act} boutOpen={!!bout} />}
         {view === 'gym' && <Gym b={b} sel={pen?.id} busy={busy} act={act} take={take} now={now} />}
         {view === 'dex' && <Bugdex seen={b.dex || []} />}
@@ -648,7 +543,7 @@ function BarnHome({ me }) {
         {stalls && pen?.stage === 'creature' && <Creature key={pen.id} pen={pen} b={b} stable={stable} now={now} busy={busy} care={care} makePartner={makePartner} release={release} toFarm={toFarm} poke={poke} setPoke={setPoke} reduced={reduced}
           tab={tab} setTab={setTab} battle={battle} draft={battleDraft} setDraft={setBattleDraft} save={saveBattle} toRing={() => setRing(true)}
           replayLast={() => { setReplay(true); setBout(pen.lastBout); }} replayButton={replayButton} />}
-        {bout && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} onJar={bout.kind === 'circuit' && bout.jar ? circuitJar : undefined} closeLabel={bout.kind === 'circuit' ? 'Back to the circuit' : undefined} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
+        {bout && !fx && <Bout key={bout.id || bout.at} bout={bout} onLine={lineUp} onJar={bout.kind === 'circuit' && bout.jar ? circuitJar : undefined} closeLabel={bout.kind === 'circuit' ? 'Back to the circuit' : undefined} replay={replay} reduced={reduced} sound={sound} onSound={() => { setSnd(!sound); setSound(!sound); }} onClose={() => { if (bout.live) setWalkedOut(bout.id); setBout(null); requestAnimationFrame(() => (replayButton.current || document.getElementById(`barn-tab-${tab}`) || document.querySelector('[data-test="ring-toggle"]'))?.focus()); }} />}
         <div className="barn-msg small" aria-live="polite">{err ? <span className="err" role="alert">{err}</span> : msg}</div>
       </div>
     </div>
