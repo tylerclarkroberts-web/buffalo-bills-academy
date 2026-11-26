@@ -546,6 +546,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   if (barnTest) api.post('/dev/worms', needPlayer, wrap((req) => mines.debugWorm(req.player, req.body || {})));
   if (barnTest) api.post('/dev/legend', needPlayer, wrap((req) => mines.forceStick(req.player.id, req.body?.on)));
   if (barnTest) api.post('/dev/steeze', needPlayer, wrap((req) => mines.forceSteeze(req.player.id, req.body?.on)));
+  if (barnTest) api.post('/dev/turkey-louse', needPlayer, wrap((req) => mines.forceTurkeyLouse(req.player.id, req.body?.on)));
   if (barnTest) api.post('/dev/heeshee', needPlayer, wrap((req) => {
     const v = req.body?.on; mines.heesheeForce = v === true || v === false ? v : null;
     let bug = null;

@@ -39,7 +39,7 @@ export const SPECIES_TOOL = {
   gromphadorhina: 'sledge', gryllotalpa: 'shovel', dytiscus: 'gad', notonecta: 'spoon', gyrinus: 'handdrill', halobates: 'goldpan',
   phloeodes: 'doublejack', photuris: 'canary', arachnocampa: 'carbide', myrmeleon: 'scaling', odontomachus: 'pollpick',
   dasymutilla: 'tamper', peruphasma: 'drillsteel', ampulex: 'dolly', colobopsis: 'plunger', dryococelus: 'pickaxe',
-  megachile: 'sledge', meganeura: 'drillsteel',
+  megachile: 'sledge', meganeura: 'drillsteel', menacanthus: 'spoon',
 };
 /** The tool a species carries, or null (a photo bug, or one added without one yet). */
 export const toolFor = (species) => (TOOLS[SPECIES_TOOL[species]] ? { id: SPECIES_TOOL[species], ...TOOLS[SPECIES_TOOL[species]] } : null);

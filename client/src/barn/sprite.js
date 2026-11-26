@@ -23,6 +23,8 @@ export function bugScale(level = MAX_LEVEL, species) {
   const n = Number.isFinite(level) ? Math.floor(level) : MAX_LEVEL;
   // The Lord Howe Island stick insect is a level-30 legendary: clearly larger than a regular bug.
   if (species === 'dryococelus') return 1.15 + Math.min(20, Math.max(0, n - 10)) * 0.03;
+  // The Turkey Louse is 2–3 mm: render it noticeably tiny in the mine and in battle, at any level.
+  if (species === 'menacanthus') return 0.42;
   const bounded = Math.max(1, Math.min(MAX_LEVEL, n));
   return 1 - (MAX_LEVEL - bounded) * 0.025;
 }
@@ -433,6 +435,19 @@ function draw(target, L, only) {
     c.ell(32, 46, 7, 13, 'L'); band(c, 46, 7, 13, [42, 46, 50, 54]);
     c.ell(32, 36, 6, 6, 'W'); c.ell(32, 25, 8, 8, 'B'); // short wings under a big collar
     head.ell(32, 15, 5, 4, 'B'); eyes(head, 28, 14, 1.5); antennae(head, { y: 12, len: 7, bend: 4 });
+  } else if (k === 'louse') {
+    // A cute, flattened little louse: short legs, straw body, a tiny pilgrim hat and a turkey wattle.
+    legs(c, { y: 40, spread: 0.7, long: 0.5 });
+    c.poly([[32, 48], [22, 58], [26, 52]], 'A'); // a little tail fan (mirrored)
+    c.ell(32, 42, 11, 9, 'B'); band(c, 42, 11, 9, [38, 42, 46]); // flattened abdomen
+    c.ell(32, 32, 8, 6, 'B'); // thorax
+    head.ell(32, 24, 6, 5, 'B');
+    eyes(head, 28, 23, 1.7);
+    antennae(head, { y: 20, len: 5, bend: 3 });
+    head.ell(32, 28, 1.6, 2.2, 'A', false); // red wattle
+    head.ell(32, 17, 8, 1.5, 'D', false); // capotain brim
+    head.ell(32, 13, 5, 4, 'D', false); // crown
+    head.ell(32, 17, 1.7, 1.2, 'Y', false); // gold buckle
   } else {
     KINDS.beetle(c, head, L);
   }

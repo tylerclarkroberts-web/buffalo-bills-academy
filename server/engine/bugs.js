@@ -888,6 +888,26 @@ export const BUGS = [
     abilities: ['Strike a pose', 'Horde wealth', 'Golf'],
     look: { kind: 'photo', pal: ['#1a120c', '#3a2a18', '#c9a050', '#f0e8d8', '#e07020'] },
     voice: { wave: 'sine', base: 160, glide: 8, pattern: [0, 3, 0] } },
+  // Thanksgiving 2026 event bug: only out in the mines on 2026-11-26 America/Phoenix. A caught one is kept.
+  { id: 'menacanthus', sci: 'Menacanthus stramineus', name: 'Turkey Louse', fixedName: true, order: 'Chewing louse · Menoponidae',
+    range: 'Poultry yards worldwide: chickens, turkeys and other galliform birds. In the Acid Mines, only on Thanksgiving.',
+    size: 'About 2 to 3 mm long; females are a little larger than males.',
+    diet: 'Skin debris, feather parts and blood from damaged skin, taken on the host.',
+    life: 'Its whole life is spent on the bird. Eggs are laid at the base of the feathers. In the Academy it is only out in the mines on Thanksgiving Day (America/Phoenix).',
+    conservation: null,
+    facts: [
+      'It is a chewing louse, often called the chicken body louse, and it lives on turkeys too.',
+      'It is only two to three millimetres long: super small, easy to miss until it is already on you.',
+      'The whole life cycle stays on the host. It does not drop off to lay eggs somewhere else.',
+      'A heavy infestation irritates the skin, cuts weight gain and can lower egg production.',
+      'The body is flattened and straw-coloured, which is how it got the name stramineus.',
+      'It is found wherever chickens and turkeys are kept, on every continent that keeps them.',
+    ],
+    sources: [W('Menacanthus_stramineus')],
+    stats: { atk: 5, def: 4, spd: 1 },
+    abilities: ['Nip', 'Feather Cling', 'Host Hold'],
+    look: { kind: 'louse', pal: ['#1a1008', '#5a3814', '#c4a04a', '#f0dc9a', '#c02818'] },
+    voice: { wave: 'square', base: 420, glide: 80, pattern: [0, 5, 0] } },
 ];
 export const BUG_BY_ID = Object.fromEntries(BUGS.map((b) => [b.id, b]));
 

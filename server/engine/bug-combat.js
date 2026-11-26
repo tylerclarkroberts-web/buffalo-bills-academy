@@ -65,6 +65,7 @@ const KITS = {
   meganeura: ['pierce', 'weaken', 'Stephanian Rest', 'heal', 'Seventy Centimetres', 'guard'],
   steeze: ['flourish', 'flourish', 'Flex his big calves', 'flourish', 'Order chicken fingers at a restaurant', 'flourish'],
   colobopsis: ['venom', 'guard', 'Epiphyte Graze', 'heal', 'Sixty Metres Up', 'pierce'],
+  menacanthus: ['venom', 'guard', 'Turkey Ruff', 'weaken', 'Will Not Come Off', 'heal'],
 };
 
 const EFFECTS = {
@@ -112,6 +113,7 @@ export const TRAIT = {
   // and the nine after those, for the types that were here already. `spray` and `goo` are HP; `thread` is a share per attack. An exploding ant's burst only ever helps it, and each point of `goo` was worth over a point of win rate, so `minor` takes a share off its hits to pay for a burst worth having.
   // (Three Sonic traits went up a little with them, tiny, jam and hiss: the newcomers were mostly Shell and Toxic, which beat Sonic.)
   iron: 0.2, encore: 0.6, thread: 0.012, pit: 0.08, jump: 0.3, pain: 0.14, spray: 3, sting: 0.05, goo: 14, minor: 0.12,
+  cling: 0.1,
 };
 const pct = (x) => `${Math.round(x * 1000) / 10}%`;
 const TRAITS = {
@@ -171,6 +173,7 @@ const TRAITS = {
   ampulex: ['Second Sting', () => `Once it has landed two hits, the opponent's hits do ${pct(TRAIT.sting)} less for the rest of the fight. Twice that on a cockroach.`],
   colobopsis: ['Yellow Goo', () => `Its hits do ${pct(TRAIT.minor)} less. The blow that would knock it out sets it off instead: ${TRAIT.goo} damage to the opponent, and if that finishes the opponent it is left standing on 1 HP.`],
   steeze: ['The Stall Is His Now', () => 'Once he is in a stall, he stays. The calves are not going anywhere.'],
+  menacanthus: ['Clings Tight', () => `The first knockout blow leaves it at 1 HP, if it had more than ${pct(TRAIT.cling)} of its HP.`],
 };
 // The line and what follows it. `p` is a bug's chance by the line (engine/bout.js).
 /** What the other corner puts up against `stake` from a bug the line gives `p`: fair odds, so the favourite risks more. To the whole dollar: bout money never has cents. */

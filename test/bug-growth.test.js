@@ -50,7 +50,7 @@ test('all species use their appropriate young form and switch cached art at leve
   };
   const expected = Object.fromEntries(Object.entries(larvae).flatMap(([form, ids]) => ids.map(id => [id, form])));
   const nymphs = ['bocydium', 'phrictus', 'pyrops', 'graphocephala', 'umbonia', 'platymeris', 'acanthaspis', 'heteropteryx', 'pseudocreobotra', 'deroplatys', 'empusa', 'lethocerus', 'sphaerocoris',
-    'pyrrhocoris', 'brevisana', 'micronecta', 'gromphadorhina', 'gryllotalpa', 'notonecta', 'halobates', 'peruphasma', 'dryococelus', 'meganeura'];
+    'pyrrhocoris', 'brevisana', 'micronecta', 'gromphadorhina', 'gryllotalpa', 'notonecta', 'halobates', 'peruphasma', 'dryococelus', 'meganeura', 'menacanthus'];
   const larvaeForLife = ['phrixothrix', 'arachnocampa', 'myrmeleon']; // drawn as the larva at every level
   const cameos = ['steeze']; // not an insect: no larval form, same picture at every level
   assert.equal(Object.keys(expected).length, 29);

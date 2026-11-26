@@ -26,7 +26,7 @@ const BY_STYLE = {
   striker: ['pseudocreobotra', 'deroplatys', 'empusa', 'platymeris', 'acanthaspis', 'manticora', 'lethocerus', 'notonecta', 'solenopsis', 'myrmeleon', 'odontomachus', 'colobopsis'],
   sprayer: ['brachinus', 'pheropsophus', 'peruphasma'],
   roller: ['eupholus', 'pachyrhynchus', 'sphaerocoris', 'helicopsyche', 'gyrinus'],
-  wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa', 'dryococelus'],
+  wriggler: ['phrixothrix', 'heteropteryx', 'arachnocampa', 'dryococelus', 'menacanthus'],
   showman: ['steeze'],
 };
 export const STYLE_OF = Object.fromEntries(Object.entries(BY_STYLE).flatMap(([style, ids]) => ids.map((id) => [id, style])));
