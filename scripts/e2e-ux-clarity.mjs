@@ -86,24 +86,23 @@ try {
       if (open !== 'true') await p.click('[data-test=ring-toggle]');
     }
     await p.waitForSelector('[data-test=challenge-incoming]', { timeout: 8000 });
-    await p.waitForSelector('[data-test=ring-how]', { timeout: 8000 });
-    await p.waitForSelector('[data-test=challenge-wait]', { timeout: 8000 });
+    // The rules are one tap away under ?, not printed on the ring.
+    await p.click('[data-test=barn-help]'); await p.waitForSelector('[data-test=barn-help-panel]', { timeout: 8000 });
+    const how = (await p.textContent('[data-test=barn-help-panel]')).replace(/\s+/g, ' ').trim();
+    check(/One fight at a time/.test(how) && /Bug Center/.test(how), `${n}: how-it-works note is under ?`);
+    await p.click('[data-test=barn-help-panel] button');
+    await p.click('[data-test=challenge-incoming]');
+    await p.waitForSelector('[data-test=matchup-why]', { timeout: 8000 });
     const acceptOff = await p.$eval('[data-test=challenge-accept]', (el) => el.disabled);
-    const chip = (await p.textContent('[data-test=challenge-wait]')).trim();
+    const chip = (await p.textContent('[data-test=matchup-why]')).trim();
     const declineOn = !(await p.$eval('[data-test=challenge-decline]', (el) => el.disabled));
     check(acceptOff, `${n}: Accept is disabled`);
     check(/Waiting — Hank is in a fight/.test(chip), `${n}: wait chip reads "${chip}"`);
     check(declineOn, `${n}: Decline stays enabled`);
-    const how = (await p.textContent('[data-test=ring-how]')).replace(/\s+/g, ' ').trim();
-    check(/One fight at a time/.test(how) && /Bug Center/.test(how), `${n}: how-it-works note is visible`);
-    await p.locator('[data-test=ring-how]').scrollIntoViewIfNeeded();
-    await wait(200);
-    await shot(p, `ring-wait-and-how-${n}`);
+    await shot(p, `ring-wait-${n}`);
     if (vp.m) {
-      const howBox = await p.locator('[data-test=ring-how]').boundingBox();
-      const callBox = await p.locator('[data-test=challenge-incoming]').boundingBox();
-      check(!!howBox && howBox.y + howBox.height < vp.h, 'phone: how-it-works note fits in the iPhone 15 viewport once the ring is in view');
-      check(!!callBox && callBox.y + callBox.height < vp.h + 8, 'phone: incoming challenge fits with the note on one screen, or just under');
+      const go = await p.locator('[data-test=challenge-accept]').boundingBox();
+      check(!!go && go.y + go.height <= vp.h, 'phone: the disabled Fight button and why it waits fit on one screen');
     }
     check(!p.errs.length, `${n} barn: no page errors (${p.errs.join(' | ') || 'none'})`);
     await p.context().close();

@@ -66,11 +66,12 @@ try {
   await C.get('/barn');
   const hp = await page(browser, A, DESK, '/barn');
   await hp.waitForSelector('[data-test=ring-toggle]'); await hp.click('[data-test=ring-toggle]');
-  await hp.click('[data-test=ring-player]'); await hp.click('[data-test=challenge-open]'); await hp.fill('[data-test=challenge-stake]', '25'); await hp.click('[data-test=challenge-send]');
-  await hp.waitForSelector('[data-test=challenge-withdraw]', { timeout: 8000 });
+  await hp.click('[data-test=roster-bug]'); await hp.click('[data-test=stake-other]'); await hp.fill('[data-test=challenge-stake]', '20'); await hp.click('[data-test=challenge-send]');
+  await hp.waitForSelector('[data-test=roster-bug]:has-text("Called out")', { timeout: 8000 });
   check(await alive(hp) && !hp.errs.length, `desktop: challenge sent (${hp.errs.join(' | ') || 'no errors'})`);
   await shot(hp, '03-challenge-sent-desktop');
   const gp = await page(browser, Bb, PHONE, '/barn');
+  await gp.waitForSelector('[data-test=challenge-incoming]', { timeout: 8000 }); await gp.click('[data-test=challenge-incoming]');
   await gp.waitForSelector('[data-test=challenge-accept]', { timeout: 8000 });
   await shot(gp, '04-challenge-incoming-phone');
   const before = (await Bb.get('/barn')).bankroll;
