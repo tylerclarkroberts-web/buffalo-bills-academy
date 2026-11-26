@@ -223,6 +223,19 @@ export class MineAudio {
     const f = c.createBiquadFilter(); f.type = type; f.Q.value = 2.5; f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + len);
     const g = c.createGain(); g.gain.value = vol; s.connect(f); f.connect(g); g.connect(this.master); s.start(t);
   }
+  /** The pickaxe meets an old-timer: a dull thump and a little tin clank off his hard hat. */
+  bonk() {
+    this.noise(0.12, 420, 120, 0.7, 'lowpass');
+    if (!this.on || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime + 0.02, o = c.createOscillator(), g = c.createGain();
+    o.type = 'square'; o.frequency.setValueAtTime(1180 + Math.random() * 200, t); o.frequency.exponentialRampToValueAtTime(700, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.2);
+  }
+  /** A swing at nothing: air. */
+  swish() { this.noise(0.14, 500, 2600, 0.3); }
+  /** ...and he goes over: a body on rock. */
+  thud() { this.noise(0.4, 260, 60, 0.9, 'lowpass'); }
   /** An acid worm lands on your face: a wet slap. */
   splat() { this.noise(0.22, 900, 140, 0.55, 'lowpass'); }
   /** The bowie knife: a bright whoosh up, then a ring. */
