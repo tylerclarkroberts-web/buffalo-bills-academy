@@ -222,6 +222,7 @@ export function stepBout(S, choice) {
   const hurt = (i, n) => {
     let d = Math.min(hp[i], n);
     if (d >= hp[i] && side[i].t === 'deroplatys' && side[i].still && hp[i] > maxHp[i] * TRAIT.still) { d = hp[i] - 1; side[i].still = false; stood = 'lies still'; }
+    if (d >= hp[i] && side[i].t === 'menacanthus' && side[i].still && hp[i] > maxHp[i] * TRAIT.cling) { d = hp[i] - 1; side[i].still = false; stood = 'clings tight'; }
     if (d >= hp[i] && side[i].t === 'pheropsophus' && side[i].still) { side[i].still = false; if (R() < TRAIT.vomit) { d = hp[i] - 1; stood = 'comes back up'; } } // the first knockout blow only
     if (d >= hp[i] && side[i].t === 'colobopsis' && !side[i].burst) { d = hp[i] - 1; side[i].burst = 'due'; stood = 'hangs on'; } // an exploding ant goes off before it goes down: see burst
     hp[i] -= d; if (d > 0) side[i].damaged = true;

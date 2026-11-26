@@ -11,7 +11,7 @@ import { proximity } from './heeshee.js';
 import { buildFind } from './finds.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
 import { rarityOf } from '../../../server/engine/bug-types.js';
-import { bugTexture } from '../barn/sprite.js';
+import { bugTexture, bugScale } from '../barn/sprite.js';
 import { OtherMiners, buildMiner } from './miners.js';
 import { danceStep } from './dance.js';
 import { danceId } from '../../../server/engine/dances.js';
@@ -533,6 +533,12 @@ export class MineScene {
         if (rarity === 3) sprite.gold = true;
         sprite.group.position.set(at.x * TILE, 0, at.y * TILE);
         sprite.group.visible = true;
+        if (wild.species === 'menacanthus') {
+          const s = bugScale(wild.level, wild.species);
+          sprite.mesh.scale.set(s, s, s);
+          sprite.mesh.position.y = 0.28;
+          if (sprite.glow) sprite.glow.position.y = 0.4;
+        }
         this.wilds.set(wild.id, { ...wild, ...at, ...sprite });
       }
     }

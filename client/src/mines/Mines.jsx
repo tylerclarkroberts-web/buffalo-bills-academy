@@ -987,6 +987,10 @@ function Shift({ shift, me, audio, sound, onFinish, onQuit, onComplete, exitShif
       const w = [...scene.wilds.values()].find((x) => x.species === 'steeze');
       if (w) askWild(w);
     };
+    window.__forceAskLouse = () => {
+      const w = [...scene.wilds.values()].find((x) => x.species === 'menacanthus');
+      if (w) askWild(w);
+    };
     const askWild = (wild) => {
       showPicker(false); showBugMenu(false); scene.heldWild = wild.id;
       if (wild.species === 'dryococelus' && !stickIntroRef.current) {

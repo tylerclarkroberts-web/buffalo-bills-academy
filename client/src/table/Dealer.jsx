@@ -3,12 +3,16 @@
 // v23 themes dress him up without ever touching his face (the face is the untouched image, clipped as before):
 //   anime  = spiky anime hair (above the brow) and a kimono with an obi;
 //   arcade = a tuxedo, plus android parts (metal arm, chest panel, jaw bolts) and the odd robot move.
+// Desert Resort Night (today-only): a John Proctor overlay — dark Puritan coat, plain white falling-band
+// collar, black capotain — plus the Crucible line in a speech bubble. The face image is never rewritten.
 // All outfit art is in the image's own 414x390 coordinates so it lines up at any size.
 import React, { useEffect, useState } from 'react';
 import { bankFor } from '../guntrad.js';
 import { dailyLine } from '../guntrad-core.js';
 import { useActiveTheme, reducedMotion } from '../themes/store.js';
 import { robotMove } from '../themes/theme-core.js';
+import { useEventTheme, useCrucibleBubble } from '../themes/event-store.js';
+import { CRUCIBLE_LINE } from '../themes/event-theme.js';
 
 export const DEALER_NAME = 'Guntrad the Pit Boss';
 // His tagline is the factoid of the day from client/src/lines/guntrad-lines.json: one line per calendar day.
@@ -90,6 +94,37 @@ function JawBolts() {
   );
 }
 
+function ProctorHat() {
+  // Plain black capotain on the crown, brim above the brow (y ~ 108). Face art stays the untouched image.
+  return (
+    <svg className="dl-proctor dl-proctor-hat" viewBox={VB} aria-hidden="true" data-test="guntrad-proctor-hat">
+      <ellipse cx="215" cy="108" rx="112" ry="16" fill="#141210" />
+      <path d="M160 108 L174 8 L256 8 L270 108 Z" fill="#1a1612" />
+      <path d="M174 8 L256 8 L250 1 L180 1 Z" fill="#0c0a08" />
+      <rect x="172" y="88" width="84" height="14" fill="#2a241c" />
+    </svg>
+  );
+}
+function ProctorCoat() {
+  // Dark farmer's coat and a plain white falling-band collar. Sits on the body, below the chin.
+  return (
+    <svg className="dl-proctor dl-proctor-coat" viewBox={VB} aria-hidden="true" data-test="guntrad-proctor-coat">
+      <path fill="#1a1612" d="M0 300 Q36 258 118 244 L176 232 L208 300 L214 390 L0 390 Z M414 300 Q378 258 296 244 L238 232 L206 300 L200 390 L414 390 Z" />
+      <path fill="#12100e" d="M118 248 L168 236 L200 390 L96 390 Z M296 248 L246 236 L214 390 L318 390 Z" />
+      <path fill="#241c16" d="M176 232 L238 232 L226 390 L188 390 Z" />
+      {/* falling-band: a narrow neckband and two plain white tabs */}
+      <path fill="#f4efe6" d="M186 228 L228 228 L226 242 L188 242 Z" />
+      <path fill="#fbf7f0" d="M188 240 L206 240 L202 292 L184 292 Z" />
+      <path fill="#efe8dc" d="M208 240 L226 240 L230 292 L212 292 Z" />
+      <g fill="#d4c8b0" opacity=".7">
+        <circle cx="207" cy="312" r="3.2" />
+        <circle cx="207" cy="338" r="3.2" />
+        <circle cx="207" cy="364" r="3.2" />
+      </g>
+    </svg>
+  );
+}
+
 const ROBOT_SAY = { beep: 'BEEP BOOP', glitch: '01000111', spin: 'RECALIBRATING', servo: 'BZZRT', sparks: '*KZZT*' };
 function useRobot(on) {
   const [move, setMove] = useState(null);
@@ -111,21 +146,22 @@ function useRobot(on) {
 
 export function Dealer({ still = false }) {
   const theme = useActiveTheme();
-  const robot = useRobot(theme === 'arcade' && !still);
+  const festive = useEventTheme();
+  const robot = useRobot(theme === 'arcade' && !still && !festive);
+  const say = useCrucibleBubble('guntrad', festive && !still);
   return (
-    <div className={`dealer-fig ${still ? 'still' : ''} dl-${theme} ${robot ? `robot-${robot}` : ''}`} aria-label={DEALER_NAME} role="img">
+    <div className={`dealer-fig ${still ? 'still' : ''} dl-${theme} ${robot ? `robot-${robot}` : ''}${festive ? ' proctor' : ''}`} aria-label={DEALER_NAME} role="img">
       <div className="dl-glow" aria-hidden="true" />
       <div className="dl-body">
         <img src="/api/dealer.png?v=guntrad" alt="" className="dl-img" draggable="false" />
-        {theme === 'anime' && <Kimono />}
-        {theme === 'arcade' && <><Tux /><Android /></>}
+        {festive ? <ProctorCoat /> : theme === 'anime' ? <Kimono /> : theme === 'arcade' ? <><Tux /><Android /></> : null}
         <div className="dl-head">
           <div className="dl-face"><img src="/api/dealer.png?v=guntrad" alt="" draggable="false" /></div>
-          {theme === 'anime' && <AnimeHair />}
-          {theme === 'arcade' && <JawBolts />}
+          {festive ? <ProctorHat /> : theme === 'anime' ? <AnimeHair /> : theme === 'arcade' ? <JawBolts /> : null}
         </div>
         {robot === 'sparks' && <div className="dl-sparks" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((i) => <i key={i} style={{ '--i': i }} />)}</div>}
       </div>
+      {say && <div className="dl-crucible-say" data-test="crucible-say" aria-hidden="true">{CRUCIBLE_LINE}</div>}
       {robot && <div className="dl-robo-say" aria-hidden="true">{ROBOT_SAY[robot]}</div>}
     </div>
   );

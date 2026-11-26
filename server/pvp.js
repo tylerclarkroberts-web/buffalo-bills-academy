@@ -17,6 +17,7 @@ import { wildAt } from './engine/wild-roam.js';
 import { BY_ID, levelFor, xpFor, PAUSED_AT } from './engine/creatures.js';
 import { rarityOf } from './engine/bug-types.js';
 import { isSteeze, STEEZE_JAR_CHANCE, STEEZE_JAR_SIDES } from './engine/steeze.js';
+import { isTurkeyLouse, turkeyLouseLive, TURKEY_LOUSE_LEVEL, TURKEY_LOUSE_JAR_CHANCE, TURKEY_LOUSE_JAR_SIDES } from './engine/turkey-louse.js';
 import { ITEM } from './catalog/index.js';
 import { isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
 import { danceId } from './engine/dances.js';
@@ -322,6 +323,7 @@ export class Pvp {
       if (battle.wild?.id === wild.id && (!battle.over || battle.over.jars)) throw new GameError('Another miner is fighting this bug.', 409);
     }
     if (body.bug != null && this.bugOf(player.id, true, body.bug).loaner) throw new GameError('That one is in no state to fight.', 409);
+    if (isTurkeyLouse(wild.species) && !wild.force && !turkeyLouseLive(now)) throw new GameError('Thanksgiving is over. The Turkey Louse is gone.', 409);
     if (!this.startWild(player.id, shift, wild, body.bug ?? null)) throw new GameError('It looks straight past you. It wants a bug to fight.', 409);
     return this.view(player);
   }
@@ -336,6 +338,7 @@ export class Pvp {
     const mine = this.bugOf(a, true, bug);
     if (mine.loaner || this.fights.fightOf(a)) return null;
     const now = this.now(), id = crypto.randomBytes(9).toString('base64url'), { species, level } = wild;
+    if (isTurkeyLouse(species) && !wild.force && !turkeyLouseLive(now)) return null;
     // a stray (a released bug) fights under its own name and says whose it was
     const battle = { id, a, b: null, wild: { id: wild.id, species, level, name: wild.stray?.name || BY_ID[species].name, ...(wild.stray ? { stray: wild.stray } : {}), ...(wild.force ? { force: true } : {}) }, shiftId: shift.id, startedAt: now, lastSeen: { [a]: now }, over: null,
       bugs: { a: { bornAt: mine.bornAt, xp: mine.xp, cap: mine.cap }, b: null }, benched: { a: null, b: null },
@@ -374,9 +377,10 @@ export class Pvp {
   }
   jarOdds(battle) {
     const mine = battle.fight.fighters[0].level;
-    const keeps = caughtLevel(battle.wild.level, mine);
+    const keeps = isTurkeyLouse(battle.wild.species) ? TURKEY_LOUSE_LEVEL : caughtLevel(battle.wild.level, mine);
     if (this.isStick(battle.wild)) return { chance: STICK_JAR_CHANCE, keeps };
     if (isSteeze(battle.wild.species)) return { chance: STEEZE_JAR_CHANCE, keeps };
+    if (isTurkeyLouse(battle.wild.species)) return { chance: TURKEY_LOUSE_JAR_CHANCE, keeps };
     return { chance: jarChance(rarityOf(battle.wild.species), battle.wild.level - mine), keeps };
   }
   /**
@@ -384,8 +388,11 @@ export class Pvp {
    * get WILD.throws tries before it comes to and is gone. A miss still spends the jar.
    */
   jar(player, body = {}) {
+    const peek = this.battles.get(String(body.battleId || ''));
+    if (isTurkeyLouse(peek?.wild?.species) && !turkeyLouseLive(this.now())) throw new GameError('Thanksgiving is over. The Turkey Louse slipped away.', 409);
     this.touch(player.id); this.sweep();
     const battle = this.battles.get(String(body.battleId || ''));
+    if (isTurkeyLouse(battle?.wild?.species) && !turkeyLouseLive(this.now())) throw new GameError('Thanksgiving is over. The Turkey Louse slipped away.', 409);
     if (battle?.wild?.force) throw new GameError('This one is only here for you to see. It cannot be jarred.', 409);
     if (battle?.wild && battle.a === player.id && battle.over?.rage) throw new GameError(`There is nothing left to jar. Your bug went berserk and crushed the ${battle.wild.name}.`, 409);
     if (!battle?.wild || battle.a !== player.id || !battle.over?.jars) throw new GameError(battle?.wild && battle.a === player.id && !battle.over ? 'Knock it out first. It is far too lively for a jar.' : 'It is gone.', 409);
@@ -395,7 +402,9 @@ export class Pvp {
       ? this.jarInt(STICK_JAR_SIDES) < Math.round(STICK_JAR_CHANCE * STICK_JAR_SIDES)
       : isSteeze(battle.wild.species)
         ? this.jarInt(STEEZE_JAR_SIDES) < Math.round(STEEZE_JAR_CHANCE * STEEZE_JAR_SIDES)
-        : this.randInt(1000) < Math.round(chance * 1000);
+        : isTurkeyLouse(battle.wild.species)
+          ? this.jarInt(TURKEY_LOUSE_JAR_SIDES) < Math.round(TURKEY_LOUSE_JAR_CHANCE * TURKEY_LOUSE_JAR_SIDES)
+          : this.randInt(1000) < Math.round(chance * 1000);
     const wildId = battle.wild.id, battleId = battle.id;
     if (!this.shop.takeJar(player.id, held ? { wildId, battleId } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {

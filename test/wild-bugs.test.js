@@ -9,7 +9,7 @@ import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
 import { Barn, BATTLE_XP, WIN_BONUS_XP } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
-import { Mines, WILDS_A_DAY } from '../server/mines.js';
+import { Mines, WILDS_A_DAY, TURKEY_LOUSE_ID } from '../server/mines.js';
 import { wildAt, ROAM_STEP_MS } from '../server/engine/wild-roam.js';
 import { Pvp, PVP, WILD, jarChance, caughtLevel } from '../server/pvp.js';
 import { BY_ID, ROSTER } from '../server/engine/creatures.js';
@@ -101,9 +101,12 @@ test('rarity: a rare wild bug only turns up on a day rough enough, commons most 
     f.clock.now += 86400e3;
     const shift = f.mines.start(f.miner(`day${day}`), V), maze = f.pvp.maze(f.mines.doc.active[`day${day}`]);
     const dist = distFrom(maze.grid, maze.start.x, maze.start.y), far = Math.max(...dist.flat().filter(Number.isFinite));
-    for (const w of shift.wilds) if (w.level <= 2 || w.level >= 6) depths[w.level <= 2 ? 'low' : 'high'].push(dist[w.y][w.x] / far);
+    for (const w of shift.wilds) if (w.species !== TURKEY_LOUSE_ID && (w.level <= 2 || w.level >= 6)) depths[w.level <= 2 ? 'low' : 'high'].push(dist[w.y][w.x] / far);
     assert.equal(new Set(shift.wilds.map((w) => w.species)).size, shift.wilds.length, 'no species twice in a day');
-    for (const w of shift.wilds) { seen[rarityOf(w.species)]++; if (rarityOf(w.species) === 3) assert.ok(shift.tier >= RARE_TIER, `a rare on a tier ${shift.tier} day`); }
+    for (const w of shift.wilds) {
+      if (w.species === TURKEY_LOUSE_ID) continue; // Thanksgiving event: a rare near the lift, any tier, only that day
+      seen[rarityOf(w.species)]++; if (rarityOf(w.species) === 3) assert.ok(shift.tier >= RARE_TIER, `a rare on a tier ${shift.tier} day`);
+    }
   }
   assert.ok(seen[1] > seen[2] && seen[2] > seen[3] && seen[3] > 0, `commons ${seen[1]}, uncommons ${seen[2]}, rares ${seen[3]}`);
   // the big ones keep to the far corners; the little ones can be near the lift

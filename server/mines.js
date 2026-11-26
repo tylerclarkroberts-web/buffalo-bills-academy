@@ -13,6 +13,8 @@ import { rarityOf, WILD_ODDS, RARE_TIER, LEGENDARY } from './engine/bug-types.js
 import { HEESHEE_RETURN } from './foreman.js';
 import { HEESHEE_APPEAR_MS } from './foremanTyping.js';
 import { STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, isSteeze } from './engine/steeze.js';
+import { TURKEY_LOUSE_ID, TURKEY_LOUSE_LEVEL, TURKEY_LOUSE_DATE, isTurkeyLouse, turkeyLouseLive, turkeyLouseOnDay, louseWildId, turkeyLouseGeneration } from './engine/turkey-louse.js';
+export { TURKEY_LOUSE_ID, TURKEY_LOUSE_LEVEL, TURKEY_LOUSE_DATE, turkeyLouseLive, turkeyLouseOnDay, louseWildId, turkeyLouseGeneration };
 import { WormSwarm, suckUnits, wormPublic, WORM_SUCK_MAX_GAP_MS, WORM_TILE, WORM_MINE_REACH } from './engine/worms.js';
 
 // INTERNAL: never shown to players (the odds are a secret; there is no API that exposes them).
@@ -186,6 +188,7 @@ export class Mines {
     // Per-player only: a forced stick insect never joins the shared daily roster.
     this.stickForce = new Map();
     this.steezeForce = new Map();
+    this.turkeyLouseForce = new Map();
   }
   /** Is it Horror Night right now? Cosmetic only: nothing that pays, times or rolls a shift reads it. */
   horrorOn(now = this.now()) { return this.horrorForce ?? inHorrorWindow(now); }
@@ -548,6 +551,21 @@ export class Mines {
       list = [...list, placeSteeze(shift, `steeze:force:${playerId}`)];
     }
     if (playerId && this.steezeForce.get(playerId) === false) list = list.filter((w) => w.species !== STEEZE_ID);
+    // Turkey Louse: Thanksgiving only (America/Phoenix). A shared instance is out near the lift; a catch is atomic
+    // (wildCaught on that id) and does not retire the species. The next generation appears at once for every miner,
+    // including the catcher, unlimited today. After the day it leaves, even mid-shift. Force stays for shots.
+    list = list.filter((w) => !isTurkeyLouse(w.species) || w.force);
+    if (turkeyLouseOnDay(day) && turkeyLouseLive(this.now())) {
+      const gen = turkeyLouseGeneration(this.barn?.doc?.wildCatches, day);
+      const id = louseWildId(day, gen);
+      if (!this.barn?.wildCaught?.(id) && !shift.wildsGone?.includes(id) && !list.some((w) => w.id === id)) {
+        list = [...list, placeTurkeyLouse({ ...shift, day }, id)];
+      }
+    }
+    if (playerId && this.turkeyLouseForce.get(playerId) === true && !list.some((w) => w.species === TURKEY_LOUSE_ID)) {
+      list = [...list, { ...placeTurkeyLouse(shift, `louse:force:${playerId}`), force: true }];
+    }
+    if (playerId && this.turkeyLouseForce.get(playerId) === false) list = list.filter((w) => w.species !== TURKEY_LOUSE_ID);
     return list;
   }
   /** Dev/admin screenshot hook: only this miner sees STEEZE. Unlike the stick, he can still be jarred. */
@@ -555,6 +573,12 @@ export class Mines {
     if (on === true || on === false) this.steezeForce.set(playerId, on);
     else this.steezeForce.delete(playerId);
     return { force: this.steezeForce.has(playerId) ? this.steezeForce.get(playerId) : null };
+  }
+  /** Dev/admin screenshot hook: only this miner sees the Turkey Louse. It can still be jarred. */
+  forceTurkeyLouse(playerId, on) {
+    if (on === true || on === false) this.turkeyLouseForce.set(playerId, on);
+    else this.turkeyLouseForce.delete(playerId);
+    return { force: this.turkeyLouseForce.has(playerId) ? this.turkeyLouseForce.get(playerId) : null };
   }
   /** Today's stick-insect roll: hard days only, 50%, its own seed. Does not look at a per-player force. */
   stickDayInfo(today = null) {
@@ -858,7 +882,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   const random = rng(daySeed(`wild:${day}`)), pick = (n) => Math.floor(random() * n);
   const count = Math.min(WILDS_A_DAY[0] + pick(WILDS_A_DAY[1] - WILDS_A_DAY[0] + 1), spots.length), tier = shift.tier || 1;
   // First how rare (WILD_ODDS; a rare only on a day rough enough), then a species of that rarity not yet out today.
-  const left = Object.fromEntries([1, 2, 3].map((rarity) => [rarity, ROSTER.filter((bug) => rarityOf(bug.id) === rarity && bug.id !== STEEZE_ID)]));
+  const left = Object.fromEntries([1, 2, 3].map((rarity) => [rarity, ROSTER.filter((bug) => rarityOf(bug.id) === rarity && bug.id !== STEEZE_ID && bug.id !== TURKEY_LOUSE_ID)]));
   const species = (at = tier, roll01 = random, choose = pick) => {
     const odds = wildOdds(at), open = [1, 2, 3].filter((rarity) => left[rarity].length && odds[rarity] > 0);
     let roll = roll01() * open.reduce((sum, rarity) => sum + odds[rarity], 0);
@@ -904,6 +928,7 @@ function dailyWilds(day, shift, strays = [], held = () => false) {
   if (steezeToday(day) && spots.length) {
     legends.push(route({ id: `steeze:${day}`, species: STEEZE_ID, level: STEEZE_LEVEL, ...spotFor(STEEZE_LEVEL) }));
   }
+  // The Turkey Louse is not on the ordinary daily roster. wildsFor places the live generation near the lift.
   return [...loose, ...out, ...deep, ...legends];
 }
 
@@ -933,4 +958,22 @@ function placeSteeze(shift, id) {
   const start = spots[Math.floor(spots.length * 0.35)] || spots[0] || { x: Math.max(1, (maze.size >> 1)), y: Math.max(1, (maze.size >> 1)) };
   const pick = (n) => Math.floor(rng(daySeed(id))() * n);
   return { id, species: STEEZE_ID, level: STEEZE_LEVEL, ...start, path: roamRoute({ ...start }, 6, (p) => depth(p) >= Math.max(3, depth(start) - 3) && !pool(p), pick) };
+}
+
+/** Just down the first tunnel from the lift, on a short loop, so it is in view in the first seconds of a shift. */
+export const LOUSE_NEAR = 5, LOUSE_ROAM = 4;
+function placeTurkeyLouse(shift, id) {
+  const maze = shiftMaze(shift), start = maze.start || { x: 1, y: 1 };
+  const pool = (p) => (shift.pools || []).some((q) => q.x === p.x && q.y === p.y);
+  const walkable = (p) => (maze.dist[p.y]?.[p.x] ?? -1) >= 0 && !pool(p);
+  const near = (p) => Math.abs(p.x - start.x) + Math.abs(p.y - start.y);
+  const spots = [];
+  for (let y = 0; y < maze.size; y++) for (let x = 0; x < maze.size; x++) {
+    const p = { x, y }, d = near(p);
+    if (d >= 2 && d <= 4 && walkable(p)) spots.push(p);
+  }
+  spots.sort((a, b) => near(a) - near(b));
+  const at = spots[0] || { x: start.x + (maze.grid[start.y]?.[start.x + 1] === 0 ? 2 : 0), y: start.y + (maze.grid[start.y]?.[start.x + 1] === 0 ? 0 : 2) };
+  const pick = (n) => Math.floor(rng(daySeed(id))() * n);
+  return { id, species: TURKEY_LOUSE_ID, level: TURKEY_LOUSE_LEVEL, ...at, path: roamRoute({ ...at }, LOUSE_ROAM, (p) => walkable(p) && near(p) >= 1 && near(p) <= LOUSE_NEAR, pick) };
 }

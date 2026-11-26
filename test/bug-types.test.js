@@ -28,7 +28,7 @@ test('the chart: nothing beats itself or its own beater, every pairing has its r
     assert.equal(bug.stats.atk + bug.stats.def + bug.stats.spd, { 3: 10, 4: 11 }[rarityOf(bug.id)] || 9, `${bug.id}: a rare has one more stat point than the rest, a legendary two`);
     assert.ok(bug.facts.length >= 5 && bug.sources.length >= 1, `${bug.id} has its facts and where they came from`);
   }
-  assert.deepEqual(ROSTER.filter((bug) => rarityOf(bug.id) === 3).map((bug) => bug.id), ['pheropsophus', 'brevisana', 'halobates', 'phloeodes', 'arachnocampa', 'peruphasma', 'ampulex', 'colobopsis']);
+  assert.deepEqual(ROSTER.filter((bug) => rarityOf(bug.id) === 3).map((bug) => bug.id), ['pheropsophus', 'brevisana', 'halobates', 'phloeodes', 'arachnocampa', 'peruphasma', 'ampulex', 'colobopsis', 'menacanthus']);
   assert.deepEqual([typeEdge('nemoptera', 'lamprima'), typeEdge('lamprima', 'nemoptera'), typeEdge('nemoptera', 'eupholus'), typeEdge('nemoptera', 'nemoptera')], [EDGE.strong, EDGE.weak, 1, 1], 'Flier on Brawler, Brawler on Flier, no edge, same type');
   assert.deepEqual([typeEdge(null, 'lamprima'), typeEdge('lamprima', null), typeEdge('nobody', 'lamprima')], [1, 1, 1], 'a fighter with no type has no edge either way');
 });

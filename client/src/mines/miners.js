@@ -8,6 +8,7 @@ import { BY_ID } from '../../../server/engine/creatures.js';
 import { bugTexture } from '../barn/sprite.js';
 import { danceId } from '../../../server/engine/dances.js';
 import { resetPose, danceStep } from './dance.js';
+import { isEventThemeOn, liveEventOpts } from '../themes/event-theme.js';
 
 const TILE = 2.2;
 const mat = (color, extras = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extras });
@@ -61,14 +62,19 @@ function nameTag(text) {
  * pivots at the hips and the head on the neck; `body` carries everything but the name tag and the bug, so a spin or a
  * drop to the floor never drags the label along. Front is +z.
  */
-export function buildMiner({ id, name, avatar, bug }) {
+export function buildMiner({ id, name, avatar, bug, festive }) {
   const L = looks(avatar?.seed || id, avatar?.skinTone);
+  if (festive == null) festive = typeof window !== 'undefined' && isEventThemeOn(liveEventOpts());
   const g = new THREE.Group(); g.name = 'mine-miner';
   const pivot = (parent, name, x, y, z) => { const p = new THREE.Group(); p.name = name; p.position.set(x, y, z); parent.add(p); return p; };
   const body = pivot(g, 'miner-body', 0, 0, 0);
   const denim = mat('#35445b'), boot = mat('#513627'), trim = mat('#252a30'), metal = mat('#a9a49a');
-  const shirt = mat(L.shirt), skin = mat(L.skin), hair = mat(L.hair), hat = mat('#e8b923');
-  const materials = { denim, boot, trim, metal, shirt, skin, hair, hat };
+  const shirt = mat(L.shirt), skin = mat(L.skin), hair = mat(L.hair);
+  const hat = mat(festive ? '#1a1612' : '#e8b923');
+  const coat = festive ? mat('#1a1612') : null;
+  const collar = festive ? mat('#f4efe6') : null;
+  const buckle = festive ? mat('#d4a04a') : null;
+  const materials = { denim, boot, trim, metal, shirt, skin, hair, hat, ...(coat ? { coat, collar, buckle } : {}) };
   for (const [name, material] of Object.entries(materials)) material.name = `miner-${name}`;
   const shapes = { box: new THREE.BoxGeometry(1, 1, 1), ball: new THREE.SphereGeometry(1, 8, 6), limb: new THREE.CylinderGeometry(.85, 1, 1, 6) };
   const geometry = new Set(Object.values(shapes));
@@ -92,6 +98,13 @@ export function buildMiner({ id, name, avatar, bug }) {
   }
   const upper = pivot(body, 'miner-upper', 0, HIP, 0);
   add(upper, new THREE.CylinderGeometry(.22, .17, .49, 8), shirt, 0, .325, 0, 1, 1, .69);
+  if (festive) {
+    add(upper, new THREE.CylinderGeometry(.25, .2, .52, 8), coat, 0, .3, 0, 1, 1, .78);
+    add(upper, 'box', coat, -.22, .48, 0, .18, .38, .28);
+    add(upper, 'box', coat, .22, .48, 0, .18, .38, .28);
+    add(upper, 'box', collar, -.07, .62, .12, .12, .08, .08).rotation.z = .35;
+    add(upper, 'box', collar, .07, .62, .12, .12, .08, .08).rotation.z = -.35;
+  }
   add(upper, 'box', denim, 0, .035, 0, .35, .13, .25);
   add(upper, 'box', trim, 0, .085, 0, .365, .055, .27);
   add(upper, 'box', metal, 0, .085, .145, .07, .055, .025);
@@ -122,13 +135,21 @@ export function buildMiner({ id, name, avatar, bug }) {
   if (L.style === 'long') add(head, 'box', hair, 0, -.1, -.11, .29, .2, .1);
   if (L.style === 'bun') add(head, 'ball', hair, 0, .025, -.175, .065);
   for (const side of [-1, 1]) add(head, 'ball', skin, side * .148 * L.wide, -.035, -.005, .035, .052, .032);
-  const helmet = pivot(head, 'miner-hardhat', 0, .1, 0);
-  add(helmet, new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 0, 0, .195, .175, .18);
-  add(helmet, new THREE.CylinderGeometry(1, 1, 1, 12), hat, 0, .005, .025, .235, .03, .22);
-  add(helmet, 'box', hat, 0, .135, 0, .05, .07, .235);
-  add(helmet, 'box', trim, 0, .058, -.17, .13, .08, .05);
-  add(helmet, 'box', trim, 0, .075, .176, .115, .105, .065);
-  add(helmet, 'box', metal, 0, .075, .211, .087, .08, .015);
+  const helmet = pivot(head, festive ? 'miner-capotain' : 'miner-hardhat', 0, .1, 0);
+  if (festive) {
+    add(helmet, new THREE.CylinderGeometry(1, 1, 1, 14), hat, 0, .005, .02, .26, .03, .24);
+    add(helmet, new THREE.CylinderGeometry(.15, .185, .28, 10), hat, 0, .16, 0, 1, 1, 1);
+    add(helmet, 'box', trim, 0, .04, 0, .34, .045, .34);
+    add(helmet, 'box', buckle, 0, .04, .19, .08, .06, .02);
+    add(helmet, 'box', metal, 0, .04, .21, .04, .03, .012);
+  } else {
+    add(helmet, new THREE.SphereGeometry(1, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), hat, 0, 0, 0, .195, .175, .18);
+    add(helmet, new THREE.CylinderGeometry(1, 1, 1, 12), hat, 0, .005, .025, .235, .03, .22);
+    add(helmet, 'box', hat, 0, .135, 0, .05, .07, .235);
+    add(helmet, 'box', trim, 0, .058, -.17, .13, .08, .05);
+    add(helmet, 'box', trim, 0, .075, .176, .115, .105, .065);
+    add(helmet, 'box', metal, 0, .075, .211, .087, .08, .015);
+  }
 
   // Batch fixed details by joint and material; only the dance joints need separate transforms.
   const joints = []; g.traverse(o => { if (o.isGroup) joints.push(o); });
@@ -173,10 +194,11 @@ export class OtherMiners {
       seen.add(o.id);
       let m = this.map.get(o.id);
       const style = o.bug?.style;
-      const key = `${o.avatar?.kind || ''}:${o.avatar?.seed || o.id}:${o.avatar?.skinTone || ''}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${style?.evo || 0}:${style?.botched || ''}:${o.name}`;
+      const festive = typeof window !== 'undefined' && isEventThemeOn(liveEventOpts());
+      const key = `${o.avatar?.kind || ''}:${o.avatar?.seed || o.id}:${o.avatar?.skinTone || ''}:${o.avatar?.v || 0}:${o.bug?.species || ''}:${style?.evo || 0}:${style?.botched || ''}:${o.name}:${festive ? 'p' : ''}`;
       if (m && m.key !== key) { this.remove(o.id); m = null; }
       if (!m) {
-        m = { ...buildMiner(o), key, x: o.x * TILE, z: o.y * TILE, yaw: o.yaw, walk: 0 };
+        m = { ...buildMiner({ ...o, festive }), key, x: o.x * TILE, z: o.y * TILE, yaw: o.yaw, walk: 0 };
         this.scene.add(m.group); this.map.set(o.id, m);
       }
       m.tx = o.x * TILE; m.tz = o.y * TILE; m.tyaw = o.yaw; m.shield = o.shield; m.cooling = o.cooling;

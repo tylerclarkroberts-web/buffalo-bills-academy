@@ -137,7 +137,7 @@ test('Stage I is untouched: larvae and grown Stage I bugs draw exactly as before
   // on purpose, this fingerprint is the one line to update.
   const h = crypto.createHash('sha256');
   for (const bug of ROSTER) for (const lv of [1, 3, 10]) for (const fine of [1, 2, 4]) h.update(JSON.stringify(spriteGrid(bug, lv, fine)));
-  assert.equal(h.digest('hex'), 'dc65641db1b1385369a82822851c79a8b68f7889f5cfc77721b436005b668fc4');
+  assert.equal(h.digest('hex'), 'e85f7b850184372ad515f76e3a0629cdcdb9cf37c0cc007f58881f0a412ecdea');
 });
 
 test('every Stage II bug changes: a base instead of legs, its ailments, a whisper of fruit, its colouring', () => {
