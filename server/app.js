@@ -43,6 +43,7 @@ import { adminConfig, isAdmin, mountAdmin } from './admin/index.js';
 import { listTurns, registerTurnSource, scumSource } from './turns.js';
 import { WantedShame, SAMPLE_NAME } from './wanted.js';
 import { applyHtmlMeta } from './pageMeta.js';
+import { injectEventThemeScript } from './engine/event-theme.js';
 
 export function createApp({ dataDir, staticDir, now, env = process.env, devLogin, fetchImpl, geoFetch, marketSources, randInt, scareInt, poolInt, vein, eggInt, foremanInt, snapshots, dealerFile, authLimits, slackFetch, slackRetryMs, slackSendRetryMs, botDelayScale, conquestFetch, conquestPollMs, pvpInt } = {}) {
   const service = new PokerService({ dataDir, now });
@@ -748,7 +749,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
     // index.html on iOS Safari/Chrome would keep loading the previous deploy's JS.
     const NO_CACHE = 'no-cache, no-store, must-revalidate';
     const noCacheHtml = (res) => res.set({ 'Cache-Control': NO_CACHE, Pragma: 'no-cache', Expires: '0' });
-    const sendApp = (req, res) => { noCacheHtml(res); res.type('html').send(applyHtmlMeta(appHtml(), req.path)); };
+    const sendApp = (req, res) => { noCacheHtml(res); res.type('html').send(injectEventThemeScript(applyHtmlMeta(appHtml(), req.path), env.EVENT_THEME)); };
     // /elhalo is the game route. public/elhalo/ holds musica and the lobby thumb, and express.static
     // would 301 /elhalo to /elhalo/ (a path the client treats as the lobby). Serve the app instead.
     app.get(['/elhalo', '/elhalo/'], sendApp);

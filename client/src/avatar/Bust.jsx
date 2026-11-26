@@ -3,7 +3,8 @@
 // low-poly image the player made at sign-in; everyone else gets an original generated bust.
 import React, { useMemo } from 'react';
 import { headParts, looks, shade, hashSeed } from './genbust.js';
-import { HeadWear, BodyWear, shirtOf } from './wear.js';
+import { HeadWear, BodyWear, shirtOf, PHOTO_FIT } from './wear.js';
+import { useEventTheme } from '../themes/event-store.js';
 
 function Shoulders({ shirt, seed }) {
   const polys = useMemo(() => {
@@ -37,6 +38,39 @@ function GenHead({ seed, skinTone }) {
   );
 }
 
+/** Thanksgiving pilgrim overlay: black capotain with a buckle, white collar, dark coat.
+ *  Drawn over the bust; never written into saved avatar.wear. */
+function PilgrimHat({ photo = false }) {
+  const [ax, ay] = [30, 17];
+  const fit = photo ? PHOTO_FIT.hat : null;
+  const transform = fit ? `translate(${fit[1][0]} ${fit[1][1]}) scale(${fit[0]}) translate(${-ax} ${-ay})` : undefined;
+  return (
+    <svg viewBox="-4 -12 68 84" className="b-pilgrim-hat" aria-hidden="true" data-test="pilgrim-hat" overflow="visible">
+      <g transform={transform}>
+        <ellipse cx="30" cy="15" rx="26" ry="3.6" fill="#1a1612" />
+        <path d="M16 15 L18 -16 L42 -16 L44 15 Z" fill="#141210" />
+        <path d="M18 -16 L42 -16 L41.2 -19 L18.8 -19 Z" fill="#0c0a09" />
+        <rect x="17.5" y="8" width="25" height="4.2" fill="#2a241c" />
+        <rect x="26.5" y="6.6" width="7" height="6.6" fill="none" stroke="#d4a04a" strokeWidth="1.5" />
+        <rect x="28.2" y="8.4" width="3.6" height="3" fill="#d4a04a" />
+      </g>
+    </svg>
+  );
+}
+function PilgrimCoat() {
+  return (
+    <g className="b-pilgrim-coat" data-test="pilgrim-coat">
+      <path d="M6 110 L16 86 L30 76 L44 80 L48 110 Z" fill="#1a1612" />
+      <path d="M94 110 L84 86 L70 76 L56 80 L52 110 Z" fill="#1a1612" />
+      <path d="M22 110 L32 80 L44 80 L48 110 Z" fill="#221c18" />
+      <path d="M78 110 L68 80 L56 80 L52 110 Z" fill="#1d1814" />
+      <path d="M36 74 L50 86 L43 94 L34 80 Z" fill="#f4efe6" />
+      <path d="M64 74 L50 86 L57 94 L66 80 Z" fill="#fbf7f0" />
+      <path d="M49 86 L51 86 L51 110 L49 110 Z" fill="#2a241c" />
+    </g>
+  );
+}
+
 export function avatarSrc(id, avatar) { return avatar?.kind === 'photo' ? `/api/avatars/${id}.png?v=${avatar.v || 0}` : null; }
 
 /**
@@ -51,12 +85,14 @@ export function Bust({ id, avatar, size = 64, state = '', still = false, relaxed
   const h = hashSeed(String(id || seed));
   const ph = phase ?? (h % 1000) / 1000;
   const style = { width: size, height: size * 1.1, '--dur': `${5.5 + (h % 7) * 0.45}s`, '--delay': `${-ph * 9}s`, '--blink': `${3.8 + (h % 5) * 0.7}s` };
+  const festive = useEventTheme();
   return (
-    <div className={`bust ${still ? 'still' : ''} ${state}${relaxed ? ' relaxed' : ''}`} style={style} title={title} aria-hidden={title ? undefined : 'true'} role={title ? 'img' : undefined} aria-label={title}>
-      <svg viewBox="0 0 100 110" className="b-body"><rect x="42" y="62" width="16" height="22" fill={shade(L.skin, -0.25)} /><Shoulders shirt={shirtOf(avatar?.wear, L.shirt)} seed={seed} /><BodyWear wear={avatar?.wear} /></svg>
+    <div className={`bust ${still ? 'still' : ''} ${state}${relaxed ? ' relaxed' : ''}${festive ? ' pilgrim' : ''}`} style={style} title={title} aria-hidden={title ? undefined : 'true'} role={title ? 'img' : undefined} aria-label={title}>
+      <svg viewBox="0 0 100 110" className="b-body"><rect x="42" y="62" width="16" height="22" fill={shade(L.skin, -0.25)} /><Shoulders shirt={shirtOf(avatar?.wear, L.shirt)} seed={seed} /><BodyWear wear={avatar?.wear} />{festive && <PilgrimCoat />}</svg>
       <div className="b-head">
         {src ? <img src={src} alt="" draggable="false" className="b-photo" /> : <GenHead seed={seed} skinTone={skinTone} />}
         <HeadWear wear={avatar?.wear} photo={!!src} />
+        {festive && <PilgrimHat photo={!!src} />}
       </div>
     </div>
   );

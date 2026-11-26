@@ -1,0 +1,179 @@
+/* =====================================================================
+   Desert Resort Night: a one-day skin inspired by the look of Southwest
+   resort casinos — warm sandstone, terracotta, turquoise, copper, mesa
+   silhouettes, and clean geometric trim. Applied when
+   body[data-event="desert-resort"] is set (see event-theme.js).
+   Cosmetic only. Does not change layouts or game chrome structure.
+   ===================================================================== */
+
+body[data-event="desert-resort"] {
+  --ink: #2a1810; --ink-2: #3b2218; --ink-3: #5a3424; --ink-4: #7a4a30;
+  --paper: #f7efe4; --paper-2: #ead8c4; --mute: #c4a888;
+  --line: rgba(247, 239, 228, .12); --line-2: rgba(212, 160, 80, .38);
+  --coral: #c45c2c; --pink: #c45c2c; --teal: #2a9b8f;
+  --amber: #e0b15a; --gold: #d4a04a; --gold-2: #b87333;
+  --red: #b43c28; --red-ink: #8c2c1c;
+  --pos: #6bc48a; --neg: #e07a6a;
+  --sunset: linear-gradient(180deg, #1c1020 0%, #4a2030 22%, #c45c2c 52%, #e08a40 76%, #f0d080 100%);
+  --carpet: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%232a1810'/%3E%3Cpath d='M16 2 L22 8 L16 14 L10 8 Z M16 18 L22 24 L16 30 L10 24 Z M2 16 L8 10 L14 16 L8 22 Z M18 16 L24 10 L30 16 L24 22 Z' fill='%23b87333' fill-opacity='.85'/%3E%3Cpath d='M16 8 L19 11 L16 14 L13 11 Z' fill='%232a9b8f'/%3E%3C/svg%3E");
+}
+
+body[data-event="desert-resort"] .app {
+  background:
+    radial-gradient(120% 55% at 88% -8%, rgba(196, 92, 44, .28), transparent 58%),
+    radial-gradient(90% 50% at -8% 108%, rgba(42, 155, 143, .16), transparent 58%),
+    linear-gradient(180deg, #3b1e16 0%, #2a1810 55%, #1a100c 100%);
+}
+/* Mesa + saguaro silhouettes sit on the body, not on .app: a ::before on the grid
+   container would become a grid item and collapse the table / board layouts. */
+body[data-event="desert-resort"]::before {
+  content: '';
+  position: fixed; left: 0; right: 0; bottom: 0; height: min(22vh, 180px);
+  z-index: 0; pointer-events: none; opacity: .45;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 160' preserveAspectRatio='none'%3E%3Cpath d='M0 160 L0 118 L40 96 L90 112 L150 70 L210 108 L280 58 L350 100 L430 48 L520 96 L600 64 L680 104 L760 80 L800 96 L800 160 Z' fill='%231a0e0a'/%3E%3Cpath d='M0 160 L0 132 L70 118 L140 136 L230 110 L320 130 L430 108 L530 128 L640 112 L740 130 L800 120 L800 160 Z' fill='%23120808'/%3E%3C/svg%3E") no-repeat bottom / 100% 70%,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120'%3E%3Cg fill='%23120808'%3E%3Crect x='36' y='58' width='8' height='62' rx='3'/%3E%3Crect x='24' y='70' width='7' height='28' rx='3'/%3E%3Crect x='49' y='64' width='7' height='22' rx='3'/%3E%3Crect x='360' y='50' width='9' height='70' rx='3'/%3E%3Crect x='346' y='66' width='8' height='26' rx='3'/%3E%3Crect x='372' y='58' width='8' height='30' rx='3'/%3E%3C/g%3E%3C/svg%3E") no-repeat bottom / 100% 100%;
+}
+
+body[data-event="desert-resort"] .topbar {
+  background: linear-gradient(180deg, #4a2a1c, #2a1810);
+  border-bottom-color: rgba(184, 115, 51, .7);
+}
+body[data-event="desert-resort"] .topbar::after { opacity: .85; height: 4px; }
+
+/* Geometric copper trim on panels and bars */
+body[data-event="desert-resort"] .panel,
+body[data-event="desert-resort"] .actionbar,
+body[data-event="desert-resort"] .acct-menu,
+body[data-event="desert-resort"] .games-menu {
+  box-shadow: inset 0 0 0 1px rgba(184, 115, 51, .35);
+}
+body[data-event="desert-resort"] .btn.primary {
+  box-shadow: 0 0 16px rgba(196, 92, 44, .35);
+}
+
+/* Gold-lit marquee + the day's label */
+body[data-event="desert-resort"] .marquee5 .mq-sign {
+  box-shadow: 0 0 0 2px #7a4a20, 0 0 0 4px #d4a04a, 0 0 28px rgba(212, 160, 80, .45);
+  background: linear-gradient(180deg, #5a3420, #2a1810 55%, #1c100c);
+}
+body[data-event="desert-resort"] .mq-bulbs i,
+body[data-event="desert-resort"] .mq-bulbs span,
+body[data-event="desert-resort"] .mq-bulbs > * {
+  background: #ffe7a0;
+  box-shadow: 0 0 8px #d4a04a, 0 0 14px rgba(184, 115, 51, .8);
+}
+body[data-event="desert-resort"] .mq-title { color: #f7efe4; text-shadow: 0 0 12px rgba(212, 160, 80, .55); }
+body[data-event="desert-resort"] .mq-sign .mq-body { position: relative; }
+body[data-event="desert-resort"] .marquee5 .mq-sub::after {
+  content: ' · Desert Resort Night';
+  color: #7ed4c8;
+  letter-spacing: .08em;
+}
+
+/* Hold'em felt: deep turquoise cloth, copper and gold rail */
+body[data-event="desert-resort"] .felt {
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(255, 255, 255, .08), transparent 55%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(0, 0, 0, .05) 0 2px, transparent 2px 5px),
+    radial-gradient(ellipse at 50% 40%, #1c7a6e 0%, #0f534c 48%, #08342f 100%);
+  box-shadow: 0 0 0 2px #2a1408, 0 0 0 9px #8a5a30, 0 0 0 10px #5a3418, 0 0 0 12px var(--gold), 0 0 0 13px rgba(0, 0, 0, .7),
+    0 0 36px 10px rgba(42, 155, 143, .28), inset 0 0 0 3px rgba(212, 160, 80, .4), inset 0 0 60px rgba(0, 0, 0, .5);
+}
+body[data-event="desert-resort"] .felt::before { border-color: rgba(212, 160, 80, .4); }
+body[data-event="desert-resort"] .felt-logo { color: rgba(247, 239, 228, .2); }
+body[data-event="desert-resort"] .seat-plate {
+  background: linear-gradient(180deg, #4a2a1c, #24140c);
+  border-color: rgba(42, 155, 143, .75);
+  box-shadow: 0 0 10px rgba(42, 155, 143, .25), 0 6px 16px -8px rgba(0, 0, 0, .8);
+}
+body[data-event="desert-resort"] .seat.me .seat-plate { border-color: var(--gold); box-shadow: 0 0 12px rgba(212, 160, 80, .45); }
+body[data-event="desert-resort"] .actionbar {
+  background: linear-gradient(180deg, #5a3424, #3b2218);
+  border-color: var(--gold);
+}
+body[data-event="desert-resort"] .dl-plate { background: #3b2218; border-color: var(--gold); }
+body[data-event="desert-resort"] .turnbar.mine {
+  background: linear-gradient(90deg, #c45c2c, #d4a04a); color: #1a1008;
+  box-shadow: 0 0 18px rgba(212, 160, 80, .35);
+}
+body[data-event="desert-resort"] .btn.call, body[data-event="desert-resort"] .btn.check {
+  --bg: linear-gradient(180deg, #4ec4b6, #1a8a80); --bd: #0f5e58; --fg: #031816;
+  background: linear-gradient(180deg, #4ec4b6, #1a8a80);
+}
+body[data-event="desert-resort"] .card.back {
+  background-color: #5a2418;
+  box-shadow: inset 0 0 0 2px #fff8ee, inset 0 0 0 3px #5a2418, inset 0 0 0 4px rgba(212, 160, 80, .8), 0 4px 10px -4px rgba(0, 0, 0, .7);
+}
+
+/* Blackjack lobby / felt chrome */
+body[data-event="desert-resort"] .bj-felt {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(42, 155, 143, .4), transparent 65%),
+    linear-gradient(180deg, #1a4a42, #0c2a26);
+  border-color: #2a9b8f;
+}
+body[data-event="desert-resort"] .bj-lobby {
+  background: linear-gradient(180deg, #3b2218, #2a1810);
+  border-color: rgba(184, 115, 51, .55);
+}
+
+/* Leaderboard / people lists pick up the ink variables; tighten the header chrome */
+body[data-event="desert-resort"] .brow,
+body[data-event="desert-resort"] .board-help > div,
+body[data-event="desert-resort"] .people,
+body[data-event="desert-resort"] .lb, body[data-event="desert-resort"] .leaderboard {
+  /* variables already flow; add a copper rule on the page head if present */
+}
+
+/* Mines HUD chrome: copper frame over the existing CRT green, still readable */
+body[data-event="desert-resort"] .m-top {
+  border-bottom: 2px solid #b87333;
+  background: rgba(42, 24, 16, .9);
+  box-shadow: 0 2px 0 #2a9b8f;
+}
+body[data-event="desert-resort"] .m-hud {
+  text-shadow: 0 0 6px rgba(125, 255, 58, .45), 0 0 1px #2a1810;
+}
+body[data-event="desert-resort"] .m-hud.tl,
+body[data-event="desert-resort"] .m-hud.tr {
+  box-shadow: inset 0 0 0 1px rgba(184, 115, 51, .45);
+  background: rgba(20, 10, 6, .28);
+  border-radius: 8px;
+}
+body[data-event="desert-resort"] .m-ticker { border-top: 2px solid #b87333; background: rgba(20, 10, 6, .78); }
+body[data-event="desert-resort"] .hazard-bar {
+  background: repeating-linear-gradient(-45deg, #d4a04a 0 16px, #2a1810 16px 32px);
+}
+
+/* Hide stored hats/coats so the pilgrim overlay reads clearly; eyes/face stay */
+body[data-event="desert-resort"] .bust .b-wear-head [data-slot="hat"],
+body[data-event="desert-resort"] .bust .b-wear-body [data-slot="body"],
+body[data-event="desert-resort"] .bust .b-wear-body [data-slot="neck"] { display: none; }
+
+/* Thanksgiving pilgrim overlay on player busts (pointer-events none so they never steal taps) */
+.bust .b-pilgrim-hat, .bust .b-pilgrim-coat { pointer-events: none; }
+.bust .b-pilgrim-hat { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: 2; }
+
+/* Guntrad as John Proctor: overlay SVG around the untouched face image; the line is his only bubble */
+.dl-proctor { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.dl-proctor-hat { z-index: 4; }
+.dl-proctor-coat { z-index: 2; }
+.dealer-fig.proctor, body[data-event="desert-resort"] .dealer-spot { overflow: visible; }
+.dl-crucible-say {
+  position: absolute; left: 58%; top: 2%; z-index: 8;
+  max-width: 44%; padding: 5px 8px 6px;
+  border-radius: 10px 10px 10px 3px; background: #f7efe4; color: #2a1810;
+  font: 650 11px/1.2 var(--sans); letter-spacing: .01em; text-align: center;
+  pointer-events: none; box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
+  animation: crucible-pop .28s cubic-bezier(.3, 1.5, .5, 1);
+}
+.dl-crucible-say::after {
+  content: ''; position: absolute; left: 14px; bottom: -5px;
+  border: 6px solid transparent; border-top-color: #f7efe4; border-bottom: 0;
+}
+@keyframes crucible-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dl-crucible-say { animation: none; } }
+@media (max-width: 520px) {
+  .dl-crucible-say { font-size: 9px; max-width: 50%; padding: 4px 6px 5px; }
+}

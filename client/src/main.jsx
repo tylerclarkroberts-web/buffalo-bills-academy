@@ -19,6 +19,9 @@ import WorkShell from './modes/WorkShell.jsx';
 import './styles.css';
 import './neon.css';
 import './themes/themes.css';
+import './themes/desert-resort.css';
+import { applyEventThemeToDocument } from './themes/event-store.js';
+applyEventThemeToDocument();
 import { unlockSfx } from './bj/sfx.js';
 
 // iOS Safari 100vh includes the dynamic toolbar and causes a scrollable page.
