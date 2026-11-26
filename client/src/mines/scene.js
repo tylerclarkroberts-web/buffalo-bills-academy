@@ -418,18 +418,23 @@ export class MineScene {
       const ev = h.events.shift();
       if (ev === 'steal' && !this.reduce) this.shake = 1;
       if (ev === 'steal') this.clutchBug();
-      if (ev === 'gone') this.releaseClutch();
-      this.onEvent?.(ev === 'appear' ? 'heeshee-appear' : ev === 'noise' ? 'heeshee-noise' : ev === 'freeze' ? 'heeshee-freeze' : ev === 'lunge' ? 'heeshee-lunge' : ev === 'steal' ? 'heeshee-steal' : ev === 'squeal' ? 'heeshee-squeal' : ev === 'gone' ? 'heeshee-gone' : ev);
+      if (ev === 'gone' || ev === 'release') this.releaseClutch();
+      if (ev === 'release') this.bugGuide?.giveBack(h.x, h.z);
+      this.onEvent?.(ev === 'appear' ? 'heeshee-appear' : ev === 'noise' ? 'heeshee-noise' : ev === 'freeze' ? 'heeshee-freeze' : ev === 'lunge' ? 'heeshee-lunge' : ev === 'steal' ? 'heeshee-steal' : ev === 'squeal' ? 'heeshee-squeal' : ev === 'gone' ? 'heeshee-gone' : ev === 'slow' ? 'heeshee-slow' : ev === 'release' ? 'heeshee-release' : ev);
     }
     const g = m.group;
     if (!h.present) { g.visible = false; this.heesheeNear = 0; this.releaseClutch(); return; }
     g.visible = true;
-    g.position.set(h.x, 0, h.z);
-    g.rotation.y = h.facing;
+    // the chase: a doubled-back stretch goes over your head, upside down along the roof
+    const up = h.ceiling ? 1 : 0; h.roof = (h.roof || 0) + (up - (h.roof || 0)) * (this.reduce ? 1 : 1 - Math.exp(-dt * 10));
+    const st = h.stagger; if (st) { st.amt = Math.max(0, st.amt - dt / (this.reduce ? 0.2 : 0.9)); if (!st.amt) h.stagger = null; }
+    const kick = st ? st.amt * 0.45 : 0, kx = st ? st.wx * kick : 0, kz = st ? st.wz * kick : 0;
+    g.position.set(h.x + kx, h.roof * WALL_H, h.z + kz);
+    g.rotation.set(0, h.facing, h.roof * Math.PI);
     const dist = Math.hypot(this.pos.x - h.x, this.pos.y - h.z);
     this.heesheeNear = proximity(dist);
     const lunge = h.state === 'lunging' ? 1 : 0;
-    poseHeeshee(m, now, { moving: h.moving, frozen: h.state === 'frozen', lunge, carry: !!h.carrying, fan: h.fan, snap: h.snap, reduce: this.reduce });
+    poseHeeshee(m, now, { moving: h.moving, frozen: h.state === 'frozen', lunge, carry: !!h.carrying, fan: h.fan, snap: h.snap, reduce: this.reduce, laugh: h.laugh || 0, stagger: h.stagger });
     if (this.bugCarried) this.wriggleCarriedBug(now);
   }
   /** Parent the guide billboard into the Heeshee's right fist so the steal is unmistakable. */
@@ -567,6 +572,21 @@ export class MineScene {
     const wx = n.wx - this.pos.x, wz = n.wz - this.pos.y, f = n.facing || 0;
     stumbleNpc(n.m, { x: wx * Math.cos(f) - wz * Math.sin(f), z: wx * Math.sin(f) + wz * Math.cos(f) }, (n.m.hits || 0) + 1);
     if (!this.reduce) this.shake = Math.max(this.shake, 0.22);
+  }
+  /** The chase: is the Heeshee in front of you and within a swing (and not up on the roof)? */
+  heesheeInReach() {
+    const h = this.heeshee; if (!h?.chase || h.ceiling || !h.present) return false;
+    const dx = h.x - this.pos.x, dz = h.z - this.pos.y, d = Math.hypot(dx, dz) || 1;
+    return d <= 1.75 * TILE && (-Math.sin(this.yaw) * dx + -Math.cos(this.yaw) * dz) / d > 0.35 && lineOfSight(this.maze.grid, this.pos.x, this.pos.y, h.x, h.z);
+  }
+  /** Your pick lands on the Heeshee: it lurches away from the blow (the same idea as the old-timers' stumble). */
+  hitHeeshee() {
+    const h = this.heeshee; whackMineHands(this.hands); if (!h) return;
+    const wx = h.x - this.pos.x, wz = h.z - this.pos.y, len = Math.hypot(wx, wz) || 1, f = h.facing || 0;
+    // the blow's direction in its own frame (front +z), so it staggers away from you whichever way it is facing
+    h.stagger = { amt: 1, wx: wx / len, wz: wz / len, x: (wx * Math.cos(f) - wz * Math.sin(f)) / len, z: (wx * Math.sin(f) + wz * Math.cos(f)) / len };
+    h.snap = 1;
+    if (!this.reduce) this.shake = Math.max(this.shake, 0.3);
   }
   /** Down (ms on the server's clock) with `smokes` on the floor beside them, or back up (ms 0). */
   setNpcDown(id, ms, smokes = 0) {
@@ -811,7 +831,7 @@ export class MineScene {
     const { f, s, t } = this.input;
     if (!this.dance) this.yaw -= t * TURN * dt;
     if (!this.mining && !this.dance && (f || s)) {
-      const sp = (this.input.run ? RUN_SPEED : WALK_SPEED) * dt * (f && s ? 0.75 : 1);
+      const sp = (this.input.run && !this.chasing ? RUN_SPEED : WALK_SPEED) * dt * (f && s ? 0.75 : 1); // chasing the Heeshee: everyone walks, phone or keyboard
       const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw); // forward
       const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw); // right
       const dx = (fx * f + rx * s) * sp, dz = (fz * f + rz * s) * sp;

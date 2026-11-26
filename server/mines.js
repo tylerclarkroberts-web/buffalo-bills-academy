@@ -366,7 +366,7 @@ export class Mines {
   }
   /** Saw the Heeshee, then bailed (empty quit / expire) before a steal or a paid finish. */
   shouldTypingTest(cur, receipt) {
-    if (!this.foreman?.scoldTyping || !cur?.heeshee || cur.heesheeStolen) return false;
+    if (!this.foreman?.scoldTyping || !cur?.heeshee || cur.heesheeStolen || cur.heesheeFreed) return false;
     if (receipt?.result || receipt?.heeshee) return false;
     const appeared = !!(cur.heesheeSeen || (this.now() - cur.startedAt >= HEESHEE_APPEAR_MS));
     return !!(appeared && cur.heesheeHadBug);
@@ -375,7 +375,7 @@ export class Mines {
   /**
    * The Heeshee grabbed the guide. The barn row is never deleted: a hold is stamped so a quit or disconnect
    * cannot hand the bug back free. Finding acid on this same shift (or a later completed acid shift) releases
-   * it and the Foreman brings it back. Idempotent.
+   * it and the Foreman brings it back. Or chase it down, hit it and answer its three riddles (server/mazodeChase.js). Idempotent.
    */
   stealBug(player, shiftId) {
     const cur = this.current(player, shiftId);
@@ -385,9 +385,12 @@ export class Mines {
     if (!guide || guide.fainted || (guide.held && !cur.heesheeStolen)) throw new GameError('You have no bug for it to take.', 409);
     if (cur.heesheeStolen) {
       try { this.barn?.holdHeeshee?.(player.id, { shiftId: cur.id, at: cur.heesheeStolenAt || this.now() }); } catch { /* hold is best-effort */ }
-      return this.publicShift(cur, true, player.id, this.guideBug(player.id) || guide);
+      return this.publicShift(this.chase?.current(player.id, cur.id) || cur, true, player.id, this.guideBug(player.id) || guide);
     }
+    // Won back off it already (server/mazodeChase.js): it is sulking somewhere and does not come back this shift.
+    if (cur.heesheeFreed) throw new GameError('It already gave your bug back. It is sulking somewhere.', 409);
     const next = { ...cur, heesheeStolen: true, heesheeStolenAt: this.now() };
+    const chase = this.chase?.begin(player.id, cur); if (chase) next.chase = chase; // it bolts, and you can go after it
     this.commit(player.id, next);
     try { this.barn?.holdHeeshee?.(player.id, { shiftId: cur.id, at: next.heesheeStolenAt }); } catch { /* the shift flag is enough until migrate */ }
     return this.publicShift(next, true, player.id, this.guideBug(player.id) || { ...guide, held: true });
@@ -436,7 +439,7 @@ export class Mines {
 
     const wilds = this.wildsFor(s, playerId);
     const egg = this.eggAvailable(s, playerId);
-    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(taken ? { bugStolen: { name: guide?.name || 'Your bug', line: HEESHEE_GONE } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
+    return { shiftId: s.id, seed: s.seed, ...(s.day ? { day: s.day } : {}), startedAt: s.startedAt, minMs: 0, cells: s.cells || 7, ...(s.tier ? { tier: s.tier } : {}), resumed, serverNow: this.now(), scare: s.scare || s.scareAt ? { afterMs: SCARE_AFTER_MS } : null, ...(s.faun ? { faun: true } : {}), ...(s.heeshee ? { heeshee: true } : {}), ...(taken ? { bugStolen: { name: guide?.name || 'Your bug', line: HEESHEE_GONE } } : {}), ...(s.horror ? { horror: { lightsOutMs: s.horror.lightsOutMs } } : {}), ...(egg ? { egg: true } : {}), ...(s.purplePool ? { purplePool: s.purplePool } : {}), ...(s.purple ? { purple: { afterMs: s.purple.afterMs } } : {}), wilds, ...(wilds.length ? { wild: wilds[0] } : {}), ...(s.chase && this.chase ? { mazode: this.chase.view({ ...s, chase: this.chase.advance(playerId, s.chase) }, playerId, { route: true }) } : {}), ...(bug ? { bug } : {}), ...(guide?.fainted ? { bugFainted: { name: guide.name } } : {}),
       ...(s.rulesVersion === 2 ? { rulesVersion: 2, capacity: cap(s) / 1000, extractionRate: rate(s), shaft: s.shaft || '7', lamp: !!s.lamp, rod: !!s.rod, ...(s.part ? { part: s.part } : {}), ...(s.plunged ? { plunged: s.plunged } : {}), ...(s.caught ? { caught: s.caught } : {}),
         ...(s.part === 'lamp' && s.pools[s.index].quantity === null ? { peek: acidFillAmount(cap(s), s.pools[s.index].roll, cap(s) - s.collected) / 1000 } : {}), ...(s.spill ? { spill: { poolId: s.spill.poolId, lost: s.spill.lost / 1000 } } : {}), collected: s.collected / 1000, rich: s.collected > 0 ? Math.round(100 * worthOf(s) / s.collected) / 100 : 1, currentPoolId: s.pools[s.index].id, readyAt: s.startedAt,
         pools: s.pools.map(({ id, x, y, quantity, remaining, rich }) => ({ id, x, y, quantity: quantity === null ? null : quantity / 1000, remaining: remaining === null ? null : remaining / 1000, ...(quantity !== null && rich > 1000 ? { rich: rich / 1000 } : {}) })), ...this.wormFields(s),

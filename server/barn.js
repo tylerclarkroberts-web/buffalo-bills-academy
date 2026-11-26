@@ -1105,11 +1105,12 @@ export class Barn {
   }
   /**
    * The Foreman brought them back. Clocks resume from now so the absence is not a hunger or XP penalty.
-   * `exceptFromShift` (optional) leaves a hold from that shift in place.
+   * `exceptFromShift` (optional) leaves a hold from that shift in place; `onlyFromShift` (optional) lets go of that
+   * shift's hold and nothing else (you won it back off the Heeshee itself: server/mazodeChase.js).
    */
-  releaseHeeshee(playerId, { exceptFromShift } = {}) {
+  releaseHeeshee(playerId, { exceptFromShift, onlyFromShift } = {}) {
     const now = this.now(), released = [];
-    for (const pen of this.bugs(playerId).filter((p) => isHeesheeHeld(p) && p.heesheeHeldFromShift !== exceptFromShift)) {
+    for (const pen of this.bugs(playerId).filter((p) => isHeesheeHeld(p) && p.heesheeHeldFromShift !== exceptFromShift && (onlyFromShift === undefined || p.heesheeHeldFromShift === onlyFromShift))) {
       const { heesheeHeld: _h, heesheeHeldAt: _a, heesheeHeldFromShift: _s, ...rest } = pen;
       const stats = rest.stats && typeof rest.stats === 'object'
         ? Object.fromEntries(Object.entries(rest.stats).map(([k, v]) => [k, v && typeof v === 'object' ? { ...v, at: now } : v]))

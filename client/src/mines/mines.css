@@ -528,3 +528,36 @@ body.in-mines { background: #020402; }
   .m-npc-acts .m-btn { font-size: 19px; padding: 8px 10px; flex: 1; }
   .m-npc .m-key { display: none; }
 }
+
+/* ---------- chasing the Heeshee Mazode (MazodeChase.jsx) ---------- */
+.mz-chip { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 29; pointer-events: none; display: grid; justify-items: center; gap: 2px;
+  width: min(360px, calc(100% - 24px)); padding: 6px 10px 8px; background: rgba(0,0,0,.72); border: 1px solid #ff6a2a; color: #ffb08a; text-align: center; text-shadow: none; }
+.mz-chip b { font-weight: 400; font-size: 19px; letter-spacing: .06em; color: #ffd2b8; }
+.mz-chip.slow { border-color: var(--y); } .mz-chip.slow b { color: var(--y); }
+.mz-chip.losing { border-color: #ff3b3b; animation: mz-pulse .6s steps(2) infinite; }
+.mz-sub { font-size: 14px; letter-spacing: .1em; opacity: .85; }
+.mz-bar { display: block; width: 100%; height: 4px; background: rgba(255,106,42,.2); font-style: normal; }
+.mz-bar > i { display: block; height: 100%; background: currentColor; transition: width .2s linear; }
+.mz-card { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(150px + env(safe-area-inset-bottom)); z-index: 30; width: min(420px, calc(100% - 24px));
+  padding: 10px 12px 12px; background: rgba(4,6,4,.9); border: 1px solid var(--g3); border-left: 3px solid #ff6a2a; text-shadow: none; display: grid; gap: 8px; }
+.mz-say { margin: 0; font-size: 19px; line-height: 1.2; color: #ffd2b8; }
+.mz-say.dim { color: var(--g); font-size: 17px; }
+.mz-big { margin: 0; font-size: 26px; color: var(--y); letter-spacing: .06em; }
+.mz-was { margin: 0; font-size: 16px; letter-spacing: .06em; color: var(--g2); } .mz-was b { color: var(--y); font-weight: 400; } .mz-was.ok { color: var(--g); }
+.mz-card.mz-verdict { bottom: auto; top: 30%; } /* clear of the mining button and the move pad */
+.mz-verdict.ok { border-left-color: var(--y); }
+.mz-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; letter-spacing: .1em; color: #ffb08a; }
+.mz-head b { font-weight: 400; font-size: 24px; color: var(--y); } .mz-head b.hot { color: #ff3b3b; }
+.mz-riddle .mz-bar { color: var(--y); background: rgba(230,255,0,.15); }
+.mz-q { margin: 0; font-size: 21px; line-height: 1.18; color: #fff; }
+.mz-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mz-opt { font: inherit; font-size: 18px; line-height: 1.1; min-height: 48px; padding: 6px 8px; text-align: left; display: flex; align-items: center; gap: 8px; color: var(--g); background: rgba(0,0,0,.55);
+  border: 0; box-shadow: inset 0 0 0 2px var(--g3); cursor: pointer; touch-action: manipulation; }
+.mz-opt:hover, .mz-opt:focus-visible { box-shadow: inset 0 0 0 2px var(--g); outline: none; }
+.mz-opt.on { background: var(--g); color: #000; }
+.mz-opt:disabled { cursor: default; }
+.mz-k { flex: none; width: 20px; color: var(--g2); font-size: 14px; } .mz-opt.on .mz-k { color: #000; }
+@media (pointer: coarse), (max-width: 800px) { .mz-k { display: none; } .mz-card { bottom: calc(66px + env(safe-area-inset-bottom)); } .mz-chip { top: 226px; width: min(320px, calc(100% - 24px)); } .mz-chip b { font-size: 17px; } .mz-card.mz-verdict { bottom: auto; top: 30%; } }
+@media (orientation: landscape) and (max-height: 520px) { .mz-chip { top: 8px; } .mz-card { bottom: 8px; } .mz-card.mz-verdict { bottom: auto; top: 22%; } }
+@keyframes mz-pulse { 50% { border-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .mz-chip.losing { animation: none; } }
