@@ -13,6 +13,9 @@ import { NpcMiners } from './npcMiners.js';
 import { MazodeChase } from './mazodeChase.js';
 import { mineDay, dailyLayout } from './engine/daily-maze.js';
 import { Foreman } from './foreman.js';
+import { isPhoneRequest } from './foremanTyping.js';
+/** A phone, from the request itself (client hint or User-Agent), for the Foreman's temporary phone pace. */
+const phoneOf = (req) => isPhoneRequest({ ua: req.get('user-agent') || '', chMobile: req.get('sec-ch-ua-mobile') || '' });
 import { creditStall5Refunds } from './stallRefund.js';
 import { BattleLog, BATTLE_TYPES } from './battles.js';
 import { Barn, strongestTrainers } from './barn.js';
@@ -75,7 +78,7 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   const barn = new Barn({ store: service.store, accounts, now: service.now, incubateMs: barnTest ? env.BARN_INCUBATE_MS : undefined, forceEgg: barnTest && env.BARN_TEST_EGG === '1', startXp: barnTest ? env.BARN_TEST_XP : 0, starveMs: barnTest ? env.BARN_TEST_STARVE_MS : undefined, eggInt });
   barn.battleLog = new BattleLog({ store: service.store, now: service.now }); // every finished bug fight, for the leaderboard
   const circuit = new Circuit({ store: service.store, barn, accounts, now: service.now }); // its fights run on the Barn's ring clock (pvp's sweep)
-  const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt });
+  const foreman = new Foreman({ store: service.store, accounts, now: service.now, randInt: foremanInt, mobileTypingUntil: env.MOBILE_TYPING_UNTIL });
   // v79 test hook (dev login only): MINE_TEST_TIER=1..5 makes every day that tier, for screenshots of each difficulty.
   const mineTier = barnTest && Number(env.MINE_TEST_TIER) >= 1 && Number(env.MINE_TEST_TIER) <= 5 ? Number(env.MINE_TEST_TIER) : null;
   const mines = new Mines({ store: service.store, accounts, now: service.now, randInt, scareInt, poolInt, vein, barn, foreman,
@@ -450,9 +453,9 @@ export function createApp({ dataDir, staticDir, now, env = process.env, devLogin
   // EL HALO (Hall of Doors): the shared horde match. Free play; it never touches accounts.
   const elhalo = new ElHalo({ tickMs: env.ELHALO_TICK_MS !== undefined ? Number(env.ELHALO_TICK_MS) : undefined, testHooks: barnTest, store: service.store });
   elhalo.mount(api, needPlayer);
-  api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id)));
+  api.get('/mines/foreman', needPlayer, wrap((req) => foreman.view(req.player.id, { phone: phoneOf(req) })));
   api.post('/mines/foreman/answer', needPlayer, wrap((req) => foreman.answer(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.answer)));
-  api.post('/mines/foreman/typing/start', needPlayer, wrap((req) => foreman.startTyping(accounts.ensure(req.player), String(req.body?.id || ''))));
+  api.post('/mines/foreman/typing/start', needPlayer, wrap((req) => foreman.startTyping(accounts.ensure(req.player), String(req.body?.id || ''), { phone: phoneOf(req) })));
   api.post('/mines/foreman/typing/submit', needPlayer, wrap((req) => foreman.gradeTyping(accounts.ensure(req.player), String(req.body?.id || ''), req.body?.text, req.body?.trace)));
   api.post('/mines/finish', needPlayer, wrap((req) => mines.finish(accounts.ensure(req.player), req.body?.shiftId, req.body)));
 
