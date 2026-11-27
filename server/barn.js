@@ -29,6 +29,12 @@ export const ACTIVE_MAX = 6;                    // never more than six bugs in t
 // mood or cleanliness lost, no sickness, no death, and no fights, gym or mine shifts until it comes back to a stall.
 // Anything a barn gains with every stall full goes there (placeNewBug); the barn swaps bugs in and out (farm.js routes).
 export const FARM_NAME = 'GFR Farms';
+/** The line the mine and the circuit show after a jar holds. `farm`: the catch itself went to the farm. `bumped`: the name of the stall bug STEEZE sent there instead. */
+export function jarCatchLine(caught, { farm = false, bumped = null } = {}) {
+  if (farm) return `In the jar. Every stall is taken, so ${caught} is off to ${FARM_NAME}.`;
+  if (bumped) return `In the jar. ${caught} has a stall waiting. ${bumped} is off to ${FARM_NAME}.`;
+  return `In the jar. ${caught} has a stall waiting.`;
+}
 export const isHeesheeHeld = (pen) => !!(pen && (pen.heesheeHeld || pen.heesheeHeldAt)); // taken by the Heeshee; still in the barn, just away
 /** Shown whenever a lost bug would start or join a fight. */
 export const HEESHEE_NO_BATTLE = "You can't battle a bug, your bug is lost.";
@@ -313,8 +319,56 @@ export class Barn {
     return !this.fights.fightOf(playerId) && this.store.players?.[playerId]?.barnBouts?.open?.petBornAt !== pen.bornAt;
   }
   /**
-   * Where a new bug goes (a catch, a trade, a gift): the partner's place if empty, a free stall, or GFR Farms. Returns
-   * the changes to commit (with `base`, any other changes of the same write) and where it went: 'partner', 'stall' or 'farm'.
+   * Whether this stall bug can make way for STEEZE: hatched and living, not the partner, not away, sick or fainted,
+   * and not itself in a fight or posting an open bout. Unlike canTravel, a different bug of theirs being in a fight
+   * (the wild STEEZE fight, say) does not block the move.
+   */
+  canBumpForSteeze(playerId, pen, partner) {
+    if (!pen || pen === partner || pen.stage !== 'creature' || isHeesheeHeld(pen) || pen.taken || pen.sick || pen.faintedAt) return false;
+    if (this.now() >= this.deathAt(pen)) return false;
+    if (this.store.players?.[playerId]?.barnBouts?.open?.petBornAt === pen.bornAt) return false;
+    const fight = this.fights?.fightOf?.(playerId);
+    if (fight) {
+      const i = this.fights.sideOf(fight, playerId);
+      const fighter = i >= 0 ? fight.fighters?.[i] : null;
+      if (fighter && fighter.species === pen.species && (fighter.name === pen.name || fighter.name === givenName(pen.species, pen.name))) return false;
+    }
+    return true;
+  }
+  /**
+   * Which stall STEEZE takes when every stall is full, as the barn UI orders them (partner first, then the bench).
+   * Stall 4 is the fourth slot; a barn with fewer than four stalls uses its last one. A bug that cannot travel is
+   * skipped (later stalls, then earlier, never the partner). Null if he should go to the farm himself.
+   */
+  steezeTarget(playerId, base = {}) {
+    const pens = base.pens ?? this.doc.pens, bench = base.bench ?? this.doc.bench;
+    const cap = STALLS + ((base.stalls ?? this.doc.stalls ?? {})[playerId] || 0);
+    const partner = pens[playerId] || null, list = bench[playerId] || [];
+    const occupied = [...(partner ? [partner] : []), ...list];
+    if (occupied.length < cap) return null;
+    const prefer = Math.min(3, Math.max(0, cap - 1)); // stall 4, or the last stall if the barn is smaller
+    const order = [];
+    for (let i = prefer; i < occupied.length; i++) order.push(i);
+    for (let i = prefer - 1; i >= 0; i--) order.push(i);
+    for (const i of order) {
+      const pen = occupied[i];
+      if (partner && pen === partner) continue;
+      if (!this.canBumpForSteeze(playerId, pen, partner)) continue;
+      return { slot: i, stall: i + 1, pen, benchIndex: partner ? i - 1 : i };
+    }
+    return null;
+  }
+  /** True when a catch of this species would itself go to GFR Farms (no free stall, and STEEZE has nobody to bump). */
+  catchGoesToFarm(playerId, species) {
+    if (this.room(playerId)) return false;
+    return !(isSteeze(species) && this.steezeTarget(playerId));
+  }
+  /**
+   * Where a new bug goes (a catch, a trade, a gift): the partner's place if empty, a free stall, or GFR Farms. STEEZE
+   * is the exception: with every stall taken he claims stall 4 (or the last stall, if the barn has fewer than four) and
+   * that bug goes to the farm, frozen the same way as a catch that lands there. Returns the changes to commit (with
+   * `base`, any other changes of the same write), where it went: 'partner', 'stall' or 'farm', and `bumped` when a
+   * stall bug was sent out for him.
    */
   placement(playerId, pen, base = {}) {
     const now = this.now(), { benchedAt: _b, farmedAt: _f, ...bug } = pen;
@@ -323,7 +377,22 @@ export class Barn {
     const cap = STALLS + ((base.stalls ?? this.doc.stalls ?? {})[playerId] || 0);
     const active = (pens[playerId] ? 1 : 0) + (bench[playerId] || []).length;
     const changes = { ...base };
-    if (active >= cap) { changes.farm = { ...farm, [playerId]: [...(farm[playerId] || []), { ...bug, farmedAt: now }] }; return { changes, where: 'farm' }; }
+    if (active >= cap) {
+      if (isSteeze(bug.species)) {
+        const target = this.steezeTarget(playerId, { pens, bench, farm, stalls: base.stalls ?? this.doc.stalls });
+        if (target) {
+          // An existing stall bug keeps its clocks settled (`freeze`); a brand-new catch on the farm only needs farmedAt.
+          const frozen = this.freeze(target.pen, now);
+          const nextBench = [...(bench[playerId] || [])];
+          nextBench.splice(target.benchIndex, 1, { ...bug, benchedAt: now });
+          changes.bench = { ...bench, [playerId]: nextBench };
+          changes.farm = { ...farm, [playerId]: [...(farm[playerId] || []), frozen] };
+          return { changes, where: 'stall', bumped: frozen };
+        }
+      }
+      changes.farm = { ...farm, [playerId]: [...(farm[playerId] || []), { ...bug, farmedAt: now }] };
+      return { changes, where: 'farm' };
+    }
     if (!pens[playerId]) { changes.pens = { ...pens, [playerId]: bug }; return { changes, where: 'partner' }; }
     changes.bench = { ...bench, [playerId]: [...(bench[playerId] || []), { ...bug, benchedAt: now }] };
     return { changes, where: 'stall' };
@@ -332,9 +401,9 @@ export class Barn {
   placeNewBug(playerId, pen) {
     if (!pen || pen.stage !== 'creature' || !BY_ID[pen.species] || !idOf(pen)) throw new GameError('That is not a bug.', 400);
     if ([...this.bugs(playerId), ...this.farmBugs(playerId)].some((kept) => idOf(kept) === idOf(pen))) throw new GameError('That bug is already here.', 409);
-    const { changes, where } = this.placement(playerId, pen);
-    this.commitDoc(changes); if (this.saw(playerId, formsOf(pen))) this.save();
-    return { where, pen: where === 'farm' ? this.farmBugs(playerId).at(-1) : this.penOf(playerId, idOf(pen)) };
+    const placed = this.placement(playerId, pen);
+    this.commitDoc(placed.changes); if (placed.bumped) this.expireBouts(); if (this.saw(playerId, formsOf(pen))) this.save();
+    return { where: placed.where, pen: placed.where === 'farm' ? this.farmBugs(playerId).at(-1) : this.penOf(playerId, idOf(pen)), ...(placed.bumped ? { bumped: placed.bumped } : {}) };
   }
   /** Where one of its bugs is: 'partner', 'stall', 'farm', or null. */
   whereIs(playerId, bug) {
@@ -427,8 +496,10 @@ export class Barn {
     if (name) changes.names[name.toLowerCase()] = playerId;
     const pen = { stage: 'creature', species, name: givenName(species, name || this.newName(playerId, BY_ID[species], changes)), eggAt: at, bornAt: at, caughtAt: now, fedAt: now, xp: xpFor(level), dayXpAt: now, cool: {}, combatVersion: 1,
       stats: Object.fromEntries(STATS.map((s) => [s, { v: 60, at: now }])), variety: varietyFor(at, species) };
-    const placed = this.placement(playerId, pen, changes); // a free stall, or GFR Farms when every stall is taken
+    const placed = this.placement(playerId, pen, changes); // a free stall, GFR Farms when every stall is taken, or STEEZE bumping stall 4
+    this.lastPlacement = placed;
     this.commitDoc(placed.changes); // ownership and removal from the mine survive a restart together
+    if (placed.bumped) this.expireBouts();
     const kept = placed.where === 'farm' ? this.farmBugs(playerId).at(-1) : this.penOf(playerId, at);
     if (placed.where === 'farm' && this.saw(playerId, formsOf(kept))) this.save(); // the Bugdex: met it, though it never sees a stall
     return kept;

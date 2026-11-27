@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Barn, idOf } from '../server/barn.js';
+import { Barn, STALLS, STALL_COSTS, FARM_NAME, jarCatchLine, idOf } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines, STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, steezeToday } from '../server/mines.js';
 import { Pvp } from '../server/pvp.js';
@@ -202,4 +202,166 @@ test('a saved STEEZE nicknamed like a hatch is corrected on migrate', (t) => {
   barn.save();
   assert.ok(barn.migrate() >= 1);
   assert.equal(barn.doc.pens.ann.name, 'STEEZE');
+});
+
+function fillStalls(f, playerId, count = STALLS) {
+  const bought = count - STALLS;
+  if (bought > 0) {
+    f.store.players[playerId].bankroll += STALL_COSTS.slice(0, bought).reduce((sum, cost) => sum + cost, 0);
+    f.store.savePlayers();
+    for (let i = 0; i < bought; i++) f.barn.buildStall(playerId);
+  }
+  if (!f.barn.has(playerId)) { f.barn.layEgg(playerId); f.clock.now += 2000; f.barn.view(playerId); }
+  let n = 0;
+  while (f.barn.room(playerId)) {
+    n++;
+    f.barn.adopt(playerId, { wildId: `fill-${playerId}-${n}`, battleId: `fillb-${playerId}-${n}`, species: 'onymacris', level: 3 });
+  }
+  f.barn.bugs(playerId).forEach((pen, i) => { pen.name = `Stall ${i + 1}`; });
+  f.barn.save();
+}
+
+function catchSteeze(f, playerId, tag = 's') {
+  return f.barn.adopt(playerId, { wildId: `w-steeze-${tag}`, battleId: `b-steeze-${tag}`, species: STEEZE_ID, level: 5 });
+}
+
+test('jarCatchLine names the farm, a bumped stall bug, or a free stall', () => {
+  assert.equal(jarCatchLine('STEEZE', { farm: true }), `In the jar. Every stall is taken, so STEEZE is off to ${FARM_NAME}.`);
+  assert.equal(jarCatchLine('STEEZE', { bumped: 'Stall 4' }), 'In the jar. STEEZE has a stall waiting. Stall 4 is off to GFR Farms.');
+  assert.equal(jarCatchLine('STEEZE'), 'In the jar. STEEZE has a stall waiting.');
+});
+
+test('with every stall taken STEEZE takes stall 4, and that bug goes to GFR Farms', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 6);
+  const before = f.barn.bugs(ann).map((pen) => ({ id: idOf(pen), name: pen.name, species: pen.species }));
+  assert.equal(before.length, 6);
+  assert.equal(before[3].name, 'Stall 4');
+  const now = f.clock.now, him = catchSteeze(f, ann, 'six');
+  assert.equal(him.species, STEEZE_ID);
+  assert.equal(him.name, 'STEEZE');
+  assert.equal(f.barn.whereIs(ann, him), 'stall');
+  const stalls = f.barn.bugs(ann);
+  assert.equal(stalls.length, 6);
+  assert.equal(stalls[3].species, STEEZE_ID, 'he sits in stall 4, the fourth slot the barn UI shows (partner, then bench)');
+  assert.equal(stalls[3].name, 'STEEZE');
+  assert.deepEqual(stalls.filter((_, i) => i !== 3).map((pen) => pen.name), ['Stall 1', 'Stall 2', 'Stall 3', 'Stall 5', 'Stall 6']);
+  const farm = f.barn.farmBugs(ann);
+  assert.equal(farm.length, 1);
+  assert.equal(farm[0].name, 'Stall 4');
+  assert.equal(idOf(farm[0]), before[3].id);
+  assert.equal(farm[0].farmedAt, now);
+  assert.equal(farm[0].benchedAt, undefined);
+  assert.equal(f.barn.lastPlacement.where, 'stall');
+  assert.equal(f.barn.lastPlacement.bumped.name, 'Stall 4');
+});
+
+test('a barn with fewer than four stalls gives STEEZE its last stall', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 3);
+  assert.equal(f.barn.stalls(ann), 3);
+  const fourth = f.barn.bugs(ann)[2], him = catchSteeze(f, ann, 'three');
+  assert.equal(f.barn.bugs(ann)[2].species, STEEZE_ID);
+  assert.equal(f.barn.bugs(ann)[2].name, 'STEEZE');
+  assert.deepEqual(f.barn.bugs(ann).slice(0, 2).map((pen) => pen.name), ['Stall 1', 'Stall 2']);
+  assert.equal(f.barn.farmBugs(ann)[0].name, 'Stall 3');
+  assert.equal(idOf(f.barn.farmBugs(ann)[0]), idOf(fourth));
+  assert.equal(him.name, 'STEEZE');
+});
+
+test('a free stall is his the usual way, and nobody is bumped', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 6);
+  // send stall 6 to the farm so one slot is free, then catch him
+  const last = f.barn.bugs(ann)[5];
+  f.barn.toFarm(ann, idOf(last));
+  assert.equal(f.barn.bugs(ann).length, 5);
+  const him = catchSteeze(f, ann, 'room');
+  assert.equal(f.barn.whereIs(ann, him), 'stall');
+  assert.equal(f.barn.bugs(ann).at(-1).species, STEEZE_ID, 'he takes the free stall at the end, as any catch would');
+  assert.deepEqual(f.barn.bugs(ann).slice(0, 5).map((pen) => pen.name), ['Stall 1', 'Stall 2', 'Stall 3', 'Stall 4', 'Stall 5']);
+  assert.equal(f.barn.farmBugs(ann).length, 1);
+  assert.equal(f.barn.farmBugs(ann)[0].name, 'Stall 6');
+  assert.equal(f.barn.lastPlacement.bumped, undefined);
+});
+
+test('if stall 4 is in a fight he takes the next stall that can move', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 6);
+  const stall4 = f.barn.bugs(ann)[3], stall5 = f.barn.bugs(ann)[4];
+  f.store.players[ann].barnBouts = { open: { id: 'bout-stall4', petBornAt: stall4.bornAt, expiresAt: f.clock.now + 1e9, stake: 0 } };
+  f.store.savePlayers();
+  catchSteeze(f, ann, 'busy4');
+  const stalls = f.barn.bugs(ann);
+  assert.equal(stalls[3].name, 'Stall 4', 'the fighting bug stays put');
+  assert.equal(idOf(stalls[3]), idOf(stall4));
+  assert.equal(stalls[4].species, STEEZE_ID, 'fallback is the next stall the UI shows');
+  assert.equal(f.barn.farmBugs(ann)[0].name, 'Stall 5');
+  assert.equal(idOf(f.barn.farmBugs(ann)[0]), idOf(stall5));
+  assert.equal(f.store.players[ann].barnBouts.open.petBornAt, stall4.bornAt, 'the open bout is left alone');
+});
+
+test('if later stalls are also busy he falls back to an earlier one, never the partner', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 6);
+  for (const i of [3, 4, 5]) f.barn.bugs(ann)[i].faintedAt = f.clock.now; // stalls 4, 5 and 6 cannot travel
+  f.barn.save();
+  const stall3 = f.barn.bugs(ann)[2];
+  catchSteeze(f, ann, 'earlier');
+  const stalls = f.barn.bugs(ann);
+  assert.equal(stalls[0].name, 'Stall 1', 'the partner stays');
+  assert.equal(stalls[2].species, STEEZE_ID);
+  assert.equal(f.barn.farmBugs(ann)[0].name, 'Stall 3');
+  assert.equal(idOf(f.barn.farmBugs(ann)[0]), idOf(stall3));
+});
+
+test('if no stall bug can move, STEEZE himself goes to the farm', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 6);
+  for (const pen of f.barn.doc.bench[ann]) pen.faintedAt = f.clock.now;
+  f.barn.save();
+  const before = f.barn.bugs(ann).map((pen) => idOf(pen));
+  const him = catchSteeze(f, ann, 'nowhere');
+  assert.equal(f.barn.whereIs(ann, him), 'farm');
+  assert.equal(him.farmedAt, f.clock.now);
+  assert.deepEqual(f.barn.bugs(ann).map((pen) => idOf(pen)), before);
+  assert.equal(f.barn.lastPlacement.bumped, undefined);
+});
+
+test('an ordinary catch with every stall taken still goes to the farm', (t) => {
+  const f = fixture(t), ann = 'ann';
+  fillStalls(f, ann, 6);
+  const before = f.barn.bugs(ann).map((pen) => ({ id: idOf(pen), name: pen.name }));
+  const caught = f.barn.adopt(ann, { wildId: 'w-plain', battleId: 'b-plain', species: 'halobates', level: 3 });
+  assert.equal(f.barn.whereIs(ann, caught), 'farm');
+  assert.deepEqual(f.barn.bugs(ann).map((pen) => ({ id: idOf(pen), name: pen.name })), before);
+  assert.equal(f.barn.farmBugs(ann).at(-1).species, 'halobates');
+});
+
+test('a mine jar of STEEZE into a full barn reports the bumped bug, not that he went to the farm', (t) => {
+  const f = fixture(t, { layout: () => dailyLayout('2031-01-02', 1, SHAFTS[0]), jarInt: () => 0 });
+  fillStalls(f, 'ann', 6);
+  f.mines.forceSteeze('ann', true);
+  const s = f.mines.start(f.ann, V);
+  const him = s.wilds.find((w) => w.species === STEEZE_ID);
+  f.pvp.tick(f.ann, { ...V, shiftId: s.shiftId });
+  Object.assign(f.pvp.presence.get('ann'), wildAt(him, f.clock.now));
+  f.pvp.meetWild(f.ann, { shiftId: s.shiftId, wildId: him.id });
+  const battle = f.pvp.battles.get(f.pvp.inBattle.get('ann'));
+  battle.fight.S.hp[1] = 0; f.pvp.fights.finish(battle.fight, 0);
+  const preview = f.pvp.battleView(battle, 'ann');
+  assert.equal(preview.jar.farm, false, 'the throw hint does not say STEEZE is off to the farm');
+  assert.equal(preview.jar.bumped, 'Stall 4');
+  f.shop.buy(f.ann, 'jar');
+  const result = f.pvp.jar(f.ann, { battleId: battle.id });
+  assert.equal(result.held, true);
+  assert.equal(f.pvp.battles.get(battle.id).over.farm, undefined);
+  assert.equal(f.pvp.battles.get(battle.id).over.bumped, 'Stall 4');
+  assert.equal(result.battle.over.farm, undefined);
+  assert.equal(result.battle.over.bumped, 'Stall 4');
+  assert.equal(result.battle.over.caught, 'STEEZE');
+  assert.equal(jarCatchLine(result.battle.over.caught, { farm: result.battle.over.farm, bumped: result.battle.over.bumped }),
+    'In the jar. STEEZE has a stall waiting. Stall 4 is off to GFR Farms.');
+  assert.equal(f.barn.bugs('ann')[3].species, STEEZE_ID);
+  assert.equal(f.barn.farmBugs('ann')[0].name, 'Stall 4');
 });
