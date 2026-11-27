@@ -24,7 +24,7 @@ A Barn starts with three stalls. Each holds an egg, a living bug or an unburied 
 - **No empty partner's place.** When the partner is laid to rest or released, the first living stalled bug becomes the partner.
 - **Releasing.** Release lets a living bug go (not while one of your bugs is fighting). It leaves the Barn at once and becomes a stray in the mines, with its name, level and owner's name: see [Acid Mines](acid-mines.md). Its gear and packed lunch stay behind. `barn.json` keeps up to 50 uncaught strays in `strays`; the oldest wander off for good.
 - **Fights.** Any standing bug can post, join or be called out; the ring's roster lists every living bug, and a challenge names both. An owner has one fight at a time.
-- **The Bug Center** treats knocked-out bugs from any stall. The nurse charges $50 for immediate treatment and treats the bug for free an hour after the knockout.
+- **The Bug Center** treats knocked-out bugs from any stall. The nurse charges $50 for immediate treatment and treats the bug for free an hour after the knockout. With two or more bugs knocked out she sees them all at once: one question with the whole bill on the button (free for every bug that has rested an hour, $50 for each one that has not), one tap heals them all, and the money goes out as one `barn-heal` ledger line (`POST /api/barn/heal-all`). Short of money, she says what everyone costs and what you have and offers to heal as many as that covers (the partner first, then the longest wait). Sick or collected bugs still need the specialist, and nothing heals just by opening the page.
 
 ### Parked for later: one-of-a-kind bugs
 

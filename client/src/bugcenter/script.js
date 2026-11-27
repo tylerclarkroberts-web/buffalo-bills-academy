@@ -134,3 +134,74 @@ export const SIGNS = {
   mat: { ja: 'いらっしゃいませ', en: 'Welcome' },
   hours: { ja: '24時間 営業', rt: 'じかん えいぎょう', en: 'Open 24 hours' },
 };
+
+/**
+ * Everyone the nurse can treat in one go: every knocked-out bug in the stalls. A sick or collected bug needs the
+ * specialist first, so then there is no plan (null) and she talks about that one. Rested bugs are free; the rest are
+ * `healCost` each. `afford` is the paid ones the bankroll covers, partner first and then the longest wait.
+ */
+export function healPlan(view) {
+  const bugs = view?.stable?.bugs || [];
+  if (bugs.some((bug) => bug.sick || bug.taken)) return null;
+  const out = bugs.filter((bug) => bug.stage === 'creature' && bug.fainted && !bug.heesheeHeld);
+  if (!out.length) return null;
+  const free = out.filter((bug) => !(bug.recoverMs > 0));
+  const paid = out.filter((bug) => bug.recoverMs > 0).sort((a, b) => (b.partner ? 1 : 0) - (a.partner ? 1 : 0) || b.recoverMs - a.recoverMs);
+  const cost = (list) => list.reduce((sum, bug) => sum + (bug.healCost || 0), 0);
+  const bankroll = Math.max(0, Number(view?.bankroll) || 0), afford = [];
+  for (const bug of paid) if (cost([...afford, bug]) <= bankroll) afford.push(bug);
+  return { bugs: out, free, paid, total: cost(paid), bankroll, afford, affordCost: cost(afford) };
+}
+
+/** The body for POST /barn/heal-all: which paid bugs, and the most the owner agreed to. */
+export function healAllRequest(plan, kind) {
+  const pay = kind === 'all' ? plan.paid : kind === 'afford' ? plan.afford : [];
+  return { pay: pay.map((bug) => bug.id), total: pay.reduce((sum, bug) => sum + (bug.healCost || 0), 0) };
+}
+
+const names = (list) => list.map((bug) => bug.name).join(', ');
+const nameJa = (list) => list.map((bug) => `${bug.name}ちゃん`).join('、');
+const mins = (ms) => Math.ceil(ms / 60000);
+
+/** The nurse sees the whole waiting room and asks once. The last line carries `choices`, each priced on the button. */
+export function greetingAll(plan) {
+  const hello = [L('こんにちは！バグセンターへようこそ♡', 'Hello! Welcome to the Bug Center ♡'), L('わたしはナースのヒカリです。', "I'm Nurse Hikari.")];
+  const { bugs, free, paid, total, bankroll, afford, affordCost } = plan, n = bugs.length;
+  const both = { both: true }; // the money is always said in English too
+  const who = n === 1 ? L(`あら……${bugs[0].name}ちゃん、目がぐるぐるですね。`, `Oh dear... ${bugs[0].name}'s eyes are all swirly.`)
+    : L(`あら……${n}匹とも、目がぐるぐるですね。${nameJa(bugs)}。`, `Oh dear... all ${n} of them are swirly-eyed: ${names(bugs)}.`);
+  const NOPE = { kind: 'no', ja: 'いいえ', en: 'Not now' };
+  if (!paid.length) {
+    return [...hello, who, L(n === 1 ? 'ゆっくり休めたので、無料ですよ♡' : 'みんなゆっくり休めたので、全員無料ですよ♡', n === 1 ? 'It has rested, so it is free ♡' : 'They have all rested, so everyone is free ♡'),
+      L('まとめて元気にしましょうか？', n === 1 ? 'Shall I get it back on its feet?' : 'Shall I heal them all at once?', { choices: [{ kind: 'free', ja: n === 1 ? 'はい · 無料' : '全員 · 無料', en: n === 1 ? 'Yes · free' : 'Heal all · free', main: true }, NOPE] })];
+  }
+  const wait = L(free.length ? `${nameJa(free)}は無料。${nameJa(paid)}は、あと${mins(Math.max(...paid.map((b) => b.recoverMs)))}分以内に無料になります。`
+    : `あと${mins(Math.max(...paid.map((b) => b.recoverMs)))}分休めば、全員無料になります。`,
+  free.length ? `${names(free)} ${free.length === 1 ? 'has' : 'have'} rested: free. ${names(paid)} would be free within ${mins(Math.max(...paid.map((b) => b.recoverMs)))} min.`
+    : `Within ${mins(Math.max(...paid.map((b) => b.recoverMs)))} min of rest they would all be free.`);
+  const each = paid[0].healCost;
+  if (afford.length === paid.length) {
+    // The bill rides on the question itself, so it is on screen with the buttons.
+    return [...hello, who, wait, L(`今すぐなら、${paid.length}匹 × $${each} で、合計 $${total} です。どうしますか？`, `Right now it is ${paid.length} × $${each}, $${total} in all. What would you like?`, { ...both, choices: [
+      { kind: 'all', ja: `全員 · $${total}`, en: `Heal all ${n} · $${total}`, main: true },
+      ...(free.length ? [{ kind: 'free', ja: '無料の子だけ', en: `Free ones only (${free.length})` }] : []), NOPE] })];
+  }
+  // Short of money: what everyone costs, what you have and what that covers, all in the line with the buttons.
+  const short = { ja: `全員だと $${total} ですが、お手持ちは $${Math.floor(bankroll)} ですね。`, en: `Healing everyone now is $${total}, and you have $${Math.floor(bankroll)}.` };
+  const can = afford.length ? L(`${short.ja}${afford.length}匹分（$${affordCost}）なら、今すぐできますよ。${nameJa(afford)}。`, `${short.en} I can do ${afford.length} of the ${paid.length} now for $${affordCost}: ${names(afford)}.${free.length ? ` ${names(free)} ${free.length === 1 ? 'is' : 'are'} free either way.` : ''}`, both)
+    : L(`${short.ja}${free.length ? '今は、無料の子だけにしましょうか。' : 'ゆっくり休ませてあげましょうね。'}`, `${short.en} ${free.length ? 'For now I can do the free ones.' : 'Let them rest a little; it gets free.'}`, both);
+  const choices = [
+    ...(afford.length ? [{ kind: 'afford', ja: `${afford.length + free.length}匹 · $${affordCost}`, en: `Heal ${afford.length + free.length} · $${affordCost}`, main: true }] : []),
+    ...(free.length ? [{ kind: 'free', ja: '無料の子だけ', en: `Free ones only (${free.length})`, main: !afford.length }] : []), NOPE];
+  if (!afford.length && !free.length) return [...hello, who, wait, { ...can, end: true }];
+  return [...hello, who, wait, { ...can, choices }];
+}
+
+/** After the machine: everyone it healed, then the bill (or none). */
+export function allHealed(healed, cost = 0, waiting = []) {
+  const n = healed.length;
+  return [n > 1 ? L(`お待たせしました！みんな、すっかり元気です！`, `Thank you for waiting! Everyone is fully healed!`) : L(`お待たせしました！${healed[0]?.name || ''}ちゃんはすっかり元気です！`, `Thank you for waiting! ${healed[0]?.name || ''} is fully healed!`),
+    cost ? L(`お代は $${cost} です。ありがとうございます♪`, `That comes to $${cost}. Thank you ♪`, { both: true }) : L('お代はいりませんよ。', "There's no charge."),
+    ...(waiting.length ? [L(`${nameJa(waiting)}は、もう少し休ませましょうね。`, `${names(waiting)} will rest a little longer.`)] : []),
+    L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })];
+}

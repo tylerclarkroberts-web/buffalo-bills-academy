@@ -95,3 +95,21 @@ img.bc-panel { object-fit: cover; image-rendering: auto; }
 .bc-reveal canvas { width: calc(var(--u) * 64); height: calc(var(--u) * 64); image-rendering: pixelated; filter: drop-shadow(0 0 calc(var(--u) * 4) #b455ff); }
 .bc-stage { margin: 0; padding: 2px 10px; border-radius: 999px; background: #b455ff; color: #fff; text-align: center; font: 700 clamp(13px, calc(var(--u) * 3.6), 20px) / 1.4 var(--mono, monospace); }
 @media (prefers-reduced-motion: reduce) { .bc-spark, .bc-op { animation: none; } .bc-scene .bc-room { transition: none; } }
+
+/* Heal everyone: priced choices that wrap on a phone, and the all-healed moment. */
+.bc-ask-all { flex-wrap: wrap; }
+.bc-ask-all .bc-choice { flex: 1 1 auto; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 10px; font-size: 16px; }
+.bc-ask-all .bc-choice small { font: 600 11px/1.1 var(--mono, monospace); opacity: .9; }
+.bc-cheer { gap: calc(var(--u) * 2.4); }
+.bc-cheer-title { margin: 0; color: #ffe37a; text-align: center; text-shadow: 0 3px 0 #000, 0 0 calc(var(--u) * 5) #ff8fa3; font: 900 clamp(24px, calc(var(--u) * 8), 44px) / 1.1 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; animation: bc-cheer-pop .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.bc-cheer-title small, .bc-cheer-bill small { display: block; color: #fff; font: 700 clamp(12px, calc(var(--u) * 3.2), 16px) / 1.3 var(--mono, monospace); text-shadow: 0 2px 0 #000; }
+.bc-cheer-row { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--u) * 2); max-width: 96%; }
+.bc-cheer-bug { position: relative; margin: 0; display: grid; justify-items: center; animation: bc-cheer-pop .45s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(.25s + var(--i) * .18s); }
+.bc-cheer-bug canvas { width: calc(var(--u) * 26); height: calc(var(--u) * 26); image-rendering: pixelated; filter: drop-shadow(0 0 calc(var(--u) * 2.5) #6fcfa8); }
+.bc-cheer-row[data-count="1"] canvas, .bc-cheer-row[data-count="2"] canvas { width: calc(var(--u) * 36); height: calc(var(--u) * 36); }
+.bc-cheer-bug figcaption { max-width: calc(var(--u) * 34); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; text-shadow: 0 2px 0 #000; font: 700 clamp(11px, calc(var(--u) * 3), 15px) / 1.2 var(--mono, monospace); }
+.bc-heart { position: absolute; top: -4%; right: 8%; color: #ff6f8c; font-size: clamp(14px, calc(var(--u) * 5), 26px); text-shadow: 0 2px 0 #000; animation: bc-heart 1.6s ease-out both; animation-delay: calc(.45s + var(--i) * .18s); }
+.bc-cheer-bill { margin: 0; padding: 2px 14px; border-radius: 999px; background: #e65d70; color: #fff; text-align: center; font: 800 clamp(15px, calc(var(--u) * 4.4), 22px) / 1.3 var(--mono, monospace); }
+@keyframes bc-cheer-pop { from { opacity: 0; transform: scale(.3) translateY(20%); } to { opacity: 1; transform: none; } }
+@keyframes bc-heart { 0% { opacity: 0; transform: translateY(40%) scale(.4); } 30% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-140%) scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { .bc-cheer-title, .bc-cheer-bug { animation: none; } .bc-heart { animation: none; opacity: 1; } }
