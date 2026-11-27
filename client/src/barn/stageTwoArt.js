@@ -2,7 +2,7 @@
 // games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, small close-set beady eyes, and
 // cel shading in two or three flat tones with a dark outline. A few quiet built details sit on top of that: thin panel
 // seams and rivets on the shell, steel caps on the joints and feeler tips, one tiny glowing lens in place of one
-// bead, and one clearly robotic arm that ends in a piece of mining equipment. The drawing is native on a 64 or 128
+// bead, and a mining tool mounted on an arm, a tail or the body, whichever fits the anatomy. The drawing is native on a 64 or 128
 // grid and only ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
 // turns the material grid into colours. Original art: inspired by the era, nothing copied from any game.
@@ -242,7 +242,7 @@ const centred = (c, cy, rx, ry, m) => c.ell(M, cy, rx, ry, m, false);
 /** A stripe of accent across a round part, from one side to the other at height `y`. */
 function band(c, cy, rx, ry, y, m = 'A', w = 2) { const half = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2)) - 0.6; if (half > 1) c.line(M - half, y, M + half, y, m, w, false); }
 
-/** The mining tool built into this species' robotic arm (part of the species art, not the old variety layer). */
+/** The mining tool built into this species' art (not the old variety layer), and where it is mounted. */
 export const STAGE_TWO_TOOL = {
   ceroplophana: 'pick', bocydium: 'shovel', phrictus: 'lamp-pick', pyrops: 'lamp-pick', graphocephala: 'spike',
   umbonia: 'drill', trachelophorus: 'drill', eupholus: 'core', pachyrhynchus: 'saw', platymeris: 'grabber',
@@ -256,6 +256,59 @@ export const STAGE_TWO_TOOL = {
   arachnocampa: 'lamp-pick', myrmeleon: 'drill', odontomachus: 'pick', dasymutilla: 'drill', peruphasma: 'core',
   ampulex: 'pick', colobopsis: 'spike', dryococelus: 'pick', megachile: 'shovel', meganeura: 'drill', menacanthus: 'grabber',
 };
+
+// Where the tool sits: an arm when the bug has clear forelimbs, the tail on worms and sticks, the body on round or fat shapes.
+export const STAGE_TWO_MOUNT = {
+  ceroplophana: 'arm', bocydium: 'body', phrictus: 'body', pyrops: 'body', graphocephala: 'arm',
+  umbonia: 'body', trachelophorus: 'arm', eupholus: 'arm', pachyrhynchus: 'body', platymeris: 'arm',
+  acanthaspis: 'body', helicopsyche: 'body', chrysochroa: 'arm', lamprima: 'arm', onymacris: 'body',
+  brachinus: 'body', phrixothrix: 'tail', macrodontia: 'arm', sagra: 'arm', manticora: 'arm',
+  heteropteryx: 'arm', mantispa: 'arm', nemoptera: 'tail', pseudocreobotra: 'arm', deroplatys: 'arm',
+  empusa: 'arm', polyphylla: 'body', phanaeus: 'body', lethocerus: 'arm', sphaerocoris: 'body',
+  pheropsophus: 'body', melanophila: 'arm', solenopsis: 'arm', pyrrhocoris: 'arm', brevisana: 'body',
+  micronecta: 'body', bertholdia: 'body', gromphadorhina: 'body', gryllotalpa: 'arm', dytiscus: 'body',
+  notonecta: 'body', gyrinus: 'body', halobates: 'body', phloeodes: 'body', photuris: 'tail',
+  arachnocampa: 'tail', myrmeleon: 'body', odontomachus: 'arm', dasymutilla: 'arm', peruphasma: 'tail',
+  ampulex: 'arm', colobopsis: 'arm', dryococelus: 'arm', megachile: 'body', meganeura: 'tail', menacanthus: 'body',
+};
+
+// Anchor and direction for tail and body mounts (64-grid). The tool grows from a plated collar at (x, y) along (dx, dy).
+const MECH_MOUNT = {
+  // tails
+  phrixothrix: { x: 16, y: 56, dx: -0.75, dy: 0.65 },
+  arachnocampa: { x: 36, y: 56, dx: 0.45, dy: 0.9 },
+  peruphasma: { x: 31.5, y: 56, dx: -0.35, dy: 0.94 },
+  meganeura: { x: 31.5, y: 56, dx: 0, dy: 1 },
+  photuris: { x: 31.5, y: 56, dx: 0.15, dy: 1 },
+  nemoptera: { x: 31.5, y: 51, dx: 0, dy: 1 },
+  // bodies — nose, rear, side, backpack, or an existing cannon/horn
+  bocydium: { x: 18, y: 50, dx: -0.75, dy: 0.66 },
+  phrictus: { x: 33, y: 6, dx: 0.15, dy: -1 },
+  pyrops: { x: 37, y: 8, dx: 0.28, dy: -0.96 },
+  umbonia: { x: 31.5, y: 14, dx: 0, dy: -1 },
+  pachyrhynchus: { x: 16, y: 36, dx: -0.95, dy: -0.15 },
+  acanthaspis: { x: 22, y: 26, dx: -0.65, dy: 0.76 },
+  helicopsyche: { x: 18, y: 42, dx: -0.85, dy: 0.4 },
+  onymacris: { x: 31.5, y: 13, dx: 0, dy: -1 },
+  brachinus: { x: 50, y: 12, dx: 0.55, dy: -0.84 },
+  polyphylla: { x: 17, y: 42, dx: -0.95, dy: 0.15 },
+  phanaeus: { x: 29, y: 12, dx: -0.4, dy: -0.92 },
+  sphaerocoris: { x: 16, y: 32, dx: -1, dy: 0.05 },
+  pheropsophus: { x: 14, y: 10, dx: -0.38, dy: -0.92 },
+  brevisana: { x: 20, y: 26, dx: -0.45, dy: -0.89 },
+  micronecta: { x: 31.5, y: 18, dx: 0, dy: -1 },
+  bertholdia: { x: 31.5, y: 52, dx: 0.2, dy: 1 },
+  gromphadorhina: { x: 15, y: 44, dx: -1, dy: 0.05 },
+  dytiscus: { x: 31.5, y: 15, dx: 0, dy: -1 },
+  notonecta: { x: 31.5, y: 53, dx: 0, dy: 1 },
+  gyrinus: { x: 31.5, y: 50, dx: 0, dy: 1 },
+  halobates: { x: 20, y: 32, dx: -1, dy: 0.05 },
+  phloeodes: { x: 15, y: 38, dx: -1, dy: 0 },
+  myrmeleon: { x: 31.5, y: 24, dx: 0, dy: -1, scale: 1.15 },
+  megachile: { x: 31.5, y: 56, dx: 0, dy: 1 },
+  menacanthus: { x: 31.5, y: 34, dx: 0, dy: 1 },
+};
+
 
 // Species with no mirrored organic arm to replace: a hanging left-side pose, shoulder to wrist.
 const MECH_FALLBACK = {
@@ -435,6 +488,28 @@ function drawMechArm(c, pts, tool = 'drill', w = 4) {
   drawMechTool(c, e[0], e[1], dx / len, dy / len, tool);
 }
 
+/** A short plated collar with rivets, then the mining tool, used for tail and body mounts. */
+function drawMechCollar(c, x, y, ux, uy, scale = 1) {
+  const px = -uy, py = ux, s = scale;
+  c.ell(x, y, 3.5 * s, 3.1 * s, 'B', false);
+  c.ell(x, y, 2.3 * s, 2.1 * s, 'Z', false);
+  rivet(c, x + px * 1.7 * s, y + py * 1.7 * s, 1.05);
+  rivet(c, x - px * 1.7 * s, y - py * 1.7 * s, 1.05);
+  const ex = x + ux * 3.3 * s, ey = y + uy * 3.3 * s;
+  c.line(x, y, ex, ey, 'B', 4.2 * s, false);
+  piston(c, x, y, ex, ey);
+  c.ell(ex, ey, 2.3 * s, 2.3 * s, 'Z', false);
+  rivet(c, ex, ey, 1.05);
+  return [ex, ey];
+}
+
+function drawMechMount(c, spec, tool = 'drill') {
+  const len = Math.hypot(spec.dx, spec.dy) || 1;
+  const ux = spec.dx / len, uy = spec.dy / len;
+  const [tx, ty] = drawMechCollar(c, spec.x, spec.y, ux, uy, spec.scale || 1);
+  drawMechTool(c, tx, ty, ux, uy, tool);
+}
+
 // The default hand a mining tool goes in: the end of its right arm.
 const HAND = { x: 50.5, y: 39 };
 
@@ -499,7 +574,6 @@ D.mantispa = { hand: { x: 50, y: 30 }, draw(c, K) { // Hornet Reaper: a wasp-wai
 D.halobates = { hand: { x: 52, y: 44 }, draw(c, K) { // Tide Strider: a star of long legs on its own ring of ripples
   if (!K.body) { c.ell(M, 58, 28, 4.2, 'L', false); c.ell(M, 58, 24, 2.8, 'B', false); }
   if (!K.nolegs) { limb(c, [[26, 44], [10, 36], [3, 52]], { w: 2, tip: 'none' }); limb(c, [[27, 47], [16, 50], [14, 58]], { w: 2, tip: 'none' }); }
-  if (!K.body) limb(c, [[25, 38], [14, 26], [9, 32]], { w: 2, tip: 'claw', mech: true });
   centred(c, 43, 7.5, 9, 'B'); centred(c, 42, 3, 6, 'L');
   centred(c, 30, 8.5, 6.5, 'B');
   eyes(c, 27.5, 30, { w: 2.6, h: 2, slant: 1.2 });
@@ -538,7 +612,7 @@ D.brachinus = { hand: { x: 18, y: 42 }, draw(c, K) { // Blast Cannon: an orange 
   if (!K.body) { c.line(38, 32, 46, 18, 'A', 5, false); c.ell(49, 13, 5, 4, 'Z', false); c.ell(55, 8, 4, 3.4, 'Z', false); c.ell(44, 7.5, 3, 2.6, 'Z', false); }
   stance(c, K, { hipX: 25, hipY: 50, kneeX: 19, kneeY: 55, w: 4 });
   centred(c, 43, 13, 13, 'A'); c.line(M, 32, M, 55, 'o', 1, false);
-  if (!K.body) limb(c, [[18, 36], [12, 42], [14, 47]], { w: 4, tip: 'fist', mech: true });
+  if (!K.body) limb(c, [[18, 36], [12, 42], [14, 47]], { w: 4, tip: 'fist' });
   centred(c, 25, 9, 7, 'B');
   eyes(c, 27, 25.5, { w: 2.6, h: 2, slant: 1.6 });
 } };
@@ -547,7 +621,7 @@ D.pheropsophus = { draw(c, K) { // Hazard Mortar: black-and-yellow, twin mortar 
   if (!K.body) { c.line(22, 30, 15, 13, 'D', 4); c.ell(15, 12, 2.8, 1.6, 'A'); c.ell(13, 7, 2.6, 2, 'Z'); }
   stance(c, K, { hipX: 25, hipY: 50, kneeX: 19, kneeY: 55, w: 4 });
   centred(c, 43, 14, 13, 'B'); c.ell(24.5, 40, 4, 4.4, 'A'); centred(c, 51, 4, 3, 'A');
-  if (!K.body) limb(c, [[17, 36], [11, 42], [13, 47]], { w: 4, tip: 'fist', mech: true });
+  if (!K.body) limb(c, [[17, 36], [11, 42], [13, 47]], { w: 4, tip: 'fist' });
   centred(c, 25, 9, 6.5, 'B'); c.poly([[M - 4, 19], [M + 4, 19], [M, 23]], 'A', false);
   eyes(c, 26.5, 26, { w: 2.6, h: 2, slant: 1.6 });
 } };
@@ -584,7 +658,7 @@ D.polyphylla = { draw(c, K) { // Plume Crown: chocolate, marbled white, under tw
   if (!K.body) { c.poly([[26, 18], [11, 3], [8, 9], [8, 15], [11, 20]], 'A'); c.line(26, 18, 9, 9, 'L', 1); c.line(26, 18, 8.5, 15, 'L', 1); }
   stance(c, K, { hipX: 25, hipY: 51, kneeX: 19, kneeY: 56, w: 4 });
   centred(c, 43, 13, 14, 'B'); c.ell(25, 38, 2.6, 2, 'A'); c.ell(27, 48, 2.2, 1.8, 'A'); centred(c, 43, 2, 1.6, 'A');
-  if (!K.body) limb(c, [[18, 36], [12, 42], [14, 47]], { w: 4, mech: true });
+  if (!K.body) limb(c, [[18, 36], [12, 42], [14, 47]], { w: 4 });
   centred(c, 25, 8.5, 6, 'B');
   eyes(c, 27.5, 25.5, { w: 2.4, h: 1.9, slant: 1.4 });
 } };
@@ -592,7 +666,7 @@ D.polyphylla = { draw(c, K) { // Plume Crown: chocolate, marbled white, under tw
 D.phanaeus = { draw(c, K) { // Prism Horn: copper-red under a green shield, one horn swept back like a scythe
   stance(c, K, { hipX: 25, hipY: 51, kneeX: 19, kneeY: 56, w: 5 });
   centred(c, 45, 14, 12, 'B');
-  if (!K.body) limb(c, [[17, 37], [11, 43], [12, 48]], { w: 4, tip: 'fist', mech: true });
+  if (!K.body) limb(c, [[17, 37], [11, 43], [12, 48]], { w: 4, tip: 'fist' });
   c.poly([[8, 29], [20, 24], [43, 24], [55, 29], [40, 37], [23, 37]], 'A', false);
   centred(c, 24, 7, 5, 'B');
   if (!K.body) c.poly([[28, 20], [34, 20], [33, 11], [25, 2], [29, 11]], 'B', false);
@@ -603,7 +677,7 @@ D.bocydium = { draw(c, K) { // Signal Orb: a squat tan body flying four hot-pink
   if (!K.body) { c.line(M, 32, M, 12, 'D', 2, false); c.line(M, 13, 20, 8, 'D', 1); c.line(M, 15, 25.5, 4, 'D', 1); c.ell(20, 8, 3.6, 3.6, 'A'); c.ell(25.5, 4.2, 3, 3, 'A'); }
   stance(c, K, { hipX: 25, hipY: 51, kneeX: 20, kneeY: 56, w: 3 });
   centred(c, 45, 12, 11, 'B');
-  if (!K.body) limb(c, [[21, 40], [15, 44], [16, 49]], { w: 3, mech: true });
+  if (!K.body) limb(c, [[21, 40], [15, 44], [16, 49]], { w: 3 });
   centred(c, 30, 9, 6.5, 'B');
   eyes(c, 27, 30.5, { w: 2.6, h: 2, slant: 1.4 });
 } };
@@ -629,7 +703,7 @@ D.umbonia = { draw(c, K) { // Thornback: one towering thorn, shark-fin high, wit
   if (!K.body) { c.poly([[21, 34], [M, 2], [42, 34]], 'B', false); c.line(M, 8, M, 30, 'A', 2, false); c.poly([[29.5, 9], [M, 2], [33.5, 9]], 'L', false); }
   stance(c, K, { hipX: 25, hipY: 51, kneeX: 20, kneeY: 56, w: 3 });
   centred(c, 43, 13, 12, 'B'); centred(c, 42, 8, 6.5, 'L');
-  if (!K.body) limb(c, [[19, 44], [13, 48], [14, 53]], { w: 3, mech: true });
+  if (!K.body) limb(c, [[19, 44], [13, 48], [14, 53]], { w: 3 });
   eyes(c, 27, 41, { w: 2.6, h: 2, slant: 1.6 });
 } };
 
@@ -657,7 +731,7 @@ D.brevisana = { draw(c, K) { // Siren Cicada: jade, tented glass wings, an orang
   if (!K.body) { c.poly([[24, 24], [6, 44], [10, 54], [20, 50], [29, 36]], 'W'); c.line(23, 27, 9, 46, 'D', 1); for (const y of [13, 16, 19]) c.put(y === 16 ? 6 : 7, y, 'A'), c.put(63 - (y === 16 ? 6 : 7), y, 'A'); }
   stance(c, K, { hipX: 25, hipY: 51, kneeX: 20, kneeY: 56, w: 3 });
   centred(c, 40, 11, 13, 'B'); centred(c, 40, 4.5, 4.5, 'A'); centred(c, 40, 2, 2, 'L');
-  if (!K.body) limb(c, [[21, 34], [14, 38], [15, 43]], { w: 3, mech: true });
+  if (!K.body) limb(c, [[21, 34], [14, 38], [15, 43]], { w: 3 });
   centred(c, 22, 12, 6, 'B');
   bugEyes(c, 21, 21, 3, { slant: 1.4 });
 } };
@@ -742,7 +816,7 @@ D.peruphasma = { hand: { x: 50, y: 33 }, draw(c, K) { // Night Blade: a jet-blac
   if (!K.nolegs) { limb(c, [[29, 46], [20, 52], [18, 61]], { w: 2, tip: 'foot' }); limb(c, [[29, 39], [18, 43], [12, 52]], { w: 2, tip: 'claw' }); }
   if (!K.body) c.poly([[30, 22], [19, 17], [17, 26], [29, 28]], 'A');
   c.line(M, 14, M, 58, 'B', 4, false);
-  if (!K.body) { limb(c, [[29, 26], [19, 35], [13, 29]], { w: 2, mech: true }); chain(c, [[29, 9], [22, 3], [14, 2]], 'D'); }
+  if (!K.body) { limb(c, [[29, 26], [19, 35], [13, 29]], { w: 2 }); chain(c, [[29, 9], [22, 3], [14, 2]], 'D'); }
   centred(c, 12, 5, 4.5, 'B');
   eyes(c, 28.5, 12, { w: 2, h: 1.6, slant: 2, iris: 'Y' });
 } };
@@ -793,7 +867,7 @@ D.colobopsis = { draw(c, K) { // Plug Bomb: a flat door of a head and a glowing 
 D.myrmeleon = { draw(c, K) { // Sand Pit King: a squat dune-coloured ambusher under two great sickle jaws
   if (!K.nolegs) { limb(c, [[19, 50], [12, 56], [12, 61]], { w: 3, tip: 'foot' }); limb(c, [[24, 54], [22, 61]], { w: 3, tip: 'foot' }); }
   centred(c, 42, 16, 14, 'B'); c.ell(24, 45, 2.6, 2.6, 'A');
-  if (!K.body) limb(c, [[17, 38], [10, 40], [9, 46]], { w: 3, mech: true });
+  if (!K.body) limb(c, [[17, 38], [10, 40], [9, 46]], { w: 3 });
   centred(c, 26, 9, 6, 'B');
   if (!K.body) c.poly([[26, 22], [19, 12], [21, 3], [25, 2], [22, 10], [29, 20]], 'D');
   eyes(c, 27, 27, { w: 2.4, h: 1.8, slant: 1.8 });
@@ -816,7 +890,7 @@ D.acanthaspis = { hand: { x: 50, y: 42 }, draw(c, K) { // Shroud Ninja: a ragged
 } };
 
 D.gromphadorhina = { draw(c, K) { // Iron Hisser: three heavy mahogany plates, two horn bumps, hissing steam
-  if (!K.body) { chain(c, flipPts([[27, 34], [14, 29], [6, 19]]), 'D', 1, false); c.ell(63 - 8, 41, 2.6, 2, 'Z', false); c.ell(63 - 4.5, 36, 1.7, 1.5, 'Z', false); }
+  if (!K.body) { chain(c, [[27, 34], [14, 29], [6, 19]], 'D', 1); c.ell(8, 41, 2.6, 2, 'Z'); c.ell(4.5, 36, 1.7, 1.5, 'Z'); }
   if (!K.nolegs) limb(c, [[20, 52], [15, 58], [16, 61]], { w: 3, tip: 'foot' });
   centred(c, 45, 17, 13, 'B'); band(c, 45, 17, 13, 43, 'D', 1); band(c, 45, 17, 13, 51, 'D', 1);
   centred(c, 30, 14, 8, 'B'); c.ell(26, 24, 2.8, 2.6, 'L');
@@ -834,7 +908,7 @@ D.gryllotalpa = { draw(c, K) { // Burrow Brawler: a velvet-brown digger with two
 D.menacanthus = { draw(c, K) { // Gobbler Louse: a flat golden louse with a red wattle, clinging tight
   if (!K.nolegs) limb(c, [[19, 50], [12, 54], [11, 60]], { w: 3, tip: 'foot' });
   centred(c, 44, 15, 12, 'B'); band(c, 44, 15, 12, 41, 'D', 1); band(c, 44, 15, 12, 48, 'D', 1);
-  if (!K.body) limb(c, [[18, 41], [10, 39], [8, 44]], { w: 3, mech: true });
+  if (!K.body) limb(c, [[18, 41], [10, 39], [8, 44]], { w: 3 });
   centred(c, 25, 12, 8, 'B'); c.ell(M, 33, 2, 3, 'A', false);
   eyes(c, 26, 24.5, { w: 2.6, h: 2, slant: 1.4 });
 } };
@@ -852,7 +926,7 @@ D.eupholus = { draw(c, K) { // Drill Sapphire: turquoise with black bands, its l
 D.pachyrhynchus = { draw(c, K) { // Egg Fortress: a perfect glossy indigo egg, dotted in neon orange
   if (!K.nolegs) limb(c, [[22, 53], [19, 61]], { w: 4, tip: 'foot' });
   centred(c, 40, 17, 17, 'B'); c.ell(22, 34, 3, 3, 'A'); centred(c, 47, 3.4, 3, 'A'); c.ell(22, 48, 2.4, 2.4, 'A');
-  if (!K.body) limb(c, [[16, 36], [10, 40], [11, 44]], { w: 3, tip: 'fist', mech: true });
+  if (!K.body) limb(c, [[16, 36], [10, 40], [11, 44]], { w: 3, tip: 'fist' });
   centred(c, 20, 6, 5, 'B');
   eyes(c, 28, 20.5, { w: 2.2, h: 1.8, slant: 1.4 });
 } };
@@ -883,7 +957,7 @@ D.lethocerus = { hand: { x: 50, y: 30 }, draw(c, K) { // Tide Crusher: a flat ol
 D.micronecta = { hand: { x: 50, y: 34 }, draw(c, K) { // Oar Rower: a boat-shaped sandy rower pulling two long blue oars
   if (!K.nolegs) { c.line(22, 40, 6, 54, 'D', 2); c.poly([[3, 52], [8, 51], [8, 58], [2, 59]], 'A'); }
   c.poly([[M, 18], [42, 26], [42, 46], [M, 56], [21, 46], [21, 26]], 'B', false); c.line(M, 26, M, 52, 'A', 1, false);
-  if (!K.body) limb(c, [[23, 30], [16, 28], [14, 32]], { w: 2, mech: true });
+  if (!K.body) limb(c, [[23, 30], [16, 28], [14, 32]], { w: 2 });
   centred(c, 20, 7, 5.5, 'B');
   eyes(c, 27.5, 20.5, { w: 2.4, h: 1.8, slant: 1.6 });
 } };
@@ -899,7 +973,7 @@ D.notonecta = { hand: { x: 50, y: 50 }, draw(c, K) { // Moon Diver: swims on its
 D.dytiscus = { draw(c, K) { // Torrent Diver: a sleek deep-green torpedo rimmed in gold, with fringed oar legs
   if (!K.nolegs) { c.line(18, 48, 6, 56, 'D', 3); c.poly([[2, 53], [8, 54], [7, 60], [3, 60]], 'L'); }
   centred(c, 40, 15, 18, 'A'); centred(c, 40, 13.5, 16.5, 'B'); c.line(M, 32, M, 55, 'o', 1, false);
-  if (!K.body) limb(c, [[17, 30], [10, 26], [9, 31]], { w: 2, mech: true });
+  if (!K.body) limb(c, [[17, 30], [10, 26], [9, 31]], { w: 2 });
   centred(c, 19, 7.5, 5, 'B');
   eyes(c, 27.5, 19.5, { w: 2.4, h: 1.8, slant: 1.8 });
 } };
@@ -917,7 +991,7 @@ D.sphaerocoris = { draw(c, K) { // Canvas Shield: a lime shield painted with two
   stance(c, K, { hipX: 26, hipY: 52, kneeX: 21, kneeY: 56, w: 2 });
   c.poly([[16, 26], [24, 20], [39, 20], [47, 26], [46, 40], [M, 58], [17, 40]], 'B', false);
   c.ell(24, 35, 4.6, 4.6, 'A'); c.ell(24, 35, 2.4, 2.4, 'L'); centred(c, 47, 3.2, 3.2, 'A'); centred(c, 47, 1.4, 1.4, 'L');
-  if (!K.body) limb(c, [[17, 32], [10, 36], [11, 41]], { w: 2, mech: true });
+  if (!K.body) limb(c, [[17, 32], [10, 36], [11, 41]], { w: 2 });
   centred(c, 17, 7, 5, 'B');
   eyes(c, 27.5, 17, { w: 2.4, h: 1.8, slant: 1.6 });
 } };
@@ -934,7 +1008,7 @@ D.pyrrhocoris = { hand: { x: 49, y: 30 }, draw(c, K) { // Mask Guard: a tall sca
 D.phloeodes = { draw(c, K) { // Iron Bastion: a blocky stone-grey fortress, studded with knobs
   if (!K.nolegs) limb(c, [[18, 55], [16, 61]], { w: 4, tip: 'foot' });
   c.poly([[15, 28], [48, 28], [51, 56], [12, 56]], 'B', false); c.ell(19, 36, 2.4, 2, 'L'); c.ell(25, 47, 2.4, 2, 'L'); centred(c, 40, 2.4, 2, 'L');
-  if (!K.body) limb(c, [[15, 34], [9, 40], [10, 45]], { w: 4, tip: 'fist', mech: true });
+  if (!K.body) limb(c, [[15, 34], [9, 40], [10, 45]], { w: 4, tip: 'fist' });
   centred(c, 22, 9, 6, 'B');
   eyes(c, 27.5, 22.5, { w: 2.4, h: 1.8, slant: 1.8 });
 } };
@@ -944,7 +1018,7 @@ D.photuris = { draw(c, K) { // Lantern Hunter: dusky wings spread, a big glowing
   stance(c, K, { hipX: 27, hipY: 54, kneeX: 22, kneeY: 57, w: 2 });
   centred(c, 48, 11, 11, 'A'); centred(c, 48, 8, 9, 'Y');
   centred(c, 31, 8, 7, 'B');
-  if (!K.body) limb(c, [[24, 32], [16, 36], [16, 41]], { w: 2, mech: true });
+  if (!K.body) limb(c, [[24, 32], [16, 36], [16, 41]], { w: 2 });
   centred(c, 20, 7, 6, 'L');
   eyes(c, 27.5, 20.5, { w: 2.4, h: 1.8, slant: 1.8 });
   if (!K.body) chain(c, [[28, 15], [24, 8], [20, 6]], 'D');
@@ -960,8 +1034,14 @@ export function drawStageTwo(c, L, kit = {}) {
     for (const j of JOINTS) servo(c, j.x, j.y, j.r, j.mirror);
     panelSeams(c);
     if (!kit.body) {
-      const job = MECH_Q[0] || (MECH_FALLBACK[L.id] ? { pts: MECH_FALLBACK[L.id], w: 4 } : null);
-      if (job) drawMechArm(c, MECH_POSE_OVER[L.id] || job.pts, STAGE_TWO_TOOL[L.id] || 'drill', job.w);
+      const mount = STAGE_TWO_MOUNT[L.id] || 'arm';
+      const tool = STAGE_TWO_TOOL[L.id] || 'drill';
+      if (mount === 'arm') {
+        const job = MECH_Q[0] || (MECH_FALLBACK[L.id] ? { pts: MECH_FALLBACK[L.id], w: 4 } : null);
+        if (job) drawMechArm(c, MECH_POSE_OVER[L.id] || job.pts, tool, job.w);
+      } else if (MECH_MOUNT[L.id]) {
+        drawMechMount(c, MECH_MOUNT[L.id], tool);
+      }
     }
   } finally { SPECIES = null; JOINTS.length = 0; MECH_Q.length = 0; }
   return true;

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { ROSTER } from '../server/engine/creatures.js';
 import { spriteGrid } from '../client/src/barn/sprite.js';
-import { STAGE_TWO, STAGE_TWO_PAL, STAGE_TWO_TOOL, stageTwoHandOf } from '../client/src/barn/stageTwoArt.js';
+import { STAGE_TWO, STAGE_TWO_PAL, STAGE_TWO_TOOL, STAGE_TWO_MOUNT, stageTwoHandOf } from '../client/src/barn/stageTwoArt.js';
 import { drawTool } from '../client/src/barn/varietyArt.js';
 import { TOOLS } from '../server/engine/tools.js';
 import { varietyFor, BASES, AILMENTS, FRUITS, PATTERNS, MORPHS, METALS } from '../server/engine/variety.js';
@@ -94,11 +94,16 @@ test('every Stage II bug has one glowing lens, red or cyan, and never both', () 
   }
 });
 
-test('every Stage II bug has one mechanical mining arm built into the species art', () => {
+test('every Stage II bug has one mining tool with a mount type of arm, tail or body', () => {
   const kinds = new Set(['drill', 'pick', 'jackhammer', 'grabber', 'saw', 'lamp-pick', 'shovel', 'spike', 'sledge', 'core']);
+  const mounts = new Set(['arm', 'tail', 'body']);
   for (const b of bugs) {
-    assert.ok(kinds.has(STAGE_TWO_TOOL[b.id]), `${b.id}: ${STAGE_TWO_TOOL[b.id]}`);
+    assert.ok(kinds.has(STAGE_TWO_TOOL[b.id]), `${b.id}: tool ${STAGE_TWO_TOOL[b.id]}`);
+    assert.ok(mounts.has(STAGE_TWO_MOUNT[b.id]), `${b.id}: mount ${STAGE_TWO_MOUNT[b.id]}`);
   }
   assert.equal(Object.keys(STAGE_TWO_TOOL).length, bugs.length);
+  assert.equal(Object.keys(STAGE_TWO_MOUNT).length, bugs.length);
   assert.ok(new Set(Object.values(STAGE_TWO_TOOL)).size >= 8, 'the tools vary across the roster');
+  const used = new Set(Object.values(STAGE_TWO_MOUNT));
+  for (const m of mounts) assert.ok(used.has(m), `expected at least one ${m} mount`);
 });
