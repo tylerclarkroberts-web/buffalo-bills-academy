@@ -1,8 +1,9 @@
 // Chasing the Heeshee Mazode in a real browser (phone 390×844 and desktop 1280×720), forced on through the
-// dev-login-only override. It takes the bug and bolts; the miner keeps pace behind it (at walking pace, the most a
-// phone stick gives), it slows after 20 s, the miner closes in and swings (SWING on the phone, Space on the desktop),
-// it stumbles, turns round and laughs, then asks three riddles. One run answers all three (the bug comes back), the
-// other gets one wrong (it laughs and runs off at triple speed). The right answers are read from the local test server's
+// dev-login-only override. It takes the bug and bolts at 95% of walking pace; the miner stays a couple of tiles behind
+// (at walking pace, the most a phone stick gives), it drops to 85% after 20 s, the miner closes in and swings (SWING on
+// the phone, Space on the desktop), it stumbles, turns round and laughs, then asks three riddles. One run answers all
+// three (the bug comes back), the other gets one wrong (it laughs and runs off at triple speed). The right answers are
+// read from the local test server's
 // own data folder, never from the page. Wild bugs, other miners and the old-timers are cleared so only the Heeshee is in frame.
 //   npm run build && PLAYWRIGHT_DIR=/path/with/node_modules OUT=dir node scripts/e2e-mazode-chase.mjs
 import { spawn } from 'node:child_process';
@@ -130,7 +131,7 @@ async function chase(browser, vp, tag, outcome, me) {
   check(await P.isVisible('.mz-chip.slow'), `${L}: 20 s in it slows down (chip says so)`);
   if (outcome === 'freed') { await inView(P, 5000); await shot(P, `${L}-2-slowdown`); }
   await drive(P, 0.85);
-  // close in (about a tile every six seconds), then swing until it lands
+  // close in (about a tile every four seconds), then swing until it lands
   let caught = null;
   for (let k = 0; k < 60 && !caught; k++) {
     await wait(400);

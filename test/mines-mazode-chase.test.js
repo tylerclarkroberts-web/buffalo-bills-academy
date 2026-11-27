@@ -1,4 +1,4 @@
-// Chasing the Heeshee Mazode for your bug: it runs your pace, slows by 10% after 20 s, stops to laugh when your pick
+// Chasing the Heeshee Mazode for your bug: it runs at 95% of your pace, drops to 85% after 20 s, stops to laugh when your pick
 // lands, then asks three riddles (easy, a tad harder, medium-hard) with 20 s each. All three right hands the bug back
 // exactly once; a miss or a timeout and it laughs, runs at triple speed for 15 s and is gone with the bug (held as
 // before, until the Foreman returns it after acid). Everything is decided by the server.
@@ -15,7 +15,7 @@ import { MazodeChase, CAUGHT_LINES } from '../server/mazodeChase.js';
 import { shiftMaze } from '../server/engine/mine-tiers.js';
 import { WALK_SPEED } from '../server/engine/mine-movement.js';
 import { RIDDLES, TIERS, RIDDLE_BY_ID } from '../server/engine/mazode-riddles.js';
-import { CEIL_MAX, CHASE_SPEED, HEAD_START, SLOW_AFTER_MS, SLOW_FACTOR, CHASE_MAX_MS, LOSE_MS, LEFT_MS, LAUGH_MS, BEAT_MS, RIDDLE_MS, ANSWER_GRACE_MS,
+import { CEIL_MAX, PACE, CHASE_PACE, SLOW_PACE, CHASE_SPEED, HEAD_START, SLOW_AFTER_MS, SLOW_FACTOR, CHASE_MAX_MS, LOSE_MS, LEFT_MS, LAUGH_MS, BEAT_MS, RIDDLE_MS, ANSWER_GRACE_MS,
   FLEE_LAUGH_MS, FLEE_MS, FLEE_FACTOR, ROUTE_MIN, chaseRoute, chaseDistance, routePoint, mazodeAt, tunnelGap, bfsFrom } from '../server/engine/mazode-chase.js';
 
 function barnWith(bug) {
@@ -126,17 +126,20 @@ test('the route: one tile a step through open tunnel, long enough, the same for 
   assert.equal(a.ceil[1], 0, 'the first stretch is on the floor');
 });
 
-test('it runs your pace for 20 s, then exactly 10% slower', () => {
-  assert.equal(CHASE_SPEED, WALK_SPEED / 2.2);
+test('it runs at 95% of your pace for 20 s, then 85%', () => {
+  assert.equal(CHASE_PACE, 0.95); assert.equal(SLOW_PACE, 0.85);
+  assert.equal(CHASE_SPEED, PACE * 0.95); assert.equal(PACE, WALK_SPEED / 2.2);
   const c = { phase: 'chase', startedAt: 0, speed: CHASE_SPEED };
   assert.equal(chaseDistance(c, 0), HEAD_START);
   assert.ok(Math.abs(chaseDistance(c, 10_000) - (HEAD_START + CHASE_SPEED * 10)) < 1e-9);
-  assert.ok(Math.abs(chaseDistance(c, 30_000) - (HEAD_START + CHASE_SPEED * (20 + 10 * 0.9))) < 1e-9);
-  assert.equal(SLOW_AFTER_MS, 20_000); assert.equal(SLOW_FACTOR, 0.9);
+  assert.ok(Math.abs(chaseDistance(c, 30_000) - (HEAD_START + CHASE_SPEED * (20 + 10 * (0.85 / 0.95)))) < 1e-9);
+  assert.equal(SLOW_AFTER_MS, 20_000); assert.equal(SLOW_FACTOR, 0.85 / 0.95);
   const route = { tiles: Array.from({ length: 300 }, (_, i) => [i, 0]), ceil: new Array(300).fill(0) };
   assert.equal(mazodeAt(c, route, 19_000).slow, false);
   assert.equal(mazodeAt(c, route, 21_000).slow, true);
-  assert.ok(Math.abs(mazodeAt(c, route, 21_000).speed - CHASE_SPEED * 0.9) < 1e-9);
+  assert.ok(Math.abs(mazodeAt(c, route, 10_000).speed - PACE * 0.95) < 1e-9);
+  assert.ok(Math.abs(mazodeAt(c, route, 21_000).speed - PACE * 0.85) < 1e-9);
+  assert.ok(Math.abs(CHASE_SPEED * FLEE_FACTOR - PACE * 3) < 1e-9, 'flee stays at triple your pace');
 });
 
 test('the steal starts a chase from where the server has you; with no fix on you it is the old steal', (t) => {
@@ -157,7 +160,7 @@ test('the steal starts a chase from where the server has you; with no fix on you
   assert.ok(g.barn.pen.heesheeHeld);
 });
 
-test('keeping pace is not enough before the slowdown; after it you close in and the pick lands', (t) => {
+test('two-and-a-bit tiles behind is out of reach; after the slowdown you close in and the pick lands', (t) => {
   const f = fixture(t); f.begin(); f.steal();
   let v = f.follow(10_000, HEAD_START);
   assert.equal(v.phase, 'chase'); assert.equal(v.lostMs, undefined);

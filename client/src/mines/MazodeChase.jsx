@@ -21,7 +21,7 @@ export function MazodeChase({ view, bugName = 'YOUR BUG', onAnswer }) {
     return (
       <div className={`mz-chip${slow ? ' slow' : ''}${losing ? ' losing' : ''}`} data-test="mazode-chase" role="status">
         <b>{slow ? 'IT\'S SLOWING. CATCH IT. SWING ⛏' : `CHASE IT · ${name} IN ITS FIST`}</b>
-        <span className="mz-sub">{losing ? 'YOU\'RE LOSING IT' : slow ? 'IT RUNS 10% SLOWER NOW' : `SAME PACE AS YOU · TIRES IN ${left}s`}</span>
+        <span className="mz-sub">{losing ? 'YOU\'RE LOSING IT' : slow ? 'IT RUNS 85% OF YOUR PACE NOW' : `95% OF YOUR PACE · TIRES IN ${left}s`}</span>
         <i className="mz-bar" aria-hidden="true"><i style={{ width: `${(slow ? 1 : pct) * 100}%` }} /></i>
       </div>
     );
