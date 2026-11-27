@@ -1,5 +1,5 @@
 // Stage II, redrawn (v2): every evolved species is its own monster, in the style of the GBA-era handheld monster
-// games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, big slightly derpy bug eyes, and
+// games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, small close-set beady eyes, and
 // cel shading in two or three flat tones with a dark outline. The drawing is native on a 64 or 128 grid and only
 // ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
@@ -68,39 +68,26 @@ export const stageTwoPal = (id) => STAGE_TWO_PAL[id] || null;
 
 // ---- the drawing kit ----
 const M = 31.5; // the middle column
-/** One oversized, slightly derpy bug eye. Drawn without mirroring so the pair can look a little in different directions. */
-function oneEye(c, x, y, { rw, rh, iris = 'A', lookX = 0.3, lookY = 0.35, droop = 1 } = {}) {
-  c.ell(x, y, rw + 0.45, rh + 0.45, 'o', false);
-  c.ell(x, y, rw, rh, 'e', false);
-  const ix = x + lookX, iy = y + lookY, ir = Math.min(rw, rh) * 0.78;
-  c.ell(ix, iy, ir, ir, iris, false);
-  c.ell(ix, iy, ir * 0.8, ir * 0.8, 'E', false);
-  c.put(ix - ir * 0.38, iy - ir * 0.4, 'G');
-  if (droop > 0) {
-    // a thin sleepy lid along the top arc — enough to read as heavy, not a visor
-    const t = 0.18 + Math.min(droop, 2.2) * 0.025;
-    c.poly([
-      [x - rw * 1.02, y - rh * (1 - t)],
-      [x + rw * 1.02, y - rh * (1 - t * 1.2)],
-      [x + rw * 1.0, y - rh * 0.92],
-      [x, y - rh - 0.15],
-      [x - rw * 1.0, y - rh * 0.96],
-    ], 'o', false);
-  }
+/** One small, glossy, beady eye: a dark round bead and a single bright highlight. No sclera, no lid. */
+function oneBead(c, x, y, r = 1.8) {
+  c.ell(x, y, r, r, 'E', false);
+  // a tiny catchlight, upper-left, so the pair glances the same way and looks a little shifty
+  c.ell(x - r * 0.32, y - r * 0.38, 0.55, 0.55, 'G', false);
 }
-/** A pair of oversized, slightly derpy bug eyes: big white sclera, a dark outline, large pupils a little off-kilter.
- *  About 1.8× the previous diameter, so they bulge past the head where there is room. `x, y` is the left one's middle.
- *  `slant` > 0 is a heavier droop. */
-function eyes(c, x, y, { w = 3, h = 2.4, slant = 1, iris = 'A', look = 0.4, lash = true } = {}) {
-  const rw = w * 2.12, rh = Math.max(w * 1.76, h * 2.12), droop = lash ? slant : 0;
-  oneEye(c, x, y, { rw, rh, iris, lookX: rw * 0.16, lookY: rh * 0.2, droop });
-  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -rw * 0.04, lookY: rh * 0.06, droop: droop * 0.85 });
+/** A pair of small, close-set beady eyes, in the style of the GBA-era handheld bug monsters.
+ *  `x, y` is the left one's original middle; both are nudged toward the midline so they sit a little close. */
+function eyes(c, x, y, { w = 3, h = 2.4 } = {}) {
+  const r = Math.max(1.65, Math.min(2.2, Math.min(w, h) * 0.85 + 0.35));
+  const xL = x + (31.5 - x) * 0.32;
+  oneBead(c, xL, y + 0.15, r);
+  oneBead(c, 63 - xL, y + 0.15, r);
 }
-/** One eye on each side of a wide head, round and bulging: for bugs whose eyes stick out. Same oversized derpy look. */
-function bugEyes(c, x, y, r = 2.6, { iris = 'A', slant = 1 } = {}) {
-  const rw = r * 1.84, rh = r * 1.73;
-  oneEye(c, x, y, { rw, rh, iris, lookX: rw * 0.14, lookY: rh * 0.18, droop: slant });
-  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -rw * 0.03, lookY: rh * 0.06, droop: slant * 0.85 });
+/** Beady eyes on a wide head: still set on each side, just smaller and a little closer together. */
+function bugEyes(c, x, y, r = 2.6) {
+  const br = Math.max(1.8, Math.min(2.3, r * 0.58));
+  const xL = x + Math.min(3.2, (31.5 - x) * 0.22);
+  oneBead(c, xL, y, br);
+  oneBead(c, 63 - xL, y, br);
 }
 const chain = (c, pts, m, w = 1, mirror = true) => { for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, w, mirror); };
 /** A jointed limb through the points, thicker at the top, with a claw at the end. */
@@ -598,8 +585,8 @@ D.gyrinus = { draw(c, K) { // Whirl Spinner: a glossy steel-blue pebble spinning
   if (!K.nolegs) limb(c, [[19, 44], [12, 50], [11, 54]], { w: 2 });
   centred(c, 37, 15, 15, 'B');
   eyes(c, 27, 30.5, { w: 2.6, h: 2, slant: 1.8 });
-  oneEye(c, 25.5, 39, { rw: 3.05, rh: 2.95, iris: 'E', lookX: 0.4, lookY: 0.45, droop: 0.7 });
-  oneEye(c, 63 - 25.5, 39, { rw: 3.05, rh: 2.95, iris: 'E', lookX: -0.1, lookY: 0.2, droop: 0.55 });
+  oneBead(c, 27.4, 38.8, 1.6);
+  oneBead(c, 63 - 27.4, 38.8, 1.6);
 } };
 
 D.sphaerocoris = { draw(c, K) { // Canvas Shield: a lime shield painted with two bold blue targets
