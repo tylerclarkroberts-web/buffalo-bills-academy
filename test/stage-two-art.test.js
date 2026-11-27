@@ -8,6 +8,8 @@ import { spriteGrid } from '../client/src/barn/sprite.js';
 import { STAGE_TWO, STAGE_TWO_PAL, stageTwoHandOf } from '../client/src/barn/stageTwoArt.js';
 import { drawTool } from '../client/src/barn/varietyArt.js';
 import { TOOLS } from '../server/engine/tools.js';
+import { varietyFor, BASES, AILMENTS, FRUITS, PATTERNS, MORPHS, METALS } from '../server/engine/variety.js';
+import { spriteCanvas } from '../client/src/barn/sprite.js';
 
 const bugs = ROSTER.filter((b) => b.id !== 'steeze');
 const mask = (g) => g.map((row) => row.map((px) => (px ? 1 : 0)));
@@ -57,4 +59,28 @@ test('botched Stage II, Stage III and the photo bug are drawn exactly as before'
   const s = ROSTER.find((b) => b.id === 'steeze'); for (const fine of [1, 2]) h.update(JSON.stringify(spriteGrid(s, undefined, fine, 1)));
   // the art from main before this change (6660abf); if any of it is ever changed on purpose, this is the line to update
   assert.equal(h.digest('hex'), 'babfe0f5894f6313298202fe804de27f396673f69edd83bd9705e0603a511c11');
+});
+
+test('a clean Stage II bug is drawn bare: no base, colouring, pattern, ailment, fruit or tool, whatever its variety', () => {
+  const ails = Object.keys(AILMENTS), fruits = Object.keys(FRUITS), bases = Object.keys(BASES);
+  bugs.forEach((b, i) => {
+    const plain1 = spriteGrid(b, undefined, 1, 1), plain2 = spriteGrid(b, undefined, 2, 1);
+    for (const v of [varietyFor(i + 1, b.id), varietyFor(9000 + i, b.id), { seed: i + 7, base: bases[i % 4], ail: [ails[i % ails.length], ails[(i + 3) % ails.length]], fruit: fruits[i % fruits.length], hue: 120, tone: 10, pat: PATTERNS[i % PATTERNS.length], morph: MORPHS[i % MORPHS.length], metal: METALS[i % METALS.length] }]) {
+      assert.deepEqual(spriteGrid(b, undefined, 1, 1, false, v), plain1, `${b.id}: x1 with variety`);
+      assert.deepEqual(spriteGrid(b, undefined, 2, 1, false, v), plain2, `${b.id}: x2 with variety`);
+    }
+  });
+});
+
+test('every surface draws the bare art: the canvas a stall, ring, bout or mine uses ignores variety, and a rotor never spins it', () => {
+  const old = globalThis.OffscreenCanvas;
+  globalThis.OffscreenCanvas = class { constructor(w, h) { this.width = w; this.height = h; const px = []; this.px = px; } getContext() { const px = this.px; let fill = null; return { set fillStyle(v) { fill = v; }, fillRect: (x, y, w, h) => px.push([fill, x, y, w, h]), pixels: px }; } };
+  for (const b of bugs.slice(0, 12)) for (const fine of [1, 2, 4]) {
+    const bare = spriteCanvas(b, { evo: 1 }, 23, fine).getContext().pixels;
+    for (const base of Object.keys(BASES)) for (const frame of [0, 1]) {
+      const worn = spriteCanvas(b, { evo: 1, variety: { ...varietyFor(5, b.id), base } }, 23, fine, frame).getContext().pixels;
+      assert.deepEqual(worn, bare, `${b.id} x${fine} ${base} frame ${frame}`);
+    }
+  }
+  if (old === undefined) delete globalThis.OffscreenCanvas; else globalThis.OffscreenCanvas = old;
 });

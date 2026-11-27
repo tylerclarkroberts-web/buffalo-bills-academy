@@ -140,24 +140,25 @@ test('Stage I is untouched: larvae and grown Stage I bugs draw exactly as before
   assert.equal(h.digest('hex'), 'e85f7b850184372ad515f76e3a0629cdcdb9cf37c0cc007f58881f0a412ecdea');
 });
 
-test('every Stage II bug changes: a base instead of legs, its ailments, a whisper of fruit, its colouring', () => {
+// Since the Stage II redraw (stageTwoArt.js) a clean Stage II bug is drawn bare; only a botched one still wears its variety.
+test('a botched Stage II bug changes: a base instead of legs, its ailments, a whisper of fruit, its colouring', () => {
   const bug = ROSTER.find((b) => b.id === 'lamprima'), v = { seed: 9, base: 'wheels', ail: [], fruit: null, hue: 0, tone: 0, pat: 'plain' };
-  const own = spriteGrid(bug, 10, 1, 1), wheels = spriteGrid(bug, 10, 1, 1, false, v);
-  assert.deepEqual(wheels, spriteGrid(bug, 10, 1, 1, false, v), 'same look, same pixels');
-  const grids = Object.keys(BASES).map((base) => spriteGrid(bug, 10, 1, 1, false, { ...v, base }));
+  const own = spriteGrid(bug, 10, 1, 1, true), wheels = spriteGrid(bug, 10, 1, 1, true, v);
+  assert.deepEqual(wheels, spriteGrid(bug, 10, 1, 1, true, v), 'same look, same pixels');
+  const grids = Object.keys(BASES).map((base) => spriteGrid(bug, 10, 1, 1, true, { ...v, base }));
   grids.forEach((g, i) => { assert.ok(differ(own, g) > 40, `${Object.keys(BASES)[i]} replaces the iron legs`); grids.slice(i + 1).forEach((o) => assert.ok(differ(g, o) > 40, 'and each base looks like itself')); });
   let shown = 0;
-  for (const fruit of Object.keys(FRUITS)) { const n = differ(wheels, spriteGrid(bug, 10, 1, 1, false, { ...v, fruit })); if (n) shown++; assert.ok(n <= 16, `${fruit}: ${n} pixels, a handful at most`); }
+  for (const fruit of Object.keys(FRUITS)) { const n = differ(wheels, spriteGrid(bug, 10, 1, 1, true, { ...v, fruit })); if (n) shown++; assert.ok(n <= 16, `${fruit}: ${n} pixels, a handful at most`); }
   assert.ok(shown >= 6, `faint, but there: ${shown} of 8 fruits show on this body`);
-  for (const ail of Object.keys(AILMENTS)) assert.ok(differ(wheels, spriteGrid(bug, 10, 1, 1, false, { ...v, ail: [ail] })) > 0, `${ail} shows`);
-  assert.ok(differ(wheels, spriteGrid(bug, 10, 1, 1, false, { ...v, hue: 60 })) > 100, 'a colour morph recolours it');
-  // every species, botched or not, with any variety at all, looks different from the plain Stage II art
+  for (const ail of Object.keys(AILMENTS)) assert.ok(differ(wheels, spriteGrid(bug, 10, 1, 1, true, { ...v, ail: [ail] })) > 0, `${ail} shows`);
+  assert.ok(differ(wheels, spriteGrid(bug, 10, 1, 1, true, { ...v, hue: 60 })) > 100, 'a colour morph recolours it');
+  // every botched species with any variety at all looks different from its plain art; a clean Stage II bug looks exactly like it
   for (const b of ROSTER) for (const botched of [false, true]) {
     const n = differ(spriteGrid(b, 10, 1, 1, botched), spriteGrid(b, 10, 1, 1, botched, varietyFor(7, b.id)));
-    if (b.id === 'steeze') assert.equal(n, 0, 'the photo bug is left alone'); else assert.ok(n > 40, `${b.id}${botched ? ' botched' : ''}: ${n}`);
+    if (b.id === 'steeze' || !botched) assert.equal(n, 0, `${b.id}${botched ? ' botched' : ''}: drawn bare`); else assert.ok(n > 40, `${b.id} botched: ${n}`);
   }
-  // two bugs of a species with different seeds look different
-  assert.notDeepEqual(spriteGrid(bug, 10, 1, 1, false, varietyFor(1, 'lamprima')), spriteGrid(bug, 10, 1, 1, false, varietyFor(2, 'lamprima')));
+  // two botched bugs of a species with different seeds look different
+  assert.notDeepEqual(spriteGrid(bug, 10, 1, 1, true, varietyFor(1, 'lamprima')), spriteGrid(bug, 10, 1, 1, true, varietyFor(2, 'lamprima')));
   assert.notEqual(varietyKey(varietyFor(1, 'x')), varietyKey(varietyFor(2, 'x')));
 });
 
@@ -180,9 +181,9 @@ test('every species has its own mining tool, with a name and a line, held by its
   }
 });
 
-test('two Stage II bugs of one species look clearly different: most of their pixels differ', () => {
+test('two botched Stage II bugs of one species look clearly different: most of their pixels differ', () => {
   for (const id of ['lamprima', 'halobates', 'nemoptera', 'macrodontia']) {
-    const bug = ROSTER.find((b) => b.id === id), gs = Array.from({ length: 10 }, (_, i) => spriteGrid(bug, 12, 1, 1, false, varietyFor(1795000000000 + i * 104729, id)));
+    const bug = ROSTER.find((b) => b.id === id), gs = Array.from({ length: 10 }, (_, i) => spriteGrid(bug, 12, 1, 1, true, varietyFor(1795000000000 + i * 104729, id)));
     const ink = gs[0].flat().filter(Boolean).length; let sum = 0, k = 0, min = Infinity;
     for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) { const d = differ(gs[i], gs[j]); sum += d; k++; min = Math.min(min, d); }
     assert.ok(sum / k / ink > 0.65, `${id}: on average ${Math.round((100 * sum) / k / ink)}% of its pixels differ`);

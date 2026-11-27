@@ -202,7 +202,7 @@ function under(c, u) {
  * Stage III are drawn exactly as they always were.
  */
 function spriteArt(L, fine, stage = 0, botched = false, capless = false, v = null, frame = 0) {
-  if (stage !== 1 || PHOTO.has(L.id)) v = null;
+  if (stage !== 1 || PHOTO.has(L.id) || gbaStage(L, stage, botched)) v = null; // the new Stage II art is drawn bare: no base, marks, colouring or tool
   const tool = v ? toolFor(L.id) : null;
   const paint = (f, only) => {
     const c = canvas(f); NOLEGS = !!v;
@@ -240,7 +240,7 @@ const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT
  * gives the evolved body instead, `botched` the one that went wrong.
  */
 export function spriteGrid(bug, level, fine = 1, evo = 0, botched = false, variety = null, frame = 0) {
-  const L = stagedLook(lookOf(bug, evo ? undefined : level), evo, botched), v = variety && evo === 1 ? cleanVariety(variety) : null; // Stage II only
+  const L = stagedLook(lookOf(bug, evo ? undefined : level), evo, botched), v = variety && evo === 1 && !gbaStage(L, evo, botched) ? cleanVariety(variety) : null; // a botched Stage II only
   return render(L, fine, evo, botched, false, v, frame, ramps(palFor(L, null, v), PHOTO.has(L.id) ? null : v)).body;
 }
 
@@ -631,7 +631,7 @@ export function spriteCanvas(bug, style, level, fine = 1, frame = 0) {
   const artLevel = stage ? undefined : level;
   const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}|${stage === 1 ? varietyKey(varietyOf(style)) : ''}|${stage === 1 ? frame : 0}`;
   if (cache.has(key)) return cache.get(key);
-  const v = stage === 1 ? varietyOf(style) : null, L = stagedLook(lookOf(bug, artLevel), stage, botched), R = ramps(palFor(L, style, v), PHOTO.has(L.id) ? null : v); // only a Stage II bug wears its variety
+  const L = stagedLook(lookOf(bug, artLevel), stage, botched), v = stage === 1 && !gbaStage(L, stage, botched) ? varietyOf(style) : null, R = ramps(palFor(L, style, v), PHOTO.has(L.id) ? null : v); // only a Stage II bug wears its variety
   if (v?.base !== 'rotor' || stage !== 1) frame = 0;
   const capless = !!style?.bughat?.shape || style?.gear?.shape === 'helmet' || style?.defense?.shape === 'helmet'; // one hat at a time: a bought one goes on instead of its own
   const { body } = render(L, fine, stage, botched, capless, v, frame, R), N = SPRITE * fine;
