@@ -1,5 +1,5 @@
 // Stage II, redrawn (v2): every evolved species is its own monster, in the style of the GBA-era handheld monster
-// games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, sharp anime eyes, and
+// games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, small close-set beady eyes, and
 // cel shading in two or three flat tones with a dark outline. The drawing is native on a 64 or 128 grid and only
 // ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
@@ -68,19 +68,26 @@ export const stageTwoPal = (id) => STAGE_TWO_PAL[id] || null;
 
 // ---- the drawing kit ----
 const M = 31.5; // the middle column
-/** A pair of sharp anime eyes: `x, y` is the left one's middle (the right one is mirrored). `slant` > 0 is a fierce brow. */
-function eyes(c, x, y, { w = 3, h = 2.4, slant = 1, iris = 'A', look = 0.4, lash = true } = {}) {
-  const t = slant;
-  c.poly([[x - w, y - h + 0.2 - t * 0.5], [x + w, y - h + 0.6 + t * 0.9], [x + w * 0.85, y + h * 0.55], [x + w * 0.2, y + h], [x - w * 0.7, y + h * 0.75], [x - w * 1.05, y]], 'e');
-  c.ell(x + look, y + 0.25, w * 0.5, h * 0.82, iris); c.ell(x + look + 0.15, y + 0.4, w * 0.24, h * 0.46, 'E');
-  if (lash) c.poly([[x - w * 1.25, y - h - 0.6 - t * 0.6], [x + w * 1.05, y - h + 0.2 + t * 0.9], [x + w * 1.05, y - h + 1.2 + t * 0.9], [x - w, y - h + 0.9 - t * 0.5]], 'o');
-  c.put(x + look - w * 0.2, y - h * 0.3, 'G');
+/** One small, glossy, beady eye: a dark round bead and a single bright highlight. No sclera, no lid. */
+function oneBead(c, x, y, r = 1.8) {
+  c.ell(x, y, r, r, 'E', false);
+  // a tiny catchlight, upper-left, so the pair glances the same way and looks a little shifty
+  c.ell(x - r * 0.32, y - r * 0.38, 0.55, 0.55, 'G', false);
 }
-/** One eye on each side of a wide head, round and bulging: for bugs whose eyes stick out. */
-function bugEyes(c, x, y, r = 2.6, { iris = 'A', slant = 1 } = {}) {
-  c.ell(x, y, r, r * 0.9, 'e'); c.ell(x + r * 0.2, y + 0.2, r * 0.62, r * 0.7, iris); c.ell(x + r * 0.3, y + 0.3, r * 0.3, r * 0.4, 'E');
-  c.poly([[x - r - 0.6, y - r * 0.7 - slant * 0.5], [x + r + 0.6, y - r * 0.4 + slant * 0.7], [x + r + 0.6, y - r * 0.4 + slant * 0.7 + 1.1], [x - r - 0.4, y - r * 0.5 - slant * 0.5 + 0.9]], 'o');
-  c.put(x - r * 0.25, y - r * 0.3, 'G');
+/** A pair of small, close-set beady eyes, in the style of the GBA-era handheld bug monsters.
+ *  `x, y` is the left one's original middle; both are nudged toward the midline so they sit a little close. */
+function eyes(c, x, y, { w = 3, h = 2.4 } = {}) {
+  const r = Math.max(1.65, Math.min(2.2, Math.min(w, h) * 0.85 + 0.35));
+  const xL = x + (31.5 - x) * 0.32;
+  oneBead(c, xL, y + 0.15, r);
+  oneBead(c, 63 - xL, y + 0.15, r);
+}
+/** Beady eyes on a wide head: still set on each side, just smaller and a little closer together. */
+function bugEyes(c, x, y, r = 2.6) {
+  const br = Math.max(1.8, Math.min(2.3, r * 0.58));
+  const xL = x + Math.min(3.2, (31.5 - x) * 0.22);
+  oneBead(c, xL, y, br);
+  oneBead(c, 63 - xL, y, br);
 }
 const chain = (c, pts, m, w = 1, mirror = true) => { for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, w, mirror); };
 /** A jointed limb through the points, thicker at the top, with a claw at the end. */
@@ -578,7 +585,8 @@ D.gyrinus = { draw(c, K) { // Whirl Spinner: a glossy steel-blue pebble spinning
   if (!K.nolegs) limb(c, [[19, 44], [12, 50], [11, 54]], { w: 2 });
   centred(c, 37, 15, 15, 'B');
   eyes(c, 27, 30.5, { w: 2.6, h: 2, slant: 1.8 });
-  c.ell(25.5, 39, 1.6, 1.3, 'e'); c.ell(25.8, 39.2, 0.9, 0.9, 'E');
+  oneBead(c, 27.4, 38.8, 1.6);
+  oneBead(c, 63 - 27.4, 38.8, 1.6);
 } };
 
 D.sphaerocoris = { draw(c, K) { // Canvas Shield: a lime shield painted with two bold blue targets
