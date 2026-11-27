@@ -84,3 +84,13 @@ test('every surface draws the bare art: the canvas a stall, ring, bout or mine u
   }
   if (old === undefined) delete globalThis.OffscreenCanvas; else globalThis.OffscreenCanvas = old;
 });
+
+test('every Stage II bug has one glowing lens, red or cyan, and never both', () => {
+  const cyan = new Set(['#7af6ff', '#1ad0e8']), red = new Set(['#ff6a72', '#e01830']);
+  for (const b of bugs) {
+    const colours = new Set(spriteGrid(b, undefined, 2, 1).flat().filter(Boolean));
+    const hasC = [...colours].some((c) => cyan.has(c)), hasX = [...colours].some((c) => red.has(c));
+    assert.ok(hasC !== hasX, `${b.id}: expected one lens colour, got cyan=${hasC} red=${hasX}`);
+  }
+});
+

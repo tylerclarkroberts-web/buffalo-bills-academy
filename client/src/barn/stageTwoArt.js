@@ -1,7 +1,9 @@
 // Stage II, redrawn (v2): every evolved species is its own monster, in the style of the GBA-era handheld monster
 // games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, small close-set beady eyes, and
-// cel shading in two or three flat tones with a dark outline. The drawing is native on a 64 or 128 grid and only
-// ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
+// cel shading in two or three flat tones with a dark outline. A few quiet built details sit on top of that: thin panel
+// seams and rivets on the shell, steel caps on the joints and feeler tips, and one tiny glowing lens in place of one
+// bead. The drawing is native on a 64 or 128 grid and only ever scaled up with nearest-neighbour, so every pixel stays
+// crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
 // turns the material grid into colours. Original art: inspired by the era, nothing copied from any game.
 
@@ -68,28 +70,148 @@ export const stageTwoPal = (id) => STAGE_TWO_PAL[id] || null;
 
 // ---- the drawing kit ----
 const M = 31.5; // the middle column
+let SPECIES = null; // the species being drawn, so the shared eye and joint helpers can pick a fitting lens
+const JOINTS = []; // servo caps stamped after the body, so a hip socket sits on top of the shell
+
+/** Cyan or red, whichever sits further from this species' body colour. */
+function lensHue(id) {
+  const pal = STAGE_TWO_PAL[id];
+  if (!pal) return 'C';
+  const col = pal[2], r = parseInt(col.slice(1, 3), 16), g = parseInt(col.slice(3, 5), 16), b = parseInt(col.slice(5, 7), 16);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), sat = max ? (max - min) / max : 0;
+  if (sat < 0.2) return r + g + b < 300 ? 'C' : 'X';
+  let hue = 0;
+  const d = max - min;
+  if (max === r) hue = 60 * (((g - b) / d) % 6);
+  else if (max === g) hue = 60 * ((b - r) / d + 2);
+  else hue = 60 * ((r - g) / d + 4);
+  if (hue < 0) hue += 360;
+  return (hue < 95 || hue > 330) ? 'C' : 'X';
+}
+function speciesHash(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) >>> 0; return h; }
+
 /** One small, glossy, beady eye: a dark round bead and a single bright highlight. No sclera, no lid. */
 function oneBead(c, x, y, r = 1.8) {
   c.ell(x, y, r, r, 'E', false);
   // a tiny catchlight, upper-left, so the pair glances the same way and looks a little shifty
   c.ell(x - r * 0.32, y - r * 0.38, 0.55, 0.55, 'G', false);
 }
+/** A tiny glowing lens in the same circle as a bead: a steel rim, a red or cyan core, and a catchlight. */
+function oneLens(c, x, y, r, glow) {
+  c.ell(x, y, r, r, 'Z', false);
+  const cr = Math.max(0.7, r * 0.62);
+  c.ell(x, y, cr, cr, glow, false);
+  c.ell(x - r * 0.28, y - r * 0.32, 0.5, 0.5, 'G', false);
+}
+/** A left/right pair; when a species is in play, one of the two is a glowing lens and the other stays a bead. */
+function pairEyes(c, xL, y, r) {
+  const right = 63 - xL;
+  if (!SPECIES) { oneBead(c, xL, y, r); oneBead(c, right, y, r); return; }
+  const glow = lensHue(SPECIES), lensRight = speciesHash(SPECIES) % 2 === 0;
+  if (lensRight) { oneBead(c, xL, y, r); oneLens(c, right, y, r, glow); }
+  else { oneLens(c, xL, y, r, glow); oneBead(c, right, y, r); }
+}
 /** A pair of small, close-set beady eyes, in the style of the GBA-era handheld bug monsters.
  *  `x, y` is the left one's original middle; both are nudged toward the midline so they sit a little close. */
 function eyes(c, x, y, { w = 3, h = 2.4 } = {}) {
   const r = Math.max(1.65, Math.min(2.2, Math.min(w, h) * 0.85 + 0.35));
   const xL = x + (31.5 - x) * 0.32;
-  oneBead(c, xL, y + 0.15, r);
-  oneBead(c, 63 - xL, y + 0.15, r);
+  pairEyes(c, xL, y + 0.15, r);
 }
 /** Beady eyes on a wide head: still set on each side, just smaller and a little closer together. */
 function bugEyes(c, x, y, r = 2.6) {
   const br = Math.max(1.8, Math.min(2.3, r * 0.58));
   const xL = x + Math.min(3.2, (31.5 - x) * 0.22);
-  oneBead(c, xL, y, br);
-  oneBead(c, 63 - xL, y, br);
+  pairEyes(c, xL, y, br);
 }
-const chain = (c, pts, m, w = 1, mirror = true) => { for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, w, mirror); };
+
+/** Recolour already-drawn pixels only: a small steel servo cap with a highlight. Never grows the silhouette.
+ *  Steel is only stamped onto dark limb pixels, so a cap never punches a hole in the shell and shifts its lighting.
+ *  A joint that lands on the shell gets a tiny etched socket instead. */
+function servo(c, x, y, r = 1.05, mirror = true) {
+  const f = c.f, N = c.g.length, steel = 'DZK';
+  const stamp = (cx, cy) => {
+    for (let Y = Math.floor((cy - r) * f) - 1; Y <= Math.ceil((cy + r) * f) + 1; Y++) {
+      for (let X = Math.floor((cx - r) * f) - 1; X <= Math.ceil((cx + r) * f) + 1; X++) {
+        if (Y < 0 || Y >= N || X < 0 || X >= N || !c.g[Y][X]) continue;
+        const dx = (X + 0.5) / f - 0.5 - cx, dy = (Y + 0.5) / f - 0.5 - cy;
+        if (dx * dx + dy * dy > r * r) continue;
+        const m = c.g[Y][X];
+        if (steel.includes(m)) {
+          c.g[Y][X] = 'Z';
+          const hx = dx + r * 0.35, hy = dy + r * 0.35;
+          if (hx * hx + hy * hy <= (r * 0.32) * (r * 0.32)) c.shine[Y][X] = c.part[Y][X] || 1;
+        }
+      }
+    }
+  };
+  stamp(x, y);
+  if (mirror) stamp(63 - x, y);
+}
+
+/** Thin etched panel lines across the largest shell, with a few one-pixel steel rivets. Recolours only. */
+function panelSeams(c) {
+  const f = c.f, N = c.g.length, seen = new Uint8Array(N * N);
+  let best = null;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (c.g[y][x] !== 'B' || seen[y * N + x]) continue;
+    const q = [[x, y]]; seen[y * N + x] = 1; const cells = [];
+    let minx = x, maxx = x, miny = y, maxy = y;
+    while (q.length) {
+      const [u, v] = q.pop(); cells.push([u, v]);
+      minx = Math.min(minx, u); maxx = Math.max(maxx, u); miny = Math.min(miny, v); maxy = Math.max(maxy, v);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const a = u + dx, b = v + dy;
+        if (a < 0 || b < 0 || a >= N || b >= N || seen[b * N + a] || c.g[b][a] !== 'B') continue;
+        seen[b * N + a] = 1; q.push([a, b]);
+      }
+    }
+    if (!best || cells.length > best.cells.length) best = { cells, minx, maxx, miny, maxy };
+  }
+  if (!best || best.cells.length < 40 * f * f) return;
+  const { minx, maxx, miny, maxy, cells } = best, inBest = new Set(cells.map(([x, y]) => y * N + x));
+  const h = maxy - miny + 1, n = cells.length;
+  const rows = [Math.round((miny + h * 0.42) / f) * f];
+  if (h >= 22 * f && n >= 180 * f * f) {
+    const yB = Math.round((miny + h * 0.64) / f) * f;
+    if (Math.abs(yB - rows[0]) >= 5 * f) rows.push(yB);
+  }
+  const rivetAt = [];
+  for (const Y of rows) {
+    const y64 = Math.round(Y / f), y0 = y64 * f, y1 = y0 + f;
+    let lo = N, hi = -1;
+    for (let yy = y0; yy < y1; yy++) for (let x = minx; x <= maxx; x++) if (inBest.has(yy * N + x)) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+    const inset = 3 * f;
+    if (hi - lo < 10 * f) continue;
+    const x0 = lo + inset, x1 = hi - inset;
+    if (x1 - x0 < 5 * f) continue;
+    for (let yy = y0; yy < y1; yy++) for (let x = x0; x <= x1; x++) if (inBest.has(yy * N + x) && c.g[yy][x] === 'B') c.etch[yy][x] = true;
+    const spots = [x0 + f, x1 - f];
+    if (x1 - x0 >= 18 * f) spots.push(Math.round(((x0 + x1) / 2) / f) * f);
+    for (const X of spots) rivetAt.push([Math.round(X / f), y64]);
+  }
+  const painted = new Set();
+  for (const [x64, y64] of rivetAt) {
+    const key = x64 + ',' + y64; if (painted.has(key)) continue; painted.add(key);
+    const X = x64 * f, Y = y64 * f;
+    let ok = false;
+    for (let a = 0; a < f; a++) for (let b = 0; b < f; b++) {
+      const xx = X + a, yy = Y + b;
+      if (yy >= 0 && yy < N && xx >= 0 && xx < N && c.g[yy][xx] && !'eEGCXo'.includes(c.g[yy][xx])) ok = true;
+    }
+    if (!ok) continue;
+    for (let a = 0; a < f; a++) for (let b = 0; b < f; b++) {
+      const xx = X + a, yy = Y + b;
+      if (yy < 0 || yy >= N || xx < 0 || xx >= N || !c.g[yy][xx] || 'eEGCXo'.includes(c.g[yy][xx])) continue;
+      c.etch[yy][xx] = true;
+    }
+  }
+}
+
+const chain = (c, pts, m, w = 1, mirror = true) => {
+  for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, w, mirror);
+  if (m === 'D' && w <= 2) JOINTS.push({ x: pts[pts.length - 1][0], y: pts[pts.length - 1][1], r: 0.85, mirror });
+};
 /** A jointed limb through the points, thicker at the top, with a claw at the end. */
 function limb(c, pts, { m = 'D', w = 3, tip = 'claw', mirror = true, taper = true } = {}) {
   for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, Math.max(1, taper ? w - i : w), mirror);
@@ -97,6 +219,10 @@ function limb(c, pts, { m = 'D', w = 3, tip = 'claw', mirror = true, taper = tru
   if (tip === 'claw') c.poly([[x - 1.6, y - 0.6], [x + 1.4, y - 0.6], [x + dx * 2.2, y + 2.2], [x + dx * 0.2, y + 1]], m, mirror);
   if (tip === 'foot') c.poly([[x - 2.4, y - 1], [x + 2.2, y - 1], [x + 2.6, y + 1.2], [x - 3, y + 1.2]], m, mirror);
   if (tip === 'fist') c.ell(x, y, w * 0.75, w * 0.7, m, mirror);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ww = Math.max(1, taper ? w - i : w);
+    JOINTS.push({ x: pts[i][0], y: pts[i][1], r: Math.min(0.95, ww * 0.28 + 0.35), mirror });
+  }
 }
 /** Two sturdy legs planted wide, feet on the ground (row 61). `hip`: where they leave the body. */
 function stance(c, K, { hipX = 25, hipY = 46, kneeX = 19, kneeY = 52, w = 4, m = 'D', feet = 'foot' } = {}) {
@@ -630,7 +756,12 @@ export const STAGE_TWO = D;
 /** The species' Stage II monster, or false if it has none (then the old drawing stands). */
 export function drawStageTwo(c, L, kit = {}) {
   const d = D[L.id]; if (!d) return false;
-  d.draw(c, { nolegs: !!kit.nolegs, body: !!kit.body });
+  SPECIES = L.id; JOINTS.length = 0;
+  try {
+    d.draw(c, { nolegs: !!kit.nolegs, body: !!kit.body });
+    for (const j of JOINTS) servo(c, j.x, j.y, j.r, j.mirror);
+    panelSeams(c);
+  } finally { SPECIES = null; JOINTS.length = 0; }
   return true;
 }
 export const stageTwoHandOf = (id) => (D[id] ? D[id].hand || HAND : null);
@@ -661,6 +792,8 @@ export function celShade({ g, part, etch, shine }, R) {
     if (m === 'G') { out[y][x] = '#ffffff'; continue; }
     if (m === 'S') { out[y][x] = R.B[0]; continue; }
     if (m === 'H') { out[y][x] = R.L[2]; continue; }
+    if (m === 'C') { out[y][x] = filled(x, y - 1) && g[y - 1][x] === 'C' ? '#7af6ff' : '#1ad0e8'; continue; }
+    if (m === 'X') { out[y][x] = filled(x, y - 1) && g[y - 1][x] === 'X' ? '#ff6a72' : '#e01830'; continue; }
     const ramp = R[m] || R.B, k = comp[y * N + x], I = info[k];
     if (m === 'E') { out[y][x] = ramp[1]; continue; }
     if (m === 'e') { out[y][x] = filled(x, y - 1) && g[y - 1][x] === 'e' ? ramp[1] : ramp[0]; continue; }
