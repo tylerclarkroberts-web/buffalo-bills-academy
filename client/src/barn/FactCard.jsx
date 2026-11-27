@@ -52,9 +52,9 @@ export default function FactCard({ species, bug = null, caught = false, name = '
           <p className="bf-dt">{card.eatsLabel}</p>
           <p className="bf-dd">{card.eats}</p>
           <p className="bf-dt">{card.factsLabel}</p>
-          <ol className="bf-facts" data-test="fact-list">
+          <ul className="bf-facts" data-test="fact-list">
             {card.facts.map((text) => <li key={text}>{text}</li>)}
-          </ol>
+          </ul>
           {card.lore.map((l) => (
             <div key={l.key} className="bf-lore" data-test={`fact-lore-${l.key}`}>
               <p className="bf-dt">{l.label}</p>
