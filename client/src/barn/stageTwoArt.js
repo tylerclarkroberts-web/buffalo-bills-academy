@@ -1,5 +1,5 @@
 // Stage II, redrawn (v2): every evolved species is its own monster, in the style of the GBA-era handheld monster
-// games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, sharp anime eyes, and
+// games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, big slightly derpy bug eyes, and
 // cel shading in two or three flat tones with a dark outline. The drawing is native on a 64 or 128 grid and only
 // ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
@@ -68,19 +68,38 @@ export const stageTwoPal = (id) => STAGE_TWO_PAL[id] || null;
 
 // ---- the drawing kit ----
 const M = 31.5; // the middle column
-/** A pair of sharp anime eyes: `x, y` is the left one's middle (the right one is mirrored). `slant` > 0 is a fierce brow. */
-function eyes(c, x, y, { w = 3, h = 2.4, slant = 1, iris = 'A', look = 0.4, lash = true } = {}) {
-  const t = slant;
-  c.poly([[x - w, y - h + 0.2 - t * 0.5], [x + w, y - h + 0.6 + t * 0.9], [x + w * 0.85, y + h * 0.55], [x + w * 0.2, y + h], [x - w * 0.7, y + h * 0.75], [x - w * 1.05, y]], 'e');
-  c.ell(x + look, y + 0.25, w * 0.5, h * 0.82, iris); c.ell(x + look + 0.15, y + 0.4, w * 0.24, h * 0.46, 'E');
-  if (lash) c.poly([[x - w * 1.25, y - h - 0.6 - t * 0.6], [x + w * 1.05, y - h + 0.2 + t * 0.9], [x + w * 1.05, y - h + 1.2 + t * 0.9], [x - w, y - h + 0.9 - t * 0.5]], 'o');
-  c.put(x + look - w * 0.2, y - h * 0.3, 'G');
+/** One big, slightly derpy bug eye. Drawn without mirroring so the pair can sit a little off-kilter. */
+function oneEye(c, x, y, { rw, rh, iris = 'A', lookX = 0.3, lookY = 0.35, droop = 1 } = {}) {
+  c.ell(x, y, rw + 0.3, rh + 0.3, 'o', false);
+  c.ell(x, y, rw, rh, 'e', false);
+  const ix = x + lookX, iy = y + lookY, ir = Math.min(rw, rh) * 0.84;
+  c.ell(ix, iy, ir, ir, iris, false);
+  c.ell(ix, iy, ir * 0.82, ir * 0.82, 'E', false);
+  c.put(ix - ir * 0.4, iy - ir * 0.4, 'G');
+  if (droop > 0) {
+    // a thin sleepy lid along the top arc — enough to read as heavy, not a visor
+    const t = 0.22 + Math.min(droop, 2.2) * 0.03;
+    c.poly([
+      [x - rw * 1.02, y - rh * (1 - t)],
+      [x + rw * 1.02, y - rh * (1 - t * 1.2)],
+      [x + rw * 1.0, y - rh * 0.92],
+      [x, y - rh - 0.12],
+      [x - rw * 1.0, y - rh * 0.96],
+    ], 'o', false);
+  }
 }
-/** One eye on each side of a wide head, round and bulging: for bugs whose eyes stick out. */
+/** A pair of big, slightly derpy bug eyes: large rounded whites, thin droopy lids, big pupils a little off-kilter.
+ *  `x, y` is the left one's middle; the right one is drawn to match, with a slight lean. `slant` > 0 is a heavier droop. */
+function eyes(c, x, y, { w = 3, h = 2.4, slant = 1, iris = 'A', look = 0.4, lash = true } = {}) {
+  const rw = w * 1.18, rh = Math.max(w * 0.98, h * 1.18), droop = lash ? slant : 0;
+  oneEye(c, x, y, { rw, rh, iris, lookX: look * 0.65 + 0.15, lookY: rh * 0.2, droop });
+  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -(look * 0.4), lookY: rh * 0.1, droop: droop * 0.85 });
+}
+/** One eye on each side of a wide head, round and bulging: for bugs whose eyes stick out. Same derpy look, just set wider. */
 function bugEyes(c, x, y, r = 2.6, { iris = 'A', slant = 1 } = {}) {
-  c.ell(x, y, r, r * 0.9, 'e'); c.ell(x + r * 0.2, y + 0.2, r * 0.62, r * 0.7, iris); c.ell(x + r * 0.3, y + 0.3, r * 0.3, r * 0.4, 'E');
-  c.poly([[x - r - 0.6, y - r * 0.7 - slant * 0.5], [x + r + 0.6, y - r * 0.4 + slant * 0.7], [x + r + 0.6, y - r * 0.4 + slant * 0.7 + 1.1], [x - r - 0.4, y - r * 0.5 - slant * 0.5 + 0.9]], 'o');
-  c.put(x - r * 0.25, y - r * 0.3, 'G');
+  const rw = r * 1.02, rh = r * 0.96;
+  oneEye(c, x, y, { rw, rh, iris, lookX: r * 0.1, lookY: rh * 0.18, droop: slant });
+  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -r * 0.04, lookY: rh * 0.08, droop: slant * 0.85 });
 }
 const chain = (c, pts, m, w = 1, mirror = true) => { for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, w, mirror); };
 /** A jointed limb through the points, thicker at the top, with a claw at the end. */
@@ -578,7 +597,8 @@ D.gyrinus = { draw(c, K) { // Whirl Spinner: a glossy steel-blue pebble spinning
   if (!K.nolegs) limb(c, [[19, 44], [12, 50], [11, 54]], { w: 2 });
   centred(c, 37, 15, 15, 'B');
   eyes(c, 27, 30.5, { w: 2.6, h: 2, slant: 1.8 });
-  c.ell(25.5, 39, 1.6, 1.3, 'e'); c.ell(25.8, 39.2, 0.9, 0.9, 'E');
+  oneEye(c, 25.5, 39, { rw: 1.7, rh: 1.65, iris: 'E', lookX: 0.18, lookY: 0.22, droop: 0.7 });
+  oneEye(c, 63 - 25.5, 39, { rw: 1.7, rh: 1.65, iris: 'E', lookX: -0.04, lookY: 0.1, droop: 0.55 });
 } };
 
 D.sphaerocoris = { draw(c, K) { // Canvas Shield: a lime shield painted with two bold blue targets
