@@ -8,7 +8,7 @@
 // purpose earns nothing. A ribbon adds RIBBON_XP to every bug that won a round of it. A beaten trainer stays beaten.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { idOf, isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE } from './barn.js';
+import { idOf, isHeesheeHeld, bugLostToHeeshee, HEESHEE_NO_BATTLE, jarCatchLine } from './barn.js';
 import { WILD as JAR, jarChance, caughtLevel } from './pvp.js';
 import { ROSTER, levelFor } from './engine/creatures.js';
 import { cents } from './accounts.js';
@@ -508,7 +508,8 @@ export class Circuit {
   }
   /** What a throw at the bug lying there is worth, for the ring. */
   jarOf(pid, c) {
-    return { have: this.shop?.jars(pid) || 0, room: true, farm: !this.barn.room(pid), left: c.jars, chance: jarChance(rarityOf(c.species), c.level - c.by), keeps: caughtLevel(c.level, c.by) };
+    const farm = this.barn.catchGoesToFarm(pid, c.species), bumped = !farm && !this.barn.room(pid) ? this.barn.steezeTarget(pid)?.pen?.name : null;
+    return { have: this.shop?.jars(pid) || 0, room: true, farm, ...(bumped ? { bumped } : {}), left: c.jars, chance: jarChance(rarityOf(c.species), c.level - c.by), keeps: caughtLevel(c.level, c.by) };
   }
   /**
    * Throw a jar at the wild bug your bug has just knocked out on the circuit: the mine's rules (server/pvp.js), three
@@ -518,14 +519,15 @@ export class Circuit {
     const me = this.me(pid), c = me.catch, fight = c && this.fights.get(c.fight);
     if (!c || String(body.fight || '') !== c.fight) throw new GameError('It is gone.', 409);
     if (!fight) { me.catch = null; this.save(); throw new GameError('It came to and left. It will be back.', 409); }
-    // every stall taken is fine: a catch goes to GFR Farms (barn.placement)
+    // every stall taken is fine: a catch goes to GFR Farms (barn.placement), unless STEEZE claims a stall
     const held = this.randInt(1000) < Math.round(jarChance(rarityOf(c.species), c.level - c.by) * 1000);
     const wildId = `circuit:${c.stop}:${pid}:${c.fight}`;
     if (!this.shop.takeJar(pid, held ? { wildId, battleId: c.fight } : null)) throw new GameError('You are out of jars. The General Store sells them.', 409);
     if (held) {
       const caught = this.barn.adopt(pid, { wildId, battleId: c.fight, species: c.species, level: caughtLevel(c.level, c.by) });
       me.done[c.stop] = this.now(); me.catch = null;
-      Object.assign(fight.extra, { jar: undefined, over: { reason: 'jarred', caught: caught.name }, verdict: this.barn.whereIs(pid, caught) === 'farm' ? `In the jar. Every stall is taken, so ${caught.name} is off to GFR Farms.` : `In the jar. ${caught.name} has a stall waiting.` });
+      const bumped = this.barn.lastPlacement?.bumped;
+      Object.assign(fight.extra, { jar: undefined, over: { reason: 'jarred', caught: caught.name, ...(this.barn.whereIs(pid, caught) === 'farm' ? { farm: true } : {}), ...(bumped ? { bumped: bumped.name } : {}) }, verdict: jarCatchLine(caught.name, { farm: this.barn.whereIs(pid, caught) === 'farm', bumped: bumped?.name }) });
     } else if (--c.jars <= 0) {
       me.catch = null;
       Object.assign(fight.extra, { jar: undefined, verdict: `${c.name} comes to and is gone. It will be back.` });
