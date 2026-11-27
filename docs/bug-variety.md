@@ -1,11 +1,16 @@
 # Bug variety
 
-**Only Stage II bugs wear it.** Stage I (larvae and grown Stage I bugs) and Stage III are drawn exactly as they were
+**Only botched Stage II bugs still wear it.** Since the Stage II redraw (`client/src/barn/stageTwoArt.js`) a clean Stage II
+bug is drawn bare, exactly as its species' design, on every surface: no base, colouring, pattern, ailment marks, fruit or
+tool. Its variety is still stored on the pen, and its ailments are still named in text on its stall and card (the base
+and tool lines are left off). `test/stage-two-art.test.js` checks it draws the same whatever its variety.
+
+**Otherwise only Stage II wears it.** Stage I (larvae and grown Stage I bugs) and Stage III are drawn exactly as they were
 before variety existed, pixel for pixel; `test/bug-variety.test.js` pins that with a fingerprint of every species at
 Lv 1, 3 and 10 on the 1x, 2x and 4x grids.
 
 Every bug is still given its look once, from its id (`server/engine/variety.js`), stored on its pen as `pen.variety`,
-so a bug already has its look the day it evolves. When it is a Stage II bug it shows:
+so a bug already has its look the day it evolves. When it is a botched Stage II bug it shows:
 
 - **Base**: wheels, hover rotor, tank tracks or slug foot (a quarter each), instead of the iron legs its machine body
   had. Every Stage II bug has one; a look stored with the old `legs` value is given one of the four from its seed.
@@ -18,10 +23,10 @@ so a bug already has its look the day it evolves. When it is a Stage II bug it s
   a tone, plus usually a morph: two-tone, inverted, melanic (dark, accent still bright), pale or vivid.
 - **Shell pattern**, bold, inked in a colour that stands out from the body: stripes, spots, chevrons, camo, checker,
   bands, freckles (or plain, rarely).
-- **Plating**: what its machine body is finished in: iron, brass, copper, gunmetal, gold, or painted red, teal, olive or
-  cream.
-- **Mining tool**: fixed per species (`server/engine/tools.js`), held, big and turned up, in the machine's free right hand (the gripper);
-  named with a line on its Stage II card and in the Bugdex. The left arm keeps the machine's own attachment.
+- **Plating**: what its metal is finished in (its base and tool, and a botched bug's machine body): iron, brass, copper,
+  gunmetal, gold, or painted red, teal, olive or cream.
+- **Mining tool**: fixed per species (`server/engine/tools.js`), held, big and turned up, in its right hand (each Stage II
+  design says where that is: `hand` in `stageTwoArt.js`); named with a line on its Stage II card and in the Bugdex.
 
 The Bugdex's Stage II tile and card show a sample look for the species. Stall quirk lines and card notes appear only on
 a Stage II bug. The photo bug (steeze) is never changed.

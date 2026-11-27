@@ -4,6 +4,7 @@
 // Pure functions: spriteGrid() returns the colour grid (used by the client canvas and the node tests alike).
 import { MAX_LEVEL } from '../../../server/engine/creatures.js';
 import { drawEvolution, stageTwoBody, stageTwoHand } from './evolutionArt.js';
+import { STAGE_TWO, STAGE_TWO_PAL, celShade, drawStageTwo, stageTwoHandOf, upscale } from './stageTwoArt.js';
 import { cleanVariety, varietyKey } from '../../../server/engine/variety.js';
 import { drawBase, drawMarks, drawTool, shiftPal, survey, varietyRamps } from './varietyArt.js';
 import { toolFor } from '../../../server/engine/tools.js';
@@ -54,6 +55,7 @@ function ramps(pal, v = null) {
     A: [mix(a, o, 0.45), a, mix(a, '#ffffff', 0.35)], // accent
     L: [b, l, mix(l, '#ffffff', 0.5)],              // pale parts
     E: ['#000000', '#141414', '#ffffff'],           // eyes
+    e: ['#aab4c8', '#f8f8ff', '#ffffff'],           // the whites of a Stage II bug's eyes (stageTwoArt.js)
     W: [mix(b, '#ffffff', 0.35), mix(l, '#ffffff', 0.55), '#ffffff'], // glassy wing
     M: ['#373641', '#747180', '#b6b1ae'],             // iron
     J: ['#69402d', '#bc7a3f', '#f8bf68'],             // brass
@@ -200,12 +202,13 @@ function under(c, u) {
  * Stage III are drawn exactly as they always were.
  */
 function spriteArt(L, fine, stage = 0, botched = false, capless = false, v = null, frame = 0) {
-  if (stage !== 1 || PHOTO.has(L.id)) v = null;
+  if (stage !== 1 || PHOTO.has(L.id) || gbaStage(L, stage, botched)) v = null; // the new Stage II art is drawn bare: no base, marks, colouring or tool
   const tool = v ? toolFor(L.id) : null;
   const paint = (f, only) => {
     const c = canvas(f); NOLEGS = !!v;
     try {
-      if (only) stageTwoBody(c, botched, L, { draw, capless });
+      if (gbaStage(L, stage, botched)) drawStageTwo(c, L, { nolegs: NOLEGS, body: !!only });
+      else if (only) stageTwoBody(c, botched, L, { draw, capless });
       else if (stage) drawEvolution(c, stage, botched, L, { draw, capless });
       else draw(c, L);
     } finally { NOLEGS = false; }
@@ -217,8 +220,17 @@ function spriteArt(L, fine, stage = 0, botched = false, capless = false, v = nul
   const S = survey(fine === 1 ? c : paint(1)), body = survey(paint(1, true));
   const u = canvas(fine); drawBase(u, body, v.base, frame); under(c, u);
   drawMarks(c, S, v);
-  if (tool) drawTool(c, S, tool.id, stageTwoHand(L, botched));
+  if (tool) drawTool(c, S, tool.id, gbaStage(L, stage, botched) ? stageTwoHandOf(L.id) : stageTwoHand(L, botched));
   return c;
+}
+/** A Stage II bug drawn as its own monster (stageTwoArt.js): native on a 64 or 128 grid, cel-shaded, scaled up crisp. */
+const gbaStage = (L, stage, botched) => stage === 1 && !botched && !!STAGE_TWO[L.id];
+const stagedLook = (L, stage, botched) => (gbaStage(L, stage, botched) ? { ...L, pal: STAGE_TWO_PAL[L.id] } : L);
+/** The drawn materials and their colours, `fine` x 64 a side. */
+function render(L, fine, stage, botched, capless, v, frame, R) {
+  if (!gbaStage(L, stage, botched)) { const art = spriteArt(L, fine, stage, botched, capless, v, frame); return { art, body: shade(art, R) }; }
+  const art = spriteArt(L, Math.min(2, fine), stage, botched, capless, v, frame);
+  return { art, body: upscale(celShade(art, R), SPRITE * fine) };
 }
 const varietyOf = (style) => (style?.variety ? cleanVariety(style.variety) : null);
 const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT_PAL, PHOTO.has(L.id) ? null : v); // a bought skin is worn as sold
@@ -228,9 +240,8 @@ const palFor = (L, style, v) => style?.bugskin?.pal ?? shiftPal(L.pal ?? DEFAULT
  * gives the evolved body instead, `botched` the one that went wrong.
  */
 export function spriteGrid(bug, level, fine = 1, evo = 0, botched = false, variety = null, frame = 0) {
-  const L = lookOf(bug, evo ? undefined : level), v = variety && evo === 1 ? cleanVariety(variety) : null; // Stage II only
-  const c = spriteArt(L, fine, evo, botched, false, v, frame);
-  return shade(c, ramps(palFor(L, null, v), PHOTO.has(L.id) ? null : v));
+  const L = stagedLook(lookOf(bug, evo ? undefined : level), evo, botched), v = variety && evo === 1 && !gbaStage(L, evo, botched) ? cleanVariety(variety) : null; // a botched Stage II only
+  return render(L, fine, evo, botched, false, v, frame, ramps(palFor(L, null, v), PHOTO.has(L.id) ? null : v)).body;
 }
 
 const DEFAULT_PAL = ['#111111', '#333333', '#666666', '#999999', '#cc3333'];
@@ -620,20 +631,20 @@ export function spriteCanvas(bug, style, level, fine = 1, frame = 0) {
   const artLevel = stage ? undefined : level;
   const key = `${bug.id}|${youngForm(bug, artLevel) || ''}|${style?.bugskin?.id || ''}|${style?.bughat?.shape || ''}|${style?.bugacc?.shape || ''}|${style?.gear?.shape || ''}|${style?.defense?.shape || ''}|${stage}|${botched}|${fine}|${stage === 1 ? varietyKey(varietyOf(style)) : ''}|${stage === 1 ? frame : 0}`;
   if (cache.has(key)) return cache.get(key);
-  const v = stage === 1 ? varietyOf(style) : null, L = lookOf(bug, artLevel), R = ramps(palFor(L, style, v), PHOTO.has(L.id) ? null : v); // only a Stage II bug wears its variety
+  const L = stagedLook(lookOf(bug, artLevel), stage, botched), v = stage === 1 && !gbaStage(L, stage, botched) ? varietyOf(style) : null, R = ramps(palFor(L, style, v), PHOTO.has(L.id) ? null : v); // only a Stage II bug wears its variety
   if (v?.base !== 'rotor' || stage !== 1) frame = 0;
   const capless = !!style?.bughat?.shape || style?.gear?.shape === 'helmet' || style?.defense?.shape === 'helmet'; // one hat at a time: a bought one goes on instead of its own
-  const art = spriteArt(L, fine, stage, botched, capless, v, frame), N = SPRITE * fine;
+  const { body } = render(L, fine, stage, botched, capless, v, frame, R), N = SPRITE * fine;
   const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : Object.assign(document.createElement('canvas'), { width: N, height: N });
-  const ctx = c.getContext('2d'), body = shade(art, R);
+  const ctx = c.getContext('2d');
   paintSprite(ctx, body, 0, 0, N);
   if (!style?.defense?.shape && !style?.gear?.shape && !style?.bugacc?.shape && !style?.bughat?.shape) {
     cache.set(key, c);
     return c;
   }
   // overlays write 64-grid pixels: straight onto the 64 canvas, or onto a layer the fine canvas then redraws
-  const coarse = fine === 1 ? art : spriteArt(L, 1, stage, botched, capless, v, frame);
-  const grid = fine === 1 ? body : shade(coarse, R);
+  const coarse = spriteArt(L, 1, stage, botched, capless, v, frame);
+  const grid = fine === 1 ? body : gbaStage(L, stage, botched) ? celShade(coarse, R) : shade(coarse, R);
   const wear = Array.from({ length: SPRITE }, () => new Array(SPRITE).fill(null)); let ink = null;
   const x = fine === 1 ? ctx : { set fillStyle(v) { ink = v; }, fillRect(px, py, w, h) { for (let r = py; r < py + h; r++) for (let q = px; q < px + w; q++) if (r >= 0 && r < SPRITE && q >= 0 && q < SPRITE) wear[r][q] = ink; } };
   if (style?.defense?.shape) gearOverlay(x, grid, style.defense.shape, stage); // defense gear goes on first, the attack item over it

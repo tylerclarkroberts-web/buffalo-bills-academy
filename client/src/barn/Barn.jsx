@@ -276,7 +276,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFar
       <span className="bs-kind">{pen.speciesName}{youngForm(BY_ID[pen.species], pen.level) ? ' (larva)' : ''} · <b>Lv {pen.level}</b> <TypeChip type={type} small /></span>
       <span className="bs-rec num" data-test="bout-record" title="Ring record">{pen.record.w}W {pen.record.l}L{pen.record.d ? ` ${pen.record.d}D` : ''}</span>
       {pen.title && <span className="small barn-title">{pen.title}</span>}
-      {pen.style?.evo === 1 && pen.style?.variety && <VarietyNote variety={pen.style.variety} short />}
+      {pen.style?.evo === 1 && pen.style?.variety && <VarietyNote variety={pen.style.variety} short bare={!pen.botched && pen.species !== 'steeze'} />}
       {pen.gym?.juiced ? <span className="bs-gym" data-test="barn-juiced" title={`Unruly ${pen.gym.unruly} · mine pace ${Math.round(pen.gym.mineSpeed * 100)}% · roid rage ${Math.round(pen.gym.rage * 100)}%`}>💉 JUICED · RAGE {Math.round(pen.gym.rage * 100)}%</span>
         : pen.gym?.strain >= 40 ? <span className="bs-gym strain" data-test="barn-overworked">OVERWORKED</span> : null}
       {pen.evo > 0 && <span className="small barn-title" data-test="barn-evo">{pen.evo === 2 ? 'Stage III' : 'Stage II'}{pen.botched ? `, more or less · ${pen.botched}` : ''}</span>}

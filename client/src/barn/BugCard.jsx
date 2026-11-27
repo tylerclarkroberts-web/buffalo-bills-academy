@@ -51,8 +51,10 @@ function Art({ bug, style, level }) {
 }
 
 /** One bug's own quirks (server/engine/variety.js): its ailments, each with a line, and what it gets about on. */
-export function VarietyNote({ variety, short = false }) {
+// `bare`: a clean Stage II bug, drawn without its base or tool (stageTwoArt.js), so only its ailments are named.
+export function VarietyNote({ variety, short = false, bare = false }) {
   const v = varietyLabels(variety); if (!v) return null;
+  if (bare) { if (!v.ail.length) return null; v.base = { id: 'legs' }; }
   if (short) return <span className="bs-quirk" data-test="barn-quirk" title={v.ail.map((a) => `${a.name}: ${a.line}`).join('\n')}>{v.ail.map((a) => a.name).join(' · ')}{v.base.id !== 'legs' ? ` · ${v.base.name}` : ''}</span>;
   return <p className="bc-trait bc-quirk" data-test="bug-quirk">{v.ail.map((a) => <span key={a.id}><b>{a.name}.</b> {a.line} </span>)}{v.base.id !== 'legs' && <span className="bc-base">Gets about on {v.base.name.toLowerCase()}.</span>}</p>;
 }
@@ -63,6 +65,7 @@ export default function BugCard({ species, bug = null, evo = 0 }) {
   const moves = movesFor(species, 10), trait = traitFor(species), perk = perkFor(type), no = ROSTER.indexOf(b) + 1;
   const record = bug?.record ? `${bug.record.w}–${bug.record.l}` : null;
   const stageTwo = bug ? bug.style?.evo === 1 : evo === 1; // only a Stage II bug has a base, quirks and a mining tool
+  const bare = stageTwo && !(bug?.style?.botched) && species !== 'steeze'; // and only a botched one still shows the base and tool
   return (
     <article className={`bugcard r${rarityOf(species)}`} style={{ '--tc': TYPES[type]?.color || '#c8b888' }} data-test="bug-card" aria-label={`${bug?.name || b.name}${!bug && evo ? `, ${STAGES[evo]}` : ''}, ${TYPES[type]?.name} type`}>
       <header>
@@ -84,8 +87,8 @@ export default function BugCard({ species, bug = null, evo = 0 }) {
         ))}
       </ul>
       {trait && <p className="bc-trait"><b>{trait.name}.</b> {trait.description}</p>}
-      {stageTwo && toolFor(species) && <p className="bc-trait bc-tool" data-test="bug-tool" title={toolFor(species).line}><b>Tool: {toolFor(species).name}.</b> {toolFor(species).line}</p>}
-      {stageTwo && bug?.style?.variety && <VarietyNote variety={bug.style.variety} />}
+      {stageTwo && !bare && toolFor(species) && <p className="bc-trait bc-tool" data-test="bug-tool" title={toolFor(species).line}><b>Tool: {toolFor(species).name}.</b> {toolFor(species).line}</p>}
+      {stageTwo && bug?.style?.variety && <VarietyNote variety={bug.style.variety} bare={bare} />}
       {perk && <p className="bc-trait bc-perk"><b>{TYPES[type].name}: {perk.name}.</b> {perk.description}</p>}
       <dl className="bc-match">
         <div><dt>weak to</dt><dd>{weak.map((t) => <TypeChip key={t} type={t} small />)}</dd></div>
