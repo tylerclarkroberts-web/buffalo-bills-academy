@@ -8,6 +8,8 @@ import { planBout, locate, drawBout, styleOf, STYLES, EFFECT_COLOR, introLine, v
 import { voice, sfx, music, announce } from './sfx.js';
 import { navigate } from '../App.jsx';
 import { TypeChip } from './BugCard.jsx';
+import FactCard from './FactCard.jsx';
+import { shouldShowCatchFacts } from '../../../server/engine/bug-facts.js';
 import { TYPES, typeOf, edge, perkFor } from '../../../server/engine/bug-types.js';
 import SteezeShow from './SteezeShow.jsx';
 import './barn.css';
@@ -134,6 +136,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   }, []);
   const [quit, setQuit] = useState(false);
   const [toss, setToss] = useState(null); // a jar in the air, rocking, shut or burst open
+  const [factsDismissed, setFactsDismissed] = useState(false);
   const done = pos.phase === 'done', live = !!bout.live;
   const fighters = [bout.you, bout.them];
   // the line the fight opened at (your chance): named on the favourite's side, on neither when it is even
@@ -202,6 +205,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
   const legendary = bout.rarity === 4; // the wild bug in the other corner is one of a kind
 
   const jarred = bout.over?.reason === 'jarred';
+  const showFacts = shouldShowCatchFacts({ reason: bout.over?.reason, replay, dismissed: factsDismissed, tossing: !!toss });
   const status = beat ? (landed ? beat.after : beat.before) : pos.phase === 'wait' && plan.beats.length ? plan.beats[plan.beats.length - 1].after : null;
   const line = shown ? shown.line : introLine(bout);
   const payment = bout.stake > 0 ? bout.result === 'won' ? `${money(bout.payout)} paid · ${money(bout.net, { sign: true })} profit` : bout.result === 'lost' ? `${money(bout.stake)} stake lost` : `${money(bout.stake)} stake refunded` : 'No money at stake.';
@@ -266,6 +270,7 @@ export default function Bout({ bout, replay = false, reduced, sound, onSound, on
         {done && fainted && <button className="btn small bout-center" onClick={() => { onClose(); navigate('/barn/center'); }} data-test="bout-fainted">{bout.you.name} fainted — visit the Bug Center →</button>}
         {done && <button ref={closeButton} className={`btn small${fainted ? ' ghost' : ''}`} onClick={onClose} data-test="bout-close">{fainted ? 'Later' : closeLabel}</button>}
       </div>
+      {showFacts && <FactCard species={bout.them.species} bug={bout.them} caught name={bout.over?.caught || bout.them.name} onClose={() => setFactsDismissed(true)} reduced={reduced} />}
     </dialog>
   );
 }
