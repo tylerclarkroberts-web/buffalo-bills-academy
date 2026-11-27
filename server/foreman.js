@@ -8,7 +8,7 @@ import { GameError } from './engine/game.js';
 import { FOREMAN_LORE } from './engine/lore.js';
 import {
   TYPING_PROMPT, TYPING_WPM, TYPING_ACCURACY, TYPING_RANTS, TYPING_JABS, TYPING_PRAISE,
-  TYPING_LOG_MAX, pickTypingPrompt, typingStats, publicTypingStats, publicTypingTrace, verifyTypingTrace,
+  TYPING_LOG_MAX, typingPace, mobileTypingUntil, pickTypingPrompt, typingStats, publicTypingStats, publicTypingTrace, verifyTypingTrace,
 } from './foremanTyping.js';
 
 export const BONUS = 5, BONUS_PER_HOUR = 3;
@@ -280,7 +280,8 @@ const textOf = (p) => p.text || `${p.a} ${p.op} ${p.b}`; // pre-v48 pending prob
 const publicProblem = (p) => ({ text: textOf(p), word: textOf(p).length > 24 });
 
 export class Foreman {
-  constructor({ store, accounts, now, randInt }) {
+  constructor({ store, accounts, now, randInt, mobileTypingUntil: until }) {
+    this.mobileUntil = mobileTypingUntil(until); // the phone pace ends here (ms); 0 = off
     this.store = store; this.accounts = accounts; this.now = now; this.r = randInt || ((n) => crypto.randomInt(n));
     this.doc = store.loadDoc('foreman', { pending: {}, bonuses: {}, notes: {}, typingLog: [] });
     this.doc.typingLog ||= [];
@@ -297,10 +298,13 @@ export class Foreman {
     this.store.saveDoc('foreman', next); this.doc = next;
     return this.view(playerId);
   }
-  view(playerId) {
+  /** The speed a typist needs now. `phone` comes from the request (isPhoneRequest), never from the body. */
+  pace(phone) { return typingPace({ phone: !!phone, now: this.now(), until: this.mobileUntil }); }
+  view(playerId, { phone = false } = {}) {
     const p = this.doc.pending[playerId]; if (!p) return { pending: null };
     if (p.kind === 'typing') {
-      return { pending: { id: p.id, kind: 'typing', reason: p.reason, lines: p.lines, prompt: p.prompt || TYPING_PROMPT, wpm: TYPING_WPM, accuracy: TYPING_ACCURACY, started: !!p.attemptStartedAt, misses: p.misses || 0 } };
+      const pace = this.pace(phone);
+      return { pending: { id: p.id, kind: 'typing', reason: p.reason, lines: p.lines, prompt: p.prompt || TYPING_PROMPT, wpm: pace.wpm, accuracy: TYPING_ACCURACY, ...(pace.phone ? { phonePace: true, paceUntil: pace.until } : {}), started: !!p.attemptStartedAt, misses: p.misses || 0 } };
     }
     return { pending: { id: p.id, reason: p.reason, lines: p.lines, problem: publicProblem(p.problem), misses: p.misses } };
   }
@@ -320,18 +324,22 @@ export class Foreman {
     log.push(entry);
     if (log.length > TYPING_LOG_MAX) log.splice(0, log.length - TYPING_LOG_MAX);
   }
-  startTyping(player, id) {
+  /** The pace is fixed when the attempt starts (from the start request), so an attempt begun before the end time keeps it. */
+  startTyping(player, id, { phone = false } = {}) {
     const p = this.doc.pending[player.id];
     if (!p || p.kind !== 'typing' || p.id !== id) throw new GameError('The foreman is not waiting on a typing test.', 409);
+    const pace = this.pace(phone);
     p.attemptStartedAt = this.now();
+    p.attemptWpm = pace.wpm; p.attemptPhone = pace.phone;
     this.logTyping({
       k: 'start', p: player.id, lockId: p.id,
       prompt: p.prompt || TYPING_PROMPT,
       promptIndex: p.promptIndex ?? null,
       startedAt: p.attemptStartedAt,
+      needWpm: pace.wpm, phone: pace.phone,
     });
     this.save();
-    return { started: true, startedAt: p.attemptStartedAt };
+    return { started: true, startedAt: p.attemptStartedAt, wpm: pace.wpm, ...(pace.phone ? { phonePace: true, paceUntil: pace.until } : {}) };
   }
   gradeTyping(player, id, raw, trace) {
     const p = this.doc.pending[player.id];
@@ -342,19 +350,20 @@ export class Foreman {
     const elapsed = submittedAt - startedAt;
     const prompt = p.prompt || TYPING_PROMPT;
     const typed = String(raw ?? '');
-    const stats = typingStats(typed, elapsed, prompt);
+    const needWpm = Number(p.attemptWpm) || TYPING_WPM, phonePace = !!p.attemptPhone && needWpm < TYPING_WPM;
+    const stats = typingStats(typed, elapsed, prompt, needWpm);
     const traceCheck = verifyTypingTrace(typed, trace);
     const fail = stats.fail || (traceCheck.ok ? null : 'keys');
     const passed = !fail;
     const pub = publicTypingStats({ ...stats, passed, fail });
     const compact = publicTypingTrace(trace);
-    const jab = passed ? null : (TYPING_JABS[fail] || TYPING_JABS.accuracy);
+    const jab = passed ? null : ((fail === 'speed' && phonePace ? TYPING_JABS.speedPhone : TYPING_JABS[fail]) || TYPING_JABS.accuracy);
     this.logTyping({
       k: 'submit', p: player.id, lockId: p.id,
       prompt, promptIndex: p.promptIndex ?? null,
       startedAt, submittedAt, elapsedMs: elapsed,
       wpm: pub.wpm, accuracy: pub.accuracy,
-      passed, fail, jab, textLen: typed.length,
+      passed, fail, jab, textLen: typed.length, needWpm, phone: phonePace,
       inserts: compact.inserts, chars: compact.chars,
       deletes: compact.deletes, maxInsert: compact.maxInsert,
     });
@@ -364,7 +373,7 @@ export class Foreman {
       return { ...pub, line: TYPING_PRAISE, misses: p.misses || 0, bankroll: player.bankroll };
     }
     p.misses = (p.misses || 0) + 1;
-    p.attemptStartedAt = null;
+    p.attemptStartedAt = null; delete p.attemptWpm; delete p.attemptPhone;
     this.save();
     return { ...pub, jab, misses: p.misses };
   }

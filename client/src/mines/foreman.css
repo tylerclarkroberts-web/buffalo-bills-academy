@@ -55,6 +55,8 @@
 .fm-stats b { font-weight: 700; color: #e8b81e; }
 .fm-stats b.ok { color: #8fde6e; }
 .fm-stats .fm-need { margin-left: auto; }
+.fm-stats .fm-need[data-phone] { color: #8fde6e; font-weight: 700; padding: 1px 6px; border: 1px solid #8fde6e; border-radius: 4px; }
+@media (max-width: 420px) { .fm-stats { flex-wrap: wrap; row-gap: 4px; } }
 .fm-jab { margin: 0; font-size: 13px; line-height: 1.25; color: #ffb0a4; overflow-wrap: anywhere; }
 .fm-type-actions { display: flex; gap: 8px; justify-content: flex-end; }
 @media (max-height: 500px) {

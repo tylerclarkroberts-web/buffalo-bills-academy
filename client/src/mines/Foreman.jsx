@@ -4,7 +4,7 @@
 // Music and grunts only play when the mines ♪ toggle is on.
 import React, { useEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
-import { emptyTypingTrace, recordTypingInput, publicTypingTrace } from '../../../server/foremanTyping.js';
+import { emptyTypingTrace, recordTypingInput, publicTypingTrace, endTypingComposition } from '../../../server/foremanTyping.js';
 import { reducedMotion } from '../themes/store.js';
 import { ForemanScene } from './foremanScene.js';
 import { ForemanAudio } from './foremanAudio.js';
@@ -33,6 +33,13 @@ export default function Foreman({ pending, sound, onDone }) {
   const [grade, setGrade] = useState(null); // last fail or pass from the server
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
+  // The speed needed comes from the server, which decides "phone" from the request (temporary 35 WPM phone pace).
+  const [pace, setPace] = useState({ wpm: pending.wpm || 80, phone: !!pending.phonePace });
+  const paceFrom = (r) => { if (r?.wpm) setPace({ wpm: r.wpm, phone: !!r.phonePace }); };
+  useEffect(() => {
+    if (!typingTest || !pending.id) return;
+    api('GET', '/mines/foreman').then((r) => { if (r?.pending?.id === pending.id) paceFrom(r.pending); }).catch(() => {});
+  }, [pending.id]);
   if (!audio.current) audio.current = new ForemanAudio();
 
   useEffect(() => {
@@ -67,7 +74,7 @@ export default function Foreman({ pending, sound, onDone }) {
     if (stage !== 'talk') return;
     if (idx + 1 < lines.length) { setIdx(idx + 1); say(lines[idx + 1]); }
     else if (farewell) onDone();
-    else if (typingTest) { setStage('typing'); setTyped(''); setGrade(null); setStartedAt(null); say('Type it. Mean it. Eighty a minute, ninety-five percent.'); setTimeout(() => input.current?.focus(), 80); }
+    else if (typingTest) { setStage('typing'); setTyped(''); setGrade(null); setStartedAt(null); say(pace.phone ? `Type it. Mean it. On that phone, ${pace.wpm} a minute today, ninety-five percent.` : 'Type it. Mean it. Eighty a minute, ninety-five percent.'); setTimeout(() => input.current?.focus(), 80); }
     else { setStage('math'); setAnswer(''); say(problem.word ? 'Word problem. Listen close, sport:' : `Quick now: what's ${problem.text}?`); setTimeout(() => input.current?.focus(), 80); }
   }
   function blockPaste(e) { e.preventDefault(); }
@@ -83,14 +90,17 @@ export default function Foreman({ pending, sound, onDone }) {
     const onBeforeInput = (e) => {
       if (recordTypingInput(strokes.current, e.inputType, e.data).blocked) e.preventDefault();
     };
+    const onCompositionEnd = () => endTypingComposition(strokes.current);
     el.addEventListener('beforeinput', onBeforeInput);
-    return () => el.removeEventListener('beforeinput', onBeforeInput);
+    el.addEventListener('compositionend', onCompositionEnd);
+    return () => { el.removeEventListener('beforeinput', onBeforeInput); el.removeEventListener('compositionend', onCompositionEnd); };
   }, [stage]);
   async function beginTyping() {
     if (startedAt) return startedAt;
     if (starting.current) return starting.current;
     starting.current = (async () => {
       const r = await api('POST', '/mines/foreman/typing/start', { id: pending.id });
+      paceFrom(r);
       const at = r.startedAt || Date.now();
       setStartedAt(at);
       setNowTick(Date.now());
@@ -187,9 +197,9 @@ export default function Foreman({ pending, sound, onDone }) {
               enterKeyHint="done"
             />
             <div className="fm-stats" aria-live="polite">
-              <span data-test="fm-wpm">WPM <b className={liveWpm >= (pending.wpm || 80) ? 'ok' : 'wait'}>{startedAt ? liveWpm.toFixed(0) : '—'}</b></span>
+              <span data-test="fm-wpm">WPM <b className={liveWpm >= pace.wpm ? 'ok' : 'wait'}>{startedAt ? liveWpm.toFixed(0) : '—'}</b></span>
               <span data-test="fm-acc">ACC <b className={liveAcc >= (pending.accuracy || 0.95) ? 'ok' : 'wait'}>{typed ? `${Math.round(liveAcc * 100)}%` : '—'}</b></span>
-              <span className="fm-need">{pending.wpm || 80} WPM · {Math.round((pending.accuracy || 0.95) * 100)}%</span>
+              <span className="fm-need" data-test="fm-need" data-phone={pace.phone ? '1' : undefined}>{pace.phone ? `Phone pace: ${pace.wpm} WPM today` : `${pace.wpm} WPM`} · {Math.round((pending.accuracy || 0.95) * 100)}%</span>
             </div>
             {grade && !grade.passed && <p className="fm-jab" data-test="fm-typing-result">{grade.jab} ({grade.wpm} WPM, {Math.round((grade.accuracy || 0) * 100)}%)</p>}
             <div className="fm-type-actions">

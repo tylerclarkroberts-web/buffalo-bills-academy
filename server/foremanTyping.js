@@ -14,6 +14,37 @@ export const TYPING_PROMPTS = [
 ];
 export const TYPING_PROMPT = TYPING_PROMPTS[0];
 export const TYPING_WPM = 80;
+/**
+ * Temporary phone pace (t606u, Nov 2026): on a phone the test needs MOBILE_TYPING_WPM instead of TYPING_WPM until
+ * MOBILE_TYPING_UNTIL (8 PM MST Nov 27 2026), then everyone is back to 80 with no deploy. The env var
+ * MOBILE_TYPING_UNTIL (an ISO time or epoch ms; 'off' or 0 ends it now) overrides the date.
+ */
+export const MOBILE_TYPING_WPM = 35;
+export const MOBILE_TYPING_UNTIL = Date.parse('2026-11-28T03:00:00Z');
+const PHONE_UA = /\b(iPhone|iPod|Android.+Mobile|Mobile Safari|Windows Phone|IEMobile|BlackBerry|BB10|webOS|Opera Mini)\b/i;
+/**
+ * A phone, decided on the server from the request: the Sec-CH-UA-Mobile client hint (Chromium on Android sends
+ * "?1") or a phone User-Agent (iPhone, Android "Mobile", ...). Tablets and desktops are not phones. The client
+ * sends nothing for this, so a page tweak cannot flip it; faking a whole User-Agent can, which is fine for a
+ * friendlier pace in a joke test.
+ */
+export function isPhoneRequest({ ua = '', chMobile = '' } = {}) {
+  if (String(chMobile).trim() === '?1') return true;
+  return PHONE_UA.test(String(ua));
+}
+/** `until` from MOBILE_TYPING_UNTIL: unset uses the built-in date; 'off'/'0' turns the phone pace off. */
+export function mobileTypingUntil(env) {
+  const raw = env == null ? '' : String(env).trim();
+  if (!raw) return MOBILE_TYPING_UNTIL;
+  if (/^(off|false|no|0)$/i.test(raw)) return 0;
+  const n = /^\d+$/.test(raw) ? Number(raw) : Date.parse(raw);
+  return Number.isFinite(n) ? n : MOBILE_TYPING_UNTIL;
+}
+/** The speed this player needs right now: 35 on a phone before `until`, else 80. */
+export function typingPace({ phone = false, now = Date.now(), until = MOBILE_TYPING_UNTIL } = {}) {
+  if (phone && now < until) return { wpm: MOBILE_TYPING_WPM, phone: true, until };
+  return { wpm: TYPING_WPM, phone: false };
+}
 export const TYPING_ACCURACY = 0.95;
 /** Matches client/src/mines/heeshee.js APPEAR_AFTER_MS: after this, the Heeshee is in the tunnels. */
 export const HEESHEE_APPEAR_MS = 5000;
@@ -57,6 +88,7 @@ export const TYPING_RANTS = [
 
 export const TYPING_JABS = {
   speed: 'TOO SLOW, sport. Eighty words a minute. These fingers look like they mine MUD.',
+  speedPhone: 'TOO SLOW, sport. Thirty-five a minute on that pocket phone. I am being GENEROUS today.',
   accuracy: 'Dagnabbit, that was sloppy. Ninety-five percent or it don\'t count. Start over.',
   short: 'That ain\'t the whole thing. I said EVERY word. Try again.',
   early: 'Nice try, paste-hands. You type it. You don\'t dump it. Start over.',
@@ -96,7 +128,7 @@ export function levenshtein(a, b) {
   return prev[t.length];
 }
 
-export function typingStats(text, elapsedMs, prompt = TYPING_PROMPT) {
+export function typingStats(text, elapsedMs, prompt = TYPING_PROMPT, needWpm = TYPING_WPM) {
   const typed = String(text ?? '');
   const elapsed = Number(elapsedMs);
   const dist = levenshtein(typed, prompt);
@@ -110,7 +142,7 @@ export function typingStats(text, elapsedMs, prompt = TYPING_PROMPT) {
     return { wpm, accuracy, passed: false, fail: 'short' };
   }
   if (accuracy < TYPING_ACCURACY) return { wpm, accuracy, passed: false, fail: 'accuracy' };
-  if (wpm < TYPING_WPM) return { wpm, accuracy, passed: false, fail: 'speed' };
+  if (wpm < needWpm) return { wpm, accuracy, passed: false, fail: 'speed' };
   return { wpm, accuracy, passed: true, fail: null };
 }
 
@@ -131,8 +163,10 @@ export function shouldBlockTypingInput(inputType, data) {
 }
 
 export function emptyTypingTrace() {
-  return { inserts: 0, chars: 0, deletes: 0, maxInsert: 0, blocked: 0, firstMs: 0, lastMs: 0 };
+  return { inserts: 0, chars: 0, deletes: 0, maxInsert: 0, blocked: 0, firstMs: 0, lastMs: 0, comp: '' };
 }
+/** A composition (Android keyboards, some iOS ones) ended: the next insertCompositionText starts a new word. */
+export function endTypingComposition(trace) { if (trace) trace.comp = ''; }
 
 /** Honest one-character-at-a-time trace for tests and for a client that already typed `text`. */
 export function typingTraceFor(text, { deletes = 0, maxInsert = 1, spanMs = 8_000 } = {}) {
@@ -150,6 +184,27 @@ export function typingTraceFor(text, { deletes = 0, maxInsert = 1, spanMs = 8_00
 export function recordTypingInput(trace, inputType, data, now = Date.now()) {
   const type = String(inputType || '');
   const chunk = String(data ?? '');
+  // Phone keyboards that compose (Gboard, Samsung, ...) re-send the whole word so far with every key:
+  // "T", "Ty", "Tyl"... Only the new letters are typing, so count the growth, a shrink as a delete. A jump
+  // bigger than TYPING_MAX_INSERT (a tapped suggestion) is a dump, the same as any other. The browser
+  // cannot cancel these, so nothing is prevented; the dump just does not count as keystrokes.
+  if (type === 'insertCompositionText') {
+    const prev = String(trace.comp || '');
+    trace.comp = chunk;
+    if (!trace.firstMs) trace.firstMs = now;
+    trace.lastMs = now;
+    if (chunk.startsWith(prev) && chunk.length > prev.length) {
+      const size = chunk.length - prev.length;
+      if (size > TYPING_MAX_INSERT) { trace.blocked = (trace.blocked || 0) + 1; return { blocked: false, dumped: true }; }
+      trace.inserts += 1; trace.chars += size; if (size > trace.maxInsert) trace.maxInsert = size;
+    } else if (prev.startsWith(chunk) && chunk.length < prev.length) {
+      trace.deletes += 1;
+    } else if (chunk !== prev) {
+      // Rewritten in place (autocorrect inside the composition): not typing.
+      trace.blocked = (trace.blocked || 0) + 1; return { blocked: false, dumped: true };
+    }
+    return { blocked: false };
+  }
   if (shouldBlockTypingInput(type, chunk)) {
     trace.blocked = (trace.blocked || 0) + 1;
     return { blocked: true };

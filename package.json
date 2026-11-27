@@ -71,7 +71,8 @@
     "e2e:pov-stress": "node scripts/e2e-pov-stress.mjs",
     "e2e:heeshee": "node scripts/e2e-heeshee.mjs",
     "e2e:equity": "node scripts/e2e-holdem-equity.mjs",
-    "e2e:heal-all": "node scripts/e2e-bug-center-heal-all.mjs"
+    "e2e:heal-all": "node scripts/e2e-bug-center-heal-all.mjs",
+    "e2e:foreman-phone": "node scripts/e2e-foreman-phone-pace.mjs"
   },
   "dependencies": {
     "@fontsource/monoton": "^5.3.0",
