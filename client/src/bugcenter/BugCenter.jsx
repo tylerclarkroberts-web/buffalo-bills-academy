@@ -6,7 +6,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, greetingFor, healRequest, newsAfter, newsAsEvolved, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after } from './script.js';
+import { NURSE, greeting, greetingFor, healRequest, newsAfter, newsAsEvolved, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after, healPlan, healAllRequest, greetingAll, allHealed } from './script.js';
 import { healChime, podBlip, drill } from './chime.js';
 import { drawBug } from '../barn/sprite.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -198,6 +198,37 @@ function Reveal({ evolved, pen, en }) {
   );
 }
 
+/** One healed bug, drawn still; the row pops them in one after another. */
+function CheerBug({ bug, i }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const c = ref.current, sp = BY_ID[bug.species]; if (!c || !sp) return;
+    const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+    drawBug(x, sp, { w: c.width, h: c.height, still: true, fill: 0.92, style: bug.style, level: bug.level });
+  }, [bug]);
+  return (
+    <figure className="bc-cheer-bug" style={{ '--i': i }} data-test="bc-cheer-bug">
+      <span className="bc-heart" aria-hidden="true">♥</span>
+      <canvas ref={ref} width={96} height={96} role="img" aria-label={`${bug.name}, healed`} />
+      <figcaption>{bug.name}</figcaption>
+    </figure>
+  );
+}
+
+/** The all-healed moment: everyone the machine just treated, back on their feet together. Tap to go on. */
+function Cheer({ cheer, en, onNext }) {
+  const n = cheer.bugs.length;
+  return (
+    <div className="bc-op bc-cheer" data-test="bc-cheer" role="button" tabIndex={0} aria-label="Next" onClick={(e) => { e.stopPropagation(); onNext(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNext(); } }}>
+      <p className="bc-cheer-title" aria-live="polite">{n > 1 ? '全員元気！' : '元気になった！'}<small lang="en">{n > 1 ? `All ${n} healed!` : 'Healed!'}</small></p>
+      <div className="bc-cheer-row" data-count={n}>{cheer.bugs.map((bug, i) => <CheerBug key={bug.id} bug={bug} i={i} />)}</div>
+      <p className="bc-cheer-bill" data-test="bc-cheer-bill">{cheer.cost ? `$${cheer.cost}` : '無料'}<small lang="en">{cheer.cost ? `Paid · ${cheer.paid} × $${cheer.each}` : 'No charge'}</small></p>
+      <span className="bc-op-next" aria-hidden="true">▼</span>
+    </div>
+  );
+}
+
 /** The specialist's visit: four still panels, the receipt, then the curtain opens. Tap (or Enter) to go on. */
 function Operation({ op, pen, en, onNext }) {
   const P = op.panels, evolved = op.r?.evolved, shown = op.r || op.news ? op.step : Math.min(op.step, P.length - 1);
@@ -273,6 +304,7 @@ export default function BugCenter() {
   const [counter, setCounter] = useState(false); // his parts counter is open
   const [lit, setLit] = useState(false);
   const [pod, setPod] = useState(false);
+  const [cheer, setCheer] = useState(null); // the all-healed moment: { bugs, cost, paid, each, lines }
   const fit = useRef(null); const [box, setBox] = useState({ w: 0, h: 0, H: H0 });
   const timers = useRef([]);
   const later = (fn, ms) => { timers.current.push(setTimeout(fn, ms)); };
@@ -283,7 +315,7 @@ export default function BugCenter() {
     api('GET', '/barn').then(setB).catch((e) => setErr(e.message));
   }, []);
   const busyRef = useRef(false);
-  busyRef.current = !!(talk || op);
+  busyRef.current = !!(talk || op || cheer);
   // A tab left open through a mine shift would otherwise keep a stale healthy barn view and offer a normal heal.
   useEffect(() => {
     const refresh = () => {
@@ -310,13 +342,15 @@ export default function BugCenter() {
   const [typed, full, finish] = useTyped(line?.ja || '');
   const start = () => {
     if (talk) return;
-    const g = greetingFor(b);
+    const g = greetingFor(b), plan = g.kind === 'news' ? null : healPlan(b);
+    // Two or more knocked out: everyone is seen together, one question, the whole bill up front (one bug keeps its yes/no).
+    if (plan?.bugs.length > 1) { setTalk({ lines: greetingAll(plan), i: 0, mode: 'talk', kind: 'all', plan }); return; }
     setTalk({ lines: g.lines, i: 0, mode: 'talk', kind: g.kind, news: g.news || null });
   };
   const next = () => {
     if (!talk || talk.mode === 'heal') return;
     if (!full) return finish();
-    if (line.ask || line.pick) return; // waiting for an answer
+    if (line.ask || line.pick || line.choices) return; // waiting for an answer
     if (line.call && talk.kind === 'news') {
       const evolved = newsAsEvolved(talk.news);
       const subject = bugs.find((bug) => bug.id === talk.news?.id) || bugs.find((bug) => bug.species === talk.news?.species) || null;
@@ -384,26 +418,60 @@ export default function BugCenter() {
       setTalk({ lines: done(view.stable?.bugs.find((bug) => bug.id === pen?.id) || view.pen, healed, cost), i: 0, mode: 'talk' });
     }, wait);
   };
+  // One tap for the whole waiting room (POST /barn/heal-all). `total` is what the button said: the server never bills more.
+  const healEveryone = async (kind) => {
+    const plan = talk?.plan; if (!plan) return;
+    setTalk({ lines: [WAIT], i: 0, mode: 'heal' });
+    setPod(true); if (sound) podBlip();
+    const t0 = Date.now();
+    let r = null, failed = null;
+    const call = api('POST', '/barn/heal-all', healAllRequest(plan, kind)).then((x) => { r = x; }).catch((e) => { failed = e; });
+    later(() => { setLit(true); if (sound) healChime(); }, 700);
+    await call;
+    later(() => {
+      setLit(false); setPod(false);
+      if (failed?.status === 409) { // the bill or the waiting room changed: show the new one
+        api('GET', '/barn').then((view) => { setB(view); const next = healPlan(view); setTalk(next ? { lines: greetingAll(next), i: 0, mode: 'talk', kind: 'all', plan: next } : { lines: greetingFor(view).lines, i: 0, mode: 'talk' }); })
+          .catch((e) => setTalk({ lines: [OOPS(e.message)], i: 0, mode: 'talk' }));
+        return;
+      }
+      if (failed) { setTalk({ lines: [OOPS(failed.message)], i: 0, mode: 'talk' }); return; }
+      const { healedAll = [], cost = 0, waiting = [], ...view } = r; setB(view); refreshSession();
+      const lines = allHealed(healedAll, cost, waiting);
+      if (!healedAll.length) { setTalk({ lines, i: 0, mode: 'talk' }); return; }
+      const shown = healedAll.map((h) => view.stable?.bugs.find((bug) => bug.id === h.id) || h);
+      setTalk(null); setCheer({ bugs: shown, cost, paid: healedAll.filter((h) => h.paid).length, each: plan.paid[0]?.healCost || 0, lines });
+    }, Math.max(0, 3300 - (Date.now() - t0)));
+  };
+  const cheerNext = () => { const lines = cheer?.lines; setCheer(null); if (lines) setTalk({ lines, i: 0, mode: 'talk' }); };
+  const plan = !talk && !op && !cheer ? healPlan(b) : null;
   if (!b) return <div className="screen bc"><div className="bc-loading muted">{err ? <p role="alert">{err}</p> : 'いらっしゃいませ…'}</div></div>;
   const portrait = talk && talk.mode !== 'heal';
   return (
     <div className="screen bc" data-test="bug-center" lang="ja">
       <div className="bc-fit" ref={fit}>
-        <div className={`bc-scene${op || counter ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : undefined}>
-          <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (talk) next(); else start(); }} />
-          {pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
+        <div className={`bc-scene${op || counter || cheer ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : cheer ? cheerNext : undefined}>
+          <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (cheer) cheerNext(); else if (talk) next(); else start(); }} />
+          {plan && plan.bugs.length > 1 && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${plan.bugs.length} bugs fainted`} /> <span>{plan.bugs.length}匹：<b>ひんし</b></span>{en && <small lang="en">{plan.bugs.length} fainted</small>}</div>}
+          {cheer && <Cheer cheer={cheer} en={en} onNext={cheerNext} />}
+          {!(plan && plan.bugs.length > 1) && !cheer && pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
           {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
           {counter && <Counter pen={b.pen} en={en} onClose={() => setCounter(false)} />}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
             <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
             <div className="bc-box" role="dialog" aria-label={NURSE.en}>
               <span className="bc-who" title={NURSE.en}><ruby>{NURSE.ja}<rt>{NURSE.kana}</rt></ruby></span>
-              <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && !line.pick && <span className="bc-next" aria-hidden="true">▼</span>}</p>
+              <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && !line.pick && !line.choices && <span className="bc-next" aria-hidden="true">▼</span>}</p>
               {(en || line.both) && full && <p className="bc-en" lang="en">{line.en}</p>}
               {line.pick && full && <div className="bc-ask bc-pick" data-test="bc-pick">
                 {pen.donors.map((d) => <button key={d.id} className="bc-choice" lang="en" onClick={(e) => { e.stopPropagation(); setTalk(null); setOp({ step: 0, r: null, panels: PANELS2, donor: d.id }); }} data-test="bc-donor">{d.name} · Lv {d.level}</button>)}
                 <button className="bc-choice ghost" onClick={(e) => { e.stopPropagation(); setTalk({ lines: [NO], i: 0, mode: 'talk' }); }} data-test="bc-pick-no" title={PICK.not.en}>{PICK.not.ja}</button>
                 <p className="bc-pick-warn"><span lang="ja">{PICK.warn.ja}</span> <span lang="en">{PICK.warn.en}</span></p>
+              </div>}
+              {line.choices && full && <div className="bc-ask bc-ask-all" data-test="bc-choices">
+                {line.choices.map((c) => <button key={c.kind} className={`bc-choice${c.main ? '' : ' ghost'}`} lang="ja" title={c.en} data-test={`bc-heal-${c.kind}`}
+                  onClick={(e) => { e.stopPropagation(); if (c.kind === 'no') setTalk({ lines: [talk.plan?.paid.length ? REST : NO], i: 0, mode: 'talk' }); else healEveryone(c.kind); }}>
+                  {c.ja}{(en || c.kind !== 'no') && <small lang="en">{c.en}</small>}</button>)}
               </div>}
               {line.ask && full && <div className="bc-ask">
                 <button className="bc-choice" onClick={(e) => { e.stopPropagation(); heal(line.pay); }} data-test="bc-yes" title="Yes">はい</button>
@@ -416,8 +484,8 @@ export default function BugCenter() {
       </div>
       <nav className="bc-bar">
         <button className="btn ghost small" onClick={() => navigate('/barn')} title="Back to the Barn" data-test="bc-back">◀ 牧場へ{en && <small lang="en"> Barn</small>}</button>
-        <button className="btn ghost small" onClick={() => setCounter(!counter)} disabled={!!talk || !!op} aria-pressed={counter} title="Parts counter" data-test="bc-parts">{COUNTER.title.ja}{en && <small lang="en"> {COUNTER.title.en}</small>}</button>
-        <button className="btn" onClick={start} disabled={!!talk || !!op || counter} title="Talk to the nurse" data-test="bc-talk">話しかける{en && <small lang="en"> Talk</small>}</button>
+        <button className="btn ghost small" onClick={() => setCounter(!counter)} disabled={!!talk || !!op || !!cheer} aria-pressed={counter} title="Parts counter" data-test="bc-parts">{COUNTER.title.ja}{en && <small lang="en"> {COUNTER.title.en}</small>}</button>
+        <button className="btn" onClick={start} disabled={!!talk || !!op || !!cheer || counter} title="Talk to the nurse" data-test="bc-talk">話しかける{en && <small lang="en"> Talk</small>}</button>
         <button className={`btn ghost small ${en ? 'on' : ''}`} onClick={() => setEn(!en)} aria-pressed={en} title="Show English" data-test="bc-en">訳</button>
         <button className="btn ghost small" onClick={() => setSound(!sound)} aria-pressed={sound} title="Jingle on/off">{sound ? '🔊' : '🔈'}</button>
       </nav>

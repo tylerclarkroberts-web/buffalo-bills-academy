@@ -1291,6 +1291,54 @@ export class Barn {
     }
     return { ...this.view(playerId), healed: was, cost };
   }
+  /**
+   * The Bug Center's waiting room: every knocked-out bug this owner keeps in a stall, as the nurse sees it. `free` ones
+   * have rested RECOVER_MS; the rest cost FAST_HEAL_COST each to treat now. Sick or collected bugs need the specialist
+   * and a bug in a live fight is not here, so neither is listed.
+   */
+  waitingRoom(playerId) {
+    const now = this.now(), fight = this.fights.fightOf(playerId), side = fight ? this.fights.sideOf(fight, playerId) : -1;
+    const fighting = side >= 0 ? fight.fighters?.[side] || null : null;
+    return this.bugs(playerId).map((bug) => this.refresh(playerId, idOf(bug))).filter((pen) => pen?.stage === 'creature' && pen.faintedAt && !pen.sick && !pen.taken && !isHeesheeHeld(pen)
+      && !(fighting && fighting.species === pen.species && fighting.name === givenName(pen.species, pen.name)))
+      .map((pen) => { const waitMs = Math.max(0, pen.faintedAt + RECOVER_MS - now); return { pen, id: idOf(pen), name: pen.name, free: waitMs <= 0, waitMs, cost: waitMs > 0 ? FAST_HEAL_COST : 0 }; });
+  }
+
+  /**
+   * Heal every knocked-out bug at once. Rested ones are free; `pay` names the not-yet-rested bugs the owner agreed to
+   * pay FAST_HEAL_COST each for, and `total` is the sum they were shown. One barn write heals them all and one
+   * `barn-heal` ledger line takes the money; if the money cannot be written the barn is put back. Asking again once
+   * they are up heals and charges nothing.
+   */
+  healAll(playerId, { pay = [], total } = {}) {
+    if (!Array.isArray(pay) || pay.some((id) => !Number.isInteger(id)) || (total !== undefined && (typeof total !== 'number' || !Number.isFinite(total) || total < 0))) throw new GameError('Ask the nurse again.', 400);
+    const room = this.waitingRoom(playerId), wanted = new Set(pay);
+    const healing = room.filter((w) => w.free || wanted.has(w.id)), paid = healing.filter((w) => !w.free);
+    const cost = cents(paid.length * FAST_HEAL_COST);
+    if (total !== undefined && cost > total + 1e-9) throw new GameError(`The bill changed: it is now $${cost}. Look again.`, 409);
+    if (!healing.length) return { ...this.view(playerId), healedAll: [], cost: 0, waiting: room.map(({ id, name, waitMs, cost: c }) => ({ id, name, waitMs, cost: c })) };
+    const player = this.accounts.ensure(this.store.players[playerId]);
+    if (cost) this.accounts.requireFunds(player, cost, 'expedited recovery');
+    const now = this.now(), before = { pens: this.doc.pens, bench: this.doc.bench };
+    let changes = {};
+    for (const { pen } of healing) {
+      const { faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, ...rest } = pen;
+      const healed = { ...rest, healedAt: now, heals: (pen.heals || 0) + 1 };
+      const partner = this.doc.pens[playerId], same = (other) => other && idOf(other) === idOf(pen);
+      if (same(partner)) changes.pens = { ...(changes.pens || this.doc.pens), [playerId]: healed };
+      else { const bench = (changes.bench || this.doc.bench)[playerId] || []; changes.bench = { ...(changes.bench || this.doc.bench), [playerId]: bench.map((other) => (same(other) ? healed : other)) }; }
+    }
+    this.commitDoc(changes); // every bug up in one write
+    if (cost) {
+      try {
+        const draft = { ...player };
+        this.accounts.change(draft, -cost, 'barn-heal', `Bug Center: expedited recovery × ${paid.length} (${paid.map((w) => w.name).join(', ')})`, { save: false });
+        this.store.commitPlayerDrafts([draft]);
+      } catch (error) { this.commitDoc(before); throw error; } // no money taken, nobody healed
+    }
+    const left = this.waitingRoom(playerId);
+    return { ...this.view(playerId), healedAll: healing.map(({ id, name, free }) => ({ id, name, paid: !free })), cost, waiting: left.map(({ id, name, waitMs, cost: c }) => ({ id, name, waitMs, cost: c })) };
+  }
   /** What one bug wears from the store (skin palette, hat, accessory, battle gear), for drawing only. With no bug, the partner. */
   looksOf(playerId, pen) {
     const st = this.styleOf?.(playerId, pen ? idOf(pen) : undefined) || {};
