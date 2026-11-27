@@ -15,6 +15,7 @@ import Bout, { mergeFight } from './Bout.jsx';
 import Ring from './Ring.jsx';
 import FightFx from './FightFx.jsx';
 import BugCard, { TypeChip, STAGES, VarietyNote } from './BugCard.jsx';
+import FactCard from './FactCard.jsx';
 import { varietyFor } from '../../../server/engine/variety.js';
 import { TYPES, RARITY, typeOf, rarityOf } from '../../../server/engine/bug-types.js';
 import { DEX_ORDER, DEX_TIERS } from './dexOrder.js';
@@ -263,6 +264,7 @@ function CombatPane({ pen, battle, draft, setDraft, save, busy, locked }) {
 function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFarm, poke, setPoke, reduced, tab, setTab, battle, draft, setDraft, save, toRing, replayLast, replayButton }) {
   const type = typeOf(pen.species), next = pen.abilities?.find((a) => !a.unlocked);
   const [letGo, setLetGo] = useState(false); // Release asks once, in place
+  const [facts, setFacts] = useState(false);
   const keys = (e) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
     e.preventDefault();
@@ -315,6 +317,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFar
           <div className="barn-row"><button className="btn small" onClick={release} disabled={busy || !!b.live} data-test="release-confirm">Release {pen.name}</button><button className="btn small ghost" onClick={() => setLetGo(false)}>Keep it</button></div>
         </div> : <div className="barn-row bs-more">
           <button className="btn small" onClick={toRing}>Find a bout</button>
+          <button className="btn small ghost" onClick={() => setFacts(true)} data-test="bug-facts">Facts</button>
           {pen.lastBout && <button ref={replayButton} className="btn small ghost" disabled={busy} onClick={replayLast} data-test="bout-replay">Replay last fight</button>}
           {rarityOf(pen.species) === 4 ? <span className="small muted" data-test="no-release">Legendary: it can't be released.</span>
             : pen.species === 'steeze' ? <span className="small muted" data-test="no-release">STEEZE? Leave? He just unpacked his golf bag. The stall is his now.</span>
@@ -331,6 +334,7 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFar
           : <div className="bs-pane bs-cardpane" id="barn-panel-card" role="tabpanel" aria-labelledby="barn-tab-card"><BugCard species={pen.species} bug={pen} /></div>}
       </div>
     </div>
+    {facts && <FactCard species={pen.species} bug={pen} onClose={() => setFacts(false)} reduced={reduced} />}
   </div>;
 }
 
