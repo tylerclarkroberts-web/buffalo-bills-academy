@@ -68,38 +68,39 @@ export const stageTwoPal = (id) => STAGE_TWO_PAL[id] || null;
 
 // ---- the drawing kit ----
 const M = 31.5; // the middle column
-/** One big, slightly derpy bug eye. Drawn without mirroring so the pair can sit a little off-kilter. */
+/** One oversized, slightly derpy bug eye. Drawn without mirroring so the pair can look a little in different directions. */
 function oneEye(c, x, y, { rw, rh, iris = 'A', lookX = 0.3, lookY = 0.35, droop = 1 } = {}) {
-  c.ell(x, y, rw + 0.3, rh + 0.3, 'o', false);
+  c.ell(x, y, rw + 0.45, rh + 0.45, 'o', false);
   c.ell(x, y, rw, rh, 'e', false);
-  const ix = x + lookX, iy = y + lookY, ir = Math.min(rw, rh) * 0.84;
+  const ix = x + lookX, iy = y + lookY, ir = Math.min(rw, rh) * 0.78;
   c.ell(ix, iy, ir, ir, iris, false);
-  c.ell(ix, iy, ir * 0.82, ir * 0.82, 'E', false);
-  c.put(ix - ir * 0.4, iy - ir * 0.4, 'G');
+  c.ell(ix, iy, ir * 0.8, ir * 0.8, 'E', false);
+  c.put(ix - ir * 0.38, iy - ir * 0.4, 'G');
   if (droop > 0) {
     // a thin sleepy lid along the top arc — enough to read as heavy, not a visor
-    const t = 0.22 + Math.min(droop, 2.2) * 0.03;
+    const t = 0.18 + Math.min(droop, 2.2) * 0.025;
     c.poly([
       [x - rw * 1.02, y - rh * (1 - t)],
       [x + rw * 1.02, y - rh * (1 - t * 1.2)],
       [x + rw * 1.0, y - rh * 0.92],
-      [x, y - rh - 0.12],
+      [x, y - rh - 0.15],
       [x - rw * 1.0, y - rh * 0.96],
     ], 'o', false);
   }
 }
-/** A pair of big, slightly derpy bug eyes: large rounded whites, thin droopy lids, big pupils a little off-kilter.
- *  `x, y` is the left one's middle; the right one is drawn to match, with a slight lean. `slant` > 0 is a heavier droop. */
+/** A pair of oversized, slightly derpy bug eyes: big white sclera, a dark outline, large pupils a little off-kilter.
+ *  About 1.8× the previous diameter, so they bulge past the head where there is room. `x, y` is the left one's middle.
+ *  `slant` > 0 is a heavier droop. */
 function eyes(c, x, y, { w = 3, h = 2.4, slant = 1, iris = 'A', look = 0.4, lash = true } = {}) {
-  const rw = w * 1.18, rh = Math.max(w * 0.98, h * 1.18), droop = lash ? slant : 0;
-  oneEye(c, x, y, { rw, rh, iris, lookX: look * 0.65 + 0.15, lookY: rh * 0.2, droop });
-  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -(look * 0.4), lookY: rh * 0.1, droop: droop * 0.85 });
+  const rw = w * 2.12, rh = Math.max(w * 1.76, h * 2.12), droop = lash ? slant : 0;
+  oneEye(c, x, y, { rw, rh, iris, lookX: rw * 0.16, lookY: rh * 0.2, droop });
+  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -rw * 0.04, lookY: rh * 0.06, droop: droop * 0.85 });
 }
-/** One eye on each side of a wide head, round and bulging: for bugs whose eyes stick out. Same derpy look, just set wider. */
+/** One eye on each side of a wide head, round and bulging: for bugs whose eyes stick out. Same oversized derpy look. */
 function bugEyes(c, x, y, r = 2.6, { iris = 'A', slant = 1 } = {}) {
-  const rw = r * 1.02, rh = r * 0.96;
-  oneEye(c, x, y, { rw, rh, iris, lookX: r * 0.1, lookY: rh * 0.18, droop: slant });
-  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -r * 0.04, lookY: rh * 0.08, droop: slant * 0.85 });
+  const rw = r * 1.84, rh = r * 1.73;
+  oneEye(c, x, y, { rw, rh, iris, lookX: rw * 0.14, lookY: rh * 0.18, droop: slant });
+  oneEye(c, 63 - x, y, { rw, rh, iris, lookX: -rw * 0.03, lookY: rh * 0.06, droop: slant * 0.85 });
 }
 const chain = (c, pts, m, w = 1, mirror = true) => { for (let i = 0; i + 1 < pts.length; i++) c.line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], m, w, mirror); };
 /** A jointed limb through the points, thicker at the top, with a claw at the end. */
@@ -597,8 +598,8 @@ D.gyrinus = { draw(c, K) { // Whirl Spinner: a glossy steel-blue pebble spinning
   if (!K.nolegs) limb(c, [[19, 44], [12, 50], [11, 54]], { w: 2 });
   centred(c, 37, 15, 15, 'B');
   eyes(c, 27, 30.5, { w: 2.6, h: 2, slant: 1.8 });
-  oneEye(c, 25.5, 39, { rw: 1.7, rh: 1.65, iris: 'E', lookX: 0.18, lookY: 0.22, droop: 0.7 });
-  oneEye(c, 63 - 25.5, 39, { rw: 1.7, rh: 1.65, iris: 'E', lookX: -0.04, lookY: 0.1, droop: 0.55 });
+  oneEye(c, 25.5, 39, { rw: 3.05, rh: 2.95, iris: 'E', lookX: 0.4, lookY: 0.45, droop: 0.7 });
+  oneEye(c, 63 - 25.5, 39, { rw: 3.05, rh: 2.95, iris: 'E', lookX: -0.1, lookY: 0.2, droop: 0.55 });
 } };
 
 D.sphaerocoris = { draw(c, K) { // Canvas Shield: a lime shield painted with two bold blue targets
