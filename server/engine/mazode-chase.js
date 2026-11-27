@@ -2,17 +2,21 @@
 // node --test and the browser both use it. Distances are tiles; times are ms on the server's clock.
 //
 // It snatches your bug and bolts down a route the server picks through the day's tunnels, a couple of tiles ahead and
-// at your own walking pace (WALK_SPEED, the most a phone stick moves you; Shift-run is off during a chase so a keyboard
-// is no faster). 20 s in it slows by 10%, so whoever stayed on it gains about a tile every six seconds. Get a pick into
-// it and it stops to laugh at you, then asks three riddles. Fall too far behind, or wander off, and it is gone.
+// at 95% of your walking pace (WALK_SPEED, the most a phone stick moves you; Shift-run is off during a chase so a keyboard
+// is no faster). 20 s in it drops to 85% of your pace, so whoever stayed on it is already closing in and then gains about
+// a tile every four seconds. Get a pick into it and it stops to laugh at you, then asks three riddles. Fall too far
+// behind, or wander off, and it is gone.
 import { WALK_SPEED } from './mine-movement.js';
 import { rng } from './maze.js';
 
 export const TILE_M = 2.2;                      // metres per tile (client/src/mines/scene.js TILE)
-export const CHASE_SPEED = WALK_SPEED / TILE_M; // tiles/s: exactly your pace
+export const PACE = WALK_SPEED / TILE_M;        // tiles/s: your walking pace
+export const CHASE_PACE = 0.95;                 // it starts at 95% of your pace
+export const SLOW_PACE = 0.85;                  // ...then drops to 85%
+export const CHASE_SPEED = PACE * CHASE_PACE;
 export const HEAD_START = 2.4;                  // tiles along its route when it bolts: just out of reach
-export const SLOW_AFTER_MS = 20_000;            // then it slows...
-export const SLOW_FACTOR = 0.9;                 // ...by 10%
+export const SLOW_AFTER_MS = 20_000;            // 20 s in...
+export const SLOW_FACTOR = SLOW_PACE / CHASE_PACE;
 export const CHASE_MAX_MS = 75_000;             // nobody stays interested forever: after this it simply leaves
 export const LOSE_TILES = 9;                    // further behind than this (through the tunnels, not as the crow flies)...
 export const LOSE_MS = 3_000;                   // ...for this long, and it has lost you
@@ -26,7 +30,7 @@ export const BEAT_MS = 1_800;                   // "Hm. Lucky." between riddles
 export const RIDDLE_MS = 20_000;                // per riddle
 export const ANSWER_GRACE_MS = 600;             // network slack on the deadline
 export const FLEE_LAUGH_MS = 1_800;             // it laughs at you first...
-export const FLEE_FACTOR = 3;                   // ...then runs at three times your pace...
+export const FLEE_FACTOR = 3 / CHASE_PACE;      // ...then runs at three times your pace (3 × walk, not 3 × its 95%)...
 export const FLEE_MS = 15_000;                  // ...for 15 s, and is gone
 export const ROUTE_MIN = 240;                   // tiles: longer than the longest chase plus the getaway
 export const CEIL_MAX = 8;                      // tiles it stays up on the roof when it doubles back (by then it is past you)
