@@ -2,7 +2,7 @@
 // games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, small close-set beady eyes, and
 // cel shading in two or three flat tones with a dark outline. A few quiet built details sit on top of that: thin panel
 // seams and rivets on the shell, steel caps on the joints and feeler tips, one tiny glowing lens in place of one
-// bead, and one clearly robotic arm that ends in a piece of mining equipment. The drawing is native on a 64 or 128
+// bead, and a mining tool: a robotic arm on most species, or a plated tail or snout mount on the Railroad Worm, the Glowworm and the Candle Lanternfly. The drawing is native on a 64 or 128
 // grid and only ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
 // turns the material grid into colours. Original art: inspired by the era, nothing copied from any game.
@@ -242,7 +242,7 @@ const centred = (c, cy, rx, ry, m) => c.ell(M, cy, rx, ry, m, false);
 /** A stripe of accent across a round part, from one side to the other at height `y`. */
 function band(c, cy, rx, ry, y, m = 'A', w = 2) { const half = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2)) - 0.6; if (half > 1) c.line(M - half, y, M + half, y, m, w, false); }
 
-/** The mining tool built into this species' robotic arm (part of the species art, not the old variety layer). */
+/** The mining tool built into this species' art (not the old variety layer), and where it is mounted. */
 export const STAGE_TWO_TOOL = {
   ceroplophana: 'pick', bocydium: 'shovel', phrictus: 'lamp-pick', pyrops: 'lamp-pick', graphocephala: 'spike',
   umbonia: 'drill', trachelophorus: 'drill', eupholus: 'core', pachyrhynchus: 'saw', platymeris: 'grabber',
@@ -257,18 +257,37 @@ export const STAGE_TWO_TOOL = {
   ampulex: 'pick', colobopsis: 'spike', dryococelus: 'pick', megachile: 'shovel', meganeura: 'drill', menacanthus: 'grabber',
 };
 
+export const STAGE_TWO_MOUNT = {
+  ceroplophana: 'arm', bocydium: 'arm', phrictus: 'arm', pyrops: 'body', graphocephala: 'arm',
+  umbonia: 'arm', trachelophorus: 'arm', eupholus: 'arm', pachyrhynchus: 'arm', platymeris: 'arm',
+  acanthaspis: 'arm', helicopsyche: 'arm', chrysochroa: 'arm', lamprima: 'arm', onymacris: 'arm',
+  brachinus: 'arm', phrixothrix: 'tail', macrodontia: 'arm', sagra: 'arm', manticora: 'arm',
+  heteropteryx: 'arm', mantispa: 'arm', nemoptera: 'arm', pseudocreobotra: 'arm', deroplatys: 'arm',
+  empusa: 'arm', polyphylla: 'arm', phanaeus: 'arm', lethocerus: 'arm', sphaerocoris: 'arm',
+  pheropsophus: 'arm', melanophila: 'arm', solenopsis: 'arm', pyrrhocoris: 'arm', brevisana: 'arm',
+  micronecta: 'arm', bertholdia: 'arm', gromphadorhina: 'arm', gryllotalpa: 'arm', dytiscus: 'arm',
+  notonecta: 'arm', gyrinus: 'arm', halobates: 'arm', phloeodes: 'arm', photuris: 'arm',
+  arachnocampa: 'tail', myrmeleon: 'arm', odontomachus: 'arm', dasymutilla: 'arm', peruphasma: 'arm',
+  ampulex: 'arm', colobopsis: 'arm', dryococelus: 'arm', megachile: 'arm', meganeura: 'arm',
+  menacanthus: 'arm',
+};
+
+const MECH_MOUNT = {
+  phrixothrix: { x: 16, y: 56, dx: -0.75, dy: 0.65 },
+  arachnocampa: { x: 36, y: 56, dx: 0.45, dy: 0.9 },
+  pyrops: { x: 37, y: 8, dx: 0.28, dy: -0.96 },
+};
+
+
 // Species with no mirrored organic arm to replace: a hanging left-side pose, shoulder to wrist.
 const MECH_FALLBACK = {
   onymacris: [[22, 26], [12, 22], [6, 16]],
   phrictus: [[22, 36], [11, 44], [5, 52]],
-  pyrops: [[22, 40], [12, 46], [6, 52]],
   helicopsyche: [[22, 48], [12, 44], [5, 38]],
   nemoptera: [[24, 32], [13, 38], [6, 46]],
   bertholdia: [[22, 32], [12, 38], [5, 46]],
   megachile: [[22, 34], [12, 40], [5, 48]],
   gromphadorhina: [[22, 36], [12, 44], [6, 52]],
-  phrixothrix: [[24, 20], [14, 28], [6, 36]],
-  arachnocampa: [[24, 30], [14, 36], [7, 44]],
   meganeura: [[26, 28], [16, 36], [8, 44]],
   acanthaspis: [[22, 38], [12, 44], [6, 52]],
   notonecta: [[22, 28], [12, 24], [6, 18]],
@@ -434,6 +453,29 @@ function drawMechArm(c, pts, tool = 'drill', w = 4) {
   const dx = e[0] - mid[0], dy = e[1] - mid[1], len = Math.hypot(dx, dy) || 1;
   drawMechTool(c, e[0], e[1], dx / len, dy / len, tool);
 }
+
+/** A short plated collar with rivets, then the mining tool, used for tail and body mounts. */
+function drawMechCollar(c, x, y, ux, uy, scale = 1) {
+  const px = -uy, py = ux, s = scale;
+  c.ell(x, y, 3.5 * s, 3.1 * s, 'B', false);
+  c.ell(x, y, 2.3 * s, 2.1 * s, 'Z', false);
+  rivet(c, x + px * 1.7 * s, y + py * 1.7 * s, 1.05);
+  rivet(c, x - px * 1.7 * s, y - py * 1.7 * s, 1.05);
+  const ex = x + ux * 3.3 * s, ey = y + uy * 3.3 * s;
+  c.line(x, y, ex, ey, 'B', 4.2 * s, false);
+  piston(c, x, y, ex, ey);
+  c.ell(ex, ey, 2.3 * s, 2.3 * s, 'Z', false);
+  rivet(c, ex, ey, 1.05);
+  return [ex, ey];
+}
+
+function drawMechMount(c, spec, tool = 'drill') {
+  const len = Math.hypot(spec.dx, spec.dy) || 1;
+  const ux = spec.dx / len, uy = spec.dy / len;
+  const [tx, ty] = drawMechCollar(c, spec.x, spec.y, ux, uy, spec.scale || 1);
+  drawMechTool(c, tx, ty, ux, uy, tool);
+}
+
 
 // The default hand a mining tool goes in: the end of its right arm.
 const HAND = { x: 50.5, y: 39 };
@@ -960,8 +1002,14 @@ export function drawStageTwo(c, L, kit = {}) {
     for (const j of JOINTS) servo(c, j.x, j.y, j.r, j.mirror);
     panelSeams(c);
     if (!kit.body) {
-      const job = MECH_Q[0] || (MECH_FALLBACK[L.id] ? { pts: MECH_FALLBACK[L.id], w: 4 } : null);
-      if (job) drawMechArm(c, MECH_POSE_OVER[L.id] || job.pts, STAGE_TWO_TOOL[L.id] || 'drill', job.w);
+      const mount = STAGE_TWO_MOUNT[L.id] || 'arm';
+      const tool = STAGE_TWO_TOOL[L.id] || 'drill';
+      if (mount === 'arm') {
+        const job = MECH_Q[0] || (MECH_FALLBACK[L.id] ? { pts: MECH_FALLBACK[L.id], w: 4 } : null);
+        if (job) drawMechArm(c, MECH_POSE_OVER[L.id] || job.pts, tool, job.w);
+      } else if (MECH_MOUNT[L.id]) {
+        drawMechMount(c, MECH_MOUNT[L.id], tool);
+      }
     }
   } finally { SPECIES = null; JOINTS.length = 0; MECH_Q.length = 0; }
   return true;
