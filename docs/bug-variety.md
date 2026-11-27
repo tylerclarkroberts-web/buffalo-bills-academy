@@ -18,10 +18,10 @@ so a bug already has its look the day it evolves. When it is a Stage II bug it s
   a tone, plus usually a morph: two-tone, inverted, melanic (dark, accent still bright), pale or vivid.
 - **Shell pattern**, bold, inked in a colour that stands out from the body: stripes, spots, chevrons, camo, checker,
   bands, freckles (or plain, rarely).
-- **Plating**: what its machine body is finished in: iron, brass, copper, gunmetal, gold, or painted red, teal, olive or
-  cream.
-- **Mining tool**: fixed per species (`server/engine/tools.js`), held, big and turned up, in the machine's free right hand (the gripper);
-  named with a line on its Stage II card and in the Bugdex. The left arm keeps the machine's own attachment.
+- **Plating**: what its metal is finished in (its base and tool, and a botched bug's machine body): iron, brass, copper,
+  gunmetal, gold, or painted red, teal, olive or cream.
+- **Mining tool**: fixed per species (`server/engine/tools.js`), held, big and turned up, in its right hand (each Stage II
+  design says where that is: `hand` in `stageTwoArt.js`); named with a line on its Stage II card and in the Bugdex.
 
 The Bugdex's Stage II tile and card show a sample look for the species. Stall quirk lines and card notes appear only on
 a Stage II bug. The photo bug (steeze) is never changed.
