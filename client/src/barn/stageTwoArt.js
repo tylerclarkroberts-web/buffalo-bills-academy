@@ -2,7 +2,7 @@
 // games: a front-facing hero pose, one bold silhouette, a strong dominant colour of its own, small close-set beady eyes, and
 // cel shading in two or three flat tones with a dark outline. A few quiet built details sit on top of that: thin panel
 // seams and rivets on the shell, steel caps on the joints and feeler tips, one tiny glowing lens in place of one
-// bead, and a mining tool: a robotic arm on species with clear forelimbs, or a plated tail or body mount on a few where an arm would look wrong. The drawing is native on a 64 or 128
+// bead, and a mining tool: a robotic arm on most species, or a plated tail or snout mount on the Railroad Worm, the Glowworm and the Candle Lanternfly. The drawing is native on a 64 or 128
 // grid and only ever scaled up with nearest-neighbour, so every pixel stays crisp at any size.
 // Everything is drawn with the sprite canvas from sprite.js (64-grid coordinates, materials by letter); celShade()
 // turns the material grid into colours. Original art: inspired by the era, nothing copied from any game.
@@ -259,31 +259,23 @@ export const STAGE_TWO_TOOL = {
 
 export const STAGE_TWO_MOUNT = {
   ceroplophana: 'arm', bocydium: 'arm', phrictus: 'arm', pyrops: 'body', graphocephala: 'arm',
-  umbonia: 'body', trachelophorus: 'arm', eupholus: 'arm', pachyrhynchus: 'body', platymeris: 'arm',
+  umbonia: 'arm', trachelophorus: 'arm', eupholus: 'arm', pachyrhynchus: 'arm', platymeris: 'arm',
   acanthaspis: 'arm', helicopsyche: 'arm', chrysochroa: 'arm', lamprima: 'arm', onymacris: 'arm',
-  brachinus: 'body', phrixothrix: 'tail', macrodontia: 'arm', sagra: 'arm', manticora: 'arm',
+  brachinus: 'arm', phrixothrix: 'tail', macrodontia: 'arm', sagra: 'arm', manticora: 'arm',
   heteropteryx: 'arm', mantispa: 'arm', nemoptera: 'arm', pseudocreobotra: 'arm', deroplatys: 'arm',
   empusa: 'arm', polyphylla: 'arm', phanaeus: 'arm', lethocerus: 'arm', sphaerocoris: 'arm',
   pheropsophus: 'arm', melanophila: 'arm', solenopsis: 'arm', pyrrhocoris: 'arm', brevisana: 'arm',
-  micronecta: 'arm', bertholdia: 'arm', gromphadorhina: 'body', gryllotalpa: 'arm', dytiscus: 'arm',
-  notonecta: 'arm', gyrinus: 'body', halobates: 'arm', phloeodes: 'arm', photuris: 'arm',
-  arachnocampa: 'tail', myrmeleon: 'arm', odontomachus: 'arm', dasymutilla: 'arm', peruphasma: 'tail',
+  micronecta: 'arm', bertholdia: 'arm', gromphadorhina: 'arm', gryllotalpa: 'arm', dytiscus: 'arm',
+  notonecta: 'arm', gyrinus: 'arm', halobates: 'arm', phloeodes: 'arm', photuris: 'arm',
+  arachnocampa: 'tail', myrmeleon: 'arm', odontomachus: 'arm', dasymutilla: 'arm', peruphasma: 'arm',
   ampulex: 'arm', colobopsis: 'arm', dryococelus: 'arm', megachile: 'arm', meganeura: 'arm',
   menacanthus: 'arm',
 };
 
 const MECH_MOUNT = {
-  // tail
   phrixothrix: { x: 16, y: 56, dx: -0.75, dy: 0.65 },
   arachnocampa: { x: 36, y: 56, dx: 0.45, dy: 0.9 },
-  peruphasma: { x: 31.5, y: 56, dx: -0.35, dy: 0.94 },
-  // body
   pyrops: { x: 37, y: 8, dx: 0.28, dy: -0.96 },
-  umbonia: { x: 31.5, y: 14, dx: 0, dy: -1 },
-  pachyrhynchus: { x: 16, y: 36, dx: -0.95, dy: -0.15 },
-  brachinus: { x: 50, y: 12, dx: 0.55, dy: -0.84 },
-  gromphadorhina: { x: 15, y: 44, dx: -1, dy: 0.05 },
-  gyrinus: { x: 31.5, y: 50, dx: 0, dy: 1 },
 };
 
 
@@ -295,9 +287,11 @@ const MECH_FALLBACK = {
   nemoptera: [[24, 32], [13, 38], [6, 46]],
   bertholdia: [[22, 32], [12, 38], [5, 46]],
   megachile: [[22, 34], [12, 40], [5, 48]],
+  gromphadorhina: [[22, 36], [12, 44], [6, 52]],
   meganeura: [[26, 28], [16, 36], [8, 44]],
   acanthaspis: [[22, 38], [12, 44], [6, 52]],
   notonecta: [[22, 28], [12, 24], [6, 18]],
+  gyrinus: [[22, 32], [12, 28], [6, 22]],
 };
 
 // Optional pose overrides, used even when an organic arm was replaced, to keep silhouettes distinct.
@@ -586,7 +580,7 @@ D.brachinus = { hand: { x: 18, y: 42 }, draw(c, K) { // Blast Cannon: an orange 
   if (!K.body) { c.line(38, 32, 46, 18, 'A', 5, false); c.ell(49, 13, 5, 4, 'Z', false); c.ell(55, 8, 4, 3.4, 'Z', false); c.ell(44, 7.5, 3, 2.6, 'Z', false); }
   stance(c, K, { hipX: 25, hipY: 50, kneeX: 19, kneeY: 55, w: 4 });
   centred(c, 43, 13, 13, 'A'); c.line(M, 32, M, 55, 'o', 1, false);
-  if (!K.body) limb(c, [[18, 36], [12, 42], [14, 47]], { w: 4, tip: 'fist' });
+  if (!K.body) limb(c, [[18, 36], [12, 42], [14, 47]], { w: 4, tip: 'fist', mech: true });
   centred(c, 25, 9, 7, 'B');
   eyes(c, 27, 25.5, { w: 2.6, h: 2, slant: 1.6 });
 } };
@@ -677,7 +671,7 @@ D.umbonia = { draw(c, K) { // Thornback: one towering thorn, shark-fin high, wit
   if (!K.body) { c.poly([[21, 34], [M, 2], [42, 34]], 'B', false); c.line(M, 8, M, 30, 'A', 2, false); c.poly([[29.5, 9], [M, 2], [33.5, 9]], 'L', false); }
   stance(c, K, { hipX: 25, hipY: 51, kneeX: 20, kneeY: 56, w: 3 });
   centred(c, 43, 13, 12, 'B'); centred(c, 42, 8, 6.5, 'L');
-  if (!K.body) limb(c, [[19, 44], [13, 48], [14, 53]], { w: 3 });
+  if (!K.body) limb(c, [[19, 44], [13, 48], [14, 53]], { w: 3, mech: true });
   eyes(c, 27, 41, { w: 2.6, h: 2, slant: 1.6 });
 } };
 
@@ -790,7 +784,7 @@ D.peruphasma = { hand: { x: 50, y: 33 }, draw(c, K) { // Night Blade: a jet-blac
   if (!K.nolegs) { limb(c, [[29, 46], [20, 52], [18, 61]], { w: 2, tip: 'foot' }); limb(c, [[29, 39], [18, 43], [12, 52]], { w: 2, tip: 'claw' }); }
   if (!K.body) c.poly([[30, 22], [19, 17], [17, 26], [29, 28]], 'A');
   c.line(M, 14, M, 58, 'B', 4, false);
-  if (!K.body) { limb(c, [[29, 26], [19, 35], [13, 29]], { w: 2 }); chain(c, [[29, 9], [22, 3], [14, 2]], 'D'); }
+  if (!K.body) { limb(c, [[29, 26], [19, 35], [13, 29]], { w: 2, mech: true }); chain(c, [[29, 9], [22, 3], [14, 2]], 'D'); }
   centred(c, 12, 5, 4.5, 'B');
   eyes(c, 28.5, 12, { w: 2, h: 1.6, slant: 2, iris: 'Y' });
 } };
@@ -864,7 +858,7 @@ D.acanthaspis = { hand: { x: 50, y: 42 }, draw(c, K) { // Shroud Ninja: a ragged
 } };
 
 D.gromphadorhina = { draw(c, K) { // Iron Hisser: three heavy mahogany plates, two horn bumps, hissing steam
-  if (!K.body) { chain(c, [[27, 34], [14, 29], [6, 19]], 'D', 1); c.ell(8, 41, 2.6, 2, 'Z'); c.ell(4.5, 36, 1.7, 1.5, 'Z'); }
+  if (!K.body) { chain(c, flipPts([[27, 34], [14, 29], [6, 19]]), 'D', 1, false); c.ell(63 - 8, 41, 2.6, 2, 'Z', false); c.ell(63 - 4.5, 36, 1.7, 1.5, 'Z', false); }
   if (!K.nolegs) limb(c, [[20, 52], [15, 58], [16, 61]], { w: 3, tip: 'foot' });
   centred(c, 45, 17, 13, 'B'); band(c, 45, 17, 13, 43, 'D', 1); band(c, 45, 17, 13, 51, 'D', 1);
   centred(c, 30, 14, 8, 'B'); c.ell(26, 24, 2.8, 2.6, 'L');
@@ -900,7 +894,7 @@ D.eupholus = { draw(c, K) { // Drill Sapphire: turquoise with black bands, its l
 D.pachyrhynchus = { draw(c, K) { // Egg Fortress: a perfect glossy indigo egg, dotted in neon orange
   if (!K.nolegs) limb(c, [[22, 53], [19, 61]], { w: 4, tip: 'foot' });
   centred(c, 40, 17, 17, 'B'); c.ell(22, 34, 3, 3, 'A'); centred(c, 47, 3.4, 3, 'A'); c.ell(22, 48, 2.4, 2.4, 'A');
-  if (!K.body) limb(c, [[16, 36], [10, 40], [11, 44]], { w: 3, tip: 'fist' });
+  if (!K.body) limb(c, [[16, 36], [10, 40], [11, 44]], { w: 3, tip: 'fist', mech: true });
   centred(c, 20, 6, 5, 'B');
   eyes(c, 28, 20.5, { w: 2.2, h: 1.8, slant: 1.4 });
 } };
