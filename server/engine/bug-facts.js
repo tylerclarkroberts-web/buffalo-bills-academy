@@ -622,7 +622,7 @@ export function factCard(id, { evo = 0, botched = null } = {}) {
     ...f,
     foundLabel: f.kind === 'lore' ? 'Where' : 'Found',
     eatsLabel: 'Eats',
-    factsLabel: f.kind === 'lore' ? 'Academy lore' : 'Strange facts',
+    factsLabel: f.kind === 'lore' ? 'Academy lore' : 'Factoids',
     lore,
   };
 }

@@ -39,6 +39,7 @@ test('the most striking facts come first', () => {
 test('STEEZE, Bloom Eye and botched rebuilds are marked as Academy lore, not science', () => {
   assert.equal(FACTS.steeze.kind, 'lore');
   assert.equal(factCard('steeze').factsLabel, 'Academy lore');
+  assert.equal(factCard('ampulex').factsLabel, 'Factoids');
   assert.equal(STAGE_II_NAME.pseudocreobotra, 'Bloom Eye');
   const wild = factCard('pseudocreobotra');
   assert.equal(wild.lore.some((p) => p.key === 'stage2'), false, 'a wild catch does not mention Bloom Eye');
