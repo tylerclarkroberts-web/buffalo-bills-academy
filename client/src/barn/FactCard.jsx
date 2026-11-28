@@ -17,7 +17,7 @@ function Art({ bug, style, level }) {
     drawBug(x, bug, { w: c.width, h: c.height, still: true, fill: 1, style, level });
   }, [bug.id, level, JSON.stringify(style || null), photo]);
   if (bug.id === 'steeze' && photo) {
-    return <div className="bf-window" aria-hidden="true"><img className="bf-art bf-photo" src={photo} alt="" onError={() => setPhoto(null)} /></div>;
+    return <div className="bf-window bf-steeze" aria-hidden="true"><img className="bf-art bf-photo" src={photo} alt="" onError={() => setPhoto(null)} /></div>;
   }
   return <div className="bf-window" aria-hidden="true"><canvas ref={ref} className="bf-art" /></div>;
 }

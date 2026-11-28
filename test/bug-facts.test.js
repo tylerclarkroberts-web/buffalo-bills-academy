@@ -15,7 +15,8 @@ test('every catchable species has a fact-card entry with a range, a diet and two
     assert.ok(f.eats, `${bug.id} has a diet`);
     assert.ok(f.found.length <= FOUND_MAX, `${bug.id} found is short enough for one screen`);
     assert.ok(f.eats.length <= EATS_MAX, `${bug.id} eats is short enough for one screen`);
-    assert.ok(f.facts.length >= 2 && f.facts.length <= 3, `${bug.id} has 2 or 3 facts`);
+    const factMax = bug.id === 'steeze' ? 5 : 3;
+    assert.ok(f.facts.length >= 2 && f.facts.length <= factMax, `${bug.id} has 2 to ${factMax} facts`);
     for (const [i, text] of f.facts.entries()) {
       assert.ok(text && text.length <= FACT_MAX, `${bug.id} fact ${i} is short enough for one screen`);
     }
@@ -39,6 +40,12 @@ test('the most striking facts come first', () => {
 test('STEEZE, Bloom Eye and botched rebuilds are marked as Academy lore, not science', () => {
   assert.equal(FACTS.steeze.kind, 'lore');
   assert.equal(factCard('steeze').factsLabel, 'Academy lore');
+  const steezeFacts = factCard('steeze').facts;
+  assert.equal(steezeFacts.includes('He hordes wealth. The spelling is his.'), false);
+  assert.ok(steezeFacts.some((text) => text === 'He hoards wealth.'));
+  assert.ok(steezeFacts.some((text) => /retinas detached/i.test(text)));
+  assert.ok(steezeFacts.some((text) => /likes the ladies/i.test(text)));
+
   assert.equal(factCard('ampulex').factsLabel, 'Factoids');
   assert.equal(STAGE_II_NAME.pseudocreobotra, 'Bloom Eye');
   const wild = factCard('pseudocreobotra');
