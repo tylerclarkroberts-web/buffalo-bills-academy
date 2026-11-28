@@ -9,7 +9,7 @@
 // so a server restart can't cause or skip one. A dead bug occupies its stall until its gravestone is laid to rest.
 import crypto from 'node:crypto';
 import { GameError } from './engine/game.js';
-import { ROSTER, BY_ID, givenName, levelFor, rawLevel, xpFor, formOf, PAUSED_AT, STAGE_CAPS } from './engine/creatures.js';
+import { ROSTER, BY_ID, givenName, levelFor, rawLevel, xpFor, formOf, PAUSED_AT, STAGE_CAPS, LEVEL_CAP } from './engine/creatures.js';
 import { Fights } from './fights.js';
 import { movesFor, battleFor, combatStats, traitFor, STANCES, riskFor, fadedXp, fightXp } from './engine/bug-combat.js';
 import { QUIRKS, MAN_QUIRKS } from './engine/bout.js';
@@ -51,7 +51,7 @@ const STRAYS_KEPT = 50;                         // released bugs loose in the mi
 /** What names one bug among its owner's: when its egg was picked up (rows from before stalls: when it hatched). */
 export const idOf = (pen) => pen.eggAt || pen.bornAt;
 /** The Bugdex entries a kept bug stands for: itself as hatched and every stage it has evolved through. An egg is still a secret. */
-const formsOf = (pen) => (pen.stage === 'egg' ? [] : Array.from({ length: (pen.evo || 0) + 1 }, (_, evo) => formOf(pen.species, evo)));
+const formsOf = (pen) => (pen.stage === 'egg' ? [] : isSteeze(pen.species) ? [pen.species] : Array.from({ length: (pen.evo || 0) + 1 }, (_, evo) => formOf(pen.species, evo)));
 const idOk = (v) => v === undefined || Number.isFinite(v);
 export const DEFAULT_INCUBATE_MS = 3 * 24 * 3600e3;
 // Needs decay gently: from full to empty in about a week (hunger, v33: was 2 days), 2.5 days (mood) and 3 days
@@ -97,7 +97,10 @@ export const EVO_NEWS_PLAYER = '9dbf29cf-9704-44e7-bdf3-b6d5cd241853';
 export const EVO_NEWS_AT = 1795475094187;
 export const EVO_NEWS_BILL = { had: 10853.56, took: 5426.78, left: 5426.78 };
 const EVO_NEWS_LEVELS = { levelBefore: 9, levelAfter: 10 };
-export const purpleChance = (xp, stage = 0) => Math.max(0, Math.min(1, (rawLevel(xp) - RANGES[stage][0] + 1) / (RANGES[stage][1] - RANGES[stage][0] + 1)));
+export const purpleChance = (xp, stage = 0, species) => {
+  if (isSteeze(species)) return 0;
+  return Math.max(0, Math.min(1, (rawLevel(xp) - RANGES[stage][0] + 1) / (RANGES[stage][1] - RANGES[stage][0] + 1)));
+};
 /** Outside a fight only a knockout persists. Older standing bugs with saved damage recover here too. */
 export function healthOf(pen) {
   return pen && !pen.faintedAt ? 100 : 0;
@@ -587,7 +590,7 @@ export class Barn {
     let dirty = this.hatchIfDue(playerId, pen, now, pen !== this.doc.pens[playerId]);
     dirty = this.saw(playerId, formsOf(pen)) || dirty; // the Bugdex: hatched, caught or evolved, its owner has met it
     // the top level it can show, by its stage: held at PAUSED_AT until it evolves. Stamped here so every level lookup can read it off the bug.
-    const cap = STAGE_CAPS[pen.evo || 0] ?? PAUSED_AT; if (pen.cap !== cap) { pen.cap = cap; dirty = true; }
+    const cap = isSteeze(pen.species) ? LEVEL_CAP : (STAGE_CAPS[pen.evo || 0] ?? PAUSED_AT); if (pen.cap !== cap) { pen.cap = cap; dirty = true; }
     if (pen.stage === 'creature' && !isHeesheeHeld(pen)) {
       const before = pen.xp; const dies = this.deathAt(pen);
       if (!isSteeze(pen.species) && now >= dies) { pen.diedAt = dies; }
@@ -1209,12 +1212,13 @@ export class Barn {
   /** Is the partner due an evolution out of `stage`? Hatched, well, at that stage, with the XP for the range's first level. */
   due(playerId, stage = 0) {
     const pen = this.doc.pens[playerId];
+    if (!pen || isSteeze(pen.species)) return null;
     return this.fit(playerId) && (pen.evo || 0) === stage && !pen.sick && !pen.taken && rawLevel(pen.xp || 0) >= RANGES[stage][0] ? pen : null;
   }
   /** Rolled at clock-in, from evolution's own source: does the specialist come for the partner at the end of this shift? */
   rollCollect(playerId) {
     const pen = this.due(playerId, 1);
-    return !!pen && this.evoInt(1000) < Math.round(1000 * purpleChance(pen.xp, 1));
+    return !!pen && this.evoInt(1000) < Math.round(1000 * purpleChance(pen.xp, 1, pen.species));
   }
   /** It left with him. Out like a knockout, with a ticket in its stall, until the Bug Center. Returns its name, or null if it was never due. */
   collect(playerId) {
@@ -1223,15 +1227,16 @@ export class Barn {
     this.commitPen(playerId, { ...pen, taken: this.now(), faintedAt: this.now(), faintedBy: null, faintedIn: 'collected' });
     return pen.name;
   }
-  /** The bugs he would take for parts: the owner's other living, hatched bugs that are home. Never a legendary: there is only the one. */
+  /** The bugs he would take for parts: the owner's other living, hatched bugs that are home. Never a legendary, and never STEEZE. */
   donors(playerId, pen) {
-    return this.bugs(playerId).filter((d) => d !== pen && d.stage === 'creature' && !d.taken && !d.sick && !isHeesheeHeld(d) && rarityOf(d.species) !== LEGENDARY);
+    return this.bugs(playerId).filter((d) => d !== pen && d.stage === 'creature' && !d.taken && !d.sick && !isHeesheeHeld(d) && rarityOf(d.species) !== LEGENDARY && !isSteeze(d.species));
   }
   /**
    * The Bug Center visit for a collected bug: stage three. He is paid in parts, one of the owner's other bugs, which does
    * not come back. An owner with no other bug pays BILL_SHARE of their cash. No refusing, no refund.
    */
   rebuild(playerId, pen, donorId) {
+    if (isSteeze(pen?.species)) throw new GameError('The specialist takes one look and sits back down.', 409);
     if (this.fights.fightOf(playerId)) throw new GameError('Not while one of your bugs is in a fight.', 409);
     const donors = this.donors(playerId, pen), donor = donors.find((d) => idOf(d) === Number(donorId)) || null;
     if (donors.length && !donor) throw new GameError('He does not want money. He wants parts. Pick one of your other bugs.', 409);
@@ -1257,7 +1262,7 @@ export class Barn {
   /** Rolled at clock-in, from evolution's own source: does this shift have purple acid in it? */
   rollPurple(playerId) {
     const pen = this.due(playerId);
-    return !!pen && this.evoInt(1000) < Math.round(1000 * purpleChance(pen.xp));
+    return !!pen && this.evoInt(1000) < Math.round(1000 * purpleChance(pen.xp, 0, pen.species));
   }
   /** The partner drank it. It is out, like a knockout, until the Bug Center sees it. Returns its name, or null if it was never due. */
   fallSick(playerId) {
@@ -1268,6 +1273,7 @@ export class Barn {
   }
   /** The Bug Center visit for a sick bug: it evolves, clean or botched, and its owner pays BILL_SHARE of their cash. No refusing, no refund. */
   evolve(playerId, pen) {
+    if (isSteeze(pen?.species)) throw new GameError('The specialist takes one look and sits back down.', 409);
     const player = this.accounts.ensure(this.store.players[playerId]);
     const had = cents(player.bankroll), took = Math.floor(had * 100 * BILL_SHARE) / 100;
     const botched = this.evoInt(BOTCH_ODDS) === 0 ? QUIRKS[this.evoInt(QUIRKS.length)] : null; // which way it went wrong is its own roll
@@ -1350,14 +1356,17 @@ export class Barn {
     // Bare /barn/heal (and existing tests) still go through to evolve/rebuild; only the heal UI opts into the guard.
     const fromHeal = mode === 'heal' || normalHeal === true;
     const fromSpecialist = confirmEvolve === true || specialist === true || mode === 'specialist';
-    if ((pen.sick || pen.taken) && fromHeal && !fromSpecialist) {
+    if ((pen.sick || pen.taken) && fromHeal && !fromSpecialist && !isSteeze(pen.species)) {
       const err = new GameError(`${pen.name} needs the specialist. Talk to Nurse Hikari first.`, 409);
       err.code = 'specialist_required';
       throw err;
     }
-    if (pen.sick) return this.evolve(playerId, pen);
-    if (pen.taken) return this.rebuild(playerId, pen, donor);
-    const was = !!pen.faintedAt;
+    // STEEZE does not evolve: a purple or collected flag on him is treated as an ordinary faint, not a rebuild.
+    if (!isSteeze(pen.species)) {
+      if (pen.sick) return this.evolve(playerId, pen);
+      if (pen.taken) return this.rebuild(playerId, pen, donor);
+    }
+    const was = !!pen.faintedAt || (isSteeze(pen.species) && !!(pen.sick || pen.taken));
     const waitMs = pen.faintedAt ? pen.faintedAt + RECOVER_MS - this.now() : 0;
     let cost = 0;
     if (waitMs > 0) {
@@ -1368,8 +1377,9 @@ export class Barn {
       cost = FAST_HEAL_COST;
     }
     if (was) {
-      const { faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, ...rest } = pen;
-      this.commitPen(playerId, { ...rest, healedAt: this.now(), heals: (pen.heals || 0) + 1 });
+      const { faintedAt: _f, faintedBy: _b, faintedIn: _i, health: _h, sick, taken, ...rest } = pen;
+      const next = isSteeze(pen.species) ? rest : { ...rest, ...(sick ? { sick } : {}), ...(taken ? { taken } : {}) };
+      this.commitPen(playerId, { ...next, healedAt: this.now(), heals: (pen.heals || 0) + 1 });
     }
     return { ...this.view(playerId), healed: was, cost };
   }

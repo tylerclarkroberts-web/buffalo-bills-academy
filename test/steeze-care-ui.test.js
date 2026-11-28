@@ -18,3 +18,12 @@ test('the barn care row labels STEEZE through careLabel, and keeps the ordinary 
   assert.match(css, /\.barn-acts\.steeze-acts \.btn/);
   assert.match(css, /white-space: normal/);
 });
+
+test('the Bugdex and XP line do not hint that STEEZE can evolve', () => {
+  assert.match(barn, /isSteeze\(bug.id\) \? \[0\]/);
+  assert.match(barn, /dex-solo/);
+  assert.match(barn, /!isSteeze\(bug.id\) && <div className="dex-evos">/);
+  assert.match(barn, /isSteeze\(pen.species\) \? ' · top level' : ' · top level, for now'/);
+  assert.match(css, /\.dex-fam\.dex-solo/);
+  assert.doesNotMatch(barn, /evolution progress|can evolve|will evolve/i);
+});
