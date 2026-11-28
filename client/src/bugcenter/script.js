@@ -83,10 +83,37 @@ export function newsAsEvolved(news) {
   };
 }
 
-export function done(pen, healed, cost = 0) {
+/** STEEZE only: a cheeky wink after the ordinary heal lines. One is picked at random. */
+export const STEEZE_WHO = { ja: 'スティーズ', en: 'STEEZE' };
+export const STEEZE_AFTERCARE = [
+  L('あの……すっかり元気です。念入りに、です。', "He's... all patched up. Thoroughly."),
+  L('そんな目で見ないでください。とても手のかかる処置でしたから。', "Don't look at me like that. It was a very involved procedure."),
+  L('かみ、ちょっと……治療に、熱が入っちゃいました。', 'My hair is a little... The procedure got rather involved.'),
+  L('バイタルは、とても順調です。詳しくは聞かないでくださいね。', 'His vitals are excellent. Extremely. Please don\'t ask.'),
+  L('落ち着いて、ナース。帽子が曲がってるぞ。', "Easy, Nurse. Your cap's on crooked.", { who: 'steeze' }),
+  L('心配はいらなかった。そちらこそ、大丈夫か？', 'I was never in any danger. You, on the other hand...', { who: 'steeze' }),
+];
+export function isSteezePatient(pen) {
+  return pen?.species === 'steeze';
+}
+export function steezeAftercare(rand = Math.random) {
+  const i = Math.floor(rand() * STEEZE_AFTERCARE.length) % STEEZE_AFTERCARE.length;
+  return STEEZE_AFTERCARE[i];
+}
+function withSteezeWink(lines, patients, rand = Math.random) {
+  const list = Array.isArray(patients) ? patients : [patients];
+  if (!list.some(isSteezePatient)) return lines;
+  const out = lines.slice();
+  const end = out.at(-1)?.end ? out.pop() : null;
+  out.push(steezeAftercare(rand));
+  if (end) out.push(end);
+  return out;
+}
+
+export function done(pen, healed, cost = 0, rand = Math.random) {
   const n = pen?.name || '';
-  return [healed ? L(`お待たせしました！${n}ちゃんはすっかり元気になりました！`, `Thank you for waiting! ${n} is fully healed!`) : L(`ばっちり元気です！${n}ちゃん、えらいですね♪`, `Perfectly healthy! Good job, ${n} ♪`),
-    cost ? L(`お代は $${cost} です。ありがとうございます♪`, `That comes to $${cost}. Thank you ♪`) : L('お代はいりませんよ。', "There's no charge."), L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })];
+  return withSteezeWink([healed ? L(`お待たせしました！${n}ちゃんはすっかり元気になりました！`, `Thank you for waiting! ${n} is fully healed!`) : L(`ばっちり元気です！${n}ちゃん、えらいですね♪`, `Perfectly healthy! Good job, ${n} ♪`),
+    cost ? L(`お代は $${cost} です。ありがとうございます♪`, `That comes to $${cost}. Thank you ♪`) : L('お代はいりませんよ。', "There's no charge."), L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })], pen, rand);
 }
 /** The specialist's visit, one still panel at a time. Nobody speaks. */
 export const PANELS = [L('ドアが、ひとりでに開いた。', 'The door opened by itself.'), L('だれかが立っている。', 'Someone is standing there.'),
@@ -198,10 +225,10 @@ export function greetingAll(plan) {
 }
 
 /** After the machine: everyone it healed, then the bill (or none). */
-export function allHealed(healed, cost = 0, waiting = []) {
+export function allHealed(healed, cost = 0, waiting = [], rand = Math.random) {
   const n = healed.length;
-  return [n > 1 ? L(`お待たせしました！みんな、すっかり元気です！`, `Thank you for waiting! Everyone is fully healed!`) : L(`お待たせしました！${healed[0]?.name || ''}ちゃんはすっかり元気です！`, `Thank you for waiting! ${healed[0]?.name || ''} is fully healed!`),
+  return withSteezeWink([n > 1 ? L(`お待たせしました！みんな、すっかり元気です！`, `Thank you for waiting! Everyone is fully healed!`) : L(`お待たせしました！${healed[0]?.name || ''}ちゃんはすっかり元気です！`, `Thank you for waiting! ${healed[0]?.name || ''} is fully healed!`),
     cost ? L(`お代は $${cost} です。ありがとうございます♪`, `That comes to $${cost}. Thank you ♪`, { both: true }) : L('お代はいりませんよ。', "There's no charge."),
     ...(waiting.length ? [L(`${nameJa(waiting)}は、もう少し休ませましょうね。`, `${names(waiting)} will rest a little longer.`)] : []),
-    L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })];
+    L('またいつでも来てくださいね♡', 'Come back any time ♡', { end: true })], healed, rand);
 }
