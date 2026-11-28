@@ -6,7 +6,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, refreshSession } from '../api.js';
 import { navigate } from '../App.jsx';
 import Dizzy from '../barn/Dizzy.jsx';
-import { NURSE, greeting, greetingFor, healRequest, newsAfter, newsAsEvolved, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after, healPlan, healAllRequest, greetingAll, allHealed } from './script.js';
+import { NURSE, STEEZE_WHO, greeting, greetingFor, healRequest, newsAfter, newsAsEvolved, WAIT, done, NO, REST, OOPS, SIGNS, PANELS, PANELS2, PICK, RECEIPT, BACK, STAGE, COUNTER, after, healPlan, healAllRequest, greetingAll, allHealed, isSteezePatient } from './script.js';
 import { healChime, podBlip, drill } from './chime.js';
 import { drawBug } from '../barn/sprite.js';
 import { BY_ID } from '../../../server/engine/creatures.js';
@@ -15,6 +15,7 @@ import './bugcenter.css';
 const W = 160, H0 = 112; // a portrait phone gets a deeper room (more floor), never a narrower one
 const SOUND_KEY = 'bba.centerSound';
 const PORTRAIT = '/bugcenter/hikari.webp';
+const PORTRAIT_FLUSHED = '/bugcenter/hikari-flushed.webp';
 
 function Sign({ k, en, x, y, H, size = 1, className = '' }) {
   const s = SIGNS[k];
@@ -27,8 +28,25 @@ function Sign({ k, en, x, y, H, size = 1, className = '' }) {
 }
 
 /** Nurse Hikari as a little sprite behind the counter (the big portrait is for talking). */
-function NurseSprite({ bow }) {
+function NurseSprite({ bow, flushed }) {
   const r = (x, y, w, h, f) => <rect x={x} y={y} width={w} height={h} fill={f} />;
+  // After STEEZE's heal: same uniform and pose, but messier hair, a deeper blush and a shy look.
+  if (flushed) {
+    return (
+      <g className={`bc-nurse flushed ${bow ? 'bow' : ''}`} data-test="bc-nurse-flushed">
+        {r(70, 32, 20, 24, '#e9767c')}{/* hair, messier back */}
+        {r(68, 36, 3, 4, '#e9767c')}{r(89, 37, 3, 6, '#e9767c')}{r(74, 29, 2, 4, '#e9767c')}{/* flyaways + tuft */}
+        {r(73, 46, 14, 12, '#9fe3c8')}{r(78, 46, 4, 12, '#ffffff')}{r(77, 46, 6, 2, '#ffffff')}{/* uniform */}
+        {r(87, 43, 3, 11, '#e9767c')}{r(87, 54, 3, 1, '#ffe37a')}{/* braid a little off + firefly tie */}
+        {r(74, 35, 12, 11, '#ffe2d2')}{/* face */}
+        {r(73, 32, 15, 5, '#f08a8e')}{r(72, 36, 3, 6, '#f08a8e')}{r(85, 36, 3, 7, '#f08a8e')}{/* uneven bangs */}
+        {r(76, 29, 10, 4, '#ffffff')}{r(80, 30, 2, 2, '#6fcfa8')}{/* cap slightly askew */}
+        {r(76, 26, 1, 3, '#6fcfa8')}{r(84, 27, 1, 3, '#6fcfa8')}{r(75, 25, 2, 2, '#6fcfa8')}{r(84, 26, 2, 2, '#6fcfa8')}{/* antenna ribbons */}
+        {r(77, 39, 2, 2, '#4a2a2a')}{r(81, 39, 2, 2, '#4a2a2a')}{/* both eyes open, bashful */}
+        {r(75, 41, 3, 2, '#f48a96')}{r(82, 41, 3, 2, '#f48a96')}{r(79, 43, 2, 1, '#c45a64')}{/* deeper blush, small mouth */}
+      </g>
+    );
+  }
   return (
     <g className={`bc-nurse ${bow ? 'bow' : ''}`}>
       {r(71, 33, 18, 22, '#e9767c')}{/* hair, back */}
@@ -44,7 +62,7 @@ function NurseSprite({ bow }) {
   );
 }
 
-function Room({ H, lit, pod, bow, en, onNurse }) {
+function Room({ H, lit, pod, bow, flushed, en, onNurse }) {
   const by = H - 22, my = H - 8; // benches and the door mat sit at the front of the room
   const r = (x, y, w, h, f, extra = {}) => <rect x={x} y={y} width={w} height={h} fill={f} {...extra} />;
   const slots = [[104, 49], [111, 49], [118, 49], [104, 54], [111, 54], [118, 54]];
@@ -74,7 +92,7 @@ function Room({ H, lit, pod, bow, en, onNurse }) {
         {r(132, 52, 6, 6, '#c9744a')}{r(131, 44, 8, 8, '#3fa36b')}{r(133, 41, 4, 4, '#57c27f')}
         {/* nurse, then the counter in front of her */}
         <g onClick={onNurse} className="bc-nurse-hit" data-test="bc-nurse">
-          <NurseSprite bow={bow} />
+          <NurseSprite bow={bow} flushed={flushed} />
           {r(68, 24, 24, 36, 'transparent')}
         </g>
         {r(32, 57, 96, 4, '#ffffff')}{r(34, 61, 92, 12, '#e2545f')}{r(34, 66, 92, 2, '#c03a48')}{r(34, 73, 92, 2, '#a52f3c')}
@@ -415,7 +433,8 @@ export default function BugCenter() {
       }
       if (failed) { setTalk({ lines: [OOPS(failed.message)], i: 0, mode: 'talk' }); return; }
       const { healed, cost, ...view } = r; setB(view);
-      setTalk({ lines: done(view.stable?.bugs.find((bug) => bug.id === pen?.id) || view.pen, healed, cost), i: 0, mode: 'talk' });
+      const patient = view.stable?.bugs.find((bug) => bug.id === pen?.id) || view.pen;
+      setTalk({ lines: done(patient, healed, cost), i: 0, mode: 'talk', flushed: isSteezePatient(patient) });
     }, wait);
   };
   // One tap for the whole waiting room (POST /barn/heal-all). `total` is what the button said: the server never bills more.
@@ -437,13 +456,14 @@ export default function BugCenter() {
       }
       if (failed) { setTalk({ lines: [OOPS(failed.message)], i: 0, mode: 'talk' }); return; }
       const { healedAll = [], cost = 0, waiting = [], ...view } = r; setB(view); refreshSession();
-      const lines = allHealed(healedAll, cost, waiting);
-      if (!healedAll.length) { setTalk({ lines, i: 0, mode: 'talk' }); return; }
       const shown = healedAll.map((h) => view.stable?.bugs.find((bug) => bug.id === h.id) || h);
-      setTalk(null); setCheer({ bugs: shown, cost, paid: healedAll.filter((h) => h.paid).length, each: plan.paid[0]?.healCost || 0, lines });
+      const flushed = shown.some(isSteezePatient);
+      const lines = allHealed(shown, cost, waiting);
+      if (!healedAll.length) { setTalk({ lines, i: 0, mode: 'talk', flushed }); return; }
+      setTalk(null); setCheer({ bugs: shown, cost, paid: healedAll.filter((h) => h.paid).length, each: plan.paid[0]?.healCost || 0, lines, flushed });
     }, Math.max(0, 3300 - (Date.now() - t0)));
   };
-  const cheerNext = () => { const lines = cheer?.lines; setCheer(null); if (lines) setTalk({ lines, i: 0, mode: 'talk' }); };
+  const cheerNext = () => { const lines = cheer?.lines; const flushed = !!cheer?.flushed; setCheer(null); if (lines) setTalk({ lines, i: 0, mode: 'talk', flushed }); };
   const plan = !talk && !op && !cheer ? healPlan(b) : null;
   if (!b) return <div className="screen bc"><div className="bc-loading muted">{err ? <p role="alert">{err}</p> : 'いらっしゃいませ…'}</div></div>;
   const portrait = talk && talk.mode !== 'heal';
@@ -451,16 +471,18 @@ export default function BugCenter() {
     <div className="screen bc" data-test="bug-center" lang="ja">
       <div className="bc-fit" ref={fit}>
         <div className={`bc-scene${op || counter || cheer ? ' bc-dark' : ''}`} style={{ width: box.w, height: box.h, '--u': `${box.w / W}px` }} onClick={talk ? next : op ? opNext : cheer ? cheerNext : undefined}>
-          <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} en={en} onNurse={(e) => { e.stopPropagation(); if (cheer) cheerNext(); else if (talk) next(); else start(); }} />
+          <Room H={box.H} lit={lit} pod={pod} bow={talk?.mode === 'heal'} flushed={!!talk?.flushed} en={en} onNurse={(e) => { e.stopPropagation(); if (cheer) cheerNext(); else if (talk) next(); else start(); }} />
           {plan && plan.bugs.length > 1 && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${plan.bugs.length} bugs fainted`} /> <span>{plan.bugs.length}匹：<b>ひんし</b></span>{en && <small lang="en">{plan.bugs.length} fainted</small>}</div>}
           {cheer && <Cheer cheer={cheer} en={en} onNext={cheerNext} />}
           {!(plan && plan.bugs.length > 1) && !cheer && pen?.stage === 'creature' && pen.fainted && !talk && !op && <div className="bc-status" data-test="bc-status"><Dizzy size={22} label={`${pen.name} ${pen.sick ? 'is not well' : 'fainted'}`} /> <span>{pen.name}：<b>{pen.sick ? 'むらさき' : pen.taken ? 'おあずかり' : 'ひんし'}</b></span>{en && <small lang="en">{pen.sick ? 'purple' : pen.taken ? 'collected' : 'fainted'}</small>}</div>}
           {op && <Operation op={op} pen={pen} en={en} onNext={opNext} />}
           {counter && <Counter pen={b.pen} en={en} onClose={() => setCounter(false)} />}
           {portrait && <div className="bc-talk" data-test="bc-dialogue">
-            <img className="bc-portrait" style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" draggable="false" />
-            <div className="bc-box" role="dialog" aria-label={NURSE.en}>
-              <span className="bc-who" title={NURSE.en}><ruby>{NURSE.ja}<rt>{NURSE.kana}</rt></ruby></span>
+            <img className={`bc-portrait${talk.flushed ? ' flushed' : ''}`} style={{ height: Math.round(Math.min(box.h * 1.04, (box.w * (box.w / box.h > 1.3 ? 0.5 : 0.98)) / 0.75)) }} src={talk.flushed ? PORTRAIT_FLUSHED : PORTRAIT} alt={`${NURSE.en}, the Bug Center nurse`} data-test="bc-portrait" data-flushed={talk.flushed ? '1' : undefined} draggable="false" />
+            <div className="bc-box" role="dialog" aria-label={line.who === 'steeze' ? STEEZE_WHO.en : NURSE.en}>
+              {line.who === 'steeze'
+                ? <span className="bc-who bc-who-steeze" title={STEEZE_WHO.en} data-test="bc-who">{STEEZE_WHO.en}</span>
+                : <span className="bc-who" title={NURSE.en} data-test="bc-who"><ruby>{NURSE.ja}<rt>{NURSE.kana}</rt></ruby></span>}
               <p className="bc-line" aria-live="polite">{typed}{full && !line.ask && !line.pick && !line.choices && <span className="bc-next" aria-hidden="true">▼</span>}</p>
               {(en || line.both) && full && <p className="bc-en" lang="en">{line.en}</p>}
               {line.pick && full && <div className="bc-ask bc-pick" data-test="bc-pick">
