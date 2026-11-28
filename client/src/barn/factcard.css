@@ -14,6 +14,9 @@
 .bf-window { border: 1px solid #b8964a; background: radial-gradient(70% 80% at 50% 45%, #fff8e0, #2a1a10 130%); aspect-ratio: 2.35 / 1; overflow: hidden; flex: none; }
 .bf-art { width: 100%; height: 100%; display: block; image-rendering: pixelated; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .28)); }
 .bf-photo { object-fit: cover; image-rendering: auto; filter: none; }
+/* STEEZE is a tall full-body photo. The default wide cover crop cuts him off at the midsection. */
+.bf-window.bf-steeze { aspect-ratio: 3 / 5; width: auto; max-width: 100%; max-height: 260px; height: 260px; margin-inline: auto; }
+.bf-window.bf-steeze .bf-photo { object-fit: contain; object-position: center center; }
 .bf-sheet h3 { margin: 8px 0 0; font: 400 20px/1.05 var(--display, Georgia, serif); color: #2a1a10; overflow-wrap: anywhere; }
 .bf-aka { margin: 1px 0 0; font: 500 11px/1.25 var(--sans, system-ui, sans-serif); color: #5a4630; }
 .bf-sci { margin: 2px 0 0; font: italic 500 11px/1.25 Georgia, serif; color: #5a4630; }

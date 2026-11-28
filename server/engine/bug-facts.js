@@ -552,7 +552,9 @@ const COPY = {
     eats: "Chicken fingers, ordered at a restaurant. He does not eat acid.",
     facts: [
       "STEEZE was found in the mines already wearing the outfit, already mid-swing.",
-      "He hordes wealth. The spelling is his.",
+      "He hoards wealth.",
+      "He has bad eyes: his retinas detached once, and they never quite came back.",
+      "He likes the ladies.",
       "He plays golf in the tunnels. The ball usually comes back.",
     ],
   },
