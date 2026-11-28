@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Barn, STALLS, STALL_COSTS, FARM_NAME, jarCatchLine, idOf } from '../server/barn.js';
+import { Barn, STALLS, STALL_COSTS, FARM_NAME, jarCatchLine, idOf, STARVE_MS } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines, STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, steezeToday } from '../server/mines.js';
 import { Pvp } from '../server/pvp.js';
@@ -13,7 +13,7 @@ import { BY_ID } from '../server/engine/creatures.js';
 import { movesFor } from '../server/engine/bug-combat.js';
 import { startBout, stepBout } from '../server/engine/bout.js';
 import { wildAt } from '../server/engine/wild-roam.js';
-import { STEEZE_JAR_CHANCE, STEEZE_JAR_SIDES, STEEZE_STUCK, isSteeze } from '../server/engine/steeze.js';
+import { STEEZE_JAR_CHANCE, STEEZE_JAR_SIDES, STEEZE_STUCK, isSteeze, STEEZE_CARE, careLabel, steezeCareLine } from '../server/engine/steeze.js';
 import { dailyLayout } from '../server/engine/daily-maze.js';
 import { SHAFTS } from '../server/catalog/mine.js';
 import { rarityOf } from '../server/engine/bug-types.js';
@@ -364,4 +364,54 @@ test('a mine jar of STEEZE into a full barn reports the bumped bug, not that he 
     'In the jar. STEEZE has a stall waiting. Stall 4 is off to GFR Farms.');
   assert.equal(f.barn.bugs('ann')[3].species, STEEZE_ID);
   assert.equal(f.barn.farmBugs('ann')[0].name, 'Stall 4');
+});
+
+
+test('STEEZE care pills are relabelled, and each action has a short pool of snarky lines', () => {
+  assert.deepEqual(['feed', 'play', 'clean'].map((k) => careLabel(k, STEEZE_ID)), ['Read him a book', 'Rub his back', 'Discuss politics']);
+  assert.deepEqual(['feed', 'play', 'clean'].map((k) => careLabel(k, 'lamprima')), ['Feed', 'Play', 'Mist']);
+  for (const [action, row] of Object.entries(STEEZE_CARE)) {
+    assert.ok(row.lines.length >= 4 && row.lines.length <= 6, `${action} should have 4–6 lines`);
+    assert.equal(new Set(row.lines).size, row.lines.length, `${action} lines should be unique`);
+    for (const line of row.lines) {
+      assert.ok(line.length > 8 && line.length < 90, line);
+      assert.doesNotMatch(line, /immortal|never dies|can't die|cannot die|invincible/i);
+    }
+  }
+  const politics = STEEZE_CARE.clean.lines.join('\n');
+  assert.doesNotMatch(politics, /democrat|republican|liberal|conservative|left-wing|right-wing|trump|biden|maga|gop\b/i);
+  assert.equal(steezeCareLine('feed', 'lamprima'), null);
+  assert.equal(steezeCareLine('feed', STEEZE_ID, 0), STEEZE_CARE.feed.lines[0]);
+  assert.equal(steezeCareLine('clean', STEEZE_ID, 0.99), STEEZE_CARE.clean.lines.at(-1));
+});
+
+test('STEEZE survives a very long neglect gap, still looks fine, and other bugs still starve', (t) => {
+  const f = fixture(t), ann = 'ann';
+  f.partner(5);
+  const him = f.barn.adopt(ann, { wildId: 'w-neglect-steeze', battleId: 'b-neglect-steeze', species: STEEZE_ID, level: 5 });
+  assert.equal(him.species, STEEZE_ID);
+  const before = f.barn.petView(ann, idOf(him)).pen;
+  assert.equal(before.stage, 'creature');
+  const hung = before.needs.hunger, mood = before.needs.mood, clean = before.needs.clean;
+  // A year unfed: any ordinary bug would have been a gravestone many times over.
+  f.clock.now += 365 * 24 * 3600e3;
+  const after = f.barn.petView(ann, idOf(him)).pen;
+  assert.equal(after.stage, 'creature');
+  assert.equal(after.starving, 0);
+  assert.equal(after.diesInMs, null);
+  assert.ok(f.barn.deathAt(f.barn.penOf(ann, idOf(him))) > f.clock.now);
+  assert.deepEqual(after.needs, { hunger: hung, mood, clean });
+  assert.ok(after.mood === 'thriving' || after.mood === 'content', after.mood);
+  // Care still works: cooldown, XP, and the bumped need, on the usual actions.
+  const xp = after.xp;
+  const cared = f.barn.care(ann, 'feed', idOf(him)).stable.bugs.find((bug) => bug.species === STEEZE_ID);
+  assert.ok(cared.xp > xp);
+  assert.ok(cared.cool.feed > 0);
+  assert.ok(cared.needs.hunger >= hung);
+  assert.throws(() => f.barn.care(ann, 'feed', idOf(him)), /give it a minute/i);
+  // A regular partner left alone for the same span is dead.
+  const other = fixture(t);
+  other.partner(5);
+  other.clock.now += STARVE_MS + 24 * 3600e3;
+  assert.equal(other.barn.view('ann').pen.stage, 'dead');
 });

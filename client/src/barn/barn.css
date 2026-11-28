@@ -45,6 +45,10 @@
 .barn-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .barn-acts .btn { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 0; min-height: 44px; padding: 4px 10px; }
 .barn-acts .btn small { font: 500 10px var(--mono); opacity: .75; }
+/* STEEZE's longer care labels: wrap to two lines and sit a little smaller so three pills fit at 390px. */
+.barn-acts.steeze-acts .btn { font-size: 11.5px; line-height: 1.15; white-space: normal; text-wrap: balance; padding: 5px 4px 3px; min-height: 48px; text-align: center; }
+.barn-acts.steeze-acts .btn small { white-space: nowrap; }
+
 .barn-abil { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .barn-abil li { opacity: .55; } .barn-abil li.on { opacity: 1; color: #ffe9a0; }
 .barn-hatch { display: flex; align-items: baseline; gap: 10px; } .barn-hatch b { font-size: 26px; color: var(--gold); }
@@ -147,6 +151,8 @@
 }
 @media (max-height: 500px) {
   .barn-acts .btn, .barn-bouts .btn { flex-direction: row; gap: 6px; min-height: 32px; }
+  .barn-acts.steeze-acts .btn { flex-direction: column; gap: 0; min-height: 44px; }
+
   .barn-bouts .btn { padding: 2px 12px; }
   .barn-abil { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
   .barn-side { gap: 4px; }

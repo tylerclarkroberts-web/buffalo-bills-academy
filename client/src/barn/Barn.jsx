@@ -24,6 +24,7 @@ import Circuit from './Circuit.jsx';
 import Gym from './Gym.jsx';
 import Trades from './Trades.jsx';
 import { LORE, loreLine } from '../../../server/engine/lore.js';
+import { isSteeze, careLabel, steezeCareLine } from '../../../server/engine/steeze.js';
 import { navigate } from '../App.jsx';
 import './barn.css';
 
@@ -300,8 +301,8 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFar
         <div className="barn-needs">
           {Object.entries(NEED).map(([k, label]) => <div key={k} className={`barn-need${k === 'mood' && pen.gym?.juiced ? ' juiced' : ''}`} data-test={`need-${k}`}><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
-        <div className="barn-acts">
-          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
+        <div className={`barn-acts${isSteeze(pen.species) ? ' steeze-acts' : ''}`}>
+          {Object.keys(ACT).map((k) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{careLabel(k, pen.species)}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
         </div>
         <div className="bs-xp">
           <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : ' · top level, for now'}</span>
@@ -444,7 +445,7 @@ function BarnHome({ me }) {
       const r = await api('POST', '/barn/care', { action, bug: pen.id }); take(r); setPoke((n) => n + 1);
       const cared = r.stable.bugs.find((bug) => bug.id === pen.id) || r.pen;
       if (cared.stage === 'egg') { sfx.warm(); setMsg('You keep the egg warm. Something inside kicks back.'); }
-      else { sfx[action](); setTimeout(() => voice(BY_ID[cared.species]?.voice, cared.needs.mood / 100), 700); setMsg({ feed: `${cared.name} tucks in.`, play: `${cared.name} explores the twig you offered, end to end.`, clean: `A fine mist. ${cared.name} grooms its antennae.` }[action]); }
+      else { sfx[action](); setTimeout(() => voice(BY_ID[cared.species]?.voice, cared.needs.mood / 100), 700); setMsg(steezeCareLine(action, cared.species) || { feed: `${cared.name} tucks in.`, play: `${cared.name} explores the twig you offered, end to end.`, clean: `A fine mist. ${cared.name} grooms its antennae.` }[action]); }
   });
   const bury = () => act(async () => {
     take(await api('POST', '/barn/bury', { bug: pen.id })); setSel(null); setBattleDraft(null); setMsg('Laid to rest under the old cottonwood.');

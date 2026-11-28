@@ -272,14 +272,16 @@ export class Barn {
     records.names[name.toLowerCase()] = playerId;
     return name;
   }
-  /** When it dies if nobody feeds it (ms epoch). Automatic feeder time counts as fed. */
+  /** When it dies if nobody feeds it (ms epoch). Automatic feeder time counts as fed. STEEZE never does. */
   deathAt(pen) {
+    if (isSteeze(pen?.species)) return Number.POSITIVE_INFINITY;
     const fed = Math.max(pen.fedAt || pen.bornAt || 0, pen.feederUntil || 0);
     let starves = fed + this.starveMs; // on the bug's own clock; a stalled bug's runs slow
     if (pen.benchedAt && starves > pen.benchedAt) starves = pen.benchedAt + (starves - pen.benchedAt) * BENCH_SLOW;
     return Math.max(starves, (pen.bornAt || 0) + MIN_LIFE_MS * this.k, (pen.migratedAt || 0) + MIN_LIFE_MS * this.k);
   }
   starving(pen, now) { // 0 fine, 1 hungry, 2 weak, 3 critical
+    if (isSteeze(pen?.species)) return 0;
     const since = this.own(pen, now) - Math.max(pen.fedAt || pen.bornAt || 0, pen.feederUntil || 0);
     return WARN_MS.filter((w) => since >= w * this.k).length;
   }
@@ -537,6 +539,15 @@ export class Barn {
   needs(pen, now) { return this.needsAt(pen, this.own(pen, now)); }
   /** The same at a moment on the bug's own clock. */
   needsAt(pen, now) {
+    // STEEZE's gauges do not decay from time or missed care; they stay where care or the gym last left them.
+    if (isSteeze(pen?.species)) {
+      const out = {};
+      for (const s of STATS) {
+        const v = pen.stats?.[s];
+        out[s] = Math.max(0, Math.min(100, v?.v ?? 100));
+      }
+      return out;
+    }
     const out = {};
     for (const s of STATS) {
       const v = pen.stats[s];
@@ -579,9 +590,9 @@ export class Barn {
     const cap = STAGE_CAPS[pen.evo || 0] ?? PAUSED_AT; if (pen.cap !== cap) { pen.cap = cap; dirty = true; }
     if (pen.stage === 'creature' && !isHeesheeHeld(pen)) {
       const before = pen.xp; const dies = this.deathAt(pen);
-      if (now >= dies) { pen.diedAt = dies; }
+      if (!isSteeze(pen.species) && now >= dies) { pen.diedAt = dies; }
       this.accrue(pen, now, pen === this.doc.pens[playerId] ? this.styleOf?.(playerId).toyXp || 0 : 0); dirty ||= pen.xp !== before; // the toy is in the terrarium, with the partner
-      if (pen.diedAt) { pen.stage = 'dead'; dirty = true; }
+      if (pen.diedAt && !isSteeze(pen.species)) { pen.stage = 'dead'; dirty = true; }
     }
     if (dirty) this.save();
     return pen;
