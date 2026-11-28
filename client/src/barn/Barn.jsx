@@ -24,6 +24,7 @@ import Circuit from './Circuit.jsx';
 import Gym from './Gym.jsx';
 import Trades from './Trades.jsx';
 import { LORE, loreLine } from '../../../server/engine/lore.js';
+import { isSteeze, careLabel, steezeCareLine } from '../../../server/engine/steeze.js';
 import { navigate } from '../App.jsx';
 import './barn.css';
 
@@ -199,7 +200,7 @@ const HELP = {
 /** The Bugdex: every species, rarest first (dexOrder.js) under a divider for each tier, each with its two evolved stages beside it. A form you have met (`b.dex`:
  * kept, fought, or spotted down the mine) shows its face and opens its card; the rest are a question mark. How rare a
  * bug is and its type are posted either way. */
-const FORMS = DEX_ORDER.flatMap(({ bug, no }) => STAGES.map((_, evo) => ({ bug, evo, key: formOf(bug.id, evo), no: String(no).padStart(2, '0') }))); // in Bugdex order, so ‹ › flip that way too
+const FORMS = DEX_ORDER.flatMap(({ bug, no }) => (isSteeze(bug.id) ? [0] : STAGES.map((_, evo) => evo)).map((evo) => ({ bug, evo, key: formOf(bug.id, evo), no: String(no).padStart(2, '0') }))); // in Bugdex order, so ‹ › flip that way too. STEEZE has no evolved stages.
 const FORM = new Map(FORMS.map((form) => [form.key, form]));
 function Bugdex({ seen }) {
   const met = FORMS.filter((form) => seen.includes(form.key)), [open, setOpen] = useState(null), dialog = useRef(null), shut = useRef(null), on = FORMS.find((form) => form.key === open);
@@ -219,7 +220,7 @@ function Bugdex({ seen }) {
     <ol className="dex-grid">
       {DEX_TIERS.flatMap((tier) => [
         <li key={`tier-${tier.rarity}`} className={`dex-tier r${tier.rarity}`} data-test="dex-tier"><span aria-hidden="true">{tier.mark}</span> {tier.name} <i className="num">{tier.bugs.length}</i></li>,
-        ...tier.bugs.map(({ bug }) => <li key={bug.id} className="dex-fam" style={{ '--tc': TYPES[typeOf(bug.id)]?.color }} data-test="dex-fam" data-species={bug.id}>{tile(FORM.get(formOf(bug.id, 0)))}<div className="dex-evos">{tile(FORM.get(formOf(bug.id, 1)))}{tile(FORM.get(formOf(bug.id, 2)))}</div></li>),
+        ...tier.bugs.map(({ bug }) => <li key={bug.id} className={`dex-fam${isSteeze(bug.id) ? ' dex-solo' : ''}`} style={{ '--tc': TYPES[typeOf(bug.id)]?.color }} data-test="dex-fam" data-species={bug.id}>{tile(FORM.get(formOf(bug.id, 0)))}{!isSteeze(bug.id) && <div className="dex-evos">{tile(FORM.get(formOf(bug.id, 1)))}{tile(FORM.get(formOf(bug.id, 2)))}</div>}</li>),
       ])}
     </ol>
     {on && <dialog ref={dialog} className="dex-card" aria-label={`${on.bug.name}${on.evo ? `, ${STAGES[on.evo]}` : ''}: card`} onClose={() => setOpen(null)} onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}
@@ -300,11 +301,11 @@ function Creature({ pen, b, stable, now, busy, care, makePartner, release, toFar
         <div className="barn-needs">
           {Object.entries(NEED).map(([k, label]) => <div key={k} className={`barn-need${k === 'mood' && pen.gym?.juiced ? ' juiced' : ''}`} data-test={`need-${k}`}><span className="small">{label}</span><div className={`barn-bar ${pen.needs[k] < 30 ? 'low' : ''}`}><i style={{ width: `${pen.needs[k]}%` }} /></div></div>)}
         </div>
-        <div className="barn-acts">
-          {Object.entries(ACT).map(([k, [label]]) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{label}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
+        <div className={`barn-acts${isSteeze(pen.species) ? ' steeze-acts' : ''}`}>
+          {Object.keys(ACT).map((k) => { const cd = Math.max(0, b.serverNow + pen.cool[k] - now); return <button key={k} className="btn" disabled={busy || cd > 0 || pen.sick || pen.taken || pen.heesheeHeld} onClick={() => care(k)} data-test={`act-${k}`}>{careLabel(k, pen.species)}<small>{cd > 0 ? left(cd) : `+${pen.careXp} XP`}</small></button>; })}
         </div>
         <div className="bs-xp">
-          <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : ' · top level, for now'}</span>
+          <span className="small num">{pen.xp.toLocaleString()} XP{pen.xpNext ? ` · ${(pen.xpNext - pen.xp).toLocaleString()} to level ${pen.level + 1}` : isSteeze(pen.species) ? ' · top level' : ' · top level, for now'}</span>
           <div className="barn-bar xp" role="progressbar" aria-label={`Level ${pen.level} progress`} aria-valuemin={0} aria-valuemax={pen.xpNext ? pen.xpNext - pen.xpThis : 1} aria-valuenow={pen.xpNext ? pen.xp - pen.xpThis : 1}><i style={{ width: `${pen.xpNext ? ((pen.xp - pen.xpThis) / (pen.xpNext - pen.xpThis)) * 100 : 100}%` }} /></div>
           {next && <span className="small muted">Learns {next.name} at level {next.level}</span>}
         </div>
@@ -444,7 +445,7 @@ function BarnHome({ me }) {
       const r = await api('POST', '/barn/care', { action, bug: pen.id }); take(r); setPoke((n) => n + 1);
       const cared = r.stable.bugs.find((bug) => bug.id === pen.id) || r.pen;
       if (cared.stage === 'egg') { sfx.warm(); setMsg('You keep the egg warm. Something inside kicks back.'); }
-      else { sfx[action](); setTimeout(() => voice(BY_ID[cared.species]?.voice, cared.needs.mood / 100), 700); setMsg({ feed: `${cared.name} tucks in.`, play: `${cared.name} explores the twig you offered, end to end.`, clean: `A fine mist. ${cared.name} grooms its antennae.` }[action]); }
+      else { sfx[action](); setTimeout(() => voice(BY_ID[cared.species]?.voice, cared.needs.mood / 100), 700); setMsg(steezeCareLine(action, cared.species) || { feed: `${cared.name} tucks in.`, play: `${cared.name} explores the twig you offered, end to end.`, clean: `A fine mist. ${cared.name} grooms its antennae.` }[action]); }
   });
   const bury = () => act(async () => {
     take(await api('POST', '/barn/bury', { bug: pen.id })); setSel(null); setBattleDraft(null); setMsg('Laid to rest under the old cottonwood.');

@@ -5,15 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../server/store.js';
 import { Accounts } from '../server/accounts.js';
-import { Barn, STALLS, STALL_COSTS, FARM_NAME, jarCatchLine, idOf } from '../server/barn.js';
+import { Barn, STALLS, STALL_COSTS, FARM_NAME, jarCatchLine, idOf, STARVE_MS, purpleChance, RECOVER_MS } from '../server/barn.js';
 import { Shop } from '../server/shop.js';
 import { Mines, STEEZE_ID, STEEZE_LEVEL, STEEZE_DAYS, steezeToday } from '../server/mines.js';
 import { Pvp } from '../server/pvp.js';
-import { BY_ID } from '../server/engine/creatures.js';
+import { BY_ID, xpFor, LEVEL_CAP, PAUSED_AT } from '../server/engine/creatures.js';
 import { movesFor } from '../server/engine/bug-combat.js';
 import { startBout, stepBout } from '../server/engine/bout.js';
 import { wildAt } from '../server/engine/wild-roam.js';
-import { STEEZE_JAR_CHANCE, STEEZE_JAR_SIDES, STEEZE_STUCK, isSteeze } from '../server/engine/steeze.js';
+import { STEEZE_JAR_CHANCE, STEEZE_JAR_SIDES, STEEZE_STUCK, isSteeze, STEEZE_CARE, careLabel, steezeCareLine } from '../server/engine/steeze.js';
 import { dailyLayout } from '../server/engine/daily-maze.js';
 import { SHAFTS } from '../server/catalog/mine.js';
 import { rarityOf } from '../server/engine/bug-types.js';
@@ -364,4 +364,164 @@ test('a mine jar of STEEZE into a full barn reports the bumped bug, not that he 
     'In the jar. STEEZE has a stall waiting. Stall 4 is off to GFR Farms.');
   assert.equal(f.barn.bugs('ann')[3].species, STEEZE_ID);
   assert.equal(f.barn.farmBugs('ann')[0].name, 'Stall 4');
+});
+
+
+test('STEEZE care pills are relabelled, and each action has a short pool of snarky lines', () => {
+  assert.deepEqual(['feed', 'play', 'clean'].map((k) => careLabel(k, STEEZE_ID)), ['Read him a book', 'Rub his back', 'Discuss politics']);
+  assert.deepEqual(['feed', 'play', 'clean'].map((k) => careLabel(k, 'lamprima')), ['Feed', 'Play', 'Mist']);
+  for (const [action, row] of Object.entries(STEEZE_CARE)) {
+    assert.ok(row.lines.length >= 4 && row.lines.length <= 6, `${action} should have 4–6 lines`);
+    assert.equal(new Set(row.lines).size, row.lines.length, `${action} lines should be unique`);
+    for (const line of row.lines) {
+      assert.ok(line.length > 8 && line.length < 90, line);
+      assert.doesNotMatch(line, /immortal|never dies|can't die|cannot die|invincible/i);
+    }
+  }
+  const politics = STEEZE_CARE.clean.lines.join('\n');
+  assert.doesNotMatch(politics, /democrat|republican|liberal|conservative|left-wing|right-wing|trump|biden|maga|gop\b/i);
+  assert.equal(steezeCareLine('feed', 'lamprima'), null);
+  assert.equal(steezeCareLine('feed', STEEZE_ID, 0), STEEZE_CARE.feed.lines[0]);
+  assert.equal(steezeCareLine('clean', STEEZE_ID, 0.99), STEEZE_CARE.clean.lines.at(-1));
+});
+
+test('STEEZE survives a very long neglect gap, still looks fine, and other bugs still starve', (t) => {
+  const f = fixture(t), ann = 'ann';
+  f.partner(5);
+  const him = f.barn.adopt(ann, { wildId: 'w-neglect-steeze', battleId: 'b-neglect-steeze', species: STEEZE_ID, level: 5 });
+  assert.equal(him.species, STEEZE_ID);
+  const before = f.barn.petView(ann, idOf(him)).pen;
+  assert.equal(before.stage, 'creature');
+  const hung = before.needs.hunger, mood = before.needs.mood, clean = before.needs.clean;
+  // A year unfed: any ordinary bug would have been a gravestone many times over.
+  f.clock.now += 365 * 24 * 3600e3;
+  const after = f.barn.petView(ann, idOf(him)).pen;
+  assert.equal(after.stage, 'creature');
+  assert.equal(after.starving, 0);
+  assert.equal(after.diesInMs, null);
+  assert.ok(f.barn.deathAt(f.barn.penOf(ann, idOf(him))) > f.clock.now);
+  assert.deepEqual(after.needs, { hunger: hung, mood, clean });
+  assert.ok(after.mood === 'thriving' || after.mood === 'content', after.mood);
+  // Care still works: cooldown, XP, and the bumped need, on the usual actions.
+  const xp = after.xp;
+  const cared = f.barn.care(ann, 'feed', idOf(him)).stable.bugs.find((bug) => bug.species === STEEZE_ID);
+  assert.ok(cared.xp > xp);
+  assert.ok(cared.cool.feed > 0);
+  assert.ok(cared.needs.hunger >= hung);
+  assert.throws(() => f.barn.care(ann, 'feed', idOf(him)), /give it a minute/i);
+  // A regular partner left alone for the same span is dead.
+  const other = fixture(t);
+  other.partner(5);
+  other.clock.now += STARVE_MS + 24 * 3600e3;
+  assert.equal(other.barn.view('ann').pen.stage, 'dead');
+});
+
+
+test('purpleChance is zero for STEEZE, and no mine shift starts a first or second evolution for him', (t) => {
+  assert.equal(purpleChance(xpFor(13), 0, STEEZE_ID), 0);
+  assert.equal(purpleChance(xpFor(30), 1, STEEZE_ID), 0);
+  assert.equal(purpleChance(xpFor(13)), 1, 'every other species is unchanged');
+  const f = fixture(t);
+  const him = catchSteeze(f, 'ann', 'evo');
+  assert.equal(f.barn.doc.pens.ann, him);
+  him.xp = xpFor(30);
+  f.barn.save();
+  f.barn.view('ann');
+  const pen = f.barn.view('ann').pen;
+  assert.equal(pen.species, STEEZE_ID);
+  assert.equal(pen.level, LEVEL_CAP, 'he is not held at the pre-evolution cap');
+  assert.equal(pen.cap, LEVEL_CAP);
+  assert.equal(pen.evo || 0, 0);
+  assert.equal(pen.xpNext, null);
+  assert.ok(pen.level > PAUSED_AT);
+  assert.equal(f.barn.due('ann'), null);
+  assert.equal(f.barn.due('ann', 1), null);
+  assert.equal(f.barn.rollPurple('ann'), false);
+  assert.equal(f.barn.rollCollect('ann'), false);
+  assert.equal(f.barn.fallSick('ann'), null);
+  assert.equal(f.barn.collect('ann'), null);
+  assert.equal(f.barn.doc.pens.ann.sick, undefined);
+  assert.equal(f.barn.doc.pens.ann.taken, undefined);
+  assert.equal(f.barn.doc.pens.ann.evo || 0, 0);
+  // Even a forced Stage II flag does not start the specialist's collection.
+  f.barn.doc.pens.ann.evo = 1;
+  f.barn.save();
+  assert.equal(f.barn.rollCollect('ann'), false);
+  assert.equal(f.barn.collect('ann'), null);
+  f.barn.doc.pens.ann.evo = 0;
+  f.barn.save();
+  const shift = f.mines.start(f.ann, V);
+  assert.equal(shift.purple, undefined);
+  assert.equal(shift.collect, undefined);
+  f.mines.quit(f.ann, shift.shiftId, V);
+  assert.equal(f.barn.doc.pens.ann.sick, undefined);
+  assert.equal(f.barn.doc.pens.ann.taken, undefined);
+  assert.equal(f.barn.doc.pens.ann.evo || 0, 0);
+  assert.throws(() => f.barn.evolve('ann', f.barn.doc.pens.ann), /sits back down/);
+  assert.throws(() => f.barn.rebuild('ann', f.barn.doc.pens.ann), /sits back down/);
+  // A leftover sick flag is treated as a faint, not a rebuild.
+  const raw = f.barn.doc.pens.ann;
+  f.barn.commitPen('ann', { ...raw, sick: f.clock.now, faintedAt: f.clock.now, faintedIn: 'purple' });
+  const healed = f.barn.heal('ann', { mode: 'heal', pay: true });
+  assert.equal(healed.evolved, undefined);
+  assert.equal(healed.healed, true);
+  assert.equal(f.barn.view('ann').pen.evo || 0, 0);
+  assert.equal(f.barn.view('ann').pen.sick, undefined);
+  assert.equal(f.barn.view('ann').pen.fainted, false);
+});
+
+test('STEEZE is never offered as Stage II parts, and a rebuild cannot take him', (t) => {
+  const f = fixture(t);
+  f.partner(10);
+  const partner = f.barn.doc.pens.ann;
+  Object.assign(partner, { xp: xpFor(24), evo: 1 });
+  const him = catchSteeze(f, 'ann', 'parts');
+  const spare = f.barn.adopt('ann', { wildId: 'w-spare-parts', battleId: 'b-spare-parts', species: 'onymacris', level: 3 });
+  f.barn.save();
+  assert.equal(f.barn.collect('ann'), partner.name);
+  const donors = f.barn.donors('ann', f.barn.doc.pens.ann);
+  assert.deepEqual(donors.map((d) => d.species), ['onymacris']);
+  assert.equal(f.barn.view('ann').pen.donors.some((d) => d.species === STEEZE_ID), false);
+  assert.throws(() => f.barn.heal('ann', { donor: idOf(him) }), /wants parts/);
+  assert.ok(f.barn.bugs('ann').some((bug) => isSteeze(bug.species) && bug.stage === 'creature'));
+  assert.equal(f.barn.doc.pens.ann.evo, 1);
+  // Only STEEZE in the other stalls: the rebuild takes cash, never him.
+  const f2 = fixture(t);
+  f2.partner(10);
+  Object.assign(f2.barn.doc.pens.ann, { xp: xpFor(24), evo: 1 });
+  catchSteeze(f2, 'ann', 'parts-solo');
+  f2.barn.save();
+  f2.barn.collect('ann');
+  assert.deepEqual(f2.barn.view('ann').pen.donors, []);
+  const cash = f2.ann.bankroll;
+  const r = f2.barn.heal('ann');
+  assert.equal(r.evolved.stage, 2);
+  assert.equal(r.evolved.donor, null);
+  assert.ok(r.evolved.bill.took > 0);
+  assert.ok(f2.ann.bankroll < cash);
+  assert.ok(f2.barn.bugs('ann').some((bug) => isSteeze(bug.species) && bug.stage === 'creature'));
+});
+
+test('a fight can still faint STEEZE, and the Bug Center treats the knockout without evolving him', (t) => {
+  const f = fixture(t);
+  const him = catchSteeze(f, 'ann', 'faint');
+  const bornAt = him.bornAt;
+  const out = f.barn.battleResult('ann', { battleId: 'fight-steeze-faint', bornAt, won: false, fought: true, fainted: true, foeName: 'A beetle', place: 'mines' });
+  assert.equal(out.fainted, true);
+  const view = f.barn.view('ann').pen;
+  assert.equal(view.fainted, true);
+  assert.equal(view.sick, undefined);
+  assert.equal(view.taken, undefined);
+  assert.equal(view.evo || 0, 0);
+  assert.ok(f.barn.waitingRoom('ann').some((w) => w.id === idOf(him)));
+  assert.throws(() => f.barn.heal('ann'), /more minutes of rest/);
+  f.clock.now += RECOVER_MS;
+  const healed = f.barn.heal('ann');
+  assert.equal(healed.evolved, undefined);
+  assert.equal(healed.healed, true);
+  assert.equal(healed.cost, 0);
+  const after = f.barn.view('ann').pen;
+  assert.equal(after.fainted, false);
+  assert.equal(after.evo || 0, 0);
+  assert.equal(after.species, STEEZE_ID);
 });
