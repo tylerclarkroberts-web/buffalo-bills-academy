@@ -95,10 +95,10 @@ function GamesMenu({ me }) {
   return (
     <div className="games-nav" ref={box} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
       <button type="button" ref={trigger} className="btn small games-toggle" aria-expanded={open} aria-controls="games-navigation" onClick={() => setOpen(!open)}>
-        Games{me?.barnChallenges > 0 && <b className="barn-count" data-test="barn-count" aria-label={`${me.barnChallenges} waiting in the ring`}>{me.barnChallenges}</b>} <span aria-hidden="true">▾</span>
+        Prospect{me?.barnChallenges > 0 && <b className="barn-count" data-test="barn-count" aria-label={`${me.barnChallenges} waiting in the ring`}>{me.barnChallenges}</b>} <span aria-hidden="true">▾</span>
       </button>
       {open && (
-        <nav id="games-navigation" className="acct-menu games-menu" aria-label="Games" onClick={() => setOpen(false)}>
+        <nav id="games-navigation" className="acct-menu games-menu" aria-label="Prospect" onClick={() => setOpen(false)}>
           <Link to="/conquest"><Ico k="board" />Risk bets</Link>
           <button type="button" onClick={goToMines}><Ico k="pick" />Acid Mines</button>
           {me && <Link to="/barn" data-test="barn-btn"><Ico k="barn" />Barn{me.barnChallenges > 0 && <b className="barn-count">{me.barnChallenges}</b>}</Link>}
